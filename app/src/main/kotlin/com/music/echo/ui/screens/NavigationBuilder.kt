@@ -26,7 +26,6 @@ import iad1tya.echo.music.ui.screens.artist.ArtistAlbumsScreen
 import iad1tya.echo.music.ui.screens.artist.ArtistItemsScreen
 import iad1tya.echo.music.ui.screens.artist.ArtistScreen
 import iad1tya.echo.music.ui.screens.artist.ArtistSongsScreen
-import iad1tya.echo.music.ui.screens.equalizer.EqScreen
 import iad1tya.echo.music.ui.screens.library.LibraryScreen
 import iad1tya.echo.music.ui.screens.library.LocalSongScreen
 import iad1tya.echo.music.ui.screens.playlist.AutoPlaylistScreen
@@ -402,10 +401,6 @@ fun NavGraphBuilder.navigationBuilder(
 
     composable("login") {
         LoginScreen(navController)
-    }
-
-    dialog("equalizer") {
-        EqScreen(navController = navController)
     }
 
     composable("recognition") {
