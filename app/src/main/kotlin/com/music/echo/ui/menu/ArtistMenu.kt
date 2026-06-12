@@ -2,6 +2,8 @@
 
 package iad1tya.echo.music.ui.menu
 
+import iad1tya.echo.music.utils.ShareLinks
+
 import android.content.Intent
 import android.content.res.Configuration
 import androidx.compose.foundation.layout.PaddingValues
@@ -203,7 +205,7 @@ fun ArtistMenu(
                                         type = "text/plain"
                                         putExtra(
                                             Intent.EXTRA_TEXT,
-                                            "https://share.echomusic.fun/channel/${artist.id}"
+                                            ShareLinks.channel(artist.id)
                                         )
                                     }
                                     context.startActivity(Intent.createChooser(intent, null))

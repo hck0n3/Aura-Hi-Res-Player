@@ -4,6 +4,8 @@
 
 package iad1tya.echo.music.playback
 
+import iad1tya.echo.music.utils.ShareLinks
+
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -2933,7 +2935,7 @@ class MusicService :
 
         val shareIntent = Intent(Intent.ACTION_SEND).apply {
             type = "text/plain"
-            putExtra(Intent.EXTRA_TEXT, "https://share.echomusic.fun/watch?v=$songId")
+            putExtra(Intent.EXTRA_TEXT, ShareLinks.song(songId))
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
         startActivity(Intent.createChooser(shareIntent, null).apply {

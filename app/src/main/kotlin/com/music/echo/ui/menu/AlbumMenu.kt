@@ -2,6 +2,8 @@
 
 package iad1tya.echo.music.ui.menu
 
+import iad1tya.echo.music.utils.ShareLinks
+
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.content.res.Configuration
@@ -364,7 +366,7 @@ fun AlbumMenu(
                             val intent = Intent().apply {
                                 action = Intent.ACTION_SEND
                                 type = "text/plain"
-                                putExtra(Intent.EXTRA_TEXT, "https://share.echomusic.fun/playlist?list=${album.album.playlistId}")
+                                putExtra(Intent.EXTRA_TEXT, ShareLinks.playlist(album.album.playlistId))
                             }
                             context.startActivity(Intent.createChooser(intent, null))
                         }

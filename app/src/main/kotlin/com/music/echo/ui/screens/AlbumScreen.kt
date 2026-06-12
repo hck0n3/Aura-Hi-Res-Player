@@ -2,6 +2,8 @@
 
 package iad1tya.echo.music.ui.screens
 
+import iad1tya.echo.music.utils.ShareLinks
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -935,7 +937,7 @@ fun AlbumScreen(
                                     type = "text/plain"
                                     putExtra(
                                         android.content.Intent.EXTRA_TEXT,
-                                        "https://share.echomusic.fun/playlist?list=${albumWithSongs.album.playlistId}"
+                                        ShareLinks.playlist(albumWithSongs.album.playlistId)
                                     )
                                 }
                                 context.startActivity(

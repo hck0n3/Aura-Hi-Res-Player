@@ -2,6 +2,8 @@
 
 package iad1tya.echo.music.ui.menu
 
+import iad1tya.echo.music.utils.ShareLinks
+
 import android.content.Context
 import android.content.res.Configuration
 import android.widget.Toast
@@ -342,7 +344,7 @@ fun PlayerMenu(
                                 type = "text/plain"
                                 putExtra(
                                     android.content.Intent.EXTRA_TEXT,
-                                    "https://share.echomusic.fun/watch?v=${mediaMetadata.id}"
+                                    ShareLinks.song(mediaMetadata.id)
                                 )
                             }
                             context.startActivity(android.content.Intent.createChooser(intent, null))

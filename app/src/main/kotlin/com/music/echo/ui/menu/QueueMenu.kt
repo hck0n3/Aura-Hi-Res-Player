@@ -2,6 +2,8 @@
 
 package iad1tya.echo.music.ui.menu
 
+import iad1tya.echo.music.utils.ShareLinks
+
 import android.content.Intent
 import android.content.res.Configuration
 import androidx.compose.animation.core.animateFloatAsState
@@ -279,7 +281,7 @@ fun QueueMenu(
                                 type = "text/plain"
                                 putExtra(
                                     Intent.EXTRA_TEXT,
-                                    "https://share.echomusic.fun/watch?v=${mediaMetadata.id}"
+                                    ShareLinks.song(mediaMetadata.id)
                                 )
                             }
                             context.startActivity(Intent.createChooser(intent, null))

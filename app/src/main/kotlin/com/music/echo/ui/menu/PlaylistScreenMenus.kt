@@ -2,6 +2,8 @@
 
 package iad1tya.echo.music.ui.menu
 
+import iad1tya.echo.music.utils.ShareLinks
+
 import android.content.Context
 import android.content.Intent
 import androidx.compose.foundation.layout.size
@@ -156,7 +158,7 @@ fun LocalPlaylistMenu(
                 },
                 onClick = {
                     val shareText = if (isYouTubePlaylist) {
-                        "https://share.echomusic.fun/playlist?list=${playlist.playlist.browseId}"
+                        ShareLinks.playlist(playlist.playlist.browseId)
                     } else {
                         songs.joinToString("\n") { it.song.song.title }
                     }

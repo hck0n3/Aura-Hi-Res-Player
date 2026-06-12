@@ -2,6 +2,8 @@
 
 package iad1tya.echo.music.ui.component
 
+import iad1tya.echo.music.utils.ShareLinks
+
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Intent
@@ -1988,7 +1990,7 @@ fun Lyrics(
                                     action = Intent.ACTION_SEND
                                     type = "text/plain"
                                     val songLink =
-                                        "https://share.echomusic.fun/watch?v=${mediaMetadata?.id}"
+                                        ShareLinks.song(mediaMetadata?.id)
                                     
                                     putExtra(
                                         Intent.EXTRA_TEXT,
