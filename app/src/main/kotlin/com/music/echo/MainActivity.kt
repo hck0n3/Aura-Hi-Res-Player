@@ -50,7 +50,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
@@ -91,6 +93,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.layout.ContentScale
 import com.airbnb.lottie.compose.LottieAnimation
 import com.airbnb.lottie.compose.LottieCompositionSpec
@@ -821,13 +826,49 @@ class MainActivity : ComponentActivity() {
                                 Row {
                                     TopAppBar(
                                         title = {
-                                            Text(
-                                                text = currentTitle,
-                                                style = MaterialTheme.typography.titleLarge.copy(
-                                                    fontWeight = FontWeight.Bold,
-                                                    fontSize = 24.sp
-                                                ),
-                                            )
+                                            if (navBackStackEntry?.destination?.route == Screens.Home.route) {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Image(
+                                                        painter = painterResource(R.drawable.jr_logo),
+                                                        contentDescription = null,
+                                                        modifier = Modifier
+                                                            .size(34.dp)
+                                                            .clip(RoundedCornerShape(9.dp))
+                                                    )
+                                                    Spacer(Modifier.width(10.dp))
+                                                    Text(
+                                                        text = buildAnnotatedString {
+                                                            withStyle(
+                                                                SpanStyle(
+                                                                    brush = Brush.linearGradient(
+                                                                        colors = listOf(
+                                                                            Color(0xFFDE60B3),
+                                                                            Color(0xFF9B6CFF),
+                                                                            Color(0xFF3DA9ED)
+                                                                        )
+                                                                    ),
+                                                                    fontWeight = FontWeight.ExtraBold
+                                                                )
+                                                            ) {
+                                                                append("JR MUSIC PRO")
+                                                            }
+                                                        },
+                                                        style = MaterialTheme.typography.titleLarge.copy(
+                                                            fontSize = 22.sp,
+                                                            letterSpacing = 0.5.sp
+                                                        ),
+                                                        maxLines = 1
+                                                    )
+                                                }
+                                            } else {
+                                                Text(
+                                                    text = currentTitle,
+                                                    style = MaterialTheme.typography.titleLarge.copy(
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontSize = 24.sp
+                                                    ),
+                                                )
+                                            }
                                         },
                                         actions = {
                                             if (showHistoryButton) {
