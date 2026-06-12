@@ -3,7 +3,7 @@
 <!-- Upstream InnerTune strings -->
 <!-- Do not add new features here -->
 <!-- Try to re-use strings here, but be careful on its usage e.g. verb vs noun -->
-<!-- "InnerTune" is replaced with "echomusic" -->
+<!-- "InnerTune" is replaced with "JR Music" -->
 <!-- Translators: Do not modify this file for translations, use InnerTune's Weblate instead. -->
 
 <resources>
@@ -367,7 +367,7 @@
     <string name="restore_failed">بازگردانی فایل پشتیبان ناموفق بود</string>
 
     <string name="discord_integration">اتصال به دیسکورد</string>
-    <string name="discord_information">برنامه echomusic از کتابخانه KizzyRPC برای تنظیم وضعیت حساب دیسکورد شما استفاده می‌کند. این کار از طریق اتصال دیسکورد گیت‌وی انجام می‌شود که ممکن است نقض قوانین خدمات (TOS) دیسکورد تلقی شود. با این حال، تاکنون هیچ موردی از مسدود شدن حساب کاربران به این دلیل گزارش نشده است. مسئولیت استفاده بر عهده خودتان است.\n\nبرنامه echomusic فقط توکن شما را استخراج می‌کند و اطلاعات دیگر کاملاً به صورت محلی ذخیره می‌شوند.</string>
+    <string name="discord_information">برنامه JR Music از کتابخانه KizzyRPC برای تنظیم وضعیت حساب دیسکورد شما استفاده می‌کند. این کار از طریق اتصال دیسکورد گیت‌وی انجام می‌شود که ممکن است نقض قوانین خدمات (TOS) دیسکورد تلقی شود. با این حال، تاکنون هیچ موردی از مسدود شدن حساب کاربران به این دلیل گزارش نشده است. مسئولیت استفاده بر عهده خودتان است.\n\nبرنامه JR Music فقط توکن شما را استخراج می‌کند و اطلاعات دیگر کاملاً به صورت محلی ذخیره می‌شوند.</string>
     <string name="dismiss">بستن</string>
     <string name="options">گزینه‌ها</string>
     <string name="preview">پیش‌نمایش</string>
