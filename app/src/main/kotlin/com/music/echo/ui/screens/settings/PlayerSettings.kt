@@ -128,6 +128,17 @@ fun PlayerSettings(
         SpectrumVisualizerEnabledKey,
         defaultValue = false
     )
+
+    // JR DSP effects (desktop parity)
+    val (jrLimiter, onJrLimiterChange) = rememberPreference(iad1tya.echo.music.constants.JrLimiterEnabledKey, defaultValue = true)
+    val (jrBass, onJrBassChange) = rememberPreference(iad1tya.echo.music.constants.JrBassEnhanceEnabledKey, defaultValue = false)
+    val (jrBassAmt, onJrBassAmtChange) = rememberPreference(iad1tya.echo.music.constants.JrBassEnhanceAmountKey, defaultValue = 0.28f)
+    val (jrExciter, onJrExciterChange) = rememberPreference(iad1tya.echo.music.constants.JrExciterEnabledKey, defaultValue = false)
+    val (jrExciterAmt, onJrExciterAmtChange) = rememberPreference(iad1tya.echo.music.constants.JrExciterAmountKey, defaultValue = 0.15f)
+    val (jrTube, onJrTubeChange) = rememberPreference(iad1tya.echo.music.constants.JrTubeWarmthEnabledKey, defaultValue = false)
+    val (jrTubeAmt, onJrTubeAmtChange) = rememberPreference(iad1tya.echo.music.constants.JrTubeWarmthAmountKey, defaultValue = 0.25f)
+    val (jrStereo, onJrStereoChange) = rememberPreference(iad1tya.echo.music.constants.JrStereoWidthEnabledKey, defaultValue = false)
+    val (jrStereoAmt, onJrStereoAmtChange) = rememberPreference(iad1tya.echo.music.constants.JrStereoWidthKey, defaultValue = 1.0f)
     val (audioNormalization, onAudioNormalizationChange) = rememberPreference(
         AudioNormalizationKey,
         defaultValue = true
@@ -635,6 +646,121 @@ fun PlayerSettings(
                         )
                     },
                     onClick = { onSpectrumVisualizerChange(!spectrumVisualizer) }
+                ))
+                add(Material3SettingsItem(
+                    icon = painterResource(R.drawable.graphic_eq),
+                    title = { Text("Soft Limiter") },
+                    description = { Text("Prevents clipping on loud peaks (recommended)") },
+                    trailingContent = {
+                        Switch(
+                            checked = jrLimiter,
+                            onCheckedChange = onJrLimiterChange,
+                            thumbContent = {
+                                Icon(
+                                    painter = painterResource(id = if (jrLimiter) R.drawable.check else R.drawable.close),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(SwitchDefaults.IconSize)
+                                )
+                            }
+                        )
+                    },
+                    onClick = { onJrLimiterChange(!jrLimiter) }
+                ))
+                add(Material3SettingsItem(
+                    icon = painterResource(R.drawable.graphic_eq),
+                    title = { Text("Bass Enhance") },
+                    description = {
+                        androidx.compose.foundation.layout.Column {
+                            Text("Psychoacoustic sub-bass harmonics")
+                            if (jrBass) Slider(value = jrBassAmt, onValueChange = onJrBassAmtChange, valueRange = 0f..1f)
+                        }
+                    },
+                    trailingContent = {
+                        Switch(
+                            checked = jrBass,
+                            onCheckedChange = onJrBassChange,
+                            thumbContent = {
+                                Icon(
+                                    painter = painterResource(id = if (jrBass) R.drawable.check else R.drawable.close),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(SwitchDefaults.IconSize)
+                                )
+                            }
+                        )
+                    },
+                    onClick = { onJrBassChange(!jrBass) }
+                ))
+                add(Material3SettingsItem(
+                    icon = painterResource(R.drawable.graphic_eq),
+                    title = { Text("Harmonic Exciter") },
+                    description = {
+                        androidx.compose.foundation.layout.Column {
+                            Text("Adds high-frequency air and presence")
+                            if (jrExciter) Slider(value = jrExciterAmt, onValueChange = onJrExciterAmtChange, valueRange = 0f..1f)
+                        }
+                    },
+                    trailingContent = {
+                        Switch(
+                            checked = jrExciter,
+                            onCheckedChange = onJrExciterChange,
+                            thumbContent = {
+                                Icon(
+                                    painter = painterResource(id = if (jrExciter) R.drawable.check else R.drawable.close),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(SwitchDefaults.IconSize)
+                                )
+                            }
+                        )
+                    },
+                    onClick = { onJrExciterChange(!jrExciter) }
+                ))
+                add(Material3SettingsItem(
+                    icon = painterResource(R.drawable.graphic_eq),
+                    title = { Text("Tube Warmth") },
+                    description = {
+                        androidx.compose.foundation.layout.Column {
+                            Text("Asymmetric tube saturation (even harmonics)")
+                            if (jrTube) Slider(value = jrTubeAmt, onValueChange = onJrTubeAmtChange, valueRange = 0f..1f)
+                        }
+                    },
+                    trailingContent = {
+                        Switch(
+                            checked = jrTube,
+                            onCheckedChange = onJrTubeChange,
+                            thumbContent = {
+                                Icon(
+                                    painter = painterResource(id = if (jrTube) R.drawable.check else R.drawable.close),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(SwitchDefaults.IconSize)
+                                )
+                            }
+                        )
+                    },
+                    onClick = { onJrTubeChange(!jrTube) }
+                ))
+                add(Material3SettingsItem(
+                    icon = painterResource(R.drawable.graphic_eq),
+                    title = { Text("Stereo Width") },
+                    description = {
+                        androidx.compose.foundation.layout.Column {
+                            Text("Mid/side stereo image (1.0 = original)")
+                            if (jrStereo) Slider(value = jrStereoAmt, onValueChange = onJrStereoAmtChange, valueRange = 0f..2f)
+                        }
+                    },
+                    trailingContent = {
+                        Switch(
+                            checked = jrStereo,
+                            onCheckedChange = onJrStereoChange,
+                            thumbContent = {
+                                Icon(
+                                    painter = painterResource(id = if (jrStereo) R.drawable.check else R.drawable.close),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(SwitchDefaults.IconSize)
+                                )
+                            }
+                        )
+                    },
+                    onClick = { onJrStereoChange(!jrStereo) }
                 ))
                 add(Material3SettingsItem(
                     icon = painterResource(R.drawable.graphic_eq),

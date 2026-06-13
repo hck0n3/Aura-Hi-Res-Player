@@ -145,6 +145,7 @@ import iad1tya.echo.music.di.DownloadCache
 import iad1tya.echo.music.di.PlayerCache
 import iad1tya.echo.music.eq.EqualizerService
 import iad1tya.echo.music.eq.audio.CrossfeedAudioProcessor
+import iad1tya.echo.music.eq.audio.JrDspAudioProcessor
 import iad1tya.echo.music.eq.audio.CustomEqualizerAudioProcessor
 import iad1tya.echo.music.eq.audio.SpectrumAudioProcessor
 import iad1tya.echo.music.eq.audio.SpectrumBus
@@ -736,6 +737,25 @@ class MusicService :
             .distinctUntilChanged()
             .collectLatest(scope) { enabled ->
                 CrossfeedAudioProcessor.globalEnabled = enabled
+            }
+
+        dataStore.data
+            .map { prefs ->
+                JrDspAudioProcessor.Config(
+                    limiterEnabled = prefs[iad1tya.echo.music.constants.JrLimiterEnabledKey] ?: true,
+                    bassEnhanceEnabled = prefs[iad1tya.echo.music.constants.JrBassEnhanceEnabledKey] ?: false,
+                    bassEnhanceAmount = prefs[iad1tya.echo.music.constants.JrBassEnhanceAmountKey] ?: 0.28f,
+                    exciterEnabled = prefs[iad1tya.echo.music.constants.JrExciterEnabledKey] ?: false,
+                    exciterAmount = prefs[iad1tya.echo.music.constants.JrExciterAmountKey] ?: 0.15f,
+                    tubeEnabled = prefs[iad1tya.echo.music.constants.JrTubeWarmthEnabledKey] ?: false,
+                    tubeAmount = prefs[iad1tya.echo.music.constants.JrTubeWarmthAmountKey] ?: 0.25f,
+                    stereoWidthEnabled = prefs[iad1tya.echo.music.constants.JrStereoWidthEnabledKey] ?: false,
+                    stereoWidth = prefs[iad1tya.echo.music.constants.JrStereoWidthKey] ?: 1.0f,
+                )
+            }
+            .distinctUntilChanged()
+            .collectLatest(scope) { cfg ->
+                JrDspAudioProcessor.config = cfg
             }
 
         dataStore.data
@@ -2696,6 +2716,7 @@ class MusicService :
                         arrayOf(
                             eqProcessor,
                             CrossfeedAudioProcessor(),
+                            JrDspAudioProcessor(),
                             SpectrumAudioProcessor(),
                             silenceProcessor,
                         ),
