@@ -14,8 +14,9 @@ import java.time.ZoneOffset
 import com.music.innertube.models.IpVersion
 
 val IsFirstRunKey = booleanPreferencesKey("isFirstRun")
-// Seeds JR Music Pro's preferred player/lyrics defaults once on first run.
-val JrDefaultsAppliedKey = booleanPreferencesKey("jr_defaults_applied")
+// Seeds JR Music Pro's preferred player/lyrics defaults once. Bump the suffix to force a
+// one-time re-seed for everyone when the desired default set changes.
+val JrDefaultsAppliedKey = booleanPreferencesKey("jr_defaults_applied_v2")
 val SpotifySpDcKey = stringPreferencesKey("spotify_sp_dc")
 val SpotifySpKeyKey = stringPreferencesKey("spotify_sp_key")
 val SpotifyAccountNameKey = stringPreferencesKey("spotify_account_name")

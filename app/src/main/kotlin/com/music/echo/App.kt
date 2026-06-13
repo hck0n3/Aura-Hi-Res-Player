@@ -151,11 +151,11 @@ class App : Application(), SingletonImageLoader.Factory {
     private suspend fun seedJrDefaults(settings: androidx.datastore.preferences.core.Preferences) {
         if (settings[iad1tya.echo.music.constants.JrDefaultsAppliedKey] == true) return
         dataStore.edit { p ->
+            p[iad1tya.echo.music.constants.PlayerBackgroundStyleKey] =
+                iad1tya.echo.music.constants.PlayerBackgroundStyle.LIVE_MESH.name   // player background = Live Mesh
             p[iad1tya.echo.music.constants.MiniPlayerBackgroundStyleKey] =
                 iad1tya.echo.music.constants.PlayerBackgroundStyle.LIVE_MESH.name
             p[iad1tya.echo.music.constants.UseNewPlayerDesignKey] = false       // Apple Music-inspired player ON
-            p[iad1tya.echo.music.constants.PlayerBackgroundStyleKey] =
-                iad1tya.echo.music.constants.PlayerBackgroundStyle.APPLE_MUSIC.name
             p[iad1tya.echo.music.constants.HidePlayerSliderKey] = true          // hide volume slider on AMI player
             p[iad1tya.echo.music.constants.AppleMusicLyricsBlurKey] = true      // Apple Music lyrics blur
             p[iad1tya.echo.music.constants.JrDefaultsAppliedKey] = true
