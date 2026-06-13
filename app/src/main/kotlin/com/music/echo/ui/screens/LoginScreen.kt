@@ -3,7 +3,6 @@
 package iad1tya.echo.music.ui.screens
 
 import android.annotation.SuppressLint
-import android.content.Intent
 import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
@@ -22,13 +21,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.navigation.NavController
 import com.music.innertube.YouTube
 import iad1tya.echo.music.LocalPlayerAwareWindowInsets
+import iad1tya.echo.music.LocalSyncUtils
 import iad1tya.echo.music.R
 import iad1tya.echo.music.constants.AccountChannelHandleKey
 import iad1tya.echo.music.constants.AccountEmailKey
@@ -51,7 +50,7 @@ import timber.log.Timber
 fun LoginScreen(
     navController: NavController,
 ) {
-    val context = LocalContext.current
+    val syncUtils = LocalSyncUtils.current
     val coroutineScope = rememberCoroutineScope()
     var visitorData by rememberPreference(VisitorDataKey, "")
     var dataSyncId by rememberPreference(DataSyncIdKey, "")
@@ -94,9 +93,8 @@ fun LoginScreen(
                                     accountEmail = it.email.orEmpty()
                                     accountChannelHandle = it.channelHandle.orEmpty()
 
-                                    Timber.d("Login: Successfully logged in as ${it.name}, restarting app...")
+                                    Timber.d("Login: Successfully logged in as ${it.name}, closing WebView and syncing...")
 
-                                    
                                     webView?.apply {
                                         stopLoading()
                                         clearHistory()
@@ -104,11 +102,11 @@ fun LoginScreen(
                                         clearFormData()
                                     }
 
-                                    
-                                    val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)
-                                    intent?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
-                                    context.startActivity(intent)
-                                    Runtime.getRuntime().exit(0)
+                                    // App.kt reactively pushes the persisted cookie/visitorData/dataSyncId
+                                    // into YouTube, so no app restart is needed — just close the WebView
+                                    // and pull the library/playlists immediately.
+                                    navController.navigateUp()
+                                    syncUtils.performFullSync()
                                 }.onFailure {
                                     Timber.e(it, "Login: Authentication validation failed")
                                     hasCompletedLogin = false 
