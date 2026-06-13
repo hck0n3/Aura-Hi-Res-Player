@@ -132,6 +132,7 @@ fun PlayerSettings(
     // JR DSP effects (desktop parity)
     val (jrLimiter, onJrLimiterChange) = rememberPreference(iad1tya.echo.music.constants.JrLimiterEnabledKey, defaultValue = true)
     val (jrLoudness, onJrLoudnessChange) = rememberPreference(iad1tya.echo.music.constants.JrLoudnessEnabledKey, defaultValue = false)
+    val (jrHrtf, onJrHrtfChange) = rememberPreference(iad1tya.echo.music.constants.JrHrtfEnabledKey, defaultValue = false)
     val (jrBass, onJrBassChange) = rememberPreference(iad1tya.echo.music.constants.JrBassEnhanceEnabledKey, defaultValue = false)
     val (jrBassAmt, onJrBassAmtChange) = rememberPreference(iad1tya.echo.music.constants.JrBassEnhanceAmountKey, defaultValue = 0.28f)
     val (jrExciter, onJrExciterChange) = rememberPreference(iad1tya.echo.music.constants.JrExciterEnabledKey, defaultValue = false)
@@ -688,6 +689,25 @@ fun PlayerSettings(
                         )
                     },
                     onClick = { onJrLoudnessChange(!jrLoudness) }
+                ))
+                add(Material3SettingsItem(
+                    icon = painterResource(R.drawable.graphic_eq),
+                    title = { Text("Virtual Room (HRTF)") },
+                    description = { Text("Binaural speaker simulation for headphones (disable Crossfeed)") },
+                    trailingContent = {
+                        Switch(
+                            checked = jrHrtf,
+                            onCheckedChange = onJrHrtfChange,
+                            thumbContent = {
+                                Icon(
+                                    painter = painterResource(id = if (jrHrtf) R.drawable.check else R.drawable.close),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(SwitchDefaults.IconSize)
+                                )
+                            }
+                        )
+                    },
+                    onClick = { onJrHrtfChange(!jrHrtf) }
                 ))
                 add(Material3SettingsItem(
                     icon = painterResource(R.drawable.graphic_eq),

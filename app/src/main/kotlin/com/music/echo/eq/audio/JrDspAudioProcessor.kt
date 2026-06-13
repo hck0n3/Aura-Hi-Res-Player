@@ -63,6 +63,22 @@ class JrDspAudioProcessor : AudioProcessor {
     private var dialogueHpf: BiquadFilter? = null  // HP 300 Hz
     private var dialogueLpf: BiquadFilter? = null  // LP 3000 Hz
 
+    // ── HRTF binaural virtual room (ITD delay + head-shadow LP + Schroeder room) ──
+    private val hrtfBufL = FloatArray(HRTF_DELAY_MAX)
+    private val hrtfBufR = FloatArray(HRTF_DELAY_MAX)
+    private var hrtfBufPos = 0
+    private var hrtfDelaySamp = 28      // contralateral ITD (~0.63 ms)
+    private var hrtfShadAlpha = 0.10f   // head-shadow LP (fc ≈ 700 Hz)
+    private var hrtfShadLpL = 0f
+    private var hrtfShadLpR = 0f
+    private val roomBufL = FloatArray(ROOM_DELAY_MAX)
+    private val roomBufR = FloatArray(ROOM_DELAY_MAX)
+    private var roomBufPos = 0
+    private var roomDelayL = 0          // ~12 ms early reflection
+    private var roomDelayR = 0          // ~19 ms early reflection
+    private var roomLpStateL = 0f
+    private var roomLpStateR = 0f
+
     // ── Coefficients (recomputed on configure from sample rate) ──
     private var bassLpAlpha = 0f   // fc 150 Hz
     private var bassLp2Alpha = 0f  // fc 180 Hz
@@ -72,6 +88,7 @@ class JrDspAudioProcessor : AudioProcessor {
     data class Config(
         val limiterEnabled: Boolean = true,
         val loudnessEnabled: Boolean = false,
+        val hrtfEnabled: Boolean = false,
         val bassEnhanceEnabled: Boolean = false,
         val bassEnhanceAmount: Float = 0.28f,
         val exciterEnabled: Boolean = false,
@@ -86,8 +103,8 @@ class JrDspAudioProcessor : AudioProcessor {
     ) {
         /** True when at least one effect would alter the signal. */
         val anyActive: Boolean
-            get() = limiterEnabled || loudnessEnabled || bassEnhanceEnabled || exciterEnabled ||
-                tubeEnabled || mbCompEnabled || dialogueEnabled ||
+            get() = limiterEnabled || loudnessEnabled || hrtfEnabled || bassEnhanceEnabled ||
+                exciterEnabled || tubeEnabled || mbCompEnabled || dialogueEnabled ||
                 (stereoWidthEnabled && stereoWidth != 1.0f)
     }
 
@@ -98,6 +115,10 @@ class JrDspAudioProcessor : AudioProcessor {
         private val MB_THRESH = floatArrayOf(0.10f, 0.16f, 0.10f)
         private val MB_RATIO = floatArrayOf(2.5f, 1.8f, 3.0f)
         private const val MB_MAKEUP = 1.15f
+
+        // HRTF ring-buffer sizes (samples) — match desktop jr_audio_engine.
+        private const val HRTF_DELAY_MAX = 96
+        private const val ROOM_DELAY_MAX = 1024
 
         /** Updated from MusicService when any DSP-effect preference changes. */
         @Volatile
@@ -143,6 +164,12 @@ class JrDspAudioProcessor : AudioProcessor {
         // Dialogue enhancer center band-pass: 300 Hz – 3 kHz (Q 0.707).
         dialogueHpf = BiquadFilter(sampleRate, 300.0, 0.0, 0.707, FilterType.HPQ)
         dialogueLpf = BiquadFilter(sampleRate, 3000.0, 0.0, 0.707, FilterType.LPQ)
+
+        // HRTF: ITD ~0.63 ms, head-shadow LP fc 700 Hz, room reflections 12/19 ms.
+        hrtfDelaySamp = minOf(HRTF_DELAY_MAX - 1, (0.00063 * fs).toInt())
+        hrtfShadAlpha = (1.0 - exp(-6.2832 * 700.0 / fs)).toFloat()
+        roomDelayL = minOf(ROOM_DELAY_MAX - 1, (0.012 * fs).toInt())
+        roomDelayR = minOf(ROOM_DELAY_MAX - 1, (0.019 * fs).toInt())
         resetState()
 
         isActive = true
@@ -179,6 +206,38 @@ class JrDspAudioProcessor : AudioProcessor {
                     val (hl, hr) = loudnessHiShelf!!.processStereo(ll, rr)
                     l = hl.toFloat()
                     r = hr.toFloat()
+                }
+
+                if (cfg.hrtfEnabled) {
+                    hrtfBufL[hrtfBufPos] = l
+                    hrtfBufR[hrtfBufPos] = r
+
+                    // Schroeder early reflections with damped feedback.
+                    val rDelLPos = (roomBufPos - roomDelayL + ROOM_DELAY_MAX) % ROOM_DELAY_MAX
+                    val rDelRPos = (roomBufPos - roomDelayR + ROOM_DELAY_MAX) % ROOM_DELAY_MAX
+                    val rawRefL = roomBufL[rDelLPos]
+                    val rawRefR = roomBufR[rDelRPos]
+                    roomLpStateL = 0.5f * (rawRefL * 0.35f) + 0.5f * roomLpStateL
+                    roomLpStateR = 0.5f * (rawRefR * 0.35f) + 0.5f * roomLpStateR
+                    roomBufL[roomBufPos] = l + roomLpStateL
+                    roomBufR[roomBufPos] = r + roomLpStateR
+
+                    // Contralateral path: opposite-ear delayed signal through head-shadow LP.
+                    val delPos = (hrtfBufPos - hrtfDelaySamp + HRTF_DELAY_MAX) % HRTF_DELAY_MAX
+                    val delR = hrtfBufL[delPos]
+                    val delL = hrtfBufR[delPos]
+                    hrtfShadLpL = hrtfShadAlpha * delL + (1.0f - hrtfShadAlpha) * hrtfShadLpL
+                    hrtfShadLpR = hrtfShadAlpha * delR + (1.0f - hrtfShadAlpha) * hrtfShadLpR
+
+                    val refL = rawRefL * 0.20f + rawRefR * 0.15f
+                    val refR = rawRefR * 0.20f + rawRefL * 0.15f
+
+                    // 66% direct + 20% contralateral shadow + 14% room reflections.
+                    l = l * 0.66f + hrtfShadLpL * 0.20f + refL * 0.14f
+                    r = r * 0.66f + hrtfShadLpR * 0.20f + refR * 0.14f
+
+                    hrtfBufPos = (hrtfBufPos + 1) % HRTF_DELAY_MAX
+                    roomBufPos = (roomBufPos + 1) % ROOM_DELAY_MAX
                 }
 
                 if (cfg.bassEnhanceEnabled) {
@@ -309,6 +368,10 @@ class JrDspAudioProcessor : AudioProcessor {
         mbLpf1?.reset(); mbHpf1?.reset(); mbLpf2?.reset(); mbHpf2?.reset()
         mbEnv[0] = 0f; mbEnv[1] = 0f; mbEnv[2] = 0f
         dialogueHpf?.reset(); dialogueLpf?.reset()
+        hrtfBufL.fill(0f); hrtfBufR.fill(0f); hrtfBufPos = 0
+        hrtfShadLpL = 0f; hrtfShadLpR = 0f
+        roomBufL.fill(0f); roomBufR.fill(0f); roomBufPos = 0
+        roomLpStateL = 0f; roomLpStateR = 0f
     }
 
     override fun getOutput(): ByteBuffer {

@@ -744,6 +744,7 @@ class MusicService :
                 JrDspAudioProcessor.Config(
                     limiterEnabled = prefs[iad1tya.echo.music.constants.JrLimiterEnabledKey] ?: true,
                     loudnessEnabled = prefs[iad1tya.echo.music.constants.JrLoudnessEnabledKey] ?: false,
+                    hrtfEnabled = prefs[iad1tya.echo.music.constants.JrHrtfEnabledKey] ?: false,
                     bassEnhanceEnabled = prefs[iad1tya.echo.music.constants.JrBassEnhanceEnabledKey] ?: false,
                     bassEnhanceAmount = prefs[iad1tya.echo.music.constants.JrBassEnhanceAmountKey] ?: 0.28f,
                     exciterEnabled = prefs[iad1tya.echo.music.constants.JrExciterEnabledKey] ?: false,
