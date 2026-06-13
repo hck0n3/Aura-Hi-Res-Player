@@ -80,6 +80,7 @@ class App : Application(), SingletonImageLoader.Factory {
 
     private suspend fun initializeSettings() {
         val settings = dataStore.data.first()
+        seedJrDefaults(settings)
         val locale = Locale.getDefault()
         val languageTag = locale.language
 
@@ -136,6 +137,24 @@ class App : Application(), SingletonImageLoader.Factory {
         }
         val nm = getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(channel)
+    }
+
+    /**
+     * One-time seed of JR Music Pro's preferred player/lyrics defaults. Writes explicit
+     * preference values on first run (guarded by [JrDefaultsAppliedKey]) so existing users
+     * also get them once, without overriding any later manual change.
+     */
+    private suspend fun seedJrDefaults(settings: androidx.datastore.preferences.core.Preferences) {
+        if (settings[iad1tya.echo.music.constants.JrDefaultsAppliedKey] == true) return
+        dataStore.edit { p ->
+            p[iad1tya.echo.music.constants.MiniPlayerBackgroundStyleKey] =
+                iad1tya.echo.music.constants.PlayerBackgroundStyle.LIVE_MESH.name
+            p[iad1tya.echo.music.constants.UseNewPlayerDesignKey] = false       // Apple Music-inspired player ON
+            p[iad1tya.echo.music.constants.PlayerBackgroundStyleKey] =
+                iad1tya.echo.music.constants.PlayerBackgroundStyle.APPLE_MUSIC.name
+            p[iad1tya.echo.music.constants.HidePlayerSliderKey] = true          // hide volume slider on AMI player
+            p[iad1tya.echo.music.constants.JrDefaultsAppliedKey] = true
+        }
     }
 
     private fun observeSettingsChanges() {
