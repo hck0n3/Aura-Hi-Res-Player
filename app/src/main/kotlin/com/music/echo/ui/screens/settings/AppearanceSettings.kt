@@ -139,6 +139,10 @@ fun AppearanceSettings(
         DynamicThemeKey,
         defaultValue = true
     )
+    val (globalHaptics, onGlobalHapticsChange) = rememberPreference(
+        iad1tya.echo.music.constants.GlobalHapticsKey,
+        defaultValue = true
+    )
     val (enableHighRefreshRate, onEnableHighRefreshRateChange) = rememberPreference(
         iad1tya.echo.music.constants.EnableHighRefreshRateKey,
         defaultValue = true
@@ -1006,7 +1010,30 @@ fun AppearanceSettings(
                         onClick = { onEnableHighRefreshRateChange(!enableHighRefreshRate) }
                     )
                 )
-                
+                add(
+                    Material3SettingsItem(
+                        icon = painterResource(R.drawable.speed),
+                        title = { Text("Haptic feedback") },
+                        description = { Text("Vibrate on taps across the app") },
+                        trailingContent = {
+                            Switch(
+                                checked = globalHaptics,
+                                onCheckedChange = onGlobalHapticsChange,
+                                thumbContent = {
+                                    Icon(
+                                        painter = painterResource(
+                                            id = if (globalHaptics) R.drawable.check else R.drawable.close
+                                        ),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(SwitchDefaults.IconSize)
+                                    )
+                                }
+                            )
+                        },
+                        onClick = { onGlobalHapticsChange(!globalHaptics) }
+                    )
+                )
+
                 
                 if (!isUsingCustomColor) {
                     add(

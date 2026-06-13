@@ -31,6 +31,7 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
+import iad1tya.echo.music.ui.utils.rememberHapticClick
 
 @Composable
 fun ResizableIconButton(
@@ -41,6 +42,7 @@ fun ResizableIconButton(
     indication: Indication? = null,
     onClick: () -> Unit = {},
 ) {
+    val hapticOnClick = rememberHapticClick(onClick)
     Image(
         painter = painterResource(icon),
         contentDescription = null,
@@ -50,7 +52,7 @@ fun ResizableIconButton(
                 indication = indication ?: ripple(bounded = false),
                 interactionSource = remember { MutableInteractionSource() },
                 enabled = enabled,
-                onClick = onClick,
+                onClick = hapticOnClick,
             )
             .alpha(if (enabled) 1f else 0.5f),
     )
@@ -67,6 +69,7 @@ fun IconButton(
     interactionSource: MutableInteractionSource = remember { MutableInteractionSource() },
     content: @Composable () -> Unit,
 ) {
+    val hapticOnClick = rememberHapticClick(onClick)
     Box(
         modifier = modifier
             .minimumInteractiveComponentSize()
@@ -74,7 +77,7 @@ fun IconButton(
             .clip(CircleShape)
             .background(color = colors.containerColor)
             .combinedClickable(
-                onClick = onClick,
+                onClick = hapticOnClick,
                 onLongClick = onLongClick,
                 enabled = enabled,
                 role = Role.Button,
