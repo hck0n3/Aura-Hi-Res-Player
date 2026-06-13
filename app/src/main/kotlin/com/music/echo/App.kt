@@ -72,6 +72,7 @@ class App : Application(), SingletonImageLoader.Factory {
         CipherDeobfuscator.initialize(this)
 
         Timber.plant(Timber.DebugTree())
+        iad1tya.echo.music.utils.AppLogger.plant(this)
 
         
         applicationScope.launch {

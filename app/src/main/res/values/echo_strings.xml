@@ -1016,4 +1016,9 @@
     <string name="download_quality_title">Download Quality</string>
     <string name="enable_lossless_audio">Enable Lossless Audio</string>
     <string name="lossless_audio_warning">Lossless audio requires a fast connection. It may consume more data and battery. Continue?</string>
+    <string name="logs">Logs</string>
+    <string name="logs_desc">View, copy and share app logs and the last crash report</string>
+    <string name="app_log">App log</string>
+    <string name="last_crash">Last crash</string>
+    <string name="no_logs_yet">No logs yet</string>
 </resources>

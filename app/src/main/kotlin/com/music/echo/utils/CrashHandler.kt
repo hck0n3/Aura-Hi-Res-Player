@@ -23,6 +23,7 @@ class CrashHandler private constructor(
         try {
             val crashLog = buildCrashLog(throwable)
             Timber.e(throwable, "App crashed")
+            AppLogger.writeCrash(applicationContext, crashLog)
             
             
             val intent = Intent(applicationContext, CrashActivity::class.java).apply {
