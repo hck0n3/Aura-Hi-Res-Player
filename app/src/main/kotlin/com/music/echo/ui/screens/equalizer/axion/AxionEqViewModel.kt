@@ -5,40 +5,68 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import iad1tya.echo.music.eq.EqualizerService
 import iad1tya.echo.music.eq.data.EQProfileRepository
+import iad1tya.echo.music.eq.data.EqConstants
+import iad1tya.echo.music.eq.data.FactoryPreset
 import iad1tya.echo.music.eq.data.FilterType
 import iad1tya.echo.music.eq.data.ParametricEQBand
 import iad1tya.echo.music.eq.data.SavedEQProfile
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+/**
+ * Pure mapping: per-band dB gains + band types → ParametricEQ bands.
+ * Gain is stored directly in dB (matches the desktop engine; no scaling).
+ */
+fun buildEqBands(gainsDb: FloatArray, types: IntArray): List<ParametricEQBand> =
+    EqConstants.FREQUENCIES.mapIndexed { i, freq ->
+        ParametricEQBand(
+            frequency = freq,
+            gain = gainsDb.getOrElse(i) { 0f }.toDouble(),
+            q = EqConstants.Q,
+            filterType = when (types.getOrElse(i) { 0 }) {
+                1 -> FilterType.LSC
+                2 -> FilterType.HSC
+                else -> FilterType.PK
+            },
+            enabled = true,
+        )
+    }
+
+/**
+ * 24-band ISO 1/3-octave graphic equalizer view model — desktop JR DSP Pro parity.
+ * Band gains and pre-amp are kept in dB and pushed to the real biquad chain through
+ * [EqualizerService] / [EQProfileRepository].
+ */
 @HiltViewModel
 class AxionEqViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val equalizerService: EqualizerService,
-    private val eqProfileRepository: EQProfileRepository
+    private val eqProfileRepository: EQProfileRepository,
 ) : ViewModel() {
 
     private val prefs = context.getSharedPreferences("echo_eq_prefs", Context.MODE_PRIVATE)
+    private val n = EqConstants.BAND_COUNT
 
     private val _enabled = MutableStateFlow(prefs.getBoolean("enabled", false))
     val enabled = _enabled.asStateFlow()
 
-    private val bandFrequencies = doubleArrayOf(31.0, 62.0, 125.0, 250.0, 500.0, 1000.0, 2000.0, 4000.0, 8000.0, 16000.0)
-    
-    private val _bandGains = MutableStateFlow(
-        FloatArray(10) { prefs.getFloat("band_$it", 0f) }
-    )
+    // Band gains in dB (new "band24_" keys; legacy 10-band "band_" keys are intentionally ignored).
+    private val _bandGains = MutableStateFlow(FloatArray(n) { prefs.getFloat("band24_$it", 0f) })
     val bandGains = _bandGains.asStateFlow()
 
-    private val _mode = MutableStateFlow(prefs.getInt("mode", 0)) 
-    val mode = _mode.asStateFlow()
+    // Per-band filter type: 0=Peak, 1=LowShelf, 2=HighShelf.
+    private val _bandTypes = MutableStateFlow(IntArray(n) { prefs.getInt("type24_$it", 0) })
+    val bandTypes = _bandTypes.asStateFlow()
+
+    private val _preamp = MutableStateFlow(prefs.getFloat("preampDb", 0f))
+    val preamp = _preamp.asStateFlow()
 
     private val _isDirty = MutableStateFlow(false)
     val isDirty = _isDirty.asStateFlow()
@@ -48,9 +76,7 @@ class AxionEqViewModel @Inject constructor(
     }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     init {
-        if (_enabled.value) {
-            applyToService()
-        }
+        if (_enabled.value) applyToService()
     }
 
     fun setEnabled(enabled: Boolean) {
@@ -59,69 +85,73 @@ class AxionEqViewModel @Inject constructor(
         if (enabled) {
             applyToService()
         } else {
-            viewModelScope.launch {
-                eqProfileRepository.setActiveProfile(null)
-            }
+            viewModelScope.launch { eqProfileRepository.setActiveProfile(null) }
             equalizerService.disable()
         }
     }
 
-    fun setMode(mode: Int) {
-        _mode.value = mode
-        prefs.edit().putInt("mode", mode).apply()
-        _isDirty.value = false 
-    }
-
-    fun setBandGain(index: Int, gain: Float) {
-        val newGains = _bandGains.value.copyOf()
-        newGains[index] = gain
-        _bandGains.value = newGains
-        prefs.edit().putFloat("band_$index", gain).apply()
+    fun setBandGain(index: Int, gainDb: Float) {
+        if (index !in 0 until n) return
+        val v = gainDb.coerceIn(EqConstants.GAIN_MIN, EqConstants.GAIN_MAX)
+        val arr = _bandGains.value.copyOf()
+        arr[index] = v
+        _bandGains.value = arr
+        prefs.edit().putFloat("band24_$index", v).apply()
         _isDirty.value = true
-        if (_enabled.value) {
-            applyToService()
-        }
+        if (_enabled.value) applyToService()
     }
 
     fun setBandsGains(gains: FloatArray, fromUser: Boolean = false) {
-        _bandGains.value = gains
-        val editor = prefs.edit()
-        gains.forEachIndexed { index, f -> editor.putFloat("band_$index", f) }
-        editor.apply()
-        _isDirty.value = fromUser 
-        if (_enabled.value) {
-            applyToService()
+        val arr = FloatArray(n) { i ->
+            gains.getOrElse(i) { 0f }.coerceIn(EqConstants.GAIN_MIN, EqConstants.GAIN_MAX)
         }
+        _bandGains.value = arr
+        val editor = prefs.edit()
+        arr.forEachIndexed { i, f -> editor.putFloat("band24_$i", f) }
+        editor.apply()
+        _isDirty.value = fromUser
+        if (_enabled.value) applyToService()
+    }
+
+    fun setPreamp(db: Float) {
+        val v = db.coerceIn(EqConstants.PREAMP_MIN, EqConstants.PREAMP_MAX)
+        _preamp.value = v
+        prefs.edit().putFloat("preampDb", v).apply()
+        _isDirty.value = true
+        if (_enabled.value) applyToService()
+    }
+
+    fun setBandType(index: Int, type: Int) {
+        if (index !in 0 until n) return
+        val arr = _bandTypes.value.copyOf()
+        arr[index] = type.coerceIn(0, 2)
+        _bandTypes.value = arr
+        prefs.edit().putInt("type24_$index", arr[index]).apply()
+        _isDirty.value = true
+        if (_enabled.value) applyToService()
+    }
+
+    fun applyPreset(preset: FactoryPreset) {
+        setBandsGains(preset.gains.copyOf(), fromUser = true)
     }
 
     fun reset() {
-        val flat = FloatArray(10) { 0f }
-        setBandsGains(flat)
+        _preamp.value = 0f
+        prefs.edit().putFloat("preampDb", 0f).apply()
+        setBandsGains(FloatArray(n) { 0f })
     }
 
     fun saveCustomProfile(name: String) {
         viewModelScope.launch {
-            val bands = _bandGains.value.mapIndexed { index, f ->
-                ParametricEQBand(
-                    frequency = bandFrequencies[index],
-                    gain = f.toDouble() / 50.0,
-                    q = 1.41,
-                    filterType = FilterType.PK,
-                    enabled = true
-                )
-            }
-            
-            val id = "custom_${System.currentTimeMillis()}"
             val profile = SavedEQProfile(
-                id = id,
+                id = "custom_${System.currentTimeMillis()}",
                 name = name,
                 deviceModel = "Equalizer",
-                bands = bands,
-                preamp = 0.0,
+                bands = buildEqBands(_bandGains.value, _bandTypes.value),
+                preamp = _preamp.value.toDouble(),
                 isCustom = true,
-                isActive = true
+                isActive = true,
             )
-            
             eqProfileRepository.saveProfile(profile)
             eqProfileRepository.setActiveProfile(profile.id)
             _isDirty.value = false
@@ -129,39 +159,22 @@ class AxionEqViewModel @Inject constructor(
     }
 
     fun deleteProfiles(ids: List<String>) {
-        viewModelScope.launch {
-            ids.forEach { id ->
-                eqProfileRepository.deleteProfile(id)
-            }
-        }
+        viewModelScope.launch { ids.forEach { eqProfileRepository.deleteProfile(it) } }
     }
 
     private fun applyToService() {
         viewModelScope.launch {
-            val bands = _bandGains.value.mapIndexed { index, f ->
-                ParametricEQBand(
-                    frequency = bandFrequencies[index],
-                    gain = f.toDouble() / 50.0, 
-                    q = 1.41,
-                    filterType = FilterType.PK,
-                    enabled = true
-                )
-            }
-            
             val profile = SavedEQProfile(
                 id = "echo_tuning",
                 name = "JR Tuning",
                 deviceModel = "Equalizer",
-                bands = bands,
-                preamp = 0.0,
+                bands = buildEqBands(_bandGains.value, _bandTypes.value),
+                preamp = _preamp.value.toDouble(),
                 isCustom = false,
-                isActive = true
+                isActive = true,
             )
-            
-            
             eqProfileRepository.saveProfile(profile)
             eqProfileRepository.setActiveProfile(profile.id)
-            
             equalizerService.applyProfile(profile)
         }
     }
