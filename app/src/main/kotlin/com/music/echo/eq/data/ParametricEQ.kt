@@ -20,6 +20,6 @@ data class ParametricEQ(
     val metadata: Map<String, String> = emptyMap()  
 ) {
     companion object {
-        const val MAX_BANDS = 20  
+        const val MAX_BANDS = 24
     }
 }
