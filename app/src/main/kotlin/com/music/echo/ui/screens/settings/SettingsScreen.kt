@@ -47,7 +47,6 @@ fun SettingsScreen(
     val uriHandler = LocalUriHandler.current
     val context = LocalContext.current
     val isAndroid12OrLater = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-    val isUpdateAvailable = getUpdateAvailableState(context) && iad1tya.echo.music.echomusic.updater.getAutoUpdateCheckSetting(context)
 
     val scrollState = rememberScrollState()
     Column(
@@ -136,21 +135,6 @@ fun SettingsScreen(
                         icon = painterResource(R.drawable.restore),
                         title = { Text(stringResource(R.string.backup_restore)) },
                         onClick = { navController.navigate("settings/backup_restore") }
-                    )
-                )
-                add(
-                    Material3SettingsItem(
-                        icon = painterResource(if (isUpdateAvailable) R.drawable.ic_launcher_nobg else R.drawable.update),
-                        title = { Text(stringResource(R.string.system_update)) },
-                        description = if (isUpdateAvailable) {
-                            {
-                                Text(
-                                    text = stringResource(R.string.update_available),
-                                    color = MaterialTheme.colorScheme.error
-                                )
-                            }
-                        } else null,
-                        onClick = { navController.navigate("settings/update") }
                     )
                 )
                 add(

@@ -157,6 +157,7 @@ class App : Application(), SingletonImageLoader.Factory {
             p[iad1tya.echo.music.constants.PlayerBackgroundStyleKey] =
                 iad1tya.echo.music.constants.PlayerBackgroundStyle.APPLE_MUSIC.name
             p[iad1tya.echo.music.constants.HidePlayerSliderKey] = true          // hide volume slider on AMI player
+            p[iad1tya.echo.music.constants.AppleMusicLyricsBlurKey] = true      // Apple Music lyrics blur
             p[iad1tya.echo.music.constants.JrDefaultsAppliedKey] = true
         }
     }
