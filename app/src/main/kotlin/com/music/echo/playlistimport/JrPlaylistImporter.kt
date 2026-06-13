@@ -4,6 +4,7 @@ import com.music.innertube.YouTube
 import com.music.innertube.models.SongItem
 import iad1tya.echo.music.db.MusicDatabase
 import iad1tya.echo.music.db.entities.PlaylistEntity
+import iad1tya.echo.music.db.entities.PlaylistSongMap
 import iad1tya.echo.music.models.MediaMetadata
 import iad1tya.echo.music.models.toMediaMetadata
 import kotlinx.coroutines.flow.first
@@ -61,16 +62,24 @@ object JrPlaylistImporter {
 
         val playlistName = file.name.ifBlank { "JR Playlist" }
         val playlist = PlaylistEntity(name = playlistName)
-        database.query { insert(playlist) }
-        val created = database.playlist(playlist.id).first()
-        if (created != null && resolved.isNotEmpty()) {
-            database.query {
-                resolved.forEach { insert(it) }
-                addSongToPlaylist(created, resolved.map { it.id })
+        val ordered = resolved.distinctBy { it.id }
+        // Single transaction: create the playlist, persist songs, map them in order.
+        // Done atomically so there is no read-back race on the freshly-inserted row.
+        database.transaction {
+            insert(playlist)
+            ordered.forEachIndexed { index, metadata ->
+                insert(metadata)
+                insert(
+                    PlaylistSongMap(
+                        playlistId = playlist.id,
+                        songId = metadata.id,
+                        position = index,
+                    ),
+                )
             }
         }
 
-        return Result(playlistName = playlistName, total = file.tracks.size, resolved = resolved.size)
+        return Result(playlistName = playlistName, total = file.tracks.size, resolved = ordered.size)
     }
 
     private suspend fun resolveTrack(
