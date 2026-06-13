@@ -2,47 +2,50 @@
 
 package iad1tya.echo.music.ui.screens.settings
 
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
-import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.compose.ui.text.withStyle
 import androidx.navigation.NavController
 import iad1tya.echo.music.BuildConfig
 import iad1tya.echo.music.LocalPlayerAwareWindowInsets
 import iad1tya.echo.music.R
 import iad1tya.echo.music.ui.component.IconButton
 import iad1tya.echo.music.ui.utils.backToMain
+
+private data class Feature(val icon: Int, val title: String, val subtitle: String)
+
+private val PLAYBACK_FEATURES = listOf(
+    Feature(R.drawable.play, "Playback", "Gapless playback, audio normalization, and sleep timer"),
+    Feature(R.drawable.graphic_eq, "DSP Equalizer", "24-band EQ plus limiter, loudness, bass, exciter, tube, multiband compressor, stereo width, dialogue and HRTF virtual room"),
+    Feature(R.drawable.lyrics, "Lyrics", "Synced and plain lyrics with Apple Music-style blur"),
+    Feature(R.drawable.queue_music, "Queue", "Smart queue and up-next management"),
+)
+
+private val LIBRARY_FEATURES = listOf(
+    Feature(R.drawable.library_music, "Library & Sync", "YouTube Music library, playlists and likes kept in sync"),
+    Feature(R.drawable.download, "Import", "Import playlists from YouTube, Spotify and JR Music Pro (.jrpl.json)"),
+    Feature(R.drawable.music_history, "History & Stats", "Listening history and detailed playback stats"),
+)
+
+private val EXTRAS_FEATURES = listOf(
+    Feature(R.drawable.group_outlined, "Listen Together", "Real-time synced listening with friends"),
+    Feature(R.drawable.palette, "Canvas & Themes", "Animated canvas backgrounds and Material You theming"),
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -51,8 +54,6 @@ fun AboutScreen(
     scrollBehavior: TopAppBarScrollBehavior,
     onBack: (() -> Unit)? = null,
 ) {
-    val uriHandler = LocalUriHandler.current
-
     Scaffold(
         modifier = Modifier
             .fillMaxSize()
@@ -105,81 +106,33 @@ fun AboutScreen(
             item { AboutAppCard() }
 
             item {
-                AboutSectionCard(title = "Developer") {
-                    AboutActionRow(
-                        icon = painterResource(R.drawable.website),
-                        title = "Website",
-                        subtitle = "iad1tya.cyou",
-                        onClick = { uriHandler.openUri("https://iad1tya.cyou") },
-                    )
-                    AboutDivider()
-                    AboutActionRow(
-                        icon = painterResource(R.drawable.ic_instagram_new),
-                        title = "Instagram",
-                        subtitle = "@iad1tya",
-                        onClick = { uriHandler.openUri("https://instagram.com/iad1tya") },
-                    )
-                    AboutDivider()
-                    AboutActionRow(
-                        icon = painterResource(R.drawable.ic_x_new),
-                        title = "X (Twitter)",
-                        subtitle = "@xad1tya",
-                        onClick = { uriHandler.openUri("https://x.com/xad1tya") },
-                    )
+                AboutSectionCard(title = "Playback & Audio") {
+                    FeatureList(PLAYBACK_FEATURES)
                 }
             }
-
             item {
-                AboutSectionCard(title = "Support") {
-                    AboutActionRow(
-                        icon = painterResource(R.drawable.coffee),
-                        title = "Buy Me a Coffee",
-                        subtitle = "buymeacoffee.com/iad1tya",
-                        onClick = { uriHandler.openUri("https://buymeacoffee.com/iad1tya") },
-                    )
-                    AboutDivider()
-                    AboutActionRow(
-                        icon = painterResource(R.drawable.ic_patreon_new),
-                        title = "Patreon",
-                        subtitle = "patreon.com/cw/iad1tya",
-                        onClick = { uriHandler.openUri("https://www.patreon.com/cw/iad1tya") },
-                    )
-                    AboutDivider()
-                    AboutActionRow(
-                        icon = painterResource(R.drawable.upi_new),
-                        title = "UPI",
-                        subtitle = "iad1tya@upi",
-                        onClick = { uriHandler.openUri("https://intradeus.github.io/http-protocol-redirector/?r=upi://pay?pa=iad1tya@upi&pn=Aditya%20Yadav&am=&tn=Thank%20You%20so%20much%20for%20this%20support") },
-                    )
+                AboutSectionCard(title = "Library & Content") {
+                    FeatureList(LIBRARY_FEATURES)
                 }
             }
-
             item {
-                AboutSectionCard(title = "App") {
-                    AboutActionRow(
-                        icon = painterResource(R.drawable.github),
-                        title = "GitHub",
-                        subtitle = "EchoMusicApp/Echo-Music",
-                        onClick = { uriHandler.openUri("https://github.com/EchoMusicApp/Echo-Music") },
-                    )
-                    AboutDivider()
-                    AboutActionRow(
-                        icon = painterResource(R.drawable.ic_discord_new),
-                        title = "Discord",
-                        subtitle = "discord.gg/EcfV3AxH5c",
-                        onClick = { uriHandler.openUri("https://discord.gg/EcfV3AxH5c") },
-                    )
-                    AboutDivider()
-                    AboutActionRow(
-                        icon = painterResource(R.drawable.ic_telegram_new),
-                        title = "Telegram",
-                        subtitle = "t.me/EchoMusicApp",
-                        onClick = { uriHandler.openUri("https://t.me/EchoMusicApp") },
-                    )
+                AboutSectionCard(title = "Social & Personalization") {
+                    FeatureList(EXTRAS_FEATURES)
                 }
             }
-
         }
+    }
+}
+
+@Composable
+private fun ColumnScope.FeatureList(features: List<Feature>) {
+    features.forEachIndexed { index, feature ->
+        AboutFeatureRow(
+            icon = painterResource(feature.icon),
+            title = feature.title,
+            subtitle = feature.subtitle,
+        )
+        if (index != features.lastIndex) AboutDivider()
     }
 }
 
@@ -200,11 +153,9 @@ private fun AboutAppCard() {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
             Image(
-                painter = painterResource(R.drawable.ic_launcher_nobg),
+                painter = painterResource(R.drawable.jr_logo),
                 contentDescription = null,
-                colorFilter = ColorFilter.tint(if (isDark) Color.White else Color(0xFFEA3829)),
                 modifier = Modifier
                     .size(100.dp)
                     .clip(CircleShape)
@@ -212,7 +163,7 @@ private fun AboutAppCard() {
             )
             Spacer(Modifier.height(4.dp))
             Text(
-                text = "JR-MUSIC-PRO",
+                text = "JR Music Pro",
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface,
@@ -295,80 +246,50 @@ private fun AboutSectionCard(
 }
 
 @Composable
-private fun AboutActionRow(
+private fun AboutFeatureRow(
     icon: Painter,
     title: String,
     subtitle: String? = null,
-    onClick: () -> Unit,
 ) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val isPressed by interactionSource.collectIsPressedAsState()
-    val scale by animateFloatAsState(
-        targetValue = if (isPressed) 0.98f else 1f,
-        animationSpec = spring(stiffness = Spring.StiffnessHigh),
-        label = "rowScale",
-    )
     val tint = MaterialTheme.colorScheme.primary
-
-    Box(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 6.dp, vertical = 2.dp)
-            .graphicsLayer { scaleX = scale; scaleY = scale }
-            .clip(RoundedCornerShape(22.dp))
-            .clickable(
-                interactionSource = interactionSource,
-                indication = ripple(),
-                onClick = onClick,
-            ),
+            .padding(horizontal = 20.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
+        Surface(
+            modifier = Modifier.size(42.dp),
+            shape = RoundedCornerShape(14.dp),
+            color = tint.copy(alpha = 0.10f),
         ) {
-            Surface(
-                modifier = Modifier.size(42.dp),
-                shape = RoundedCornerShape(14.dp),
-                color = tint.copy(alpha = 0.10f),
-            ) {
-                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                    Icon(
-                        painter = icon,
-                        contentDescription = null,
-                        modifier = Modifier.size(22.dp),
-                        tint = tint,
-                    )
-                }
-            }
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                Icon(
+                    painter = icon,
+                    contentDescription = null,
+                    modifier = Modifier.size(22.dp),
+                    tint = tint,
                 )
-                subtitle?.let {
-                    Text(
-                        text = it,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
             }
-            Icon(
-                painter = painterResource(R.drawable.arrow_forward),
-                contentDescription = null,
-                modifier = Modifier.size(18.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
+        }
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
             )
+            subtitle?.let {
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }
