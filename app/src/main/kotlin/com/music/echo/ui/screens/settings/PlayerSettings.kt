@@ -138,8 +138,11 @@ fun PlayerSettings(
     val (jrExciterAmt, onJrExciterAmtChange) = rememberPreference(iad1tya.echo.music.constants.JrExciterAmountKey, defaultValue = 0.15f)
     val (jrTube, onJrTubeChange) = rememberPreference(iad1tya.echo.music.constants.JrTubeWarmthEnabledKey, defaultValue = false)
     val (jrTubeAmt, onJrTubeAmtChange) = rememberPreference(iad1tya.echo.music.constants.JrTubeWarmthAmountKey, defaultValue = 0.25f)
+    val (jrMbComp, onJrMbCompChange) = rememberPreference(iad1tya.echo.music.constants.JrMbCompEnabledKey, defaultValue = false)
     val (jrStereo, onJrStereoChange) = rememberPreference(iad1tya.echo.music.constants.JrStereoWidthEnabledKey, defaultValue = false)
     val (jrStereoAmt, onJrStereoAmtChange) = rememberPreference(iad1tya.echo.music.constants.JrStereoWidthKey, defaultValue = 1.0f)
+    val (jrDialogue, onJrDialogueChange) = rememberPreference(iad1tya.echo.music.constants.JrDialogueEnabledKey, defaultValue = false)
+    val (jrDialogueAmt, onJrDialogueAmtChange) = rememberPreference(iad1tya.echo.music.constants.JrDialogueAmountKey, defaultValue = 0.35f)
     val (audioNormalization, onAudioNormalizationChange) = rememberPreference(
         AudioNormalizationKey,
         defaultValue = true
@@ -760,6 +763,25 @@ fun PlayerSettings(
                 ))
                 add(Material3SettingsItem(
                     icon = painterResource(R.drawable.graphic_eq),
+                    title = { Text("Multiband Compressor") },
+                    description = { Text("3-band dynamics for a louder, more even mix") },
+                    trailingContent = {
+                        Switch(
+                            checked = jrMbComp,
+                            onCheckedChange = onJrMbCompChange,
+                            thumbContent = {
+                                Icon(
+                                    painter = painterResource(id = if (jrMbComp) R.drawable.check else R.drawable.close),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(SwitchDefaults.IconSize)
+                                )
+                            }
+                        )
+                    },
+                    onClick = { onJrMbCompChange(!jrMbComp) }
+                ))
+                add(Material3SettingsItem(
+                    icon = painterResource(R.drawable.graphic_eq),
                     title = { Text("Stereo Width") },
                     description = {
                         androidx.compose.foundation.layout.Column {
@@ -781,6 +803,30 @@ fun PlayerSettings(
                         )
                     },
                     onClick = { onJrStereoChange(!jrStereo) }
+                ))
+                add(Material3SettingsItem(
+                    icon = painterResource(R.drawable.graphic_eq),
+                    title = { Text("Dialogue Enhancer") },
+                    description = {
+                        androidx.compose.foundation.layout.Column {
+                            Text("Boosts vocal clarity (center 300 Hz – 3 kHz)")
+                            if (jrDialogue) Slider(value = jrDialogueAmt, onValueChange = onJrDialogueAmtChange, valueRange = 0f..1f)
+                        }
+                    },
+                    trailingContent = {
+                        Switch(
+                            checked = jrDialogue,
+                            onCheckedChange = onJrDialogueChange,
+                            thumbContent = {
+                                Icon(
+                                    painter = painterResource(id = if (jrDialogue) R.drawable.check else R.drawable.close),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(SwitchDefaults.IconSize)
+                                )
+                            }
+                        )
+                    },
+                    onClick = { onJrDialogueChange(!jrDialogue) }
                 ))
                 add(Material3SettingsItem(
                     icon = painterResource(R.drawable.graphic_eq),

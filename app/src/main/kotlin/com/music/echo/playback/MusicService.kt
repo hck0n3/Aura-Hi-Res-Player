@@ -750,8 +750,11 @@ class MusicService :
                     exciterAmount = prefs[iad1tya.echo.music.constants.JrExciterAmountKey] ?: 0.15f,
                     tubeEnabled = prefs[iad1tya.echo.music.constants.JrTubeWarmthEnabledKey] ?: false,
                     tubeAmount = prefs[iad1tya.echo.music.constants.JrTubeWarmthAmountKey] ?: 0.25f,
+                    mbCompEnabled = prefs[iad1tya.echo.music.constants.JrMbCompEnabledKey] ?: false,
                     stereoWidthEnabled = prefs[iad1tya.echo.music.constants.JrStereoWidthEnabledKey] ?: false,
                     stereoWidth = prefs[iad1tya.echo.music.constants.JrStereoWidthKey] ?: 1.0f,
+                    dialogueEnabled = prefs[iad1tya.echo.music.constants.JrDialogueEnabledKey] ?: false,
+                    dialogueAmount = prefs[iad1tya.echo.music.constants.JrDialogueAmountKey] ?: 0.35f,
                 )
             }
             .distinctUntilChanged()
