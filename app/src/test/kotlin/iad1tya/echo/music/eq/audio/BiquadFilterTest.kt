@@ -57,6 +57,45 @@ class BiquadFilterTest {
     }
 
     @Test
+    fun lowPassPassesLowFrequencies() {
+        val filter = BiquadFilter(sampleRate, 1000.0, 0.0, 0.707, FilterType.LPQ)
+        // Well below the cutoff the signal is untouched.
+        assertEquals(1.0, measureGain(filter, 100.0), 0.02)
+    }
+
+    @Test
+    fun lowPassAttenuatesAtCutoff() {
+        val filter = BiquadFilter(sampleRate, 1000.0, 0.0, 0.707, FilterType.LPQ)
+        // Butterworth (Q=0.707) is -3 dB == x0.707 at the cutoff frequency.
+        assertEquals(0.707, measureGain(filter, 1000.0), 0.03)
+    }
+
+    @Test
+    fun lowPassRejectsHighFrequencies() {
+        val filter = BiquadFilter(sampleRate, 1000.0, 0.0, 0.707, FilterType.LPQ)
+        // Two octaves above the cutoff the 2nd-order roll-off is ~-24 dB.
+        assertEquals(0.0, measureGain(filter, 8000.0), 0.1)
+    }
+
+    @Test
+    fun highPassPassesHighFrequencies() {
+        val filter = BiquadFilter(sampleRate, 1000.0, 0.0, 0.707, FilterType.HPQ)
+        assertEquals(1.0, measureGain(filter, 12000.0), 0.02)
+    }
+
+    @Test
+    fun highPassAttenuatesAtCutoff() {
+        val filter = BiquadFilter(sampleRate, 1000.0, 0.0, 0.707, FilterType.HPQ)
+        assertEquals(0.707, measureGain(filter, 1000.0), 0.03)
+    }
+
+    @Test
+    fun highPassRejectsLowFrequencies() {
+        val filter = BiquadFilter(sampleRate, 1000.0, 0.0, 0.707, FilterType.HPQ)
+        assertEquals(0.0, measureGain(filter, 100.0), 0.1)
+    }
+
+    @Test
     fun resetClearsFilterState() {
         val filter = BiquadFilter(sampleRate, 1000.0, 12.0, 1.41, FilterType.PK)
         filter.processSample(1.0)

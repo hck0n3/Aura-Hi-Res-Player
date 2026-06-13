@@ -44,10 +44,8 @@ class BiquadFilter(
             FilterType.PK -> calculatePeakingCoefficients()
             FilterType.LSC -> calculateLowShelfCoefficients()
             FilterType.HSC -> calculateHighShelfCoefficients()
-            else -> {
-                
-                calculatePeakingCoefficients()
-            }
+            FilterType.LPQ -> calculateLowPassCoefficients()
+            FilterType.HPQ -> calculateHighPassCoefficients()
         }
     }
 
@@ -138,7 +136,53 @@ class BiquadFilter(
         a0 = 1.0
     }
 
-    
+
+    // RBJ low-pass — matches miniaudio ma_lpf2 (gain ignored).
+    private fun calculateLowPassCoefficients() {
+        val omega = 2.0 * PI * frequency / sampleRate
+        val sinOmega = sin(omega)
+        val cosOmega = cos(omega)
+        val alpha = sinOmega / (2.0 * q)
+
+        b0 = (1.0 - cosOmega) / 2.0
+        b1 = 1.0 - cosOmega
+        b2 = (1.0 - cosOmega) / 2.0
+        a0 = 1.0 + alpha
+        a1 = -2.0 * cosOmega
+        a2 = 1.0 - alpha
+
+        b0 /= a0
+        b1 /= a0
+        b2 /= a0
+        a1 /= a0
+        a2 /= a0
+        a0 = 1.0
+    }
+
+
+    // RBJ high-pass — matches miniaudio ma_hpf2 (gain ignored).
+    private fun calculateHighPassCoefficients() {
+        val omega = 2.0 * PI * frequency / sampleRate
+        val sinOmega = sin(omega)
+        val cosOmega = cos(omega)
+        val alpha = sinOmega / (2.0 * q)
+
+        b0 = (1.0 + cosOmega) / 2.0
+        b1 = -(1.0 + cosOmega)
+        b2 = (1.0 + cosOmega) / 2.0
+        a0 = 1.0 + alpha
+        a1 = -2.0 * cosOmega
+        a2 = 1.0 - alpha
+
+        b0 /= a0
+        b1 /= a0
+        b2 /= a0
+        a1 /= a0
+        a2 /= a0
+        a0 = 1.0
+    }
+
+
     fun processSample(input: Double): Double {
         val output = b0 * input + b1 * x1L + b2 * x2L - a1 * y1L - a2 * y2L
 
