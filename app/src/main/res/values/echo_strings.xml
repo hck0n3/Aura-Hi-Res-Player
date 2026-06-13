@@ -1016,6 +1016,4 @@
     <string name="download_quality_title">Download Quality</string>
     <string name="enable_lossless_audio">Enable Lossless Audio</string>
     <string name="lossless_audio_warning">Lossless audio requires a fast connection. It may consume more data and battery. Continue?</string>
-    <string name="legacy_icon">Legacy Icon</string>
-    <string name="legacy_icon_desc">Revert the app icon back to the original legacy design</string>
 </resources>

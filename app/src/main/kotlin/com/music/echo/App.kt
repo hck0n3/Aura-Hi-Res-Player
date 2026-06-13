@@ -5,7 +5,9 @@ package iad1tya.echo.music
 import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.content.ComponentName
 import android.content.Context
+import android.content.pm.PackageManager
 import android.os.Build
 import android.widget.Toast
 import androidx.datastore.preferences.core.edit
@@ -81,6 +83,7 @@ class App : Application(), SingletonImageLoader.Factory {
     private suspend fun initializeSettings() {
         val settings = dataStore.data.first()
         seedJrDefaults(settings)
+        migrateLegacyIcon(settings)
         val locale = Locale.getDefault()
         val languageTag = locale.language
 
@@ -155,6 +158,29 @@ class App : Application(), SingletonImageLoader.Factory {
             p[iad1tya.echo.music.constants.HidePlayerSliderKey] = true          // hide volume slider on AMI player
             p[iad1tya.echo.music.constants.JrDefaultsAppliedKey] = true
         }
+    }
+
+    /**
+     * The "Legacy Icon" option was removed. Users who had it enabled only have the now-deleted
+     * `MainActivityLegacy` launcher alias active, so re-enable the default `MainActivityAlias`
+     * (and disable the static one) to keep their home-screen icon working. Runs once.
+     */
+    private suspend fun migrateLegacyIcon(settings: androidx.datastore.preferences.core.Preferences) {
+        if (settings[iad1tya.echo.music.constants.EnableLegacyIconKey] != true) return
+        runCatching {
+            val pm = packageManager
+            pm.setComponentEnabledSetting(
+                ComponentName(this, "iad1tya.echo.music.MainActivityAlias"),
+                PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+                PackageManager.DONT_KILL_APP,
+            )
+            pm.setComponentEnabledSetting(
+                ComponentName(this, "iad1tya.echo.music.MainActivityStatic"),
+                PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                PackageManager.DONT_KILL_APP,
+            )
+        }.onFailure { Timber.e(it, "migrateLegacyIcon: failed to reset launcher alias") }
+        dataStore.edit { it[iad1tya.echo.music.constants.EnableLegacyIconKey] = false }
     }
 
     private fun observeSettingsChanges() {

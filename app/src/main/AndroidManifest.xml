@@ -190,20 +190,6 @@
         </activity-alias>
 
         <activity-alias
-            android:name=".MainActivityLegacy"
-            android:enabled="false"
-            android:exported="true"
-            android:icon="@mipmap/legacy_icon"
-            android:label="@string/app_name"
-            android:roundIcon="@mipmap/legacy_icon_round"
-            android:targetActivity=".MainActivity">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity-alias>
-
-        <activity-alias
             android:name=".MainActivityStatic"
             android:enabled="false"
             android:exported="true"
