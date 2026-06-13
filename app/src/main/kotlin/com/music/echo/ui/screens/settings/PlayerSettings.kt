@@ -131,6 +131,7 @@ fun PlayerSettings(
 
     // JR DSP effects (desktop parity)
     val (jrLimiter, onJrLimiterChange) = rememberPreference(iad1tya.echo.music.constants.JrLimiterEnabledKey, defaultValue = true)
+    val (jrLoudness, onJrLoudnessChange) = rememberPreference(iad1tya.echo.music.constants.JrLoudnessEnabledKey, defaultValue = false)
     val (jrBass, onJrBassChange) = rememberPreference(iad1tya.echo.music.constants.JrBassEnhanceEnabledKey, defaultValue = false)
     val (jrBassAmt, onJrBassAmtChange) = rememberPreference(iad1tya.echo.music.constants.JrBassEnhanceAmountKey, defaultValue = 0.28f)
     val (jrExciter, onJrExciterChange) = rememberPreference(iad1tya.echo.music.constants.JrExciterEnabledKey, defaultValue = false)
@@ -665,6 +666,25 @@ fun PlayerSettings(
                         )
                     },
                     onClick = { onJrLimiterChange(!jrLimiter) }
+                ))
+                add(Material3SettingsItem(
+                    icon = painterResource(R.drawable.graphic_eq),
+                    title = { Text("Loudness") },
+                    description = { Text("Fletcher-Munson bass + treble lift for low-volume listening") },
+                    trailingContent = {
+                        Switch(
+                            checked = jrLoudness,
+                            onCheckedChange = onJrLoudnessChange,
+                            thumbContent = {
+                                Icon(
+                                    painter = painterResource(id = if (jrLoudness) R.drawable.check else R.drawable.close),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(SwitchDefaults.IconSize)
+                                )
+                            }
+                        )
+                    },
+                    onClick = { onJrLoudnessChange(!jrLoudness) }
                 ))
                 add(Material3SettingsItem(
                     icon = painterResource(R.drawable.graphic_eq),

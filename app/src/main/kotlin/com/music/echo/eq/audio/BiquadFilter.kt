@@ -13,7 +13,9 @@ class BiquadFilter(
     private val frequency: Double,
     private val gain: Double,
     private val q: Double = 1.41,
-    private val filterType: FilterType = FilterType.PK
+    private val filterType: FilterType = FilterType.PK,
+    // Shelf slope S for LSC/HSC (miniaudio ma_loshelf2/ma_hishelf2 shelfSlope). 1.0 = max slope.
+    private val shelfSlope: Double = 1.0
 ) {
     
     private var a0 = 0.0
@@ -80,7 +82,7 @@ class BiquadFilter(
         val omega = 2.0 * PI * frequency / sampleRate
         val sinOmega = sin(omega)
         val cosOmega = cos(omega)
-        val S = 1.0 
+        val S = shelfSlope
         val alpha = sinOmega / 2.0 * sqrt((A + 1.0 / A) * (1.0 / S - 1.0) + 2.0)
         val sqrtA = sqrt(A)
 
@@ -111,7 +113,7 @@ class BiquadFilter(
         val omega = 2.0 * PI * frequency / sampleRate
         val sinOmega = sin(omega)
         val cosOmega = cos(omega)
-        val S = 1.0 
+        val S = shelfSlope
         val alpha = sinOmega / 2.0 * sqrt((A + 1.0 / A) * (1.0 / S - 1.0) + 2.0)
         val sqrtA = sqrt(A)
 

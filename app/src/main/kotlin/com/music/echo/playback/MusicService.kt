@@ -743,6 +743,7 @@ class MusicService :
             .map { prefs ->
                 JrDspAudioProcessor.Config(
                     limiterEnabled = prefs[iad1tya.echo.music.constants.JrLimiterEnabledKey] ?: true,
+                    loudnessEnabled = prefs[iad1tya.echo.music.constants.JrLoudnessEnabledKey] ?: false,
                     bassEnhanceEnabled = prefs[iad1tya.echo.music.constants.JrBassEnhanceEnabledKey] ?: false,
                     bassEnhanceAmount = prefs[iad1tya.echo.music.constants.JrBassEnhanceAmountKey] ?: 0.28f,
                     exciterEnabled = prefs[iad1tya.echo.music.constants.JrExciterEnabledKey] ?: false,

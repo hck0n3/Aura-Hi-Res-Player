@@ -3,6 +3,7 @@ package iad1tya.echo.music.eq.audio
 import androidx.media3.common.C
 import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.util.UnstableApi
+import iad1tya.echo.music.eq.data.FilterType
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.abs
@@ -44,6 +45,10 @@ class JrDspAudioProcessor : AudioProcessor {
     private var exciterLpL = 0f
     private var exciterLpR = 0f
 
+    // ── Loudness compensation shelves (Fletcher-Munson), built on configure ──
+    private var loudnessLoShelf: BiquadFilter? = null
+    private var loudnessHiShelf: BiquadFilter? = null
+
     // ── Coefficients (recomputed on configure from sample rate) ──
     private var bassLpAlpha = 0f   // fc 150 Hz
     private var bassLp2Alpha = 0f  // fc 180 Hz
@@ -52,6 +57,7 @@ class JrDspAudioProcessor : AudioProcessor {
 
     data class Config(
         val limiterEnabled: Boolean = true,
+        val loudnessEnabled: Boolean = false,
         val bassEnhanceEnabled: Boolean = false,
         val bassEnhanceAmount: Float = 0.28f,
         val exciterEnabled: Boolean = false,
@@ -63,8 +69,8 @@ class JrDspAudioProcessor : AudioProcessor {
     ) {
         /** True when at least one effect would alter the signal. */
         val anyActive: Boolean
-            get() = limiterEnabled || bassEnhanceEnabled || exciterEnabled || tubeEnabled ||
-                (stereoWidthEnabled && stereoWidth != 1.0f)
+            get() = limiterEnabled || loudnessEnabled || bassEnhanceEnabled || exciterEnabled ||
+                tubeEnabled || (stereoWidthEnabled && stereoWidth != 1.0f)
     }
 
     companion object {
@@ -98,6 +104,10 @@ class JrDspAudioProcessor : AudioProcessor {
         bassLp2Alpha = (1.0 - exp(-2.0 * Math.PI * 180.0 / fs)).toFloat()
         bassHpAlpha = exp(-2.0 * Math.PI * 60.0 / fs).toFloat()
         exciterAlpha = (1.0 - exp(-2.0 * Math.PI * 6000.0 / fs)).toFloat()
+
+        // Fletcher-Munson base curve (att=0): lo +3 dB @200 Hz, hi +2 dB @5 kHz, slope 0.707.
+        loudnessLoShelf = BiquadFilter(sampleRate, 200.0, 3.0, 0.707, FilterType.LSC, shelfSlope = 0.707)
+        loudnessHiShelf = BiquadFilter(sampleRate, 5000.0, 2.0, 0.707, FilterType.HSC, shelfSlope = 0.707)
         resetState()
 
         isActive = true
@@ -128,6 +138,13 @@ class JrDspAudioProcessor : AudioProcessor {
             repeat(frames) {
                 var l = inputBuffer.getShort().toFloat() / 32768.0f
                 var r = inputBuffer.getShort().toFloat() / 32768.0f
+
+                if (cfg.loudnessEnabled) {
+                    val (ll, rr) = loudnessLoShelf!!.processStereo(l.toDouble(), r.toDouble())
+                    val (hl, hr) = loudnessHiShelf!!.processStereo(ll, rr)
+                    l = hl.toFloat()
+                    r = hr.toFloat()
+                }
 
                 if (cfg.bassEnhanceEnabled) {
                     bassLpL = bassLpAlpha * l + (1f - bassLpAlpha) * bassLpL
@@ -181,6 +198,10 @@ class JrDspAudioProcessor : AudioProcessor {
             val samples = remaining / 2
             repeat(samples) {
                 var x = inputBuffer.getShort().toFloat() / 32768.0f
+                if (cfg.loudnessEnabled) {
+                    x = loudnessLoShelf!!.processSample(x.toDouble()).toFloat()
+                    x = loudnessHiShelf!!.processSample(x.toDouble()).toFloat()
+                }
                 if (cfg.tubeEnabled) x = tube(x, cfg.tubeAmount)
                 if (cfg.limiterEnabled) x = softLimit(x)
                 outputBuffer.putShort((x * 32768.0f).coerceIn(-32768.0f, 32767.0f).toInt().toShort())
@@ -207,6 +228,8 @@ class JrDspAudioProcessor : AudioProcessor {
         bassEnhHpL = 0f; bassEnhHpR = 0f
         bassEnhLastL = 0f; bassEnhLastR = 0f
         exciterLpL = 0f; exciterLpR = 0f
+        loudnessLoShelf?.reset()
+        loudnessHiShelf?.reset()
     }
 
     override fun getOutput(): ByteBuffer {

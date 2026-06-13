@@ -757,6 +757,7 @@ val PreloadLyricsEnabledKey = booleanPreferencesKey("preload_lyrics_enabled")
 
 // ── JR DSP effects (desktop parity) ──
 val JrLimiterEnabledKey = booleanPreferencesKey("jr_dsp_limiter_enabled")
+val JrLoudnessEnabledKey = booleanPreferencesKey("jr_dsp_loudness_enabled")
 val JrBassEnhanceEnabledKey = booleanPreferencesKey("jr_dsp_bass_enhance_enabled")
 val JrBassEnhanceAmountKey = floatPreferencesKey("jr_dsp_bass_enhance_amount")
 val JrExciterEnabledKey = booleanPreferencesKey("jr_dsp_exciter_enabled")
