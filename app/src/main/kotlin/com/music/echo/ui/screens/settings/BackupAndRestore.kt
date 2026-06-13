@@ -101,6 +101,29 @@ fun BackupAndRestore(
 
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+    val database = iad1tya.echo.music.LocalDatabase.current
+
+    val importJrLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            if (uri == null) return@rememberLauncherForActivityResult
+            coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                val result = runCatching {
+                    val content = context.contentResolver.openInputStream(uri)?.use {
+                        it.readBytes().decodeToString()
+                    } ?: return@runCatching null
+                    val file = iad1tya.echo.music.playlistimport.JrPlaylistImporter.parse(content)
+                    iad1tya.echo.music.playlistimport.JrPlaylistImporter.import(database, file)
+                }.getOrNull()
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    val msg = if (result == null) {
+                        "Couldn't import playlist"
+                    } else {
+                        "Imported ${result.resolved}/${result.total} tracks into \"${result.playlistName}\""
+                    }
+                    android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_LONG).show()
+                }
+            }
+        }
 
     val backupLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
@@ -214,6 +237,14 @@ fun BackupAndRestore(
                                 icon = painterResource(R.drawable.playlist_add),
                                 onClick = {
                                     importPlaylistFromCsv.launch(arrayOf("text/csv", "text/comma-separated-values", "application/csv", "text/plain"))
+                                }
+                            ),
+                            Material3SettingsItem(
+                                title = { Text("Import JR Music Pro Playlist") },
+                                description = { Text(".jrpl.json exported from the desktop app") },
+                                icon = painterResource(R.drawable.playlist_add),
+                                onClick = {
+                                    importJrLauncher.launch(arrayOf("application/json", "text/plain", "*/*"))
                                 }
                             )
                         )
