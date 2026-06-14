@@ -222,7 +222,10 @@ fun BackupAndRestore(
                                 title = { Text("Importar desde archivo local") },
                                 icon = painterResource(R.drawable.restore),
                                 onClick = {
-                                    restoreLauncher.launch(arrayOf("application/octet-stream"))
+                                    // Use */* so the custom ".backup" file is always selectable:
+                                    // SAF derives MIME from the unknown ".backup" extension and an
+                                    // octet-stream-only filter greys it out on many devices.
+                                    restoreLauncher.launch(arrayOf("*/*"))
                                 }
                             ),
                             Material3SettingsItem(
