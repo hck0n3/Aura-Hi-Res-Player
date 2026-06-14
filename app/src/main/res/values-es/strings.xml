@@ -368,4 +368,11 @@
         <item quantity="other">%d APK encontrados</item>
     </plurals>
     <string name="settings_search_no_results">No se encontraron ajustes para \"%1$s\"</string>
+    <string name="service_uptime">Estado del servicio</string>
+    <string name="service_uptime_desc">Comprueba el estado de los proveedores de música</string>
+    <string name="status_online">En línea</string>
+    <string name="status_offline">Sin conexión</string>
+    <string name="status_checking">Comprobando…</string>
+    <string name="music_providers">Proveedores de música</string>
+    <string name="canvas_providers">Proveedores de Canvas</string>
 </resources>
