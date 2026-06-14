@@ -420,4 +420,5 @@
     <string name="spotify_clear_selection">Clear</string>
     <string name="spotify_account">Spotify account</string>
     <string name="spotify_waiting_for_login">Waiting for Spotify login</string>
+    <string name="settings_search_no_results">No settings found for \"%1$s\"</string>
 </resources>

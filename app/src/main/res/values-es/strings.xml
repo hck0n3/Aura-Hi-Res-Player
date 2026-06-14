@@ -367,4 +367,5 @@
         <item quantity="one">%d APK encontrado</item>
         <item quantity="other">%d APK encontrados</item>
     </plurals>
+    <string name="settings_search_no_results">No se encontraron ajustes para \"%1$s\"</string>
 </resources>
