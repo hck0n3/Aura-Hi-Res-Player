@@ -55,6 +55,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
@@ -368,10 +369,20 @@ fun Thumbnail(
     Box(
         modifier = modifier
             .graphicsLayer {
-                
+
                 compositingStrategy = CompositingStrategy.Offscreen
             }
     ) {
+        // Video mode (Option A): overlay the music video over the cover, on top of the pager.
+        val videoModeOn by playerConnection.videoMode.collectAsState()
+        if (videoModeOn) {
+            PlayerVideoSurface(
+                playerConnection = playerConnection,
+                modifier = Modifier
+                    .matchParentSize()
+                    .zIndex(2f),
+            )
+        }
         
         AnimatedVisibility(
             visible = error != null,

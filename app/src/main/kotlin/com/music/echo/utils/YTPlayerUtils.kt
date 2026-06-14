@@ -402,6 +402,7 @@ object YTPlayerUtils {
         playlistId: String? = null,
         audioQuality: AudioQuality,
         connectivityManager: ConnectivityManager,
+        preferVideo: Boolean = false,
     ): Result<PlaybackData> = runCatching {
         Timber.tag(logTag).d("Fetching player response for videoId: $videoId, playlistId: $playlistId")
         PlaybackLogManager.log(PlaybackLogLevel.INFO, "Resolving playback data", "Video: $videoId")
@@ -608,6 +609,7 @@ object YTPlayerUtils {
                         responseToUse,
                         audioQuality,
                         connectivityManager,
+                        preferVideo,
                     )
 
                 if (format == null) {
@@ -793,11 +795,35 @@ object YTPlayerUtils {
             .onFailure { Timber.tag(logTag).e(it, "Failed to fetch metadata") }
     }
 
+    /**
+     * Resolves a muxed (video+audio) progressive stream URL for [videoId], reusing the same
+     * multi-client + cipher pipeline as audio. Returns null if no muxed format is available.
+     */
+    suspend fun videoStreamUrl(
+        videoId: String,
+        connectivityManager: ConnectivityManager,
+    ): String? = resolvePlaybackData(
+        videoId = videoId,
+        audioQuality = AudioQuality.OPUS,
+        connectivityManager = connectivityManager,
+        preferVideo = true,
+    ).getOrNull()?.streamUrl
+
     private fun findFormat(
         playerResponse: PlayerResponse,
         audioQuality: AudioQuality,
         connectivityManager: ConnectivityManager,
+        preferVideo: Boolean = false,
     ): PlayerResponse.StreamingData.Format? {
+        if (preferVideo) {
+            // Muxed (video+audio) progressive formats live in streamingData.formats.
+            val muxed = playerResponse.streamingData?.formats
+                ?.filter { !it.url.isNullOrEmpty() || !it.signatureCipher.isNullOrEmpty() || !it.cipher.isNullOrEmpty() }
+            return muxed?.firstOrNull { it.itag == 22 }       // 720p
+                ?: muxed?.firstOrNull { it.itag == 18 }        // 360p
+                ?: muxed?.maxByOrNull { it.bitrate }
+        }
+
         Timber.tag(logTag).d("Finding format with audioQuality: $audioQuality, network metered: ${connectivityManager.isActiveNetworkMetered}")
 
         val format = playerResponse.streamingData?.adaptiveFormats

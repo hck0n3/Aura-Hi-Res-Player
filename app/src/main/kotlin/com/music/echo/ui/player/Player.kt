@@ -265,6 +265,7 @@ fun BottomSheetPlayer(
     val (hidePlayerThumbnail, onHidePlayerThumbnailChange) = rememberPreference(HidePlayerThumbnailKey, false)
     val cropAlbumArt by rememberPreference(CropAlbumArtKey, false)
     val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
+    val videoMode by playerConnection.videoMode.collectAsState()
     val isLocalMedia = mediaMetadata?.id?.isLocalMediaId() == true
 
     val playerBackgroundPref by rememberEnumPreference(
@@ -1646,6 +1647,25 @@ fun BottomSheetPlayer(
                             }
                         }
 
+                        if (mediaMetadata?.isVideoSong == true) {
+                            FilledIconButton(
+                                onClick = { playerConnection.toggleVideoMode() },
+                                shape = favShape,
+                                colors = IconButtonDefaults.filledIconButtonColors(
+                                    containerColor = if (videoMode) iconButtonColor else textButtonColor,
+                                    contentColor = if (videoMode) textButtonColor else iconButtonColor,
+                                ),
+                                modifier = Modifier.size(42.dp),
+                            ) {
+                                Icon(
+                                    painter = painterResource(
+                                        if (videoMode) R.drawable.music_note else R.drawable.videocam
+                                    ),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(24.dp),
+                                )
+                            }
+                        }
                         AnimatedContent(targetState = showInlineLyrics, label = "LikeButton") { showLyrics ->
                             if (showLyrics) {
                                 val currentLyrics by playerConnection.currentLyrics.collectAsState(initial = null)
@@ -1796,25 +1816,53 @@ fun BottomSheetPlayer(
                                 )
                             }
                         } else {
-                            Box(
-                                modifier = Modifier
-                                    .size(40.dp)
-                                    .clip(RoundedCornerShape(24.dp))
-                                    .background(textButtonColor.copy(alpha = 0.2f))
-                                    .clickable(onClick = playerConnection::toggleLike),
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                Icon(
-                                    painter = painterResource(
-                                        if (currentSong?.song?.liked == true)
-                                            R.drawable.favorite
-                                        else R.drawable.favorite_border
-                                    ),
-                                    contentDescription = null,
-                                    tint = textButtonColor,
+                                if (mediaMetadata?.isVideoSong == true) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(40.dp)
+                                            .clip(RoundedCornerShape(24.dp))
+                                            .background(
+                                                if (videoMode) textButtonColor.copy(alpha = 0.45f)
+                                                else textButtonColor.copy(alpha = 0.2f)
+                                            )
+                                            .clickable { playerConnection.toggleVideoMode() },
+                                    ) {
+                                        Icon(
+                                            painter = painterResource(
+                                                if (videoMode) R.drawable.music_note else R.drawable.videocam
+                                            ),
+                                            contentDescription = null,
+                                            tint = textButtonColor,
+                                            modifier = Modifier
+                                                .align(Alignment.Center)
+                                                .size(24.dp),
+                                        )
+                                    }
+                                }
+                                Box(
                                     modifier = Modifier
-                                        .align(Alignment.Center)
-                                        .size(24.dp),
-                                )
+                                        .size(40.dp)
+                                        .clip(RoundedCornerShape(24.dp))
+                                        .background(textButtonColor.copy(alpha = 0.2f))
+                                        .clickable(onClick = playerConnection::toggleLike),
+                                ) {
+                                    Icon(
+                                        painter = painterResource(
+                                            if (currentSong?.song?.liked == true)
+                                                R.drawable.favorite
+                                            else R.drawable.favorite_border
+                                        ),
+                                        contentDescription = null,
+                                        tint = textButtonColor,
+                                        modifier = Modifier
+                                            .align(Alignment.Center)
+                                            .size(24.dp),
+                                    )
+                                }
                             }
                         }
                     }

@@ -146,6 +146,8 @@ class PlayerConnection(
 
     val error = MutableStateFlow<PlaybackException?>(null)
     val isMuted = service.isMuted
+    val videoMode = service.videoMode
+    fun toggleVideoMode() = service.toggleVideoMode()
 
     val waitingForNetworkConnection = service.waitingForNetworkConnection
     

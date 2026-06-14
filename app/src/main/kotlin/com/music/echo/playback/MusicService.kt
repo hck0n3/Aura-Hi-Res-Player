@@ -398,6 +398,14 @@ class MusicService :
     
     private val bypassCacheForQualityChange = mutableSetOf<String>()
 
+    // Video mode (Option A): when equal to the active mediaId, the resolver serves a muxed
+    // (video+audio) stream for that track so the player can render it to the attached surface.
+    @Volatile
+    private var videoModeMediaId: String? = null
+    private val videoUrlCache = HashMap<String, Pair<String, Long>>()
+    private val _videoMode = MutableStateFlow(false)
+    val videoMode: kotlinx.coroutines.flow.StateFlow<Boolean> = _videoMode
+
     
     private var currentMediaIdRetryCount = mutableMapOf<String, Int>()
     private val MAX_RETRY_PER_SONG = 3
@@ -1796,7 +1804,12 @@ class MusicService :
         mediaItem: MediaItem?,
         reason: Int,
     ) {
-        
+        // Auto-exit video mode when the track changes.
+        if (videoModeMediaId != null && mediaItem?.mediaId != videoModeMediaId) {
+            videoModeMediaId = null
+            _videoMode.value = false
+        }
+
         if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) {
             val repeatMode = runBlocking { dataStore.get(RepeatModeKey, REPEAT_MODE_OFF) }
             if (repeatMode == REPEAT_MODE_ONE &&
@@ -2561,12 +2574,49 @@ class MusicService :
     private fun updateDiscordRPC(song: Song, showFeedback: Boolean = false) {
     }
 
+    /**
+     * Toggles video mode for the current track: re-resolves just the current item (queue kept)
+     * so the resolver serves the muxed stream, preserving the playback position. The UI attaches
+     * a TextureView to render it. Audio path is untouched when video mode is off.
+     */
+    fun toggleVideoMode() {
+        val item = player.currentMediaItem ?: return
+        val id = item.mediaId
+        val turningOn = videoModeMediaId != id
+        videoModeMediaId = if (turningOn) id else null
+        videoUrlCache.remove(id)
+        val idx = player.currentMediaItemIndex
+        val pos = player.currentPosition
+        val wasPlaying = player.playWhenReady
+        player.replaceMediaItem(idx, item)
+        player.seekTo(idx, pos)
+        player.playWhenReady = wasPlaying
+        player.prepare()
+        _videoMode.value = turningOn
+    }
+
     private fun createDataSourceFactory(): DataSource.Factory {
         return ResolvingDataSource.Factory(
             DefaultDataSource.Factory(this, createCacheDataSource())
         ) { dataSpec ->
             val mediaId = dataSpec.key ?: error("No media id")
             if (mediaId.isLocalMediaId()) return@Factory dataSpec
+
+            // Video mode: serve a muxed (video+audio) stream for the active track. Falls through
+            // to the normal audio path if no video stream is available.
+            if (videoModeMediaId == mediaId) {
+                videoUrlCache[mediaId]?.takeIf { it.second > System.currentTimeMillis() }?.let {
+                    return@Factory dataSpec.withUri(it.first.toUri())
+                }
+                val videoUrl = runBlocking(Dispatchers.IO) {
+                    runCatching { YTPlayerUtils.videoStreamUrl(mediaId, connectivityManager) }.getOrNull()
+                }
+                if (!videoUrl.isNullOrEmpty()) {
+                    videoUrlCache[mediaId] = videoUrl to (System.currentTimeMillis() + 5 * 60 * 1000L)
+                    return@Factory dataSpec.withUri(videoUrl.toUri())
+                }
+                Timber.tag(TAG).w("No video stream for $mediaId; falling back to audio")
+            }
 
 
             
