@@ -152,7 +152,7 @@ class BackupRestoreViewModel @Inject constructor(
                                 } catch (e: Exception) {
                                     Timber.tag("RESTORE").e(e, "Due to new architecture this backup can't be restored")
                                     kotlinx.coroutines.runBlocking(Dispatchers.Main) {
-                                        Toast.makeText(context, "Due to new architecture, this backup can't be restored", Toast.LENGTH_LONG).show()
+                                        Toast.makeText(context, "Debido a la nueva arquitectura, esta copia de seguridad no se puede restaurar", Toast.LENGTH_LONG).show()
                                     }
                                     tempFile.delete()
                                     return
@@ -182,7 +182,7 @@ class BackupRestoreViewModel @Inject constructor(
         }.onFailure {
             reportException(it)
             Timber.tag("RESTORE").e(it, "Due to new architecture this backup can't be restored")
-            Toast.makeText(context, "Due to new architecture, this backup can't be restored", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "Debido a la nueva arquitectura, esta copia de seguridad no se puede restaurar", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -204,7 +204,7 @@ class BackupRestoreViewModel @Inject constructor(
             }
         }.onFailure {
             reportException(it)
-            Toast.makeText(context, "Failed to preview CSV file", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "No se pudo previsualizar el archivo CSV", Toast.LENGTH_SHORT).show()
         }
         return CsvImportState()
     }

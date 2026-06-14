@@ -10,6 +10,9 @@ import androidx.compose.ui.unit.dp
 import racra.compose.smooth_corner_rect_library.AbsoluteSmoothCornerShape
 import androidx.compose.ui.graphics.Shape
 import java.util.Locale
+import iad1tya.echo.music.constants.AppLanguageKey
+import iad1tya.echo.music.constants.SYSTEM_DEFAULT
+
 fun reportException(throwable: Throwable) {
     throwable.printStackTrace()
 }
@@ -19,6 +22,26 @@ fun setAppLocale(context: Context, locale: Locale) {
     val config = Configuration(context.resources.configuration)
     config.setLocale(locale)
     context.resources.updateConfiguration(config, context.resources.displayMetrics)
+}
+
+/**
+ * Resolves the in-app language. Reads [AppLanguageKey]; when unset or "system default" the app
+ * defaults to Spanish ("es"). Returns the explicit BCP-47 tag otherwise.
+ */
+fun resolveAppLanguageTag(context: Context): String =
+    context.dataStore[AppLanguageKey]?.takeUnless { it == SYSTEM_DEFAULT } ?: "es"
+
+/**
+ * Wraps [base] with a configuration forced to the resolved app language so every component
+ * (Application, Activity, Service) resolves resources in the selected language on all API levels.
+ * Call from each component's attachBaseContext.
+ */
+fun localeAwareContext(base: Context): Context {
+    val locale = Locale.forLanguageTag(resolveAppLanguageTag(base))
+    Locale.setDefault(locale)
+    val config = Configuration(base.resources.configuration)
+    config.setLocale(locale)
+    return base.createConfigurationContext(config)
 }
 
 fun listItemShape(index: Int, count: Int, radius: Dp = 24.dp): Shape {

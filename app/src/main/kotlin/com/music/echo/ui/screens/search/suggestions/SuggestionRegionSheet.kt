@@ -61,7 +61,7 @@ fun SuggestionRegionSheet(
                         onSearch = {},
                         expanded = false,
                         onExpandedChange = {},
-                        placeholder = { Text("Search regions...") },
+                        placeholder = { Text("Buscar regiones...") },
                         leadingIcon = {
                             Icon(
                                 Icons.Default.Search,
@@ -95,7 +95,7 @@ fun SuggestionRegionSheet(
                 item {
                     val isSelected = currentRegionSlug == "system"
                     RegionListItem(
-                        headlineContent = { Text("System Default") },
+                        headlineContent = { Text("Predeterminado del sistema") },
                         selected = isSelected,
                         items = 1,
                         index = 0,

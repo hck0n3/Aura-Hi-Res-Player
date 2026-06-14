@@ -185,7 +185,7 @@ fun RingtoneTrimmerDialog(
                     onConfirm((rangeSec.start * 1000).toLong(), (rangeSec.endInclusive * 1000).toLong())
                 },
             ) {
-                Text("Set as Ringtone")
+                Text("Establecer como tono")
             }
         },
         dismissButton = {
@@ -193,7 +193,7 @@ fun RingtoneTrimmerDialog(
                 exoPlayer.stop()
                 onDismiss()
             }) {
-                Text("Cancel")
+                Text("Cancelar")
             }
         }
     )

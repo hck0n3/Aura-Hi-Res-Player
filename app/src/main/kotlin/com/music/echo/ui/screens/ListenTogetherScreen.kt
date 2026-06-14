@@ -640,7 +640,7 @@ private fun ConnectionStatusCard(
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(12.dp)
                     ) {
-                        Text("Reconnect", fontWeight = FontWeight.SemiBold)
+                        Text("Reconectar", fontWeight = FontWeight.SemiBold)
                     }
                 }
             }

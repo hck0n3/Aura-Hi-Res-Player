@@ -42,7 +42,7 @@ object LocalFileDownloader {
             
             if (dir == null || !dir.isDirectory || !dir.canWrite()) {
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "Cannot write to selected destination. Please choose a valid directory.", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, "No se puede escribir en el destino seleccionado. Elige una carpeta válida.", Toast.LENGTH_LONG).show()
                 }
                 return@withContext
             }
@@ -52,18 +52,18 @@ object LocalFileDownloader {
             
             if (file == null) {
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "Failed to create file.", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "No se pudo crear el archivo.", Toast.LENGTH_SHORT).show()
                 }
                 return@withContext
             }
 
             withContext(Dispatchers.Main) {
-                Toast.makeText(context, "Downloading $fileName...", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Descargando $fileName...", Toast.LENGTH_SHORT).show()
             }
             
             val notificationBuilder = NotificationCompat.Builder(context, channelId)
                 .setContentTitle(fileName)
-                .setContentText("Downloading...")
+                .setContentText("Descargando...")
                 .setSmallIcon(android.R.drawable.stat_sys_download)
                 .setOngoing(true)
                 .setProgress(100, 0, true)
@@ -80,7 +80,7 @@ object LocalFileDownloader {
 
             if (!response.isSuccessful) {
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "Download failed: ${response.code}", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Error en la descarga: ${response.code}", Toast.LENGTH_SHORT).show()
                 }
                 notificationManager.cancel(notificationId)
                 return@withContext
@@ -101,7 +101,7 @@ object LocalFileDownloader {
                             if (contentLength > 0 && currentTime - lastUpdate > 1000) {
                                 val progress = ((totalBytesRead * 100) / contentLength).toInt()
                                 notificationBuilder.setProgress(100, progress, false)
-                                    .setContentText("Downloading ($progress%)")
+                                    .setContentText("Descargando ($progress%)")
                                 notificationManager.notify(notificationId, notificationBuilder.build())
                                 lastUpdate = currentTime
                             }
@@ -111,10 +111,10 @@ object LocalFileDownloader {
             }
 
             withContext(Dispatchers.Main) {
-                Toast.makeText(context, "Download completed: $fileName", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Descarga completada: $fileName", Toast.LENGTH_SHORT).show()
             }
             
-            notificationBuilder.setContentText("Download complete")
+            notificationBuilder.setContentText("Descarga completada")
                 .setProgress(0, 0, false)
                 .setOngoing(false)
                 .setSmallIcon(android.R.drawable.stat_sys_download_done)
@@ -122,7 +122,7 @@ object LocalFileDownloader {
         } catch (e: Exception) {
             Timber.e(e, "Error downloading local file")
             withContext(Dispatchers.Main) {
-                Toast.makeText(context, "Download error: ${e.message}", Toast.LENGTH_LONG).show()
+                Toast.makeText(context, "Error de descarga: ${e.message}", Toast.LENGTH_LONG).show()
             }
             notificationManager.cancel(notificationId)
         }

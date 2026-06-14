@@ -2,16 +2,20 @@ package iad1tya.echo.music.eq.data
 
 /** Canonical 24-band ISO 1/3-octave EQ data — matches desktop JR DSP Pro exactly. */
 object EqConstants {
+    // 24-band, full-range (20 Hz–20 kHz) with standard ISO preferred centers. Bass uses broad
+    // ~2/3-octave steps (psychoacoustically enough), mids/highs keep fine 1/3-octave detail.
+    // Cleaned vs legacy: dropped the non-standard 440 Hz (redundant with 500), added 250 Hz
+    // (low-mid "mud"/warmth control) and corrected 31 → 31.5.
     val FREQUENCIES = doubleArrayOf(
-        20.0, 31.0, 50.0, 80.0, 100.0, 160.0, 200.0, 315.0,
-        440.0, 500.0, 800.0, 1000.0, 1600.0, 2000.0, 2500.0, 3150.0,
+        20.0, 31.5, 50.0, 80.0, 100.0, 160.0, 200.0, 250.0,
+        315.0, 500.0, 800.0, 1000.0, 1600.0, 2000.0, 2500.0, 3150.0,
         4000.0, 5000.0, 6300.0, 8000.0, 10000.0, 12500.0, 16000.0, 20000.0
     )
 
     /** Compact axis labels aligned 1:1 with [FREQUENCIES]. */
     val FREQUENCY_LABELS = listOf(
-        "20", "31", "50", "80", "100", "160", "200", "315",
-        "440", "500", "800", "1k", "1.6k", "2k", "2.5k", "3.15k",
+        "20", "31", "50", "80", "100", "160", "200", "250",
+        "315", "500", "800", "1k", "1.6k", "2k", "2.5k", "3.15k",
         "4k", "5k", "6.3k", "8k", "10k", "12.5k", "16k", "20k"
     )
 

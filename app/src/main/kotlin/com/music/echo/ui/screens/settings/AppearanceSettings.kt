@@ -1013,8 +1013,8 @@ fun AppearanceSettings(
                 add(
                     Material3SettingsItem(
                         icon = painterResource(R.drawable.speed),
-                        title = { Text("Haptic feedback") },
-                        description = { Text("Vibrate on taps across the app") },
+                        title = { Text("Respuesta háptica") },
+                        description = { Text("Vibra al tocar en toda la app") },
                         trailingContent = {
                             Switch(
                                 checked = globalHaptics,
@@ -1104,7 +1104,7 @@ fun AppearanceSettings(
             items = listOfNotNull(
                 Material3SettingsItem(
                     icon = painterResource(R.drawable.palette),
-                    title = { Text("Apple Music Inspired") },
+                    title = { Text("Inspirado en Apple Music") },
                     trailingContent = {
                         Switch(
                             checked = !useNewPlayerDesign,
@@ -1135,8 +1135,8 @@ fun AppearanceSettings(
                 ),
                 if (!useNewPlayerDesign) Material3SettingsItem(
                     icon = painterResource(R.drawable.linear_scale),
-                    title = { Text("Hide volume slider") },
-                    description = { Text("Hide the volume slider on the Apple Music player") },
+                    title = { Text("Ocultar control de volumen") },
+                    description = { Text("Oculta el control de volumen en el reproductor estilo Apple Music") },
                     trailingContent = {
                         Switch(
                             checked = hidePlayerSlider,
@@ -1343,8 +1343,8 @@ fun AppearanceSettings(
                 ),
                 Material3SettingsItem(
                     icon = painterResource(R.drawable.info),
-                    title = { Text("Show codec on player") },
-                    description = { Text("Display audio codec information below the timeline") },
+                    title = { Text("Mostrar códec en el reproductor") },
+                    description = { Text("Muestra la información del códec de audio debajo de la línea de tiempo") },
                     trailingContent = {
                         Switch(
                             checked = showCodecOnPlayer,

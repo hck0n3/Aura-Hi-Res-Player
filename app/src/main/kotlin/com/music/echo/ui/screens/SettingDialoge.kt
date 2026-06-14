@@ -140,7 +140,7 @@ fun SettingDialoge(
                         compact = true,
                         items = listOf(
                             Material3SettingsItem(
-                                title = { Text("Use Account for Browsing") },
+                                title = { Text("Usar la cuenta para explorar") },
                                 icon = painterResource(R.drawable.add_circle),
                                 trailingContent = {
                                     Switch(
@@ -159,7 +159,7 @@ fun SettingDialoge(
                                 }
                             ),
                             Material3SettingsItem(
-                                title = { Text("YouTube Music Sync") },
+                                title = { Text("Sincronización con YouTube Music") },
                                 icon = painterResource(R.drawable.cached),
                                 trailingContent = {
                                     Switch(
@@ -179,12 +179,12 @@ fun SettingDialoge(
                     compact = true,
                     items = listOf(
                         Material3SettingsItem(
-                            title = { Text("Settings") },
+                            title = { Text("Ajustes") },
                             icon = painterResource(R.drawable.settings),
                             onClick = { onNavigate("settings") }
                         ),
                         Material3SettingsItem(
-                            title = { Text("About") },
+                            title = { Text("Acerca de") },
                             icon = painterResource(R.drawable.info),
                             trailingContent = { Text(BuildConfig.VERSION_NAME, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) },
                             onClick = { onNavigate("settings/about") }

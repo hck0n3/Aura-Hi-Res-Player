@@ -35,6 +35,12 @@ import iad1tya.echo.music.constants.AccountNameKey
 import iad1tya.echo.music.constants.DataSyncIdKey
 import iad1tya.echo.music.constants.InnerTubeCookieKey
 import iad1tya.echo.music.constants.VisitorDataKey
+import iad1tya.echo.music.utils.dataStore
+import androidx.datastore.preferences.core.edit
+import androidx.compose.ui.platform.LocalContext
+import android.app.Activity
+import android.content.Context
+import android.content.Intent
 import iad1tya.echo.music.ui.component.IconButton
 import iad1tya.echo.music.ui.utils.backToMain
 import iad1tya.echo.music.utils.rememberPreference
@@ -44,6 +50,15 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import timber.log.Timber
 
+/** Cold-restarts the app so every screen reloads in the new (authenticated) state. */
+private fun restartApp(context: Context) {
+    val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)
+        ?.apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK) }
+    context.startActivity(intent)
+    if (context is Activity) context.finish()
+    Runtime.getRuntime().exit(0)
+}
+
 @SuppressLint("SetJavaScriptEnabled")
 @OptIn(ExperimentalMaterial3Api::class, DelicateCoroutinesApi::class)
 @Composable
@@ -52,6 +67,7 @@ fun LoginScreen(
 ) {
     val syncUtils = LocalSyncUtils.current
     val coroutineScope = rememberCoroutineScope()
+    val context = LocalContext.current
     var visitorData by rememberPreference(VisitorDataKey, "")
     var dataSyncId by rememberPreference(DataSyncIdKey, "")
     var innerTubeCookie by rememberPreference(InnerTubeCookieKey, "")
@@ -93,7 +109,7 @@ fun LoginScreen(
                                     accountEmail = it.email.orEmpty()
                                     accountChannelHandle = it.channelHandle.orEmpty()
 
-                                    Timber.d("Login: Successfully logged in as ${it.name}, closing WebView and syncing...")
+                                    Timber.d("Login: Successfully logged in as ${it.name}, persisting session and restarting...")
 
                                     webView?.apply {
                                         stopLoading()
@@ -102,11 +118,17 @@ fun LoginScreen(
                                         clearFormData()
                                     }
 
-                                    // App.kt reactively pushes the persisted cookie/visitorData/dataSyncId
-                                    // into YouTube, so no app restart is needed — just close the WebView
-                                    // and pull the library/playlists immediately.
-                                    navController.navigateUp()
-                                    syncUtils.performFullSync()
+                                    // Persist the session synchronously, then cold-restart so every
+                                    // screen (home, library, account) loads already authenticated.
+                                    context.dataStore.edit { prefs ->
+                                        prefs[InnerTubeCookieKey] = innerTubeCookie
+                                        if (visitorData.isNotEmpty()) prefs[VisitorDataKey] = visitorData
+                                        if (dataSyncId.isNotEmpty()) prefs[DataSyncIdKey] = dataSyncId
+                                        prefs[AccountNameKey] = it.name
+                                        prefs[AccountEmailKey] = it.email.orEmpty()
+                                        prefs[AccountChannelHandleKey] = it.channelHandle.orEmpty()
+                                    }
+                                    restartApp(context)
                                 }.onFailure {
                                     Timber.e(it, "Login: Authentication validation failed")
                                     hasCompletedLogin = false 

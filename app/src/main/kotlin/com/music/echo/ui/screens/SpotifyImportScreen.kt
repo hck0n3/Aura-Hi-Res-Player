@@ -546,7 +546,7 @@ private fun SpotifyErrorDialog(
 ) {
     DefaultDialog(
         onDismiss = onDismiss,
-        title = { Text("Import failed") },
+        title = { Text("Error al importar") },
         buttons = {
             TextButton(onClick = onDismiss) {
                 Text(stringResource(android.R.string.ok))

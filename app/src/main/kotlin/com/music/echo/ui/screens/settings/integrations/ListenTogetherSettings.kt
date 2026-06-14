@@ -124,19 +124,19 @@ fun ListenTogetherSettings(
                     
                 }
                 is ListenTogetherEvent.JoinApproved -> {
-                    Toast.makeText(context, "Joined room: ${event.roomCode}", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Te uniste a la sala: ${event.roomCode}", Toast.LENGTH_SHORT).show()
                 }
                 is ListenTogetherEvent.JoinRejected -> {
-                    Toast.makeText(context, "Join rejected: ${event.reason}", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Solicitud rechazada: ${event.reason}", Toast.LENGTH_SHORT).show()
                 }
                 is ListenTogetherEvent.JoinRequestReceived -> {
                     Toast.makeText(context, "${event.username} wants to join", Toast.LENGTH_SHORT).show()
                 }
                 is ListenTogetherEvent.Kicked -> {
-                    Toast.makeText(context, "Kicked: ${event.reason}", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Expulsado: ${event.reason}", Toast.LENGTH_SHORT).show()
                 }
                 is ListenTogetherEvent.ConnectionError -> {
-                    Toast.makeText(context, "Connection error: ${event.error}", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Error de conexión: ${event.error}", Toast.LENGTH_SHORT).show()
                 }
                 is ListenTogetherEvent.ServerError -> {
                     Toast.makeText(context, "Error: ${event.message}", Toast.LENGTH_SHORT).show()

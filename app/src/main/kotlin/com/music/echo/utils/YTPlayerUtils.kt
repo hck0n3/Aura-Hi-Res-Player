@@ -228,9 +228,9 @@ object YTPlayerUtils {
                         hasShownLosslessToast = true
                         android.os.Handler(android.os.Looper.getMainLooper()).post {
                             if (isDownload) {
-                                android.widget.Toast.makeText(it, "Lossless download unavailable, falling back to Saavn (320kbps)", android.widget.Toast.LENGTH_LONG).show()
+                                android.widget.Toast.makeText(it, "Descarga sin pérdida no disponible; se usa Saavn (320 kbps)", android.widget.Toast.LENGTH_LONG).show()
                             } else {
-                                android.widget.Toast.makeText(it, "Lossless stream unavailable, falling back to Saavn (320kbps)", android.widget.Toast.LENGTH_LONG).show()
+                                android.widget.Toast.makeText(it, "Transmisión sin pérdida no disponible; se usa Saavn (320 kbps)", android.widget.Toast.LENGTH_LONG).show()
                             }
                         }
                     }

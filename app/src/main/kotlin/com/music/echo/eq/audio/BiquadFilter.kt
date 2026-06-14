@@ -10,10 +10,10 @@ import kotlin.math.sqrt
 
 class BiquadFilter(
     private val sampleRate: Int,
-    private val frequency: Double,
-    private val gain: Double,
-    private val q: Double = 1.41,
-    private val filterType: FilterType = FilterType.PK,
+    private var frequency: Double,
+    private var gain: Double,
+    private var q: Double = 1.41,
+    private var filterType: FilterType = FilterType.PK,
     // Shelf slope S for LSC/HSC (miniaudio ma_loshelf2/ma_hishelf2 shelfSlope). 1.0 = max slope.
     private val shelfSlope: Double = 1.0
 ) {
@@ -37,6 +37,19 @@ class BiquadFilter(
     private var y2R = 0.0
 
     init {
+        calculateCoefficients()
+    }
+
+    /**
+     * Recomputes coefficients in place for new parameters while preserving the running filter
+     * state (z delays). Lets the equalizer change gains/frequencies in real time with no audible
+     * click and without interrupting playback.
+     */
+    fun update(frequency: Double, gain: Double, q: Double, filterType: FilterType) {
+        this.frequency = frequency
+        this.gain = gain
+        this.q = q
+        this.filterType = filterType
         calculateCoefficients()
     }
 

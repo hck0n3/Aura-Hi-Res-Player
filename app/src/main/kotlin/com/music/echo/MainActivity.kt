@@ -213,7 +213,8 @@ import iad1tya.echo.music.utils.get
 import iad1tya.echo.music.utils.rememberEnumPreference
 import iad1tya.echo.music.utils.rememberPreference
 import iad1tya.echo.music.utils.reportException
-import iad1tya.echo.music.utils.setAppLocale
+import android.content.Context
+import iad1tya.echo.music.utils.localeAwareContext
 import iad1tya.echo.music.viewmodels.HomeViewModel
 import com.valentinilk.shimmer.LocalShimmerTheme
 import dagger.hilt.android.AndroidEntryPoint
@@ -236,6 +237,10 @@ class MainActivity : ComponentActivity() {
     companion object {
         private const val ACTION_SEARCH = "iad1tya.echo.music.action.SEARCH"
         private const val ACTION_LIBRARY = "iad1tya.echo.music.action.LIBRARY"
+    }
+
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(localeAwareContext(newBase))
     }
 
     @Inject
@@ -343,13 +348,7 @@ class MainActivity : ComponentActivity() {
         
         listenTogetherManager.initialize()
 
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-            val locale = dataStore[AppLanguageKey]
-                ?.takeUnless { it == SYSTEM_DEFAULT }
-                ?.let { Locale.forLanguageTag(it) }
-                ?: Locale.getDefault()
-            setAppLocale(this, locale)
-        }
+        // App language (Spanish by default) is applied for all API levels in attachBaseContext().
 
         lifecycleScope.launch {
             dataStore.data

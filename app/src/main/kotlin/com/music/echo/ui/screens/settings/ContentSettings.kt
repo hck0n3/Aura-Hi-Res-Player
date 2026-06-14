@@ -626,7 +626,7 @@ fun ContentSettings(
                 ),
                 Material3SettingsItem(
                     icon = painterResource(R.drawable.globe_location_pin),
-                    title = { Text("Suggestions Region") },
+                    title = { Text("Región de sugerencias") },
                     description = {
                         Text(
                             SuggestionRegionSlugToName.getOrElse(suggestionRegion) { "Global Charts" }
@@ -1011,7 +1011,7 @@ fun ContentSettings(
                 Material3SettingsItem(
                     icon = painterResource(R.drawable.lyrics),
                     title = { Text("YouLyPlus") },
-                    description = { Text("LyricsPlus multi-server provider (YouLy+ extension backend)") },
+                    description = { Text("Proveedor multiservidor LyricsPlus (backend de la extensión YouLy+)") },
                     trailingContent = {
                         Switch(
                             checked = enableYouLyPlus,
@@ -1032,7 +1032,7 @@ fun ContentSettings(
                 Material3SettingsItem(
                     icon = painterResource(R.drawable.lyrics),
                     title = { Text("PaxSenix") },
-                    description = { Text("Apple Music quality synced lyrics with syllable-level timing") },
+                    description = { Text("Letras sincronizadas con calidad Apple Music y precisión por sílaba") },
                     trailingContent = {
                         Switch(
                             checked = enablePaxsenix,
@@ -1138,8 +1138,8 @@ fun ContentSettings(
                 ),
                 Material3SettingsItem(
                     icon = painterResource(R.drawable.grid_view),
-                    title = { Text("Speed Dial") },
-                    description = { Text("Show Speed Dial on the Home Screen") },
+                    title = { Text("Marcación rápida") },
+                    description = { Text("Mostrar la marcación rápida en la pantalla de inicio") },
                     trailingContent = {
                         Switch(
                             checked = showSpeedDial,

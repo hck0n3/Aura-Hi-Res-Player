@@ -115,7 +115,7 @@ fun AxionEqScreen(
                 ),
             )
 
-            PreampCard(preamp = preamp, enabled = enabled, onPreampChange = { viewModel.setPreamp(it) })
+            PreampCard(preamp = preamp, enabled = enabled, onPreampChange = { viewModel.setPreampLive(it) }, onCommit = { viewModel.commit() })
 
             FactoryPresetRow(
                 bandGains = bandGains,
@@ -126,7 +126,8 @@ fun AxionEqScreen(
             BandEqCard(
                 bandGains = bandGains,
                 enabled = enabled,
-                onBandChange = { i, v -> viewModel.setBandGain(i, v) },
+                onBandChange = { i, v -> viewModel.setBandGainLive(i, v) },
+                onBandCommit = { viewModel.commit() },
                 onReset = { viewModel.reset() },
             )
 
@@ -163,7 +164,7 @@ fun AxionEqScreen(
 }
 
 @Composable
-private fun PreampCard(preamp: Float, enabled: Boolean, onPreampChange: (Float) -> Unit) {
+private fun PreampCard(preamp: Float, enabled: Boolean, onPreampChange: (Float) -> Unit, onCommit: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -173,7 +174,7 @@ private fun PreampCard(preamp: Float, enabled: Boolean, onPreampChange: (Float) 
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("Pre-Amp", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+            Text("Preamplificador", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
             Text(
                 text = "%+.1f dB".format(preamp),
                 style = MaterialTheme.typography.labelMedium,
@@ -183,6 +184,7 @@ private fun PreampCard(preamp: Float, enabled: Boolean, onPreampChange: (Float) 
         Slider(
             value = preamp,
             onValueChange = onPreampChange,
+            onValueChangeFinished = onCommit,
             valueRange = EqConstants.PREAMP_MIN..EqConstants.PREAMP_MAX,
             enabled = enabled,
         )
@@ -228,6 +230,7 @@ private fun BandEqCard(
     bandGains: FloatArray,
     enabled: Boolean,
     onBandChange: (Int, Float) -> Unit,
+    onBandCommit: () -> Unit,
     onReset: () -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -250,6 +253,7 @@ private fun BandEqCard(
                         value = bandGains.getOrElse(band) { 0f },
                         enabled = enabled,
                         onValueChange = { onBandChange(band, it) },
+                        onValueChangeFinished = onBandCommit,
                     )
                 }
             }
@@ -270,6 +274,7 @@ private fun EqBandSlider(
     value: Float,
     enabled: Boolean,
     onValueChange: (Float) -> Unit,
+    onValueChangeFinished: () -> Unit,
 ) {
     Column(
         modifier = Modifier.width(46.dp),
@@ -286,6 +291,7 @@ private fun EqBandSlider(
             Slider(
                 value = value,
                 onValueChange = onValueChange,
+                onValueChangeFinished = onValueChangeFinished,
                 valueRange = EqConstants.GAIN_MIN..EqConstants.GAIN_MAX,
                 enabled = enabled,
                 modifier = Modifier

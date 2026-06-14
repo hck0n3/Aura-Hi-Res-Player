@@ -182,8 +182,8 @@ fun BackupAndRestore(
                     Material3SettingsGroup(
                         items = listOf(
                             Material3SettingsItem(
-                                title = { Text("Local Backup") },
-                                description = { Text("Create a manual zip backup of your data") },
+                                title = { Text("Copia de seguridad local") },
+                                description = { Text("Crea una copia de seguridad ZIP manual de tus datos") },
                                 icon = painterResource(R.drawable.backup),
                                 onClick = {
                                     val formatter = DateTimeFormatter.ofPattern("yyyyMMddHHmmss")
@@ -201,8 +201,8 @@ fun BackupAndRestore(
                     Material3SettingsGroup(
                         items = listOf(
                             Material3SettingsItem(
-                                title = { Text("Import") },
-                                description = { Text("Restore data from backups or other sources") },
+                                title = { Text("Importar") },
+                                description = { Text("Restaura datos desde copias de seguridad u otras fuentes") },
                                 icon = painterResource(R.drawable.restore),
                                 onClick = { currentScreen = BackupSubScreen.IMPORT }
                             )
@@ -214,33 +214,33 @@ fun BackupAndRestore(
                         title = "Import Data",
                         items = listOf(
                             Material3SettingsItem(
-                                title = { Text("Import from Spotify") },
+                                title = { Text("Importar desde Spotify") },
                                 icon = painterResource(R.drawable.ic_spotify),
                                 onClick = { navController.navigate("settings/spotify_import") }
                             ),
                             Material3SettingsItem(
-                                title = { Text("Import from local file") },
+                                title = { Text("Importar desde archivo local") },
                                 icon = painterResource(R.drawable.restore),
                                 onClick = {
                                     restoreLauncher.launch(arrayOf("application/octet-stream"))
                                 }
                             ),
                             Material3SettingsItem(
-                                title = { Text("Import 'm3u' Playlist") },
+                                title = { Text("Importar lista 'm3u'") },
                                 icon = painterResource(R.drawable.playlist_add),
                                 onClick = {
                                     importM3uLauncherOnline.launch(arrayOf("audio/*"))
                                 }
                             ),
                             Material3SettingsItem(
-                                title = { Text("Import 'csv' Playlist") },
+                                title = { Text("Importar lista 'csv'") },
                                 icon = painterResource(R.drawable.playlist_add),
                                 onClick = {
                                     importPlaylistFromCsv.launch(arrayOf("text/csv", "text/comma-separated-values", "application/csv", "text/plain"))
                                 }
                             ),
                             Material3SettingsItem(
-                                title = { Text("Import JR Music Pro Playlist") },
+                                title = { Text("Importar lista de JR Music Pro") },
                                 description = { Text(".jrpl.json exported from the desktop app") },
                                 icon = painterResource(R.drawable.playlist_add),
                                 onClick = {

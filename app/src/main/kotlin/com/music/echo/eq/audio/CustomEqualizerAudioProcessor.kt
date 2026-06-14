@@ -38,21 +38,27 @@ class CustomEqualizerAudioProcessor : AudioProcessor {
     @Synchronized
     fun applyProfile(parametricEQ: ParametricEQ) {
         if (sampleRate == 0) {
-            
             Timber.tag(TAG)
                 .d("Audio processor not configured yet. Storing profile as pending with ${parametricEQ.bands.size} bands")
             pendingProfile = parametricEQ
             return
         }
 
-        
         preampGain = 10.0.pow(parametricEQ.preamp / 20.0)
 
-        createFilters(parametricEQ.bands)
-        equalizerEnabled = true
-
-        
-        filters.forEach { it.reset() }
+        val active = parametricEQ.bands.filter { it.enabled && it.frequency < sampleRate / 2.0 }
+        if (equalizerEnabled && filters.isNotEmpty() && filters.size == active.size) {
+            // Real-time, gapless: update existing biquad coefficients in place and keep filter
+            // state (no reset) so dragging a band never clicks, stutters or stops playback.
+            active.forEachIndexed { i, band ->
+                filters[i].update(band.frequency, band.gain, band.q, band.filterType)
+            }
+        } else {
+            // Structure changed (first enable, sample-rate or band-count change) → rebuild.
+            createFilters(parametricEQ.bands)
+            equalizerEnabled = true
+            filters.forEach { it.reset() }
+        }
 
         Timber.tag(TAG)
             .d("Applied EQ profile with ${filters.size} bands and ${parametricEQ.preamp} dB preamp")

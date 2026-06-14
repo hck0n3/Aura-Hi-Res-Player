@@ -73,7 +73,7 @@ fun RingtoneProgressDialog(
         dismissButton = {
             if (isComplete && isSuccess) {
                 TextButton(onClick = onDismiss) {
-                    Text("Close")
+                    Text("Cerrar")
                 }
             }
         }

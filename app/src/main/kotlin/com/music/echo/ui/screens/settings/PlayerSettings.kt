@@ -341,7 +341,7 @@ fun PlayerSettings(
         if (showSaavnAudioWarning) {
             DefaultDialog(
                 onDismiss = { showSaavnAudioWarning = false },
-                title = { Text("Enable Saavn (320kbps)?") },
+                title = { Text("¿Activar Saavn (320 kbps)?") },
                 buttons = {
                     TextButton(onClick = { showSaavnAudioWarning = false }) {
                         Text(stringResource(R.string.cancel))
@@ -371,7 +371,7 @@ fun PlayerSettings(
                         onAudioQualityChange(AudioQuality.LOSSLESS)
                         if (crossfadeEnabled) {
                             onCrossfadeEnabledChange(false)
-                            android.widget.Toast.makeText(context, "Crossfade has been turned off for Lossless playback", android.widget.Toast.LENGTH_SHORT).show()
+                            android.widget.Toast.makeText(context, "Se desactivó el crossfade para la reproducción sin pérdida", android.widget.Toast.LENGTH_SHORT).show()
                         }
                     }) {
                         Text(stringResource(R.string.enable))
@@ -413,9 +413,9 @@ fun PlayerSettings(
                 
                 add(Material3SettingsItem(
                     icon = painterResource(R.drawable.notification),
-                    title = { Text("Show audio fallback notifications") },
+                    title = { Text("Mostrar notificaciones de audio de respaldo") },
                     description = {
-                        Text("Show a toast notification when falling back to a lower stream quality")
+                        Text("Muestra una notificación cuando se baja a una calidad de transmisión inferior")
                     },
                     trailingContent = {
                         Switch(
@@ -454,7 +454,7 @@ fun PlayerSettings(
                     title = { Text(stringResource(R.string.crossfade)) },
                     description = { 
                         if (isLosslessSelected) {
-                            Text("Crossfade is disabled while using Qobuz (Lossless)")
+                            Text("El crossfade está desactivado al usar Qobuz (sin pérdida)")
                         } else {
                             Text(stringResource(R.string.crossfade_desc)) 
                         }
@@ -486,7 +486,7 @@ fun PlayerSettings(
                     },
                     onClick = {
                         if (isLosslessSelected) {
-                            android.widget.Toast.makeText(context, "Crossfade is not available with Lossless audio", android.widget.Toast.LENGTH_SHORT).show()
+                            android.widget.Toast.makeText(context, "El crossfade no está disponible con audio sin pérdida", android.widget.Toast.LENGTH_SHORT).show()
                         } else if (!crossfadeEnabled) {
                             showCrossfadeBetaDialog = true
                         } else {
@@ -654,8 +654,8 @@ fun PlayerSettings(
                 ))
                 add(Material3SettingsItem(
                     icon = painterResource(R.drawable.graphic_eq),
-                    title = { Text("Soft Limiter") },
-                    description = { Text("Prevents clipping on loud peaks (recommended)") },
+                    title = { Text("Limitador suave") },
+                    description = { Text("Evita la distorsión en los picos altos (recomendado)") },
                     trailingContent = {
                         Switch(
                             checked = jrLimiter,
@@ -673,8 +673,8 @@ fun PlayerSettings(
                 ))
                 add(Material3SettingsItem(
                     icon = painterResource(R.drawable.graphic_eq),
-                    title = { Text("Loudness") },
-                    description = { Text("Fletcher-Munson bass + treble lift for low-volume listening") },
+                    title = { Text("Sonoridad") },
+                    description = { Text("Realce de graves y agudos Fletcher-Munson para escuchar a bajo volumen") },
                     trailingContent = {
                         Switch(
                             checked = jrLoudness,
@@ -692,8 +692,8 @@ fun PlayerSettings(
                 ))
                 add(Material3SettingsItem(
                     icon = painterResource(R.drawable.graphic_eq),
-                    title = { Text("Virtual Room (HRTF)") },
-                    description = { Text("Binaural speaker simulation for headphones (disable Crossfeed)") },
+                    title = { Text("Sala virtual (HRTF)") },
+                    description = { Text("Simulación binaural de altavoces para auriculares (desactiva Crossfeed)") },
                     trailingContent = {
                         Switch(
                             checked = jrHrtf,
@@ -711,10 +711,10 @@ fun PlayerSettings(
                 ))
                 add(Material3SettingsItem(
                     icon = painterResource(R.drawable.graphic_eq),
-                    title = { Text("Bass Enhance") },
+                    title = { Text("Realce de graves") },
                     description = {
                         androidx.compose.foundation.layout.Column {
-                            Text("Psychoacoustic sub-bass harmonics")
+                            Text("Armónicos de subgraves psicoacústicos")
                             if (jrBass) Slider(value = jrBassAmt, onValueChange = onJrBassAmtChange, valueRange = 0f..1f)
                         }
                     },
@@ -735,10 +735,10 @@ fun PlayerSettings(
                 ))
                 add(Material3SettingsItem(
                     icon = painterResource(R.drawable.graphic_eq),
-                    title = { Text("Harmonic Exciter") },
+                    title = { Text("Excitador armónico") },
                     description = {
                         androidx.compose.foundation.layout.Column {
-                            Text("Adds high-frequency air and presence")
+                            Text("Añade aire y presencia en altas frecuencias")
                             if (jrExciter) Slider(value = jrExciterAmt, onValueChange = onJrExciterAmtChange, valueRange = 0f..1f)
                         }
                     },
@@ -759,10 +759,10 @@ fun PlayerSettings(
                 ))
                 add(Material3SettingsItem(
                     icon = painterResource(R.drawable.graphic_eq),
-                    title = { Text("Tube Warmth") },
+                    title = { Text("Calidez de válvulas") },
                     description = {
                         androidx.compose.foundation.layout.Column {
-                            Text("Asymmetric tube saturation (even harmonics)")
+                            Text("Saturación asimétrica de válvulas (armónicos pares)")
                             if (jrTube) Slider(value = jrTubeAmt, onValueChange = onJrTubeAmtChange, valueRange = 0f..1f)
                         }
                     },
@@ -783,7 +783,7 @@ fun PlayerSettings(
                 ))
                 add(Material3SettingsItem(
                     icon = painterResource(R.drawable.graphic_eq),
-                    title = { Text("Multiband Compressor") },
+                    title = { Text("Compresor multibanda") },
                     description = { Text("3-band dynamics for a louder, more even mix") },
                     trailingContent = {
                         Switch(
@@ -802,10 +802,10 @@ fun PlayerSettings(
                 ))
                 add(Material3SettingsItem(
                     icon = painterResource(R.drawable.graphic_eq),
-                    title = { Text("Stereo Width") },
+                    title = { Text("Amplitud estéreo") },
                     description = {
                         androidx.compose.foundation.layout.Column {
-                            Text("Mid/side stereo image (1.0 = original)")
+                            Text("Imagen estéreo medio/lados (1.0 = original)")
                             if (jrStereo) Slider(value = jrStereoAmt, onValueChange = onJrStereoAmtChange, valueRange = 0f..2f)
                         }
                     },
@@ -826,10 +826,10 @@ fun PlayerSettings(
                 ))
                 add(Material3SettingsItem(
                     icon = painterResource(R.drawable.graphic_eq),
-                    title = { Text("Dialogue Enhancer") },
+                    title = { Text("Realce de diálogos") },
                     description = {
                         androidx.compose.foundation.layout.Column {
-                            Text("Boosts vocal clarity (center 300 Hz – 3 kHz)")
+                            Text("Mejora la claridad vocal (centro 300 Hz – 3 kHz)")
                             if (jrDialogue) Slider(value = jrDialogueAmt, onValueChange = onJrDialogueAmtChange, valueRange = 0f..1f)
                         }
                     },
@@ -879,8 +879,8 @@ fun PlayerSettings(
 
                 add(Material3SettingsItem(
                     icon = painterResource(R.drawable.skip_next),
-                    title = { Text("Preload Next Song") },
-                    description = { Text("Cache the next song for gapless playback") },
+                    title = { Text("Precargar la siguiente canción") },
+                    description = { Text("Almacena en caché la siguiente canción para reproducción sin cortes") },
                     trailingContent = {
                         Switch(
                             checked = preloadNextSongEnabled,
@@ -902,7 +902,7 @@ fun PlayerSettings(
                 if (preloadNextSongEnabled) {
                     add(Material3SettingsItem(
                         icon = painterResource(R.drawable.library_music),
-                        title = { Text("Preload Limit") },
+                        title = { Text("Límite de precarga") },
                         description = {
                             Slider(
                                 value = preloadNextSongLimit.toFloat(),
@@ -918,8 +918,8 @@ fun PlayerSettings(
                     
                     add(Material3SettingsItem(
                         icon = painterResource(R.drawable.queue_music),
-                        title = { Text("Preload Lyrics") },
-                        description = { Text("Also cache lyrics for the preloaded songs") },
+                        title = { Text("Precargar letras") },
+                        description = { Text("También almacena en caché las letras de las canciones precargadas") },
                         trailingContent = {
                             Switch(
                                 checked = preloadLyricsEnabled,
@@ -1298,7 +1298,7 @@ fun PlayerSettings(
                 Material3SettingsItem(
                     icon = painterResource(R.drawable.file_export),
                     title = { Text(stringResource(R.string.export_desc)) },
-                    description = { Text("Show 'Export as MP3' in menus") },
+                    description = { Text("Mostrar 'Exportar como MP3' en los menús") },
                     trailingContent = {
                         Switch(
                             checked = enableExportAsMp3,

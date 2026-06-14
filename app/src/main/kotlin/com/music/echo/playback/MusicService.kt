@@ -15,6 +15,7 @@ import android.media.AudioDeviceInfo
 import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
+import iad1tya.echo.music.utils.localeAwareContext
 import android.content.Intent
 import android.content.IntentFilter
 import android.database.SQLException
@@ -227,6 +228,11 @@ class MusicService :
     MediaLibraryService(),
     Player.Listener,
     PlaybackStatsListener.Callback {
+
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(localeAwareContext(newBase))
+    }
+
     @Inject
     lateinit var database: MusicDatabase
 
@@ -562,12 +568,12 @@ class MusicService :
                         
                         
                         
-                        player.seekTo(player.currentPosition)
+                        // EQ changes are applied gaplessly in place; no re-seek (it caused stutter/stop).
                     }
                 } else {
                     equalizerService.disable()
                     if (player.playbackState == Player.STATE_READY && player.isPlaying) {
-                        player.seekTo(player.currentPosition)
+                        // EQ changes are applied gaplessly in place; no re-seek (it caused stutter/stop).
                     }
                 }
             }

@@ -31,6 +31,7 @@ import iad1tya.echo.music.extensions.toInetSocketAddress
 import iad1tya.echo.music.utils.CrashHandler
 import iad1tya.echo.music.utils.cipher.CipherDeobfuscator
 import iad1tya.echo.music.utils.dataStore
+import iad1tya.echo.music.utils.localeAwareContext
 import iad1tya.echo.music.utils.reportException
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
@@ -51,6 +52,10 @@ import javax.inject.Inject
 
 @HiltAndroidApp
 class App : Application(), SingletonImageLoader.Factory {
+
+    override fun attachBaseContext(base: Context) {
+        super.attachBaseContext(localeAwareContext(base))
+    }
 
     @Inject
     @ApplicationScope
@@ -84,6 +89,7 @@ class App : Application(), SingletonImageLoader.Factory {
     private suspend fun initializeSettings() {
         val settings = dataStore.data.first()
         seedJrDefaults(settings)
+        seedSpanishDefault(settings)
         migrateLegacyIcon(settings)
         val locale = Locale.getDefault()
         val languageTag = locale.language
@@ -159,6 +165,22 @@ class App : Application(), SingletonImageLoader.Factory {
             p[iad1tya.echo.music.constants.HidePlayerSliderKey] = true          // hide volume slider on AMI player
             p[iad1tya.echo.music.constants.AppleMusicLyricsBlurKey] = true      // Apple Music lyrics blur
             p[iad1tya.echo.music.constants.JrDefaultsAppliedKey] = true
+        }
+    }
+
+    /**
+     * Defaults the in-app language to Spanish on first run (guarded by
+     * [iad1tya.echo.music.constants.SpanishDefaultAppliedKey]). Any explicit language the user
+     * already selected is preserved.
+     */
+    private suspend fun seedSpanishDefault(settings: androidx.datastore.preferences.core.Preferences) {
+        if (settings[iad1tya.echo.music.constants.SpanishDefaultAppliedKey] == true) return
+        dataStore.edit { p ->
+            val current = p[iad1tya.echo.music.constants.AppLanguageKey]
+            if (current == null || current == SYSTEM_DEFAULT) {
+                p[iad1tya.echo.music.constants.AppLanguageKey] = "es"
+            }
+            p[iad1tya.echo.music.constants.SpanishDefaultAppliedKey] = true
         }
     }
 

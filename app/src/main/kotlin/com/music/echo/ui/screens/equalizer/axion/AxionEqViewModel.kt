@@ -178,4 +178,51 @@ class AxionEqViewModel @Inject constructor(
             equalizerService.applyProfile(profile)
         }
     }
+
+    /** Current UI state as a live EQ profile (not yet persisted). */
+    private fun liveProfile(): SavedEQProfile = SavedEQProfile(
+        id = "echo_tuning",
+        name = "JR Tuning",
+        deviceModel = "Equalizer",
+        bands = buildEqBands(_bandGains.value, _bandTypes.value),
+        preamp = _preamp.value.toDouble(),
+        isCustom = false,
+        isActive = true,
+    )
+
+    /**
+     * Live band drag: update the DSP coefficients in place (no disk writes, no profile save, no
+     * player re-seek) so the change is heard in real time without stutter. Persist via [commit].
+     */
+    fun setBandGainLive(index: Int, gainDb: Float) {
+        if (index !in 0 until n) return
+        val v = gainDb.coerceIn(EqConstants.GAIN_MIN, EqConstants.GAIN_MAX)
+        val arr = _bandGains.value.copyOf()
+        arr[index] = v
+        _bandGains.value = arr
+        _isDirty.value = true
+        if (_enabled.value) equalizerService.applyProfile(liveProfile())
+    }
+
+    /** Live preamp drag (see [setBandGainLive]). */
+    fun setPreampLive(db: Float) {
+        val v = db.coerceIn(EqConstants.PREAMP_MIN, EqConstants.PREAMP_MAX)
+        _preamp.value = v
+        _isDirty.value = true
+        if (_enabled.value) equalizerService.applyProfile(liveProfile())
+    }
+
+    /** Persist the current tuning once — call on slider release (onValueChangeFinished). */
+    fun commit() {
+        val editor = prefs.edit()
+        _bandGains.value.forEachIndexed { i, f -> editor.putFloat("band24_$i", f) }
+        _bandTypes.value.forEachIndexed { i, t -> editor.putInt("type24_$i", t) }
+        editor.putFloat("preampDb", _preamp.value)
+        editor.apply()
+        if (_enabled.value) viewModelScope.launch {
+            val p = liveProfile()
+            eqProfileRepository.saveProfile(p)
+            eqProfileRepository.setActiveProfile(p.id)
+        }
+    }
 }
