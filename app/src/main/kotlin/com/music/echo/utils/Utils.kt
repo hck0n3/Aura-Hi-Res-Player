@@ -10,7 +10,6 @@ import androidx.compose.ui.unit.dp
 import racra.compose.smooth_corner_rect_library.AbsoluteSmoothCornerShape
 import androidx.compose.ui.graphics.Shape
 import java.util.Locale
-import iad1tya.echo.music.constants.AppLanguageKey
 import iad1tya.echo.music.constants.SYSTEM_DEFAULT
 
 fun reportException(throwable: Throwable) {
@@ -25,23 +24,31 @@ fun setAppLocale(context: Context, locale: Locale) {
 }
 
 /**
- * Resolves the in-app language. Reads [AppLanguageKey]; when unset or "system default" the app
- * defaults to Spanish ("es"). Returns the explicit BCP-47 tag otherwise.
+ * Resolves the in-app language from a lightweight SharedPreferences mirror. Safe to read in
+ * attachBaseContext — DataStore must NEVER be read there: its blocking read at cold start
+ * crashes/ANRs the launch (notably on some OEM ROMs). Defaults to Spanish ("es"). The mirror is
+ * kept in sync from App's settings observer whenever the in-app language changes.
  */
 fun resolveAppLanguageTag(context: Context): String =
-    context.dataStore[AppLanguageKey]?.takeUnless { it == SYSTEM_DEFAULT } ?: "es"
+    context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+        .getString("app_language", null)
+        ?.takeUnless { it == SYSTEM_DEFAULT }
+        ?: "es"
 
 /**
  * Wraps [base] with a configuration forced to the resolved app language so every component
  * (Application, Activity, Service) resolves resources in the selected language on all API levels.
- * Call from each component's attachBaseContext.
+ * Call from each component's attachBaseContext. Never throws — falls back to [base] on any error
+ * so a locale issue can never prevent the app from launching.
  */
-fun localeAwareContext(base: Context): Context {
+fun localeAwareContext(base: Context): Context = try {
     val locale = Locale.forLanguageTag(resolveAppLanguageTag(base))
     Locale.setDefault(locale)
     val config = Configuration(base.resources.configuration)
     config.setLocale(locale)
-    return base.createConfigurationContext(config)
+    base.createConfigurationContext(config)
+} catch (t: Throwable) {
+    base
 }
 
 fun listItemShape(index: Int, count: Int, radius: Dp = 24.dp): Shape {

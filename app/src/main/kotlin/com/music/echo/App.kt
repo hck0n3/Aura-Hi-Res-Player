@@ -256,6 +256,11 @@ class App : Application(), SingletonImageLoader.Factory {
                 .map { Triple(it[ContentCountryKey], it[ContentLanguageKey], it[AppLanguageKey]) }
                 .distinctUntilChanged()
                 .collect { (contentCountry, contentLanguage, appLanguage) ->
+                    // Mirror the chosen app language to SharedPreferences so attachBaseContext can
+                    // apply it at next cold start without a crash-prone blocking DataStore read.
+                    getSharedPreferences("app_prefs", Context.MODE_PRIVATE).edit()
+                        .putString("app_language", appLanguage?.takeUnless { it == SYSTEM_DEFAULT } ?: "es")
+                        .apply()
                     val systemLocale = Locale.getDefault()
                     val effectiveAppLocale = appLanguage
                         ?.takeUnless { it == SYSTEM_DEFAULT }
