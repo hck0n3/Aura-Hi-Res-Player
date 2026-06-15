@@ -431,4 +431,6 @@
     <string name="canvas_providers">Canvas Providers</string>
     <string name="voice_search">Voice search</string>
     <string name="voice_search_unavailable">Voice recognition not available on this device</string>
+    <string name="open_links_title">Open links</string>
+    <string name="open_links_summary">Set Echo as default to open YouTube Music links</string>
 </resources>

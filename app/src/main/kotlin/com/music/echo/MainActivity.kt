@@ -1231,7 +1231,13 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleDeepLinkIntent(intent: Intent, navController: NavHostController) {
-        val uri = intent.data ?: intent.extras?.getString(Intent.EXTRA_TEXT)?.toUri() ?: return
+        val uri = intent.data ?: run {
+            val sharedText = intent.extras?.getString(Intent.EXTRA_TEXT) ?: return
+            // Extract first http(s) URL from shared text (message may contain extra text around the URL)
+            val urlRegex = Regex("""https?://\S+""")
+            val extracted = urlRegex.find(sharedText)?.value ?: return
+            extracted.toUri()
+        }
         intent.data = null
         intent.removeExtra(Intent.EXTRA_TEXT)
         val coroutineScope = lifecycle.coroutineScope

@@ -378,4 +378,6 @@
     <string name="canvas_providers">Proveedores de Canvas</string>
     <string name="voice_search">Búsqueda por voz</string>
     <string name="voice_search_unavailable">Reconocimiento de voz no disponible en este dispositivo</string>
+    <string name="open_links_title">Abrir enlaces</string>
+    <string name="open_links_summary">Predeterminar Echo para abrir enlaces de YouTube Music</string>
 </resources>

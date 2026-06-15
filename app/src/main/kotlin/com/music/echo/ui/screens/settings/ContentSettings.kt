@@ -2,7 +2,9 @@
 
 package iad1tya.echo.music.ui.screens.settings
 
+import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import androidx.compose.animation.AnimatedVisibility
@@ -1151,6 +1153,44 @@ fun ContentSettings(
                         )
                     },
                     onClick = { onShowSpeedDialChange(!showSpeedDial) }
+                )
+            )
+        )
+
+        Spacer(modifier = Modifier.height(27.dp))
+
+        Material3SettingsGroup(
+            title = stringResource(R.string.open_links_title),
+            items = listOf(
+                Material3SettingsItem(
+                    icon = painterResource(R.drawable.web_link),
+                    title = { Text(stringResource(R.string.open_links_title)) },
+                    description = { Text(stringResource(R.string.open_links_summary)) },
+                    onClick = {
+                        val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                            Intent(
+                                Settings.ACTION_APP_OPEN_BY_DEFAULT_SETTINGS,
+                                Uri.parse("package:${context.packageName}")
+                            )
+                        } else {
+                            Intent(
+                                Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                Uri.parse("package:${context.packageName}")
+                            )
+                        }
+                        try {
+                            context.startActivity(intent)
+                        } catch (e: ActivityNotFoundException) {
+                            runCatching {
+                                context.startActivity(
+                                    Intent(
+                                        Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                        Uri.parse("package:${context.packageName}")
+                                    )
+                                )
+                            }
+                        }
+                    }
                 )
             )
         )
