@@ -82,11 +82,16 @@ class App : Application(), SingletonImageLoader.Factory {
         Timber.plant(Timber.DebugTree())
         iad1tya.echo.music.utils.AppLogger.plant(this)
 
-        
+
         applicationScope.launch {
             initializeSettings()
             observeSettingsChanges()
         }
+
+        // Schedule the weekly Release Radar check (aligned to the next Friday morning).
+        // Safe to call every start: it uses a unique periodic work item with UPDATE policy.
+        runCatching { iad1tya.echo.music.releaseradar.ReleaseRadarWorker.schedule(this) }
+            .onFailure { Timber.e(it, "Failed to schedule Release Radar worker") }
     }
 
     private suspend fun initializeSettings() {

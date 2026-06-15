@@ -214,6 +214,11 @@
     <string name="update_available_title">Actualización disponible</string>
     <string name="update_channel_name">Actualizaciones de la app</string>
     <string name="update_channel_desc">Notificaciones sobre nuevas versiones</string>
+
+    <!-- Release Radar -->
+    <string name="release_radar_title">Novedades</string>
+    <string name="release_radar_notification">Novedades de tus artistas seguidos</string>
+    <string name="release_radar_channel_name">Novedades</string>
     <string name="integrations">Integraciones</string>
     <string name="username">Nombre de usuario</string>
     <string name="password">Contraseña</string>
