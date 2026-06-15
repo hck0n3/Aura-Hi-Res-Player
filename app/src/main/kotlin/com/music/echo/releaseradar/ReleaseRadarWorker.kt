@@ -74,9 +74,8 @@ class ReleaseRadarWorker(
                 .filter { it.isYouTubeArtist }
             if (artists.isEmpty()) return@withContext Result.success()
 
-            // Snapshot the current table once: drives both the first-run window and new-item detection.
+            // Snapshot the current table once: drives both the first-run seed range and new-item detection.
             val existingIds = database.releasesByDateDesc().first().map { it.id }.toSet()
-            val windowDays = if (existingIds.isEmpty()) FIRST_RUN_WINDOW_DAYS else INCREMENTAL_WINDOW_DAYS
             val today = LocalDate.now()
 
             // 2. Fetch per artist with bounded concurrency; one failure must not abort the rest.
@@ -93,9 +92,11 @@ class ReleaseRadarWorker(
                 }.awaitAll().flatten()
             }
 
-            // 3. Dedupe (prefers "yt") then keep only releases inside the window.
-            val recent = ReleaseRadarMatching.dedupe(candidates)
-                .filter { ReleaseRadarMatching.isWithinWindow(it.date, today, windowDays) }
+            // 3. Dedupe (prefers "yt") then keep releases from the current year (or previous year on
+            //    first run), because YouTube only exposes release YEAR and pins dates to Jan 1.
+            //    A symmetric day-distance window would leave the radar empty for ~10 months/year.
+            val minYear = if (existingIds.isEmpty()) today.year - 1 else today.year
+            val recent = ReleaseRadarMatching.dedupe(candidates).filter { it.date.year >= minYear }
             if (recent.isEmpty()) return@withContext Result.success()
 
             // 4. Persist. Detect which ids are genuinely new so we only notify on fresh content.
@@ -146,12 +147,13 @@ class ReleaseRadarWorker(
         playId = playId,
     )
 
-    /** Best-effort mapping of a candidate back to a followed artist id (by name), for grouping. */
+    /** Best-effort mapping of a candidate back to a followed artist id (by name), for grouping.
+     *  Falls back to "" on no match so a release is never mis-attributed to an arbitrary artist. */
     private fun artistIdFor(
         candidate: ReleaseCandidate,
         artists: List<iad1tya.echo.music.db.entities.ArtistEntity>,
     ): String = artists.firstOrNull { it.name.equals(candidate.artist, ignoreCase = true) }?.id
-        ?: artists.firstOrNull()?.id.orEmpty()
+        ?: ""
 
     private fun postNotification(newCount: Int) {
         val nm = context.getSystemService(NotificationManager::class.java)
@@ -192,8 +194,6 @@ class ReleaseRadarWorker(
         private const val CHANNEL_ID = "release_radar"
         private const val NOTIFICATION_ID = 2002
         private const val MAX_CONCURRENCY = 4
-        private const val INCREMENTAL_WINDOW_DAYS = 7L
-        private const val FIRST_RUN_WINDOW_DAYS = 56L // ~8 weeks of initial content
 
         /**
          * Schedules the weekly run, aligned to the next Friday ~08:00 local time. Safe to call on
