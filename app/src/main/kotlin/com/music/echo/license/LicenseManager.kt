@@ -4,6 +4,8 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * Android-facing orchestrator. Persists [LicenseLogic.State] in SharedPreferences and performs the
@@ -55,19 +57,19 @@ object LicenseManager {
     fun demoDaysLeft(context: Context): Int =
         LicenseLogic.demoDaysLeft(load(context), System.currentTimeMillis())
 
-    fun startDemo(context: Context) {
+    suspend fun startDemo(context: Context) = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
         save(context, LicenseLogic.startDemo(load(context), now))
     }
 
     /** Full evaluation used by the gate at startup. Performs online verification when possible. */
-    suspend fun evaluate(context: Context): LicenseLogic.AppState {
+    suspend fun evaluate(context: Context): LicenseLogic.AppState = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
         var state = LicenseLogic.touch(load(context), now)
         save(context, state)
 
         val key = state.subscriptionKey
-            ?: return LicenseLogic.resolve(state, LicenseLogic.VerifyOutcome.UNVERIFIED, now)
+            ?: return@withContext LicenseLogic.resolve(state, LicenseLogic.VerifyOutcome.UNVERIFIED, now)
 
         val outcome = if (isOnline(context)) {
             when (gumroad.verify(PRODUCT_ID, key)) {
@@ -83,29 +85,31 @@ object LicenseManager {
         } else {
             LicenseLogic.VerifyOutcome.UNVERIFIED
         }
-        return LicenseLogic.resolve(state, outcome, now)
+        LicenseLogic.resolve(state, outcome, now)
     }
 
     /** Called from the "Ya me suscribí" entry screen. Saves the key only when Gumroad confirms active. */
-    suspend fun activateSubscription(context: Context, rawKey: String): GumroadVerify.Result {
-        val key = rawKey.trim()
-        if (key.isEmpty()) return GumroadVerify.Result.INVALID_KEY
-        val result = gumroad.verify(PRODUCT_ID, key)
-        if (result == GumroadVerify.Result.ACTIVE) {
-            val now = System.currentTimeMillis()
-            save(context, LicenseLogic.withSubscriptionKey(load(context), key, now))
+    suspend fun activateSubscription(context: Context, rawKey: String): GumroadVerify.Result =
+        withContext(Dispatchers.IO) {
+            val key = rawKey.trim()
+            if (key.isEmpty()) return@withContext GumroadVerify.Result.INVALID_KEY
+            val result = gumroad.verify(PRODUCT_ID, key)
+            if (result == GumroadVerify.Result.ACTIVE) {
+                val now = System.currentTimeMillis()
+                save(context, LicenseLogic.withSubscriptionKey(load(context), key, now))
+            }
+            result
         }
-        return result
-    }
 
     /** Re-checks the stored subscription (used by the renew / "ya pagué" screen). */
-    suspend fun reverify(context: Context): GumroadVerify.Result {
-        val key = load(context).subscriptionKey ?: return GumroadVerify.Result.INVALID_KEY
-        val result = gumroad.verify(PRODUCT_ID, key)
-        if (result == GumroadVerify.Result.ACTIVE) {
-            val now = System.currentTimeMillis()
-            save(context, LicenseLogic.withVerifiedNow(load(context), now))
+    suspend fun reverify(context: Context): GumroadVerify.Result =
+        withContext(Dispatchers.IO) {
+            val state = load(context)
+            val key = state.subscriptionKey ?: return@withContext GumroadVerify.Result.INVALID_KEY
+            val result = gumroad.verify(PRODUCT_ID, key)
+            if (result == GumroadVerify.Result.ACTIVE) {
+                save(context, LicenseLogic.withVerifiedNow(state, System.currentTimeMillis()))
+            }
+            result
         }
-        return result
-    }
 }

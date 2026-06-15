@@ -40,7 +40,13 @@ fun LicenseGate(appContent: @Composable () -> Unit) {
         AppState.DEMO, AppState.SUBSCRIPTION_ACTIVE -> appContent()
         AppState.FIRST_RUN -> ActivationPromptScreen(
             demoExpired = false,
-            onTryDemo = { LicenseManager.startDemo(context); refresh() },
+            onTryDemo = {
+                appState = null
+                scope.launch {
+                    LicenseManager.startDemo(context)
+                    appState = LicenseManager.evaluate(context)
+                }
+            },
             onHaveSubscription = { showEntry = true },
         )
         AppState.DEMO_EXPIRED -> ActivationPromptScreen(
