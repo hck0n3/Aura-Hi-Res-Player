@@ -195,8 +195,7 @@ import iad1tya.echo.music.ui.menu.YouTubeSongMenu
 import iad1tya.echo.music.ui.player.BottomSheetPlayer
 import iad1tya.echo.music.ui.screens.Screens
 import iad1tya.echo.music.ui.screens.SettingDialoge
-import iad1tya.echo.music.license.ActivationScreen
-import iad1tya.echo.music.license.LicenseManager
+import iad1tya.echo.music.license.LicenseGate
 import iad1tya.echo.music.ui.screens.WelcomeDialog
 import iad1tya.echo.music.ui.screens.navigationBuilder
 import iad1tya.echo.music.ui.screens.settings.DarkMode
@@ -367,12 +366,7 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            var isLicensed by remember {
-                mutableStateOf(LicenseManager.isLicensed(this@MainActivity))
-            }
-            if (!isLicensed) {
-                ActivationScreen(onActivated = { isLicensed = true })
-            } else {
+            LicenseGate {
                 echomusicApp(
                     playerConnection = playerConnection,
                     database = database,

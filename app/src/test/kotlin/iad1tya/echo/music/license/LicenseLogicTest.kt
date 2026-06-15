@@ -1,5 +1,8 @@
 package iad1tya.echo.music.license
 
+import iad1tya.echo.music.license.LicenseLogic.AppState
+import iad1tya.echo.music.license.LicenseLogic.State
+import iad1tya.echo.music.license.LicenseLogic.VerifyOutcome
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -7,90 +10,104 @@ import org.junit.Test
 
 class LicenseLogicTest {
 
-    private val demoKey = "564FFF1L7EHNZOAK3FEZ"
-    private val perpetualKey = "051INR8XG157MBWE32DE"
     private val day = 24L * 60 * 60 * 1000
     private val now = 1_750_000_000_000L
 
-    @Test
-    fun embeddedDemoHashMatchesRealKey() {
-        assertEquals(LicenseLogic.DEMO_KEY_HASH, LicenseLogic.hashKey(demoKey))
+    // ---- demo ----
+
+    @Test fun firstRunWhenNothingStarted() {
+        assertEquals(AppState.FIRST_RUN, LicenseLogic.resolve(State(), VerifyOutcome.UNVERIFIED, now))
     }
 
-    @Test
-    fun embeddedPerpetualHashMatchesRealKey() {
-        assertEquals(LicenseLogic.PERPETUAL_KEY_HASH, LicenseLogic.hashKey(perpetualKey))
+    @Test fun startDemoSetsTimer() {
+        val s = LicenseLogic.startDemo(State(), now)
+        assertEquals(now, s.demoStartedAt)
+        assertTrue(LicenseLogic.isDemoActive(s, now))
     }
 
-    @Test
-    fun keyInputIsNormalizedBeforeHashing() {
+    @Test fun startDemoIsIdempotent() {
+        val s1 = LicenseLogic.startDemo(State(), now)
+        val s2 = LicenseLogic.startDemo(s1, now + 10 * day)
+        assertEquals(s1.demoStartedAt, s2.demoStartedAt)
+    }
+
+    @Test fun demoActiveWithinThreeDays() {
+        val s = LicenseLogic.startDemo(State(), now)
+        assertEquals(AppState.DEMO, LicenseLogic.resolve(s, VerifyOutcome.UNVERIFIED, now + 2 * day))
+    }
+
+    @Test fun demoExpiresAfterThreeDays() {
+        val s = LicenseLogic.startDemo(State(), now)
+        assertEquals(AppState.DEMO_EXPIRED, LicenseLogic.resolve(s, VerifyOutcome.UNVERIFIED, now + 3 * day))
+    }
+
+    @Test fun demoDaysLeftCountsDown() {
+        val s = LicenseLogic.startDemo(State(), now)
+        assertEquals(3, LicenseLogic.demoDaysLeft(s, now))
+        assertEquals(1, LicenseLogic.demoDaysLeft(s, now + 2 * day + 1))
+        assertEquals(0, LicenseLogic.demoDaysLeft(s, now + 3 * day))
+    }
+
+    @Test fun clockRollbackLocksDemo() {
+        val started = LicenseLogic.startDemo(State(), now)
+        val seen = LicenseLogic.touch(started, now + day)
+        assertFalse(LicenseLogic.isDemoActive(seen, now - day))
+        assertTrue(LicenseLogic.isDemoActive(seen, now + day + 1000))
+    }
+
+    // ---- subscription ----
+
+    private fun subState(verifiedAt: Long) =
+        State(subscriptionKey = "KEY", lastVerifiedAt = verifiedAt, lastSeenAt = verifiedAt)
+
+    @Test fun activeSubscriptionEnters() {
         assertEquals(
-            LicenseLogic.hashKey(demoKey),
-            LicenseLogic.hashKey("  564fff1l7ehnzoak3fez  ")
+            AppState.SUBSCRIPTION_ACTIVE,
+            LicenseLogic.resolve(subState(now), VerifyOutcome.ACTIVE, now),
         )
     }
 
-    @Test
-    fun perpetualKeyActivatesForever() {
-        val (state, result) = LicenseLogic.activate(LicenseLogic.State(), perpetualKey, now)
-        assertEquals(LicenseLogic.Activation.Perpetual, result)
-        assertTrue(LicenseLogic.isLicensed(state, now))
-        assertTrue(LicenseLogic.isLicensed(state, now + 10_000 * day))
+    @Test fun endedSubscriptionBlocks() {
+        assertEquals(
+            AppState.SUBSCRIPTION_EXPIRED,
+            LicenseLogic.resolve(subState(now), VerifyOutcome.ENDED, now),
+        )
     }
 
-    @Test
-    fun demoKeyActivatesThreeDays() {
-        val (state, result) = LicenseLogic.activate(LicenseLogic.State(), demoKey, now)
-        assertEquals(LicenseLogic.Activation.Demo(now + 3 * day), result)
-        assertTrue(LicenseLogic.isLicensed(state, now))
-        assertTrue(LicenseLogic.isLicensed(state, now + 2 * day))
-        assertFalse(LicenseLogic.isLicensed(state, now + 3 * day))
-        assertFalse(LicenseLogic.isLicensed(state, now + 30 * day))
+    @Test fun offlineWithinGraceEnters() {
+        assertEquals(
+            AppState.SUBSCRIPTION_ACTIVE,
+            LicenseLogic.resolve(subState(now), VerifyOutcome.UNVERIFIED, now + 2 * day),
+        )
     }
 
-    @Test
-    fun demoKeyIsBurnedAfterFirstUseOnSameDevice() {
-        val (afterDemo, _) = LicenseLogic.activate(LicenseLogic.State(), demoKey, now)
-        val expired = now + 4 * day
-        assertFalse(LicenseLogic.isLicensed(afterDemo, expired))
-        val (state2, result2) = LicenseLogic.activate(afterDemo, demoKey, expired)
-        assertEquals(LicenseLogic.Activation.DemoAlreadyUsed, result2)
-        assertFalse(LicenseLogic.isLicensed(state2, expired))
+    @Test fun offlineAtGraceLimitStillEnters() {
+        assertEquals(
+            AppState.SUBSCRIPTION_ACTIVE,
+            LicenseLogic.resolve(subState(now), VerifyOutcome.UNVERIFIED, now + 3 * day),
+        )
     }
 
-    @Test
-    fun perpetualKeyStillWorksAfterDemoExpired() {
-        val (afterDemo, _) = LicenseLogic.activate(LicenseLogic.State(), demoKey, now)
-        val expired = now + 4 * day
-        val (state2, result2) = LicenseLogic.activate(afterDemo, perpetualKey, expired)
-        assertEquals(LicenseLogic.Activation.Perpetual, result2)
-        assertTrue(LicenseLogic.isLicensed(state2, expired))
+    @Test fun offlineBeyondGraceNeedsConnection() {
+        assertEquals(
+            AppState.NEEDS_CONNECTION,
+            LicenseLogic.resolve(subState(now), VerifyOutcome.UNVERIFIED, now + 3 * day + 1),
+        )
     }
 
-    @Test
-    fun invalidKeyRejectedAndStateUntouched() {
-        val initial = LicenseLogic.State()
-        val (state, result) = LicenseLogic.activate(initial, "CLAVE-FALSA-123", now)
-        assertEquals(LicenseLogic.Activation.Invalid, result)
-        assertEquals(initial, state)
-        assertFalse(LicenseLogic.isLicensed(state, now))
+    @Test fun offlineWithoutAnyVerificationNeedsConnection() {
+        val s = State(subscriptionKey = "KEY", lastVerifiedAt = 0L)
+        assertEquals(
+            AppState.NEEDS_CONNECTION,
+            LicenseLogic.resolve(s, VerifyOutcome.UNVERIFIED, now),
+        )
     }
 
-    @Test
-    fun clockRollbackLocksDemo() {
-        val (state, _) = LicenseLogic.activate(LicenseLogic.State(), demoKey, now)
-        val seen = LicenseLogic.touch(state, now + day)
-        // user moves the clock one day back: demo must lock
-        assertFalse(LicenseLogic.isLicensed(seen, now - day))
-        // normal forward time still fine
-        assertTrue(LicenseLogic.isLicensed(seen, now + day + 1000))
-    }
-
-    @Test
-    fun demoDaysLeftCountsDown() {
-        val (state, _) = LicenseLogic.activate(LicenseLogic.State(), demoKey, now)
-        assertEquals(3, LicenseLogic.demoDaysLeft(state, now))
-        assertEquals(1, LicenseLogic.demoDaysLeft(state, now + 2 * day + 1))
-        assertEquals(0, LicenseLogic.demoDaysLeft(state, now + 3 * day))
+    @Test fun clockRollbackBlocksGrace() {
+        val s = LicenseLogic.touch(subState(now), now + 2 * day)
+        assertEquals(
+            AppState.NEEDS_CONNECTION,
+            LicenseLogic.resolve(s, VerifyOutcome.UNVERIFIED, now - day),
+        )
     }
 }

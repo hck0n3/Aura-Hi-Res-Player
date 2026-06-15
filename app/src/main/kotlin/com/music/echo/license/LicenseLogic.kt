@@ -1,46 +1,55 @@
 package iad1tya.echo.music.license
 
-import java.security.MessageDigest
-
 /**
- * Pure licensing rules for JR MUSIC PRO. No Android dependencies so the whole
- * state machine is unit-testable. Keys are embedded as SHA-256 hashes only.
+ * Pure licensing rules for JR MUSIC PRO. No Android dependencies so the whole state machine is
+ * unit-testable. The app boots in a keyless 3-day demo; a Gumroad subscription is re-verified online
+ * on each open, with a 3-day offline grace window.
  */
 object LicenseLogic {
 
-    const val DEMO_KEY_HASH = "345b202209a766873deb1be6fac50978701f1985f6d3b5e0e2e8645fd2fbffbd"
-    const val PERPETUAL_KEY_HASH = "fd3fb55e07dc01ee00d298f44511008e7e2e414886f67cc1a64ca1ee93b67a93"
-
+    /** Demo lasts 3 days from the moment the user taps "Probar gratis". */
     const val DEMO_DURATION_MS = 3L * 24 * 60 * 60 * 1000
 
-    /** Small grace so timezone hops don't lock a legit demo, but day-scale rollbacks do. */
+    /** How long the app keeps working without a fresh successful online verification. */
+    const val OFFLINE_GRACE_MS = 3L * 24 * 60 * 60 * 1000
+
+    /** Small tolerance so timezone hops don't lock a legit user; day-scale rollbacks do. */
     private const val CLOCK_ROLLBACK_TOLERANCE_MS = 5L * 60 * 1000
 
     data class State(
-        val perpetual: Boolean = false,
-        val demoUsed: Boolean = false,
+        val subscriptionKey: String? = null,
+        val lastVerifiedAt: Long = 0L,
         val demoStartedAt: Long = 0L,
         val lastSeenAt: Long = 0L,
     )
 
-    sealed class Activation {
-        data object Perpetual : Activation()
-        data class Demo(val expiresAt: Long) : Activation()
-        data object DemoAlreadyUsed : Activation()
-        data object Invalid : Activation()
+    /** Simplified result of an already-performed online verification. */
+    enum class VerifyOutcome { ACTIVE, ENDED, UNVERIFIED }
+
+    enum class AppState {
+        FIRST_RUN, DEMO, DEMO_EXPIRED,
+        SUBSCRIPTION_ACTIVE, SUBSCRIPTION_EXPIRED, NEEDS_CONNECTION,
     }
 
-    fun hashKey(raw: String): String =
-        MessageDigest.getInstance("SHA-256")
-            .digest(raw.trim().uppercase().toByteArray(Charsets.UTF_8))
-            .joinToString(separator = "") { "%02x".format(it) }
+    fun touch(state: State, now: Long): State =
+        state.copy(lastSeenAt = maxOf(state.lastSeenAt, now))
 
-    fun isLicensed(state: State, now: Long): Boolean =
-        state.perpetual || isDemoActive(state, now)
+    fun startDemo(state: State, now: Long): State =
+        if (state.demoStartedAt > 0L) state
+        else state.copy(demoStartedAt = now, lastSeenAt = maxOf(state.lastSeenAt, now))
 
-    private fun isDemoActive(state: State, now: Long): Boolean =
-        state.demoUsed &&
-            state.demoStartedAt > 0L &&
+    fun withVerifiedNow(state: State, now: Long): State =
+        state.copy(lastVerifiedAt = now, lastSeenAt = maxOf(state.lastSeenAt, now))
+
+    fun withSubscriptionKey(state: State, key: String, now: Long): State =
+        state.copy(
+            subscriptionKey = key,
+            lastVerifiedAt = now,
+            lastSeenAt = maxOf(state.lastSeenAt, now),
+        )
+
+    fun isDemoActive(state: State, now: Long): Boolean =
+        state.demoStartedAt > 0L &&
             now + CLOCK_ROLLBACK_TOLERANCE_MS >= state.lastSeenAt &&
             now < state.demoStartedAt + DEMO_DURATION_MS
 
@@ -51,26 +60,26 @@ object LicenseLogic {
         return ((remaining + day - 1) / day).toInt()
     }
 
-    /** Records the latest time the app was seen running, to detect clock rollbacks. */
-    fun touch(state: State, now: Long): State =
-        state.copy(lastSeenAt = maxOf(state.lastSeenAt, now))
+    private fun withinGrace(state: State, now: Long): Boolean =
+        state.lastVerifiedAt > 0L &&
+            now + CLOCK_ROLLBACK_TOLERANCE_MS >= state.lastSeenAt &&
+            now - state.lastVerifiedAt <= OFFLINE_GRACE_MS
 
-    fun activate(state: State, key: String, now: Long): Pair<State, Activation> =
-        when (hashKey(key)) {
-            PERPETUAL_KEY_HASH ->
-                state.copy(perpetual = true) to Activation.Perpetual
-
-            DEMO_KEY_HASH ->
-                if (state.demoUsed) {
-                    state to Activation.DemoAlreadyUsed
-                } else {
-                    state.copy(
-                        demoUsed = true,
-                        demoStartedAt = now,
-                        lastSeenAt = now,
-                    ) to Activation.Demo(now + DEMO_DURATION_MS)
-                }
-
-            else -> state to Activation.Invalid
+    /** Final decision given the (already obtained) verification outcome. */
+    fun resolve(state: State, outcome: VerifyOutcome, now: Long): AppState {
+        if (state.subscriptionKey != null) {
+            return when (outcome) {
+                VerifyOutcome.ACTIVE -> AppState.SUBSCRIPTION_ACTIVE
+                VerifyOutcome.ENDED -> AppState.SUBSCRIPTION_EXPIRED
+                VerifyOutcome.UNVERIFIED ->
+                    if (withinGrace(state, now)) AppState.SUBSCRIPTION_ACTIVE
+                    else AppState.NEEDS_CONNECTION
+            }
         }
+        return when {
+            isDemoActive(state, now) -> AppState.DEMO
+            state.demoStartedAt > 0L -> AppState.DEMO_EXPIRED
+            else -> AppState.FIRST_RUN
+        }
+    }
 }
