@@ -14,7 +14,9 @@ class EqConstantsTest {
         assertEquals(24, EqConstants.FREQUENCY_LABELS.size)
         assertEquals(20.0, EqConstants.FREQUENCIES.first(), 0.001)
         assertEquals(20000.0, EqConstants.FREQUENCIES.last(), 0.001)
-        assertEquals(440.0, EqConstants.FREQUENCIES[8], 0.001)
+        // ISO 1/3-octave centers: index 8 = 315 Hz, index 11 = 1 kHz reference.
+        assertEquals(315.0, EqConstants.FREQUENCIES[8], 0.001)
+        assertEquals(1000.0, EqConstants.FREQUENCIES[11], 0.001)
         assertEquals(4.318, EqConstants.Q, 0.0001)
     }
 
