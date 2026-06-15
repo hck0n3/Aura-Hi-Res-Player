@@ -378,6 +378,13 @@ fun LibraryMixScreen(
                                 )
                             }
                             AutoPlaylistButton(
+                                title = stringResource(R.string.favorite_albums),
+                                icon = R.drawable.album,
+                                iconTint = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
+                                onClick = { navController.navigate("favorite_albums") },
+                                modifier = itemModifier
+                            )
+                            AutoPlaylistButton(
                                 title = stringResource(R.string.filter_local),
                                 icon = R.drawable.snippet_folder,
                                 iconTint = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
@@ -636,6 +643,13 @@ fun LibraryMixScreen(
                                     modifier = itemModifier
                                 )
                             }
+                            AutoPlaylistButton(
+                                title = stringResource(R.string.favorite_albums),
+                                icon = R.drawable.album,
+                                iconTint = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
+                                onClick = { navController.navigate("favorite_albums") },
+                                modifier = itemModifier
+                            )
                             AutoPlaylistButton(
                                 title = stringResource(R.string.filter_local),
                                 icon = R.drawable.snippet_folder,

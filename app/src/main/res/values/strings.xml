@@ -67,6 +67,7 @@
     <string name="library_song_empty">Library songs will show up here</string>
     <string name="library_artist_empty">Library artists will show up here</string>
     <string name="library_album_empty">Library albums will show up here</string>
+    <string name="favorite_albums">Favorite albums</string>
     <string name="library_playlist_empty">Your playlists will show up here</string>
 
     <!-- Artist screen -->
