@@ -26,16 +26,21 @@ export default {
     if (gum === "error") return json({ status: "error" }); // upstream down -> app uses offline grace
 
     // gum === "active": apply device binding
-    const now = Date.now();
-    const raw = await env.LICENSES.get(licenseKey);
-    const binding = raw ? JSON.parse(raw) : null;
-    const owned = !binding || binding.device_id === deviceId;
-    const released = binding && now - binding.last_seen > INACTIVITY_MS;
-    if (owned || released) {
-      await env.LICENSES.put(licenseKey, JSON.stringify({ device_id: deviceId, last_seen: now }));
-      return json({ status: "active" });
+    try {
+      const now = Date.now();
+      const raw = await env.LICENSES.get(licenseKey);
+      const binding = raw ? JSON.parse(raw) : null;
+      const owned = !binding || binding.device_id === deviceId;
+      const released = binding && now - binding.last_seen > INACTIVITY_MS;
+      if (owned || released) {
+        await env.LICENSES.put(licenseKey, JSON.stringify({ device_id: deviceId, last_seen: now }));
+        return json({ status: "active" });
+      }
+      return json({ status: "device_mismatch" });
+    } catch (e) {
+      // KV unavailable / corrupted entry -> degrade gracefully so the app uses offline grace.
+      return json({ status: "error" });
     }
-    return json({ status: "device_mismatch" });
   },
 };
 
