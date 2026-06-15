@@ -219,6 +219,8 @@
     <string name="release_radar_title">Novedades</string>
     <string name="release_radar_notification">Novedades de tus artistas seguidos</string>
     <string name="release_radar_channel_name">Novedades</string>
+    <string name="release_radar_refreshing">Actualizando…</string>
+    <string name="release_radar_empty">Aún no hay novedades</string>
     <string name="integrations">Integraciones</string>
     <string name="username">Nombre de usuario</string>
     <string name="password">Contraseña</string>

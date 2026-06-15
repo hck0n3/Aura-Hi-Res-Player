@@ -27,6 +27,7 @@ import iad1tya.echo.music.ui.screens.artist.ArtistItemsScreen
 import iad1tya.echo.music.ui.screens.artist.ArtistScreen
 import iad1tya.echo.music.ui.screens.artist.ArtistSongsScreen
 import iad1tya.echo.music.ui.screens.library.FavoriteAlbumsScreen
+import iad1tya.echo.music.ui.screens.library.ReleaseRadarScreen
 import iad1tya.echo.music.ui.screens.library.LibraryScreen
 import iad1tya.echo.music.ui.screens.library.LocalSongScreen
 import iad1tya.echo.music.ui.screens.playlist.AutoPlaylistScreen
@@ -118,6 +119,10 @@ fun NavGraphBuilder.navigationBuilder(
 
     composable("favorite_albums") {
         FavoriteAlbumsScreen(navController)
+    }
+
+    composable("release_radar") {
+        ReleaseRadarScreen(navController)
     }
 
     composable("stats") {

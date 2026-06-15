@@ -351,6 +351,8 @@
     <string name="release_radar_title">New releases</string>
     <string name="release_radar_notification">New releases from your artists</string>
     <string name="release_radar_channel_name">Release radar</string>
+    <string name="release_radar_refreshing">Refreshing…</string>
+    <string name="release_radar_empty">No new releases yet</string>
 
     <!-- Offload -->
     <string name="audio_offload">Enable offload</string>
