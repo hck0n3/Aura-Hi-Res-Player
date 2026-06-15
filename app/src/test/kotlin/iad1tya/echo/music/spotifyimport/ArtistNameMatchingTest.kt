@@ -19,4 +19,14 @@ class ArtistNameMatchingTest {
     @Test fun rejectsDifferentArtists() {
         assertFalse(ArtistNameMatching.isLikelyMatch("Drake", "Drizzy XYZ"))
     }
+
+    @Test fun rejectsShortSubstringFalsePositive() {
+        assertFalse(ArtistNameMatching.isLikelyMatch("Eve", "Steve"))
+        assertFalse(ArtistNameMatching.isLikelyMatch("Pink", "Pinkpantheress"))
+    }
+
+    @Test fun matchesArtistWithTopicOrVevoSuffix() {
+        assertTrue(ArtistNameMatching.isLikelyMatch("The Weeknd", "The Weeknd - Topic"))
+        assertTrue(ArtistNameMatching.isLikelyMatch("Drake", "Drake"))
+    }
 }

@@ -612,7 +612,21 @@ class SpotifyImportRepository @Inject constructor(
             .firstOrNull { ArtistNameMatching.isLikelyMatch(spotifyArtist.name, it.title) }
             ?: return false
 
-        val channelId = match.channelId ?: match.id
+        // Resolve the real channel id the same way SyncUtils does: search-result
+        // ArtistItems carry channelId == null and a browse id that is often not a
+        // channel id, so subscribeChannel() would silently no-op on it. Prefer the
+        // explicit channelId, then a browse id that already looks like a channel id
+        // ("UC..."), otherwise resolve it via YouTube.getChannelId (returns "" on
+        // failure). Stay tolerant: on any failure we still bookmark locally below.
+        val channelId = match.channelId
+            ?: if (match.id.startsWith("UC")) {
+                match.id
+            } else {
+                runCatching { YouTube.getChannelId(match.id) }
+                    .getOrNull()
+                    ?.takeIf { it.isNotEmpty() }
+                    ?: ""
+            }
         val thumbnail = match.thumbnail
         val existing = database.artist(match.id).first()?.artist
 

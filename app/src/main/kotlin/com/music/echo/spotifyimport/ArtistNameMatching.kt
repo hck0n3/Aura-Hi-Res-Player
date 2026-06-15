@@ -27,6 +27,9 @@ object ArtistNameMatching {
         val na = normalize(a)
         val nb = normalize(b)
         if (na.isEmpty() || nb.isEmpty()) return false
-        return na == nb || na.contains(nb) || nb.contains(na)
+        if (na == nb) return true
+        val (short, long) = if (na.length <= nb.length) na to nb else nb to na
+        // accept substring only on word boundaries: "the weeknd" in "the weeknd topic" but NOT "eve" in "steve"
+        return Regex("(^| )" + Regex.escape(short) + "( |$)").containsMatchIn(long)
     }
 }
