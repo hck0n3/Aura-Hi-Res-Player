@@ -35,6 +35,11 @@ class GumroadVerifyTest {
         assertEquals(GumroadVerify.Result.ACTIVE, GumroadVerify.interpret(body))
     }
 
+    @Test fun activeWhenPurchaseIsJsonNull() {
+        val body = """{"success":true,"purchase":null}"""
+        assertEquals(GumroadVerify.Result.ACTIVE, GumroadVerify.interpret(body))
+    }
+
     @Test fun invalidKeyWhenSuccessFalse() {
         val body = """{"success":false,"message":"That license does not exist for the provided product."}"""
         assertEquals(GumroadVerify.Result.INVALID_KEY, GumroadVerify.interpret(body))

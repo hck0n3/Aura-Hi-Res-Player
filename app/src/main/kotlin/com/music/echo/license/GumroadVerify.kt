@@ -2,6 +2,7 @@ package iad1tya.echo.music.license
 
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -23,7 +24,7 @@ object GumroadVerify {
             if (!success) {
                 Result.INVALID_KEY
             } else {
-                val purchase = root["purchase"]?.jsonObject
+                val purchase = root["purchase"]?.takeIf { it !is JsonNull }?.jsonObject
                 if (purchase == null) {
                     Result.ACTIVE
                 } else {
