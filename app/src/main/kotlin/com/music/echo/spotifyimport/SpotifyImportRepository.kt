@@ -697,16 +697,15 @@ class SpotifyImportRepository @Inject constructor(
 
             val libraryNow = LocalDateTime.now()
             tracks.forEach { metadata ->
-                // For new songs: insert with inLibrary already set.
-                // insert(MediaMetadata) returns early (does nothing more) when the song
-                // already exists (OnConflictStrategy.IGNORE returns -1L). So we also
-                // handle the existing-song case via a conditional update below.
-                insert(metadata) { song ->
-                    song.copy(inLibrary = song.inLibrary ?: libraryNow)
-                }
-                // For songs that already existed in the DB: set inLibrary only if null.
+                // Read once: branch on existence to avoid a redundant SELECT per song.
                 val existing = getSongByIdBlocking(metadata.id)?.song
-                if (existing != null && existing.inLibrary == null) {
+                if (existing == null) {
+                    // New song: insert (also links artists) with inLibrary already set.
+                    insert(metadata) { song ->
+                        song.copy(inLibrary = libraryNow)
+                    }
+                } else if (existing.inLibrary == null) {
+                    // Existing song without inLibrary: stamp it now.
                     update(existing.copy(inLibrary = libraryNow))
                 }
             }
