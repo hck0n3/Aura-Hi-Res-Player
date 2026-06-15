@@ -337,12 +337,11 @@ class EchoMusicWidgetManager @Inject constructor(
     ): RemoteViews {
         val views = RemoteViews(context.packageName, R.layout.widget_turntable)
 
-        // Set circular album art - create circular default icon if no album art
+        // Set circular album art - show empty vinyl disc when no track is loaded
         if (circularAlbumArt != null) {
             views.setImageViewBitmap(R.id.widget_turntable_album_art, circularAlbumArt)
         } else {
-            // Load and make the default icon circular
-            views.setImageViewBitmap(R.id.widget_turntable_album_art, getCircularDefaultIcon())
+            views.setImageViewResource(R.id.widget_turntable_album_art, R.drawable.widget_vinyl_empty)
         }
 
         // Set play/pause icon - using secondary color icons for turntable
@@ -356,17 +355,6 @@ class EchoMusicWidgetManager @Inject constructor(
         views.setOnClickPendingIntent(R.id.widget_turntable_next_button, getTurntableNextIntent())
 
         return views
-    }
-    
-    private fun getCircularDefaultIcon(): Bitmap {
-        // Load the custom turntable default art drawable and convert to bitmap
-        val drawable = context.getDrawable(R.drawable.widget_turntable_default_art)!!
-        val size = 300
-        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bitmap)
-        drawable.setBounds(0, 0, size, size)
-        drawable.draw(canvas)
-        return bitmap
     }
     
     private fun getRoundedDefaultIcon(cornerRadius: Float): Bitmap {

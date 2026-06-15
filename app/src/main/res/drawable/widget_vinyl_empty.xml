@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Empty vinyl disc shown in the turntable widget when nothing is playing -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Outer black disc -->
+    <item>
+        <shape android:shape="oval">
+            <solid android:color="#1A1A1A" />
+        </shape>
+    </item>
+
+    <!-- Groove ring 1 (outermost) -->
+    <item
+        android:left="16dp"
+        android:top="16dp"
+        android:right="16dp"
+        android:bottom="16dp">
+        <shape android:shape="oval">
+            <stroke
+                android:width="1dp"
+                android:color="#333333" />
+            <solid android:color="#00000000" />
+        </shape>
+    </item>
+
+    <!-- Groove ring 2 -->
+    <item
+        android:left="40dp"
+        android:top="40dp"
+        android:right="40dp"
+        android:bottom="40dp">
+        <shape android:shape="oval">
+            <stroke
+                android:width="1dp"
+                android:color="#333333" />
+            <solid android:color="#00000000" />
+        </shape>
+    </item>
+
+    <!-- Groove ring 3 (innermost groove) -->
+    <item
+        android:left="64dp"
+        android:top="64dp"
+        android:right="64dp"
+        android:bottom="64dp">
+        <shape android:shape="oval">
+            <stroke
+                android:width="1dp"
+                android:color="#333333" />
+            <solid android:color="#00000000" />
+        </shape>
+    </item>
+
+    <!-- Center label (red circle) -->
+    <item
+        android:left="86dp"
+        android:top="86dp"
+        android:right="86dp"
+        android:bottom="86dp">
+        <shape android:shape="oval">
+            <solid android:color="#C0392B" />
+        </shape>
+    </item>
+
+    <!-- Spindle hole (tiny black dot) -->
+    <item
+        android:left="120dp"
+        android:top="120dp"
+        android:right="120dp"
+        android:bottom="120dp">
+        <shape android:shape="oval">
+            <solid android:color="#1A1A1A" />
+        </shape>
+    </item>
+
+</layer-list>
