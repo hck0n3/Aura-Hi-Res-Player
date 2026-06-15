@@ -428,4 +428,6 @@
     <string name="status_checking">Checking…</string>
     <string name="music_providers">Music Providers</string>
     <string name="canvas_providers">Canvas Providers</string>
+    <string name="voice_search">Voice search</string>
+    <string name="voice_search_unavailable">Voice recognition not available on this device</string>
 </resources>

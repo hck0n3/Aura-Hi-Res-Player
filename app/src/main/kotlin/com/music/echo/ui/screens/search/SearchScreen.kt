@@ -93,6 +93,15 @@ import iad1tya.echo.music.ui.screens.search.suggestions.SuggestionsTabContent
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.net.URLEncoder
+import android.speech.RecognizerIntent
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextRange
+import java.util.Locale
 import androidx.compose.runtime.collectAsState
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.compose.ui.text.style.TextOverflow
@@ -238,6 +247,21 @@ fun SearchScreen(
         }
     }
 
+    val context = LocalContext.current
+    val voiceLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val spoken = result.data
+            ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+            ?.firstOrNull()
+            ?.trim()
+        if (!spoken.isNullOrEmpty()) {
+            query = TextFieldValue(spoken, TextRange(spoken.length))
+            searchActive = true
+            onSearch(spoken)
+        }
+    }
+
     Scaffold(
         topBar = {
             Column(
@@ -296,7 +320,27 @@ fun SearchScreen(
                             }
                             IconButton(
                                 onClick = {
-                                    searchSource = if (searchSource == SearchSource.ONLINE) 
+                                    try {
+                                        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                                            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                                            putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
+                                            putExtra(RecognizerIntent.EXTRA_PROMPT, context.getString(R.string.voice_search))
+                                        }
+                                        voiceLauncher.launch(intent)
+                                    } catch (e: ActivityNotFoundException) {
+                                        Toast.makeText(context, R.string.voice_search_unavailable, Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_search_mic),
+                                    contentDescription = stringResource(R.string.voice_search),
+                                    tint = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                            IconButton(
+                                onClick = {
+                                    searchSource = if (searchSource == SearchSource.ONLINE)
                                         SearchSource.LOCAL else SearchSource.ONLINE
                                 }
                             ) {

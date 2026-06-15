@@ -375,4 +375,6 @@
     <string name="status_checking">Comprobando…</string>
     <string name="music_providers">Proveedores de música</string>
     <string name="canvas_providers">Proveedores de Canvas</string>
+    <string name="voice_search">Búsqueda por voz</string>
+    <string name="voice_search_unavailable">Reconocimiento de voz no disponible en este dispositivo</string>
 </resources>
