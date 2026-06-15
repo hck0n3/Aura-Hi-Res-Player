@@ -964,11 +964,18 @@ class SyncUtils @Inject constructor(
 
                     Timber.d("syncPlaylist: Updating local playlist (remote: ${remoteIds.size}, local: ${localIds.size})")
 
+                    val libraryNow = LocalDateTime.now()
                     database.withTransaction {
                         database.clearPlaylist(playlistId)
                         songs.forEachIndexed { idx, song ->
                             if (database.song(song.id).firstOrNull() == null) {
                                 database.insert(song)
+                            }
+                            // Set inLibrary on songs that don't have it yet so they
+                            // surface in Library → Songs (WHERE inLibrary IS NOT NULL).
+                            val existing = database.getSongByIdBlocking(song.id)?.song
+                            if (existing != null && existing.inLibrary == null) {
+                                database.update(existing.copy(inLibrary = libraryNow))
                             }
                             database.insert(
                                 PlaylistSongMap(
