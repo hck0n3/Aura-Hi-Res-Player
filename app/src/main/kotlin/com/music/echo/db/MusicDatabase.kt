@@ -31,6 +31,7 @@ import iad1tya.echo.music.db.entities.PlaylistSongMap
 import iad1tya.echo.music.db.entities.PlaylistSongMapPreview
 import iad1tya.echo.music.db.entities.RecognitionHistory
 import iad1tya.echo.music.db.entities.RelatedSongMap
+import iad1tya.echo.music.db.entities.ReleaseRadarItem
 import iad1tya.echo.music.db.entities.SearchHistory
 import iad1tya.echo.music.db.entities.SetVideoIdEntity
 import iad1tya.echo.music.db.entities.SongAlbumMap
@@ -103,14 +104,15 @@ class MusicDatabase(
         SetVideoIdEntity::class,
         PlayCountEntity::class,
         RecognitionHistory::class,
-        SpeedDialItem::class
+        SpeedDialItem::class,
+        ReleaseRadarItem::class
     ],
     views = [
         SortedSongArtistMap::class,
         SortedSongAlbumMap::class,
         PlaylistSongMapPreview::class,
     ],
-    version = 35,
+    version = 36,
     exportSchema = true,
     autoMigrations = [
         AutoMigration(from = 2, to = 3),
@@ -146,6 +148,7 @@ class MusicDatabase(
         AutoMigration(from = 32, to = 33),
         AutoMigration(from = 33, to = 34),
         AutoMigration(from = 34, to = 35),
+        AutoMigration(from = 35, to = 36),
     ],
 )
 @TypeConverters(Converters::class)

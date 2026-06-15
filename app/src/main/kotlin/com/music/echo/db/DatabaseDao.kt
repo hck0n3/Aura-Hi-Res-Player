@@ -40,6 +40,7 @@ import iad1tya.echo.music.db.entities.PlaylistSong
 import iad1tya.echo.music.db.entities.PlaylistSongMap
 import iad1tya.echo.music.db.entities.RecognitionHistory
 import iad1tya.echo.music.db.entities.RelatedSongMap
+import iad1tya.echo.music.db.entities.ReleaseRadarItem
 import iad1tya.echo.music.db.entities.SearchHistory
 import iad1tya.echo.music.db.entities.SetVideoIdEntity
 import iad1tya.echo.music.db.entities.Song
@@ -1586,6 +1587,21 @@ interface DatabaseDao {
 
     @Delete
     fun delete(event: Event)
+
+    @Upsert
+    suspend fun upsertReleases(items: List<ReleaseRadarItem>)
+
+    @Query("SELECT * FROM release_radar ORDER BY releaseDate DESC")
+    fun releasesByDateDesc(): Flow<List<ReleaseRadarItem>>
+
+    @Query("UPDATE release_radar SET seen = 1 WHERE seen = 0")
+    suspend fun markAllReleasesSeen()
+
+    @Query("DELETE FROM release_radar")
+    suspend fun clearReleases()
+
+    @Query("SELECT COUNT(*) FROM release_radar WHERE seen = 0")
+    fun unseenReleaseCount(): Flow<Int>
 
     @Transaction
     @Query("SELECT * FROM playlist_song_map WHERE songId = :songId")
