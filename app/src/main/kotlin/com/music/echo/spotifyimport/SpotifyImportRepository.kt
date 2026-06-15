@@ -29,15 +29,18 @@ import iad1tya.echo.music.constants.SpotifyAccountNameKey
 import iad1tya.echo.music.constants.SpotifySpDcKey
 import iad1tya.echo.music.constants.SpotifySpKeyKey
 import iad1tya.echo.music.db.MusicDatabase
+import iad1tya.echo.music.db.entities.ArtistEntity
 import iad1tya.echo.music.db.entities.PlaylistEntity
 import iad1tya.echo.music.db.entities.PlaylistSongMap
 import com.music.innertube.YouTube
+import com.music.innertube.models.ArtistItem
 import com.music.innertube.models.SongItem
 import iad1tya.echo.music.models.MediaMetadata
 import iad1tya.echo.music.models.toMediaMetadata
 import iad1tya.echo.music.spotify.Spotify
 import iad1tya.echo.music.spotify.SpotifyAuth
 import iad1tya.echo.music.spotify.SpotifyMapper
+import iad1tya.echo.music.spotify.models.SpotifyArtist
 import iad1tya.echo.music.spotify.models.SpotifyPlaylist
 import iad1tya.echo.music.spotify.models.SpotifyPlaylistTracksRef
 import iad1tya.echo.music.spotify.models.SpotifyTrack
@@ -143,6 +146,9 @@ class SpotifyImportRepository @Inject constructor(
             val likedSongs = spotifyCallWithTokenRetry {
                 Spotify.likedSongs(limit = 1, offset = 0).getOrThrow()
             }
+            val followedArtistCount = spotifyCallWithTokenRetry {
+                Spotify.myArtists(limit = 1, offset = 0).getOrThrow()
+            }.total
             val playlists = fetchAllPlaylists()
 
             buildList {
@@ -152,6 +158,14 @@ class SpotifyImportRepository @Inject constructor(
                         trackCount = likedSongs.total,
                     ),
                 )
+                if (followedArtistCount > 0) {
+                    add(
+                        SpotifyImportSource.FollowedArtists(
+                            title = context.getString(R.string.spotify_followed_artists),
+                            artistCount = followedArtistCount,
+                        ),
+                    )
+                }
                 playlists.forEach { playlist ->
                     if (playlist.id.isNotBlank()) {
                         add(SpotifyImportSource.Playlist(playlist))
@@ -179,6 +193,16 @@ class SpotifyImportRepository @Inject constructor(
                         percent = progressPercent(sourceIndex, sources.size, 0, source.trackCount ?: 0),
                     ),
                 )
+
+                if (source is SpotifyImportSource.FollowedArtists) {
+                    summaries += importFollowedArtists(
+                        sourceIndex = sourceIndex,
+                        sourceCount = sources.size,
+                        source = source,
+                        onProgress = onProgress,
+                    )
+                    return@forEachIndexed
+                }
 
                 val tracks = fetchAllTracks(source)
                 if (tracks.isEmpty()) {
@@ -360,6 +384,9 @@ class SpotifyImportRepository @Inject constructor(
                             total = paging.total,
                         )
                     }
+                    // Followed artists are imported via importFollowedArtists() in the
+                    // importSources() loop and never reach this track-based path.
+                    is SpotifyImportSource.FollowedArtists -> return emptyList()
                 }
 
             if (page.items.isEmpty()) break
@@ -459,6 +486,170 @@ class SpotifyImportRepository @Inject constructor(
         } ?: return null
 
         return MatchedTrack(index = index, metadata = best.toMediaMetadata())
+    }
+
+    // ── Followed artists ────────────────────────────────────────────────
+
+    /**
+     * Imports the user's followed Spotify artists: for each one, finds the best
+     * matching YouTube Music artist, bookmarks it locally and subscribes the
+     * channel on YouTube. Reports progress per artist and returns a summary where
+     * "imported" = successfully matched + bookmarked artists.
+     */
+    private suspend fun importFollowedArtists(
+        sourceIndex: Int,
+        sourceCount: Int,
+        source: SpotifyImportSource.FollowedArtists,
+        onProgress: (SpotifyImportProgressUi) -> Unit,
+    ): SpotifyImportSourceSummaryUi {
+        val artists = fetchAllFollowedArtists()
+        if (artists.isEmpty()) {
+            onProgress(
+                SpotifyImportProgressUi(
+                    sourceTitle = source.title,
+                    completedSources = sourceIndex + 1,
+                    totalSources = sourceCount,
+                    matchedTracks = 0,
+                    totalTracks = 0,
+                    percent = progressPercent(sourceIndex + 1, sourceCount, 0, 0),
+                ),
+            )
+            return SpotifyImportSourceSummaryUi(
+                title = source.title,
+                totalTracks = 0,
+                importedTracks = 0,
+                failedTracks = 0,
+            )
+        }
+
+        val completed = AtomicInteger(0)
+        val imported = AtomicInteger(0)
+        coroutineScope {
+            val semaphore = Semaphore(MAX_CONCURRENT_MATCHES)
+            artists.map { artist ->
+                async {
+                    semaphore.withPermit {
+                        val followed =
+                            try {
+                                matchAndFollowArtist(artist)
+                            } catch (error: CancellationException) {
+                                throw error
+                            } catch (error: Throwable) {
+                                reportException(error)
+                                false
+                            }
+                        if (followed) imported.incrementAndGet()
+                        val completedCount = completed.incrementAndGet()
+                        onProgress(
+                            SpotifyImportProgressUi(
+                                sourceTitle = source.title,
+                                completedSources = sourceIndex,
+                                totalSources = sourceCount,
+                                matchedTracks = completedCount,
+                                totalTracks = artists.size,
+                                percent = progressPercent(sourceIndex, sourceCount, completedCount, artists.size),
+                            ),
+                        )
+                    }
+                }
+            }.awaitAll()
+        }
+
+        onProgress(
+            SpotifyImportProgressUi(
+                sourceTitle = source.title,
+                completedSources = sourceIndex + 1,
+                totalSources = sourceCount,
+                matchedTracks = imported.get(),
+                totalTracks = artists.size,
+                percent = progressPercent(sourceIndex + 1, sourceCount, 0, 0),
+            ),
+        )
+
+        return SpotifyImportSourceSummaryUi(
+            title = source.title,
+            totalTracks = artists.size,
+            importedTracks = imported.get(),
+            failedTracks = artists.size - imported.get(),
+        )
+    }
+
+    private suspend fun fetchAllFollowedArtists(): List<SpotifyArtist> {
+        val artists = ArrayList<SpotifyArtist>()
+        var offset = 0
+        val limit = 50
+
+        while (true) {
+            val page = spotifyCallWithTokenRetry {
+                Spotify.myArtists(limit = limit, offset = offset).getOrThrow()
+            }
+            if (page.items.isEmpty()) break
+            artists += page.items.filter { it.name.isNotBlank() }
+            offset += page.items.size
+            if (offset >= page.total || page.items.size < limit) break
+        }
+
+        return artists
+    }
+
+    /**
+     * Searches YouTube Music for [spotifyArtist], picks the first result whose
+     * name likely matches, then upserts it as a bookmarked [ArtistEntity] and
+     * subscribes the channel on YouTube. Returns true when the artist was matched
+     * and bookmarked locally (the YouTube subscribe is best-effort).
+     */
+    private suspend fun matchAndFollowArtist(spotifyArtist: SpotifyArtist): Boolean {
+        val searchResult = YouTube.search(
+            query = spotifyArtist.name,
+            filter = YouTube.SearchFilter.FILTER_ARTIST,
+        ).getOrElse { error ->
+            if (error is CancellationException) throw error
+            return false
+        }
+
+        val match = searchResult.items
+            .filterIsInstance<ArtistItem>()
+            .firstOrNull { ArtistNameMatching.isLikelyMatch(spotifyArtist.name, it.title) }
+            ?: return false
+
+        val channelId = match.channelId ?: match.id
+        val thumbnail = match.thumbnail
+        val existing = database.artist(match.id).first()?.artist
+
+        database.withTransaction {
+            val now = LocalDateTime.now()
+            if (existing == null) {
+                insert(
+                    ArtistEntity(
+                        id = match.id,
+                        name = match.title,
+                        thumbnailUrl = thumbnail,
+                        channelId = channelId,
+                        bookmarkedAt = now,
+                    ),
+                )
+            } else {
+                update(
+                    existing.copy(
+                        name = match.title,
+                        thumbnailUrl = thumbnail ?: existing.thumbnailUrl,
+                        channelId = channelId,
+                        bookmarkedAt = existing.bookmarkedAt ?: now,
+                        lastUpdateTime = now,
+                    ),
+                )
+            }
+        }
+
+        if (channelId.isNotEmpty()) {
+            runCatching { YouTube.subscribeChannel(channelId, true) }
+                .onFailure { error ->
+                    if (error is CancellationException) throw error
+                    reportException(error)
+                }
+        }
+
+        return true
     }
 
     private suspend fun mirrorPlaylist(
@@ -581,5 +772,24 @@ sealed interface SpotifyImportSource {
         override val thumbnailUrl: String? = null
         override val localPlaylistId: String = "SPOTIFY_LIKED_SONGS"
         override val type: SpotifyImportSourceType = SpotifyImportSourceType.LIKED_SONGS
+    }
+
+    /**
+     * The artists the user follows on Spotify. Imported by matching each one to a
+     * YouTube Music artist channel, then bookmarking it locally and subscribing on
+     * YouTube. [trackCount] carries the number of followed artists (reused by the
+     * generic progress/summary UI as the item total). [localPlaylistId] is unused
+     * for this source — followed artists are not mirrored into a playlist.
+     */
+    data class FollowedArtists(
+        override val title: String,
+        val artistCount: Int,
+    ) : SpotifyImportSource {
+        override val id: String = "followed_artists"
+        override val subtitle: String = ""
+        override val thumbnailUrl: String? = null
+        override val trackCount: Int = artistCount
+        override val localPlaylistId: String = "SPOTIFY_FOLLOWED_ARTISTS"
+        override val type: SpotifyImportSourceType = SpotifyImportSourceType.ARTISTS
     }
 }

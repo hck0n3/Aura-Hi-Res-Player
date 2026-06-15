@@ -351,6 +351,9 @@
     <string name="spotify_not_connected">Spotify no está conectado</string>
     <string name="spotify_liked_songs">Canciones que te gustan de Spotify</string>
     <string name="spotify_liked_songs_desc">Canciones guardadas de tu biblioteca de Spotify</string>
+    <string name="spotify_followed_artists">Artistas seguidos</string>
+    <string name="spotify_followed_artists_desc">Artistas que sigues en Spotify</string>
+    <string name="spotify_artist_count">%1$d artistas</string>
     <string name="spotify_track_count">%1$d canciones</string>
     <string name="spotify_login_title">Iniciar sesión en Spotify</string>
     <string name="spotify_loading_library">Cargando biblioteca de Spotify</string>

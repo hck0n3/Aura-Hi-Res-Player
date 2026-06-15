@@ -458,7 +458,15 @@ private fun SpotifySourceRow(
     val subtitle = when {
         source.subtitle.isNotBlank() -> source.subtitle
         source.type == SpotifyImportSourceType.LIKED_SONGS -> stringResource(R.string.spotify_liked_songs_desc)
+        source.type == SpotifyImportSourceType.ARTISTS -> stringResource(R.string.spotify_followed_artists_desc)
         else -> stringResource(R.string.spotify_account)
+    }
+    val countLabel = source.trackCount?.let { count ->
+        if (source.type == SpotifyImportSourceType.ARTISTS) {
+            stringResource(R.string.spotify_artist_count, count)
+        } else {
+            stringResource(R.string.spotify_track_count, count)
+        }
     }
 
     Surface(
@@ -492,7 +500,7 @@ private fun SpotifySourceRow(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    text = source.trackCount?.let { stringResource(R.string.spotify_track_count, it) } ?: subtitle,
+                    text = countLabel ?: subtitle,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
@@ -525,10 +533,10 @@ private fun SpotifySourceThumbnail(source: SpotifyImportSourceUi) {
         } else {
             Icon(
                 painter = painterResource(
-                    if (source.type == SpotifyImportSourceType.LIKED_SONGS) {
-                        R.drawable.favorite
-                    } else {
-                        R.drawable.playlist_play
+                    when (source.type) {
+                        SpotifyImportSourceType.LIKED_SONGS -> R.drawable.favorite
+                        SpotifyImportSourceType.ARTISTS -> R.drawable.artist
+                        else -> R.drawable.playlist_play
                     },
                 ),
                 contentDescription = null,
