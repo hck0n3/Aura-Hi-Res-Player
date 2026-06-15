@@ -1,5 +1,3 @@
-
-
 @file:OptIn(ExperimentalCoroutinesApi::class)
 
 package iad1tya.echo.music.viewmodels
@@ -36,5 +34,5 @@ constructor(
             .flatMapLatest { hideExplicit ->
                 database.albumsLiked(AlbumSortType.CREATE_DATE, true)
                     .map { it.filterExplicitAlbums(hideExplicit) }
-            }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+            }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 }

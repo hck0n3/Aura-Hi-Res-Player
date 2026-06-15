@@ -1,10 +1,11 @@
-
-
 package iad1tya.echo.music.ui.screens.library
 
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -70,14 +71,16 @@ fun FavoriteAlbumsScreen(
             )
         },
         modifier = Modifier.fillMaxSize(),
-    ) { _ ->
+    ) { paddingValues ->
         LazyVerticalGrid(
             state = lazyGridState,
             columns = GridCells.Adaptive(
                 minSize = GridThumbnailHeight + if (gridItemSize == GridItemSize.BIG) 24.dp else (-24).dp,
             ),
-            contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+                .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Bottom)),
         ) {
             if (albums.isEmpty()) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
