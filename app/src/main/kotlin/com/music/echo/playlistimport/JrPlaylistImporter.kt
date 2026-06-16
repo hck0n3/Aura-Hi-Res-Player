@@ -6,8 +6,6 @@ import iad1tya.echo.music.db.MusicDatabase
 import iad1tya.echo.music.db.entities.PlaylistEntity
 import iad1tya.echo.music.db.entities.PlaylistSongMap
 import iad1tya.echo.music.models.MediaMetadata
-import iad1tya.echo.music.models.toMediaMetadata
-import kotlinx.coroutines.flow.first
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
@@ -82,32 +80,16 @@ object JrPlaylistImporter {
         return Result(playlistName = playlistName, total = file.tracks.size, resolved = ordered.size)
     }
 
+    // Resolution is shared with the AI playlist generator via SongResolver (same package).
     private suspend fun resolveTrack(
         database: MusicDatabase,
         track: JrTrack,
         byVideoId: Map<String, SongItem>,
-    ): MediaMetadata? {
-        // 1. existing local library song by title + artist
-        localMatch(database, track)?.let { return it }
-
-        // 2. embedded YouTube video id
-        track.youtubeVideoId?.let { id -> byVideoId[id]?.let { return it.toMediaMetadata() } }
-
-        // 3. search by title + artist
-        val query = listOf(track.title, track.artist).filter { it.isNotBlank() }.joinToString(" ")
-        if (query.isBlank()) return null
-        val items = YouTube.search(query, YouTube.SearchFilter.FILTER_SONG).getOrNull()
-            ?.items?.filterIsInstance<SongItem>()
-        return items?.firstOrNull()?.toMediaMetadata()
-    }
-
-    private suspend fun localMatch(database: MusicDatabase, track: JrTrack): MediaMetadata? {
-        if (track.title.isBlank()) return null
-        val candidates = database.searchSongs(track.title, previewSize = 10).first()
-        val match = candidates.firstOrNull { song ->
-            song.song.title.equals(track.title, ignoreCase = true) &&
-                (track.artist.isBlank() || song.artists.any { it.name.equals(track.artist, ignoreCase = true) })
-        } ?: return null
-        return match.toMediaMetadata()
-    }
+    ): MediaMetadata? = SongResolver.resolve(
+        database = database,
+        title = track.title,
+        artist = track.artist,
+        byVideoId = byVideoId,
+        videoId = track.youtubeVideoId,
+    )
 }

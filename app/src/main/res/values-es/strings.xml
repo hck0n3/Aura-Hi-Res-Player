@@ -383,4 +383,21 @@
     <string name="voice_search_unavailable">Reconocimiento de voz no disponible en este dispositivo</string>
     <string name="open_links_title">Abrir enlaces</string>
     <string name="open_links_summary">Predeterminar Echo para abrir enlaces de YouTube Music</string>
+
+    <!-- Lista AI por texto -->
+    <string name="ai_playlist_title">Lista AI</string>
+    <string name="ai_playlist_prompt_hint">Describe tu playlist (ej. rock para correr de noche)</string>
+    <string name="ai_playlist_count_label">Número de canciones</string>
+    <string name="ai_playlist_generate">Generar</string>
+    <string name="ai_playlist_generating">Consultando a la IA…</string>
+    <string name="ai_playlist_resolving">Buscando canciones %1$d/%2$d…</string>
+    <string name="ai_playlist_resolved_count">%1$d de %2$d canciones añadidas</string>
+    <string name="ai_playlist_error_generic">No se pudo generar la playlist. Inténtalo de nuevo.</string>
+    <string name="ai_playlist_error_no_api_key">Configura primero una clave de IA en Ajustes de IA.</string>
+    <string name="ai_playlist_error_unsupported_provider">Este proveedor no es compatible. Elige un proveedor de chat (OpenRouter, OpenAI, Gemini…) en Ajustes de IA.</string>
+    <string name="ai_playlist_error_no_tracks">No se encontraron canciones para esa idea. Prueba otra descripción.</string>
+    <string name="ai_playlist_open_ai_settings">Abrir Ajustes de IA</string>
+    <string name="ai_playlist_settings_title">Lista AI</string>
+    <string name="ai_playlist_enabled_title">Lista por texto</string>
+    <string name="ai_playlist_enabled_desc">Mostrar el botón Lista AI en tu biblioteca</string>
 </resources>

@@ -436,4 +436,21 @@
     <string name="voice_search_unavailable">Voice recognition not available on this device</string>
     <string name="open_links_title">Open links</string>
     <string name="open_links_summary">Set Echo as default to open YouTube Music links</string>
+
+    <!-- AI text-to-playlist -->
+    <string name="ai_playlist_title">AI Playlist</string>
+    <string name="ai_playlist_prompt_hint">Describe your playlist (e.g. rock for a night run)</string>
+    <string name="ai_playlist_count_label">Number of songs</string>
+    <string name="ai_playlist_generate">Generate</string>
+    <string name="ai_playlist_generating">Asking the AI…</string>
+    <string name="ai_playlist_resolving">Finding songs %1$d/%2$d…</string>
+    <string name="ai_playlist_resolved_count">%1$d of %2$d songs added</string>
+    <string name="ai_playlist_error_generic">Could not generate the playlist. Please try again.</string>
+    <string name="ai_playlist_error_no_api_key">Set up an AI API key first in AI settings.</string>
+    <string name="ai_playlist_error_unsupported_provider">This provider is not supported. Choose a chat provider (OpenRouter, OpenAI, Gemini…) in AI settings.</string>
+    <string name="ai_playlist_error_no_tracks">No songs were found for that idea. Try a different description.</string>
+    <string name="ai_playlist_open_ai_settings">Open AI settings</string>
+    <string name="ai_playlist_settings_title">AI Playlist</string>
+    <string name="ai_playlist_enabled_title">Text-to-playlist</string>
+    <string name="ai_playlist_enabled_desc">Show the AI Playlist button in your library</string>
 </resources>

@@ -55,6 +55,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import com.music.innertube.utils.parseCookieString
 import iad1tya.echo.music.LocalPlayerAwareWindowInsets
 import iad1tya.echo.music.R
+import iad1tya.echo.music.constants.AiPlaylistEnabledKey
 import iad1tya.echo.music.constants.CONTENT_TYPE_HEADER
 import iad1tya.echo.music.constants.CONTENT_TYPE_PLAYLIST
 import iad1tya.echo.music.constants.GridItemSize
@@ -75,6 +76,7 @@ import iad1tya.echo.music.constants.ShowUploadedPlaylistKey
 import iad1tya.echo.music.constants.YtmSyncKey
 import iad1tya.echo.music.db.entities.Playlist
 import iad1tya.echo.music.db.entities.PlaylistEntity
+import iad1tya.echo.music.ui.component.AiPlaylistDialog
 import iad1tya.echo.music.ui.component.CreatePlaylistDialog
 import iad1tya.echo.music.ui.component.HideOnScrollFAB
 import iad1tya.echo.music.ui.component.LibraryPlaylistGridItem
@@ -212,7 +214,9 @@ fun LibraryPlaylistsScreen(
         }
     }
 
+    val (aiPlaylistEnabled) = rememberPreference(AiPlaylistEnabledKey, true)
     var showCreatePlaylistDialog by rememberSaveable { mutableStateOf(false) }
+    var showAiPlaylistDialog by rememberSaveable { mutableStateOf(false) }
 
     if (showCreatePlaylistDialog) {
         CreatePlaylistDialog(
@@ -223,6 +227,20 @@ fun LibraryPlaylistsScreen(
                 showCreatePlaylistDialog = false
                 navController.navigate("local_playlist/$playlistId")
             }
+        )
+    }
+
+    if (showAiPlaylistDialog) {
+        AiPlaylistDialog(
+            onDismiss = { showAiPlaylistDialog = false },
+            onPlaylistCreated = { playlistId ->
+                showAiPlaylistDialog = false
+                navController.navigate("local_playlist/$playlistId")
+            },
+            onOpenAiSettings = {
+                showAiPlaylistDialog = false
+                navController.navigate("settings/ai")
+            },
         )
     }
 
@@ -397,6 +415,11 @@ fun LibraryPlaylistsScreen(
                     onClick = {
                         showCreatePlaylistDialog = true
                     },
+                    onAiPlaylistClick = if (aiPlaylistEnabled) {
+                        { showAiPlaylistDialog = true }
+                    } else {
+                        null
+                    },
                 )
             }
 
@@ -538,6 +561,11 @@ fun LibraryPlaylistsScreen(
                     icon = R.drawable.add,
                     onClick = {
                         showCreatePlaylistDialog = true
+                    },
+                    onAiPlaylistClick = if (aiPlaylistEnabled) {
+                        { showAiPlaylistDialog = true }
+                    } else {
+                        null
                     },
                 )
             }

@@ -17,6 +17,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -34,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import iad1tya.echo.music.LocalPlayerAwareWindowInsets
 import iad1tya.echo.music.R
+import iad1tya.echo.music.constants.AiPlaylistEnabledKey
 import iad1tya.echo.music.constants.AiProviderKey
 import iad1tya.echo.music.constants.DeeplApiKey
 import iad1tya.echo.music.constants.DeeplFormalityKey
@@ -55,6 +57,7 @@ fun AiSettings(
     navController: NavController,
     scrollBehavior: TopAppBarScrollBehavior,
 ) {
+    var aiPlaylistEnabled by rememberPreference(AiPlaylistEnabledKey, true)
     var aiProvider by rememberPreference(AiProviderKey, "OpenRouter")
     var openRouterApiKey by rememberPreference(OpenRouterApiKey, "")
     var openRouterBaseUrl by rememberPreference(OpenRouterBaseUrlKey, "https://openrouter.ai/api/v1/chat/completions")
@@ -395,6 +398,26 @@ fun AiSettings(
             )
         )
         
+        Material3SettingsGroup(
+            title = stringResource(R.string.ai_playlist_settings_title),
+            items = listOf(
+                Material3SettingsItem(
+                    icon = painterResource(R.drawable.auto_awesome),
+                    title = { Text(stringResource(R.string.ai_playlist_enabled_title)) },
+                    description = { Text(stringResource(R.string.ai_playlist_enabled_desc)) },
+                    onClick = { aiPlaylistEnabled = !aiPlaylistEnabled },
+                    trailingContent = {
+                        Switch(
+                            checked = aiPlaylistEnabled,
+                            onCheckedChange = { aiPlaylistEnabled = it },
+                        )
+                    },
+                ),
+            ),
+        )
+
+        Spacer(modifier = Modifier.height(27.dp))
+
         Material3SettingsGroup(
             title = stringResource(R.string.ai_provider),
             items = listOf(
