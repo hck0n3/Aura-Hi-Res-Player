@@ -2,8 +2,8 @@ package iad1tya.echo.music.license
 
 /**
  * Pure licensing rules for JR MUSIC PRO. No Android dependencies so the whole state machine is
- * unit-testable. The app boots in a keyless 3-day demo; a Gumroad subscription is re-verified online
- * on each open, with a 3-day offline grace window.
+ * unit-testable. The app boots in a keyless 3-day demo; the subscription is re-verified online via
+ * the backend Worker on each open, with a 1-day offline grace window.
  */
 object LicenseLogic {
 
