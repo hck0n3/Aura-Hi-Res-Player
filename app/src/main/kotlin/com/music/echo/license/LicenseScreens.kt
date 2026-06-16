@@ -30,6 +30,7 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
+import iad1tya.echo.music.ui.theme.AuraBrandGradient
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -56,9 +57,8 @@ import kotlinx.coroutines.launch
 
 private const val GUMROAD_URL = "https://toberto.gumroad.com/l/JR-MUSIC-PRO-OFFICIAL"
 
-private val BrandGradient = Brush.linearGradient(
-    colors = listOf(Color(0xFFDE60B3), Color(0xFF9B6CFF), Color(0xFF3DA9ED)),
-)
+// Brand gradient lives in ui/theme/AuraTheme.kt (single source of truth).
+private val BrandGradient = AuraBrandGradient
 private val ScreenGradient = Brush.verticalGradient(
     colors = listOf(Color(0xFF2A1052), Color(0xFF160830), Color(0xFF0B0418)),
 )
@@ -94,7 +94,7 @@ private fun LicenseScaffold(
             Text(
                 text = buildAnnotatedString {
                     withStyle(SpanStyle(brush = BrandGradient, fontWeight = FontWeight.ExtraBold)) {
-                        append("JR MUSIC PLAYER PRO")
+                        append("Aura Hi-Res Player")
                     }
                 },
                 fontSize = 24.sp,

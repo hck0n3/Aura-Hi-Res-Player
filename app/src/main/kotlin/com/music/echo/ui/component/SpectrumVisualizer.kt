@@ -15,7 +15,7 @@ import androidx.compose.ui.unit.dp
 import iad1tya.echo.music.eq.audio.SpectrumBus
 
 /**
- * Real-time FFT spectrum bars (JR Music Player visualizer port).
+ * Real-time FFT spectrum bars (Aura Hi-Res Player visualizer port).
  * Renders the 64 log-spaced bands published by [SpectrumBus] as rounded
  * bars in the accent color with a soft glow underlay.
  */

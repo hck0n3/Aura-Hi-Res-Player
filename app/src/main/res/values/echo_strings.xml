@@ -375,7 +375,7 @@
     <string name="enable_scrobbling">Enable scrobbling</string>
     <string name="lastfm_now_playing">Send Now Playing</string>
     <string name="last_fm_send_likes">Send Likes/Unlikes</string>
-    <string name="last_fm_send_likes_description">Love/Unlove songs in Last.fm when they are Liked/Unliked in JR Music</string>
+    <string name="last_fm_send_likes_description">Love/Unlove songs in Last.fm when they are Liked/Unliked in Aura Hi-Res Player</string>
     <string name="logging_in">Logging in…</string>
 
     <string name="scrobbling_configuration">Scrobbling Configuration</string>
@@ -462,19 +462,19 @@
     <string name="wrapped_total_artists_subtitle">unique artists</string>
     <string name="wrapped_total_songs_title">You listened to</string>
     <string name="wrapped_total_songs_subtitle">unique songs</string>
-    <string name="wrapped_intro_title">JR Music</string>
+    <string name="wrapped_intro_title">Aura Hi-Res Player</string>
     <string name="wrapped_intro_subtitle">it\'s time to see what you\'ve been listening to</string>
     <string name="wrapped_intro_button">let\'s go!</string>
-    <string name="wrapped_end_thanks">Thanks for listening with JR Music!</string>
+    <string name="wrapped_end_thanks">Thanks for listening with Aura Hi-Res Player!</string>
     <string name="wrapped_end_create_playlist">Create Your Wrapped Playlist</string>
     <string name="wrapped_end_creating_playlist">Creating...</string>
     <string name="wrapped_end_playlist_saved">Playlist Saved</string>
-    <string name="wrapped_logo_content_description">JR Music Logo</string>
+    <string name="wrapped_logo_content_description">Aura Hi-Res Player Logo</string>
     <string name="wrapped_year">2025</string>
     <string name="wrapped_ready_title">YOUR WRAPPED IS READY!</string>
     <string name="wrapped_ready_subtitle">Time to see what you loved this year.</string>
     <string name="wrapped_thank_you">Thank you for listening</string>
-    <string name="wrapped_special_thanks">Gracias por usar JR MUSIC PRO</string>
+    <string name="wrapped_special_thanks">Gracias por usar Aura Hi-Res Player</string>
     <string name="wrapped_close">Close wrapped</string>
     <string name="wrapped_playlist_title">Your %s Wrapped</string>
     <string name="wrapped_create_playlist">Create playlist</string>
@@ -545,7 +545,7 @@
     <string name="eq_delete_selected">Delete</string>
     <string name="eq_no_custom_presets">No custom presets found</string>
 
-    <!-- JR Music Player presets (ported from JR-MUSIC-PRO desktop DSP) -->
+    <!-- Aura Hi-Res Player presets (ported from Aura Hi-Res Player desktop DSP) -->
     <string name="eq_label_jr_devices">JR · Devices</string>
     <string name="eq_label_jr_effects">JR · Effects</string>
     <string name="eq_label_jr_genres">JR · Genres</string>
@@ -564,7 +564,7 @@
     <string name="eq_preset_jr_treble">Treble+</string>
     <string name="eq_preset_jr_classical">Classical</string>
 
-    <!-- Crossfeed & Spectrum Visualizer (JR Music Player features) -->
+    <!-- Crossfeed & Spectrum Visualizer (Aura Hi-Res Player features) -->
     <string name="crossfeed">Crossfeed</string>
     <string name="crossfeed_desc">Blend channels slightly for a natural headphone soundstage</string>
     <string name="spectrum_visualizer">Spectrum visualizer</string>
@@ -575,9 +575,9 @@
     <string name="plays">plays</string>
     <string name="casting_to">Casting to %s</string>
     <string name="progress_percent">Progress %s%%</string>
-    <string name="listening_to_echomusic">Listening to JR Music</string>
+    <string name="listening_to_echomusic">Listening to Aura Hi-Res Player</string>
     <string name="listen_on_youtube_music">Listen on YouTube Music</string>
-    <string name="visit_echomusic">Visit JR Music</string>
+    <string name="visit_echomusic">Visit Aura Hi-Res Player</string>
     <string name="open">Open</string>
     <string name="failed_to_create_image">Failed to create image: %s</string>
     <string name="copied_title">Copied Title</string>
@@ -594,13 +594,13 @@
     <!-- Widget strings -->
     <string name="album_art">Album art</string>
     <string name="no_song_playing">No song playing</string>
-    <string name="tap_to_open">Tap to open JR Music</string>
+    <string name="tap_to_open">Tap to open Aura Hi-Res Player</string>
     <string name="previous">Previous</string>
     <string name="play_pause">Play/Pause</string>
     <string name="next">Next</string>
     <string name="like">Like</string>
     <string name="not_playing">No song playing</string>
-    <string name="tap_to_play">Tap to open JR Music</string>
+    <string name="tap_to_play">Tap to open Aura Hi-Res Player</string>
     <string name="widget_description">Music player widget with playback controls</string>
     <string name="queue_widget_description">Music player with queue preview</string>
     <string name="turntable_widget_description">Circular music widget with play and like controls</string>
@@ -760,7 +760,7 @@
     <string name="crash_share_logs">Share Logs</string>
     <string name="copy_logs">Copy Logs</string>
     <string name="crash_share_title">Share crash report</string>
-    <string name="crash_report_subject">JR Music Crash Report</string>
+    <string name="crash_report_subject">Aura Hi-Res Player Crash Report</string>
     <string name="crash_close">Close</string>
     <string name="crash_no_log">No crash log available</string>
 
@@ -812,7 +812,7 @@
     <string name="delete_from_history">Delete from history</string>
     <string name="re_listen">Re-listen</string>
     <string name="hold_to_recognize">Hold search icon to recognize music</string>
-    <string name="play_on_app">Play on JR Music</string>
+    <string name="play_on_app">Play on Aura Hi-Res Player</string>
     <string name="recognized_track">Recognized Track</string>
 
     <!-- CSV Import Strings -->
@@ -851,9 +851,9 @@
     <string name="discord_rpc_preview">Rich Presence Preview</string>
     <string name="discord_presence">Presence</string>
     <string name="discord_connect_description">Sign in with Discord to share what you\'re listening to</string>
-    <string name="discord_playing_echomusic">Playing JR Music</string>
-    <string name="discord_watching_echomusic">Watching JR Music</string>
-    <string name="discord_competing_echomusic">Competing in JR Music</string>
+    <string name="discord_playing_echomusic">Playing Aura Hi-Res Player</string>
+    <string name="discord_watching_echomusic">Watching Aura Hi-Res Player</string>
+    <string name="discord_competing_echomusic">Competing in Aura Hi-Res Player</string>
     <string name="discord_activity_name">Activity name</string>
     <string name="discord_activity_name_description">Custom name for the activity (leave empty for default)</string>
     <string name="discord_advanced_mode">Advanced mode</string>
@@ -911,7 +911,7 @@
 
     <string name="perm_required">Required</string>
     <string name="perm_permissions">Permissions</string>
-    <string name="perm_intro_text">These permissions are required for JR Music to function correctly. Please grant them to proceed.</string>
+    <string name="perm_intro_text">These permissions are required for Aura Hi-Res Player to function correctly. Please grant them to proceed.</string>
 
     <string name="perm_notif_title">Notifications</string>
     <string name="perm_notif_desc">Know immediately when your music is playing and control it from the notification bar.</string>
@@ -921,7 +921,7 @@
 
     <string name="feat_discover">Discover</string>
     <string name="feat_features">Features</string>
-    <string name="feat_intro">Explore everything JR Music has to offer for your music journey.</string>
+    <string name="feat_intro">Explore everything Aura Hi-Res Player has to offer for your music journey.</string>
 
     <string name="feat_lyrics_title">Smart Lyrics</string>
     <string name="feat_lyrics_desc">Enjoy synchronized, word-by-word lyrics for millions of songs.</string>
@@ -945,7 +945,7 @@
     <string name="welcome_update_status">Updated</string>
     <string name="welcome_update_intro">Ensuring you have the latest features and security improvements.</string>
     <string name="welcome_checking_updates">Checking for updates…</string>
-    <string name="welcome_up_to_date">JR Music is up to date!</string>
+    <string name="welcome_up_to_date">Aura Hi-Res Player is up to date!</string>
     <string name="welcome_update_available">New version is available: %s</string>
     <string name="welcome_everything_ready">Everything is now up to date</string>
     <string name="commits_title">Commits</string>

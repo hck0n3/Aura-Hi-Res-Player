@@ -30,23 +30,25 @@ fun echomusicTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     pureBlack: Boolean = false,
     themeColor: Color = DefaultThemeColor,
+    auraEnabled: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val context = LocalContext.current
-    
-    val useSystemDynamicColor = (themeColor == DefaultThemeColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
 
-    
+    // Aura Hi-Res theme: derive the whole Material 3 scheme from the brand purple with a Vibrant
+    // palette (saturated, gradient-friendly). Otherwise keep the existing behaviour.
+    val effectiveSeed = if (auraEnabled) AuraSeedColor else themeColor
+    val useSystemDynamicColor =
+        (!auraEnabled && themeColor == DefaultThemeColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
+
     val baseColorScheme = if (useSystemDynamicColor) {
-        
         if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
     } else {
-        
         rememberDynamicColorScheme(
-            seedColor = themeColor, 
+            seedColor = effectiveSeed,
             isDark = darkTheme,
             specVersion = ColorSpec.SpecVersion.SPEC_2025,
-            style = PaletteStyle.TonalSpot 
+            style = if (auraEnabled) PaletteStyle.Vibrant else PaletteStyle.TonalSpot,
         )
     }
 

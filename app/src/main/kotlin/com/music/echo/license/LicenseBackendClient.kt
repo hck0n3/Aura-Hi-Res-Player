@@ -11,7 +11,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
 /**
- * Talks to the JR MUSIC PRO license Worker, which verifies the Gumroad subscription and enforces one
+ * Talks to the Aura Hi-Res Player license Worker, which verifies the Gumroad subscription and enforces one
  * device per key. Any network/parse failure maps to [LicenseStatus.NETWORK_ERROR] so the caller can
  * fall back to the offline grace window.
  */

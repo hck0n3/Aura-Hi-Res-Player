@@ -10,18 +10,18 @@ import kotlin.math.abs
 import kotlin.math.exp
 import kotlin.math.max
 import kotlin.math.pow
-import kotlin.math.tanh
 
 /**
- * JR Music Pro post-EQ DSP effects (port of the native C++ `data_callback`, partial).
+ * Aura Hi-Res Player post-EQ DSP effects (port of the native C++ `data_callback`, partial).
  *
- * Implements the effects that need no extra biquad filters, in the same order and with
- * the same math/defaults as the desktop engine (`native/src/jr_audio_engine.cpp`):
- * bass enhance → harmonic exciter → tube warmth → stereo width → soft limiter.
+ * Implements the optional, user-toggled effects that need no extra biquad filters:
+ * loudness shelves → bass enhance → harmonic exciter → multiband compressor → stereo width →
+ * dialogue. Loudness makeup and the true-peak limiter now live downstream in
+ * [TruePeakLimiterAudioProcessor]; this stage only applies a transparent safety [softLimit] at its
+ * 16-bit output so an effect's own overshoot can't hard-clip before the limiter sees it.
  *
- * Runs after the EQ processor in the player chain. Stereo-only effects pass mono through
- * (only tube warmth + limiter apply to mono). Configured via the static [config] flag,
- * mirroring [CrossfeedAudioProcessor.globalEnabled].
+ * Runs after the EQ processor. Stereo-only effects pass mono through (only loudness applies to mono).
+ * Configured via the static [config] flag.
  */
 @UnstableApi
 class JrDspAudioProcessor : AudioProcessor {
@@ -86,35 +86,34 @@ class JrDspAudioProcessor : AudioProcessor {
     private var exciterAlpha = 0f  // fc 6 kHz
 
     data class Config(
-        val limiterEnabled: Boolean = true,
         val loudnessEnabled: Boolean = false,
         val hrtfEnabled: Boolean = false,
         val bassEnhanceEnabled: Boolean = false,
         val bassEnhanceAmount: Float = 0.28f,
         val exciterEnabled: Boolean = false,
         val exciterAmount: Float = 0.15f,
-        val tubeEnabled: Boolean = false,
-        val tubeAmount: Float = 0.25f,
         val mbCompEnabled: Boolean = false,
         val stereoWidthEnabled: Boolean = false,
         val stereoWidth: Float = 1.0f,
         val dialogueEnabled: Boolean = false,
         val dialogueAmount: Float = 0.35f,
     ) {
-        /** True when at least one effect would alter the signal. */
+        /** True when at least one effect would alter the signal. (Loudness makeup + true-peak
+         *  limiting live in [TruePeakLimiterAudioProcessor], not here.) */
         val anyActive: Boolean
-            get() = limiterEnabled || loudnessEnabled || hrtfEnabled || bassEnhanceEnabled ||
-                exciterEnabled || tubeEnabled || mbCompEnabled || dialogueEnabled ||
+            get() = loudnessEnabled || hrtfEnabled || bassEnhanceEnabled ||
+                exciterEnabled || mbCompEnabled || dialogueEnabled ||
                 (stereoWidthEnabled && stereoWidth != 1.0f)
     }
 
     companion object {
         private val EMPTY_BUFFER: ByteBuffer = ByteBuffer.allocateDirect(0).order(ByteOrder.nativeOrder())
 
-        // Multiband compressor fixed params (linear RMS thresholds + ratios per band).
-        private val MB_THRESH = floatArrayOf(0.10f, 0.16f, 0.10f)
-        private val MB_RATIO = floatArrayOf(2.5f, 1.8f, 3.0f)
-        private const val MB_MAKEUP = 1.15f
+        // Multiband compressor fixed params (linear RMS thresholds + ratios per band: bass/mid/high).
+        // High band has a lower threshold + higher ratio so sustained treble (sibilance, cymbals) is
+        // tamed more firmly. No makeup gain — loudness is owned by the loudness/limiter stage now.
+        private val MB_THRESH = floatArrayOf(0.10f, 0.16f, 0.08f)
+        private val MB_RATIO = floatArrayOf(2.5f, 1.8f, 3.2f)
 
         // HRTF ring-buffer sizes (samples) — match desktop jr_audio_engine.
         private const val HRTF_DELAY_MAX = 96
@@ -123,18 +122,6 @@ class JrDspAudioProcessor : AudioProcessor {
         /** Updated from MusicService when any DSP-effect preference changes. */
         @Volatile
         var config: Config = Config()
-
-        private fun softLimit(x: Float): Float {
-            // Transparent true-peak ceiling: only the top ~0.45 dB is gently rounded and the
-            // asymptote stays at 1.0 (never hard-clips). The old 0.80 threshold audibly compressed
-            // loud material; 0.95 keeps the signal studio-clean.
-            val threshold = 0.95f
-            val ax = abs(x)
-            if (ax <= threshold) return x
-            val excess = ax - threshold
-            val comp = threshold + (excess / (1.0f + excess * 20.0f))
-            return if (x < 0) -comp else comp
-        }
     }
 
     override fun configure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
@@ -269,11 +256,6 @@ class JrDspAudioProcessor : AudioProcessor {
                     r += satR * cfg.exciterAmount
                 }
 
-                if (cfg.tubeEnabled) {
-                    l = tube(l, cfg.tubeAmount)
-                    r = tube(r, cfg.tubeAmount)
-                }
-
                 if (cfg.mbCompEnabled) {
                     // Split into bass/mid/high bands (LR2 crossovers from the same input).
                     val (bL, bR) = mbLpf1!!.processStereo(l.toDouble(), r.toDouble())
@@ -305,17 +287,17 @@ class JrDspAudioProcessor : AudioProcessor {
                     r += band * cfg.dialogueAmount
                 }
 
-                if (cfg.limiterEnabled) {
-                    l = softLimit(l)
-                    r = softLimit(r)
-                }
+                // Transparent safety only: keeps an effect's overshoot from hard-clipping at the
+                // 16-bit output (asymptote 0.99, knee 0.95). The real true-peak limiting is downstream.
+                l = softLimit(l, ceiling = 0.99f, knee = 0.95f)
+                r = softLimit(r, ceiling = 0.99f, knee = 0.95f)
 
                 outputBuffer.putShort((l * 32768.0f).coerceIn(-32768.0f, 32767.0f).toInt().toShort())
                 outputBuffer.putShort((r * 32768.0f).coerceIn(-32768.0f, 32767.0f).toInt().toShort())
             }
             while (inputBuffer.hasRemaining()) outputBuffer.put(inputBuffer.get())
         } else {
-            // Mono: only tube warmth + limiter apply.
+            // Mono: only loudness shelves apply (stereo effects pass through).
             val samples = remaining / 2
             repeat(samples) {
                 var x = inputBuffer.getShort().toFloat() / 32768.0f
@@ -323,8 +305,7 @@ class JrDspAudioProcessor : AudioProcessor {
                     x = loudnessLoShelf!!.processSample(x.toDouble()).toFloat()
                     x = loudnessHiShelf!!.processSample(x.toDouble()).toFloat()
                 }
-                if (cfg.tubeEnabled) x = tube(x, cfg.tubeAmount)
-                if (cfg.limiterEnabled) x = softLimit(x)
+                x = softLimit(x, ceiling = 0.99f, knee = 0.95f)
                 outputBuffer.putShort((x * 32768.0f).coerceIn(-32768.0f, 32767.0f).toInt().toShort())
             }
             while (inputBuffer.hasRemaining()) outputBuffer.put(inputBuffer.get())
@@ -333,17 +314,7 @@ class JrDspAudioProcessor : AudioProcessor {
         outputBuffer.flip()
     }
 
-    private fun tube(x: Float, amt: Float): Float {
-        val drive = 1.0f + amt * 6.0f
-        var wet = amt * 1.5f
-        if (wet > 1.0f) wet = 1.0f
-        val dry = 1.0f - wet
-        val offset = 0.15f * amt
-        val sat = (tanh((x + offset) * drive) - tanh(offset * drive)) / drive
-        return dry * x + wet * sat
-    }
-
-    /** Envelope-follow + downward compression gain for one MB band (with makeup). */
+    /** Envelope-follow + downward compression gain for one MB band (transparent, no makeup). */
     private fun mbBandGain(band: Int, l: Double, r: Double): Float {
         val lvl = max(abs(l), abs(r)).toFloat()
         mbEnv[band] = if (lvl > mbEnv[band]) {
@@ -351,13 +322,11 @@ class JrDspAudioProcessor : AudioProcessor {
         } else {
             mbRelCoeff * mbEnv[band]
         }
-        var g = if (mbEnv[band] > MB_THRESH[band]) {
+        return if (mbEnv[band] > MB_THRESH[band]) {
             (MB_THRESH[band] / mbEnv[band]).toDouble().pow(1.0 - 1.0 / MB_RATIO[band]).toFloat()
         } else {
             1f
         }
-        g *= MB_MAKEUP
-        return g
     }
 
     private fun resetState() {

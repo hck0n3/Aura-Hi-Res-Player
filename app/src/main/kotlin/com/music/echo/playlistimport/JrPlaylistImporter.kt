@@ -10,7 +10,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 /**
- * Imports playlists exported from the JR Music Pro desktop app (`.jrpl.json`).
+ * Imports playlists exported from the Aura Hi-Res Player desktop app (`.jrpl.json`).
  *
  * Per track, resolution order matches the desktop's own data model:
  *  1. an existing local library song matching title + artist (no network),

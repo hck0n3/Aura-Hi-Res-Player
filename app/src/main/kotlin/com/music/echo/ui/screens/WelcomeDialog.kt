@@ -43,14 +43,10 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import iad1tya.echo.music.BuildConfig
 import iad1tya.echo.music.R
+import iad1tya.echo.music.ui.theme.AuraBrandGradient
 
-private val BrandGradient = Brush.linearGradient(
-    colors = listOf(
-        Color(0xFFDE60B3),
-        Color(0xFF9B6CFF),
-        Color(0xFF3DA9ED)
-    )
-)
+// Brand gradient lives in ui/theme/AuraTheme.kt (single source of truth).
+private val BrandGradient = AuraBrandGradient
 
 @Composable
 fun WelcomeDialog(
@@ -190,7 +186,7 @@ private fun WelcomeHeader() {
                             fontWeight = FontWeight.ExtraBold
                         )
                     ) {
-                        append("JR MUSIC PLAYER PRO")
+                        append("Aura Hi-Res Player")
                     }
                 },
                 style = MaterialTheme.typography.titleLarge.copy(

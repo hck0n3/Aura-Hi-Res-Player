@@ -182,7 +182,7 @@ class App : Application(), SingletonImageLoader.Factory {
     }
 
     /**
-     * One-time seed of JR Music Pro's preferred player/lyrics defaults. Writes explicit
+     * One-time seed of Aura Hi-Res Player's preferred player/lyrics defaults. Writes explicit
      * preference values on first run (guarded by [JrDefaultsAppliedKey]) so existing users
      * also get them once, without overriding any later manual change.
      */

@@ -86,7 +86,6 @@ import iad1tya.echo.music.constants.AutoLoadMoreKey
 import iad1tya.echo.music.constants.AutoSkipNextOnErrorKey
 import iad1tya.echo.music.constants.CrossfadeDurationKey
 import iad1tya.echo.music.constants.CrossfadeEnabledKey
-import iad1tya.echo.music.constants.CrossfeedEnabledKey
 import iad1tya.echo.music.constants.SpectrumVisualizerEnabledKey
 import iad1tya.echo.music.constants.CrossfadeGaplessKey
 import iad1tya.echo.music.constants.DisableLoadMoreWhenRepeatAllKey
@@ -147,12 +146,14 @@ import iad1tya.echo.music.di.DownloadCache
 import iad1tya.echo.music.di.PlayerCache
 import iad1tya.echo.music.eq.EqualizerService
 import iad1tya.echo.music.eq.audio.AudioEnhanceProcessor
-import iad1tya.echo.music.eq.audio.CrossfeedAudioProcessor
 import iad1tya.echo.music.eq.audio.JrDspAudioProcessor
 import iad1tya.echo.music.eq.audio.CustomEqualizerAudioProcessor
 import iad1tya.echo.music.eq.audio.NormalizationGainAudioProcessor
 import iad1tya.echo.music.eq.audio.SpectrumAudioProcessor
+import iad1tya.echo.music.eq.audio.TruePeakLimiterAudioProcessor
 import iad1tya.echo.music.eq.audio.normalizationMultiplier
+import iad1tya.echo.music.eq.audio.loudnessMakeupDb
+import iad1tya.echo.music.eq.audio.dbToLinear
 import iad1tya.echo.music.eq.audio.SpectrumBus
 import iad1tya.echo.music.eq.data.EQProfileRepository
 import iad1tya.echo.music.extensions.SilentHandler
@@ -751,13 +752,6 @@ class MusicService :
         }.collectLatest(scope) { (format, normalizeAudio) -> setupLoudnessEnhancer()}
 
         dataStore.data
-            .map { it[CrossfeedEnabledKey] ?: false }
-            .distinctUntilChanged()
-            .collectLatest(scope) { enabled ->
-                CrossfeedAudioProcessor.globalEnabled = enabled
-            }
-
-        dataStore.data
             .map { it[AudioEnhanceEnabledKey] ?: false }
             .distinctUntilChanged()
             .collectLatest(scope) { enabled ->
@@ -767,15 +761,12 @@ class MusicService :
         dataStore.data
             .map { prefs ->
                 JrDspAudioProcessor.Config(
-                    limiterEnabled = prefs[iad1tya.echo.music.constants.JrLimiterEnabledKey] ?: true,
                     loudnessEnabled = prefs[iad1tya.echo.music.constants.JrLoudnessEnabledKey] ?: false,
                     hrtfEnabled = prefs[iad1tya.echo.music.constants.JrHrtfEnabledKey] ?: false,
                     bassEnhanceEnabled = prefs[iad1tya.echo.music.constants.JrBassEnhanceEnabledKey] ?: false,
                     bassEnhanceAmount = prefs[iad1tya.echo.music.constants.JrBassEnhanceAmountKey] ?: 0.28f,
                     exciterEnabled = prefs[iad1tya.echo.music.constants.JrExciterEnabledKey] ?: false,
                     exciterAmount = prefs[iad1tya.echo.music.constants.JrExciterAmountKey] ?: 0.15f,
-                    tubeEnabled = prefs[iad1tya.echo.music.constants.JrTubeWarmthEnabledKey] ?: false,
-                    tubeAmount = prefs[iad1tya.echo.music.constants.JrTubeWarmthAmountKey] ?: 0.25f,
                     mbCompEnabled = prefs[iad1tya.echo.music.constants.JrMbCompEnabledKey] ?: false,
                     stereoWidthEnabled = prefs[iad1tya.echo.music.constants.JrStereoWidthEnabledKey] ?: false,
                     stereoWidth = prefs[iad1tya.echo.music.constants.JrStereoWidthKey] ?: 1.0f,
@@ -1745,20 +1736,26 @@ class MusicService :
 
                             Timber.tag(TAG).d("Calculated raw normalization gain: $targetGain mB (from loudness: $loudnessDb)")
 
-                            // Attenuate-only software normalization (never boosts → no clipping).
-                            // The old boost-only LoudnessEnhancer is kept disabled.
+                            // Two-stage loudness normalization to a reference (TIDAL-style):
+                            //  • attenuate loud masters (≤ 0 dB) here, in 16-bit, clip-free;
+                            //  • boost quiet tracks UP (makeup, ≥ 0 dB) in float inside the true-peak
+                            //    limiter, which catches the resulting peaks → loud + full, no clip.
                             NormalizationGainAudioProcessor.gain =
                                 normalizationMultiplier(loudnessDb.toDouble(), enabled = true)
+                            TruePeakLimiterAudioProcessor.makeupGain =
+                                dbToLinear(loudnessMakeupDb(loudnessDb.toDouble(), enabled = true))
                             loudnessEnhancer?.enabled = false
-                            Timber.tag(TAG).i("Normalization gain set (loudnessDb=$loudnessDb)")
+                            Timber.tag(TAG).i("Normalization set (loudnessDb=$loudnessDb, makeup=${TruePeakLimiterAudioProcessor.makeupGain})")
                         } else {
                             NormalizationGainAudioProcessor.gain = 1.0f
+                            TruePeakLimiterAudioProcessor.makeupGain = 1.0f
                             loudnessEnhancer?.enabled = false
                             Timber.tag(TAG).w("Normalization enabled but no loudness data - unity gain")
                         }
                     }
                 } else {
                     NormalizationGainAudioProcessor.gain = 1.0f
+                    TruePeakLimiterAudioProcessor.makeupGain = 1.0f
                     withContext(Dispatchers.Main) {
                         loudnessEnhancer?.enabled = false
                         Timber.tag(TAG).d("setupLoudnessEnhancer: normalization disabled - unity gain")
@@ -2842,11 +2839,13 @@ class MusicService :
                         arrayOf(
                             // "Improve low quality" (declip + HF regen) on the raw signal; off by default.
                             AudioEnhanceProcessor(),
-                            // Attenuate-only normalization → headroom for everything downstream.
+                            // Attenuate loud masters → headroom for everything downstream.
                             NormalizationGainAudioProcessor(),
                             eqProcessor,
-                            CrossfeedAudioProcessor(),
                             JrDspAudioProcessor(),
+                            // Loudness makeup (brings quiet tracks up, TIDAL-style) + 2× true-peak
+                            // limiter → loud and full, never clipping. Must be last gain stage.
+                            TruePeakLimiterAudioProcessor(),
                             SpectrumAudioProcessor(),
                             silenceProcessor,
                         ),

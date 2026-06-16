@@ -44,7 +44,6 @@ import iad1tya.echo.music.constants.CrossfadeDurationKey
 import iad1tya.echo.music.constants.CrossfadeEnabledKey
 import iad1tya.echo.music.constants.CrossfadeGaplessKey
 import iad1tya.echo.music.constants.AudioEnhanceEnabledKey
-import iad1tya.echo.music.constants.CrossfeedEnabledKey
 import iad1tya.echo.music.constants.SpectrumVisualizerEnabledKey
 import iad1tya.echo.music.constants.AutoLoadMoreKey
 import iad1tya.echo.music.constants.AutoSkipNextOnErrorKey
@@ -121,10 +120,6 @@ fun PlayerSettings(
         SkipSilenceInstantKey,
         defaultValue = false
     )
-    val (crossfeedEnabled2, onCrossfeedEnabled2Change) = rememberPreference(
-        CrossfeedEnabledKey,
-        defaultValue = false
-    )
     val (audioEnhance, onAudioEnhanceChange) = rememberPreference(
         AudioEnhanceEnabledKey,
         defaultValue = false
@@ -135,15 +130,12 @@ fun PlayerSettings(
     )
 
     // JR DSP effects (desktop parity)
-    val (jrLimiter, onJrLimiterChange) = rememberPreference(iad1tya.echo.music.constants.JrLimiterEnabledKey, defaultValue = true)
     val (jrLoudness, onJrLoudnessChange) = rememberPreference(iad1tya.echo.music.constants.JrLoudnessEnabledKey, defaultValue = false)
     val (jrHrtf, onJrHrtfChange) = rememberPreference(iad1tya.echo.music.constants.JrHrtfEnabledKey, defaultValue = false)
     val (jrBass, onJrBassChange) = rememberPreference(iad1tya.echo.music.constants.JrBassEnhanceEnabledKey, defaultValue = false)
     val (jrBassAmt, onJrBassAmtChange) = rememberPreference(iad1tya.echo.music.constants.JrBassEnhanceAmountKey, defaultValue = 0.28f)
     val (jrExciter, onJrExciterChange) = rememberPreference(iad1tya.echo.music.constants.JrExciterEnabledKey, defaultValue = false)
     val (jrExciterAmt, onJrExciterAmtChange) = rememberPreference(iad1tya.echo.music.constants.JrExciterAmountKey, defaultValue = 0.15f)
-    val (jrTube, onJrTubeChange) = rememberPreference(iad1tya.echo.music.constants.JrTubeWarmthEnabledKey, defaultValue = false)
-    val (jrTubeAmt, onJrTubeAmtChange) = rememberPreference(iad1tya.echo.music.constants.JrTubeWarmthAmountKey, defaultValue = 0.25f)
     val (jrMbComp, onJrMbCompChange) = rememberPreference(iad1tya.echo.music.constants.JrMbCompEnabledKey, defaultValue = false)
     val (jrStereo, onJrStereoChange) = rememberPreference(iad1tya.echo.music.constants.JrStereoWidthEnabledKey, defaultValue = false)
     val (jrStereoAmt, onJrStereoAmtChange) = rememberPreference(iad1tya.echo.music.constants.JrStereoWidthKey, defaultValue = 1.0f)
@@ -616,27 +608,6 @@ fun PlayerSettings(
                     onClick = { onAudioNormalizationChange(!audioNormalization) }
                 ))
                 add(Material3SettingsItem(
-                    icon = painterResource(R.drawable.headset_applemusic),
-                    title = { Text(stringResource(R.string.crossfeed)) },
-                    description = { Text(stringResource(R.string.crossfeed_desc)) },
-                    trailingContent = {
-                        Switch(
-                            checked = crossfeedEnabled2,
-                            onCheckedChange = onCrossfeedEnabled2Change,
-                            thumbContent = {
-                                Icon(
-                                    painter = painterResource(
-                                        id = if (crossfeedEnabled2) R.drawable.check else R.drawable.close
-                                    ),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(SwitchDefaults.IconSize)
-                                )
-                            }
-                        )
-                    },
-                    onClick = { onCrossfeedEnabled2Change(!crossfeedEnabled2) }
-                ))
-                add(Material3SettingsItem(
                     icon = painterResource(R.drawable.auto_awesome),
                     title = { Text(stringResource(R.string.audio_enhance_low_quality)) },
                     description = { Text(stringResource(R.string.audio_enhance_low_quality_desc)) },
@@ -680,25 +651,6 @@ fun PlayerSettings(
                 ))
                 add(Material3SettingsItem(
                     icon = painterResource(R.drawable.graphic_eq),
-                    title = { Text("Limitador suave") },
-                    description = { Text("Evita la distorsión en los picos altos (recomendado)") },
-                    trailingContent = {
-                        Switch(
-                            checked = jrLimiter,
-                            onCheckedChange = onJrLimiterChange,
-                            thumbContent = {
-                                Icon(
-                                    painter = painterResource(id = if (jrLimiter) R.drawable.check else R.drawable.close),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(SwitchDefaults.IconSize)
-                                )
-                            }
-                        )
-                    },
-                    onClick = { onJrLimiterChange(!jrLimiter) }
-                ))
-                add(Material3SettingsItem(
-                    icon = painterResource(R.drawable.graphic_eq),
                     title = { Text("Sonoridad") },
                     description = { Text("Realce de graves y agudos Fletcher-Munson para escuchar a bajo volumen") },
                     trailingContent = {
@@ -719,7 +671,7 @@ fun PlayerSettings(
                 add(Material3SettingsItem(
                     icon = painterResource(R.drawable.graphic_eq),
                     title = { Text("Sala virtual (HRTF)") },
-                    description = { Text("Simulación binaural de altavoces para auriculares (desactiva Crossfeed)") },
+                    description = { Text("Simulación binaural de altavoces para auriculares") },
                     trailingContent = {
                         Switch(
                             checked = jrHrtf,
@@ -785,32 +737,8 @@ fun PlayerSettings(
                 ))
                 add(Material3SettingsItem(
                     icon = painterResource(R.drawable.graphic_eq),
-                    title = { Text("Calidez de válvulas") },
-                    description = {
-                        androidx.compose.foundation.layout.Column {
-                            Text("Saturación asimétrica de válvulas (armónicos pares)")
-                            if (jrTube) Slider(value = jrTubeAmt, onValueChange = onJrTubeAmtChange, valueRange = 0f..1f)
-                        }
-                    },
-                    trailingContent = {
-                        Switch(
-                            checked = jrTube,
-                            onCheckedChange = onJrTubeChange,
-                            thumbContent = {
-                                Icon(
-                                    painter = painterResource(id = if (jrTube) R.drawable.check else R.drawable.close),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(SwitchDefaults.IconSize)
-                                )
-                            }
-                        )
-                    },
-                    onClick = { onJrTubeChange(!jrTube) }
-                ))
-                add(Material3SettingsItem(
-                    icon = painterResource(R.drawable.graphic_eq),
                     title = { Text("Compresor multibanda") },
-                    description = { Text("3-band dynamics for a louder, more even mix") },
+                    description = { Text("Control dinámico en 3 bandas; doma los agudos para un sonido parejo") },
                     trailingContent = {
                         Switch(
                             checked = jrMbComp,

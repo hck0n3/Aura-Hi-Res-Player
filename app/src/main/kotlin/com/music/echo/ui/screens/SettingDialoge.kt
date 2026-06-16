@@ -86,7 +86,7 @@ fun SettingDialoge(
                     Spacer(modifier = Modifier.size(24.dp))
                     
                     Text(
-                        text = "JR-MUSIC-PRO",
+                        text = "Aura Hi-Res Player",
                         style = MaterialTheme.typography.titleLarge.copy(
                             fontWeight = FontWeight.Bold,
                             letterSpacing = 1.sp

@@ -149,6 +149,7 @@ import iad1tya.echo.music.constants.AppLanguageKey
 import iad1tya.echo.music.constants.DarkModeKey
 import iad1tya.echo.music.constants.DefaultOpenTabKey
 import iad1tya.echo.music.constants.DisableScreenshotKey
+import iad1tya.echo.music.constants.AuraThemeEnabledKey
 import iad1tya.echo.music.constants.DynamicThemeKey
 import iad1tya.echo.music.constants.EnableHighRefreshRateKey
 import iad1tya.echo.music.constants.FloatingToolbarBottomPadding
@@ -436,6 +437,7 @@ class MainActivity : ComponentActivity() {
 
         val (selectedThemeColorInt) = rememberPreference(SelectedThemeColorKey, defaultValue = DefaultThemeColor.toArgb())
         val selectedThemeColor = Color(selectedThemeColorInt)
+        val auraThemeEnabled by rememberPreference(AuraThemeEnabledKey, defaultValue = false)
 
         var themeColor by rememberSaveable(stateSaver = ColorSaver) {
             mutableStateOf(selectedThemeColor)
@@ -484,6 +486,7 @@ class MainActivity : ComponentActivity() {
             darkTheme = useDarkTheme,
             pureBlack = pureBlack,
             themeColor = themeColor,
+            auraEnabled = auraThemeEnabled,
         ) {
             BoxWithConstraints(
                 modifier = Modifier
@@ -763,7 +766,7 @@ class MainActivity : ComponentActivity() {
                 }
 
                 val currentTitle = when (navBackStackEntry?.destination?.route) {
-                    Screens.Home.route -> "JR-MUSIC-PRO"
+                    Screens.Home.route -> "Aura Hi-Res Player"
                     Screens.Search.route -> stringResource(R.string.search)
                     Screens.Library.route -> stringResource(R.string.filter_library)
                     Screens.ListenTogether.route -> stringResource(R.string.together)
@@ -830,7 +833,7 @@ class MainActivity : ComponentActivity() {
                                                                     fontWeight = FontWeight.ExtraBold
                                                                 )
                                                             ) {
-                                                                append("JR MUSIC PRO")
+                                                                append("Aura Hi-Res Player")
                                                             }
                                                         },
                                                         style = MaterialTheme.typography.titleLarge.copy(

@@ -243,7 +243,7 @@ fun BackupAndRestore(
                                 }
                             ),
                             Material3SettingsItem(
-                                title = { Text("Importar lista de JR Music Pro") },
+                                title = { Text("Importar lista de Aura Hi-Res Player") },
                                 description = { Text(".jrpl.json exported from the desktop app") },
                                 icon = painterResource(R.drawable.playlist_add),
                                 onClick = {

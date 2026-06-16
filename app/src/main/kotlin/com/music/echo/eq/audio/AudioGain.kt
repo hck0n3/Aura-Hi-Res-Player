@@ -1,12 +1,16 @@
 package iad1tya.echo.music.eq.audio
 
+import kotlin.math.abs
 import kotlin.math.pow
+import kotlin.math.tanh
 
 /**
  * Pure audio-gain helpers (no Android/media3) so they can be unit-tested on the JVM.
  *
- * Both exist to keep the signal path clean and clip-free (the "HiFi" goal): the EQ never boosts
- * past 0 dBFS, and loudness normalization only ever attenuates.
+ * The signal path stays clean and clip-free (the "HiFi" goal): the EQ never boosts past 0 dBFS,
+ * loud masters are attenuated to a reference, and quiet tracks are brought UP toward that reference
+ * (loudness target, TIDAL-style) by a bounded makeup gain whose peaks are caught by the true-peak
+ * limiter — so the output is loud and full without ever hard-clipping.
  */
 
 /**
@@ -33,6 +37,40 @@ fun normalizationMultiplier(
     if (!enabled || loudnessDb == null) return 1f
     val gainDb = (-loudnessDb).coerceIn(-maxAttenuationDb, 0.0)
     return 10.0.pow(gainDb / 20.0).toFloat()
+}
+
+/**
+ * Loudness makeup gain (dB, >= 0) that brings a quiet track UP toward the reference loudness so it
+ * plays as loud as a streaming service (TIDAL-style), instead of being left quiet. [loudnessDb] is
+ * the stream's loudness relative to reference (YouTube convention: normalize by `-loudnessDb`). Only
+ * the positive (boost) part is returned here — attenuation of loud masters is handled separately by
+ * [normalizationMultiplier]. Capped at [maxBoostDb] so we never chase unrealistic targets; the
+ * true-peak limiter downstream turns the remaining peaks into clean ceiling, never clipping.
+ */
+fun loudnessMakeupDb(
+    loudnessDb: Double?,
+    enabled: Boolean,
+    maxBoostDb: Double = 9.0,
+): Double {
+    if (!enabled || loudnessDb == null) return 0.0
+    return (-loudnessDb).coerceIn(0.0, maxBoostDb)
+}
+
+/** Linear amplitude multiplier for a dB gain (e.g. -6 dB → 0.501, +6 dB → 1.995). */
+fun dbToLinear(db: Double): Float = 10.0.pow(db / 20.0).toFloat()
+
+/**
+ * Bounded soft limiter: transparent below [knee], then a `tanh` knee whose asymptote sits exactly at
+ * [ceiling], so the output magnitude can NEVER exceed [ceiling] (no hard clip) yet stays clean. Used
+ * by the true-peak limiter in an oversampled domain so inter-sample / treble transient peaks are
+ * caught with minimal aliasing. [ceiling] defaults to ~-0.45 dBFS.
+ */
+fun softLimit(x: Float, ceiling: Float = 0.95f, knee: Float = 0.80f): Float {
+    val ax = abs(x)
+    if (ax <= knee) return x
+    val range = ceiling - knee
+    val comp = knee + range * tanh((ax - knee) / range)
+    return if (x < 0f) -comp else comp
 }
 
 /**

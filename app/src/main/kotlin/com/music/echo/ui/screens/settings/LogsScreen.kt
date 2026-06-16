@@ -156,7 +156,7 @@ fun LogsScreen(
 private fun copyToClipboard(context: Context, text: String) {
     if (text.isBlank()) return
     val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-    cm.setPrimaryClip(ClipData.newPlainText("JR Music Pro logs", text))
+    cm.setPrimaryClip(ClipData.newPlainText("Aura Hi-Res Player logs", text))
 }
 
 private fun shareLog(context: Context, isCrash: Boolean, text: String) {

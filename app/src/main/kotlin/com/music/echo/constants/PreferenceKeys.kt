@@ -14,7 +14,7 @@ import java.time.ZoneOffset
 import com.music.innertube.models.IpVersion
 
 val IsFirstRunKey = booleanPreferencesKey("isFirstRun")
-// Seeds JR Music Pro's preferred player/lyrics defaults once. Bump the suffix to force a
+// Seeds Aura Hi-Res Player's preferred player/lyrics defaults once. Bump the suffix to force a
 // one-time re-seed for everyone when the desired default set changes.
 val JrDefaultsAppliedKey = booleanPreferencesKey("jr_defaults_applied_v2")
 // One-time guard: defaults the in-app language to Spanish unless the user picked a language.
@@ -29,6 +29,9 @@ val EnableDynamicIconKey = booleanPreferencesKey("enableDynamicIcon")
 val EnableLegacyIconKey = booleanPreferencesKey("enableLegacyIcon")
 val EnableHighRefreshRateKey = booleanPreferencesKey("enableHighRefreshRate")
 val DynamicThemeKey = booleanPreferencesKey("dynamicTheme")
+// Aura Hi-Res theme: opt-in audiophile palette derived from the brand purple. Default off (current
+// look stays the default). Wired into echomusicTheme in MainActivity.
+val AuraThemeEnabledKey = booleanPreferencesKey("aura_theme_enabled")
 val SelectedThemeColorKey = intPreferencesKey("selectedThemeColor")
 val DarkModeKey = stringPreferencesKey("darkMode")
 val PureBlackKey = booleanPreferencesKey("pureBlack")
@@ -753,7 +756,6 @@ val SuggestionRegionSlugToName =
         "il" to "Israel"
     )
 
-val CrossfeedEnabledKey = booleanPreferencesKey("crossfeed_enabled")
 val SpectrumVisualizerEnabledKey = booleanPreferencesKey("spectrum_visualizer_enabled")
 // One-tap "Improve low quality": declipper + HF regeneration for low-bitrate/distorted tracks. Off by default.
 val AudioEnhanceEnabledKey = booleanPreferencesKey("audio_enhance_low_quality")
@@ -762,15 +764,13 @@ val PreloadNextSongLimitKey = intPreferencesKey("preload_next_song_limit")
 val PreloadLyricsEnabledKey = booleanPreferencesKey("preload_lyrics_enabled")
 
 // ── JR DSP effects (desktop parity) ──
-val JrLimiterEnabledKey = booleanPreferencesKey("jr_dsp_limiter_enabled")
+// Loudness makeup + true-peak limiting moved to TruePeakLimiterAudioProcessor (always on, no key).
 val JrLoudnessEnabledKey = booleanPreferencesKey("jr_dsp_loudness_enabled")
 val JrHrtfEnabledKey = booleanPreferencesKey("jr_dsp_hrtf_enabled")
 val JrBassEnhanceEnabledKey = booleanPreferencesKey("jr_dsp_bass_enhance_enabled")
 val JrBassEnhanceAmountKey = floatPreferencesKey("jr_dsp_bass_enhance_amount")
 val JrExciterEnabledKey = booleanPreferencesKey("jr_dsp_exciter_enabled")
 val JrExciterAmountKey = floatPreferencesKey("jr_dsp_exciter_amount")
-val JrTubeWarmthEnabledKey = booleanPreferencesKey("jr_dsp_tube_enabled")
-val JrTubeWarmthAmountKey = floatPreferencesKey("jr_dsp_tube_amount")
 val JrMbCompEnabledKey = booleanPreferencesKey("jr_dsp_mb_comp_enabled")
 val JrStereoWidthEnabledKey = booleanPreferencesKey("jr_dsp_stereo_width_enabled")
 val JrStereoWidthKey = floatPreferencesKey("jr_dsp_stereo_width")

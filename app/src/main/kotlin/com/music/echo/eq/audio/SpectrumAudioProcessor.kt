@@ -39,7 +39,7 @@ object SpectrumBus {
 }
 
 /**
- * Real-time FFT spectrum analyzer (JR Music Player visualizer port).
+ * Real-time FFT spectrum analyzer (Aura Hi-Res Player visualizer port).
  *
  * Passes audio through untouched. While the visualizer is enabled it mixes
  * the signal down to mono, runs a Hann-windowed 2048-point FFT throttled to

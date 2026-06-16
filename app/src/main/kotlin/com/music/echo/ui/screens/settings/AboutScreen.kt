@@ -38,7 +38,7 @@ private val PLAYBACK_FEATURES = listOf(
 
 private val LIBRARY_FEATURES = listOf(
     Feature(R.drawable.library_music, "Library & Sync", "YouTube Music library, playlists and likes kept in sync"),
-    Feature(R.drawable.download, "Import", "Import playlists from YouTube, Spotify and JR Music Pro (.jrpl.json)"),
+    Feature(R.drawable.download, "Import", "Import playlists from YouTube, Spotify and Aura Hi-Res Player (.jrpl.json)"),
     Feature(R.drawable.music_history, "History & Stats", "Listening history and detailed playback stats"),
 )
 
@@ -163,7 +163,7 @@ private fun AboutAppCard() {
             )
             Spacer(Modifier.height(4.dp))
             Text(
-                text = "JR Music Pro",
+                text = "Aura Hi-Res Player",
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface,
