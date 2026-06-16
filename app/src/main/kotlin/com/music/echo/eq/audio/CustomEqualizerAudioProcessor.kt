@@ -44,7 +44,11 @@ class CustomEqualizerAudioProcessor : AudioProcessor {
             return
         }
 
-        preampGain = 10.0.pow(parametricEQ.preamp / 20.0)
+        // Auto-headroom: never let a boosted band push the signal past 0 dBFS (prevents the
+        // hard-clip in processAudioBuffer16Bit, the main source of EQ distortion).
+        preampGain = 10.0.pow(
+            headroomPreampDb(parametricEQ.preamp, parametricEQ.bands.filter { it.enabled }.map { it.gain }) / 20.0,
+        )
 
         val active = parametricEQ.bands.filter { it.enabled && it.frequency < sampleRate / 2.0 }
         if (equalizerEnabled && filters.isNotEmpty() && filters.size == active.size) {
@@ -111,7 +115,9 @@ class CustomEqualizerAudioProcessor : AudioProcessor {
 
         
         pendingProfile?.let { profile ->
-            preampGain = 10.0.pow(profile.preamp / 20.0)
+            preampGain = 10.0.pow(
+                headroomPreampDb(profile.preamp, profile.bands.filter { it.enabled }.map { it.gain }) / 20.0,
+            )
             createFilters(profile.bands)
             equalizerEnabled = true
             pendingProfile = null

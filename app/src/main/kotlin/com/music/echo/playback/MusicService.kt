@@ -148,7 +148,9 @@ import iad1tya.echo.music.eq.EqualizerService
 import iad1tya.echo.music.eq.audio.CrossfeedAudioProcessor
 import iad1tya.echo.music.eq.audio.JrDspAudioProcessor
 import iad1tya.echo.music.eq.audio.CustomEqualizerAudioProcessor
+import iad1tya.echo.music.eq.audio.NormalizationGainAudioProcessor
 import iad1tya.echo.music.eq.audio.SpectrumAudioProcessor
+import iad1tya.echo.music.eq.audio.normalizationMultiplier
 import iad1tya.echo.music.eq.audio.SpectrumBus
 import iad1tya.echo.music.eq.data.EQProfileRepository
 import iad1tya.echo.music.extensions.SilentHandler
@@ -1734,24 +1736,23 @@ class MusicService :
 
                             Timber.tag(TAG).d("Calculated raw normalization gain: $targetGain mB (from loudness: $loudnessDb)")
 
-                            try {
-                                loudnessEnhancer?.setTargetGain(clampedGain)
-                                loudnessEnhancer?.enabled = true
-                                Timber.tag(TAG).i("LoudnessEnhancer gain applied: $clampedGain mB")
-                            } catch (e: Exception) {
-                                Timber.tag(TAG).e(e, "Failed to apply loudness enhancement")
-                                reportException(e)
-                                releaseLoudnessEnhancer()
-                            }
-                        } else {
+                            // Attenuate-only software normalization (never boosts → no clipping).
+                            // The old boost-only LoudnessEnhancer is kept disabled.
+                            NormalizationGainAudioProcessor.gain =
+                                normalizationMultiplier(loudnessDb.toDouble(), enabled = true)
                             loudnessEnhancer?.enabled = false
-                            Timber.tag(TAG).w("Normalization enabled but no loudness data available - no normalization applied")
+                            Timber.tag(TAG).i("Normalization gain set (loudnessDb=$loudnessDb)")
+                        } else {
+                            NormalizationGainAudioProcessor.gain = 1.0f
+                            loudnessEnhancer?.enabled = false
+                            Timber.tag(TAG).w("Normalization enabled but no loudness data - unity gain")
                         }
                     }
                 } else {
+                    NormalizationGainAudioProcessor.gain = 1.0f
                     withContext(Dispatchers.Main) {
                         loudnessEnhancer?.enabled = false
-                        Timber.tag(TAG).d("setupLoudnessEnhancer: normalization disabled or mediaId unavailable")
+                        Timber.tag(TAG).d("setupLoudnessEnhancer: normalization disabled - unity gain")
                     }
                 }
             } catch (e: Exception) {
@@ -2830,6 +2831,8 @@ class MusicService :
                     DefaultAudioSink.DefaultAudioProcessorChain(
 
                         arrayOf(
+                            // Attenuate-only normalization first → headroom for everything downstream.
+                            NormalizationGainAudioProcessor(),
                             eqProcessor,
                             CrossfeedAudioProcessor(),
                             JrDspAudioProcessor(),

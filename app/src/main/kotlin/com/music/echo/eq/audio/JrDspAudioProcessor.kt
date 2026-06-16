@@ -125,11 +125,14 @@ class JrDspAudioProcessor : AudioProcessor {
         var config: Config = Config()
 
         private fun softLimit(x: Float): Float {
-            val threshold = 0.80f
+            // Transparent true-peak ceiling: only the top ~0.45 dB is gently rounded and the
+            // asymptote stays at 1.0 (never hard-clips). The old 0.80 threshold audibly compressed
+            // loud material; 0.95 keeps the signal studio-clean.
+            val threshold = 0.95f
             val ax = abs(x)
             if (ax <= threshold) return x
             val excess = ax - threshold
-            val comp = threshold + (excess / (1.0f + excess * 5.0f))
+            val comp = threshold + (excess / (1.0f + excess * 20.0f))
             return if (x < 0) -comp else comp
         }
     }
