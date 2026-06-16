@@ -43,6 +43,7 @@ import iad1tya.echo.music.constants.AutoDownloadOnLikeKey
 import iad1tya.echo.music.constants.CrossfadeDurationKey
 import iad1tya.echo.music.constants.CrossfadeEnabledKey
 import iad1tya.echo.music.constants.CrossfadeGaplessKey
+import iad1tya.echo.music.constants.AudioEnhanceEnabledKey
 import iad1tya.echo.music.constants.CrossfeedEnabledKey
 import iad1tya.echo.music.constants.SpectrumVisualizerEnabledKey
 import iad1tya.echo.music.constants.AutoLoadMoreKey
@@ -122,6 +123,10 @@ fun PlayerSettings(
     )
     val (crossfeedEnabled2, onCrossfeedEnabled2Change) = rememberPreference(
         CrossfeedEnabledKey,
+        defaultValue = false
+    )
+    val (audioEnhance, onAudioEnhanceChange) = rememberPreference(
+        AudioEnhanceEnabledKey,
         defaultValue = false
     )
     val (spectrumVisualizer, onSpectrumVisualizerChange) = rememberPreference(
@@ -630,6 +635,27 @@ fun PlayerSettings(
                         )
                     },
                     onClick = { onCrossfeedEnabled2Change(!crossfeedEnabled2) }
+                ))
+                add(Material3SettingsItem(
+                    icon = painterResource(R.drawable.auto_awesome),
+                    title = { Text(stringResource(R.string.audio_enhance_low_quality)) },
+                    description = { Text(stringResource(R.string.audio_enhance_low_quality_desc)) },
+                    trailingContent = {
+                        Switch(
+                            checked = audioEnhance,
+                            onCheckedChange = onAudioEnhanceChange,
+                            thumbContent = {
+                                Icon(
+                                    painter = painterResource(
+                                        id = if (audioEnhance) R.drawable.check else R.drawable.close
+                                    ),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(SwitchDefaults.IconSize)
+                                )
+                            }
+                        )
+                    },
+                    onClick = { onAudioEnhanceChange(!audioEnhance) }
                 ))
                 add(Material3SettingsItem(
                     icon = painterResource(R.drawable.graphic_eq),

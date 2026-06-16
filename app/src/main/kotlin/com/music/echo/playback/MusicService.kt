@@ -77,6 +77,7 @@ import com.music.innertube.models.SongItem
 import com.music.innertube.models.WatchEndpoint
 import iad1tya.echo.music.MainActivity
 import iad1tya.echo.music.R
+import iad1tya.echo.music.constants.AudioEnhanceEnabledKey
 import iad1tya.echo.music.constants.AudioNormalizationKey
 import iad1tya.echo.music.constants.AudioOffload
 import iad1tya.echo.music.constants.AudioQualityKey
@@ -145,6 +146,7 @@ import iad1tya.echo.music.db.entities.Song
 import iad1tya.echo.music.di.DownloadCache
 import iad1tya.echo.music.di.PlayerCache
 import iad1tya.echo.music.eq.EqualizerService
+import iad1tya.echo.music.eq.audio.AudioEnhanceProcessor
 import iad1tya.echo.music.eq.audio.CrossfeedAudioProcessor
 import iad1tya.echo.music.eq.audio.JrDspAudioProcessor
 import iad1tya.echo.music.eq.audio.CustomEqualizerAudioProcessor
@@ -753,6 +755,13 @@ class MusicService :
             .distinctUntilChanged()
             .collectLatest(scope) { enabled ->
                 CrossfeedAudioProcessor.globalEnabled = enabled
+            }
+
+        dataStore.data
+            .map { it[AudioEnhanceEnabledKey] ?: false }
+            .distinctUntilChanged()
+            .collectLatest(scope) { enabled ->
+                AudioEnhanceProcessor.enabled = enabled
             }
 
         dataStore.data
@@ -2831,7 +2840,9 @@ class MusicService :
                     DefaultAudioSink.DefaultAudioProcessorChain(
 
                         arrayOf(
-                            // Attenuate-only normalization first → headroom for everything downstream.
+                            // "Improve low quality" (declip + HF regen) on the raw signal; off by default.
+                            AudioEnhanceProcessor(),
+                            // Attenuate-only normalization → headroom for everything downstream.
                             NormalizationGainAudioProcessor(),
                             eqProcessor,
                             CrossfeedAudioProcessor(),

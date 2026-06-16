@@ -755,6 +755,8 @@ val SuggestionRegionSlugToName =
 
 val CrossfeedEnabledKey = booleanPreferencesKey("crossfeed_enabled")
 val SpectrumVisualizerEnabledKey = booleanPreferencesKey("spectrum_visualizer_enabled")
+// One-tap "Improve low quality": declipper + HF regeneration for low-bitrate/distorted tracks. Off by default.
+val AudioEnhanceEnabledKey = booleanPreferencesKey("audio_enhance_low_quality")
 val PreloadNextSongEnabledKey = booleanPreferencesKey("preload_next_song_enabled")
 val PreloadNextSongLimitKey = intPreferencesKey("preload_next_song_limit")
 val PreloadLyricsEnabledKey = booleanPreferencesKey("preload_lyrics_enabled")

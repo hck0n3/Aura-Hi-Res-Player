@@ -34,3 +34,19 @@ fun normalizationMultiplier(
     val gainDb = (-loudnessDb).coerceIn(-maxAttenuationDb, 0.0)
     return 10.0.pow(gainDb / 20.0).toFloat()
 }
+
+/**
+ * One reconstructed sample inside a clipped run: continues the pre-clip linear trajectory
+ * ([anchorNewest] + slope * [stepsIntoClip]) so a flat clipped top is rounded into a peak instead of
+ * a harsh corner. Bounded to +/-[maxOvershoot] so it can never run away (the limiter still caps
+ * output). Mitigation only — hard clipping is destructive and cannot be fully restored in real time.
+ */
+fun declipSample(
+    anchorNewest: Float,
+    anchorPrev: Float,
+    stepsIntoClip: Int,
+    maxOvershoot: Float = 1.35f,
+): Float {
+    val slope = anchorNewest - anchorPrev
+    return (anchorNewest + slope * stepsIntoClip).coerceIn(-maxOvershoot, maxOvershoot)
+}

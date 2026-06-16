@@ -49,4 +49,20 @@ class AudioGainTest {
         // loudnessDb +100 → clamped to -12 dB → 10^(-0.6) ≈ 0.2512
         assertEquals(0.2512f, normalizationMultiplier(100.0, enabled = true), 1e-3f)
     }
+
+    // ── declipSample ──
+
+    @Test fun declipContinuesUpwardRamp() {
+        // 0.8 -> 0.9 (slope +0.1), 1 step into the clip → 1.0
+        assertEquals(1.0f, declipSample(0.9f, 0.8f, 1), 1e-6f)
+    }
+
+    @Test fun declipIsBoundedToMaxOvershoot() {
+        // steep slope, many steps → clamps to +1.35
+        assertEquals(1.35f, declipSample(0.9f, 0.7f, 10), 1e-6f)
+    }
+
+    @Test fun declipFlatApproachStaysFlat() {
+        assertEquals(0.98f, declipSample(0.98f, 0.98f, 3), 1e-6f)
+    }
 }
