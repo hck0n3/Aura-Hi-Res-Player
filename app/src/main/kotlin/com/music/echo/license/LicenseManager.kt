@@ -8,13 +8,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * Android-facing orchestrator. Persists [LicenseLogic.State] in SharedPreferences and performs the
- * online Gumroad verification on each app open, applying the offline grace window from [LicenseLogic].
+ * Android-facing orchestrator. Persists [LicenseLogic.State] in SharedPreferences and verifies the
+ * subscription online via the backend Worker (which enforces one device per key) on each app open,
+ * applying the offline grace window from [LicenseLogic].
  */
 object LicenseManager {
-
-    /** Gumroad membership product id for JR-MUSIC-PRO-OFFICIAL ANDROID. Not secret; ships in the APK. */
-    const val PRODUCT_ID = "wcPehkIWHRbPKR4_hZLdJQ=="
 
     private const val PREFS = "jr_license"
     private const val KEY_SUB = "subscription_key"
@@ -22,7 +20,7 @@ object LicenseManager {
     private const val KEY_DEMO_STARTED = "demo_started_at"
     private const val KEY_LAST_SEEN = "last_seen_at"
 
-    private val gumroad = GumroadClient()
+    private val backend = LicenseBackendClient()
 
     private fun prefs(context: Context): SharedPreferences =
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -62,7 +60,15 @@ object LicenseManager {
         save(context, LicenseLogic.startDemo(load(context), now))
     }
 
-    /** Full evaluation used by the gate at startup. Performs online verification when possible. */
+    private fun outcomeOf(status: LicenseStatus): LicenseLogic.VerifyOutcome =
+        when (status) {
+            LicenseStatus.ACTIVE -> LicenseLogic.VerifyOutcome.ACTIVE
+            LicenseStatus.ENDED, LicenseStatus.INVALID_KEY -> LicenseLogic.VerifyOutcome.ENDED
+            LicenseStatus.DEVICE_MISMATCH -> LicenseLogic.VerifyOutcome.DEVICE_MISMATCH
+            LicenseStatus.NETWORK_ERROR -> LicenseLogic.VerifyOutcome.UNVERIFIED
+        }
+
+    /** Full evaluation used by the gate at startup. Verifies online (Worker) when possible. */
     suspend fun evaluate(context: Context): LicenseLogic.AppState = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
         var state = LicenseLogic.touch(load(context), now)
@@ -72,44 +78,40 @@ object LicenseManager {
             ?: return@withContext LicenseLogic.resolve(state, LicenseLogic.VerifyOutcome.UNVERIFIED, now)
 
         val outcome = if (isOnline(context)) {
-            when (gumroad.verify(PRODUCT_ID, key)) {
-                GumroadVerify.Result.ACTIVE -> {
-                    state = LicenseLogic.withVerifiedNow(state, now)
-                    save(context, state)
-                    LicenseLogic.VerifyOutcome.ACTIVE
-                }
-                GumroadVerify.Result.ENDED,
-                GumroadVerify.Result.INVALID_KEY -> LicenseLogic.VerifyOutcome.ENDED
-                GumroadVerify.Result.NETWORK_ERROR -> LicenseLogic.VerifyOutcome.UNVERIFIED
+            val status = backend.verify(key, DeviceId.get(context))
+            if (status == LicenseStatus.ACTIVE) {
+                state = LicenseLogic.withVerifiedNow(state, now)
+                save(context, state)
             }
+            outcomeOf(status)
         } else {
             LicenseLogic.VerifyOutcome.UNVERIFIED
         }
         LicenseLogic.resolve(state, outcome, now)
     }
 
-    /** Called from the "Ya me suscribí" entry screen. Saves the key only when Gumroad confirms active. */
-    suspend fun activateSubscription(context: Context, rawKey: String): GumroadVerify.Result =
+    /** Called from the "Ya me suscribí" entry screen. Saves the key only when verification is ACTIVE. */
+    suspend fun activateSubscription(context: Context, rawKey: String): LicenseStatus =
         withContext(Dispatchers.IO) {
             val key = rawKey.trim()
-            if (key.isEmpty()) return@withContext GumroadVerify.Result.INVALID_KEY
-            val result = gumroad.verify(PRODUCT_ID, key)
-            if (result == GumroadVerify.Result.ACTIVE) {
+            if (key.isEmpty()) return@withContext LicenseStatus.INVALID_KEY
+            val status = backend.verify(key, DeviceId.get(context))
+            if (status == LicenseStatus.ACTIVE) {
                 val now = System.currentTimeMillis()
                 save(context, LicenseLogic.withSubscriptionKey(load(context), key, now))
             }
-            result
+            status
         }
 
     /** Re-checks the stored subscription (used by the renew / "ya pagué" screen). */
-    suspend fun reverify(context: Context): GumroadVerify.Result =
+    suspend fun reverify(context: Context): LicenseStatus =
         withContext(Dispatchers.IO) {
             val state = load(context)
-            val key = state.subscriptionKey ?: return@withContext GumroadVerify.Result.INVALID_KEY
-            val result = gumroad.verify(PRODUCT_ID, key)
-            if (result == GumroadVerify.Result.ACTIVE) {
+            val key = state.subscriptionKey ?: return@withContext LicenseStatus.INVALID_KEY
+            val status = backend.verify(key, DeviceId.get(context))
+            if (status == LicenseStatus.ACTIVE) {
                 save(context, LicenseLogic.withVerifiedNow(state, System.currentTimeMillis()))
             }
-            result
+            status
         }
 }

@@ -56,5 +56,6 @@ fun LicenseGate(appContent: @Composable () -> Unit) {
         )
         AppState.SUBSCRIPTION_EXPIRED -> RenewScreen(onActivated = { refresh() })
         AppState.NEEDS_CONNECTION -> NeedsConnectionScreen(onRetry = { refresh() })
+        AppState.DEVICE_BLOCKED -> DeviceBlockedScreen(onRetry = { refresh() })
     }
 }

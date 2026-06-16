@@ -234,16 +234,20 @@ fun SubscriptionEntryScreen(
                 val result = LicenseManager.activateSubscription(context, key)
                 loading = false
                 when (result) {
-                    GumroadVerify.Result.ACTIVE -> onActivated()
-                    GumroadVerify.Result.ENDED -> {
+                    LicenseStatus.ACTIVE -> onActivated()
+                    LicenseStatus.ENDED -> {
                         statusColor = Color(0xFFFFB74D)
                         status = "Esta suscripción está cancelada o vencida. Renueva el pago en Gumroad."
                     }
-                    GumroadVerify.Result.INVALID_KEY -> {
+                    LicenseStatus.DEVICE_MISMATCH -> {
+                        statusColor = Color(0xFFFFB74D)
+                        status = "Esta clave ya está en uso en otro equipo. Usa el equipo original o espera unos días."
+                    }
+                    LicenseStatus.INVALID_KEY -> {
                         statusColor = Color(0xFFFF6B6B)
                         status = "Clave inválida. Revisa que la copiaste completa."
                     }
-                    GumroadVerify.Result.NETWORK_ERROR -> {
+                    LicenseStatus.NETWORK_ERROR -> {
                         statusColor = Color(0xFFFF6B6B)
                         status = "Sin conexión. Conéctate a internet e inténtalo de nuevo."
                     }
@@ -285,7 +289,7 @@ fun RenewScreen(onActivated: () -> Unit) {
                 scope.launch {
                     val r = LicenseManager.reverify(context)
                     loading = false
-                    if (r == GumroadVerify.Result.ACTIVE) onActivated()
+                    if (r == LicenseStatus.ACTIVE) onActivated()
                     else status = "Todavía no detectamos el pago. Si ya pagaste, espera un momento y reintenta."
                 }
             },
@@ -303,5 +307,23 @@ fun NeedsConnectionScreen(onRetry: () -> Unit) {
         hint = "Necesitamos verificar tu suscripción. Conéctate a internet para continuar.",
     ) {
         PrimaryButton("Reintentar", onClick = onRetry)
+    }
+}
+
+@Composable
+fun DeviceBlockedScreen(onRetry: () -> Unit) {
+    val context = LocalContext.current
+    LicenseScaffold(
+        subtitle = "Suscripción en otro equipo",
+        hint = "Esta suscripción ya está activa en otro equipo. Cada suscripción funciona en un solo " +
+            "equipo a la vez. Suscríbete para este equipo, o espera unos días si dejaste de usar el otro.",
+    ) {
+        PrimaryButton("Reintentar", onClick = onRetry)
+        Spacer(Modifier.height(12.dp))
+        OutlinedButton(
+            onClick = { openGumroad(context) },
+            modifier = Modifier.fillMaxWidth().height(48.dp),
+            shape = RoundedCornerShape(16.dp),
+        ) { Text("Suscribirme ($10/mes)", fontWeight = FontWeight.SemiBold) }
     }
 }

@@ -74,24 +74,31 @@ class LicenseLogicTest {
         )
     }
 
+    @Test fun deviceMismatchBlocks() {
+        assertEquals(
+            AppState.DEVICE_BLOCKED,
+            LicenseLogic.resolve(subState(now), VerifyOutcome.DEVICE_MISMATCH, now),
+        )
+    }
+
     @Test fun offlineWithinGraceEnters() {
         assertEquals(
             AppState.SUBSCRIPTION_ACTIVE,
-            LicenseLogic.resolve(subState(now), VerifyOutcome.UNVERIFIED, now + 2 * day),
+            LicenseLogic.resolve(subState(now), VerifyOutcome.UNVERIFIED, now + day / 2),
         )
     }
 
     @Test fun offlineAtGraceLimitStillEnters() {
         assertEquals(
             AppState.SUBSCRIPTION_ACTIVE,
-            LicenseLogic.resolve(subState(now), VerifyOutcome.UNVERIFIED, now + 3 * day),
+            LicenseLogic.resolve(subState(now), VerifyOutcome.UNVERIFIED, now + day),
         )
     }
 
     @Test fun offlineBeyondGraceNeedsConnection() {
         assertEquals(
             AppState.NEEDS_CONNECTION,
-            LicenseLogic.resolve(subState(now), VerifyOutcome.UNVERIFIED, now + 3 * day + 1),
+            LicenseLogic.resolve(subState(now), VerifyOutcome.UNVERIFIED, now + day + 1),
         )
     }
 

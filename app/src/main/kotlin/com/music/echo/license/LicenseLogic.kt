@@ -11,7 +11,7 @@ object LicenseLogic {
     const val DEMO_DURATION_MS = 3L * 24 * 60 * 60 * 1000
 
     /** How long the app keeps working without a fresh successful online verification. */
-    const val OFFLINE_GRACE_MS = 3L * 24 * 60 * 60 * 1000
+    const val OFFLINE_GRACE_MS = 1L * 24 * 60 * 60 * 1000
 
     /** Small tolerance so timezone hops don't lock a legit user; day-scale rollbacks do. */
     private const val CLOCK_ROLLBACK_TOLERANCE_MS = 5L * 60 * 1000
@@ -24,11 +24,11 @@ object LicenseLogic {
     )
 
     /** Simplified result of an already-performed online verification. */
-    enum class VerifyOutcome { ACTIVE, ENDED, UNVERIFIED }
+    enum class VerifyOutcome { ACTIVE, ENDED, DEVICE_MISMATCH, UNVERIFIED }
 
     enum class AppState {
         FIRST_RUN, DEMO, DEMO_EXPIRED,
-        SUBSCRIPTION_ACTIVE, SUBSCRIPTION_EXPIRED, NEEDS_CONNECTION,
+        SUBSCRIPTION_ACTIVE, SUBSCRIPTION_EXPIRED, NEEDS_CONNECTION, DEVICE_BLOCKED,
     }
 
     fun touch(state: State, now: Long): State =
@@ -71,6 +71,7 @@ object LicenseLogic {
             return when (outcome) {
                 VerifyOutcome.ACTIVE -> AppState.SUBSCRIPTION_ACTIVE
                 VerifyOutcome.ENDED -> AppState.SUBSCRIPTION_EXPIRED
+                VerifyOutcome.DEVICE_MISMATCH -> AppState.DEVICE_BLOCKED
                 VerifyOutcome.UNVERIFIED ->
                     if (withinGrace(state, now)) AppState.SUBSCRIPTION_ACTIVE
                     else AppState.NEEDS_CONNECTION
