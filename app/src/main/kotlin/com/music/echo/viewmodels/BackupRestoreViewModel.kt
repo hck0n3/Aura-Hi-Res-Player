@@ -172,6 +172,11 @@ class BackupRestoreViewModel @Inject constructor(
                 Timber.tag("RESTORE").e("Could not open input stream for uri: $uri")
             }
 
+            // Force this version's one-time setup (App.initializeSettings) to re-run on next launch.
+            // The restored settings file carries the old profile's init guards, which would otherwise
+            // suppress newly seeded defaults/features ("new features don't appear after restore").
+            runCatching { java.io.File(context.filesDir, POST_RESTORE_REINIT_FLAG).createNewFile() }
+
             context.stopService(Intent(context, MusicService::class.java))
             context.filesDir.resolve(PERSISTENT_QUEUE_FILE).delete()
             val restartIntent = Intent(context, MainActivity::class.java).apply {
@@ -359,5 +364,12 @@ class BackupRestoreViewModel @Inject constructor(
 
     companion object {
         const val SETTINGS_FILENAME = "settings.preferences_pb"
+
+        /**
+         * Marker file written after a successful restore. [iad1tya.echo.music.App.initializeSettings]
+         * detects it on the next launch and clears the restored one-time init guards so this app
+         * version's seeded defaults/features re-apply, then deletes it.
+         */
+        const val POST_RESTORE_REINIT_FLAG = "post_restore_reseed.flag"
     }
 }

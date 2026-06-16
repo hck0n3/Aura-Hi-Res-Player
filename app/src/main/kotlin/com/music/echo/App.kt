@@ -95,6 +95,7 @@ class App : Application(), SingletonImageLoader.Factory {
     }
 
     private suspend fun initializeSettings() {
+        reseedAfterRestoreIfNeeded()
         val settings = dataStore.data.first()
         seedJrDefaults(settings)
         seedSpanishDefault(settings)
@@ -155,6 +156,29 @@ class App : Application(), SingletonImageLoader.Factory {
         }
         val nm = getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(channel)
+    }
+
+    /**
+     * After a backup restore, the restored settings file carries the previous profile's one-time
+     * init guards (e.g. [iad1tya.echo.music.constants.JrDefaultsAppliedKey]); left intact they
+     * suppress this version's seeded defaults, so "new features don't appear" until the backup is
+     * cleared. Signalled by a marker file from [iad1tya.echo.music.viewmodels.BackupRestoreViewModel],
+     * this clears those guards once so the seeds below re-run on the next launch.
+     */
+    private suspend fun reseedAfterRestoreIfNeeded() {
+        val flag = java.io.File(
+            filesDir,
+            iad1tya.echo.music.viewmodels.BackupRestoreViewModel.POST_RESTORE_REINIT_FLAG,
+        )
+        if (!flag.exists()) return
+        Timber.tag("RESTORE").i("Post-restore re-seed: clearing one-time init guards")
+        runCatching {
+            dataStore.edit { p ->
+                p.remove(iad1tya.echo.music.constants.JrDefaultsAppliedKey)
+                p.remove(iad1tya.echo.music.constants.SpanishDefaultAppliedKey)
+            }
+        }
+        flag.delete()
     }
 
     /**
