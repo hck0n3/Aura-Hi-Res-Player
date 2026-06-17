@@ -104,15 +104,7 @@ fun UpdateSettings(
                             Text(stringResource(R.string.app_update_uptodate))
                         }
                     },
-                    onClick = {
-                        val isFoss = !BuildConfig.CAST_AVAILABLE
-                        if (isFoss) {
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/EchoMusicApp/Echo-Music"))
-                            context.startActivity(intent)
-                        } else {
-                            navController.navigate("update")
-                        }
-                    }
+                    onClick = { navController.navigate("update") }
                 ),
                 Material3SettingsItem(
                     icon = painterResource(R.drawable.info),
@@ -122,8 +114,9 @@ fun UpdateSettings(
                     description = {
                         val arch = BuildConfig.ARCHITECTURE
                         val variant = if (BuildConfig.CAST_AVAILABLE) "GMS" else "FOSS"
-                        Text("$arch - $variant")
-                    }
+                        Text("$arch - $variant · Ver cambios de esta versión")
+                    },
+                    onClick = { navController.navigate("settings/changelog") }
                 ),
                 
                 Material3SettingsItem(

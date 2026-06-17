@@ -1724,6 +1724,25 @@ fun BottomSheetPlayer(
                         }
                     }
                 } else {
+                    // Quick access to the Sound / equalizer hub from the player.
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(RoundedCornerShape(24.dp))
+                            .background(textButtonColor.copy(alpha = 0.2f))
+                            .clickable { navController.navigate("settings/sound") },
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.graphic_eq),
+                            contentDescription = "Sonido y ecualizador",
+                            tint = textButtonColor,
+                            modifier = Modifier
+                                .align(Alignment.Center)
+                                .size(24.dp),
+                        )
+                    }
+                    Spacer(modifier = Modifier.size(12.dp))
+
                     AnimatedContent(targetState = showInlineLyrics, label = "DownloadButton") { showLyrics ->
                         if (showLyrics) {
                             Box(

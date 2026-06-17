@@ -73,6 +73,7 @@ fun SettingsScreen(
     val backupText = stringResource(R.string.backup_restore)
     val logsText = stringResource(R.string.logs)
     val aboutText = stringResource(R.string.about)
+    val updateText = "Aura Hi-Res Update"
     val noResultsText = stringResource(R.string.settings_search_no_results, searchQuery)
 
     val scrollState = rememberScrollState()
@@ -142,6 +143,16 @@ fun SettingsScreen(
                         icon = painterResource(R.drawable.palette),
                         title = { Text(appearanceText) },
                         onClick = { navController.navigate("settings/appearance") }
+                    )
+                )
+            }
+            if (updateText.lowercase().contains(searchLower)) {
+                add(
+                    Material3SettingsItem(
+                        icon = painterResource(R.drawable.download),
+                        title = { Text(updateText) },
+                        description = { Text("Cambios de esta versión y nuevas actualizaciones") },
+                        onClick = { navController.navigate("settings/update") }
                     )
                 )
             }

@@ -1067,8 +1067,8 @@ fun AppearanceSettings(
                 add(
                     Material3SettingsItem(
                         icon = painterResource(R.drawable.palette),
-                        title = { Text("Tema Aura Hi-Res") },
-                        description = { Text("Paleta oscura audiophile con el color de marca Aura") },
+                        title = { Text("Tema Aura Glass") },
+                        description = { Text("Vidrio oscuro: esquinas redondeadas, superficies translúcidas y acento cian. Cambia toda la interfaz.") },
                         trailingContent = {
                             Switch(
                                 checked = auraTheme,

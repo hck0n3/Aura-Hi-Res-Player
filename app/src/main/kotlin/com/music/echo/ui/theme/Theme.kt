@@ -62,9 +62,11 @@ fun echomusicTheme(
     }
 
     
+    // Aura Glass also reshapes the whole UI (bigger rounded corners) — a felt change, not just color.
     MaterialTheme(
         colorScheme = colorScheme,
-        typography = AppTypography, 
+        typography = AppTypography,
+        shapes = if (auraEnabled) AuraGlassShapes else androidx.compose.material3.Shapes(),
         content = content
     )
 }
