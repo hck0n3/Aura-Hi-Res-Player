@@ -55,9 +55,19 @@ object LicenseManager {
     fun demoDaysLeft(context: Context): Int =
         LicenseLogic.demoDaysLeft(load(context), System.currentTimeMillis())
 
-    suspend fun startDemo(context: Context) = withContext(Dispatchers.IO) {
+    /**
+     * Starts the demo, registering it on the server keyed to this device (ANDROID_ID). Requires a
+     * connection so the device is recorded — this is what stops "clear data → fresh 3-day demo".
+     * Returns false when offline / the server is unreachable (caller should ask the user to connect).
+     */
+    suspend fun startDemo(context: Context): Boolean = withContext(Dispatchers.IO) {
+        if (!isOnline(context)) return@withContext false
+        val demo = backend.fetchDemo(DeviceId.get(context), start = true) ?: return@withContext false
+        if (!demo.hasDemo) return@withContext false
         val now = System.currentTimeMillis()
-        save(context, LicenseLogic.startDemo(load(context), now))
+        val elapsed = (demo.serverTime - demo.startedAt).coerceAtLeast(0L)
+        save(context, load(context).copy(demoStartedAt = now - elapsed, lastSeenAt = now))
+        true
     }
 
     private fun outcomeOf(status: LicenseStatus): LicenseLogic.VerifyOutcome =
@@ -75,7 +85,20 @@ object LicenseManager {
         save(context, state)
 
         val key = state.subscriptionKey
-            ?: return@withContext LicenseLogic.resolve(state, LicenseLogic.VerifyOutcome.UNVERIFIED, now)
+        if (key == null) {
+            // No subscription → demo path. Sync the demo start from the Worker (keyed to this device)
+            // so clearing app data can't restart the 3-day demo. When online we trust the server's
+            // start time; offline we keep whatever local state we have (offline grace).
+            if (isOnline(context)) {
+                val demo = backend.fetchDemo(DeviceId.get(context), start = false)
+                if (demo != null && demo.hasDemo) {
+                    val elapsed = (demo.serverTime - demo.startedAt).coerceAtLeast(0L)
+                    state = state.copy(demoStartedAt = now - elapsed, lastSeenAt = now)
+                    save(context, state)
+                }
+            }
+            return@withContext LicenseLogic.resolve(state, LicenseLogic.VerifyOutcome.UNVERIFIED, now)
+        }
 
         val outcome = if (isOnline(context)) {
             val status = backend.verify(key, DeviceId.get(context))

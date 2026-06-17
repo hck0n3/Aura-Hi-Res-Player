@@ -7,7 +7,12 @@ import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.content.TextContent
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.longOrNull
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.put
 
 /**
@@ -32,7 +37,45 @@ class LicenseBackendClient(
             LicenseStatus.NETWORK_ERROR
         }
 
+    /**
+     * Server-authoritative demo. With [start] = false this only checks whether a demo is already on
+     * record for [deviceId]; with [start] = true it registers one if absent. The demo start is keyed
+     * to the device (ANDROID_ID) on the server, so clearing app data can't reset the 3-day demo.
+     * Returns null on any network/parse error (caller falls back to local/offline handling).
+     */
+    suspend fun fetchDemo(deviceId: String, start: Boolean): DemoResult? =
+        try {
+            val payload = buildJsonObject {
+                put("device_id", deviceId)
+                put("start", start)
+            }.toString()
+            val text = http.post(DEMO_URL) {
+                setBody(TextContent(payload, ContentType.Application.Json))
+            }.bodyAsText()
+            val obj = Json.parseToJsonElement(text).jsonObject
+            when (obj["status"]?.jsonPrimitive?.contentOrNull) {
+                "ok" -> {
+                    val started = obj["demo_started_at"]?.jsonPrimitive?.longOrNull
+                    val serverTime = obj["server_time"]?.jsonPrimitive?.longOrNull
+                    if (started != null && serverTime != null) {
+                        DemoResult(hasDemo = true, startedAt = started, serverTime = serverTime)
+                    } else null
+                }
+                "none" -> {
+                    val serverTime = obj["server_time"]?.jsonPrimitive?.longOrNull ?: System.currentTimeMillis()
+                    DemoResult(hasDemo = false, startedAt = 0L, serverTime = serverTime)
+                }
+                else -> null // "error"/unknown -> treat as unreachable
+            }
+        } catch (e: Exception) {
+            null
+        }
+
     companion object {
         private const val VERIFY_URL = "https://round-math-d64e.toberto4000.workers.dev/verify"
+        private const val DEMO_URL = "https://round-math-d64e.toberto4000.workers.dev/demo"
     }
 }
+
+/** Result of a server demo check: whether a demo exists and its server-side start time. */
+data class DemoResult(val hasDemo: Boolean, val startedAt: Long, val serverTime: Long)

@@ -1,4 +1,4 @@
-// JR MUSIC PRO — license + one-device-per-subscription Worker.
+// Aura Hi-Res Player — license + one-device-per-subscription Worker.
 // Bindings: KV namespace "LICENSES". Env var: PRODUCT_ID (Gumroad product id).
 const GUMROAD_VERIFY = "https://api.gumroad.com/v2/licenses/verify";
 const INACTIVITY_MS = 2 * 24 * 60 * 60 * 1000; // auto-release after 2 days idle
@@ -6,9 +6,14 @@ const INACTIVITY_MS = 2 * 24 * 60 * 60 * 1000; // auto-release after 2 days idle
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    if (request.method !== "POST" || url.pathname !== "/verify") {
-      return json({ status: "invalid" }, 404);
-    }
+    if (request.method !== "POST") return json({ status: "invalid" }, 404);
+
+    // Server-authoritative demo: the first demo start per device_id (ANDROID_ID) is recorded in KV
+    // and returned on every later call, so clearing app data / reinstalling can't reset the 3-day
+    // demo on the same device.
+    if (url.pathname === "/demo") return handleDemo(request, env);
+
+    if (url.pathname !== "/verify") return json({ status: "invalid" }, 404);
 
     let body;
     try {
@@ -43,6 +48,38 @@ export default {
     }
   },
 };
+
+async function handleDemo(request, env) {
+  let body;
+  try {
+    body = await request.json();
+  } catch (e) {
+    return json({ status: "invalid" }, 400);
+  }
+  const deviceId = body && body.device_id;
+  if (!deviceId) return json({ status: "invalid" }, 400);
+  const start = body.start === true; // only "Probar gratis" starts a demo; opening the app just checks
+  try {
+    const now = Date.now();
+    const k = "demo:" + deviceId;
+    const existing = await env.LICENSES.get(k);
+    let started;
+    if (existing) {
+      started = parseInt(existing, 10);
+      if (!Number.isFinite(started)) started = now;
+    } else if (start) {
+      started = now;
+      // Persist permanently so clearing app data / reinstalling can never reset the demo.
+      await env.LICENSES.put(k, String(started));
+    } else {
+      return json({ status: "none", server_time: now }); // no demo on record, and not starting one
+    }
+    return json({ status: "ok", demo_started_at: started, server_time: now });
+  } catch (e) {
+    // KV down -> let the app fall back to its local/offline handling.
+    return json({ status: "error" });
+  }
+}
 
 function json(obj, status = 200) {
   return new Response(JSON.stringify(obj), {

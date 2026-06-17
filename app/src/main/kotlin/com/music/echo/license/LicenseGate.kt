@@ -43,8 +43,10 @@ fun LicenseGate(appContent: @Composable () -> Unit) {
             onTryDemo = {
                 appState = null
                 scope.launch {
-                    LicenseManager.startDemo(context)
-                    appState = LicenseManager.evaluate(context)
+                    // Demo requires a connection (registers the device on the server); if offline we
+                    // can't start it — ask the user to connect instead of granting a free local demo.
+                    appState = if (LicenseManager.startDemo(context)) LicenseManager.evaluate(context)
+                    else AppState.NEEDS_CONNECTION
                 }
             },
             onHaveSubscription = { showEntry = true },
