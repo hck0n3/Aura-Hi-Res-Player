@@ -1,9 +1,9 @@
-# Aura Hi-Res Player v5.1.98
+# Aura Hi-Res Player v5.1.99
 
-## Mejoras
-- **Reproductor → Sonido**: el botón de sonido ahora colapsa el reproductor y abre la sección Sonido **al frente** (ya no queda detrás).
-- **Actualizaciones**: mensaje claro cuando no hay nada nuevo ("No hay actualizaciones — ya tienes la versión más reciente"). El changelog de la versión nueva ya se muestra al detectarla; el de tu versión actual está en Ajustes → Aura Hi-Res Update → versión.
-- Se ocultaron los enlaces "Privacy Policy / Terms of Service".
+## Cambios
+- **Inicio de sesión fuera de Ajustes**: el login/cuenta ya no aparece en Configuración (se usa el avatar de la pantalla de inicio).
+- **Micrófono de búsqueda siempre disponible**: el botón de micrófono ahora también está en la barra de resultados (antes desaparecía tras buscar y solo volvía al dar atrás).
 
 ## Incluye lo anterior
-- v5.1.97 Aura Glass con fondo de carátula con blur, v5.1.96 fix demo, v5.1.95 menos distorsión BT, v5.1.94 apartado de actualizaciones + Auto-EQ.
+- v5.1.98: reproductor→Sonido al frente, mensaje claro de "sin actualización", Privacy/Terms ocultos.
+- v5.1.97 Aura Glass con blur, v5.1.96 fix demo, v5.1.95 menos distorsión BT.

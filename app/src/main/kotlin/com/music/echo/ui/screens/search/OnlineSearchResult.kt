@@ -57,6 +57,16 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.foundation.layout.Row
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import android.speech.RecognizerIntent
+import android.content.Intent
+import android.content.ActivityNotFoundException
+import android.widget.Toast
+import java.util.Locale
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
@@ -166,7 +176,20 @@ fun OnlineSearchResult(
         }
     }
 
-    
+    // Voice search from the results bar too (so the mic stays available after a result).
+    val context = LocalContext.current
+    val voiceLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val spoken = result.data
+            ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+            ?.firstOrNull()
+        if (!spoken.isNullOrBlank()) {
+            query = TextFieldValue(spoken, TextRange(spoken.length))
+            onSearch(spoken)
+        }
+    }
+
     LaunchedEffect(decodedQuery) {
         query = TextFieldValue(decodedQuery, TextRange(decodedQuery.length))
     }
@@ -307,15 +330,32 @@ fun OnlineSearchResult(
                 }
             },
             trailingIcon = {
-                if (query.text.isNotEmpty()) {
-                    IconButton(
-                        onClick = {
-                            query = TextFieldValue("")
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (query.text.isNotEmpty()) {
+                        IconButton(onClick = { query = TextFieldValue("") }) {
+                            Icon(
+                                painter = painterResource(R.drawable.close),
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
-                    ) {
+                    }
+                    // Mic stays available on the results bar.
+                    IconButton(onClick = {
+                        try {
+                            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                                putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
+                                putExtra(RecognizerIntent.EXTRA_PROMPT, context.getString(R.string.voice_search))
+                            }
+                            voiceLauncher.launch(intent)
+                        } catch (e: ActivityNotFoundException) {
+                            Toast.makeText(context, R.string.voice_search_unavailable, Toast.LENGTH_SHORT).show()
+                        }
+                    }) {
                         Icon(
-                            painter = painterResource(R.drawable.close),
-                            contentDescription = null,
+                            painter = painterResource(R.drawable.ic_search_mic),
+                            contentDescription = stringResource(R.string.voice_search),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }

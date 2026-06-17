@@ -108,31 +108,7 @@ fun SettingDialoge(
                     }
                 }
 
-                // Account Group
-                Material3SettingsGroup(
-                    title = "Account",
-                    compact = true,
-                    items = listOf(
-                        Material3SettingsItem(
-                            title = { Text(if (isLoggedIn) accountName else "Anonymous") },
-                            description = { Text(if (isLoggedIn) accountEmail.ifEmpty { "Logged In" } else "Not Logged In") },
-                            icon = painterResource(R.drawable.account),
-                            trailingContent = if (isLoggedIn && !accountImageUrl.isNullOrBlank()) {
-                                {
-                                    AsyncImage(
-                                        model = accountImageUrl,
-                                        contentDescription = "Profile Photo",
-                                        contentScale = ContentScale.Crop,
-                                        modifier = Modifier
-                                            .size(40.dp)
-                                            .clip(CircleShape)
-                                    )
-                                }
-                            } else null,
-                            onClick = { if (isLoggedIn) onNavigate("settings/account") else onNavigate("login") }
-                        )
-                    )
-                )
+                // Account/login intentionally removed from settings (use the account avatar on Home).
 
                 if (isLoggedIn) {
                     Material3SettingsGroup(

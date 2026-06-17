@@ -128,15 +128,7 @@ fun SettingsScreen(
         )
 
         val itemsList = buildList {
-            if (accountText.lowercase().contains(searchLower)) {
-                add(
-                    Material3SettingsItem(
-                        icon = painterResource(R.drawable.account),
-                        title = { Text(accountText) },
-                        onClick = { navController.navigate("settings/account") }
-                    )
-                )
-            }
+            // Login/account intentionally NOT listed in Settings (use the account avatar on Home).
             if (appearanceText.lowercase().contains(searchLower)) {
                 add(
                     Material3SettingsItem(
