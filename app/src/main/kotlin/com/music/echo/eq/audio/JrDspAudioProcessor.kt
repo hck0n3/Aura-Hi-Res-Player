@@ -50,6 +50,10 @@ class JrDspAudioProcessor : AudioProcessor {
     private var loudnessLoShelf: BiquadFilter? = null
     private var loudnessHiShelf: BiquadFilter? = null
 
+    // ── "Aura signature" gentle tone (body + air), ON by default, built on configure ──
+    private var sigLoShelf: BiquadFilter? = null
+    private var sigHiShelf: BiquadFilter? = null
+
     // ── Multiband compressor (3-band LR2 crossover) state, built on configure ──
     private var mbLpf1: BiquadFilter? = null   // LP 200 Hz  (bass)
     private var mbHpf1: BiquadFilter? = null   // HP 200 Hz
@@ -86,6 +90,7 @@ class JrDspAudioProcessor : AudioProcessor {
     private var exciterAlpha = 0f  // fc 6 kHz
 
     data class Config(
+        val signatureEnabled: Boolean = true,
         val loudnessEnabled: Boolean = false,
         val hrtfEnabled: Boolean = false,
         val bassEnhanceEnabled: Boolean = false,
@@ -101,7 +106,7 @@ class JrDspAudioProcessor : AudioProcessor {
         /** True when at least one effect would alter the signal. (Loudness makeup + true-peak
          *  limiting live in [TruePeakLimiterAudioProcessor], not here.) */
         val anyActive: Boolean
-            get() = loudnessEnabled || hrtfEnabled || bassEnhanceEnabled ||
+            get() = signatureEnabled || loudnessEnabled || hrtfEnabled || bassEnhanceEnabled ||
                 exciterEnabled || mbCompEnabled || dialogueEnabled ||
                 (stereoWidthEnabled && stereoWidth != 1.0f)
     }
@@ -142,6 +147,11 @@ class JrDspAudioProcessor : AudioProcessor {
         // Fletcher-Munson base curve (att=0): lo +3 dB @200 Hz, hi +2 dB @5 kHz, slope 0.707.
         loudnessLoShelf = BiquadFilter(sampleRate, 200.0, 3.0, 0.707, FilterType.LSC, shelfSlope = 0.707)
         loudnessHiShelf = BiquadFilter(sampleRate, 5000.0, 2.0, 0.707, FilterType.HSC, shelfSlope = 0.707)
+
+        // Aura signature: subtle body (+3 dB low shelf @100 Hz) + air (+2 dB high shelf @10 kHz),
+        // a gentle Harman-style house curve. ON by default; the true-peak limiter catches the peaks.
+        sigLoShelf = BiquadFilter(sampleRate, 100.0, 3.0, 0.707, FilterType.LSC, shelfSlope = 0.707)
+        sigHiShelf = BiquadFilter(sampleRate, 10000.0, 2.0, 0.707, FilterType.HSC, shelfSlope = 0.707)
 
         // Multiband compressor LR2 crossovers (Q 0.5) at 200 Hz and 5 kHz.
         mbLpf1 = BiquadFilter(sampleRate, 200.0, 0.0, 0.5, FilterType.LPQ)
@@ -190,6 +200,13 @@ class JrDspAudioProcessor : AudioProcessor {
             repeat(frames) {
                 var l = inputBuffer.getShort().toFloat() / 32768.0f
                 var r = inputBuffer.getShort().toFloat() / 32768.0f
+
+                if (cfg.signatureEnabled) {
+                    val (ll, rr) = sigLoShelf!!.processStereo(l.toDouble(), r.toDouble())
+                    val (hl, hr) = sigHiShelf!!.processStereo(ll, rr)
+                    l = hl.toFloat()
+                    r = hr.toFloat()
+                }
 
                 if (cfg.loudnessEnabled) {
                     val (ll, rr) = loudnessLoShelf!!.processStereo(l.toDouble(), r.toDouble())
@@ -301,6 +318,10 @@ class JrDspAudioProcessor : AudioProcessor {
             val samples = remaining / 2
             repeat(samples) {
                 var x = inputBuffer.getShort().toFloat() / 32768.0f
+                if (cfg.signatureEnabled) {
+                    x = sigLoShelf!!.processSample(x.toDouble()).toFloat()
+                    x = sigHiShelf!!.processSample(x.toDouble()).toFloat()
+                }
                 if (cfg.loudnessEnabled) {
                     x = loudnessLoShelf!!.processSample(x.toDouble()).toFloat()
                     x = loudnessHiShelf!!.processSample(x.toDouble()).toFloat()
@@ -337,6 +358,8 @@ class JrDspAudioProcessor : AudioProcessor {
         exciterLpL = 0f; exciterLpR = 0f
         loudnessLoShelf?.reset()
         loudnessHiShelf?.reset()
+        sigLoShelf?.reset()
+        sigHiShelf?.reset()
         mbLpf1?.reset(); mbHpf1?.reset(); mbLpf2?.reset(); mbHpf2?.reset()
         mbEnv[0] = 0f; mbEnv[1] = 0f; mbEnv[2] = 0f
         dialogueHpf?.reset(); dialogueLpf?.reset()

@@ -332,7 +332,7 @@ fun UpdateScreen(navController: NavHostController) {
                                                 ContextCompat.startActivity(context, installIntent, null)
                                             }
                                         } else {
-                                            val urlToDownload = currentStatus.apkUrl ?: "https://github.com/EchoMusicApp/Echo-Music/releases/download/${currentStatus.version}/echomusic.apk"
+                                            val urlToDownload = currentStatus.apkUrl ?: "https://github.com/hck0n3/Aura-Hi-Res-Player/releases/download/${currentStatus.version}/echomusic.apk"
                                             val downloadRequest = OneTimeWorkRequestBuilder<UpdateDownloadWorker>()
                                                 .setInputData(workDataOf("apk_url" to urlToDownload, "version" to currentStatus.version, "file_size" to currentStatus.size))
                                                 .addTag("update_download")
@@ -648,7 +648,7 @@ suspend fun checkForUpdate(
 ) {
     withContext(Dispatchers.IO) {
         try {
-            val url = URL("https://api.github.com/repos/EchoMusicApp/Echo-Music/releases/latest")
+            val url = URL("https://api.github.com/repos/hck0n3/Aura-Hi-Res-Player/releases/latest")
             val json = url.openStream().bufferedReader().use { it.readText() }
             val targetRelease = JSONObject(json)
             
@@ -668,7 +668,7 @@ suspend fun checkForUpdate(
                 var imageUrl: String? = null
                 try {
                     val changelogUrl =
-                        URL("https://github.com/EchoMusicApp/Echo-Music/releases/download/$tagWithPrefix/changelog.json")
+                        URL("https://github.com/hck0n3/Aura-Hi-Res-Player/releases/download/$tagWithPrefix/changelog.json")
                     val changelogJson = changelogUrl.openStream().bufferedReader().use { it.readText() }
                     val changelogData = JSONObject(changelogJson)
 

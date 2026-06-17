@@ -60,6 +60,22 @@ fun loudnessMakeupDb(
 fun dbToLinear(db: Double): Float = 10.0.pow(db / 20.0).toFloat()
 
 /**
+ * Makeup (dB, >= 0) that cancels the EQ's *auto*-headroom attenuation downstream, so boosting bands
+ * no longer drops the overall volume. Equals how much [headroomPreampDb] pulled the signal below the
+ * user's own pre-amp (= max positive band boost + 1 dB safety), capped at [maxCompDb]. The signal is
+ * boosted back up after the EQ inside the true-peak limiter, which catches the boosted peaks → loud
+ * EQ without clipping. The user's own pre-amp setting is preserved (not compensated).
+ */
+fun eqMakeupDb(
+    userPreampDb: Double,
+    enabledBandGainsDb: List<Double>,
+    maxCompDb: Double = 12.0,
+): Double {
+    val comp = userPreampDb - headroomPreampDb(userPreampDb, enabledBandGainsDb)
+    return comp.coerceIn(0.0, maxCompDb)
+}
+
+/**
  * Bounded soft limiter: transparent below [knee], then a `tanh` knee whose asymptote sits exactly at
  * [ceiling], so the output magnitude can NEVER exceed [ceiling] (no hard clip) yet stays clean. Used
  * by the true-peak limiter in an oversampled domain so inter-sample / treble transient peaks are

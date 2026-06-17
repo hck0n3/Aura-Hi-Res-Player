@@ -14,8 +14,11 @@ import java.time.ZoneOffset
 import com.music.innertube.models.IpVersion
 
 val IsFirstRunKey = booleanPreferencesKey("isFirstRun")
-// Seeds Aura Hi-Res Player's preferred player/lyrics defaults once. Bump the suffix to force a
-// one-time re-seed for everyone when the desired default set changes.
+// Seed-version gate (replaces the per-feature boolean guards). Seeds re-run whenever the stored
+// value is below App.CURRENT_SEED_VERSION; a restored backup carries an older value, so this
+// version's feature defaults re-apply after a restore ("new features appear"). See BackupGate.
+val SeedVersionKey = intPreferencesKey("seed_version")
+// Legacy boolean guard, kept only to detect pre-SeedVersion installs (treated as seed v1).
 val JrDefaultsAppliedKey = booleanPreferencesKey("jr_defaults_applied_v2")
 // One-time guard: defaults the in-app language to Spanish unless the user picked a language.
 val SpanishDefaultAppliedKey = booleanPreferencesKey("spanish_default_applied")
@@ -765,6 +768,8 @@ val PreloadLyricsEnabledKey = booleanPreferencesKey("preload_lyrics_enabled")
 
 // ── JR DSP effects (desktop parity) ──
 // Loudness makeup + true-peak limiting moved to TruePeakLimiterAudioProcessor (always on, no key).
+// Aura signature: subtle body+air house curve, ON by default (toggle in Sound settings).
+val AuraSignatureToneEnabledKey = booleanPreferencesKey("aura_signature_tone_enabled")
 val JrLoudnessEnabledKey = booleanPreferencesKey("jr_dsp_loudness_enabled")
 val JrHrtfEnabledKey = booleanPreferencesKey("jr_dsp_hrtf_enabled")
 val JrBassEnhanceEnabledKey = booleanPreferencesKey("jr_dsp_bass_enhance_enabled")

@@ -97,8 +97,7 @@ class App : Application(), SingletonImageLoader.Factory {
     private suspend fun initializeSettings() {
         reseedAfterRestoreIfNeeded()
         val settings = dataStore.data.first()
-        seedJrDefaults(settings)
-        seedSpanishDefault(settings)
+        seedDefaultsIfNeeded(settings)
         migrateLegacyIcon(settings)
         val locale = Locale.getDefault()
         val languageTag = locale.language
@@ -171,47 +170,51 @@ class App : Application(), SingletonImageLoader.Factory {
             iad1tya.echo.music.viewmodels.BackupRestoreViewModel.POST_RESTORE_REINIT_FLAG,
         )
         if (!flag.exists()) return
-        Timber.tag("RESTORE").i("Post-restore re-seed: clearing one-time init guards")
+        // A restore happened: drop the seed version so this app version's feature defaults re-apply
+        // on this launch (otherwise the restored old profile suppresses them = "new features missing").
+        Timber.tag("RESTORE").i("Post-restore: forcing re-seed (seed version -> 0)")
         runCatching {
             dataStore.edit { p ->
-                p.remove(iad1tya.echo.music.constants.JrDefaultsAppliedKey)
-                p.remove(iad1tya.echo.music.constants.SpanishDefaultAppliedKey)
+                p[iad1tya.echo.music.constants.SeedVersionKey] = 0
             }
         }
         flag.delete()
     }
 
     /**
-     * One-time seed of Aura Hi-Res Player's preferred player/lyrics defaults. Writes explicit
-     * preference values on first run (guarded by [JrDefaultsAppliedKey]) so existing users
-     * also get them once, without overriding any later manual change.
+     * Seeds Aura Hi-Res Player's preferred defaults (player look, Spanish language) when the stored
+     * seed version is older than [CURRENT_SEED_VERSION]. Version-gated (not per-feature booleans) so
+     * a restored backup — which carries an older seed version — automatically re-applies this
+     * version's defaults. Pre-SeedVersion installs (legacy boolean guard set) are treated as seed v1
+     * and simply recorded, so existing users' manual changes are NOT clobbered on upgrade.
      */
-    private suspend fun seedJrDefaults(settings: androidx.datastore.preferences.core.Preferences) {
-        if (settings[iad1tya.echo.music.constants.JrDefaultsAppliedKey] == true) return
+    private suspend fun seedDefaultsIfNeeded(settings: androidx.datastore.preferences.core.Preferences) {
+        val stored = settings[iad1tya.echo.music.constants.SeedVersionKey]
+        val legacyApplied = settings[iad1tya.echo.music.constants.JrDefaultsAppliedKey] == true
+        if (!iad1tya.echo.music.viewmodels.shouldReseed(stored, legacyApplied, CURRENT_SEED_VERSION)) {
+            // Record the migration of a pre-SeedVersion install so we don't recompute every launch.
+            if (stored == null) {
+                dataStore.edit { it[iad1tya.echo.music.constants.SeedVersionKey] = CURRENT_SEED_VERSION }
+            }
+            return
+        }
         dataStore.edit { p ->
+            // Player look (Aura / Apple-Music-inspired).
             p[iad1tya.echo.music.constants.PlayerBackgroundStyleKey] =
-                iad1tya.echo.music.constants.PlayerBackgroundStyle.LIVE_MESH.name   // player background = Live Mesh
+                iad1tya.echo.music.constants.PlayerBackgroundStyle.LIVE_MESH.name
             p[iad1tya.echo.music.constants.MiniPlayerBackgroundStyleKey] =
                 iad1tya.echo.music.constants.PlayerBackgroundStyle.LIVE_MESH.name
-            p[iad1tya.echo.music.constants.UseNewPlayerDesignKey] = false       // Apple Music-inspired player ON
-            p[iad1tya.echo.music.constants.HidePlayerSliderKey] = true          // hide volume slider on AMI player
-            p[iad1tya.echo.music.constants.AppleMusicLyricsBlurKey] = true      // Apple Music lyrics blur
-            p[iad1tya.echo.music.constants.JrDefaultsAppliedKey] = true
-        }
-    }
-
-    /**
-     * Defaults the in-app language to Spanish on first run (guarded by
-     * [iad1tya.echo.music.constants.SpanishDefaultAppliedKey]). Any explicit language the user
-     * already selected is preserved.
-     */
-    private suspend fun seedSpanishDefault(settings: androidx.datastore.preferences.core.Preferences) {
-        if (settings[iad1tya.echo.music.constants.SpanishDefaultAppliedKey] == true) return
-        dataStore.edit { p ->
+            p[iad1tya.echo.music.constants.UseNewPlayerDesignKey] = false
+            p[iad1tya.echo.music.constants.HidePlayerSliderKey] = true
+            p[iad1tya.echo.music.constants.AppleMusicLyricsBlurKey] = true
+            // Spanish default, only if the user hasn't explicitly chosen a language.
             val current = p[iad1tya.echo.music.constants.AppLanguageKey]
             if (current == null || current == SYSTEM_DEFAULT) {
                 p[iad1tya.echo.music.constants.AppLanguageKey] = "es"
             }
+            p[iad1tya.echo.music.constants.SeedVersionKey] = CURRENT_SEED_VERSION
+            // Keep legacy flags consistent for any code still reading them.
+            p[iad1tya.echo.music.constants.JrDefaultsAppliedKey] = true
             p[iad1tya.echo.music.constants.SpanishDefaultAppliedKey] = true
         }
     }
@@ -349,6 +352,9 @@ class App : Application(), SingletonImageLoader.Factory {
     }
 
     companion object {
+        /** Bump when adding a new one-time default set so it re-seeds for everyone (and after restore). */
+        const val CURRENT_SEED_VERSION = 1
+
         suspend fun forgetAccount(context: Context) {
             Timber.d("forgetAccount: Starting logout process")
 

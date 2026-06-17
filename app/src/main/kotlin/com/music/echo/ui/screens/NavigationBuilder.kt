@@ -365,6 +365,14 @@ fun NavGraphBuilder.navigationBuilder(
         PlayerSettings(navController, scrollBehavior)
     }
 
+    composable("settings/sound") {
+        iad1tya.echo.music.ui.screens.settings.SoundSettings(navController, scrollBehavior)
+    }
+
+    composable("settings/sound/autoeq") {
+        iad1tya.echo.music.ui.screens.equalizer.autoeq.AutoEqScreen(navController)
+    }
+
     composable(
         route = "settings/storage?autoOpenExportPicker={autoOpenExportPicker}",
         arguments = listOf(

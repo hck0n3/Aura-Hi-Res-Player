@@ -51,6 +51,28 @@ class AudioGainTest {
         assertEquals(0.2512f, normalizationMultiplier(100.0, enabled = true), 1e-3f)
     }
 
+    // ── eqMakeupDb (cancels EQ auto-headroom so volume doesn't drop) ──
+
+    @Test fun eqMakeupZeroWhenNoBoost() {
+        // no positive band → no auto-attenuation → nothing to compensate
+        assertEquals(0.0, eqMakeupDb(0.0, listOf(-3.0, -6.0, 0.0)), 1e-9)
+    }
+
+    @Test fun eqMakeupCompensatesBoostPlusSafety() {
+        // max boost +6 → headroom pulled -7 below preamp → makeup +7
+        assertEquals(7.0, eqMakeupDb(0.0, listOf(6.0, 2.0, -3.0)), 1e-9)
+    }
+
+    @Test fun eqMakeupIgnoresUserPreamp() {
+        // user preamp -2 is intentional; only the auto part (+4 boost +1) is compensated → 5
+        assertEquals(5.0, eqMakeupDb(-2.0, listOf(4.0)), 1e-9)
+    }
+
+    @Test fun eqMakeupIsCapped() {
+        // +18 boost → +19 → capped at 12
+        assertEquals(12.0, eqMakeupDb(0.0, listOf(18.0)), 1e-9)
+    }
+
     // ── loudnessMakeupDb (target loudness, boost-only part) ──
 
     @Test fun makeupDisabledIsZero() {

@@ -49,6 +49,11 @@ class CustomEqualizerAudioProcessor : AudioProcessor {
         preampGain = 10.0.pow(
             headroomPreampDb(parametricEQ.preamp, parametricEQ.bands.filter { it.enabled }.map { it.gain }) / 20.0,
         )
+        // Cancel that auto-headroom downstream so boosting bands doesn't drop the volume; the
+        // true-peak limiter catches the restored peaks (loud EQ, no clipping).
+        TruePeakLimiterAudioProcessor.eqMakeup = dbToLinear(
+            eqMakeupDb(parametricEQ.preamp, parametricEQ.bands.filter { it.enabled }.map { it.gain }),
+        )
 
         val active = parametricEQ.bands.filter { it.enabled && it.frequency < sampleRate / 2.0 }
         if (equalizerEnabled && filters.isNotEmpty() && filters.size == active.size) {
@@ -74,6 +79,7 @@ class CustomEqualizerAudioProcessor : AudioProcessor {
         equalizerEnabled = false
         filters = emptyList()
         preampGain = 1.0
+        TruePeakLimiterAudioProcessor.eqMakeup = 1f
         pendingProfile = null
         Timber.tag(TAG).d("Equalizer disabled")
     }
@@ -117,6 +123,9 @@ class CustomEqualizerAudioProcessor : AudioProcessor {
         pendingProfile?.let { profile ->
             preampGain = 10.0.pow(
                 headroomPreampDb(profile.preamp, profile.bands.filter { it.enabled }.map { it.gain }) / 20.0,
+            )
+            TruePeakLimiterAudioProcessor.eqMakeup = dbToLinear(
+                eqMakeupDb(profile.preamp, profile.bands.filter { it.enabled }.map { it.gain }),
             )
             createFilters(profile.bands)
             equalizerEnabled = true

@@ -117,9 +117,14 @@ class BackupRestoreViewModel @Inject constructor(
                                         backupVersion = raf.readInt()
                                     }
                                 }
-                                
-                                if (backupVersion > 35) {
-                                    Timber.tag("RESTORE").e("Backup version ($backupVersion) > current version (35)")
+
+                                // Dynamic gate: compare against the live DB schema version (not a
+                                // hard-coded number). A backup from the *current* app must restore.
+                                val currentDbVersion = runCatching {
+                                    database.openHelper.readableDatabase.version
+                                }.getOrDefault(Int.MAX_VALUE)
+                                if (!canRestoreDbVersion(backupVersion, currentDbVersion)) {
+                                    Timber.tag("RESTORE").e("Backup version ($backupVersion) > current ($currentDbVersion)")
                                     kotlinx.coroutines.runBlocking(Dispatchers.Main) {
                                         Toast.makeText(context, context.getString(R.string.restore_failed) + ": Backup is from a newer app version.", Toast.LENGTH_LONG).show()
                                     }

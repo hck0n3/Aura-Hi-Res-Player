@@ -1,13 +1,19 @@
-# Echo Music v5.1.8
+# Aura Hi-Res Player v5.1.93
 
-## Bug Fixes
-- Resolved an issue where songs downloaded at Saavn (320 kbps) or YouTube Music quality would fail to play and skip during offline playback.
-- Corrected the stream URL caching logic in the download resolution process.
+## Marca
+- La app ahora se llama **Aura Hi-Res Player** (nuevo nombre, gradiente e identidad). Tema opcional "Aura Hi-Res" en Ajustes → Apariencia.
 
-## Improvements
-- Extended local library playback support to include virtually all standard audio formats (.mp3, .wav, .ogg, .aac, and others) by utilizing native Media3 extractors in place of the previously restricted format set.
+## Audio
+- **Sonoridad tipo TIDAL**: las canciones flojas suben al nivel de referencia (−14 LUFS) sin distorsionar, con limitador true-peak 2× a −1 dBTP.
+- **Firma Aura** (por defecto): curva suave con un poco más de cuerpo (graves) y aire (agudos).
+- **El ecualizador ya no baja el volumen** al subir bandas (headroom compensado en el limitador).
+- Compresor multibanda más limpio; se quitaron Crossfeed y Calidez de válvulas.
 
-## New Features
-- Added a setting under Appearance > Lyrics to automatically hide the status bar upon entering full-screen lyrics mode.
-- Added a "Play Next" option to the multi-selection menu for albums and playlists, enabling multiple selected tracks to be queued immediately after the current song.
-- Added a "Legacy Icon" toggle under Appearance settings to revert the application icon to its original design.
+## Funciones nuevas
+- **Sección "Sonido"** unificada y ordenada (ecualizador, Auto-EQ, efectos, volumen, visualizador).
+- **Auto-EQ por modelo de auricular**: busca tu auricular y aplica su perfil AutoEq.
+- **Android TV**: ya se instala y abre en el launcher de TV, navegable con control.
+- **Actualizador interno "Aura Hi-Res Update"**: detecta nuevas versiones y se actualiza solo.
+
+## Correcciones
+- **Restaurar copia de seguridad** ya funciona con backups de la versión actual, y las novedades del programa cargan tras restaurar.

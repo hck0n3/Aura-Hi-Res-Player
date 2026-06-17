@@ -761,6 +761,7 @@ class MusicService :
         dataStore.data
             .map { prefs ->
                 JrDspAudioProcessor.Config(
+                    signatureEnabled = prefs[iad1tya.echo.music.constants.AuraSignatureToneEnabledKey] ?: true,
                     loudnessEnabled = prefs[iad1tya.echo.music.constants.JrLoudnessEnabledKey] ?: false,
                     hrtfEnabled = prefs[iad1tya.echo.music.constants.JrHrtfEnabledKey] ?: false,
                     bassEnhanceEnabled = prefs[iad1tya.echo.music.constants.JrBassEnhanceEnabledKey] ?: false,
@@ -1742,20 +1743,20 @@ class MusicService :
                             //    limiter, which catches the resulting peaks → loud + full, no clip.
                             NormalizationGainAudioProcessor.gain =
                                 normalizationMultiplier(loudnessDb.toDouble(), enabled = true)
-                            TruePeakLimiterAudioProcessor.makeupGain =
+                            TruePeakLimiterAudioProcessor.loudnessMakeup =
                                 dbToLinear(loudnessMakeupDb(loudnessDb.toDouble(), enabled = true))
                             loudnessEnhancer?.enabled = false
-                            Timber.tag(TAG).i("Normalization set (loudnessDb=$loudnessDb, makeup=${TruePeakLimiterAudioProcessor.makeupGain})")
+                            Timber.tag(TAG).i("Normalization set (loudnessDb=$loudnessDb, makeup=${TruePeakLimiterAudioProcessor.loudnessMakeup})")
                         } else {
                             NormalizationGainAudioProcessor.gain = 1.0f
-                            TruePeakLimiterAudioProcessor.makeupGain = 1.0f
+                            TruePeakLimiterAudioProcessor.loudnessMakeup = 1.0f
                             loudnessEnhancer?.enabled = false
                             Timber.tag(TAG).w("Normalization enabled but no loudness data - unity gain")
                         }
                     }
                 } else {
                     NormalizationGainAudioProcessor.gain = 1.0f
-                    TruePeakLimiterAudioProcessor.makeupGain = 1.0f
+                    TruePeakLimiterAudioProcessor.loudnessMakeup = 1.0f
                     withContext(Dispatchers.Main) {
                         loudnessEnhancer?.enabled = false
                         Timber.tag(TAG).d("setupLoudnessEnhancer: normalization disabled - unity gain")

@@ -51,7 +51,15 @@ class TruePeakLimiterAudioProcessor : AudioProcessor {
 
         /** Per-track loudness makeup (linear, >= 1). 1.0 = no boost. Set from MusicService. */
         @Volatile
-        var makeupGain: Float = 1f
+        var loudnessMakeup: Float = 1f
+
+        /**
+         * Cancels the EQ's auto-headroom attenuation (linear, >= 1) so boosting bands no longer drops
+         * the volume; set by [CustomEqualizerAudioProcessor]. Multiplied with [loudnessMakeup]; the
+         * limiter catches the resulting peaks → loud EQ, no clipping.
+         */
+        @Volatile
+        var eqMakeup: Float = 1f
 
         /** Master enable; default on. When off the stage is a transparent passthrough. */
         @Volatile
@@ -81,7 +89,7 @@ class TruePeakLimiterAudioProcessor : AudioProcessor {
             outputBuffer.clear()
         }
 
-        val mk = makeupGain
+        val mk = loudnessMakeup * eqMakeup
         if (!enabled) {
             // Transparent passthrough: no makeup, no limiting.
             outputBuffer.put(inputBuffer)
