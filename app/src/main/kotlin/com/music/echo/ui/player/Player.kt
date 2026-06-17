@@ -231,6 +231,7 @@ import androidx.media3.ui.PlayerView
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import iad1tya.echo.music.applecanvas.AppleMusicCanvasProvider
+import iad1tya.echo.music.canvas.AppleMusicArtistBackgroundProvider
 import iad1tya.echo.music.canvas.CanvasArtwork
 import iad1tya.echo.music.canvas.MonochromeApiCanvas
 import iad1tya.echo.music.constants.CanvasThumbnailAnimationKey
@@ -288,6 +289,9 @@ fun BottomSheetPlayer(
     }
 
     val enableCanvas by rememberPreference(CanvasThumbnailAnimationKey, true)
+    val showArtistBackgroundVideo by rememberPreference(
+        iad1tya.echo.music.constants.ShowArtistBackgroundVideoKey, true
+    )
 
     val shouldUseDarkButtonColors = remember(playerBackground, useDarkTheme) {
         when (playerBackground) {
@@ -599,14 +603,27 @@ fun BottomSheetPlayer(
                     resultArtist.contains(requestedArtist, ignoreCase = true) ||
                     requestedArtist.contains(resultArtist, ignoreCase = true)
                 } else true
-                
+
                 if (artistMatches) artwork else null
             }
 
+            // Fallback: if this song/album has no canvas, play the ARTIST's motion background so the
+            // player still shows a moving backdrop (the artist canvas the user asked for).
+            val finalArtwork = validated ?: run {
+                if (showArtistBackgroundVideo && a.isNotBlank()) {
+                    val artistUrl = runCatching {
+                        AppleMusicArtistBackgroundProvider.getByArtistName(a, storefront)
+                    }.getOrNull()
+                    if (!artistUrl.isNullOrBlank()) {
+                        CanvasArtwork(artist = a, animated = artistUrl, videoUrl = artistUrl)
+                    } else null
+                } else null
+            }
+
             withContext(Dispatchers.Main) {
-                canvasArtwork = validated
-                if (validated != null) {
-                    CanvasArtworkPlaybackCache.put(item.id, validated)
+                canvasArtwork = finalArtwork
+                if (finalArtwork != null) {
+                    CanvasArtworkPlaybackCache.put(item.id, finalArtwork)
                 }
                 canvasFetchInFlight = false
             }
