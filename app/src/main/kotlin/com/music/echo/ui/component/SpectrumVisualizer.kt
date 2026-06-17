@@ -4,8 +4,12 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -16,22 +20,45 @@ import iad1tya.echo.music.eq.audio.SpectrumBus
 
 /**
  * Real-time FFT spectrum bars (Aura Hi-Res Player visualizer port).
- * Renders the 64 log-spaced bands published by [SpectrumBus] as rounded
- * bars in the accent color with a soft glow underlay.
+ * Renders the 64 log-spaced bands published by [SpectrumBus] as rounded bars in the accent color.
+ *
+ * The raw bus values arrive irregularly, which looked choppy when drawn directly. We instead run a
+ * per-frame (~60 fps) loop that eases the displayed levels toward the latest values — fast attack,
+ * slow decay — so the bars rise instantly with the beat but fall smoothly. This decouples the render
+ * smoothness from the bus emit rate.
  */
 @Composable
 fun SpectrumVisualizer(
     color: Color,
     modifier: Modifier = Modifier,
 ) {
-    val spectrum by SpectrumBus.spectrum.collectAsState()
+    var displayed by remember { mutableStateOf(FloatArray(0)) }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            withFrameNanos {
+                val target = SpectrumBus.spectrum.value
+                if (target.isEmpty()) return@withFrameNanos
+                val current = displayed
+                val next = FloatArray(target.size)
+                for (i in target.indices) {
+                    val cur = if (i < current.size) current[i] else 0f
+                    val tgt = target[i].coerceIn(0f, 1f)
+                    // Fast attack, slow decay for a fluid, musical motion.
+                    val coef = if (tgt > cur) 0.55f else 0.12f
+                    next[i] = cur + (tgt - cur) * coef
+                }
+                displayed = next
+            }
+        }
+    }
 
     Canvas(
         modifier = modifier
             .fillMaxWidth()
             .height(48.dp)
     ) {
-        val bands = spectrum.size
+        val bands = displayed.size
         if (bands == 0) return@Canvas
 
         val gap = 2.dp.toPx()
@@ -40,7 +67,7 @@ fun SpectrumVisualizer(
         val radius = CornerRadius(barWidth / 2f, barWidth / 2f)
 
         for (i in 0 until bands) {
-            val level = spectrum[i].coerceIn(0f, 1f)
+            val level = displayed[i].coerceIn(0f, 1f)
             val barHeight = (minBar + (size.height - minBar) * level)
             val x = i * (barWidth + gap)
             val y = size.height - barHeight

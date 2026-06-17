@@ -201,6 +201,7 @@ import iad1tya.echo.music.ui.screens.WelcomeDialog
 import iad1tya.echo.music.ui.screens.navigationBuilder
 import iad1tya.echo.music.ui.screens.settings.DarkMode
 import iad1tya.echo.music.ui.screens.settings.NavigationTab
+import iad1tya.echo.music.ui.theme.BrandAccent
 import iad1tya.echo.music.ui.theme.ColorSaver
 import iad1tya.echo.music.ui.theme.DefaultThemeColor
 import iad1tya.echo.music.ui.theme.echomusicTheme
@@ -811,39 +812,31 @@ class MainActivity : ComponentActivity() {
                                     TopAppBar(
                                         title = {
                                             if (navBackStackEntry?.destination?.route == Screens.Home.route) {
-                                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                                    Image(
-                                                        painter = painterResource(R.drawable.jr_logo),
-                                                        contentDescription = null,
-                                                        modifier = Modifier
-                                                            .size(34.dp)
-                                                            .clip(RoundedCornerShape(9.dp))
-                                                    )
-                                                    Spacer(Modifier.width(10.dp))
-                                                    Text(
-                                                        text = buildAnnotatedString {
-                                                            withStyle(
-                                                                SpanStyle(
-                                                                    brush = Brush.linearGradient(
-                                                                        colors = listOf(
-                                                                            Color(0xFFDE60B3),
-                                                                            Color(0xFF9B6CFF),
-                                                                            Color(0xFF3DA9ED)
-                                                                        )
-                                                                    ),
-                                                                    fontWeight = FontWeight.ExtraBold
-                                                                )
-                                                            ) {
-                                                                append("Aura Hi-Res Player")
-                                                            }
-                                                        },
-                                                        style = MaterialTheme.typography.titleLarge.copy(
-                                                            fontSize = 22.sp,
-                                                            letterSpacing = 0.5.sp
-                                                        ),
-                                                        maxLines = 1
-                                                    )
-                                                }
+                                                Text(
+                                                    text = buildAnnotatedString {
+                                                        withStyle(
+                                                            SpanStyle(
+                                                                color = MaterialTheme.colorScheme.onSurface,
+                                                                fontWeight = FontWeight.Light
+                                                            )
+                                                        ) {
+                                                            append("AURA ")
+                                                        }
+                                                        withStyle(
+                                                            SpanStyle(
+                                                                color = BrandAccent,
+                                                                fontWeight = FontWeight.SemiBold
+                                                            )
+                                                        ) {
+                                                            append("HI-RES")
+                                                        }
+                                                    },
+                                                    style = MaterialTheme.typography.titleLarge.copy(
+                                                        fontSize = 22.sp,
+                                                        letterSpacing = 5.sp
+                                                    ),
+                                                    maxLines = 1
+                                                )
                                             } else {
                                                 Text(
                                                     text = currentTitle,
