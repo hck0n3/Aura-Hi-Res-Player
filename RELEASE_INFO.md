@@ -1,15 +1,8 @@
-# Aura Hi-Res Player v5.3.0
+# Aura Hi-Res Player v5.3.1
 
-## Nuevo icono e identidad
-- **Icono nuevo** "Hi-Res Pulse": anillo de pulso de audio con degradado teal→azul y un play, sobre fondo oscuro. Más moderno y sobrio.
-- **Logo de texto** rediseñado: "AURA HI-RES" en mayúsculas finas con acento cian.
-
-## Nueva tipografía en toda la app
-- La app ahora usa la fuente **Google Sans Flex** en todos los textos (menús, listas, ajustes). Más limpia y premium.
-
-## Tema AMOLED por defecto
-- El **tema AMOLED (negro puro)** queda activado desde el primer inicio (ahorra batería en pantallas OLED y se ve más elegante). Puedes cambiarlo en Apariencia.
+## Importación de Spotify en segundo plano
+- Al importar desde Spotify, ahora **se ejecuta en segundo plano**: puedes mandarlo a segundo plano, **seguir usando la app** y **recibirás una notificación cuando termine** (ya no te quedas esperando en la pantalla).
+- La notificación muestra el progreso y, al acabar, cuántas canciones se importaron. Puedes cancelar cuando quieras.
 
 ## Incluye lo anterior
-- v5.2.9: tema Aura Glass eliminado por completo.
-- v5.2.8: controles de widgets en segundo plano.
+- v5.3.0: nuevo icono "Hi-Res Pulse", fuente Google Sans Flex en toda la app, logo "AURA HI-RES" y tema AMOLED por defecto.

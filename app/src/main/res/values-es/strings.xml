@@ -359,6 +359,11 @@
     <string name="spotify_loading_library">Cargando biblioteca de Spotify</string>
     <string name="spotify_no_sources">No se encontraron listas de Spotify</string>
     <string name="spotify_import_in_progress">Importando listas de Spotify</string>
+    <string name="spotify_import_done_title">Importación de Spotify completada</string>
+    <string name="spotify_import_done_text">%1$d de %2$d canciones importadas</string>
+    <string name="spotify_import_failed_title">La importación de Spotify falló</string>
+    <string name="spotify_import_background_started">Importando en segundo plano — se te avisará cuando termine</string>
+    <string name="spotify_import_background_action">Segundo plano</string>
     <string name="spotify_import_progress_step">%1$s • %2$d/%3$d fuentes • %4$d/%5$d canciones</string>
     <string name="spotify_import_complete">Importación de Spotify completada</string>
     <string name="spotify_import_summary">%1$d fuentes • %2$d importadas • %3$d fallidas</string>

@@ -200,20 +200,28 @@ fun SpotifyImportScreen(
         )
     }
 
-    state.progress?.let { progress ->
+    val activeProgress = state.progress
+    // Resets to "shown" each time a new import starts; the user can send it to the background.
+    var progressMinimized by remember(activeProgress != null) { mutableStateOf(false) }
+    if (activeProgress != null && !progressMinimized) {
         DefaultDialog(
-            onDismiss = { spotifyImportViewModel.cancelImport() },
+            // Dismissing keeps the import running in the background (it lives in the manager now).
+            onDismiss = { progressMinimized = true },
             title = { Text(stringResource(R.string.spotify_import_in_progress)) },
             buttons = {
+                TextButton(onClick = { progressMinimized = true }) {
+                    Text(stringResource(R.string.spotify_import_background_action))
+                }
                 TextButton(onClick = { spotifyImportViewModel.cancelImport() }) {
                     Text(stringResource(android.R.string.cancel))
                 }
             }
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(stringResource(R.string.spotify_import_progress_step, progress.sourceTitle, progress.completedSources, progress.totalSources, progress.matchedTracks, progress.totalTracks))
+                Text(stringResource(R.string.spotify_import_background_started))
+                Text(stringResource(R.string.spotify_import_progress_step, activeProgress.sourceTitle, activeProgress.completedSources, activeProgress.totalSources, activeProgress.matchedTracks, activeProgress.totalTracks))
                 LinearProgressIndicator(
-                    progress = { progress.percent.toFloat() / 100f },
+                    progress = { activeProgress.percent.toFloat() / 100f },
                     modifier = Modifier.fillMaxWidth().clip(CircleShape),
                 )
             }

@@ -24,15 +24,26 @@ import javax.inject.Inject
 @HiltViewModel
 class SpotifyImportViewModel @Inject constructor(
     private val repository: SpotifyImportRepository,
+    private val importManager: SpotifyImportManager,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(SpotifyImportUiState(isLoading = true))
     val uiState: StateFlow<SpotifyImportUiState> = _uiState.asStateFlow()
 
     private var sources: List<SpotifyImportSource> = emptyList()
-    private var importJob: Job? = null
 
     init {
         restoreSession()
+        // Mirror the background import's progress/summary/error so the screen stays in sync even if it
+        // was closed and reopened while the import keeps running in the manager.
+        viewModelScope.launch {
+            importManager.progress.collect { p -> _uiState.update { it.copy(progress = p) } }
+        }
+        viewModelScope.launch {
+            importManager.summary.collect { s -> _uiState.update { it.copy(summary = s) } }
+        }
+        viewModelScope.launch {
+            importManager.error.collect { e -> if (e != null) _uiState.update { it.copy(errorMessage = e) } }
+        }
     }
 
     fun restoreSession() {
@@ -172,54 +183,27 @@ class SpotifyImportViewModel @Inject constructor(
 
     fun importSelectedSources() {
         val selectedIds = uiState.value.selectedSourceIds
-        if (selectedIds.isEmpty() || importJob?.isActive == true || uiState.value.progress != null) return
+        if (selectedIds.isEmpty() || importManager.isRunning || uiState.value.progress != null) return
         val selectedSources = sources.filter { it.id in selectedIds }
         if (selectedSources.isEmpty()) return
-
-        val job = viewModelScope.launch(Dispatchers.IO) {
-            _uiState.update { it.copy(summary = null, errorMessage = null) }
-            try {
-                val summary =
-                    repository.importSources(selectedSources) { progress ->
-                        _uiState.update { it.copy(progress = progress) }
-                    }
-                _uiState.update {
-                    it.copy(
-                        progress = null,
-                        summary = summary,
-                    )
-                }
-            } catch (error: CancellationException) {
-                _uiState.update { it.copy(progress = null) }
-                throw error
-            } catch (error: Throwable) {
-                reportException(error)
-                _uiState.update {
-                    it.copy(
-                        progress = null,
-                        errorMessage = error.message,
-                    )
-                }
-            } finally {
-                if (importJob === coroutineContext[Job]) {
-                    importJob = null
-                }
-            }
-        }
-        importJob = job
+        _uiState.update { it.copy(summary = null, errorMessage = null) }
+        // Runs in the manager (process-lifetime scope) so the user can leave this screen and keep
+        // using the app; a notification fires when it finishes.
+        importManager.start(selectedSources)
     }
 
     fun cancelImport() {
-        importJob?.cancel()
-        importJob = null
+        importManager.cancel()
         _uiState.update { it.copy(progress = null) }
     }
 
     fun dismissSummary() {
+        importManager.consumeSummary()
         _uiState.update { it.copy(summary = null) }
     }
 
     fun dismissError() {
+        importManager.consumeError()
         _uiState.update { it.copy(errorMessage = null) }
     }
 }
