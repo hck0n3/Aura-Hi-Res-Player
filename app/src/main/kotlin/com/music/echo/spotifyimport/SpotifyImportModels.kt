@@ -14,6 +14,7 @@ enum class SpotifyImportSourceType {
     PLAYLIST,
     LIKED_SONGS,
     ARTISTS,
+    SAVED_ALBUMS,
 }
 
 @Immutable

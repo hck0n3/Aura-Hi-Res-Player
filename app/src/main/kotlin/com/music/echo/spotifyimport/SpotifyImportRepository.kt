@@ -29,12 +29,15 @@ import iad1tya.echo.music.constants.SpotifyAccountNameKey
 import iad1tya.echo.music.constants.SpotifySpDcKey
 import iad1tya.echo.music.constants.SpotifySpKeyKey
 import iad1tya.echo.music.db.MusicDatabase
+import iad1tya.echo.music.db.entities.AlbumEntity
 import iad1tya.echo.music.db.entities.ArtistEntity
 import iad1tya.echo.music.db.entities.PlaylistEntity
 import iad1tya.echo.music.db.entities.PlaylistSongMap
 import com.music.innertube.YouTube
+import com.music.innertube.models.AlbumItem
 import com.music.innertube.models.ArtistItem
 import com.music.innertube.models.SongItem
+import iad1tya.echo.music.spotify.models.SpotifyAlbum
 import iad1tya.echo.music.models.MediaMetadata
 import iad1tya.echo.music.models.toMediaMetadata
 import iad1tya.echo.music.spotify.Spotify
@@ -149,6 +152,9 @@ class SpotifyImportRepository @Inject constructor(
             val followedArtistCount = spotifyCallWithTokenRetry {
                 Spotify.myArtists(limit = 1, offset = 0).getOrThrow()
             }.total
+            val savedAlbumCount = runCatching {
+                spotifyCallWithTokenRetry { Spotify.mySavedAlbums(limit = 1, offset = 0).getOrThrow() }.total
+            }.getOrDefault(0)
             val playlists = fetchAllPlaylists()
 
             buildList {
@@ -163,6 +169,14 @@ class SpotifyImportRepository @Inject constructor(
                         SpotifyImportSource.FollowedArtists(
                             title = context.getString(R.string.spotify_followed_artists),
                             artistCount = followedArtistCount,
+                        ),
+                    )
+                }
+                if (savedAlbumCount > 0) {
+                    add(
+                        SpotifyImportSource.SavedAlbums(
+                            title = context.getString(R.string.spotify_saved_albums),
+                            albumCount = savedAlbumCount,
                         ),
                     )
                 }
@@ -196,6 +210,16 @@ class SpotifyImportRepository @Inject constructor(
 
                 if (source is SpotifyImportSource.FollowedArtists) {
                     summaries += importFollowedArtists(
+                        sourceIndex = sourceIndex,
+                        sourceCount = sources.size,
+                        source = source,
+                        onProgress = onProgress,
+                    )
+                    return@forEachIndexed
+                }
+
+                if (source is SpotifyImportSource.SavedAlbums) {
+                    summaries += importSavedAlbums(
                         sourceIndex = sourceIndex,
                         sourceCount = sources.size,
                         source = source,
@@ -387,6 +411,8 @@ class SpotifyImportRepository @Inject constructor(
                     // Followed artists are imported via importFollowedArtists() in the
                     // importSources() loop and never reach this track-based path.
                     is SpotifyImportSource.FollowedArtists -> return emptyList()
+                    // Saved albums are imported via importSavedAlbums() likewise.
+                    is SpotifyImportSource.SavedAlbums -> return emptyList()
                 }
 
             if (page.items.isEmpty()) break
@@ -666,6 +692,150 @@ class SpotifyImportRepository @Inject constructor(
         return true
     }
 
+    private suspend fun importSavedAlbums(
+        sourceIndex: Int,
+        sourceCount: Int,
+        source: SpotifyImportSource.SavedAlbums,
+        onProgress: (SpotifyImportProgressUi) -> Unit,
+    ): SpotifyImportSourceSummaryUi {
+        val albums = fetchAllSavedAlbums()
+        if (albums.isEmpty()) {
+            onProgress(
+                SpotifyImportProgressUi(
+                    sourceTitle = source.title,
+                    completedSources = sourceIndex + 1,
+                    totalSources = sourceCount,
+                    matchedTracks = 0,
+                    totalTracks = 0,
+                    percent = progressPercent(sourceIndex + 1, sourceCount, 0, 0),
+                ),
+            )
+            return SpotifyImportSourceSummaryUi(source.title, 0, 0, 0)
+        }
+
+        val completed = AtomicInteger(0)
+        val imported = AtomicInteger(0)
+        coroutineScope {
+            val semaphore = Semaphore(MAX_CONCURRENT_MATCHES)
+            albums.map { album ->
+                async {
+                    semaphore.withPermit {
+                        val ok =
+                            try {
+                                matchAndBookmarkAlbum(album)
+                            } catch (error: CancellationException) {
+                                throw error
+                            } catch (error: Throwable) {
+                                reportException(error)
+                                false
+                            }
+                        if (ok) imported.incrementAndGet()
+                        val completedCount = completed.incrementAndGet()
+                        onProgress(
+                            SpotifyImportProgressUi(
+                                sourceTitle = source.title,
+                                completedSources = sourceIndex,
+                                totalSources = sourceCount,
+                                matchedTracks = completedCount,
+                                totalTracks = albums.size,
+                                percent = progressPercent(sourceIndex, sourceCount, completedCount, albums.size),
+                            ),
+                        )
+                    }
+                }
+            }.awaitAll()
+        }
+
+        onProgress(
+            SpotifyImportProgressUi(
+                sourceTitle = source.title,
+                completedSources = sourceIndex + 1,
+                totalSources = sourceCount,
+                matchedTracks = imported.get(),
+                totalTracks = albums.size,
+                percent = progressPercent(sourceIndex + 1, sourceCount, 0, 0),
+            ),
+        )
+
+        return SpotifyImportSourceSummaryUi(
+            title = source.title,
+            totalTracks = albums.size,
+            importedTracks = imported.get(),
+            failedTracks = albums.size - imported.get(),
+        )
+    }
+
+    private suspend fun fetchAllSavedAlbums(): List<SpotifyAlbum> {
+        val albums = ArrayList<SpotifyAlbum>()
+        var offset = 0
+        val limit = 50
+        while (true) {
+            val page = spotifyCallWithTokenRetry {
+                Spotify.mySavedAlbums(limit = limit, offset = offset).getOrThrow()
+            }
+            if (page.items.isEmpty()) break
+            albums += page.items.filter { it.name.isNotBlank() }
+            offset += page.items.size
+            if (offset >= page.total || page.items.size < limit) break
+        }
+        return albums
+    }
+
+    /**
+     * Searches YouTube Music for [spotifyAlbum] (album + artist), picks the first close title match,
+     * and upserts it as a bookmarked [AlbumEntity] so it appears under Favorite Albums.
+     */
+    private suspend fun matchAndBookmarkAlbum(spotifyAlbum: SpotifyAlbum): Boolean {
+        val artistName = spotifyAlbum.artists.firstOrNull()?.name.orEmpty()
+        val query = listOf(spotifyAlbum.name, artistName).filter { it.isNotBlank() }.joinToString(" ")
+        if (query.isBlank()) return false
+
+        val searchResult = YouTube.search(
+            query = query,
+            filter = YouTube.SearchFilter.FILTER_ALBUM,
+        ).getOrElse { error ->
+            if (error is CancellationException) throw error
+            return false
+        }
+
+        val match = searchResult.items
+            .filterIsInstance<AlbumItem>()
+            .firstOrNull { item ->
+                item.title.contains(spotifyAlbum.name, ignoreCase = true) ||
+                    spotifyAlbum.name.contains(item.title, ignoreCase = true)
+            } ?: return false
+
+        val existing = database.album(match.id).first()?.album
+
+        database.withTransaction {
+            val now = LocalDateTime.now()
+            if (existing == null) {
+                insert(
+                    AlbumEntity(
+                        id = match.id,
+                        playlistId = match.playlistId,
+                        title = match.title,
+                        thumbnailUrl = match.thumbnail,
+                        songCount = 0,
+                        duration = 0,
+                        explicit = match.explicit,
+                        lastUpdateTime = now,
+                        bookmarkedAt = now,
+                    ),
+                )
+            } else {
+                update(
+                    existing.copy(
+                        bookmarkedAt = existing.bookmarkedAt ?: now,
+                        lastUpdateTime = now,
+                    ),
+                )
+            }
+        }
+
+        return true
+    }
+
     private suspend fun mirrorPlaylist(
         source: SpotifyImportSource,
         tracks: List<MediaMetadata>,
@@ -816,5 +986,22 @@ sealed interface SpotifyImportSource {
         override val trackCount: Int = artistCount
         override val localPlaylistId: String = "SPOTIFY_FOLLOWED_ARTISTS"
         override val type: SpotifyImportSourceType = SpotifyImportSourceType.ARTISTS
+    }
+
+    /**
+     * The albums the user saved on Spotify. Imported by matching each one to a YouTube Music album
+     * and bookmarking it locally, so they show up under Favorite Albums. [trackCount] carries the
+     * album count (reused by the generic progress/summary UI). Not mirrored into a playlist.
+     */
+    data class SavedAlbums(
+        override val title: String,
+        val albumCount: Int,
+    ) : SpotifyImportSource {
+        override val id: String = "saved_albums"
+        override val subtitle: String = ""
+        override val thumbnailUrl: String? = null
+        override val trackCount: Int = albumCount
+        override val localPlaylistId: String = "SPOTIFY_SAVED_ALBUMS"
+        override val type: SpotifyImportSourceType = SpotifyImportSourceType.SAVED_ALBUMS
     }
 }

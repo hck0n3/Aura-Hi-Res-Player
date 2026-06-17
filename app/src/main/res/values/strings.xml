@@ -410,6 +410,7 @@
     <string name="spotify_liked_songs_desc">Saved tracks from your Spotify library</string>
     <string name="spotify_followed_artists">Followed artists</string>
     <string name="spotify_followed_artists_desc">Artists you follow on Spotify</string>
+    <string name="spotify_saved_albums">Saved albums</string>
     <string name="spotify_artist_count">%1$d artists</string>
     <string name="spotify_track_count">%1$d tracks</string>
     <string name="spotify_login_title">Spotify login</string>
