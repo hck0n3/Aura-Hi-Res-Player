@@ -138,6 +138,35 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # No-subscription test build. FOSS + a distinct applicationId (.dev), signed with the release
+      # key. Built WITHOUT google-services.json (the .dev id isn't in it, which would fail the Google
+      # plugin). Uploaded ONLY as a private build artifact (repo owner) — NEVER attached to the public
+      # release, so it can't be used to bypass the paid subscription, and the updater never sees it.
+      - name: Build No-Subscription Test APK
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD || 'jrmusicpro' }}
+          KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS || 'jrmusic' }}
+          KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD || 'jrmusicpro' }}
+          LASTFM_API_KEY: ${{ secrets.LASTFM_API_KEY }}
+          LASTFM_SECRET: ${{ secrets.LASTFM_SECRET }}
+        run: |
+          rm -f app/google-services.json
+          ./gradlew assembleUniversalFossRelease -Pnosub=true
+          VERSION_NAME=$(grep "versionName =" app/build.gradle.kts | head -n 1 | awk -F '"' '{print $2}')
+          mkdir -p app/build/outputs/apk/nosub-artifacts
+          find app/build/outputs/apk/universalFoss/release -name "*.apk" | while read -r apk_path; do
+            cp "$apk_path" "app/build/outputs/apk/nosub-artifacts/Aura-Hi-Res-Player-${VERSION_NAME}-NOSUB.apk"
+            echo "No-sub APK: $apk_path"
+          done
+
+      - name: Upload No-Subscription Artifact (private, owner-only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@v4
+        with:
+          name: Aura-Hi-Res-Player-NOSUB
+          path: app/build/outputs/apk/nosub-artifacts/*.apk
+
       - name: Send Telegram Notification
         if: startsWith(github.ref, 'refs/tags/v')
         env:

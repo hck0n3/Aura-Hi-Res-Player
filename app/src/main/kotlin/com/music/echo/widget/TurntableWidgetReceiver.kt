@@ -9,6 +9,7 @@ import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import iad1tya.echo.music.playback.MusicService
 
 class TurntableWidgetReceiver : AppWidgetProvider() {
@@ -50,7 +51,13 @@ class TurntableWidgetReceiver : AppWidgetProvider() {
                     putExtras(intent)
                 }
                 try {
-                    context.startService(serviceIntent)
+                    // Widget clicks get a short FGS-launch exemption; start in foreground so controls
+                    // work on Android 12+ when the app is backgrounded (plain startService() throws).
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        context.startForegroundService(serviceIntent)
+                    } else {
+                        context.startService(serviceIntent)
+                    }
                 } catch (e: Exception) {
                     // Service might be restricted in background
                 }

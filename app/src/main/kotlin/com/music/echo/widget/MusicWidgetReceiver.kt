@@ -67,8 +67,12 @@ class MusicWidgetReceiver : AppWidgetProvider() {
                     putExtras(intent)
                 }
                 try {
+                    // Widget clicks get a short FGS-launch exemption, so start the service in the
+                    // foreground. Plain startService() throws on Android 12+ when the app is in the
+                    // background (and the old code swallowed it = controls did nothing). MusicService
+                    // calls startForeground() in onCreate(), so this is safe from the 5s deadline.
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        context.startService(serviceIntent)
+                        context.startForegroundService(serviceIntent)
                     } else {
                         context.startService(serviceIntent)
                     }
