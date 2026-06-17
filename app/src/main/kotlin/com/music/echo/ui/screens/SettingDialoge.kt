@@ -192,26 +192,7 @@ fun SettingDialoge(
                     )
                 )
 
-                // Footer Links
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center
-                ) {
-                    Text(
-                        text = "Privacy Policy",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = onSecondaryColor,
-                        modifier = Modifier.clickable { uriHandler.openUri("https://echomusic.fun/p/privacy-policy") }.padding(4.dp)
-                    )
-                    Text(text = " • ", color = onSecondaryColor, style = MaterialTheme.typography.bodySmall)
-                    Text(
-                        text = "Terms of Service",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = onSecondaryColor,
-                        modifier = Modifier.clickable { uriHandler.openUri("https://echomusic.fun/p/toc") }.padding(4.dp)
-                    )
-                }
+                // Footer links (Privacy Policy / Terms of Service) hidden per user request.
             }
         }
     }

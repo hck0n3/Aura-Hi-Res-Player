@@ -1,10 +1,9 @@
-# Aura Hi-Res Player v5.1.97
+# Aura Hi-Res Player v5.1.98
 
-## Tema Aura Glass — ahora sí translúcido
-- Con el tema **Aura Glass** activado, el reproductor usa de fondo la **carátula de la canción actual con desenfoque (blur)**, y los controles van translúcidos sobre ella — efecto de cristal esmerilado real.
-- (Activar en Ajustes → Apariencia → Tema Aura Glass.)
+## Mejoras
+- **Reproductor → Sonido**: el botón de sonido ahora colapsa el reproductor y abre la sección Sonido **al frente** (ya no queda detrás).
+- **Actualizaciones**: mensaje claro cuando no hay nada nuevo ("No hay actualizaciones — ya tienes la versión más reciente"). El changelog de la versión nueva ya se muestra al detectarla; el de tu versión actual está en Ajustes → Aura Hi-Res Update → versión.
+- Se ocultaron los enlaces "Privacy Policy / Terms of Service".
 
 ## Incluye lo anterior
-- v5.1.96: fix del demo (anti borrar datos), requiere Worker actualizado.
-- v5.1.95: menos distorsión en Bluetooth.
-- v5.1.94: apartado Aura Hi-Res Update, botón de sonido en el reproductor, Auto-EQ mejorado.
+- v5.1.97 Aura Glass con fondo de carátula con blur, v5.1.96 fix demo, v5.1.95 menos distorsión BT, v5.1.94 apartado de actualizaciones + Auto-EQ.

@@ -1739,7 +1739,11 @@ fun BottomSheetPlayer(
                             .size(40.dp)
                             .clip(RoundedCornerShape(24.dp))
                             .background(textButtonColor.copy(alpha = 0.2f))
-                            .clickable { navController.navigate("settings/sound") },
+                            .clickable {
+                                // Collapse the player so the Sound screen opens in front, not behind it.
+                                state.collapseSoft()
+                                navController.navigate("settings/sound")
+                            },
                     ) {
                         Icon(
                             painter = painterResource(R.drawable.graphic_eq),
