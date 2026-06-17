@@ -16,3 +16,6 @@ private val BrandSlateDeep = Color(0xFF3A4250)
 val AuraBrandGradient = Brush.linearGradient(
     colors = listOf(BrandSlateLight, BrandSlate, BrandSlateDeep),
 )
+
+/** Brand accent (cyan) used by the thin-uppercase wordmark on the "HI-RES" word. */
+val BrandAccent = Color(0xFF36C5E0)

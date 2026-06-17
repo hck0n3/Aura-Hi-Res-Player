@@ -1,8 +1,15 @@
-# Aura Hi-Res Player v5.2.9
+# Aura Hi-Res Player v5.3.0
 
-## Tema Aura eliminado
-- Se quitó por completo el tema "Aura Glass" y sus funciones (el interruptor en Apariencia, el fondo difuminado y las superficies de cristal). La app vuelve a un tema limpio y consistente. El nombre de la app no cambia.
+## Nuevo icono e identidad
+- **Icono nuevo** "Hi-Res Pulse": anillo de pulso de audio con degradado teal→azul y un play, sobre fondo oscuro. Más moderno y sobrio.
+- **Logo de texto** rediseñado: "AURA HI-RES" en mayúsculas finas con acento cian.
+
+## Nueva tipografía en toda la app
+- La app ahora usa la fuente **Google Sans Flex** en todos los textos (menús, listas, ajustes). Más limpia y premium.
+
+## Tema AMOLED por defecto
+- El **tema AMOLED (negro puro)** queda activado desde el primer inicio (ahorra batería en pantallas OLED y se ve más elegante). Puedes cambiarlo en Apariencia.
 
 ## Incluye lo anterior
-- v5.2.8: controles de widgets funcionan con la app en segundo plano.
-- v5.2.7: "Inspirado en Apple Music" desde el primer inicio, botón de iniciar sesión visible, y defaults activados (espectro, lienzos, video del artista, letras Apple Music v2 + brillo + desenfoque, ocultar videos/Shorts).
+- v5.2.9: tema Aura Glass eliminado por completo.
+- v5.2.8: controles de widgets en segundo plano.

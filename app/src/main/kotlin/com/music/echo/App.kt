@@ -228,6 +228,11 @@ class App : Application(), SingletonImageLoader.Factory {
             p[iad1tya.echo.music.constants.HideVideoSongsKey] = true
             p[iad1tya.echo.music.constants.HideYoutubeShortsKey] = true
 
+            // AMOLED (pure black) dark theme on by default.
+            p[iad1tya.echo.music.constants.DarkModeKey] =
+                iad1tya.echo.music.ui.screens.settings.DarkMode.ON.name
+            p[iad1tya.echo.music.constants.PureBlackKey] = true
+
             // Spanish default, only if the user hasn't explicitly chosen a language.
             val current = p[iad1tya.echo.music.constants.AppLanguageKey]
             if (current == null || current == SYSTEM_DEFAULT) {
@@ -374,7 +379,7 @@ class App : Application(), SingletonImageLoader.Factory {
 
     companion object {
         /** Bump when adding a new one-time default set so it re-seeds for everyone (and after restore). */
-        const val CURRENT_SEED_VERSION = 2
+        const val CURRENT_SEED_VERSION = 3
 
         suspend fun forgetAccount(context: Context) {
             Timber.d("forgetAccount: Starting logout process")

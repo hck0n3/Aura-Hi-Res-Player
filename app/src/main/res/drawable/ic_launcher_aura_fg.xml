@@ -1,0 +1,36 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Gradient pulse ring (donut via evenOdd) -->
+    <path
+        android:fillType="evenOdd"
+        android:pathData="M54,25 a29,29 0 1,0 0,58 a29,29 0 1,0 0,-58 Z M54,34 a20,20 0 1,0 0,40 a20,20 0 1,0 0,-40 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="26" android:startY="26"
+                android:endX="82" android:endY="82">
+                <item android:offset="0" android:color="#FF36E0C8"/>
+                <item android:offset="0.5" android:color="#FF36A8E0"/>
+                <item android:offset="1" android:color="#FF6A7BFF"/>
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Play triangle -->
+    <path android:pathData="M48,42 L71,54 L48,66 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="48" android:startY="42"
+                android:endX="71" android:endY="66">
+                <item android:offset="0" android:color="#FF36E0C8"/>
+                <item android:offset="1" android:color="#FF6A7BFF"/>
+            </gradient>
+        </aapt:attr>
+    </path>
+</vector>
