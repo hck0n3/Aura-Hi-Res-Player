@@ -1,9 +1,11 @@
-# Aura Hi-Res Player v5.1.99
+# Aura Hi-Res Player v5.2.0
 
 ## Cambios
-- **Inicio de sesión fuera de Ajustes**: el login/cuenta ya no aparece en Configuración (se usa el avatar de la pantalla de inicio).
-- **Micrófono de búsqueda siempre disponible**: el botón de micrófono ahora también está en la barra de resultados (antes desaparecía tras buscar y solo volvía al dar atrás).
+- **Ajustes**: el apartado del reproductor ahora se llama **"Ajustes del reproductor"** (Sonido es su propio apartado).
+- **Acerca de**: actualizado con todas las funciones reales de la app (sonido/Auto-EQ, listas con IA, Release Radar, escuchar juntos, tema Aura Glass, Android TV, auto-actualización).
+- Recordatorio: para ver **todos los álbumes de un artista en cuadrícula**, toca el título "Álbumes" (con la flecha →) en la pantalla del artista; se abre en cuadrícula vertical.
 
 ## Incluye lo anterior
+- v5.1.99: login fuera de Ajustes, mic siempre en la barra de resultados.
 - v5.1.98: reproductor→Sonido al frente, mensaje claro de "sin actualización", Privacy/Terms ocultos.
-- v5.1.97 Aura Glass con blur, v5.1.96 fix demo, v5.1.95 menos distorsión BT.
+- Aura Glass con blur, fix demo, menos distorsión Bluetooth.

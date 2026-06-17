@@ -30,21 +30,25 @@ import iad1tya.echo.music.ui.utils.backToMain
 private data class Feature(val icon: Int, val title: String, val subtitle: String)
 
 private val PLAYBACK_FEATURES = listOf(
-    Feature(R.drawable.play, "Playback", "Gapless playback, audio normalization, and sleep timer"),
-    Feature(R.drawable.graphic_eq, "DSP Equalizer", "24-band EQ plus limiter, loudness, bass, exciter, tube, multiband compressor, stereo width, dialogue and HRTF virtual room"),
-    Feature(R.drawable.lyrics, "Lyrics", "Synced and plain lyrics with Apple Music-style blur"),
-    Feature(R.drawable.queue_music, "Queue", "Smart queue and up-next management"),
+    Feature(R.drawable.play, "Reproducción", "Sin cortes (gapless), crossfade, normalización y temporizador de apagado"),
+    Feature(R.drawable.graphic_eq, "Sonido y EQ", "Ecualizador de 24 bandas, Auto-EQ por modelo de auricular, sonoridad tipo TIDAL con limitador true-peak, firma Aura (cuerpo + aire), realce de graves, excitador, compresor multibanda, ancho estéreo, diálogos y sala virtual HRTF"),
+    Feature(R.drawable.auto_awesome, "Mejorar calidad baja", "Reduce la distorsión (declip) y regenera agudos en fuentes de bajo bitrate"),
+    Feature(R.drawable.lyrics, "Letras", "Sincronizadas, con traducción por IA y desenfoque estilo Apple Music"),
+    Feature(R.drawable.queue_music, "Cola", "Cola inteligente y gestión de 'a continuación'"),
 )
 
 private val LIBRARY_FEATURES = listOf(
-    Feature(R.drawable.library_music, "Library & Sync", "YouTube Music library, playlists and likes kept in sync"),
-    Feature(R.drawable.download, "Import", "Import playlists from YouTube, Spotify and Aura Hi-Res Player (.jrpl.json)"),
-    Feature(R.drawable.music_history, "History & Stats", "Listening history and detailed playback stats"),
+    Feature(R.drawable.library_music, "Biblioteca y sincronización", "Biblioteca, listas y 'me gusta' de YouTube Music sincronizados"),
+    Feature(R.drawable.auto_awesome, "Listas con IA", "Crea playlists describiéndolas con una frase"),
+    Feature(R.drawable.download, "Importar", "Importa listas de YouTube, Spotify y Aura Hi-Res Player (.jrpl.json)"),
+    Feature(R.drawable.music_history, "Release Radar e historial", "Nuevos lanzamientos de tus artistas, historial y estadísticas de escucha"),
 )
 
 private val EXTRAS_FEATURES = listOf(
-    Feature(R.drawable.group_outlined, "Listen Together", "Real-time synced listening with friends"),
-    Feature(R.drawable.palette, "Canvas & Themes", "Animated canvas backgrounds and Material You theming"),
+    Feature(R.drawable.group_outlined, "Escuchar juntos", "Escucha sincronizada en tiempo real con amigos"),
+    Feature(R.drawable.palette, "Tema Aura Glass", "Vidrio oscuro con fondo de carátula difuminada, Canvas animado y Material You"),
+    Feature(R.drawable.play, "Android TV", "Se instala y navega con control en televisores"),
+    Feature(R.drawable.download, "Auto-actualización", "Aura Hi-Res Update: descarga e instala nuevas versiones sin desinstalar"),
 )
 
 @OptIn(ExperimentalMaterial3Api::class)

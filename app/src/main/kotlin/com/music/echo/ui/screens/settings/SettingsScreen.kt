@@ -63,7 +63,7 @@ fun SettingsScreen(
 
     val accountText = stringResource(R.string.account)
     val appearanceText = stringResource(R.string.appearance)
-    val playerText = stringResource(R.string.player_and_audio)
+    val playerText = "Ajustes del reproductor"
     val soundText = "Sonido y ecualización"
     val listenTogetherText = stringResource(R.string.listen_together)
     val contentText = stringResource(R.string.content)
