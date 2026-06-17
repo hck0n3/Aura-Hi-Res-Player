@@ -108,7 +108,21 @@ fun SettingDialoge(
                     }
                 }
 
-                // Account/login intentionally removed from settings (use the account avatar on Home).
+                // When signed out, show a clear "Iniciar sesión" entry here (the avatar sheet is the
+                // main account entry point) so users can always find how to log in.
+                if (!isLoggedIn) {
+                    Material3SettingsGroup(
+                        title = "Cuenta",
+                        compact = true,
+                        items = listOf(
+                            Material3SettingsItem(
+                                title = { Text("Iniciar sesión") },
+                                icon = painterResource(R.drawable.login),
+                                onClick = { onNavigate("login") }
+                            )
+                        )
+                    )
+                }
 
                 if (isLoggedIn) {
                     Material3SettingsGroup(

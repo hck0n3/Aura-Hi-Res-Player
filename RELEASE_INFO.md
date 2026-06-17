@@ -1,11 +1,16 @@
-# Aura Hi-Res Player v5.2.6
+# Aura Hi-Res Player v5.2.7
 
-## Tema Aura ahora es gris oscuro (todo combina)
-- El tema Aura pasa a una **paleta gris grafito** elegante: los paneles de cristal, el tema y el fondo difuminado comparten **el mismo tono gris**, en lugar de un color del tema y otro en los cristales. Se ve mucho más cohesivo y limpio.
-- El fondo dejó de cambiar de color con cada canción (causaba mezclas feas); ahora es un grafito neutro constante con la carátula difuminada detrás.
+## "Inspirado en Apple Music" ahora funciona desde el primer inicio
+- Antes el interruptor aparecía activado pero **no aplicaba** el estilo hasta que lo apagabas y volvías a encender. Corregido: el reproductor estilo Apple Music queda activo y funcionando desde la primera vez que abres la app.
 
-## Actualizaciones guardadas en Descargas
-- Cuando el actualizador descarga una nueva versión, ahora **también deja una copia del APK en tu carpeta Descargas**, para que puedas encontrarlo e instalarlo fácil desde cualquier explorador de archivos.
+## Botón de iniciar sesión siempre visible
+- Si no tienes sesión, ahora aparece un botón **"Iniciar sesión"** claro en el menú de la cuenta (el del avatar arriba a la derecha).
+
+## Más cosas activadas por defecto (puedes cambiarlas cuando quieras)
+- **Visualizador de espectro** activado.
+- **Letras**: animación estilo **Apple Music v2**, con **brillo** y **desenfoque**.
+- **Lienzo** del reproductor, **lienzo de álbum**, **video del artista** y **video de fondo (lienzo) del artista** activados.
+- **Contenido**: ocultar canciones de video y ocultar YouTube Shorts activados.
 
 ## Incluye lo anterior
-- v5.2.5: cristal cohesivo. v5.2.4: portada del player restaurada, sin apartado "Commits". v5.2.3: changelog de cada versión visible.
+- v5.2.6: tema Aura gris grafito cohesivo + el actualizador guarda una copia del APK en Descargas.

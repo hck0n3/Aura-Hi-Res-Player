@@ -199,14 +199,35 @@ class App : Application(), SingletonImageLoader.Factory {
             return
         }
         dataStore.edit { p ->
-            // Player look (Aura / Apple-Music-inspired).
+            // "Inspirado en Apple Music" player. The toggle is ON when UseNewPlayerDesign == false AND
+            // the player background is APPLE_MUSIC — seeding LIVE_MESH before made the switch *look* on
+            // but not actually apply (it only kicked in after a manual off→on). Seed APPLE_MUSIC so it
+            // works from first launch.
             p[iad1tya.echo.music.constants.PlayerBackgroundStyleKey] =
-                iad1tya.echo.music.constants.PlayerBackgroundStyle.LIVE_MESH.name
+                iad1tya.echo.music.constants.PlayerBackgroundStyle.APPLE_MUSIC.name
             p[iad1tya.echo.music.constants.MiniPlayerBackgroundStyleKey] =
-                iad1tya.echo.music.constants.PlayerBackgroundStyle.LIVE_MESH.name
+                iad1tya.echo.music.constants.PlayerBackgroundStyle.APPLE_MUSIC.name
             p[iad1tya.echo.music.constants.UseNewPlayerDesignKey] = false
             p[iad1tya.echo.music.constants.HidePlayerSliderKey] = true
+
+            // Lyrics: Apple Music v2 animation + glow + blur on by default.
+            p[iad1tya.echo.music.constants.LyricsAnimationStyleKey] =
+                iad1tya.echo.music.constants.LyricsAnimationStyle.APPLE_V2.name
+            p[iad1tya.echo.music.constants.LyricsGlowEffectKey] = true
             p[iad1tya.echo.music.constants.AppleMusicLyricsBlurKey] = true
+
+            // Visuals on by default: spectrum visualizer, player canvas, album canvas, artist video +
+            // artist background ("canvas") video.
+            p[iad1tya.echo.music.constants.SpectrumVisualizerEnabledKey] = true
+            p[iad1tya.echo.music.constants.CanvasThumbnailAnimationKey] = true
+            p[iad1tya.echo.music.constants.AlbumCanvasEnabledKey] = true
+            p[iad1tya.echo.music.constants.ShowArtistVideoKey] = true
+            p[iad1tya.echo.music.constants.ShowArtistBackgroundVideoKey] = true
+
+            // Content filters on by default: hide video songs + hide YouTube Shorts.
+            p[iad1tya.echo.music.constants.HideVideoSongsKey] = true
+            p[iad1tya.echo.music.constants.HideYoutubeShortsKey] = true
+
             // Spanish default, only if the user hasn't explicitly chosen a language.
             val current = p[iad1tya.echo.music.constants.AppLanguageKey]
             if (current == null || current == SYSTEM_DEFAULT) {
@@ -353,7 +374,7 @@ class App : Application(), SingletonImageLoader.Factory {
 
     companion object {
         /** Bump when adding a new one-time default set so it re-seeds for everyone (and after restore). */
-        const val CURRENT_SEED_VERSION = 1
+        const val CURRENT_SEED_VERSION = 2
 
         suspend fun forgetAccount(context: Context) {
             Timber.d("forgetAccount: Starting logout process")
