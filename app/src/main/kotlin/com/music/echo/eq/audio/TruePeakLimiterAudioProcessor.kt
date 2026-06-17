@@ -48,6 +48,9 @@ class TruePeakLimiterAudioProcessor : AudioProcessor {
         private const val CEILING = 0.891f
         // Smooth release: gain recovers gently after a peak (slow → transparent, no pumping).
         private const val RELEASE_COEFF = 0.0006f
+        // Hard cap on the combined makeup (loudness × EQ-headroom) ≈ +12 dB, so they can't stack into
+        // an extreme boost that the limiter would have to slam (which sounds like distortion).
+        private const val MAX_MAKEUP = 4.0f
 
         /** Per-track loudness makeup (linear, >= 1). 1.0 = no boost. Set from MusicService. */
         @Volatile
@@ -89,7 +92,7 @@ class TruePeakLimiterAudioProcessor : AudioProcessor {
             outputBuffer.clear()
         }
 
-        val mk = loudnessMakeup * eqMakeup
+        val mk = (loudnessMakeup * eqMakeup).coerceAtMost(MAX_MAKEUP)
         if (!enabled) {
             // Transparent passthrough: no makeup, no limiting.
             outputBuffer.put(inputBuffer)

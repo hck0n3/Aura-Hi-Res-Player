@@ -50,7 +50,7 @@ class AudioEnhanceProcessor : AudioProcessor {
         private const val CLIP_THRESHOLD = 0.985f
         private const val MIN_CLIP_RUN = 3   // 1–2 full-scale samples aren't clipping → leave them
         private const val MAX_CLIP_RUN = 32  // don't try to rebuild very long clipped runs
-        private const val HF_AMOUNT = 0.22f  // gentle harmonic regeneration
+        private const val HF_AMOUNT = 0.16f  // gentle harmonic regeneration (soft, avoids harsh highs)
 
         /** Toggled from MusicService (AudioEnhanceEnabledKey). */
         @Volatile

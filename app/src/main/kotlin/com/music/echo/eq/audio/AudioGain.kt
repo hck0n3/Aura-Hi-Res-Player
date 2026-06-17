@@ -50,7 +50,7 @@ fun normalizationMultiplier(
 fun loudnessMakeupDb(
     loudnessDb: Double?,
     enabled: Boolean,
-    maxBoostDb: Double = 9.0,
+    maxBoostDb: Double = 6.0,
 ): Double {
     if (!enabled || loudnessDb == null) return 0.0
     return (-loudnessDb).coerceIn(0.0, maxBoostDb)
