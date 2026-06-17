@@ -1,6 +1,7 @@
 package iad1tya.echo.music.ui.theme
 
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.Shapes
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -40,6 +41,25 @@ val AuraGlassBackground = Brush.radialGradient(
 /** Translucent "glass" surface fill (used for cards/sheets when Aura Glass is on). */
 val AuraGlassSurface = Color(0x14FFFFFF)         // ~8% white frost
 val AuraGlassStroke = Color(0x22FFFFFF)          // hairline highlight
+
+/**
+ * Makes the Material surfaces translucent so the blurred artwork behind the app shows through them
+ * (frosted-glass panels app-wide). `background` becomes transparent so the blurred layer is visible;
+ * surface containers keep ~70% opacity for readable, frosted cards/nav/sheets.
+ */
+fun ColorScheme.auraGlass(): ColorScheme {
+    val a = 0.70f
+    return copy(
+        background = Color.Transparent,
+        surface = surface.copy(alpha = a),
+        surfaceVariant = surfaceVariant.copy(alpha = a),
+        surfaceContainerLowest = surfaceContainerLowest.copy(alpha = a),
+        surfaceContainerLow = surfaceContainerLow.copy(alpha = a),
+        surfaceContainer = surfaceContainer.copy(alpha = a),
+        surfaceContainerHigh = surfaceContainerHigh.copy(alpha = a),
+        surfaceContainerHighest = surfaceContainerHighest.copy(alpha = a),
+    )
+}
 
 /** Big, soft rounded corners — a key part of the glass feel, applied app-wide via MaterialTheme. */
 val AuraGlassShapes = Shapes(

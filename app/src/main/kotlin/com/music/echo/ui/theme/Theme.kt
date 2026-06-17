@@ -53,11 +53,12 @@ fun echomusicTheme(
     }
 
     
-    val colorScheme = remember(baseColorScheme, pureBlack, darkTheme) {
-        if (darkTheme && pureBlack) {
-            baseColorScheme.pureBlack(true)
-        } else {
-            baseColorScheme
+    val colorScheme = remember(baseColorScheme, pureBlack, darkTheme, auraEnabled) {
+        when {
+            // Aura Glass: translucent surfaces so the blurred artwork behind shows through (frosted glass).
+            auraEnabled -> baseColorScheme.auraGlass()
+            darkTheme && pureBlack -> baseColorScheme.pureBlack(true)
+            else -> baseColorScheme
         }
     }
 

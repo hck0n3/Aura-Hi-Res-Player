@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Aura Glass — rediseño translúcido</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;font-family:'Segoe UI',Roboto,system-ui,sans-serif}
+body{display:flex;gap:48px;justify-content:center;align-items:center;padding:56px;
+     background:#05060a;color:#EAF6FF}
+.phone{width:392px;height:840px;border-radius:46px;position:relative;overflow:hidden;
+  box-shadow:0 40px 90px rgba(0,0,0,.7),0 0 0 11px #07070b,0 0 0 13px #1b2b3a}
+.notch{position:absolute;top:14px;left:50%;transform:translateX(-50%);width:118px;height:30px;background:#000;border-radius:18px;z-index:50}
+
+/* blurred album-art background (this is what shows THROUGH the glass) */
+.bg{position:absolute;inset:0;
+  background:
+    radial-gradient(60% 50% at 20% 12%, #2ad6e0 0%, transparent 55%),
+    radial-gradient(70% 60% at 85% 18%, #6f7bff 0%, transparent 55%),
+    radial-gradient(80% 60% at 60% 95%, #ff5fa2 0%, transparent 55%),
+    linear-gradient(160deg,#0a1830,#0a0f1c);
+  filter:saturate(1.2)}
+.bgdim{position:absolute;inset:0;background:rgba(4,7,12,.35)}
+
+/* the GLASS: translucent + real backdrop blur */
+.glass{background:rgba(255,255,255,.10);
+  -webkit-backdrop-filter:blur(22px) saturate(1.4);backdrop-filter:blur(22px) saturate(1.4);
+  border:1px solid rgba(255,255,255,.18);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.25), 0 8px 30px rgba(0,0,0,.25)}
+
+.content{position:absolute;inset:0;display:flex;flex-direction:column;padding:54px 16px 0}
+.status{display:flex;justify-content:space-between;font-size:12.5px;color:#cfe9f5;font-weight:600;padding:0 6px 14px}
+
+/* HOME */
+.h1{font-size:22px;font-weight:900;letter-spacing:-.3px}
+.h1 .g{background:linear-gradient(100deg,#46e0ea,#6f9dff,#b79bff);-webkit-background-clip:text;background-clip:text;color:transparent}
+.sub{font-size:13px;color:#bcd6e6;margin:2px 0 16px}
+.hero{border-radius:24px;padding:18px;margin-bottom:18px}
+.hero .k{font-size:11px;letter-spacing:2px;font-weight:800;color:#bfe9f0}
+.hero .v{font-size:18px;font-weight:800;margin-top:8px;max-width:74%;line-height:1.2}
+.hero .go{margin-top:14px;display:inline-flex;padding:9px 16px;border-radius:999px;font-size:12.5px;font-weight:800;color:#04121a;background:linear-gradient(120deg,#46e0ea,#6f9dff)}
+.row{display:flex;justify-content:space-between;align-items:baseline;margin:6px 4px 12px}
+.row h3{font-size:16px;font-weight:800}.row span{font-size:12px;color:#bcd6e6}
+.grid{display:flex;gap:14px}.card{flex:1;border-radius:18px;padding:10px}
+.cover{width:100%;aspect-ratio:1;border-radius:12px;margin-bottom:8px}
+.c1{background:linear-gradient(135deg,#2ad6e0,#6f7bff)}.c2{background:linear-gradient(135deg,#6f7bff,#ff5fa2)}.c3{background:linear-gradient(135deg,#ff5fa2,#ffb15f)}
+.n{font-size:12.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.a{font-size:11px;color:#bcd6e6}
+.nav{position:absolute;left:16px;right:16px;bottom:18px;height:64px;border-radius:24px;display:flex;align-items:center;justify-content:space-around}
+.ni{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:10.5px;color:#bcd6e6;font-weight:600}
+.ni.act{color:#fff}.dot{width:22px;height:22px;border-radius:7px;background:rgba(255,255,255,.25)}
+.ni.act .dot{background:linear-gradient(135deg,#46e0ea,#6f9dff)}
+.mini{position:absolute;left:16px;right:16px;bottom:92px;height:56px;border-radius:20px;display:flex;align-items:center;gap:12px;padding:8px}
+.mc{width:40px;height:40px;border-radius:11px;background:linear-gradient(135deg,#2ad6e0,#ff5fa2)}
+.mt b{font-size:13px;display:block}.mt span{font-size:11px;color:#bcd6e6}
+
+/* PLAYER */
+.pcol{position:absolute;inset:0;display:flex;flex-direction:column;padding:54px 22px 22px}
+.art{width:100%;aspect-ratio:1;border-radius:26px;margin:8px 0 22px;background:linear-gradient(135deg,#2ad6e0,#6f7bff 50%,#ff5fa2);box-shadow:0 26px 60px -14px rgba(111,123,255,.5)}
+.title{font-size:25px;font-weight:800}.artist{font-size:14px;color:#bcd6e6;margin-top:5px}
+.bar{height:6px;border-radius:6px;background:rgba(255,255,255,.18);margin:22px 0 8px;position:relative}
+.bar i{position:absolute;left:0;top:0;bottom:0;width:38%;border-radius:6px;background:linear-gradient(90deg,#46e0ea,#6f9dff,#ff5fa2)}
+.ctrls{display:flex;align-items:center;justify-content:space-around;margin:18px 0}
+.cbtn{width:40px;height:40px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:18px}
+.play{width:74px;height:74px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:26px;color:#04121a;background:linear-gradient(135deg,#46e0ea,#6f9dff)}
+.chips{display:flex;gap:10px;margin-top:8px}.chip{flex:1;text-align:center;padding:13px 0;border-radius:16px;font-size:13px;font-weight:700}
+.cap{position:absolute;bottom:14px;left:0;right:0;text-align:center;font-size:11px;color:#9fc0d2;letter-spacing:.5px}
+</style></head>
+<body>
+
+<!-- HOME -->
+<div class="phone">
+  <div class="notch"></div>
+  <div class="bg"></div><div class="bgdim"></div>
+  <div class="content">
+    <div class="status"><span>9:41</span><span>Hi-Res ⚡</span></div>
+    <div class="h1"><span class="g">Aura</span> Hi-Res</div>
+    <div class="sub">Buenas noches, Roberto</div>
+    <div class="hero glass"><div class="k">LISTA AI</div><div class="v">Crea una playlist con una frase</div><div class="go">Probar →</div></div>
+    <div class="row"><h3>Reciente</h3><span>Ver todo</span></div>
+    <div class="grid">
+      <div class="card glass"><div class="cover c1"></div><div class="n">Currents</div><div class="a">Tame Impala</div></div>
+      <div class="card glass"><div class="cover c2"></div><div class="n">Blonde</div><div class="a">Frank Ocean</div></div>
+      <div class="card glass"><div class="cover c3"></div><div class="n">DAMN.</div><div class="a">Kendrick</div></div>
+    </div>
+  </div>
+  <div class="mini glass"><div class="mc"></div><div class="mt"><b>Midnight City</b><span>M83</span></div></div>
+  <div class="nav glass">
+    <div class="ni act"><div class="dot"></div>Inicio</div>
+    <div class="ni"><div class="dot"></div>Buscar</div>
+    <div class="ni"><div class="dot"></div>Biblioteca</div>
+  </div>
+</div>
+
+<!-- PLAYER -->
+<div class="phone">
+  <div class="notch"></div>
+  <div class="bg"></div><div class="bgdim"></div>
+  <div class="pcol">
+    <div class="status"><span>9:41</span><span>24bit/96kHz</span></div>
+    <div class="art"></div>
+    <div class="title">Midnight City</div>
+    <div class="artist">M83 · Hurry Up, We're Dreaming</div>
+    <div class="bar"><i></i></div>
+    <div class="ctrls">
+      <div class="cbtn glass">⏮</div><div class="cbtn glass">⏪</div>
+      <div class="play">⏸</div>
+      <div class="cbtn glass">⏩</div><div class="cbtn glass">⏭</div>
+    </div>
+    <div class="chips"><div class="chip glass">🎛 Sonido</div><div class="chip glass">♡ Me gusta</div></div>
+    <div class="cap">Aura Glass · cristal translúcido real</div>
+  </div>
+</div>
+
+</body></html>

@@ -97,6 +97,7 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.draw.blur
 import com.airbnb.lottie.compose.LottieAnimation
 import com.airbnb.lottie.compose.LottieCompositionSpec
 import com.airbnb.lottie.compose.animateLottieCompositionAsState
@@ -443,20 +444,26 @@ class MainActivity : ComponentActivity() {
             mutableStateOf(selectedThemeColor)
         }
 
-        LaunchedEffect(selectedThemeColor) {
-            if (!enableDynamicTheme) {
+        // Aura Glass derives the accent (and a blurred backdrop) from the current artwork too.
+        val dynamicThemeActive = enableDynamicTheme || auraThemeEnabled
+        var auraArtUrl by remember { mutableStateOf<String?>(null) }
+
+        LaunchedEffect(selectedThemeColor, dynamicThemeActive) {
+            if (!dynamicThemeActive) {
                 themeColor = selectedThemeColor
             }
         }
 
-        LaunchedEffect(playerConnection, enableDynamicTheme, selectedThemeColor) {
+        LaunchedEffect(playerConnection, dynamicThemeActive, selectedThemeColor) {
             val playerConnection = playerConnection
-            if (!enableDynamicTheme || playerConnection == null) {
+            if (!dynamicThemeActive || playerConnection == null) {
                 themeColor = selectedThemeColor
+                auraArtUrl = null
                 return@LaunchedEffect
             }
 
             playerConnection.service.currentMediaMetadata.collectLatest { song ->
+                auraArtUrl = song?.thumbnailUrl
                 if (song?.thumbnailUrl != null) {
                     withContext(Dispatchers.IO) {
                         try {
@@ -491,8 +498,24 @@ class MainActivity : ComponentActivity() {
             BoxWithConstraints(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(if (pureBlack) Color.Black else MaterialTheme.colorScheme.surface)
+                    .background(if (pureBlack || auraThemeEnabled) Color.Black else MaterialTheme.colorScheme.surface)
             ) {
+                // Aura Glass: the current song's artwork, blurred, sits behind the whole (translucent) UI.
+                if (auraThemeEnabled && auraArtUrl != null) {
+                    AsyncImage(
+                        model = auraArtUrl,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .matchParentSize()
+                            .blur(48.dp),
+                    )
+                    Box(
+                        Modifier
+                            .matchParentSize()
+                            .background(Color.Black.copy(alpha = 0.45f))
+                    )
+                }
                 val focusManager = LocalFocusManager.current
                 val density = LocalDensity.current
                 val configuration = LocalWindowInfo.current
