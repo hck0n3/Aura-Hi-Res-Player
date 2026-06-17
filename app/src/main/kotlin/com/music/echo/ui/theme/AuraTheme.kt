@@ -5,6 +5,7 @@ import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.Shapes
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.unit.dp
 
 /**
@@ -43,21 +44,25 @@ val AuraGlassSurface = Color(0x14FFFFFF)         // ~8% white frost
 val AuraGlassStroke = Color(0x22FFFFFF)          // hairline highlight
 
 /**
- * Makes the Material surfaces translucent so the blurred artwork behind the app shows through them
- * (frosted-glass panels app-wide). `background` becomes transparent so the blurred layer is visible;
- * surface containers keep ~70% opacity for readable, frosted cards/nav/sheets.
+ * Translucent + accent-tinted "glass" surfaces so the frosted panels share the SAME dynamic color as
+ * the theme (the accent comes from the current artwork). Each surface is blended toward [primary]
+ * (the dynamic accent) before going translucent, so glass + theme + blurred backdrop all read as one
+ * cohesive palette instead of "neutral grey glass over a colored theme". `background` is transparent
+ * so the blurred artwork shows through.
  */
 fun ColorScheme.auraGlass(): ColorScheme {
-    val a = 0.50f
+    val a = 0.52f
+    val tint = primary // dynamic accent (derived from the playing artwork)
+    fun glass(base: Color, amount: Float = 0.22f): Color = lerp(base, tint, amount).copy(alpha = a)
     return copy(
         background = Color.Transparent,
-        surface = surface.copy(alpha = a),
-        surfaceVariant = surfaceVariant.copy(alpha = a),
-        surfaceContainerLowest = surfaceContainerLowest.copy(alpha = a),
-        surfaceContainerLow = surfaceContainerLow.copy(alpha = a),
-        surfaceContainer = surfaceContainer.copy(alpha = a),
-        surfaceContainerHigh = surfaceContainerHigh.copy(alpha = a),
-        surfaceContainerHighest = surfaceContainerHighest.copy(alpha = a),
+        surface = glass(surface),
+        surfaceVariant = glass(surfaceVariant),
+        surfaceContainerLowest = glass(surfaceContainerLowest, 0.16f),
+        surfaceContainerLow = glass(surfaceContainerLow, 0.18f),
+        surfaceContainer = glass(surfaceContainer, 0.22f),
+        surfaceContainerHigh = glass(surfaceContainerHigh, 0.26f),
+        surfaceContainerHighest = glass(surfaceContainerHighest, 0.30f),
     )
 }
 
