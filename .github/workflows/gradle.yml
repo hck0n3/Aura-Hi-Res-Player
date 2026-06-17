@@ -104,13 +104,37 @@ jobs:
           # 2. Read from line 3 onwards to get the Description body
           tail -n +3 RELEASE_INFO.md > release-body.md
 
+      - name: Generate changelog.json
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          mkdir -p app/build/outputs/apk/release-artifacts
+          python3 - <<'PY'
+          import json
+          sections=[]; cur=None
+          for line in open('RELEASE_INFO.md', encoding='utf-8').read().splitlines():
+              s=line.strip()
+              if s.startswith('## '):
+                  cur={'title': s[3:].strip(), 'items': []}; sections.append(cur)
+              elif s.startswith('# '):
+                  continue
+              elif s.startswith('- ') or s.startswith('* '):
+                  if cur is None:
+                      cur={'title': '', 'items': []}; sections.append(cur)
+                  cur['items'].append(s[2:].strip())
+          out={'description': '', 'image': '', 'warning': '', 'changelog': sections}
+          open('app/build/outputs/apk/release-artifacts/changelog.json','w',encoding='utf-8').write(json.dumps(out, ensure_ascii=False, indent=2))
+          print('changelog.json sections:', len(sections))
+          PY
+
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           name: ${{ env.RELEASE_TITLE }}
           body_path: release-body.md
-          files: app/build/outputs/apk/release-artifacts/*.apk
+          files: |
+            app/build/outputs/apk/release-artifacts/*.apk
+            app/build/outputs/apk/release-artifacts/changelog.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
