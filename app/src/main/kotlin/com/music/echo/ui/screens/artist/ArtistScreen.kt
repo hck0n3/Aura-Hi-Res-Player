@@ -806,11 +806,18 @@ fun ArtistScreen(
                                 NavigationTitle(
                                     title = section.title,
                                     modifier = Modifier.animateItem(),
-                                    onClick = section.moreEndpoint?.let {
-                                        {
+                                    // Always show the "see all" arrow: use YouTube's "more" endpoint
+                                    // when present, otherwise open the already-loaded items in a grid.
+                                    onClick = {
+                                        val more = section.moreEndpoint
+                                        if (more != null) {
                                             navController.navigate(
-                                                "artist/${viewModel.artistId}/items?browseId=${it.browseId}?params=${it.params}",
+                                                "artist/${viewModel.artistId}/items?browseId=${more.browseId}?params=${more.params}",
                                             )
+                                        } else {
+                                            ArtistSectionBuffer.title = section.title
+                                            ArtistSectionBuffer.items = section.items.distinctBy { it.id }
+                                            navController.navigate("artist/section_buffer")
                                         }
                                     },
                                 )

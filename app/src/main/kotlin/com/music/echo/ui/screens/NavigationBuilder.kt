@@ -254,6 +254,10 @@ fun NavGraphBuilder.navigationBuilder(
         ArtistItemsScreen(navController, scrollBehavior)
     }
 
+    composable("artist/section_buffer") {
+        iad1tya.echo.music.ui.screens.artist.ArtistAlbumsGridScreen(navController, scrollBehavior)
+    }
+
     composable(
         route = "online_playlist/{playlistId}",
         arguments = listOf(

@@ -1,11 +1,10 @@
-# Aura Hi-Res Player v5.2.0
+# Aura Hi-Res Player v5.2.1
 
 ## Cambios
-- **Ajustes**: el apartado del reproductor ahora se llama **"Ajustes del reproductor"** (Sonido es su propio apartado).
-- **Acerca de**: actualizado con todas las funciones reales de la app (sonido/Auto-EQ, listas con IA, Release Radar, escuchar juntos, tema Aura Glass, Android TV, auto-actualización).
-- Recordatorio: para ver **todos los álbumes de un artista en cuadrícula**, toca el título "Álbumes" (con la flecha →) en la pantalla del artista; se abre en cuadrícula vertical.
+- **Álbumes de artista en cuadrícula**: el botón "ver todos" (flecha →) ahora aparece **siempre** en las secciones de álbumes del artista. Antes solo salía cuando YouTube daba el enlace "ver más"; ahora, si no lo da, abre igualmente los álbumes ya cargados en **cuadrícula vertical**.
 
 ## Incluye lo anterior
-- v5.1.99: login fuera de Ajustes, mic siempre en la barra de resultados.
-- v5.1.98: reproductor→Sonido al frente, mensaje claro de "sin actualización", Privacy/Terms ocultos.
+- v5.2.0: "Ajustes del reproductor", Acerca de actualizado.
+- v5.1.99: login fuera de Ajustes, mic siempre en resultados.
+- v5.1.98: reproductor→Sonido al frente, mensaje claro de actualización.
 - Aura Glass con blur, fix demo, menos distorsión Bluetooth.
