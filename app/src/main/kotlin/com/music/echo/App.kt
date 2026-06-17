@@ -233,6 +233,9 @@ class App : Application(), SingletonImageLoader.Factory {
                 iad1tya.echo.music.ui.screens.settings.DarkMode.ON.name
             p[iad1tya.echo.music.constants.PureBlackKey] = true
             p[iad1tya.echo.music.constants.DynamicThemeKey] = false
+            // Accent matches the "AURA HI-RES" title tones (tasteful teal). Material's TonalSpot
+            // palette tones it down so it reads cohesive, not garish. Not the wallpaper color.
+            p[iad1tya.echo.music.constants.SelectedThemeColorKey] = 0xFF36C5E0.toInt()
 
             // Spanish default, only if the user hasn't explicitly chosen a language.
             val current = p[iad1tya.echo.music.constants.AppLanguageKey]
@@ -380,7 +383,7 @@ class App : Application(), SingletonImageLoader.Factory {
 
     companion object {
         /** Bump when adding a new one-time default set so it re-seeds for everyone (and after restore). */
-        const val CURRENT_SEED_VERSION = 4
+        const val CURRENT_SEED_VERSION = 5
 
         suspend fun forgetAccount(context: Context) {
             Timber.d("forgetAccount: Starting logout process")

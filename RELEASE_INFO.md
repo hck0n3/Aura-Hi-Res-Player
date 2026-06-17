@@ -1,8 +1,10 @@
-# Aura Hi-Res Player v5.3.4
+# Aura Hi-Res Player v5.3.5
 
-## Icono: disco de vinilo en los colores nuevos
-- Vuelve el **icono de disco de vinilo** de antes (disco negro con surcos, etiqueta central y ondas), ahora con el **degradado teal→azul** del título "AURA HI-RES" (sin el texto "JR").
+## Tema con las tonalidades del título
+- El **color de acento** de la app ahora combina con el título "AURA HI-RES" (**teal/cian**), de forma **sutil y elegante** (no chillón) gracias a la paleta atenuada de Material. Botones, controles y resaltados quedan en sintonía con la marca.
+- Puedes cambiar el color cuando quieras en Apariencia → Tema.
 
 ## Incluye lo anterior
-- v5.3.3: visualizador de espectro fluido, tema dinámico apagado por defecto, nombre "AURA HI-RES" arriba.
-- v5.3.2: app más liviana (arm64, ~72 MB) y descargas del actualizador arregladas.
+- v5.3.4: icono de disco de vinilo en los colores nuevos.
+- v5.3.3: espectro fluido, tema dinámico apagado, nombre "AURA HI-RES" arriba.
+- v5.3.2: app más liviana (arm64) y descargas arregladas.
