@@ -35,20 +35,27 @@ fun SpectrumVisualizer(
     var displayed by remember { mutableStateOf(FloatArray(0)) }
 
     LaunchedEffect(Unit) {
+        // Reused work buffer — no per-frame allocation. We only push a new state value (triggering a
+        // redraw) when something actually changed beyond a small epsilon, so when audio is paused /
+        // silent the visualizer goes fully idle instead of recomposing at 60 fps forever.
+        var buf = FloatArray(0)
         while (true) {
             withFrameNanos {
                 val target = SpectrumBus.spectrum.value
                 if (target.isEmpty()) return@withFrameNanos
-                val current = displayed
-                val next = FloatArray(target.size)
+                if (buf.size != target.size) buf = FloatArray(target.size)
+                var changed = false
                 for (i in target.indices) {
-                    val cur = if (i < current.size) current[i] else 0f
+                    val cur = buf[i]
                     val tgt = target[i].coerceIn(0f, 1f)
                     // Fast attack, slow decay for a fluid, musical motion.
                     val coef = if (tgt > cur) 0.55f else 0.12f
-                    next[i] = cur + (tgt - cur) * coef
+                    var nv = cur + (tgt - cur) * coef
+                    if (nv < 0.0015f && tgt == 0f) nv = 0f   // settle to exact zero when idle
+                    if (kotlin.math.abs(nv - cur) > 0.0015f || (nv == 0f && cur != 0f)) changed = true
+                    buf[i] = nv
                 }
-                displayed = next
+                if (changed) displayed = buf.copyOf()
             }
         }
     }
