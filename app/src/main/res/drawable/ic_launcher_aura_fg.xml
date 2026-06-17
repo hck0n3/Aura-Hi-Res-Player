@@ -1,22 +1,37 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Outer ripple ring -->
-    <path
-        android:strokeColor="#FFFFFF"
-        android:strokeWidth="5"
-        android:fillColor="#00000000"
-        android:pathData="M54,21 a33,33 0 1,0 0,66 a33,33 0 1,0 0,-66 Z"/>
-    <!-- Inner ripple ring -->
-    <path
-        android:strokeColor="#FFFFFF"
-        android:strokeWidth="4"
-        android:fillColor="#00000000"
-        android:pathData="M54,32 a22,22 0 1,0 0,44 a22,22 0 1,0 0,-44 Z"/>
-    <!-- Eighth note: head + stem + flag -->
-    <path android:fillColor="#FFFFFF" android:pathData="M43,63 a7,7 0 1,0 14,0 a7,7 0 1,0 -14,0 Z"/>
-    <path android:fillColor="#FFFFFF" android:pathData="M55,44 h4 v19 h-4 z"/>
-    <path android:fillColor="#FFFFFF" android:pathData="M59,44 c8,1 10,7 7,13 c0,-5 -3,-8 -7,-8 z"/>
+
+    <!-- Vinyl disc body -->
+    <path android:fillColor="#0E0F12"
+        android:pathData="M52,24 a32,32 0 1,0 0,64 a32,32 0 1,0 0,-64 Z"/>
+    <!-- Grooves -->
+    <path android:strokeColor="#33373F" android:strokeWidth="1.6" android:fillColor="#00000000"
+        android:pathData="M52,29 a27,27 0 1,0 0,54 a27,27 0 1,0 0,-54 Z"/>
+    <path android:strokeColor="#33373F" android:strokeWidth="1.6" android:fillColor="#00000000"
+        android:pathData="M52,34 a22,22 0 1,0 0,44 a22,22 0 1,0 0,-44 Z"/>
+    <path android:strokeColor="#33373F" android:strokeWidth="1.6" android:fillColor="#00000000"
+        android:pathData="M52,39 a17,17 0 1,0 0,34 a17,17 0 1,0 0,-34 Z"/>
+
+    <!-- Center label (new gradient) -->
+    <path android:pathData="M52,45.5 a10.5,10.5 0 1,0 0,21 a10.5,10.5 0 1,0 0,-21 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="linear" android:startX="41" android:startY="45" android:endX="63" android:endY="67">
+                <item android:offset="0" android:color="#FF36E0C8"/>
+                <item android:offset="1" android:color="#FF6A7BFF"/>
+            </gradient>
+        </aapt:attr>
+    </path>
+    <!-- Center hole -->
+    <path android:fillColor="#0E0F12"
+        android:pathData="M52,54 a2,2 0 1,0 0,4 a2,2 0 1,0 0,-4 Z"/>
+
+    <!-- Sound waves (top-right) -->
+    <path android:strokeColor="#FFFFFF" android:strokeWidth="3" android:strokeLineCap="round" android:fillColor="#00000000"
+        android:pathData="M75,41 a11,11 0 0,1 9,10"/>
+    <path android:strokeColor="#FFFFFF" android:strokeWidth="3" android:strokeLineCap="round" android:fillColor="#00000000"
+        android:pathData="M79,35 a18,18 0 0,1 14,16"/>
 </vector>
