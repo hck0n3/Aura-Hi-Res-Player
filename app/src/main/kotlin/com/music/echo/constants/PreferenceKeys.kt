@@ -34,7 +34,6 @@ val EnableHighRefreshRateKey = booleanPreferencesKey("enableHighRefreshRate")
 val DynamicThemeKey = booleanPreferencesKey("dynamicTheme")
 // Aura Hi-Res theme: opt-in audiophile palette derived from the brand purple. Default off (current
 // look stays the default). Wired into echomusicTheme in MainActivity.
-val AuraThemeEnabledKey = booleanPreferencesKey("aura_theme_enabled")
 val SelectedThemeColorKey = intPreferencesKey("selectedThemeColor")
 val DarkModeKey = stringPreferencesKey("darkMode")
 val PureBlackKey = booleanPreferencesKey("pureBlack")

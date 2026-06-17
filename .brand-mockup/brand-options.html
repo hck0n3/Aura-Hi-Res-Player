@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    background:#0d0f12; color:#e8eaed;
+    font-family:"Segoe UI", Roboto, Arial, sans-serif;
+    padding:40px 48px; width:1180px;
+  }
+  h1 { font-size:26px; font-weight:700; margin-bottom:4px; }
+  .sub { color:#9aa0a6; font-size:14px; margin-bottom:32px; }
+  .sectitle { font-size:15px; letter-spacing:.12em; text-transform:uppercase; color:#9aa0a6; margin:34px 0 18px; }
+  .row { display:flex; gap:40px; }
+  .opt { text-align:center; }
+  .label { margin-top:14px; font-size:15px; font-weight:600; }
+  .desc { margin-top:4px; font-size:12.5px; color:#9aa0a6; max-width:230px; line-height:1.5; }
+  .ic { width:208px; height:208px; border-radius:46px; box-shadow:0 10px 30px rgba(0,0,0,.5); }
+  .wm { display:flex; flex-direction:column; gap:26px; }
+  .wmcard { background:#16191e; border:1px solid #23272e; border-radius:18px; padding:26px 30px; }
+  .wmlabel { font-size:12.5px; color:#9aa0a6; margin-top:12px; }
+</style>
+</head>
+<body>
+  <h1>Aura Hi-Res Player — propuestas de icono y texto</h1>
+  <div class="sub">Elige un icono (A / B / C) y un estilo de texto (1 / 2 / 3). Nada se aplica hasta que confirmes.</div>
+
+  <div class="sectitle">Iconos</div>
+  <div class="row">
+    <!-- A: Aura Halo Note -->
+    <div class="opt">
+      <svg class="ic" viewBox="0 0 208 208">
+        <defs>
+          <linearGradient id="ga" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#7C5CFF"/><stop offset="0.55" stop-color="#5B7BFF"/><stop offset="1" stop-color="#36C5E0"/>
+          </linearGradient>
+          <radialGradient id="glowA" cx="0.5" cy="0.42" r="0.6">
+            <stop offset="0" stop-color="#ffffff" stop-opacity="0.35"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+          </radialGradient>
+        </defs>
+        <rect width="208" height="208" rx="46" fill="url(#ga)"/>
+        <rect width="208" height="208" rx="46" fill="url(#glowA)"/>
+        <circle cx="104" cy="100" r="62" fill="none" stroke="#ffffff" stroke-opacity="0.35" stroke-width="4"/>
+        <circle cx="104" cy="100" r="46" fill="none" stroke="#ffffff" stroke-opacity="0.7" stroke-width="4"/>
+        <!-- clean eighth note -->
+        <g fill="#ffffff">
+          <rect x="112" y="64" width="9" height="64" rx="4"/>
+          <path d="M121 64 q26 4 26 26 q-12 -14 -26 -10 z"/>
+          <circle cx="98" cy="130" r="15"/>
+        </g>
+      </svg>
+      <div class="label">A · Aura Halo</div>
+      <div class="desc">Halo concéntrico (aura) + nota limpia sobre degradado violeta→cian. Moderno y premium.</div>
+    </div>
+
+    <!-- B: Soundwave A monogram -->
+    <div class="opt">
+      <svg class="ic" viewBox="0 0 208 208">
+        <defs>
+          <linearGradient id="gb" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#FF4D8D"/><stop offset="0.5" stop-color="#9B5CFF"/><stop offset="1" stop-color="#5B7BFF"/>
+          </linearGradient>
+        </defs>
+        <rect width="208" height="208" rx="46" fill="url(#gb)"/>
+        <!-- soundwave bars forming an A silhouette -->
+        <g fill="#ffffff" opacity="0.96">
+          <rect x="52"  y="96"  width="13" height="44" rx="6"/>
+          <rect x="74"  y="74"  width="13" height="88" rx="6"/>
+          <rect x="96"  y="52"  width="13" height="132" rx="6"/>
+          <rect x="118" y="74"  width="13" height="88" rx="6"/>
+          <rect x="140" y="96"  width="13" height="44" rx="6"/>
+        </g>
+        <rect x="78" y="120" width="52" height="11" rx="5.5" fill="#ffffff"/>
+      </svg>
+      <div class="label">B · Soundwave “A”</div>
+      <div class="desc">Monograma “A” hecho de barras de onda de sonido. Distintivo, energético, degradado vibrante.</div>
+    </div>
+
+    <!-- C: Hi-Res pulse ring -->
+    <div class="opt">
+      <svg class="ic" viewBox="0 0 208 208">
+        <defs>
+          <linearGradient id="ring" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#36E0C8"/><stop offset="0.5" stop-color="#36A8E0"/><stop offset="1" stop-color="#6A7BFF"/>
+          </linearGradient>
+        </defs>
+        <rect width="208" height="208" rx="46" fill="#14171c"/>
+        <circle cx="104" cy="104" r="66" fill="none" stroke="url(#ring)" stroke-width="12" stroke-linecap="round" stroke-dasharray="300 120" transform="rotate(-90 104 104)"/>
+        <circle cx="104" cy="104" r="40" fill="none" stroke="#2a2f37" stroke-width="6"/>
+        <path d="M94 86 L128 104 L94 122 Z" fill="url(#ring)"/>
+      </svg>
+      <div class="label">C · Hi-Res Pulse</div>
+      <div class="desc">Anillo de pulso de audio (degradado teal→azul) + play, sobre fondo oscuro. Sobrio, audiófilo.</div>
+    </div>
+  </div>
+
+  <div class="sectitle">Estilos de texto (wordmark)</div>
+  <div class="wm">
+    <div class="wmcard">
+      <svg width="520" height="64" viewBox="0 0 520 64">
+        <defs><linearGradient id="t1" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#9B6CFF"/><stop offset="1" stop-color="#36C5E0"/></linearGradient></defs>
+        <text x="0" y="46" font-family="'Segoe UI', Arial" font-weight="800" font-size="44" letter-spacing="-1" fill="url(#t1)">Aura</text>
+        <text x="150" y="46" font-family="'Segoe UI', Arial" font-weight="800" font-size="44" letter-spacing="-1" fill="#e8eaed">Hi-Res</text>
+      </svg>
+      <div class="wmlabel">1 · Sans geométrica negrita, dos tonos, degradado en “Aura”. Moderno y fuerte.</div>
+    </div>
+    <div class="wmcard">
+      <svg width="520" height="60" viewBox="0 0 520 60">
+        <text x="0" y="42" font-family="'Segoe UI Light','Segoe UI',Arial" font-weight="300" font-size="40" letter-spacing="8" fill="#e8eaed">AURA</text>
+        <text x="208" y="42" font-family="'Segoe UI','Arial'" font-weight="600" font-size="40" letter-spacing="8" fill="#36C5E0">HI-RES</text>
+      </svg>
+      <div class="wmlabel">2 · Mayúsculas finas + mucho espaciado, acento cian. Elegante / premium.</div>
+    </div>
+    <div class="wmcard">
+      <svg width="520" height="62" viewBox="0 0 520 62">
+        <defs><linearGradient id="t3" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FF6FA5"/><stop offset="1" stop-color="#7C5CFF"/></linearGradient></defs>
+        <text x="0" y="44" font-family="'Trebuchet MS','Segoe UI',Arial" font-weight="700" font-size="42" fill="url(#t3)">Aura Hi-Res</text>
+      </svg>
+      <div class="wmlabel">3 · Redondeada amigable, un solo degradado rosa→violeta. Cercano y suave.</div>
+    </div>
+  </div>
+</body>
+</html>

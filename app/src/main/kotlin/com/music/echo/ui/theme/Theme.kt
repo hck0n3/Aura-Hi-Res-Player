@@ -30,44 +30,35 @@ fun echomusicTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     pureBlack: Boolean = false,
     themeColor: Color = DefaultThemeColor,
-    auraEnabled: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val context = LocalContext.current
 
-    // Aura Hi-Res theme: derive the whole Material 3 scheme from the brand purple with a Vibrant
-    // palette (saturated, gradient-friendly). Otherwise keep the existing behaviour.
-    val effectiveSeed = if (auraEnabled) AuraSeedColor else themeColor
     val useSystemDynamicColor =
-        (!auraEnabled && themeColor == DefaultThemeColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
+        (themeColor == DefaultThemeColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
 
     val baseColorScheme = if (useSystemDynamicColor) {
         if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
     } else {
         rememberDynamicColorScheme(
-            seedColor = effectiveSeed,
+            seedColor = themeColor,
             isDark = darkTheme,
             specVersion = ColorSpec.SpecVersion.SPEC_2025,
-            style = if (auraEnabled) PaletteStyle.Vibrant else PaletteStyle.TonalSpot,
+            style = PaletteStyle.TonalSpot,
         )
     }
 
-    
-    val colorScheme = remember(baseColorScheme, pureBlack, darkTheme, auraEnabled) {
+    val colorScheme = remember(baseColorScheme, pureBlack, darkTheme) {
         when {
-            // Aura Glass: translucent surfaces so the blurred artwork behind shows through (frosted glass).
-            auraEnabled -> baseColorScheme.auraGlass()
             darkTheme && pureBlack -> baseColorScheme.pureBlack(true)
             else -> baseColorScheme
         }
     }
 
-    
-    // Aura Glass also reshapes the whole UI (bigger rounded corners) — a felt change, not just color.
     MaterialTheme(
         colorScheme = colorScheme,
         typography = AppTypography,
-        shapes = if (auraEnabled) AuraGlassShapes else androidx.compose.material3.Shapes(),
+        shapes = androidx.compose.material3.Shapes(),
         content = content
     )
 }

@@ -151,10 +151,6 @@ fun AppearanceSettings(
         SelectedThemeColorKey,
         defaultValue = DefaultThemeColor.toArgb()
     )
-    val (auraTheme, onAuraThemeChange) = rememberPreference(
-        iad1tya.echo.music.constants.AuraThemeEnabledKey,
-        defaultValue = false
-    )
 
     val isUsingCustomColor = selectedThemeColorInt != DefaultThemeColor.toArgb()
     val coroutineScope = rememberCoroutineScope()
@@ -1064,29 +1060,6 @@ fun AppearanceSettings(
                     )
                 }
 
-                add(
-                    Material3SettingsItem(
-                        icon = painterResource(R.drawable.palette),
-                        title = { Text("Tema Aura Glass") },
-                        description = { Text("Vidrio oscuro: esquinas redondeadas, superficies translúcidas y acento cian. Cambia toda la interfaz.") },
-                        trailingContent = {
-                            Switch(
-                                checked = auraTheme,
-                                onCheckedChange = onAuraThemeChange,
-                                thumbContent = {
-                                    Icon(
-                                        painter = painterResource(
-                                            id = if (auraTheme) R.drawable.check else R.drawable.close
-                                        ),
-                                        contentDescription = null,
-                                        modifier = Modifier.size(SwitchDefaults.IconSize)
-                                    )
-                                }
-                            )
-                        },
-                        onClick = { onAuraThemeChange(!auraTheme) }
-                    )
-                )
             }
         )
 

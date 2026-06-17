@@ -150,7 +150,6 @@ import iad1tya.echo.music.constants.AppLanguageKey
 import iad1tya.echo.music.constants.DarkModeKey
 import iad1tya.echo.music.constants.DefaultOpenTabKey
 import iad1tya.echo.music.constants.DisableScreenshotKey
-import iad1tya.echo.music.constants.AuraThemeEnabledKey
 import iad1tya.echo.music.constants.DynamicThemeKey
 import iad1tya.echo.music.constants.EnableHighRefreshRateKey
 import iad1tya.echo.music.constants.FloatingToolbarBottomPadding
@@ -438,15 +437,13 @@ class MainActivity : ComponentActivity() {
 
         val (selectedThemeColorInt) = rememberPreference(SelectedThemeColorKey, defaultValue = DefaultThemeColor.toArgb())
         val selectedThemeColor = Color(selectedThemeColorInt)
-        val auraThemeEnabled by rememberPreference(AuraThemeEnabledKey, defaultValue = false)
 
         var themeColor by rememberSaveable(stateSaver = ColorSaver) {
             mutableStateOf(selectedThemeColor)
         }
 
-        // Aura Glass derives the accent (and a blurred backdrop) from the current artwork too.
-        val dynamicThemeActive = enableDynamicTheme || auraThemeEnabled
-        var auraArtUrl by remember { mutableStateOf<String?>(null) }
+        // Dynamic theme derives the accent from the current artwork when enabled.
+        val dynamicThemeActive = enableDynamicTheme
 
         LaunchedEffect(selectedThemeColor, dynamicThemeActive) {
             if (!dynamicThemeActive) {
@@ -458,12 +455,10 @@ class MainActivity : ComponentActivity() {
             val playerConnection = playerConnection
             if (!dynamicThemeActive || playerConnection == null) {
                 themeColor = selectedThemeColor
-                auraArtUrl = null
                 return@LaunchedEffect
             }
 
             playerConnection.service.currentMediaMetadata.collectLatest { song ->
-                auraArtUrl = song?.thumbnailUrl
                 if (song?.thumbnailUrl != null) {
                     withContext(Dispatchers.IO) {
                         try {
@@ -493,36 +488,12 @@ class MainActivity : ComponentActivity() {
             darkTheme = useDarkTheme,
             pureBlack = pureBlack,
             themeColor = themeColor,
-            auraEnabled = auraThemeEnabled,
         ) {
             BoxWithConstraints(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(if (pureBlack || auraThemeEnabled) Color.Black else MaterialTheme.colorScheme.surface)
+                    .background(if (pureBlack) Color.Black else MaterialTheme.colorScheme.surface)
             ) {
-                // Aura Glass: the current song's artwork, blurred, sits behind the whole (translucent) UI.
-                if (auraThemeEnabled && auraArtUrl != null) {
-                    AsyncImage(
-                        model = auraArtUrl,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .matchParentSize()
-                            .blur(48.dp),
-                    )
-                    // Dim for readability, then a neutral graphite wash so the backdrop reads as the
-                    // same cohesive dark-grey as the glass panels (no per-song color shift).
-                    Box(
-                        Modifier
-                            .matchParentSize()
-                            .background(Color.Black.copy(alpha = 0.30f))
-                    )
-                    Box(
-                        Modifier
-                            .matchParentSize()
-                            .background(Color(0xFF1A1D22).copy(alpha = 0.38f))
-                    )
-                }
                 val focusManager = LocalFocusManager.current
                 val density = LocalDensity.current
                 val configuration = LocalWindowInfo.current

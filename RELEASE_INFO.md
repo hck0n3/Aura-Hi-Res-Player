@@ -1,8 +1,8 @@
-# Aura Hi-Res Player v5.2.8
+# Aura Hi-Res Player v5.2.9
 
-## Controles de los widgets arreglados
-- Los botones de los widgets (play/pausa, anterior, siguiente, me gusta) ahora **responden aunque la app esté en segundo plano** en Android 12+. Antes, al estar cerrada, el control se ignoraba en silencio.
+## Tema Aura eliminado
+- Se quitó por completo el tema "Aura Glass" y sus funciones (el interruptor en Apariencia, el fondo difuminado y las superficies de cristal). La app vuelve a un tema limpio y consistente. El nombre de la app no cambia.
 
 ## Incluye lo anterior
-- v5.2.7: "Inspirado en Apple Music" funciona desde el primer inicio, botón de iniciar sesión siempre visible, y por defecto se activan visualizador de espectro, lienzos (reproductor/álbum/artista), video del artista, letras Apple Music v2 con brillo y desenfoque, y ocultar videos/Shorts.
-- v5.2.6: tema Aura gris grafito cohesivo + copia del APK en Descargas.
+- v5.2.8: controles de widgets funcionan con la app en segundo plano.
+- v5.2.7: "Inspirado en Apple Music" desde el primer inicio, botón de iniciar sesión visible, y defaults activados (espectro, lienzos, video del artista, letras Apple Music v2 + brillo + desenfoque, ocultar videos/Shorts).
