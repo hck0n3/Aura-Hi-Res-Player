@@ -29,12 +29,20 @@ android {
     ndkVersion = "27.0.12077973"
 
 
+    // Private test build with the subscription gate OFF. Build with `-Pnosub=true` (debug recommended,
+    // e.g. `assembleUniversalFossDebug -Pnosub=true`). Gets a distinct applicationId so it installs
+    // side-by-side, never checks for updates and is NEVER published as a release — so the public
+    // (paid) app's updater never sees it.
+    val noSub = project.hasProperty("nosub") && project.property("nosub") == "true"
+
     defaultConfig {
-        applicationId = "iad1tya.echo.music"
+        applicationId = if (noSub) "iad1tya.echo.music.dev" else "iad1tya.echo.music"
+        if (noSub) versionNameSuffix = "-nosub"
+        buildConfigField("Boolean", "REQUIRE_SUBSCRIPTION", (!noSub).toString())
         minSdk = 26
         targetSdk = 36
-        versionCode = 525
-        versionName = "5.2.5"
+        versionCode = 526
+        versionName = "5.2.6"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true

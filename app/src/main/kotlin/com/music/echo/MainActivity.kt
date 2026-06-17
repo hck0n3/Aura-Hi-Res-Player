@@ -510,17 +510,17 @@ class MainActivity : ComponentActivity() {
                             .matchParentSize()
                             .blur(48.dp),
                     )
-                    // Dim for readability, then a wash of the dynamic accent so the whole backdrop
-                    // shares the theme's color (cohesive with the accent-tinted glass panels).
+                    // Dim for readability, then a neutral graphite wash so the backdrop reads as the
+                    // same cohesive dark-grey as the glass panels (no per-song color shift).
                     Box(
                         Modifier
                             .matchParentSize()
-                            .background(Color.Black.copy(alpha = 0.25f))
+                            .background(Color.Black.copy(alpha = 0.30f))
                     )
                     Box(
                         Modifier
                             .matchParentSize()
-                            .background(themeColor.copy(alpha = 0.22f))
+                            .background(Color(0xFF1A1D22).copy(alpha = 0.38f))
                     )
                 }
                 val focusManager = LocalFocusManager.current

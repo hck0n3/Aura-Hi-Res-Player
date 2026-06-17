@@ -137,6 +137,10 @@ class UpdateDownloadWorker(private val context: Context, workerParams: WorkerPar
                 }
             }
 
+            // Also drop a copy in the public Downloads folder so the user can find / re-install it.
+            val publicName = "Aura-Hi-Res-Player-${version.removePrefix("v")}.apk"
+            iad1tya.echo.music.echomusic.updater.PublicDownloads.saveApk(context, finalFile, publicName)
+
             DownloadNotificationManager.showDownloadComplete(version, finalFile.absolutePath)
 
             Result.success(workDataOf("file_path" to finalFile.absolutePath))

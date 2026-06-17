@@ -15,27 +15,28 @@ import androidx.compose.ui.unit.dp
  * ([AuraGlassBackground]) — not just a seed color. Wired in [echomusicTheme].
  */
 
-// Accent ramp (cyan → sky → indigo).
-val AuraCyan = Color(0xFF3DD6E0)
-val AuraSky = Color(0xFF4FB6FF)
-val AuraIndigo = Color(0xFF7B8CFF)
+// Neutral graphite/slate palette so the glass reads as one cohesive dark-grey tone (not a clashing
+// accent over a different-coloured theme). Kept slightly cool for a premium feel.
+val AuraSlate = Color(0xFF6B7480)
+val AuraSlateLight = Color(0xFF8A93A0)
+val AuraSlateDeep = Color(0xFF3A4250)
 
-/** Seed [echomusicTheme] derives the Material 3 scheme from when Aura Glass is on. */
-val AuraSeedColor = AuraCyan
+/** Seed [echomusicTheme] derives the Material 3 scheme from when Aura Glass is on (dark graphite). */
+val AuraSeedColor = AuraSlate
 
-/** Brand gradient for wordmarks/titles (cyan → sky → indigo). */
+/** Subtle grey brand gradient for wordmarks/titles. */
 val AuraBrandGradient = Brush.linearGradient(
-    colors = listOf(AuraCyan, AuraSky, AuraIndigo),
+    colors = listOf(AuraSlateLight, AuraSlate, AuraSlateDeep),
 )
 
-/** Deep glass background wash (blue-black with a faint top glow). */
+/** Deep glass background wash (dark graphite with a faint top glow). */
 val AuraScreenGradient = Brush.verticalGradient(
-    colors = listOf(Color(0xFF0C1622), Color(0xFF060A11)),
+    colors = listOf(Color(0xFF1A1D22), Color(0xFF0C0E11)),
 )
 
-/** Full-screen radial glass backdrop used behind Aura Glass screens. */
+/** Full-screen radial glass backdrop used behind Aura Glass screens (graphite). */
 val AuraGlassBackground = Brush.radialGradient(
-    colors = listOf(Color(0xFF12203A), Color(0xFF070B12)),
+    colors = listOf(Color(0xFF222630), Color(0xFF0D0F12)),
     radius = 1600f,
 )
 

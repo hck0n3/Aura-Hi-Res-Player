@@ -646,6 +646,11 @@ suspend fun checkForUpdate(
     onSuccess: (tag: String, isAvailable: Boolean, changelog: List<ChangelogSection>, size: String, date: String, description: String?, imageUrl: String?, apkUrl: String?) -> Unit,
     onError: () -> Unit,
 ) {
+    // Private no-subscription test build: never look for updates (so it can't pull the public/paid APK).
+    if (!BuildConfig.REQUIRE_SUBSCRIPTION) {
+        onSuccess(BuildConfig.VERSION_NAME, false, emptyList(), "", "", null, null, null)
+        return
+    }
     withContext(Dispatchers.IO) {
         try {
             val url = URL("https://api.github.com/repos/hck0n3/Aura-Hi-Res-Player/releases/latest")

@@ -17,6 +17,11 @@ import kotlinx.coroutines.launch
  */
 @Composable
 fun LicenseGate(appContent: @Composable () -> Unit) {
+    // Private test build (-Pnosub=true): no subscription gate, go straight into the app.
+    if (!iad1tya.echo.music.BuildConfig.REQUIRE_SUBSCRIPTION) {
+        appContent()
+        return
+    }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var appState by remember { mutableStateOf<AppState?>(null) }

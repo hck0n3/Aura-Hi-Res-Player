@@ -82,6 +82,11 @@ class CustomDownloadManager {
                 inputStream.close()
                 connection.disconnect()
 
+                // Mirror a copy into the public Downloads folder so the user can find it.
+                iad1tya.echo.music.echomusic.updater.PublicDownloads.saveApk(
+                    context, outputFile, "Aura-Hi-Res-Player.apk"
+                )
+
                 withContext(Dispatchers.Main) {
                     onDownloadComplete(outputFile)
                 }
