@@ -1,9 +1,10 @@
-# Aura Hi-Res Player v5.1.96
+# Aura Hi-Res Player v5.1.97
 
-## Licencia / demo (anti-abuso)
-- **Arreglado:** borrar los datos de la app o reinstalar ya **no reinicia** la prueba de 3 días. El inicio del demo se registra en el servidor por dispositivo (sobrevive al borrado de datos). Iniciar la prueba requiere conexión.
-- Requiere el Worker de licencia actualizado (lado servidor).
+## Tema Aura Glass — ahora sí translúcido
+- Con el tema **Aura Glass** activado, el reproductor usa de fondo la **carátula de la canción actual con desenfoque (blur)**, y los controles van translúcidos sobre ella — efecto de cristal esmerilado real.
+- (Activar en Ajustes → Apariencia → Tema Aura Glass.)
 
 ## Incluye lo anterior
-- v5.1.95: menos distorsión en Bluetooth (firma más suave, sonoridad +6 dB, regen de agudos suave, tope de seguridad).
-- v5.1.94: apartado "Aura Hi-Res Update", tema Aura Glass, botón de sonido en el reproductor, Auto-EQ mejorado.
+- v5.1.96: fix del demo (anti borrar datos), requiere Worker actualizado.
+- v5.1.95: menos distorsión en Bluetooth.
+- v5.1.94: apartado Aura Hi-Res Update, botón de sonido en el reproductor, Auto-EQ mejorado.

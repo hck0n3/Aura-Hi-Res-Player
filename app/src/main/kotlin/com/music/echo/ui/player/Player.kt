@@ -272,7 +272,16 @@ fun BottomSheetPlayer(
         key = PlayerBackgroundStyleKey,
         defaultValue = PlayerBackgroundStyle.GRADIENT
     )
-    val playerBackground = if (isLocalMedia) PlayerBackgroundStyle.DEFAULT else playerBackgroundPref
+    // Aura Glass: the player backdrop is the current song's artwork, blurred (frosted-glass look).
+    val auraThemeEnabled by rememberPreference(
+        iad1tya.echo.music.constants.AuraThemeEnabledKey,
+        defaultValue = false,
+    )
+    val playerBackground = when {
+        isLocalMedia -> PlayerBackgroundStyle.DEFAULT
+        auraThemeEnabled -> PlayerBackgroundStyle.BLUR
+        else -> playerBackgroundPref
+    }
     val playerButtonsStyle by rememberEnumPreference(
         key = PlayerButtonsStyleKey,
         defaultValue = PlayerButtonsStyle.DEFAULT
