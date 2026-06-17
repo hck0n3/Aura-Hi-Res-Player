@@ -1,12 +1,15 @@
-# Aura Hi-Res Player v5.2.3
+# Aura Hi-Res Player v5.2.4
 
-## Registro de cambios (changelog) arreglado
-- La pantalla de **Actualizaciones → Versión** ahora **sí muestra los cambios** de cada versión.
-- Antes salía vacía: consultaba el repositorio equivocado y esperaba un archivo que no se generaba. Ahora cada versión publica su propio registro de cambios (desde estas notas) y la app lo lee de tu repositorio.
+## Arreglos del tema Aura Glass
+- **Bug arreglado**: el tema Aura ya **no quita la portada** en el reproductor (antes forzaba un fondo difuminado que la ocultaba). Ahora se mantiene la carátula normal.
+- **Cristal más visible**: las superficies son más translúcidas y el velo del fondo más claro, así se ve de verdad el efecto de cristal sobre la carátula difuminada (antes se veía solo oscuro).
 
-## Tema Aura Glass (cristal translúcido real)
-- Superficies esmeriladas que dejan ver el fondo, **carátula de la canción difuminada** detrás de la app, y **color de acento dinámico** según la portada que suena. Actívalo en Ajustes → Apariencia → Tema Aura Glass.
+## Actualizaciones
+- Se quitó el apartado "Commits" (historial técnico) de la pantalla de Actualizaciones.
+
+## Nota
+El rediseño completo de la interfaz del reproductor (controles tipo cristal del mockup) llegará en una próxima versión; esta corrige la regresión de la portada y hace visible el cristal en el resto de la app.
 
 ## Incluye lo anterior
-- v5.2.1: botón "ver todos" de álbumes (cuadrícula). v5.2.0: "Ajustes del reproductor", Acerca de actualizado.
-- Login fuera de Ajustes, mic siempre en resultados, fix demo, menos distorsión Bluetooth, auto-actualización.
+- v5.2.3: changelog de cada versión visible en Actualizaciones.
+- Aura Glass (cristal translúcido + color dinámico del arte), fix demo, auto-actualización.

@@ -513,7 +513,7 @@ class MainActivity : ComponentActivity() {
                     Box(
                         Modifier
                             .matchParentSize()
-                            .background(Color.Black.copy(alpha = 0.45f))
+                            .background(Color.Black.copy(alpha = 0.28f))
                     )
                 }
                 val focusManager = LocalFocusManager.current

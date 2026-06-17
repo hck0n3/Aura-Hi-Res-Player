@@ -48,7 +48,7 @@ val AuraGlassStroke = Color(0x22FFFFFF)          // hairline highlight
  * surface containers keep ~70% opacity for readable, frosted cards/nav/sheets.
  */
 fun ColorScheme.auraGlass(): ColorScheme {
-    val a = 0.70f
+    val a = 0.50f
     return copy(
         background = Color.Transparent,
         surface = surface.copy(alpha = a),

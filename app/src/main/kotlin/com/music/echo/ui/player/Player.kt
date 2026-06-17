@@ -279,7 +279,8 @@ fun BottomSheetPlayer(
     )
     val playerBackground = when {
         isLocalMedia -> PlayerBackgroundStyle.DEFAULT
-        auraThemeEnabled -> PlayerBackgroundStyle.BLUR
+        // Aura Glass keeps the user's player background (and the album cover); the glass look comes
+        // from the translucent surfaces + the app-wide blurred backdrop, not from hiding the artwork.
         else -> playerBackgroundPref
     }
     val playerButtonsStyle by rememberEnumPreference(
