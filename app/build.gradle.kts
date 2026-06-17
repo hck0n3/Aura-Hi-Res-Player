@@ -41,8 +41,8 @@ android {
         buildConfigField("Boolean", "REQUIRE_SUBSCRIPTION", (!noSub).toString())
         minSdk = 26
         targetSdk = 36
-        versionCode = 531
-        versionName = "5.3.1"
+        versionCode = 532
+        versionName = "5.3.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -80,22 +80,28 @@ android {
         
         create("universal") {
             dimension = "abi"
+            // No abiFilters -> ships every architecture (large, ~200 MB).
             buildConfigField("String", "ARCHITECTURE", "\"universal\"")
         }
         create("arm64") {
             dimension = "abi"
+            // arm64-only -> ~1/3 the size; covers virtually all modern phones.
+            ndk { abiFilters += "arm64-v8a" }
             buildConfigField("String", "ARCHITECTURE", "\"arm64\"")
         }
         create("armeabi") {
             dimension = "abi"
+            ndk { abiFilters += "armeabi-v7a" }
             buildConfigField("String", "ARCHITECTURE", "\"armeabi\"")
         }
         create("x86") {
             dimension = "abi"
+            ndk { abiFilters += "x86" }
             buildConfigField("String", "ARCHITECTURE", "\"x86\"")
         }
         create("x86_64") {
             dimension = "abi"
+            ndk { abiFilters += "x86_64" }
             buildConfigField("String", "ARCHITECTURE", "\"x86_64\"")
         }
     }

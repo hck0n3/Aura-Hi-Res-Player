@@ -28,8 +28,9 @@ class UpdateDownloadWorker(private val context: Context, workerParams: WorkerPar
             val url = URL(apkUrl)
             val connection = url.openConnection() as HttpURLConnection
             connection.requestMethod = "GET"
-            connection.connectTimeout = 15000
-            connection.readTimeout = 15000
+            connection.instanceFollowRedirects = true
+            connection.connectTimeout = 30000
+            connection.readTimeout = 60000
             connection.connect()
 
             if (connection.responseCode != HttpURLConnection.HTTP_OK) {

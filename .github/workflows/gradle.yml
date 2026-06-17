@@ -75,7 +75,7 @@ jobs:
           KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD || 'jrmusicpro' }}
           LASTFM_API_KEY: ${{ secrets.LASTFM_API_KEY }}
           LASTFM_SECRET: ${{ secrets.LASTFM_SECRET }}
-        run: ./gradlew assembleUniversalGmsRelease
+        run: ./gradlew assembleArm64GmsRelease
 
       - name: Rename and Organize APKs
         run: |
@@ -153,10 +153,10 @@ jobs:
           LASTFM_SECRET: ${{ secrets.LASTFM_SECRET }}
         run: |
           rm -f app/google-services.json
-          ./gradlew assembleUniversalFossRelease -Pnosub=true
+          ./gradlew assembleArm64FossRelease -Pnosub=true
           VERSION_NAME=$(grep "versionName =" app/build.gradle.kts | head -n 1 | awk -F '"' '{print $2}')
           mkdir -p app/build/outputs/apk/nosub-artifacts
-          find app/build/outputs/apk/universalFoss/release -name "*.apk" | while read -r apk_path; do
+          find app/build/outputs/apk/arm64Foss/release -name "*.apk" | while read -r apk_path; do
             cp "$apk_path" "app/build/outputs/apk/nosub-artifacts/Aura-Hi-Res-Player-${VERSION_NAME}-NOSUB.apk"
             echo "No-sub APK: $apk_path"
           done
