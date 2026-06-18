@@ -244,8 +244,9 @@ class App : Application(), SingletonImageLoader.Factory {
             p[iad1tya.echo.music.constants.ShowArtistVideoKey] = true
             p[iad1tya.echo.music.constants.ShowArtistBackgroundVideoKey] = true
 
-            // Content filters on by default: hide video songs + hide YouTube Shorts.
-            p[iad1tya.echo.music.constants.HideVideoSongsKey] = true
+            // Hide video songs is OFF by default (show video music too); only YouTube Shorts are
+            // hidden by default.
+            p[iad1tya.echo.music.constants.HideVideoSongsKey] = false
             p[iad1tya.echo.music.constants.HideYoutubeShortsKey] = true
 
             // AMOLED (pure black) dark theme on by default; dynamic (per-artwork) theme off.

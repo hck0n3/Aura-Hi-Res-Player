@@ -1,10 +1,10 @@
-# Aura Hi-Res Player v5.7.12
+# Aura Hi-Res Player v5.7.13
 
-## Android TV: interfaz menos gigante
-- En Android TV la interfaz se veía **demasiado grande** (pocos elementos enormes). Ahora la app **reduce la escala** automáticamente en televisores, así entra más contenido y se ve más cómodo (en canciones, playlists y todo).
+## "Ocultar canciones con video" ahora viene desactivado
+- En instalaciones nuevas, la opción **Ocultar canciones con video** ya viene **apagada** por defecto (se muestran también las versiones con video). Si la tienes activada, puedes apagarla en Ajustes → Contenido.
+
+## Nota sobre podcasts
+- **No necesitas iniciar sesión** para buscar podcasts: la app busca el catálogo público de YouTube Music. Solo asegúrate de que **País de contenido** (Ajustes → Contenido) sea un país con podcasts (ej. Estados Unidos).
 
 ## Incluye lo anterior
-- v5.7.11: sección Podcasts en la búsqueda. v5.7.10: instalador universal para Android TV.
-
----
-Nota: si en la TV una canción no reproduce, dime exactamente qué pasa (se queda cargando, da error, o no suena nada) y en qué versión, para ubicarlo.
+- v5.7.12: interfaz menos gigante en Android TV. v5.7.11: sección Podcasts en la búsqueda.
