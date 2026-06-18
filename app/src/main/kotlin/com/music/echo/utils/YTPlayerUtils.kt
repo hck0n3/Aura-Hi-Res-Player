@@ -155,7 +155,7 @@ object YTPlayerUtils {
                                 val sorted = validCandidates.sortedByDescending { confidence(queryArtist, queryTitle, durationMs, it) }
                                 if (sorted.isNotEmpty()) {
                                     val top = sorted.first()
-                                    if (confidence(queryArtist, queryTitle, durationMs, top) >= 0.5f) {
+                                    if (confidence(queryArtist, queryTitle, durationMs, top) >= 0.6f) {
                                         bestMatch = top
                                         break
                                     }
@@ -283,7 +283,7 @@ object YTPlayerUtils {
                         return (ratio * maxPts).toInt()
                     }
 
-                    data class ScoredSong(val song: com.music.jiosaavn.SaavnSong, val score: Int)
+                    data class ScoredSong(val song: com.music.jiosaavn.SaavnSong, val score: Int, val artistOk: Boolean)
 
                     val scored = songs.map { candidate ->
                         var score = 0
@@ -298,18 +298,25 @@ object YTPlayerUtils {
                             }
                         }
                         val saavnArtists = candidate.artists.primary.joinToString(" ") { it.name }
-                        score += wordOverlapScore(artist, saavnArtists, maxPts = 20)
+                        val artistScore = wordOverlapScore(artist, saavnArtists, maxPts = 20)
+                        score += artistScore
                         if (candidate.explicitContent) score += 5
-                        ScoredSong(candidate, score)
+                        // Require a real artist match (when we know the YT artist). Title alone could
+                        // otherwise pass the threshold and substitute a DIFFERENT artist's same-titled
+                        // song (e.g. another "Dirt") — the wrong-song bug.
+                        val artistOk = artist.isBlank() || artistScore > 0
+                        ScoredSong(candidate, score, artistOk)
                     }
 
                     val MIN_CONFIDENCE = 40
-                    val bestSong = scored.maxByOrNull { it.score }
+                    val bestSong = scored
+                        .filter { it.artistOk }
+                        .maxByOrNull { it.score }
                         ?.takeIf { it.score >= MIN_CONFIDENCE }
                         ?.song
 
                     if (bestSong == null) {
-                        throw Exception("Saavn: best score below threshold $MIN_CONFIDENCE")
+                        throw Exception("Saavn: no same-artist match >= $MIN_CONFIDENCE (won't substitute a different song)")
                     }
 
                     Timber.tag(TAG).d("Saavn best match: id=${bestSong.id}, name=${bestSong.name}")

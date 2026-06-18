@@ -1,11 +1,8 @@
-# Aura Hi-Res Player v5.4.3
+# Aura Hi-Res Player v5.4.4
 
-## Arreglo definitivo: online muerto tras restaurar respaldo
-- Al restaurar un respaldo se restauraba TODO, y si el respaldo traía un **proxy activado** (con dirección ya muerta), TODA la conexión a YouTube quedaba bloqueada → búsqueda, sugerencias y álbumes fallaban como si no hubiera internet.
-- Ahora, al restaurar, se **desactiva cualquier proxy restaurado** y se **renueva el token de sesión** de YouTube, así lo online vuelve a funcionar.
-
-## Importante
-- Si ya restauraste un respaldo y sigue fallando: actualiza a esta versión y **vuelve a restaurar el respaldo una vez** (la limpieza se aplica), o entra a Ajustes y revisa que el **proxy esté desactivado**.
+## Arreglo: se reproducía la canción equivocada
+- En álbumes (p. ej. una canción "Dirt" de Lecrae) a veces sonaba **otra canción de otro artista**. Causa: cuando usabas calidad **Lossless/Saavn**, la app buscaba la pista por **título** en esos servicios y, para títulos comunes, traía la de otro artista.
+- Ahora **exige que el artista coincida**: si no encuentra la misma canción del mismo artista en Lossless/Saavn, reproduce la **original de YouTube** (la correcta) en vez de sustituirla por otra.
 
 ## Incluye lo anterior
-- v5.4.2: graves/agudos limpios, widget anterior/siguiente, login reinicia fiable.
+- v5.4.3: fix de online muerto tras restaurar (proxy/token). v5.4.2: graves/agudos limpios, widget anterior/siguiente.
