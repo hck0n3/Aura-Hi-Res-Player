@@ -174,7 +174,7 @@ class App : Application(), SingletonImageLoader.Factory {
         if (!flag.exists()) return
         // A restore happened: drop the seed version so this app version's feature defaults re-apply
         // on this launch (otherwise the restored old profile suppresses them = "new features missing").
-        Timber.tag("RESTORE").i("Post-restore: forcing re-seed (seed version -> 0) + fresh visitorData")
+        Timber.tag("RESTORE").i("Post-restore: re-seed + fresh visitorData + disable restored proxy")
         runCatching {
             dataStore.edit { p ->
                 p[iad1tya.echo.music.constants.SeedVersionKey] = 0
@@ -182,6 +182,11 @@ class App : Application(), SingletonImageLoader.Factory {
                 // every browse/search/suggestions/album call fail ("as if offline"). Drop it so a fresh
                 // visitorData is fetched on this launch.
                 p.remove(iad1tya.echo.music.constants.VisitorDataKey)
+                p.remove(iad1tya.echo.music.constants.DataSyncIdKey)
+                // A restored proxy (enabled, pointing at a now-dead address) routes ALL YouTube traffic
+                // into a black hole → search/suggestions/albums all fail after a restore. Disable any
+                // restored proxy so online works; the user can re-enable it in Settings if they use one.
+                p[iad1tya.echo.music.constants.ProxyEnabledKey] = false
             }
         }
         flag.delete()

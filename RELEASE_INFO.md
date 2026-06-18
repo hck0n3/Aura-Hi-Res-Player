@@ -1,16 +1,11 @@
-# Aura Hi-Res Player v5.4.2
+# Aura Hi-Res Player v5.4.3
 
-## Sonido: menos distorsión en graves y agudos
-- Bajé el "tono firma" por defecto (graves y agudos): antes empujaba demasiado y, en canciones de **alta calidad a volumen máximo**, distorsionaba. Ahora es casi transparente, así que el sonido queda limpio.
+## Arreglo definitivo: online muerto tras restaurar respaldo
+- Al restaurar un respaldo se restauraba TODO, y si el respaldo traía un **proxy activado** (con dirección ya muerta), TODA la conexión a YouTube quedaba bloqueada → búsqueda, sugerencias y álbumes fallaban como si no hubiera internet.
+- Ahora, al restaurar, se **desactiva cualquier proxy restaurado** y se **renueva el token de sesión** de YouTube, así lo online vuelve a funcionar.
 
-## Widget del reproductor: anterior y siguiente
-- El widget ahora tiene botones de **anterior** y **siguiente** (además de me gusta y play/pausa).
-
-## Inicio de sesión más fiable
-- Al **iniciar sesión en Google**, la app se **reinicia sola de forma confiable** (antes en algunos equipos se cerraba sin reabrir).
-
-## Nota
-- Las **sugerencias de búsqueda** vacías venían del mismo problema del token de YouTube que ya se arregló al restaurar respaldos (v5.4.1): tras actualizar y reabrir la app, deberían volver.
+## Importante
+- Si ya restauraste un respaldo y sigue fallando: actualiza a esta versión y **vuelve a restaurar el respaldo una vez** (la limpieza se aplica), o entra a Ajustes y revisa que el **proxy esté desactivado**.
 
 ## Incluye lo anterior
-- v5.4.1: fix de búsqueda muerta tras restaurar. v5.4.0: biblioteca y búsqueda solo música.
+- v5.4.2: graves/agudos limpios, widget anterior/siguiente, login reinicia fiable.
