@@ -54,7 +54,19 @@ import timber.log.Timber
 private fun restartApp(context: Context) {
     val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)
         ?.apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK) }
-    context.startActivity(intent)
+    if (intent != null) {
+        // Schedule the relaunch via AlarmManager so the app reliably reopens AFTER we kill the
+        // process. Calling startActivity() right before exit(0) races on many devices and leaves the
+        // app simply closed (= "it didn't restart after login").
+        val pending = android.app.PendingIntent.getActivity(
+            context,
+            0xA0DA,
+            intent,
+            android.app.PendingIntent.FLAG_CANCEL_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE,
+        )
+        val am = context.getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager
+        am.set(android.app.AlarmManager.RTC, System.currentTimeMillis() + 350L, pending)
+    }
     if (context is Activity) context.finish()
     Runtime.getRuntime().exit(0)
 }

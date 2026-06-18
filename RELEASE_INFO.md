@@ -1,7 +1,16 @@
-# Aura Hi-Res Player v5.4.1
+# Aura Hi-Res Player v5.4.2
 
-## Arreglo: búsqueda muerta tras restaurar respaldo
-- Después de **restaurar un respaldo local**, la búsqueda, las sugerencias y los álbumes dejaban de cargar (como si no hubiera internet). Causa: el respaldo traía un **token de sesión viejo de YouTube** que se restauraba y rompía las consultas. Ahora, al restaurar, ese token se **renueva automáticamente** y todo vuelve a funcionar.
+## Sonido: menos distorsión en graves y agudos
+- Bajé el "tono firma" por defecto (graves y agudos): antes empujaba demasiado y, en canciones de **alta calidad a volumen máximo**, distorsionaba. Ahora es casi transparente, así que el sonido queda limpio.
+
+## Widget del reproductor: anterior y siguiente
+- El widget ahora tiene botones de **anterior** y **siguiente** (además de me gusta y play/pausa).
+
+## Inicio de sesión más fiable
+- Al **iniciar sesión en Google**, la app se **reinicia sola de forma confiable** (antes en algunos equipos se cerraba sin reabrir).
+
+## Nota
+- Las **sugerencias de búsqueda** vacías venían del mismo problema del token de YouTube que ya se arregló al restaurar respaldos (v5.4.1): tras actualizar y reabrir la app, deberían volver.
 
 ## Incluye lo anterior
-- v5.4.0: sección de artistas seguidos, miniaturas más pequeñas, búsqueda solo de música, "Me gusta" de Spotify a tus favoritos, +0.5 dB.
+- v5.4.1: fix de búsqueda muerta tras restaurar. v5.4.0: biblioteca y búsqueda solo música.

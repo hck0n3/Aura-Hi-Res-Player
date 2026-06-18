@@ -80,13 +80,25 @@
                     android:contentDescription="@string/like" />
             </FrameLayout>
 
+            <!-- Previous -->
+            <ImageButton
+                android:id="@+id/widget_prev_button"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:layout_marginStart="6dp"
+                android:padding="10dp"
+                android:scaleType="fitCenter"
+                android:background="@android:color/transparent"
+                android:src="@drawable/ic_widget_skip_previous"
+                android:contentDescription="@string/previous" />
+
             <!-- Play/Pause Container -->
             <FrameLayout
                 android:id="@+id/widget_play_pause_container"
                 android:layout_width="0dp"
                 android:layout_height="48dp"
                 android:layout_weight="1"
-                android:layout_marginStart="12dp"
+                android:layout_marginStart="6dp"
                 android:background="@drawable/widget_play_pill_bg">
 
                 <ImageView
@@ -97,6 +109,18 @@
                     android:src="@drawable/ic_widget_play"
                     android:contentDescription="@string/play_pause" />
             </FrameLayout>
+
+            <!-- Next -->
+            <ImageButton
+                android:id="@+id/widget_next_button"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:layout_marginStart="6dp"
+                android:padding="10dp"
+                android:scaleType="fitCenter"
+                android:background="@android:color/transparent"
+                android:src="@drawable/ic_widget_skip_next"
+                android:contentDescription="@string/next" />
 
         </LinearLayout>
 

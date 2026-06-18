@@ -148,11 +148,12 @@ class JrDspAudioProcessor : AudioProcessor {
         loudnessLoShelf = BiquadFilter(sampleRate, 200.0, 3.0, 0.707, FilterType.LSC, shelfSlope = 0.707)
         loudnessHiShelf = BiquadFilter(sampleRate, 5000.0, 2.0, 0.707, FilterType.HSC, shelfSlope = 0.707)
 
-        // Aura signature: gentle body (+2 dB low shelf @100 Hz) + air (+1.5 dB high shelf @12 kHz),
-        // a soft Harman-style house curve. Kept conservative so small/Bluetooth speakers don't
-        // overload; the treble corner sits at 12 kHz (air, not harsh presence). ON by default.
-        sigLoShelf = BiquadFilter(sampleRate, 100.0, 2.0, 0.707, FilterType.LSC, shelfSlope = 0.707)
-        sigHiShelf = BiquadFilter(sampleRate, 12000.0, 1.5, 0.707, FilterType.HSC, shelfSlope = 0.707)
+        // Aura signature: very gentle body (+1 dB low shelf @100 Hz) + air (+0.6 dB high shelf
+        // @12 kHz), a soft house curve. Kept low on purpose: on already-hot, high-quality masters a
+        // bigger boost pushed bass/treble peaks into the limiter (and the device amp at max volume),
+        // which audibly distorted. ON by default but near-transparent.
+        sigLoShelf = BiquadFilter(sampleRate, 100.0, 1.0, 0.707, FilterType.LSC, shelfSlope = 0.707)
+        sigHiShelf = BiquadFilter(sampleRate, 12000.0, 0.6, 0.707, FilterType.HSC, shelfSlope = 0.707)
 
         // Multiband compressor LR2 crossovers (Q 0.5) at 200 Hz and 5 kHz.
         mbLpf1 = BiquadFilter(sampleRate, 200.0, 0.0, 0.5, FilterType.LPQ)
