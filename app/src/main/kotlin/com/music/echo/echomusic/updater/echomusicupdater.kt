@@ -692,11 +692,39 @@ suspend fun checkForUpdate(
                         changelogList.add(ChangelogSection(title, itemsList))
                     }
                 } catch (e: Exception) {
-                    
+
                     val body = targetRelease.optString("body", context.getString(R.string.no_changelog_available))
                     val fallbackItems = body.split("\n").filter { it.isNotBlank() }
                     changelogList.add(ChangelogSection(context.getString(R.string.changelog), fallbackItems))
                 }
+
+                // Aggregate the changelog of EVERY version the user skipped (strictly between their
+                // current version and the target), so they see all the changes they're getting — not
+                // just the latest release's notes. One section per skipped version, newest first.
+                try {
+                    val releasesJson =
+                        URL("https://api.github.com/repos/hck0n3/Aura-Hi-Res-Player/releases?per_page=50")
+                            .openStream().bufferedReader().use { it.readText() }
+                    val releasesArr = org.json.JSONArray(releasesJson)
+                    val skipped = ArrayList<Pair<String, ChangelogSection>>()
+                    for (i in 0 until releasesArr.length()) {
+                        val rel = releasesArr.getJSONObject(i)
+                        val ver = rel.optString("tag_name").removePrefix("b").removePrefix("v").trim()
+                        if (ver.isBlank()) continue
+                        // Strictly between current and target (target's notes are already shown above).
+                        if (compareVersions(ver, currentClean) > 0 && compareVersions(ver, targetClean) < 0) {
+                            val items = rel.optString("body", "").split("\n")
+                                .map { it.trim().trimStart('#', '-', '*', ' ').trim() }
+                                .filter { it.isNotBlank() }
+                            if (items.isNotEmpty()) {
+                                val relName = rel.optString("name").takeIf { it.isNotBlank() } ?: "v$ver"
+                                skipped.add(ver to ChangelogSection(relName, items))
+                            }
+                        }
+                    }
+                    skipped.sortWith(Comparator { a, b -> compareVersions(b.first, a.first) })
+                    skipped.forEach { changelogList.add(it.second) }
+                } catch (_: Exception) { /* best-effort aggregation */ }
 
                 val publishedAt = targetRelease.getString("published_at")
                 val formattedReleaseDate = formatGitHubDate(publishedAt)
@@ -733,6 +761,18 @@ suspend fun checkForUpdate(
         }
     }
 }
+/** Semver-ish numeric compare: "6.3" vs "5.10" → handles each dotted part numerically. */
+fun compareVersions(a: String, b: String): Int {
+    val pa = a.split(".").map { it.trim().toIntOrNull() ?: 0 }
+    val pb = b.split(".").map { it.trim().toIntOrNull() ?: 0 }
+    for (i in 0 until maxOf(pa.size, pb.size)) {
+        val x = pa.getOrElse(i) { 0 }
+        val y = pb.getOrElse(i) { 0 }
+        if (x != y) return x - y
+    }
+    return 0
+}
+
 fun String.extractUrls(): List<Pair<IntRange, String>> {
     val urlPattern = Pattern.compile(
         "(?:^|[\\s])((https?://|www\\.|pic\\.)[\\w-]+(\\.[\\w-]+)+([/?].*)?)"

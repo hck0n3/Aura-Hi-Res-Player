@@ -1,8 +1,10 @@
-# Aura Hi-Res Player v5.4.9
+# Aura Hi-Res Player v5.5.0
 
-## Tu inicio según tus gustos
-- El **inicio** ahora se arma con los **artistas que elegiste** (en el primer uso) y los que más escuchas: la app trae las recomendaciones de YouTube de cada artista ("a los fans también les gusta" + su música) para llenar tu inicio con tu estilo, **aunque seas nuevo y aún no tengas historial**.
-- A medida que escuchas, buscas y sigues más artistas, el inicio mejora con el **algoritmo de YouTube**.
+## El actualizador ahora muestra TODO lo que te perdiste
+- Si estabas en una versión vieja y saltas varias de golpe, la pantalla de actualización ahora lista **los cambios de cada versión** que te saltaste (no solo los de la última), para que veas todo lo que recibes.
+
+## Tus artistas elegidos ahora se siguen en YouTube
+- Al iniciar sesión, los **artistas que elegiste** se **suscriben en tu cuenta de YouTube** (antes podían perderse al sincronizar). Así se conservan y el **algoritmo de YouTube** los toma en cuenta para tu inicio.
 
 ## Incluye lo anterior
-- v5.4.8: bienvenida actualizada + elige tus artistas favoritos (primer inicio). v5.4.7: la sesión se conserva al restaurar.
+- v5.4.9: inicio según tus gustos. v5.4.8: bienvenida actualizada + elige tus artistas. v5.4.7: sesión conservada al restaurar.

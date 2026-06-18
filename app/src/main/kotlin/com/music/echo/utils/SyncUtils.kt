@@ -760,12 +760,22 @@ class SyncUtils @Inject constructor(
                     val remoteIds = remoteArtists.map { it.id }.toSet()
                     val localArtists = database.artistsBookmarkedByNameAsc().first()
 
+                    // Local follows not yet on YouTube (e.g. the artists picked during onboarding):
+                    // push them UP — subscribe them on the user's YouTube account instead of dropping
+                    // them locally. This keeps the user's chosen artists AND makes YouTube's algorithm
+                    // (home feed) reflect their taste from the start.
                     localArtists.filterNot { it.id in remoteIds }.forEach { artist ->
                         try {
-                            database.update(artist.artist.localToggleLike())
+                            val channelId = artist.artist.channelId
+                                ?: if (artist.id.startsWith("UC")) {
+                                    runCatching { YouTube.getChannelId(artist.id) }.getOrNull()?.takeIf { it.isNotEmpty() }
+                                } else null
+                            if (!channelId.isNullOrEmpty()) {
+                                runCatching { YouTube.subscribeChannel(channelId, true) }
+                            }
                             delay(DB_OPERATION_DELAY_MS)
                         } catch (e: Exception) {
-                            Timber.e(e, "Failed to update artist: ${artist.id}")
+                            Timber.e(e, "Failed to subscribe artist on YouTube: ${artist.id}")
                         }
                     }
 
