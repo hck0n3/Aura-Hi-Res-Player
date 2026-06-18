@@ -18,6 +18,12 @@ val IsFirstRunKey = booleanPreferencesKey("isFirstRun")
 val OnboardingArtistsDoneKey = booleanPreferencesKey("onboardingArtistsDone")
 // Last release tag the weekly update-check worker already notified about (notify once per version).
 val LastUpdateNotifiedTagKey = stringPreferencesKey("lastUpdateNotifiedTag")
+// Home shows ONLY taste-based suggestions (followed artists / history / favourites + YouTube's
+// algorithm on those). When true, the generic "From the community" and "Mood & genres" browse
+// sections are hidden so nothing unrelated to the user's taste appears.
+val HomeTasteOnlyKey = booleanPreferencesKey("homeTasteOnly")
+// Optional genres the user picked during onboarding (CSV), a soft taste signal.
+val OnboardingGenresKey = stringPreferencesKey("onboardingGenres")
 // Seed-version gate (replaces the per-feature boolean guards). Seeds re-run whenever the stored
 // value is below App.CURRENT_SEED_VERSION; a restored backup carries an older value, so this
 // version's feature defaults re-apply after a restore ("new features appear"). See BackupGate.

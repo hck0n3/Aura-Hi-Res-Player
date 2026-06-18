@@ -160,6 +160,10 @@ fun ContentSettings(
         RandomizeHomeOrderKey,
         defaultValue = false
     )
+    val (tasteOnlyHome, onTasteOnlyHomeChange) = rememberPreference(
+        iad1tya.echo.music.constants.HomeTasteOnlyKey,
+        defaultValue = true
+    )
     val (ipVersion, onIpVersionChange) = rememberEnumPreference(
         IpVersionKey,
         defaultValue = IpVersion.AUTO
@@ -1098,6 +1102,27 @@ fun ContentSettings(
         Material3SettingsGroup(
             title = stringResource(R.string.misc),
             items = listOf(
+                Material3SettingsItem(
+                    icon = painterResource(R.drawable.home_outlined),
+                    title = { Text("Solo recomendaciones por mis gustos") },
+                    description = { Text("El inicio muestra solo lo basado en tus gustos: artistas seguidos, lo que escuchas y tus favoritos. Oculta lo genérico (comunidad, géneros/estados de ánimo).") },
+                    trailingContent = {
+                        Switch(
+                            checked = tasteOnlyHome,
+                            onCheckedChange = onTasteOnlyHomeChange,
+                            thumbContent = {
+                                Icon(
+                                    painter = painterResource(
+                                        id = if (tasteOnlyHome) R.drawable.check else R.drawable.close
+                                    ),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(SwitchDefaults.IconSize)
+                                )
+                            }
+                        )
+                    },
+                    onClick = { onTasteOnlyHomeChange(!tasteOnlyHome) }
+                ),
                 Material3SettingsItem(
                     icon = painterResource(R.drawable.shuffle),
                     title = { Text(stringResource(R.string.randomize_home_order)) },

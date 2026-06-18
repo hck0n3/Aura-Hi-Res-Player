@@ -439,6 +439,10 @@ fun NavGraphBuilder.navigationBuilder(
         OnboardingArtistsScreen(navController)
     }
 
+    composable("onboarding_genres") {
+        OnboardingGenresScreen(navController)
+    }
+
     composable("recognition") {
         RecognitionScreen(navController)
     }

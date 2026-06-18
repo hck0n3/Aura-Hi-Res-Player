@@ -63,14 +63,7 @@ fun OnboardingArtistsScreen(
     val results by viewModel.results.collectAsState()
     val selected by viewModel.selected.collectAsState()
     val scope = rememberCoroutineScope()
-    var showLoginPrompt by remember { mutableStateOf(false) }
     var finishing by remember { mutableStateOf(false) }
-
-    fun goHome() {
-        navController.navigate(Screens.Home.route) {
-            popUpTo("onboarding_artists") { inclusive = true }
-        }
-    }
 
     Scaffold(
         topBar = {
@@ -99,7 +92,9 @@ fun OnboardingArtistsScreen(
                         scope.launch {
                             viewModel.finish()
                             finishing = false
-                            showLoginPrompt = true
+                            navController.navigate("onboarding_genres") {
+                                popUpTo("onboarding_artists") { inclusive = true }
+                            }
                         }
                     },
                     enabled = selected.size >= MIN_ARTISTS && !finishing,
@@ -162,22 +157,5 @@ fun OnboardingArtistsScreen(
                 }
             }
         }
-    }
-
-    if (showLoginPrompt) {
-        AlertDialog(
-            onDismissRequest = { showLoginPrompt = false; goHome() },
-            title = { Text("Inicia sesión en Google") },
-            text = { Text("Para sincronizar tu cuenta y mejorar las recomendaciones. Tus artistas elegidos se conservan inicies sesión o no.") },
-            confirmButton = {
-                TextButton(onClick = {
-                    showLoginPrompt = false
-                    navController.navigate("login")
-                }) { Text("Iniciar sesión") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showLoginPrompt = false; goHome() }) { Text("Ahora no") }
-            },
-        )
     }
 }

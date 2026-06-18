@@ -111,6 +111,7 @@ import iad1tya.echo.music.constants.GridThumbnailHeight
 import iad1tya.echo.music.constants.InnerTubeCookieKey
 import iad1tya.echo.music.constants.ListItemHeight
 import iad1tya.echo.music.constants.ListThumbnailSize
+import iad1tya.echo.music.constants.HomeTasteOnlyKey
 import iad1tya.echo.music.constants.RandomizeHomeOrderKey
 import iad1tya.echo.music.constants.ShowSpeedDialKey
 import iad1tya.echo.music.constants.SmallGridThumbnailHeight
@@ -594,6 +595,7 @@ fun HomeScreen(
     val innerTubeCookie by rememberPreference(InnerTubeCookieKey, "")
     val (randomizeHomeOrder) = rememberPreference(RandomizeHomeOrderKey, true)
     val (showSpeedDial) = rememberPreference(ShowSpeedDialKey, true)
+    val (tasteOnlyHome) = rememberPreference(HomeTasteOnlyKey, true)
 
 
     val isLoggedIn = remember(innerTubeCookie) {
@@ -795,6 +797,7 @@ fun HomeScreen(
     val homeSections = remember(
         randomizeHomeOrder,
         randomSeed,
+        tasteOnlyHome,
         speedDialItems,
         quickPicks,
         dailyDiscover,
@@ -810,7 +813,8 @@ fun HomeScreen(
 
         if (showSpeedDial && speedDialItems.isNotEmpty()) list.add(HomeSection.SpeedDial)
         if (quickPicks?.isNotEmpty() == true) list.add(HomeSection.QuickPicks)
-        if (communityPlaylists?.isNotEmpty() == true) list.add(HomeSection.FromTheCommunity)
+        // "From the community" is generic (not the user's taste) — hidden in taste-only mode.
+        if (!tasteOnlyHome && communityPlaylists?.isNotEmpty() == true) list.add(HomeSection.FromTheCommunity)
         if (dailyDiscover?.isNotEmpty() == true) list.add(HomeSection.DailyDiscover)
         if (keepListening?.isNotEmpty() == true) list.add(HomeSection.KeepListening)
         if (accountPlaylists?.isNotEmpty() == true) list.add(HomeSection.AccountPlaylists)
@@ -824,7 +828,8 @@ fun HomeScreen(
             list.add(HomeSection.HomePageSection(i))
         }
 
-        if (explorePage?.moodAndGenres != null) list.add(HomeSection.MoodAndGenres)
+        // Generic genre/mood browse grid — hidden in taste-only mode.
+        if (!tasteOnlyHome && explorePage?.moodAndGenres != null) list.add(HomeSection.MoodAndGenres)
 
         if (randomizeHomeOrder) {
             list.sortedByDescending { section ->
