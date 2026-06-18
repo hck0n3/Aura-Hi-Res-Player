@@ -433,8 +433,15 @@ class HomeViewModel @Inject constructor(
         val fromTimeStamp = System.currentTimeMillis() - 86400000L * 7 * 2
 
         coroutineScope {
-            val artistDeferreds = database.mostPlayedArtists(fromTimeStamp, limit = 15).first()
+            // Seed the home from the user's taste: most-played artists PLUS the artists they chose in
+            // onboarding / follow (bookmarked). A fresh user with no play history still gets a
+            // taste-based home built from YouTube's per-artist recommendations (the artist page's
+            // "fans might also like" + their music = YouTube's algorithm).
+            val playedArtists = database.mostPlayedArtists(fromTimeStamp, limit = 15).first()
+            val bookmarkedArtists = database.artistsBookmarkedByCreateDateAsc().first()
+            val artistDeferreds = (playedArtists + bookmarkedArtists)
                 .filter { it.artist.isYouTubeArtist }
+                .distinctBy { it.id }
                 .shuffled().take(4)
                 .map { artist ->
                     async(Dispatchers.IO) {
