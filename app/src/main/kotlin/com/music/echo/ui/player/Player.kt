@@ -589,8 +589,15 @@ fun BottomSheetPlayer(
             
             val s = normalizeCanvasSongTitle(requestedTitle)
             val a = normalizeCanvasArtistName(requestedArtist)
-            
-            val fetched = echomusicCanvasProvider.getBySongArtist(s, a)
+
+            val fetched = (if (requestedAlbum.isNotBlank()) {
+                    // Album-level lookup first — same as the album screen and the cover canvas. Most
+                    // Apple "Canvas" motion art is album/track scoped, so without this the player
+                    // background almost never finds anything (the per-song lookups below rarely hit).
+                    AppleMusicCanvasProvider.getByAlbumArtist(album = requestedAlbum, artist = a, storefront = storefront)
+                        ?.takeIf { !it.preferredAnimationUrl.isNullOrBlank() }
+                } else null)
+                ?: echomusicCanvasProvider.getBySongArtist(s, a)
                 ?.takeIf { !it.preferredAnimationUrl.isNullOrBlank() }
                 ?: MonochromeApiCanvas.getBySongArtist(s, a, requestedAlbum)
                 ?.takeIf { !it.preferredAnimationUrl.isNullOrBlank() }
