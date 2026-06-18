@@ -55,6 +55,11 @@ fun ReleaseRadarScreen(
     val releases by viewModel.releases.collectAsState()
     val lazyListState = rememberLazyListState()
 
+    // Refresh the new-releases list every time it's opened so it's always up to date.
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        ReleaseRadarWorker.runNow(context)
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(

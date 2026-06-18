@@ -1790,7 +1790,10 @@ fun HomeScreen(
                     }
                 }
 
-                if (isLoading || homePage?.continuation != null && homePage?.sections?.isNotEmpty() == true) {
+                // In taste-only mode the YouTube home feed isn't rendered, so don't show the
+                // "loading more" shimmer for its continuation — otherwise the bottom of the home
+                // spins forever trying to load content that is intentionally hidden.
+                if (isLoading || (!tasteOnlyHome && homePage?.continuation != null && homePage?.sections?.isNotEmpty() == true)) {
                     item(key = "loading_shimmer") {
                         ShimmerHost(
                             modifier = Modifier.animateItem()

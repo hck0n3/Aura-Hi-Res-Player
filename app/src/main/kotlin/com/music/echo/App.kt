@@ -94,6 +94,10 @@ class App : Application(), SingletonImageLoader.Factory {
         // Safe to call every start: it uses a unique periodic work item with UPDATE policy.
         runCatching { iad1tya.echo.music.releaseradar.ReleaseRadarWorker.schedule(this) }
             .onFailure { Timber.e(it, "Failed to schedule Release Radar worker") }
+        // Also refresh the new-releases list on every app start so it's up to date from the moment
+        // the user opens the app (KEEP policy means concurrent triggers don't pile up).
+        runCatching { iad1tya.echo.music.releaseradar.ReleaseRadarWorker.runNow(this) }
+            .onFailure { Timber.e(it, "Failed to trigger Release Radar refresh") }
 
         // Schedule the weekly app-update check (notifies once per new version when one is found).
         runCatching { iad1tya.echo.music.echomusic.updater.UpdateCheckWorker.schedule(this) }

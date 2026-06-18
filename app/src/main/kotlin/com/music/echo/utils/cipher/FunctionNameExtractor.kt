@@ -9,14 +9,21 @@ object FunctionNameExtractor {
     
     
     private val SIG_FUNCTION_PATTERNS = listOf(
-        
+        // Modern (2024-2025) call site: c&&(c=SIG(decodeURIComponent(c)))
+        Regex("""\bc\s*&&\s*\(\s*c\s*=\s*([a-zA-Z0-9${'$'}]{2,})\s*\(\s*decodeURIComponent\s*\(\s*c\s*\)\s*\)"""),
+        // Generic .set(...,encodeURIComponent(SIG(  — allow whitespace and any single-letter var.
+        Regex("""\b[a-zA-Z0-9]+\s*&&\s*[a-zA-Z0-9]+\.set\([^,]+,\s*encodeURIComponent\s*\(\s*([a-zA-Z0-9${'$'}]{2,})\s*\("""),
+
         Regex("""&&\s*\(\s*[a-zA-Z0-9$]+\s*=\s*([a-zA-Z0-9$]+)\s*\(\s*(\d+)\s*,\s*decodeURIComponent\s*\(\s*[a-zA-Z0-9$]+\s*\)"""),
-        
+
         Regex("""\b[cs]\s*&&\s*[adf]\.set\([^,]+\s*,\s*encodeURIComponent\(([a-zA-Z0-9$]+)\("""),
         Regex("""\b[a-zA-Z0-9]+\s*&&\s*[a-zA-Z0-9]+\.set\([^,]+\s*,\s*encodeURIComponent\(([a-zA-Z0-9$]+)\("""),
         Regex("""\bm=([a-zA-Z0-9${'$'}]{2,})\(decodeURIComponent\(h\.s\)\)"""),
         Regex("""\bc\s*&&\s*d\.set\([^,]+\s*,\s*(?:encodeURIComponent\s*\()([a-zA-Z0-9$]+)\("""),
         Regex("""\bc\s*&&\s*[a-z]\.set\([^,]+\s*,\s*encodeURIComponent\(([a-zA-Z0-9$]+)\("""),
+        // Last-resort: the signature decode function definition itself: XX=function(a){a=a.split("")...
+        // (assigns back to `a`, which distinguishes it from the n-transform that uses `var b=a.split`).
+        Regex("""\b([a-zA-Z0-9${'$'}]{2,})\s*=\s*function\(\s*([a-zA-Z])\s*\)\s*\{\s*\2\s*=\s*\2\.split\(\s*""\s*\)"""),
     )
 
     
