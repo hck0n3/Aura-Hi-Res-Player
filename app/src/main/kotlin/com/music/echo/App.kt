@@ -79,7 +79,9 @@ class App : Application(), SingletonImageLoader.Factory {
         
         CipherDeobfuscator.initialize(this)
 
-        Timber.plant(Timber.DebugTree())
+        if (iad1tya.echo.music.BuildConfig.DEBUG) {
+            Timber.plant(Timber.DebugTree())
+        }
         iad1tya.echo.music.utils.AppLogger.plant(this)
 
 
@@ -402,11 +404,12 @@ class App : Application(), SingletonImageLoader.Factory {
 
             
             Timber.d("forgetAccount: Clearing YouTube object auth state")
-            Timber.d("forgetAccount: Before - cookie=${YouTube.cookie?.take(50)}, visitorData=${YouTube.visitorData?.take(20)}, dataSyncId=${YouTube.dataSyncId?.take(20)}")
+            // Never log auth values (cookie/visitorData/dataSyncId) — just whether they were present.
+            Timber.d("forgetAccount: Before - hadCookie=${YouTube.cookie != null}")
             YouTube.cookie = null
             YouTube.visitorData = null
             YouTube.dataSyncId = null
-            Timber.d("forgetAccount: After - cookie=${YouTube.cookie}, visitorData=${YouTube.visitorData}, dataSyncId=${YouTube.dataSyncId}")
+            Timber.d("forgetAccount: After - auth cleared")
 
             
             Timber.d("forgetAccount: Clearing WebView CookieManager")

@@ -2876,7 +2876,8 @@ class MusicService :
                             playTime = playbackStats.totalPlayTimeMs,
                         ),
                     )
-                } catch (_: SQLException) {
+                } catch (e: SQLException) {
+                    Timber.d(e, "Failed to insert playback Event (stats)")
                 }
             }
         }
