@@ -121,6 +121,28 @@ class AxionEqViewModel @Inject constructor(
         if (_enabled.value) applyToService()
     }
 
+    /**
+     * Apply a full profile (bands + preamp + enable) in ONE shot. Calling setBandsGains + setPreamp +
+     * setEnabled separately fired applyToService() three times (each doing 2 DB writes + a DSP
+     * re-apply), which stuttered the audio every time an AutoEq profile was selected. This batches it
+     * into a single apply.
+     */
+    fun applyProfileBatch(gains: FloatArray, preampDb: Float) {
+        val arr = FloatArray(n) { i ->
+            gains.getOrElse(i) { 0f }.coerceIn(EqConstants.GAIN_MIN, EqConstants.GAIN_MAX)
+        }
+        _bandGains.value = arr
+        _preamp.value = preampDb.coerceIn(EqConstants.PREAMP_MIN, EqConstants.PREAMP_MAX)
+        _enabled.value = true
+        prefs.edit().apply {
+            arr.forEachIndexed { i, f -> putFloat("band24_$i", f) }
+            putFloat("preampDb", _preamp.value)
+            putBoolean("enabled", true)
+        }.apply()
+        _isDirty.value = true
+        applyToService()
+    }
+
     fun setBandType(index: Int, type: Int) {
         if (index !in 0 until n) return
         val arr = _bandTypes.value.copyOf()

@@ -158,12 +158,12 @@ fun AutoEqScreen(navController: NavController) {
                                     Toast.makeText(context, "No se pudo descargar el perfil", Toast.LENGTH_SHORT).show()
                                 } else {
                                     val gains = projectAutoEqToBands(profile, EqConstants.FREQUENCIES)
-                                    eqViewModel.setBandsGains(gains, fromUser = true)
-                                    eqViewModel.setPreamp(
-                                        profile.preampDb.toFloat()
-                                            .coerceIn(EqConstants.PREAMP_MIN, EqConstants.PREAMP_MAX)
+                                    // Apply bands + preamp + enable in ONE shot (avoids the audio
+                                    // stutter from three back-to-back DSP re-applies + DB writes).
+                                    eqViewModel.applyProfileBatch(
+                                        gains,
+                                        profile.preampDb.toFloat(),
                                     )
-                                    eqViewModel.setEnabled(true)
                                     Toast.makeText(context, "Auto-EQ aplicado: ${entry.name}", Toast.LENGTH_SHORT).show()
                                 }
                                 applyingName = null

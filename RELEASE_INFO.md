@@ -1,13 +1,10 @@
-# Aura Hi-Res Player v5.4.5
+# Aura Hi-Res Player v5.4.6
 
-## Bienvenida más limpia
-- En la pantalla de bienvenida (primer inicio) se quitó el **icono morado viejo**: ahora solo aparece el nombre **AURA HI-RES**.
+## Arreglo: corte de audio al cambiar de ecualización
+- Cada vez que aplicabas un perfil AutoEq distinto, el audio daba un pequeño tirón porque la app re-aplicaba el ecualizador **tres veces** (y escribía en disco). Ahora se aplica de **una sola vez**, sin cortes.
 
-## Estados de ánimo / géneros
-- Los textos de los **estados de ánimo y géneros** ahora usan el **color del título** (cian de la marca) para que combinen y se lean mejor.
-
-## Perfiles de ecualización (AutoEq)
-- El catálogo de **+5000 auriculares** ahora se guarda **30 días**: se descarga de internet la primera vez y luego carga **al instante**. Se avisa en pantalla que la primera carga usa internet.
+## Nota (Pixel y batería baja)
+- Si la reproducción se traba con **batería baja** y deja de trabarse al **conectar el cargador**, es el **ahorro de energía del teléfono** bajando la CPU. Mientras tanto, ayuda apagar en Ajustes → Sonido el **realce/DSP** y los **lienzos de video**.
 
 ## Incluye lo anterior
-- v5.4.4: arreglo de "se reproduce la canción equivocada". v5.4.3: online tras restaurar.
+- v5.4.5: bienvenida sin logo, textos de ánimo en cian, AutoEq carga al instante. v5.4.4: canción correcta.
