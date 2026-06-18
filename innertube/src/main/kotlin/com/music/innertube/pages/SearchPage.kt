@@ -203,6 +203,22 @@ object SearchPage {
                             ?.watchPlaylistEndpoint ?: return null,
                 )
             }
+            // Podcast shows -> lenient PlaylistItem so the "Podcasts" filter/section can list them.
+            renderer.isPodcast -> {
+                PlaylistItem(
+                    id = renderer.navigationEndpoint?.browseEndpoint?.browseId?.removePrefix("VL") ?: return null,
+                    title = renderer.flexColumns.firstOrNull()
+                        ?.musicResponsiveListItemFlexColumnRenderer?.text?.runs?.firstOrNull()?.text ?: return null,
+                    author = secondaryLine.getOrNull(1)?.firstOrNull()?.let {
+                        Artist(name = it.text, id = it.navigationEndpoint?.browseEndpoint?.browseId)
+                    },
+                    songCountText = null,
+                    thumbnail = renderer.thumbnail?.musicThumbnailRenderer?.getThumbnailUrl() ?: return null,
+                    playEndpoint = null,
+                    shuffleEndpoint = null,
+                    radioEndpoint = null,
+                )
+            }
             else -> null
         }
     }

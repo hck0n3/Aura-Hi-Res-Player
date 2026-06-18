@@ -403,6 +403,24 @@ data class SearchSummaryPage(
                     )
                 }
 
+                // Podcast shows: surface them as a (lenient) PlaylistItem so a "Podcasts" shelf shows
+                // up in the search summary. The show opens like a playlist of episodes.
+                renderer.isPodcast -> {
+                    PlaylistItem(
+                        id = renderer.navigationEndpoint?.browseEndpoint?.browseId?.removePrefix("VL") ?: return null,
+                        title = renderer.flexColumns.firstOrNull()
+                            ?.musicResponsiveListItemFlexColumnRenderer?.text?.runs?.firstOrNull()?.text ?: return null,
+                        author = secondaryLine.getOrNull(1)?.firstOrNull()?.let {
+                            Artist(name = it.text, id = it.navigationEndpoint?.browseEndpoint?.browseId)
+                        },
+                        songCountText = null,
+                        thumbnail = renderer.thumbnail?.musicThumbnailRenderer?.getThumbnailUrl() ?: return null,
+                        playEndpoint = null,
+                        shuffleEndpoint = null,
+                        radioEndpoint = null,
+                    )
+                }
+
                 else -> null
             }
         }
