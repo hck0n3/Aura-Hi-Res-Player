@@ -284,6 +284,9 @@ private fun SpotifyLoginSheet(
                         cookieManager.setAcceptThirdPartyCookies(this, true)
                         settings.javaScriptEnabled = true
                         settings.domStorageEnabled = true
+                        // Hardening: only loads the remote Spotify login page — deny local file/content access.
+                        settings.allowFileAccess = false
+                        settings.allowContentAccess = false
                         settings.setSupportZoom(true)
                         settings.builtInZoomControls = true
                         settings.displayZoomControls = false

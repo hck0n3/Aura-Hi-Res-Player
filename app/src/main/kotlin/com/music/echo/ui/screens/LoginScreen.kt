@@ -140,6 +140,10 @@ fun LoginScreen(
                 }
                 settings.apply {
                     javaScriptEnabled = true
+                    // Hardening: this WebView only loads the remote Google sign-in page, so deny it any
+                    // access to local files/content — the JS bridge can't be used to read local data.
+                    allowFileAccess = false
+                    allowContentAccess = false
                     setSupportZoom(true)
                     builtInZoomControls = true
                     displayZoomControls = false
