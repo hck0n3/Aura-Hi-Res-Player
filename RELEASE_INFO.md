@@ -1,8 +1,10 @@
-# Aura Hi-Res Player v5.7.11
+# Aura Hi-Res Player v5.7.12
 
-## Podcasts también en los resultados de búsqueda
-- En **Buscar**, la vista "Todo" ahora **separa también por Podcasts** (además de Canciones, Álbumes, Artistas y Playlists). Antes esos resultados se descartaban.
-- Los **episodios** se reproducen como cualquier canción; los **shows** se abren como una lista de episodios.
+## Android TV: interfaz menos gigante
+- En Android TV la interfaz se veía **demasiado grande** (pocos elementos enormes). Ahora la app **reduce la escala** automáticamente en televisores, así entra más contenido y se ve más cómodo (en canciones, playlists y todo).
 
 ## Incluye lo anterior
-- v5.7.10: instalador universal para Android TV / equipos de 32 bits. v5.7.9: "Ver álbum" + filtro Podcasts.
+- v5.7.11: sección Podcasts en la búsqueda. v5.7.10: instalador universal para Android TV.
+
+---
+Nota: si en la TV una canción no reproduce, dime exactamente qué pasa (se queda cargando, da error, o no suena nada) y en qué versión, para ubicarlo.

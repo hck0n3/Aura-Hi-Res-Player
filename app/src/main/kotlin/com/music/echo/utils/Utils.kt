@@ -46,6 +46,12 @@ fun localeAwareContext(base: Context): Context = try {
     Locale.setDefault(locale)
     val config = Configuration(base.resources.configuration)
     config.setLocale(locale)
+    // Android TV: the phone UI looks zoomed/giant on a ~1080p TV panel (few, oversized elements).
+    // Shrink the effective density so more, smaller content fits — closer to a tablet/desktop layout.
+    val uiMode = base.getSystemService(Context.UI_MODE_SERVICE) as? android.app.UiModeManager
+    if (uiMode?.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION && config.densityDpi > 0) {
+        config.densityDpi = (config.densityDpi * 0.7f).toInt().coerceAtLeast(120)
+    }
     base.createConfigurationContext(config)
 } catch (t: Throwable) {
     base
