@@ -824,8 +824,15 @@ fun HomeScreen(
             list.add(HomeSection.SimilarRecommendation(i))
         }
 
-        homePage?.sections?.indices?.forEach { i ->
-            list.add(HomeSection.HomePageSection(i))
+        // Raw YouTube home feed = the same generic suggestions YouTube shows everyone. In taste-only
+        // mode it stays OUT of the home (the user only wants their own taste here); it's still
+        // available under Search/Explore. The taste-based YouTube recommendations come from
+        // SimilarRecommendation + DailyDiscover (seeded from the user's followed artists, history,
+        // favourites and albums).
+        if (!tasteOnlyHome) {
+            homePage?.sections?.indices?.forEach { i ->
+                list.add(HomeSection.HomePageSection(i))
+            }
         }
 
         // Generic genre/mood browse grid — hidden in taste-only mode.

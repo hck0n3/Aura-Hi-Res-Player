@@ -1,9 +1,10 @@
-# Aura Hi-Res Player v5.7.0
+# Aura Hi-Res Player v5.7.1
 
-## Sincronización programada de Spotify
-- En **Ajustes → Copia de seguridad → Importar desde Spotify** hay un nuevo apartado **"Sincronización programada"**.
-- Elige **qué listas** (playlists, me gusta, álbumes) quieres mantener al día y con qué **frecuencia**: **Diaria**, **Semanal** o **Desactivada**.
-- La app las **re-importa sola** en segundo plano según lo que elijas, para mejor control de tu biblioteca. (Si tu sesión de Spotify caduca, vuelve a conectar en esa misma pantalla.)
+## El inicio, de verdad solo con lo tuyo
+- Se quitó del inicio el **feed genérico de YouTube** (las sugerencias que YouTube le pone a todo el mundo). Ahora el inicio se arma **solo** con lo tuyo: **artistas que sigues, canciones reproducidas, música que te gusta, álbumes favoritos y tus playlists** — y las recomendaciones de YouTube **basadas en eso**.
+- Las sugerencias generales de YouTube siguen disponibles en **Buscar / Explorar**.
+- Las recomendaciones ahora también toman en cuenta tus **álbumes favoritos**.
+- (Se mantiene el interruptor **Ajustes → Contenido → "Solo recomendaciones por mis gustos"**.)
 
 ## Incluye lo anterior
-- v5.6.1: paso opcional para migrar Spotify en el primer inicio. v5.6.0: inicio solo con tus gustos.
+- v5.7.0: sincronización programada de Spotify. v5.6.x: onboarding por gustos.

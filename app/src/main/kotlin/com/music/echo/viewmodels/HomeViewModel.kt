@@ -485,9 +485,14 @@ class HomeViewModel @Inject constructor(
                     }
                 }
 
-            val albumDeferreds = database.mostPlayedAlbums(fromTimeStamp, limit = 10).first()
+            // Seed from most-played albums PLUS the user's favourite (bookmarked) albums, so
+            // recommendations also reflect albums they explicitly saved.
+            val playedAlbums = database.mostPlayedAlbums(fromTimeStamp, limit = 10).first()
+            val likedAlbums = database.albumsLikedByCreateDateAsc().first()
+            val albumDeferreds = (playedAlbums + likedAlbums)
                 .filter { it.album.thumbnailUrl != null }
-                .shuffled().take(2)
+                .distinctBy { it.id }
+                .shuffled().take(3)
                 .map { album ->
                     async(Dispatchers.IO) {
                         val items = mutableListOf<YTItem>()
