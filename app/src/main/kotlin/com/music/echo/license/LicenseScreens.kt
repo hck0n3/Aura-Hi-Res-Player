@@ -57,10 +57,11 @@ import kotlinx.coroutines.launch
 
 private const val GUMROAD_URL = "https://toberto.gumroad.com/l/JR-MUSIC-PRO-OFFICIAL"
 
+// Aura dark gradient: a subtle teal tint (matching the cyan brand accent) fading to near-black.
 private val ScreenGradient = Brush.verticalGradient(
-    colors = listOf(Color(0xFF2A1052), Color(0xFF160830), Color(0xFF0B0418)),
+    colors = listOf(Color(0xFF0E2A30), Color(0xFF0A171B), Color(0xFF05070A)),
 )
-private val Accent = Color(0xFF9B6CFF)
+private val Accent = BrandAccent
 
 private fun openGumroad(context: Context) {
     runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(GUMROAD_URL))) }
@@ -72,7 +73,7 @@ private fun LicenseScaffold(
     hint: String,
     content: @Composable () -> Unit,
 ) {
-    MaterialTheme(colorScheme = darkColorScheme()) {
+    MaterialTheme(colorScheme = darkColorScheme(primary = BrandAccent, secondary = BrandAccent)) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -83,12 +84,6 @@ private fun LicenseScaffold(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            Image(
-                painter = painterResource(R.drawable.jr_logo),
-                contentDescription = null,
-                modifier = Modifier.size(110.dp).clip(RoundedCornerShape(26.dp)),
-            )
-            Spacer(Modifier.height(20.dp))
             Text(
                 text = buildAnnotatedString {
                     withStyle(SpanStyle(color = Color.White, fontWeight = FontWeight.Light)) {
@@ -147,13 +142,13 @@ private fun PrimaryButton(text: String, enabled: Boolean = true, onClick: () -> 
         enabled = enabled,
         modifier = Modifier.fillMaxWidth().height(52.dp),
         shape = RoundedCornerShape(16.dp),
-        colors = ButtonDefaults.buttonColors(containerColor = Accent, contentColor = Color.White),
+        colors = ButtonDefaults.buttonColors(containerColor = Accent, contentColor = Color.Black),
     ) { Text(text, fontWeight = FontWeight.Bold, fontSize = 16.sp) }
 }
 
 @Composable
 fun LoadingLicenseScreen() {
-    MaterialTheme(colorScheme = darkColorScheme()) {
+    MaterialTheme(colorScheme = darkColorScheme(primary = BrandAccent, secondary = BrandAccent)) {
         Column(
             modifier = Modifier.fillMaxSize().background(ScreenGradient),
             horizontalAlignment = Alignment.CenterHorizontally,
