@@ -24,6 +24,9 @@ val LastUpdateNotifiedTagKey = stringPreferencesKey("lastUpdateNotifiedTag")
 val HomeTasteOnlyKey = booleanPreferencesKey("homeTasteOnly")
 // Optional genres the user picked during onboarding (CSV), a soft taste signal.
 val OnboardingGenresKey = stringPreferencesKey("onboardingGenres")
+// Scheduled Spotify playlist sync: how often to re-import (days; 0 = off) and which source ids (CSV).
+val SpotifyAutoSyncFreqDaysKey = intPreferencesKey("spotifyAutoSyncFreqDays")
+val SpotifyAutoSyncSourceIdsKey = stringPreferencesKey("spotifyAutoSyncSourceIds")
 // Seed-version gate (replaces the per-feature boolean guards). Seeds re-run whenever the stored
 // value is below App.CURRENT_SEED_VERSION; a restored backup carries an older value, so this
 // version's feature defaults re-apply after a restore ("new features appear"). See BackupGate.

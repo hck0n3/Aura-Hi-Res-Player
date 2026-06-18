@@ -8,6 +8,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -47,6 +48,10 @@ import iad1tya.echo.music.ui.component.Material3SettingsGroup
 import iad1tya.echo.music.ui.component.Material3SettingsItem
 import iad1tya.echo.music.ui.utils.backToMain
 import iad1tya.echo.music.spotify.SpotifyAuth
+import iad1tya.echo.music.spotifyimport.SpotifyAutoSyncWorker
+import iad1tya.echo.music.constants.SpotifyAutoSyncFreqDaysKey
+import iad1tya.echo.music.constants.SpotifyAutoSyncSourceIdsKey
+import iad1tya.echo.music.utils.rememberPreference
 import android.net.Uri
 
 @Composable
@@ -60,6 +65,18 @@ fun SpotifyImportScreen(
 
     var showSpotifyLogin by remember { mutableStateOf(false) }
     var showSpotifySources by remember { mutableStateOf(false) }
+    var showScheduleFreqDialog by remember { mutableStateOf(false) }
+    var showScheduleSourcesSheet by remember { mutableStateOf(false) }
+    val (autoSyncFreq, setAutoSyncFreq) = rememberPreference(SpotifyAutoSyncFreqDaysKey, 0)
+    val (autoSyncCsv, setAutoSyncCsv) = rememberPreference(SpotifyAutoSyncSourceIdsKey, "")
+    val autoSyncIds = remember(autoSyncCsv) {
+        autoSyncCsv.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+    }
+    fun freqLabel(days: Int) = when (days) {
+        1 -> "Diaria"
+        7 -> "Semanal"
+        else -> "Desactivada"
+    }
 
     Scaffold(
         modifier = Modifier.fillMaxSize().nestedScroll(scrollBehavior.nestedScrollConnection),
@@ -159,6 +176,35 @@ fun SpotifyImportScreen(
                     items = items
                 )
             }
+
+            if (state.isAuthenticated) {
+                item {
+                    Material3SettingsGroup(
+                        title = "Sincronización programada",
+                        items = listOf(
+                            Material3SettingsItem(
+                                title = { Text("Frecuencia") },
+                                description = { Text("Cada cuánto se re-importan tus listas elegidas: ${freqLabel(autoSyncFreq)}") },
+                                icon = painterResource(R.drawable.sync),
+                                enabled = true,
+                                onClick = { showScheduleFreqDialog = true }
+                            ),
+                            Material3SettingsItem(
+                                title = { Text("Listas a sincronizar") },
+                                description = {
+                                    Text(
+                                        if (autoSyncIds.isEmpty()) "Elige qué listas mantener al día"
+                                        else "${autoSyncIds.size} seleccionadas"
+                                    )
+                                },
+                                icon = painterResource(R.drawable.playlist_play),
+                                enabled = state.hasSources,
+                                onClick = { showScheduleSourcesSheet = true }
+                            )
+                        )
+                    )
+                }
+            }
         }
     }
 
@@ -183,6 +229,50 @@ fun SpotifyImportScreen(
                 showSpotifySources = false
                 spotifyImportViewModel.importSelectedSources()
             },
+        )
+    }
+
+    if (showScheduleFreqDialog) {
+        val options = listOf(0 to "Desactivada", 1 to "Diaria", 7 to "Semanal")
+        AlertDialog(
+            onDismissRequest = { showScheduleFreqDialog = false },
+            title = { Text("Frecuencia de sincronización") },
+            text = {
+                Column {
+                    options.forEach { (days, label) ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    setAutoSyncFreq(days)
+                                    SpotifyAutoSyncWorker.schedule(context, days)
+                                    showScheduleFreqDialog = false
+                                }
+                                .padding(vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(selected = autoSyncFreq == days, onClick = null)
+                            Spacer(Modifier.width(8.dp))
+                            Text(label)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showScheduleFreqDialog = false }) { Text("Cerrar") }
+            },
+        )
+    }
+
+    if (showScheduleSourcesSheet && state.isAuthenticated) {
+        SpotifyScheduledSourcesSheet(
+            sources = state.sources,
+            selectedIds = autoSyncIds,
+            onToggle = { id ->
+                val newSet = if (id in autoSyncIds) autoSyncIds - id else autoSyncIds + id
+                setAutoSyncCsv(newSet.joinToString(","))
+            },
+            onDismiss = { showScheduleSourcesSheet = false },
         )
     }
 
@@ -455,6 +545,63 @@ private fun SpotifySourcePickerSheet(
                 shape = RoundedCornerShape(16.dp),
             ) {
                 Text(stringResource(R.string.spotify_import_selected))
+            }
+        }
+    }
+}
+
+@Composable
+private fun SpotifyScheduledSourcesSheet(
+    sources: List<SpotifyImportSourceUi>,
+    selectedIds: Set<String>,
+    onToggle: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(
+        modifier = Modifier.fillMaxHeight(),
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+        containerColor = MaterialTheme.colorScheme.surface,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Text(
+                text = "Listas a sincronizar",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text = "Se mantendrán al día automáticamente según la frecuencia elegida.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth().weight(1f),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                contentPadding = PaddingValues(bottom = 6.dp),
+            ) {
+                items(items = sources, key = { it.id }, contentType = { it.type }) { source ->
+                    SpotifySourceRow(
+                        source = source,
+                        selected = source.id in selectedIds,
+                        onClick = { onToggle(source.id) },
+                    )
+                }
+            }
+            Button(
+                onClick = onDismiss,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
+                shape = RoundedCornerShape(16.dp),
+            ) {
+                Text("Listo")
             }
         }
     }
