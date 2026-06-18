@@ -51,10 +51,9 @@ fun OnboardingGenresScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var selected by remember { mutableStateOf(setOf<String>()) }
-    var showLoginPrompt by remember { mutableStateOf(false) }
 
-    fun goHome() {
-        navController.navigate(Screens.Home.route) {
+    fun goSpotifyStep() {
+        navController.navigate("onboarding_spotify") {
             popUpTo("onboarding_genres") { inclusive = true }
         }
     }
@@ -62,7 +61,7 @@ fun OnboardingGenresScreen(
     fun persistAndContinue() {
         scope.launch {
             context.dataStore.edit { it[OnboardingGenresKey] = selected.joinToString(",") }
-            showLoginPrompt = true
+            goSpotifyStep()
         }
     }
 
@@ -88,7 +87,7 @@ fun OnboardingGenresScreen(
                     Text(if (selected.isEmpty()) "Continuar" else "Continuar (${selected.size})")
                 }
                 TextButton(
-                    onClick = { showLoginPrompt = true },
+                    onClick = { goSpotifyStep() },
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text("Omitir") }
             }
@@ -112,22 +111,5 @@ fun OnboardingGenresScreen(
                 )
             }
         }
-    }
-
-    if (showLoginPrompt) {
-        AlertDialog(
-            onDismissRequest = { showLoginPrompt = false; goHome() },
-            title = { Text("Inicia sesión en Google") },
-            text = { Text("Para sincronizar tu cuenta y mejorar las recomendaciones. Tus gustos elegidos se conservan inicies sesión o no.") },
-            confirmButton = {
-                TextButton(onClick = {
-                    showLoginPrompt = false
-                    navController.navigate("login")
-                }) { Text("Iniciar sesión") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showLoginPrompt = false; goHome() }) { Text("Ahora no") }
-            },
-        )
     }
 }

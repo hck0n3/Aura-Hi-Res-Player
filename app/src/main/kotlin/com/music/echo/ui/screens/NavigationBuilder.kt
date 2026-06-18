@@ -443,6 +443,10 @@ fun NavGraphBuilder.navigationBuilder(
         OnboardingGenresScreen(navController)
     }
 
+    composable("onboarding_spotify") {
+        OnboardingSpotifyScreen(navController)
+    }
+
     composable("recognition") {
         RecognitionScreen(navController)
     }
