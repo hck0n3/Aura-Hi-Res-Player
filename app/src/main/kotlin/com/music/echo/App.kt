@@ -174,10 +174,14 @@ class App : Application(), SingletonImageLoader.Factory {
         if (!flag.exists()) return
         // A restore happened: drop the seed version so this app version's feature defaults re-apply
         // on this launch (otherwise the restored old profile suppresses them = "new features missing").
-        Timber.tag("RESTORE").i("Post-restore: forcing re-seed (seed version -> 0)")
+        Timber.tag("RESTORE").i("Post-restore: forcing re-seed (seed version -> 0) + fresh visitorData")
         runCatching {
             dataStore.edit { p ->
                 p[iad1tya.echo.music.constants.SeedVersionKey] = 0
+                // The restored backup carries a stale YouTube visitor session token; using it makes
+                // every browse/search/suggestions/album call fail ("as if offline"). Drop it so a fresh
+                // visitorData is fetched on this launch.
+                p.remove(iad1tya.echo.music.constants.VisitorDataKey)
             }
         }
         flag.delete()
