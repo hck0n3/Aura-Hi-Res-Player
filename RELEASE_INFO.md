@@ -1,10 +1,8 @@
-# Aura Hi-Res Player v5.5.0
+# Aura Hi-Res Player v5.5.1
 
-## El actualizador ahora muestra TODO lo que te perdiste
-- Si estabas en una versión vieja y saltas varias de golpe, la pantalla de actualización ahora lista **los cambios de cada versión** que te saltaste (no solo los de la última), para que veas todo lo que recibes.
-
-## Tus artistas elegidos ahora se siguen en YouTube
-- Al iniciar sesión, los **artistas que elegiste** se **suscriben en tu cuenta de YouTube** (antes podían perderse al sincronizar). Así se conservan y el **algoritmo de YouTube** los toma en cuenta para tu inicio.
+## Aviso automático de actualizaciones
+- La app ahora **revisa una vez por semana** si hay una versión nueva y te **avisa con una notificación** cuando la encuentra. Toca la notificación para abrir la app y actualizar.
+- Te avisa **una vez por versión** (no repite el mismo aviso cada semana).
 
 ## Incluye lo anterior
-- v5.4.9: inicio según tus gustos. v5.4.8: bienvenida actualizada + elige tus artistas. v5.4.7: sesión conservada al restaurar.
+- v5.5.0: el actualizador muestra los cambios de todas las versiones que te saltaste + tus artistas se siguen en YouTube al iniciar sesión.

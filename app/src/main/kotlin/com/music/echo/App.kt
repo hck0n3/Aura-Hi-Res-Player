@@ -94,6 +94,10 @@ class App : Application(), SingletonImageLoader.Factory {
         // Safe to call every start: it uses a unique periodic work item with UPDATE policy.
         runCatching { iad1tya.echo.music.releaseradar.ReleaseRadarWorker.schedule(this) }
             .onFailure { Timber.e(it, "Failed to schedule Release Radar worker") }
+
+        // Schedule the weekly app-update check (notifies once per new version when one is found).
+        runCatching { iad1tya.echo.music.echomusic.updater.UpdateCheckWorker.schedule(this) }
+            .onFailure { Timber.e(it, "Failed to schedule update-check worker") }
     }
 
     private suspend fun initializeSettings() {
