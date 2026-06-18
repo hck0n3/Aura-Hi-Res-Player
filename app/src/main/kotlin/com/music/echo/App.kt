@@ -182,7 +182,8 @@ class App : Application(), SingletonImageLoader.Factory {
                 // every browse/search/suggestions/album call fail ("as if offline"). Drop it so a fresh
                 // visitorData is fetched on this launch.
                 p.remove(iad1tya.echo.music.constants.VisitorDataKey)
-                p.remove(iad1tya.echo.music.constants.DataSyncIdKey)
+                // NOTE: keep InnerTubeCookie + DataSyncId + account keys — they ARE the restored login.
+                // (Only visitorData is the stale browse token that must be refreshed.)
                 // A restored proxy (enabled, pointing at a now-dead address) routes ALL YouTube traffic
                 // into a black hole → search/suggestions/albums all fail after a restore. Disable any
                 // restored proxy so online works; the user can re-enable it in Settings if they use one.
