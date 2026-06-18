@@ -1,11 +1,11 @@
-# Aura Hi-Res Player v5.7.9
+# Aura Hi-Res Player v5.7.10
 
-## "Ir al álbum" en el menú del reproductor
-- En el menú de tres puntos del reproductor, debajo de **Ver artista**, ahora aparece **Ver álbum** para ir directo al álbum de la canción.
-
-## Podcasts en la búsqueda (nuevo, en prueba)
-- En **Buscar** hay un nuevo filtro **"Podcasts"**: encuentra **episodios de podcast** de YouTube y los reproduces como cualquier canción.
-- Es una primera versión: si el filtro sale vacío, avísame y lo ajusto. (Importar la lista de podcasts de Spotify viene después.)
+## Compatible con Android TV y equipos de 32 bits
+- Antes el instalador era **solo arm64**, por eso no instalaba en algunos Android TV (como el Sony XBR-65X755D, que usa Android de 32 bits). Ahora cada versión publica **dos** instaladores:
+  - **Aura-Hi-Res-Player-X.Y.Z.apk** — normal (teléfonos arm64, más liviano).
+  - **Aura-Hi-Res-Player-X.Y.Z-universal.apk** — **para Android TV y equipos viejos** (incluye armeabi-v7a/x86).
+- El **actualizador elige solo** el instalador correcto según tu equipo (los teléfonos siguen recibiendo el liviano; la TV recibe el universal).
+- **Para tu TV ahora:** en la página de la versión en GitHub, descarga e instala el que dice **-universal.apk**.
 
 ## Incluye lo anterior
-- v5.7.8: Canvas del reproductor (búsqueda por álbum). v5.7.6: arreglada la reproducción.
+- v5.7.9: "Ver álbum" en el reproductor + filtro Podcasts. v5.7.8: Canvas del reproductor.

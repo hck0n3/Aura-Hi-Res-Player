@@ -730,17 +730,34 @@ suspend fun checkForUpdate(
                 val formattedReleaseDate = formatGitHubDate(publishedAt)
                 val assets = targetRelease.getJSONArray("assets")
 
-                var apkSizeInMB = ""
-                var apkDownloadUrl = ""
+                // Collect all installable APK assets (a release may ship an arm64 APK and a larger
+                // "universal" APK that also includes armeabi-v7a/x86 for Android TV and older devices).
+                data class ApkAsset(val name: String, val url: String, val size: Long)
+                val apkAssets = ArrayList<ApkAsset>()
                 for (j in 0 until assets.length()) {
                     val asset = assets.getJSONObject(j)
                     val assetName = asset.getString("name")
                     if (assetName.endsWith(".apk", ignoreCase = true) && !assetName.lowercase().contains("debug")) {
-                        val apkSizeInBytes = asset.getLong("size")
-                        apkSizeInMB = String.format("%.1f", apkSizeInBytes / (1024.0 * 1024.0))
-                        apkDownloadUrl = asset.getString("browser_download_url")
-                        break
+                        apkAssets.add(ApkAsset(assetName, asset.getString("browser_download_url"), asset.getLong("size")))
                     }
+                }
+
+                // Pick the APK that matches this device's CPU: arm64 devices take the small arch APK;
+                // everything else (e.g. 32-bit Android TVs like Sony's MediaTek sets) takes the
+                // universal APK so it actually installs.
+                val supportsArm64 = android.os.Build.SUPPORTED_ABIS.any { it.equals("arm64-v8a", ignoreCase = true) }
+                fun String.isUniversal() = lowercase().contains("universal")
+                val chosen = if (supportsArm64) {
+                    apkAssets.firstOrNull { !it.name.isUniversal() } ?: apkAssets.firstOrNull()
+                } else {
+                    apkAssets.firstOrNull { it.name.isUniversal() } ?: apkAssets.firstOrNull()
+                }
+
+                var apkSizeInMB = ""
+                var apkDownloadUrl = ""
+                if (chosen != null) {
+                    apkSizeInMB = String.format("%.1f", chosen.size / (1024.0 * 1024.0))
+                    apkDownloadUrl = chosen.url
                 }
 
                 if (apkDownloadUrl.isNotEmpty()) {
