@@ -1,8 +1,11 @@
-# Aura Hi-Res Player v5.7.8
+# Aura Hi-Res Player v5.7.9
 
-## Canvas en el reproductor (estilo Apple Music)
-- Causa encontrada: el reproductor buscaba el video Canvas **solo por canción**, y la mayoría del arte en movimiento existe **por álbum**. Por eso en los álbumes animaba y en el reproductor casi nunca. Ahora el reproductor **también busca el Canvas por álbum** → debería animar como en los álbumes.
-- Asegúrate de tener activado **Apariencia → "Canvas"**.
+## "Ir al álbum" en el menú del reproductor
+- En el menú de tres puntos del reproductor, debajo de **Ver artista**, ahora aparece **Ver álbum** para ir directo al álbum de la canción.
+
+## Podcasts en la búsqueda (nuevo, en prueba)
+- En **Buscar** hay un nuevo filtro **"Podcasts"**: encuentra **episodios de podcast** de YouTube y los reproduces como cualquier canción.
+- Es una primera versión: si el filtro sale vacío, avísame y lo ajusto. (Importar la lista de podcasts de Spotify viene después.)
 
 ## Incluye lo anterior
-- v5.7.7: pantalla de elegir artistas renovada. v5.7.6: arreglada la reproducción que fallaba.
+- v5.7.8: Canvas del reproductor (búsqueda por álbum). v5.7.6: arreglada la reproducción.

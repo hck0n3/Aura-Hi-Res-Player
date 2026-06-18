@@ -535,7 +535,34 @@ fun OldPlayerMenu(
                         )
                     }
 
-                    
+                    if (mediaMetadata.album != null) {
+                        add(
+                            Material3MenuItemData(
+                                title = { Text(text = stringResource(R.string.view_album)) },
+                                description = {
+                                    Text(
+                                        text = mediaMetadata.album.title,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                },
+                                icon = {
+                                    Icon(
+                                        painter = painterResource(R.drawable.album),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                },
+                                onClick = {
+                                    navController.navigate("album/${mediaMetadata.album.id}")
+                                    playerBottomSheetState.collapseSoft()
+                                    onDismiss()
+                                }
+                            )
+                        )
+                    }
+
+
                     val isInLibrary = librarySong?.song?.inLibrary != null
                     add(
                         Material3MenuItemData(

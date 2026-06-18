@@ -1433,6 +1433,9 @@ object YouTube {
             val FILTER_ARTIST = SearchFilter("EgWKAQIgAWoKEAkQChAFEAMQBA%3D%3D")
             val FILTER_FEATURED_PLAYLIST = SearchFilter("EgeKAQQoADgBagwQDhAKEAMQBRAJEAQ%3D")
             val FILTER_COMMUNITY_PLAYLIST = SearchFilter("EgeKAQQoAEABagoQAxAEEAoQCRAF")
+            // Podcast episodes (playable videos). Episodes carry a watchEndpoint, so SearchPage parses
+            // them as SongItem and they play with the normal pipeline.
+            val FILTER_PODCAST_EPISODE = SearchFilter("EgWKAQJIAWoKEAkQChAFEAMQBA%3D%3D")
         }
     }
 
