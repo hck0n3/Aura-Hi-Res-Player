@@ -401,8 +401,12 @@ fun Thumbnail(
         }
 
         
+        // With Apple Music style the canvas normally plays as the full-screen background and the
+        // cover is hidden. If the user turned ON "canvas on the cover", keep the cover visible so it
+        // can animate too (parity with the album canvas).
+        val coverCanvasOn by rememberPreference(CanvasThumbnailAnimationKey, defaultValue = false)
         AnimatedVisibility(
-            visible = error == null && !(playerBackground == PlayerBackgroundStyle.APPLE_MUSIC && !isLandscape),
+            visible = error == null && !(playerBackground == PlayerBackgroundStyle.APPLE_MUSIC && !isLandscape && !coverCanvasOn),
             enter = fadeIn(),
             exit = fadeOut(),
             modifier = Modifier
@@ -699,7 +703,7 @@ private fun ThumbnailItem(
                 )
             }
             
-            if (canvasThumbnailAnimation && item.mediaId == currentMediaId && !rotatingThumbnail && playerBackground != PlayerBackgroundStyle.APPLE_MUSIC) {
+            if (canvasThumbnailAnimation && item.mediaId == currentMediaId && !rotatingThumbnail) {
                 var canvasArtwork by remember(item.mediaId) { mutableStateOf<CanvasArtwork?>(null) }
                 var canvasFetchInFlight by remember(item.mediaId) { mutableStateOf(false) }
                 val storefront = remember {

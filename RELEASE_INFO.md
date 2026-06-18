@@ -1,13 +1,13 @@
-# Aura Hi-Res Player v5.7.4
+# Aura Hi-Res Player v5.7.5
 
-## Recomendaciones más inteligentes (según tus gustos)
-- El inicio ahora recomienda usando **más de tus gustos**: tus **artistas seguidos**, tu **música que te gusta** (favoritos), tus **álbumes favoritos** y **todo lo que importaste de Spotify** (que se guarda como favoritos/seguidos). Más artistas y más canciones semilla = recomendaciones más variadas de **álbumes, playlists, artistas y mixes** acordes a ti.
+## Canvas en la portada del reproductor (también con estilo Apple Music)
+- Si activas **"canvas en la portada"**, ahora la **portada del reproductor sí se anima** aunque tengas el estilo **Apple Music** (antes quedaba estática). Igual que en los álbumes.
 
-## Arreglo: sugerencias que cargaban sin fin
-- El apartado de **sugerencias bajo la búsqueda** ya no se queda "cargando y cargando": si no logra cargar, muestra un aviso con botón **Reintentar** (antes giraba para siempre).
+## La animación de "reproduciendo" empieza con la canción
+- En las listas y álbumes, la animación de barras de la miniatura ahora **empieza justo cuando empieza a sonar** la canción (mientras carga muestra el ícono de play, no las barras animadas antes de tiempo).
 
-## Nota
-- Si una canción de una lista no reproduce o la música se corta, dime cuál fue (o pásame un registro/log): suele ser un problema puntual al obtener el audio de YouTube y así lo ubico.
+## "Acerca de"
+- Añadida la compatibilidad con **Android Auto** a la lista de funciones.
 
 ## Incluye lo anterior
-- v5.7.3: "Acerca de" renovado. v5.7.1: el inicio solo con tus gustos.
+- v5.7.4: recomendaciones más inteligentes + fix de sugerencias que cargaban sin fin.

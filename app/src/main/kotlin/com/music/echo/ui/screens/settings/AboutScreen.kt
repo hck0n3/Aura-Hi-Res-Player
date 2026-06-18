@@ -58,7 +58,7 @@ private val EXTRAS_FEATURES = listOf(
     Feature(R.drawable.group_outlined, "Escuchar juntos", "Escucha sincronizada en tiempo real con amigos"),
     Feature(R.drawable.palette, "Temas y fondos", "Material You, modo oscuro puro AMOLED, acento dinámico y Canvas animado del artista y del álbum"),
     Feature(R.drawable.share, "Compartir y widget", "Comparte con enlaces de YouTube Music y controla la música desde el widget de vinilo"),
-    Feature(R.drawable.play, "Android TV", "Se instala y navega con control en televisores"),
+    Feature(R.drawable.play, "Android Auto y Android TV", "Compatible con Android Auto en el coche y con Android TV (se instala y navega con el control en televisores)"),
     Feature(R.drawable.download, "Actualizaciones", "Auto-actualización sin desinstalar y aviso semanal cuando hay una versión nueva"),
     Feature(R.drawable.auto_awesome, "Suscripción y demo", "Prueba gratis de 3 días y suscripción mensual"),
 )
