@@ -29,8 +29,12 @@ constructor(
     val database: MusicDatabase,
 ) : ViewModel() {
     val explorePage = MutableStateFlow<ExplorePage?>(null)
+    // True while the first/most-recent explore fetch is in flight. The UI uses this (instead of
+    // "explorePage == null") so a failed load shows an empty/retry state rather than spinning forever.
+    val isLoading = MutableStateFlow(true)
 
     private suspend fun load() {
+        isLoading.value = true
         YouTube
             .explore()
             .onSuccess { page ->
@@ -66,6 +70,11 @@ constructor(
             }.onFailure {
                 reportException(it)
             }
+        isLoading.value = false
+    }
+
+    fun retry() {
+        viewModelScope.launch(Dispatchers.IO) { load() }
     }
 
     init {

@@ -442,7 +442,7 @@ class HomeViewModel @Inject constructor(
             val artistDeferreds = (playedArtists + bookmarkedArtists)
                 .filter { it.artist.isYouTubeArtist }
                 .distinctBy { it.id }
-                .shuffled().take(4)
+                .shuffled().take(6)
                 .map { artist ->
                     async(Dispatchers.IO) {
                         val items = mutableListOf<YTItem>()
@@ -462,9 +462,14 @@ class HomeViewModel @Inject constructor(
                     }
                 }
 
-            val songDeferreds = database.mostPlayedSongs(fromTimeStamp, limit = 15).first()
-                .filter { it.album != null }
-                .shuffled().take(3)
+            // Seed from the user's most-played AND liked (favourite) songs — including everything
+            // imported from Spotify, which lands as liked songs — so the "mix"-style recommendations
+            // reflect the music they actually love, not just recent plays.
+            val playedSongs = database.mostPlayedSongs(fromTimeStamp, limit = 15).first().filter { it.album != null }
+            val likedSongs = database.likedSongsByCreateDateAsc().first()
+            val songDeferreds = (playedSongs + likedSongs)
+                .distinctBy { it.id }
+                .shuffled().take(5)
                 .map { song ->
                     async(Dispatchers.IO) {
                         val endpoint = YouTube.next(WatchEndpoint(videoId = song.id)).getOrNull()?.relatedEndpoint

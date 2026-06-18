@@ -1,8 +1,13 @@
-# Aura Hi-Res Player v5.7.3
+# Aura Hi-Res Player v5.7.4
 
-## "Acerca de" renovado
-- Se quitó el **icono**; ahora aparece el nombre **AURA HI-RES** con la **misma tipografía, fuente y color** de la marca (acento cian), igual que en la bienvenida.
-- La lista de funciones está **completa y al día**: incluye sonido sin pérdida, visualizador y control de tempo/tono, importar y migrar de Spotify, **sincronización programada de Spotify**, inicio a tu gusto (artistas/géneros + recomendaciones de YouTube), aviso semanal de actualizaciones, suscripción y demo, y todo lo demás.
+## Recomendaciones más inteligentes (según tus gustos)
+- El inicio ahora recomienda usando **más de tus gustos**: tus **artistas seguidos**, tu **música que te gusta** (favoritos), tus **álbumes favoritos** y **todo lo que importaste de Spotify** (que se guarda como favoritos/seguidos). Más artistas y más canciones semilla = recomendaciones más variadas de **álbumes, playlists, artistas y mixes** acordes a ti.
+
+## Arreglo: sugerencias que cargaban sin fin
+- El apartado de **sugerencias bajo la búsqueda** ya no se queda "cargando y cargando": si no logra cargar, muestra un aviso con botón **Reintentar** (antes giraba para siempre).
+
+## Nota
+- Si una canción de una lista no reproduce o la música se corta, dime cuál fue (o pásame un registro/log): suele ser un problema puntual al obtener el audio de YouTube y así lo ubico.
 
 ## Incluye lo anterior
-- v5.7.2: pantalla de demo/suscripción al estilo Aura. v5.7.1: inicio solo con tus gustos.
+- v5.7.3: "Acerca de" renovado. v5.7.1: el inicio solo con tus gustos.

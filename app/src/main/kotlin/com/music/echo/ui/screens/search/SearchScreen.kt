@@ -42,7 +42,9 @@ import androidx.compose.material3.Tab
 import androidx.compose.material3.TabPosition
 import androidx.compose.material3.TabRowDefaults
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
+import androidx.compose.material3.Button
 import androidx.compose.material3.Text
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -509,6 +511,7 @@ fun ExploreTabContent(
     contentPadding: PaddingValues = PaddingValues(0.dp)
 ) {
     val moodAndGenresList by viewModel.moodAndGenres.collectAsState()
+    val isLoading by viewModel.isLoading.collectAsState()
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -566,7 +569,20 @@ fun ExploreTabContent(
                         .height(200.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    CircularWavyProgressIndicator()
+                    if (isLoading) {
+                        CircularWavyProgressIndicator()
+                    } else {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = "No se pudieron cargar las sugerencias.",
+                                textAlign = TextAlign.Center,
+                            )
+                            Spacer(Modifier.height(12.dp))
+                            Button(onClick = { viewModel.retry() }) {
+                                Text("Reintentar")
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -590,15 +606,32 @@ fun AlbumsTabContent(
     
     val explorePage by viewModel.explorePage.collectAsState()
     val newReleaseAlbums = explorePage?.newReleaseAlbums
+    val isLoading by viewModel.isLoading.collectAsState()
 
     val gridItemSize by rememberEnumPreference(GridItemsSizeKey, GridItemSize.BIG)
 
-    if (newReleaseAlbums == null) {
+    if (isLoading && newReleaseAlbums == null) {
         Box(
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.Center
         ) {
             CircularWavyProgressIndicator()
+        }
+    } else if (newReleaseAlbums.isNullOrEmpty()) {
+        Box(
+            modifier = Modifier.fillMaxSize().padding(24.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = "No se pudieron cargar las sugerencias.",
+                    textAlign = TextAlign.Center,
+                )
+                Spacer(Modifier.height(12.dp))
+                Button(onClick = { viewModel.retry() }) {
+                    Text("Reintentar")
+                }
+            }
         }
     } else {
         LazyVerticalGrid(

@@ -17,9 +17,13 @@ class MoodAndGenresViewModel
 @Inject
 constructor() : ViewModel() {
     val moodAndGenres = MutableStateFlow<List<MoodAndGenres>?>(null)
+    // True while a fetch is in flight, so the UI shows an empty/retry state on failure instead of
+    // spinning forever.
+    val isLoading = MutableStateFlow(true)
 
-    init {
+    private fun load() {
         viewModelScope.launch {
+            isLoading.value = true
             YouTube
                 .moodAndGenres()
                 .onSuccess {
@@ -27,6 +31,13 @@ constructor() : ViewModel() {
                 }.onFailure {
                     reportException(it)
                 }
+            isLoading.value = false
         }
+    }
+
+    fun retry() = load()
+
+    init {
+        load()
     }
 }
