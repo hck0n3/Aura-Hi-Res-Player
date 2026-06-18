@@ -239,6 +239,10 @@ class App : Application(), SingletonImageLoader.Factory {
             // palette tones it down so it reads cohesive, not garish. Not the wallpaper color.
             p[iad1tya.echo.music.constants.SelectedThemeColorKey] = 0xFF36C5E0.toInt()
 
+            // Smaller library grid thumbnails (playlists/albums/artists) so the grid looks tidier.
+            p[iad1tya.echo.music.constants.GridItemsSizeKey] =
+                iad1tya.echo.music.constants.GridItemSize.SMALL.name
+
             // Spanish default, only if the user hasn't explicitly chosen a language.
             val current = p[iad1tya.echo.music.constants.AppLanguageKey]
             if (current == null || current == SYSTEM_DEFAULT) {
@@ -385,7 +389,7 @@ class App : Application(), SingletonImageLoader.Factory {
 
     companion object {
         /** Bump when adding a new one-time default set so it re-seeds for everyone (and after restore). */
-        const val CURRENT_SEED_VERSION = 5
+        const val CURRENT_SEED_VERSION = 6
 
         suspend fun forgetAccount(context: Context) {
             Timber.d("forgetAccount: Starting logout process")

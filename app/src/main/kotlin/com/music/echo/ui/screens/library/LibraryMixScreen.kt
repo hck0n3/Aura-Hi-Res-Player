@@ -224,6 +224,10 @@ fun LibraryMixScreen(
                 }
         }.reversed(sortDescending)
 
+    // Followed artists get their own section (above playlists) for a tidier, more ordered library.
+    val artistItems = allItems.filterIsInstance<Artist>().distinctBy { it.id }
+    val nonArtistItems = allItems.filterNot { it is Artist }.distinctBy { it.id }
+
     val coroutineScope = rememberCoroutineScope()
 
     val lazyListState = rememberLazyListState()
@@ -403,6 +407,47 @@ fun LibraryMixScreen(
                         }
                     }
 
+                    if (artistItems.isNotEmpty()) {
+                        item(key = "artists_header", contentType = CONTENT_TYPE_HEADER) {
+                            androidx.compose.material3.Text(
+                                text = stringResource(R.string.filter_artists),
+                                style = androidx.compose.material3.MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 8.dp)
+                            )
+                        }
+                        items(
+                            items = artistItems,
+                            key = { "artist_${it.id}" },
+                            contentType = { CONTENT_TYPE_PLAYLIST },
+                        ) { item ->
+                            ArtistListItem(
+                                artist = item,
+                                trailingContent = {
+                                    IconButton(onClick = {
+                                        menuState.show {
+                                            ArtistMenu(originalArtist = item, coroutineScope = coroutineScope, onDismiss = menuState::dismiss)
+                                        }
+                                    }) {
+                                        Icon(painter = painterResource(R.drawable.more_vert), contentDescription = null)
+                                    }
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .combinedClickable(
+                                        onClick = { navController.navigate("artist/${item.id}") },
+                                        onLongClick = {
+                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            menuState.show {
+                                                ArtistMenu(originalArtist = item, coroutineScope = coroutineScope, onDismiss = menuState::dismiss)
+                                            }
+                                        },
+                                    )
+                                    .animateItem(),
+                            )
+                        }
+                    }
+
                     item(
                         key = "playlists_header",
                         contentType = CONTENT_TYPE_HEADER,
@@ -416,7 +461,7 @@ fun LibraryMixScreen(
                     }
 
                     items(
-                        items = allItems.distinctBy { it.id },
+                        items = nonArtistItems,
                         key = { it.id },
                         contentType = { CONTENT_TYPE_PLAYLIST },
                     ) { item ->
@@ -676,6 +721,39 @@ fun LibraryMixScreen(
                         }
                     }
 
+                    if (artistItems.isNotEmpty()) {
+                        item(key = "artists_header", span = { GridItemSpan(maxLineSpan) }, contentType = CONTENT_TYPE_HEADER) {
+                            androidx.compose.material3.Text(
+                                text = stringResource(R.string.filter_artists),
+                                style = androidx.compose.material3.MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 8.dp)
+                            )
+                        }
+                        items(
+                            items = artistItems,
+                            key = { "artist_${it.id}" },
+                            contentType = { CONTENT_TYPE_PLAYLIST },
+                        ) { item ->
+                            ArtistGridItem(
+                                artist = item,
+                                fillMaxWidth = true,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .combinedClickable(
+                                        onClick = { navController.navigate("artist/${item.id}") },
+                                        onLongClick = {
+                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            menuState.show {
+                                                ArtistMenu(originalArtist = item, coroutineScope = coroutineScope, onDismiss = menuState::dismiss)
+                                            }
+                                        },
+                                    )
+                                    .animateItem(),
+                            )
+                        }
+                    }
+
                     item(
                         key = "playlists_header",
                         span = { GridItemSpan(maxLineSpan) },
@@ -690,7 +768,7 @@ fun LibraryMixScreen(
                     }
 
                     items(
-                        items = allItems.distinctBy { it.id },
+                        items = nonArtistItems,
                         key = { it.id },
                         contentType = { CONTENT_TYPE_PLAYLIST },
                     ) { item ->

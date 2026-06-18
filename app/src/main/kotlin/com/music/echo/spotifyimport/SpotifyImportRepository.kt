@@ -866,17 +866,30 @@ class SpotifyImportRepository @Inject constructor(
             }
 
             val libraryNow = LocalDateTime.now()
+            // Spotify "Liked Songs" → mark each matched track as liked so they land in the app's
+            // Liked Songs (not only in a mirror playlist).
+            val markLiked = source is SpotifyImportSource.LikedSongs
             tracks.forEach { metadata ->
                 // Read once: branch on existence to avoid a redundant SELECT per song.
                 val existing = getSongByIdBlocking(metadata.id)?.song
                 if (existing == null) {
                     // New song: insert (also links artists) with inLibrary already set.
                     insert(metadata) { song ->
-                        song.copy(inLibrary = libraryNow)
+                        song.copy(
+                            inLibrary = libraryNow,
+                            liked = song.liked || markLiked,
+                            likedDate = if (markLiked && !song.liked) libraryNow else song.likedDate,
+                        )
                     }
-                } else if (existing.inLibrary == null) {
-                    // Existing song without inLibrary: stamp it now.
-                    update(existing.copy(inLibrary = libraryNow))
+                } else if (existing.inLibrary == null || (markLiked && !existing.liked)) {
+                    // Stamp inLibrary and/or mark liked.
+                    update(
+                        existing.copy(
+                            inLibrary = existing.inLibrary ?: libraryNow,
+                            liked = existing.liked || markLiked,
+                            likedDate = if (markLiked && !existing.liked) libraryNow else existing.likedDate,
+                        )
+                    )
                 }
             }
 

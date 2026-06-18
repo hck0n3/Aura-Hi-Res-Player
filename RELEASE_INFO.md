@@ -1,7 +1,16 @@
-# Aura Hi-Res Player v5.3.11
+# Aura Hi-Res Player v5.4.0
 
-## Volumen más bajo
-- Bajé el volumen general otro **30%**: ahora la salida queda en **~55% del máximo** (≈ −5.2 dB en total). Suena bastante más bajo y sin distorsión. (Solo con el realce de sonido activado; puedes subir el volumen del teléfono a gusto.)
+## Biblioteca y búsqueda
+- **Artistas que sigues** ahora tienen su **propia sección** arriba (ya no quedan debajo de las playlists). Más orden.
+- **Miniaturas más pequeñas** en la biblioteca (playlists/álbumes/artistas) para que se vea mejor.
+- **Solo YouTube Music**: la búsqueda ya no muestra videos de YouTube (se quitó el filtro "Videos" y se ocultan los resultados de video). Adiós a los sketches.
+- Tus **canciones** importadas se ven todas en la pestaña **"Canciones"** de la biblioteca.
+
+## Spotify
+- Las canciones que te **gustan en Spotify** ahora se importan a tus **"Me gusta"** de la app (no solo a una lista).
+
+## Sonido
+- **+0.5 dB** de volumen respecto a la versión anterior.
 
 ## Incluye lo anterior
-- v5.3.10: WebViews endurecidos. v5.3.9: seguridad (logs) + primer recorte de volumen. v5.3.8: álbumes de Spotify → favoritos.
+- v5.3.11: volumen más bajo. v5.3.8: álbumes de Spotify → favoritos. v5.3.7: canvas del artista.

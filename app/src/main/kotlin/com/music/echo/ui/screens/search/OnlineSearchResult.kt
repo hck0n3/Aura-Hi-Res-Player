@@ -401,9 +401,9 @@ fun OnlineSearchResult(
             ) {
             ChipsRow(
                 chips = listOf(
+                    // YouTube Music only — no "Videos" filter (the app is for music, not YT videos).
                     null to stringResource(R.string.filter_all),
                     FILTER_SONG to stringResource(R.string.filter_songs),
-                    FILTER_VIDEO to stringResource(R.string.filter_videos),
                     FILTER_ALBUM to stringResource(R.string.filter_albums),
                     FILTER_ARTIST to stringResource(R.string.filter_artists),
                     FILTER_COMMUNITY_PLAYLIST to stringResource(R.string.filter_community_playlists),
@@ -428,15 +428,20 @@ fun OnlineSearchResult(
             ) {
                 if (searchFilter == null) {
                     searchSummary?.summaries?.forEach { summary ->
+                        // Drop YouTube video results (and any section left empty) — music only.
+                        val musicItems = summary.items.filterNot {
+                            it is com.music.innertube.models.SongItem && it.isVideoSong
+                        }
+                        if (musicItems.isEmpty()) return@forEach
                         item {
                             NavigationTitle(summary.title)
                         }
 
                         itemsIndexed(
-                            items = summary.items,
+                            items = musicItems,
                             key = { index, item -> "${summary.title}/${item.id}/$index" },
                         ) { index, item ->
-                            ytItemContent(item, index, summary.items.size)
+                            ytItemContent(item, index, musicItems.size)
                         }
                     }
 
