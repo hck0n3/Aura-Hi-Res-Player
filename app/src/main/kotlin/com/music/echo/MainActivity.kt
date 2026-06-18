@@ -742,6 +742,7 @@ class MainActivity : ComponentActivity() {
 
                 val (lastOpenedVersionCode, setLastOpenedVersionCode) = rememberPreference(iad1tya.echo.music.constants.LastOpenedVersionCodeKey, -1)
                 var showWelcomeDialog by remember { mutableStateOf(false) }
+                val onboardingArtistsDone by rememberPreference(iad1tya.echo.music.constants.OnboardingArtistsDoneKey, false)
 
                 LaunchedEffect(lastOpenedVersionCode) {
                     if (lastOpenedVersionCode < BuildConfig.VERSION_CODE) {
@@ -1211,8 +1212,14 @@ class MainActivity : ComponentActivity() {
                     if (showWelcomeDialog) {
                         WelcomeDialog(
                             onDismissRequest = {
+                                val wasFirstRun = lastOpenedVersionCode == -1
                                 showWelcomeDialog = false
                                 setLastOpenedVersionCode(BuildConfig.VERSION_CODE)
+                                // First run only: send the user to the artist-onboarding screen so the
+                                // home can be seeded by their taste (independent of signing in).
+                                if (wasFirstRun && !onboardingArtistsDone) {
+                                    navController.navigate("onboarding_artists")
+                                }
                             }
                         )
                     }

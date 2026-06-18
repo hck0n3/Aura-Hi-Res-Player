@@ -14,6 +14,8 @@ import java.time.ZoneOffset
 import com.music.innertube.models.IpVersion
 
 val IsFirstRunKey = booleanPreferencesKey("isFirstRun")
+// First-run artist onboarding (pick >=3 favourite artists) completed.
+val OnboardingArtistsDoneKey = booleanPreferencesKey("onboardingArtistsDone")
 // Seed-version gate (replaces the per-feature boolean guards). Seeds re-run whenever the stored
 // value is below App.CURRENT_SEED_VERSION; a restored backup carries an older value, so this
 // version's feature defaults re-apply after a restore ("new features appear"). See BackupGate.

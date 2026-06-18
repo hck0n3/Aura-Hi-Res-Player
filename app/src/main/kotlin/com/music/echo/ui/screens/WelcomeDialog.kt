@@ -81,20 +81,20 @@ fun WelcomeDialog(
                     WelcomeDivider()
                     WelcomeFeatureRow(
                         iconRes = R.drawable.login,
-                        title = "Tu biblioteca de YouTube",
-                        subtitle = "Inicia sesión y sincroniza playlists, favoritos e historial"
+                        title = "Tu biblioteca y tu Spotify",
+                        subtitle = "Sincroniza playlists, favoritos e historial de YouTube, e importa tus listas, me gusta y álbumes de Spotify"
                     )
                     WelcomeDivider()
                     WelcomeFeatureRow(
                         iconRes = R.drawable.equalizer,
-                        title = "Ecualizador Axion",
-                        subtitle = "10 bandas, perfiles personalizados y presets JR DSP"
+                        title = "Ecualizador de 24 bandas + AutoEq",
+                        subtitle = "Ecualizador gráfico de 24 bandas, JR DSP y perfiles AutoEq para más de 5000 auriculares"
                     )
                     WelcomeDivider()
                     WelcomeFeatureRow(
                         iconRes = R.drawable.tune,
-                        title = "Audio premium",
-                        subtitle = "Visualizador de espectro, crossfeed y control de tempo/pitch"
+                        title = "Audio de alta calidad",
+                        subtitle = "Sonido sin pérdida (Qobuz/Saavn), normalización de volumen, visualizador de espectro y control de tempo/tono"
                     )
                     WelcomeDivider()
                     WelcomeFeatureRow(
@@ -118,7 +118,13 @@ fun WelcomeDialog(
                     WelcomeFeatureRow(
                         iconRes = R.drawable.palette,
                         title = "Temas a tu estilo",
-                        subtitle = "Material You y modo oscuro puro AMOLED"
+                        subtitle = "Acento dinámico, Material You y modo oscuro puro AMOLED"
+                    )
+                    WelcomeDivider()
+                    WelcomeFeatureRow(
+                        iconRes = R.drawable.music_note,
+                        title = "Fondos animados (Canvas)",
+                        subtitle = "Video del artista y del álbum de fondo mientras suena tu música"
                     )
                     WelcomeDivider()
                     WelcomeFeatureRow(
