@@ -1,8 +1,13 @@
-# Aura Hi-Res Player v5.4.4
+# Aura Hi-Res Player v5.4.5
 
-## Arreglo: se reproducía la canción equivocada
-- En álbumes (p. ej. una canción "Dirt" de Lecrae) a veces sonaba **otra canción de otro artista**. Causa: cuando usabas calidad **Lossless/Saavn**, la app buscaba la pista por **título** en esos servicios y, para títulos comunes, traía la de otro artista.
-- Ahora **exige que el artista coincida**: si no encuentra la misma canción del mismo artista en Lossless/Saavn, reproduce la **original de YouTube** (la correcta) en vez de sustituirla por otra.
+## Bienvenida más limpia
+- En la pantalla de bienvenida (primer inicio) se quitó el **icono morado viejo**: ahora solo aparece el nombre **AURA HI-RES**.
+
+## Estados de ánimo / géneros
+- Los textos de los **estados de ánimo y géneros** ahora usan el **color del título** (cian de la marca) para que combinen y se lean mejor.
+
+## Perfiles de ecualización (AutoEq)
+- El catálogo de **+5000 auriculares** ahora se guarda **30 días**: se descarga de internet la primera vez y luego carga **al instante**. Se avisa en pantalla que la primera carga usa internet.
 
 ## Incluye lo anterior
-- v5.4.3: fix de online muerto tras restaurar (proxy/token). v5.4.2: graves/agudos limpios, widget anterior/siguiente.
+- v5.4.4: arreglo de "se reproduce la canción equivocada". v5.4.3: online tras restaurar.

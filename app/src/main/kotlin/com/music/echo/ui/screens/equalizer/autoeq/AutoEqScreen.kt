@@ -93,7 +93,8 @@ fun AutoEqScreen(navController: NavController) {
             modifier = Modifier.padding(top = 16.dp, bottom = 4.dp),
         )
         Text(
-            "Busca tu modelo y aplica su perfil AutoEq al ecualizador.",
+            "Busca tu modelo y aplica su perfil AutoEq al ecualizador. El catálogo (más de 5000 " +
+                "auriculares) se descarga de internet la primera vez y luego queda guardado para cargar al instante.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

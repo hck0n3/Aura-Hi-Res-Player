@@ -139,6 +139,7 @@ fun MoodAndGenresButton(
         Text(
             text = title,
             style = MaterialTheme.typography.labelLarge,
+            color = iad1tya.echo.music.ui.theme.BrandAccent,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )

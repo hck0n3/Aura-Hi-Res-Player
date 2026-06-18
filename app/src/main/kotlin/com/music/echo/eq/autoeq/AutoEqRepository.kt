@@ -42,8 +42,10 @@ class AutoEqRepository(private val context: Context) {
         }.toList()
     }
 
+    // Cache the catalog for 30 days (it rarely changes) so it only downloads once, then loads from
+    // disk instantly. The user can force a refresh from the "Actualizar base de datos" button.
     private fun isFresh(f: File): Boolean =
-        System.currentTimeMillis() - f.lastModified() < 24L * 60 * 60 * 1000
+        System.currentTimeMillis() - f.lastModified() < 30L * 24 * 60 * 60 * 1000
 
     private fun downloadIndexTsv(): String {
         val json = httpGet(

@@ -161,14 +161,6 @@ private fun WelcomeHeader() {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Image(
-                painter = painterResource(R.drawable.jr_logo),
-                contentDescription = null,
-                modifier = Modifier
-                    .size(96.dp)
-                    .clip(RoundedCornerShape(24.dp)),
-            )
-            Spacer(Modifier.height(4.dp))
             Text(
                 text = "¡Bienvenido a",
                 style = MaterialTheme.typography.titleMedium,
