@@ -1825,7 +1825,7 @@ fun BottomSheetPlayer(
             }
 
             // Song title + artist, BELOW the action buttons, full-width and larger so it's easy to read.
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(2.dp))
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1895,7 +1895,8 @@ fun BottomSheetPlayer(
                 }
             }
 
-            Spacer(Modifier.height(if (useNewPlayerDesign) 24.dp else 20.dp))
+            // Tighter gap so the title + buttons sit lower, closer to the progress bar (one-handed reach).
+            Spacer(Modifier.height(8.dp))
 
             if (spectrumVisualizerEnabled) {
                 iad1tya.echo.music.ui.component.SpectrumVisualizer(
@@ -2164,7 +2165,7 @@ fun BottomSheetPlayer(
                 )
             }
 
-            Spacer(Modifier.height(if (useNewPlayerDesign) 24.dp else 12.dp))
+            Spacer(Modifier.height(if (useNewPlayerDesign) 12.dp else 8.dp))
 
             AnimatedVisibility(
                 visible = !isFullScreen,
