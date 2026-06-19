@@ -41,13 +41,14 @@ class PodcastRepository @Inject constructor() {
                     )
                 )
             }
-        }
+        }.distinctBy { it.id } // iTunes can return the same feed twice -> unique keys for the list
     }
 
     suspend fun episodes(show: PodcastShow, limit: Int = 100): List<PodcastEpisode> =
         withContext(Dispatchers.IO) {
             val xml = httpGet(show.feedUrl) ?: return@withContext emptyList()
             runCatching { parseRss(xml, show, limit) }.getOrDefault(emptyList())
+                .distinctBy { it.id } // guard against feeds with duplicate enclosure URLs
         }
 
     private fun httpGet(urlStr: String): String? = runCatching {
