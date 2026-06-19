@@ -1634,7 +1634,12 @@ fun HomeScreen(
                                         },
                                         onClick = {
                                             when (recommendation.title) {
-                                                is Song -> navController.navigate("album/${recommendation.title.album!!.id}")
+                                                // A recommended song may have no album (common for
+                                                // YouTube tracks) — guard the album!! that used to
+                                                // crash when tapping the "Similar a" header.
+                                                is Song -> recommendation.title.album?.id?.let {
+                                                    navController.navigate("album/$it")
+                                                }
                                                 is Album -> navController.navigate("album/${recommendation.title.id}")
                                                 is Artist -> navController.navigate("artist/${recommendation.title.id}")
                                                 is Playlist -> {}

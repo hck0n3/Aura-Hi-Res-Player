@@ -1,8 +1,8 @@
-# Aura Hi-Res Player v5.7.36
+# Aura Hi-Res Player v5.7.37
 
-## Menos cierres por toques + reporte de fallos con el nombre correcto
-- **Red de seguridad ante cierres al tocar la pantalla**: en algunos Xiaomi (con la función "Mirror"/proyección activa) un toque podía provocar un cierre inesperado. Ahora se ignora ese toque puntual en vez de cerrar la app.
-- El **reporte de fallos** ahora muestra el nombre de tu app (**Aura Hi-Res Player**) en vez de "echomusic".
+## Arreglado el cierre al tocar "Similar a"
+- Tocar la cabecera **"Similar a…"** en el Inicio cerraba la app cuando la canción sugerida no tenía álbum. Ya está corregido: si no hay álbum, simplemente no hace nada (y nunca se cierra).
+- Además incluye la red de seguridad de toques de la versión anterior, por si acaso.
 
-## Nota
-- Si vuelve a cerrarse al tocar algo concreto (una pantalla/botón en particular), dime exactamente qué tocaste para localizar la causa exacta.
+## Incluye lo anterior
+- v5.7.36: el reporte de fallos ya muestra el nombre "Aura Hi-Res Player". v5.7.35: Canvas apagado por defecto + Android Auto más estable.
