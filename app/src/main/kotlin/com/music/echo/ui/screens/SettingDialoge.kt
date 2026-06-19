@@ -169,6 +169,11 @@ fun SettingDialoge(
                     compact = true,
                     items = listOf(
                         Material3SettingsItem(
+                            title = { Text("Podcasts") },
+                            icon = painterResource(R.drawable.queue_music),
+                            onClick = { onNavigate("podcasts") }
+                        ),
+                        Material3SettingsItem(
                             title = { Text("Ajustes") },
                             icon = painterResource(R.drawable.settings),
                             onClick = { onNavigate("settings") }

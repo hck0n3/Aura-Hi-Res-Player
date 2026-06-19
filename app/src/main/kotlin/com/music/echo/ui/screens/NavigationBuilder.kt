@@ -447,6 +447,10 @@ fun NavGraphBuilder.navigationBuilder(
         OnboardingSpotifyScreen(navController)
     }
 
+    composable("podcasts") {
+        PodcastScreen(navController)
+    }
+
     composable("recognition") {
         RecognitionScreen(navController)
     }

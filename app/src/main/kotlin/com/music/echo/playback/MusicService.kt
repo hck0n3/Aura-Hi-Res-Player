@@ -2620,6 +2620,11 @@ class MusicService :
         ) { dataSpec ->
             val mediaId = dataSpec.key ?: error("No media id")
             if (mediaId.isLocalMediaId()) return@Factory dataSpec
+            // Podcast episodes (and any direct-URL media) are already a playable audio stream — play
+            // the URL straight through instead of resolving it through YouTube.
+            if (mediaId.startsWith("http://", ignoreCase = true) || mediaId.startsWith("https://", ignoreCase = true)) {
+                return@Factory dataSpec.withUri(mediaId.toUri())
+            }
 
             // Video mode: serve a muxed (video+audio) stream for the active track. Falls through
             // to the normal audio path if no video stream is available.
