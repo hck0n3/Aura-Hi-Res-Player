@@ -82,6 +82,7 @@ fun OldPlayerMenu(
     navController: NavController,
     playerBottomSheetState: BottomSheetState,
     onShowDetailsDialog: () -> Unit,
+    onSleepTimer: () -> Unit = {},
     onDismiss: () -> Unit,
 ) {
     mediaMetadata ?: return
@@ -729,6 +730,23 @@ fun OldPlayerMenu(
                             },
                             onClick = {
                                 navController.navigate("settings/equalizer")
+                                onDismiss()
+                            }
+                        )
+                    )
+
+                    add(
+                        Material3MenuItemData(
+                            title = { Text(text = stringResource(R.string.sleep_timer)) },
+                            icon = {
+                                Icon(
+                                    painter = painterResource(R.drawable.sleep_timer),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            },
+                            onClick = {
+                                onSleepTimer()
                                 onDismiss()
                             }
                         )

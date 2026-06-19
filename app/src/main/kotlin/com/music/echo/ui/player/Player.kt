@@ -1660,14 +1660,15 @@ fun BottomSheetPlayer(
                                                         }
                                                     }
                                                 },
+                                                onSleepTimer = { showSleepTimerDialog = true },
                                                 onDismiss = menuState::dismiss
                                             )
                                         }
                                     },
                             ) {
                                 Icon(
-                                    painter = painterResource(R.drawable.more_vert),
-                                    contentDescription = null,
+                                    painter = painterResource(R.drawable.add),
+                                    contentDescription = "Más opciones",
                                     tint = textButtonColor,
                                     modifier = Modifier
                                         .align(Alignment.Center)
