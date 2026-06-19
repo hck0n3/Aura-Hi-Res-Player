@@ -113,6 +113,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.util.fastAny
@@ -844,11 +845,18 @@ class MainActivity : ComponentActivity() {
                                                             append("HI-RES")
                                                         }
                                                     },
+                                                    // Relative letter spacing (em) so it scales with the
+                                                    // font, and autoSize shrinks the wordmark to fit any
+                                                    // width (e.g. Pixel 8) instead of clipping to "AURA".
                                                     style = MaterialTheme.typography.titleLarge.copy(
-                                                        fontSize = 22.sp,
-                                                        letterSpacing = 5.sp
+                                                        letterSpacing = 0.2.em
                                                     ),
-                                                    maxLines = 1
+                                                    maxLines = 1,
+                                                    softWrap = false,
+                                                    autoSize = androidx.compose.foundation.text.TextAutoSize.StepBased(
+                                                        minFontSize = 12.sp,
+                                                        maxFontSize = 22.sp,
+                                                    ),
                                                 )
                                             } else {
                                                 Text(

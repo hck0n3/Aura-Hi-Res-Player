@@ -1,9 +1,7 @@
-# Aura Hi-Res Player v5.7.39
+# Aura Hi-Res Player v5.7.40
 
-## Podcasts más pulidos
-- **Arranca a la primera**: los episodios ya empiezan a sonar al tocarlos, sin tener que dar pausa y luego play.
-- **"Guardados" mejor organizado**: ahora se muestran en una cuadrícula donde se ven todos, ordenados, en vez de una tira horizontal apretada.
-- **Miniaturas en Guardados**: las portadas ya aparecen; si un podcast no trae portada se muestra un ícono en su lugar (nunca un cuadro vacío). Además, al abrir un podcast se recupera su portada del feed.
+## El título "AURA HI-RES" ya se ve completo
+- El título del inicio ahora se **autoajusta al ancho de la pantalla**: se encoge lo justo para mostrar el nombre completo en cualquier dispositivo (antes en algunos móviles como el Pixel 8 se cortaba a "AURA").
 
 ## Incluye lo anterior
-- v5.7.38: "Similar a" honesto. v5.7.36: red de seguridad de toques + nombre del reporte de fallos.
+- v5.7.39: podcasts arrancan a la primera + "Guardados" en cuadrícula con miniaturas. v5.7.38: "Similar a" honesto.
