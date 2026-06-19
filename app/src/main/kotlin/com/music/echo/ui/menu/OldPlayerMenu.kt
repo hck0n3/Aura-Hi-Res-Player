@@ -719,6 +719,25 @@ fun OldPlayerMenu(
 
                     add(
                         Material3MenuItemData(
+                            title = { Text(text = "Sonido") },
+                            description = { Text(text = "Ajustes de audio y efectos") },
+                            icon = {
+                                Icon(
+                                    painter = painterResource(R.drawable.graphic_eq),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            },
+                            onClick = {
+                                playerBottomSheetState.collapseSoft()
+                                navController.navigate("settings/sound")
+                                onDismiss()
+                            }
+                        )
+                    )
+
+                    add(
+                        Material3MenuItemData(
                             title = { Text(text = stringResource(R.string.equalizer)) },
                             description = { Text(text = stringResource(R.string.equalizer_desc)) },
                             icon = {

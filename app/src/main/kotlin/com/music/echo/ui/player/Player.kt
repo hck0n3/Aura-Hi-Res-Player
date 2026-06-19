@@ -1600,29 +1600,7 @@ fun BottomSheetPlayer(
                         }
                     }
                 } else {
-                    // Quick access to the Sound / equalizer hub from the player.
-                    Box(
-                        modifier = Modifier
-                            .size(40.dp)
-                            .clip(RoundedCornerShape(24.dp))
-                            .background(textButtonColor.copy(alpha = 0.2f))
-                            .clickable {
-                                // Collapse the player so the Sound screen opens in front, not behind it.
-                                state.collapseSoft()
-                                navController.navigate("settings/sound")
-                            },
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.graphic_eq),
-                            contentDescription = "Sonido y ecualizador",
-                            tint = textButtonColor,
-                            modifier = Modifier
-                                .align(Alignment.Center)
-                                .size(24.dp),
-                        )
-                    }
-                    Spacer(modifier = Modifier.size(12.dp))
-
+                    // Sound/equalizer moved into the "+" menu; only the menu (+) button stays up here.
                     AnimatedContent(targetState = showInlineLyrics, label = "DownloadButton") { showLyrics ->
                         if (showLyrics) {
                             Box(

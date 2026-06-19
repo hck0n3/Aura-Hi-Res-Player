@@ -1,9 +1,9 @@
-# Aura Hi-Res Player v5.7.53
+# Aura Hi-Res Player v5.7.54
 
-## Reproductor más ordenado
-- El **temporizador** ahora está **dentro del menú** (el botón al lado del de sonido).
-- Ese botón de menú ahora tiene un icono de **➕** para que se entienda mejor que ahí hay más opciones.
-- El **corazón** y **"No me gusta"** siguen junto al título; el botón de **sonido/ecualizador** sigue a la mano.
+## Reproductor limpio y ordenado
+- Arriba queda **solo un botón "➕"**: dentro tienes **Sonido**, **Ecualizador**, **Temporizador** y las demás opciones.
+- **❤ Me gusta** y **👎 No me gusta** quedan **junto al título**, a la mano.
+- Quité el botón de sonido suelto (su acceso ahora está dentro del "➕").
 
 ## Incluye lo anterior
-- v5.7.52: me gusta / no me gusta junto al título. v5.7.51: controles compactos.
+- v5.7.53: temporizador dentro del menú + icono "+". v5.7.52: me gusta/no me gusta junto al título.
