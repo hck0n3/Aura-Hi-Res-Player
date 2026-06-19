@@ -4,8 +4,10 @@ import android.content.Context
 import android.util.Xml
 import androidx.datastore.preferences.core.edit
 import dagger.hilt.android.qualifiers.ApplicationContext
+import iad1tya.echo.music.constants.ContentCountryKey
 import iad1tya.echo.music.constants.PinnedPodcastsKey
 import iad1tya.echo.music.utils.dataStore
+import iad1tya.echo.music.utils.get
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.Flow
@@ -42,8 +44,13 @@ class PodcastRepository @Inject constructor(
         PodcastCategory(1487, "Música"),
     )
 
-    private val country: String
-        get() = Locale.getDefault().country.lowercase(Locale.ROOT).takeIf { it.length == 2 } ?: "us"
+    /** Region used for the podcast charts: the country configured in the app (Settings -> Content ->
+     *  "País de contenido"); falls back to the device country, then "us". Lowercase 2-letter for iTunes. */
+    suspend fun configuredCountry(): String {
+        val configured = context.dataStore.get(ContentCountryKey, "system")
+        val code = if (configured.isNullOrBlank() || configured == "system") Locale.getDefault().country else configured
+        return code.lowercase(Locale.ROOT).takeIf { it.length == 2 } ?: "us"
+    }
 
     suspend fun search(query: String): List<PodcastShow> = withContext(Dispatchers.IO) {
         if (query.isBlank()) return@withContext emptyList()
@@ -53,8 +60,8 @@ class PodcastRepository @Inject constructor(
         showsFromResults(json).distinctBy { it.id }
     }
 
-    /** Trending shows in a category (Apple top-podcasts chart -> lookup for feed URLs). */
-    suspend fun top(category: PodcastCategory, limit: Int = 12): List<PodcastShow> = withContext(Dispatchers.IO) {
+    /** Trending shows in a category for a region (Apple top-podcasts chart -> lookup for feed URLs). */
+    suspend fun top(category: PodcastCategory, country: String, limit: Int = 12): List<PodcastShow> = withContext(Dispatchers.IO) {
         val rss = httpGet("https://itunes.apple.com/$country/rss/toppodcasts/limit=$limit/genre=${category.genreId}/json")
             ?: return@withContext emptyList()
         val ids = runCatching {

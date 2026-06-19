@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -26,10 +27,15 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import iad1tya.echo.music.constants.CountryCodeToName
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -64,6 +70,8 @@ fun PodcastScreen(
     val episodes by viewModel.episodes.collectAsState()
     val trending by viewModel.trending.collectAsState()
     val pinned by viewModel.pinned.collectAsState()
+    val region by viewModel.region.collectAsState()
+    var showRegionDialog by remember { mutableStateOf(false) }
     val playerConnection = LocalPlayerConnection.current
 
     val showPinned = selectedShow?.let { s -> pinned.any { it.id == s.id } } ?: false
@@ -117,6 +125,21 @@ fun PodcastScreen(
                         }
                     }
                 } else {
+                    // Region filter for the trending catalog (defaults to the app's content country).
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth().clickable { showRegionDialog = true }
+                            .padding(horizontal = 16.dp, vertical = 6.dp),
+                    ) {
+                        Icon(painterResource(R.drawable.trending_up), contentDescription = null, modifier = Modifier.size(18.dp), tint = BrandAccent)
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "Lo más escuchado en: ${CountryCodeToName[region.uppercase()] ?: region.uppercase()}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = BrandAccent,
+                        )
+                    }
                     // Catalog: saved + trending by category
                     LazyColumn {
                         if (pinned.isNotEmpty()) {
@@ -191,6 +214,34 @@ fun PodcastScreen(
                 }
             }
         }
+    }
+
+    if (showRegionDialog) {
+        val regions = (listOf("us" to "Estados Unidos") +
+            CountryCodeToName.toList().map { it.first.lowercase() to it.second }).distinctBy { it.first }
+        AlertDialog(
+            onDismissRequest = { showRegionDialog = false },
+            title = { Text("Región de los podcasts") },
+            text = {
+                LazyColumn(modifier = Modifier.height(360.dp)) {
+                    items(regions, key = { it.first }) { (code, name) ->
+                        Text(
+                            text = name,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    viewModel.setRegion(code)
+                                    showRegionDialog = false
+                                }
+                                .padding(vertical = 12.dp),
+                            fontWeight = if (code == region) FontWeight.Bold else FontWeight.Normal,
+                            color = if (code == region) BrandAccent else MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showRegionDialog = false }) { Text("Cerrar") } },
+        )
     }
 }
 

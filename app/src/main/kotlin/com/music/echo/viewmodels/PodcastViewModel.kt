@@ -43,7 +43,21 @@ class PodcastViewModel @Inject constructor(
 
     val pinned = repository.pinnedShows.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
+    /** Region (2-letter, lowercase) used for the trending charts. Defaults to the app's content country. */
+    val region = MutableStateFlow("us")
+
     init {
+        viewModelScope.launch {
+            region.value = repository.configuredCountry()
+            loadTrending()
+        }
+    }
+
+    fun setRegion(code: String) {
+        val c = code.lowercase()
+        if (c == region.value) return
+        region.value = c
+        trending.value = emptyMap()
         loadTrending()
     }
 
@@ -51,10 +65,11 @@ class PodcastViewModel @Inject constructor(
         if (trending.value.isNotEmpty()) return
         viewModelScope.launch {
             loadingTrending = true
+            val country = region.value.ifBlank { "us" }
             coroutineScope {
                 repository.categories.forEach { cat ->
                     launch(Dispatchers.IO) {
-                        val result = runCatching { repository.top(cat) }.getOrDefault(emptyList())
+                        val result = runCatching { repository.top(cat, country) }.getOrDefault(emptyList())
                         if (result.isNotEmpty()) trending.update { it + (cat to result) }
                     }
                 }
