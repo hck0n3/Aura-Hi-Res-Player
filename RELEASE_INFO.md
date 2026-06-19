@@ -1,7 +1,14 @@
-# Aura Hi-Res Player v5.7.30
+# Aura Hi-Res Player v5.7.31
 
-## Búsqueda universal: también podcasts
-- La **búsqueda principal** ahora también muestra **podcasts** (sección "Podcasts" en los resultados), no solo música. Tócalos y se abre el podcast con sus episodios para reproducir.
+## Podcasts ahora en la Biblioteca
+- El acceso a **Podcasts** se movió del menú de ajustes a la **Biblioteca** (junto a "Álbumes favoritos", "Release Radar", etc.), que es donde tiene más sentido.
+
+## Resumen de las mejoras de podcasts (v5.7.27–5.7.31)
+- **Continuar escuchando** con el minuto donde te quedaste.
+- Tus podcasts **guardados en el Inicio**.
+- **"Ir al podcast"** desde el reproductor.
+- **Búsqueda universal**: música y podcasts juntos.
+- Acceso a Podcasts desde la **Biblioteca**.
 
 ## Incluye lo anterior
-- v5.7.29: "Ir al podcast" desde el reproductor. v5.7.28: tus podcasts guardados en el Inicio.
+- v5.7.30: búsqueda universal con podcasts. v5.7.26: la app reabre bien tras iniciar sesión.
