@@ -47,8 +47,11 @@ class CrashHandler private constructor(
             throwable.printStackTrace(PrintWriter(this))
         }.toString()
 
+        val appName = runCatching {
+            applicationContext.getString(iad1tya.echo.music.R.string.app_name)
+        }.getOrDefault("Aura Hi-Res Player")
         return buildString {
-            appendLine("echomusic Crash Report")
+            appendLine("$appName Crash Report")
             appendLine("=".repeat(50))
             appendLine()
             appendLine("Manufacturer: ${Build.MANUFACTURER}")

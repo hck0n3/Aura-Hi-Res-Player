@@ -1,10 +1,8 @@
-# Aura Hi-Res Player v5.7.35
+# Aura Hi-Res Player v5.7.36
 
-## Android Auto más estable
-- Arreglado un fallo por el que la app podía quedarse "esperando" al conectar al coche (la reanudación de reproducción nunca respondía), lo que la hacía aparecer/desaparecer de forma intermitente.
+## Menos cierres por toques + reporte de fallos con el nombre correcto
+- **Red de seguridad ante cierres al tocar la pantalla**: en algunos Xiaomi (con la función "Mirror"/proyección activa) un toque podía provocar un cierre inesperado. Ahora se ignora ese toque puntual en vez de cerrar la app.
+- El **reporte de fallos** ahora muestra el nombre de tu app (**Aura Hi-Res Player**) en vez de "echomusic".
 
-## Canvas (lienzo) desactivado por defecto
-- Las animaciones de **Canvas** en las portadas (reproductor y álbum) ahora vienen **apagadas por defecto**, igual que "ocultar canciones con video". Puedes activarlas cuando quieras en los ajustes.
-
-## Nota sobre Android Auto en móviles Xiaomi (China/HyperOS)
-- Si la app sigue sin salir siempre en el coche: en el móvil entra a Ajustes de la app → Batería → **sin restricciones**, y activa **Autostart**. HyperOS "congela" apps en segundo plano y eso impide que Android Auto la detecte.
+## Nota
+- Si vuelve a cerrarse al tocar algo concreto (una pantalla/botón en particular), dime exactamente qué tocaste para localizar la causa exacta.

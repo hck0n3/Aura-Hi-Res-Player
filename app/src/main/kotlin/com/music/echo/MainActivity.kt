@@ -338,6 +338,18 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    // Safety net for touch dispatch: some OEM input pipelines (notably Xiaomi's "Mirror") can drive
+    // Compose's pointer dispatch into a rare NullPointerException deep in obfuscated framework code,
+    // which would otherwise take down the whole app on a single tap. Dropping one stray touch is far
+    // better than crashing the session, so we log and continue instead of propagating.
+    override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean =
+        try {
+            super.dispatchTouchEvent(ev)
+        } catch (e: Exception) {
+            timber.log.Timber.e(e, "Swallowed touch-dispatch exception")
+            false
+        }
+
     @SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
