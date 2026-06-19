@@ -1,8 +1,7 @@
-# Aura Hi-Res Player v5.7.28
+# Aura Hi-Res Player v5.7.29
 
-## Tus podcasts guardados, en el Inicio
-- Los podcasts que **guardaste** (con el corazón) ahora aparecen en una fila **"Tus podcasts"** arriba en el **Inicio**, para acceder más rápido.
-- Tócalos y se **abre directo** el podcast con sus episodios.
+## Ir al podcast desde el reproductor
+- Mientras escuchas un episodio, en el menú de tres puntos del reproductor ahora aparece **"Ir al podcast"** → te lleva directo al podcast (creador) con todos sus episodios.
 
 ## Incluye lo anterior
-- v5.7.27: sección "Continuar escuchando" en Podcasts. v5.7.26: la app reabre bien tras iniciar sesión.
+- v5.7.28: tus podcasts guardados en el Inicio. v5.7.27: "Continuar escuchando".

@@ -562,6 +562,41 @@ fun OldPlayerMenu(
                         )
                     }
 
+                    // Podcast episode (direct-URL media): jump to the podcast/creator.
+                    if (mediaMetadata.id.startsWith("http")) {
+                        add(
+                            Material3MenuItemData(
+                                title = { Text(text = "Ir al podcast") },
+                                description = {
+                                    Text(
+                                        text = mediaMetadata.artists.joinToString { it.name },
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                },
+                                icon = {
+                                    Icon(
+                                        painter = painterResource(R.drawable.queue_music),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(24.dp),
+                                    )
+                                },
+                                onClick = {
+                                    val epId = mediaMetadata.id
+                                    coroutineScope.launch {
+                                        val feed = iad1tya.echo.music.podcast.PodcastStoreEntryPoint.get(context).get(epId)?.feedUrl
+                                        playerBottomSheetState.collapseSoft()
+                                        onDismiss()
+                                        navController.navigate(
+                                            if (!feed.isNullOrBlank()) "podcasts?feedUrl=" + java.net.URLEncoder.encode(feed, "UTF-8")
+                                            else "podcasts"
+                                        )
+                                    }
+                                },
+                            )
+                        )
+                    }
+
 
                     val isInLibrary = librarySong?.song?.inLibrary != null
                     add(
