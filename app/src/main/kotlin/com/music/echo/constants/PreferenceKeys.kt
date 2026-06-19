@@ -30,6 +30,9 @@ val OnboardingGenresKey = stringPreferencesKey("onboardingGenres")
 // "No me gusta": disliked song/artist/album/playlist ids (JSON {songs:[],artists:[],albums:[],playlists:[]}).
 // Filtered out of recommendations and skipped during playback so the algorithm stops surfacing them.
 val DislikedItemsKey = stringPreferencesKey("dislikedItems")
+// "Mantener el estilo": keep autoplay in the same lane as what's playing (e.g. Christian -> Christian,
+// not jumping to secular). On by default; best-effort keyword heuristic, never dead-ends playback.
+val KeepGenreLaneKey = booleanPreferencesKey("keepGenreLane")
 // Scheduled Spotify playlist sync: how often to re-import (days; 0 = off) and which source ids (CSV).
 val SpotifyAutoSyncFreqDaysKey = intPreferencesKey("spotifyAutoSyncFreqDays")
 val SpotifyAutoSyncSourceIdsKey = stringPreferencesKey("spotifyAutoSyncSourceIds")

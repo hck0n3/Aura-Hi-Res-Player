@@ -83,6 +83,7 @@ import iad1tya.echo.music.constants.AudioOffload
 import iad1tya.echo.music.constants.AudioQualityKey
 import iad1tya.echo.music.constants.AutoDownloadOnLikeKey
 import iad1tya.echo.music.constants.AutoLoadMoreKey
+import iad1tya.echo.music.constants.KeepGenreLaneKey
 import iad1tya.echo.music.constants.AutoSkipNextOnErrorKey
 import iad1tya.echo.music.constants.CrossfadeDurationKey
 import iad1tya.echo.music.constants.CrossfadeEnabledKey
@@ -1920,11 +1921,40 @@ class MusicService :
             currentQueue.hasNextPage() &&
             !(dataStore.get(DisableLoadMoreWhenRepeatAllKey, false) && player.repeatMode == REPEAT_MODE_ALL)
         ) {
+            // Captured on the player thread: the lane of what's currently playing, so autoplay can
+            // stay in the same style instead of drifting (e.g. Christian -> secular).
+            val curItem = player.currentMediaItem
+            val currentLaneText = listOfNotNull(
+                curItem?.mediaMetadata?.title, curItem?.mediaMetadata?.artist, curItem?.mediaMetadata?.albumTitle,
+            ).joinToString(" ")
+            val keepLane = dataStore.get(KeepGenreLaneKey, true)
             scope.launch(SilentHandler) {
+                val disliked = runCatching { dislikeStore.snapshot() }.getOrDefault(iad1tya.echo.music.dislike.DislikeStore.Disliked())
+                val currentLane = if (keepLane) iad1tya.echo.music.reco.GenreLane.laneOf(currentLaneText) else null
                 val mediaItems = withContext(Dispatchers.IO) {
-                    currentQueue.nextPage()
+                    var next = currentQueue.nextPage()
                         .filterExplicit(dataStore.get(HideExplicitKey, false))
                         .filterVideoSongs(dataStore.get(HideVideoSongsKey, false))
+                    // Never auto-play something the user disliked (the song or a disliked artist).
+                    if (!disliked.isEmpty) {
+                        next = next.filterNot { mi ->
+                            mi.mediaId in disliked.songs ||
+                                (mi.metadata?.artists?.any { it.id != null && it.id in disliked.artists } == true)
+                        }
+                    }
+                    // Keep the lane: if what's playing is clearly in a lane, prefer same-lane songs —
+                    // but only enforce it when there are enough, so playback never dead-ends.
+                    if (currentLane != null) {
+                        val inLane = next.filter { mi ->
+                            iad1tya.echo.music.reco.GenreLane.laneOf(
+                                mi.mediaMetadata.title?.toString(),
+                                mi.mediaMetadata.artist?.toString(),
+                                mi.mediaMetadata.albumTitle?.toString(),
+                            ) == currentLane
+                        }
+                        if (inLane.size >= 2) next = inLane
+                    }
+                    next
                 }
                 if (player.playbackState != STATE_IDLE && mediaItems.isNotEmpty()) {
                     player.addMediaItems(mediaItems)

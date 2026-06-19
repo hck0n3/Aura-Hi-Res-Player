@@ -1,12 +1,11 @@
-# Aura Hi-Res Player v5.7.42
+# Aura Hi-Res Player v5.7.43
 
-## Nuevo: "No me gusta" 👎
-- En el menú del reproductor (tres puntos) ahora está **"No me gusta"**: marca la canción, la **salta** y la **quita** de la cola.
-- Lo que marcas como "No me gusta" deja de **recomendarse en el Inicio** (la canción y su artista no vuelven a aparecer en tus sugerencias).
+## El autoplay mantiene tu estilo 🎯
+- Cuando escuchas música cristiana (rap/reggaetón cristiano, etc.), el **reproductor automático ahora intenta seguir en la misma línea** en vez de saltar a algo secular.
+- Además, el autoplay ya **nunca pone** canciones (ni de artistas) que marcaste como **"No me gusta"**.
 
-## En camino (próximas versiones)
-- "No recomendar" también desde álbumes, artistas y listas (ocultarlos del todo) + avisar al algoritmo de YouTube.
-- Que el autoplay mantenga el **mismo estilo/género** (p. ej. cristiano → cristiano, sin saltar a secular).
+## Nota honesta
+- YouTube no etiqueta el contenido como "cristiano", así que esto es una detección por palabras clave (lo más fina posible) que nunca corta la reproducción. **Cuanto más uses "No me gusta" con lo secular que se cuele, más limpio se mantiene.**
 
 ## Incluye lo anterior
-- v5.7.41: carga más rápida en HiFi. v5.7.40: título que se autoajusta.
+- v5.7.42: botón "No me gusta". v5.7.41: carga más rápida en HiFi.
