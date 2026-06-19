@@ -1,7 +1,8 @@
-# Aura Hi-Res Player v5.7.51
+# Aura Hi-Res Player v5.7.52
 
-## Reproductor más compacto y a la mano
-- Reduje las separaciones entre los **botones, el título y la barra de progreso**: ahora todo queda **más abajo y más junto**, más cómodo de usar con **una sola mano**.
+## Corazón y "No me gusta" junto al título
+- Los botones de **Me gusta (❤)** y **No me gusta (👎)** ahora van **al lado del título de la canción**, a la mano.
+- Los demás botones (**sonido/ecualizador, menú** y, en videos, el cambio a video) quedan en la fila de arriba.
 
 ## Incluye lo anterior
-- v5.7.50: descargar al dar me gusta activado + caché ilimitada + continuar tras actualizar. v5.7.49: título grande + botones arriba.
+- v5.7.51: controles más compactos y a la mano. v5.7.50: descargar al dar me gusta + caché ilimitada + continuar tras actualizar.

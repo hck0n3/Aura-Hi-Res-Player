@@ -1594,46 +1594,8 @@ fun BottomSheetPlayer(
                                     )
                                 }
                             } else {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                ) {
-                                    FilledIconButton(
-                                        onClick = playerConnection::toggleLike,
-                                        shape = favShape,
-                                        colors = IconButtonDefaults.filledIconButtonColors(
-                                            containerColor = textButtonColor,
-                                            contentColor = iconButtonColor,
-                                        ),
-                                        modifier = Modifier.size(42.dp),
-                                    ) {
-                                        Icon(
-                                            painter = painterResource(
-                                                if (currentSong?.song?.liked == true)
-                                                    R.drawable.favorite
-                                                else R.drawable.favorite_border
-                                            ),
-                                            contentDescription = null,
-                                            modifier = Modifier.size(24.dp)
-                                        )
-                                    }
-                                    // "No me gusta" right next to the heart.
-                                    FilledIconButton(
-                                        onClick = playerConnection::dislikeCurrentSong,
-                                        shape = favShape,
-                                        colors = IconButtonDefaults.filledIconButtonColors(
-                                            containerColor = textButtonColor,
-                                            contentColor = iconButtonColor,
-                                        ),
-                                        modifier = Modifier.size(42.dp),
-                                    ) {
-                                        Icon(
-                                            painter = painterResource(R.drawable.thumb_down),
-                                            contentDescription = "No me gusta",
-                                            modifier = Modifier.size(24.dp)
-                                        )
-                                    }
-                                }
+                                // Like/dislike moved next to the song title.
+                                Spacer(Modifier.size(0.dp))
                             }
                         }
                     }
@@ -1753,45 +1715,22 @@ fun BottomSheetPlayer(
                                 )
                             }
                         } else {
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                if (mediaMetadata?.isVideoSong == true) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(40.dp)
-                                            .clip(RoundedCornerShape(24.dp))
-                                            .background(
-                                                if (videoMode) textButtonColor.copy(alpha = 0.45f)
-                                                else textButtonColor.copy(alpha = 0.2f)
-                                            )
-                                            .clickable { playerConnection.toggleVideoMode() },
-                                    ) {
-                                        Icon(
-                                            painter = painterResource(
-                                                if (videoMode) R.drawable.music_note else R.drawable.videocam
-                                            ),
-                                            contentDescription = null,
-                                            tint = textButtonColor,
-                                            modifier = Modifier
-                                                .align(Alignment.Center)
-                                                .size(24.dp),
-                                        )
-                                    }
-                                }
+                            // Video toggle only (for video songs); the like/dislike buttons moved next
+                            // to the song title.
+                            if (mediaMetadata?.isVideoSong == true) {
                                 Box(
                                     modifier = Modifier
                                         .size(40.dp)
                                         .clip(RoundedCornerShape(24.dp))
-                                        .background(textButtonColor.copy(alpha = 0.2f))
-                                        .clickable(onClick = playerConnection::toggleLike),
+                                        .background(
+                                            if (videoMode) textButtonColor.copy(alpha = 0.45f)
+                                            else textButtonColor.copy(alpha = 0.2f)
+                                        )
+                                        .clickable { playerConnection.toggleVideoMode() },
                                 ) {
                                     Icon(
                                         painter = painterResource(
-                                            if (currentSong?.song?.liked == true)
-                                                R.drawable.favorite
-                                            else R.drawable.favorite_border
+                                            if (videoMode) R.drawable.music_note else R.drawable.videocam
                                         ),
                                         contentDescription = null,
                                         tint = textButtonColor,
@@ -1800,24 +1739,8 @@ fun BottomSheetPlayer(
                                             .size(24.dp),
                                     )
                                 }
-                                Spacer(modifier = Modifier.size(8.dp))
-                                // "No me gusta" right next to the heart.
-                                Box(
-                                    modifier = Modifier
-                                        .size(40.dp)
-                                        .clip(RoundedCornerShape(24.dp))
-                                        .background(textButtonColor.copy(alpha = 0.2f))
-                                        .clickable(onClick = playerConnection::dislikeCurrentSong),
-                                ) {
-                                    Icon(
-                                        painter = painterResource(R.drawable.thumb_down),
-                                        contentDescription = "No me gusta",
-                                        tint = textButtonColor,
-                                        modifier = Modifier
-                                            .align(Alignment.Center)
-                                            .size(24.dp),
-                                    )
-                                }
+                            } else {
+                                Spacer(Modifier.size(0.dp))
                             }
                         }
                     }
@@ -1826,11 +1749,14 @@ fun BottomSheetPlayer(
 
             // Song title + artist, BELOW the action buttons, full-width and larger so it's easy to read.
             Spacer(Modifier.height(2.dp))
-            Column(
+            // Title + artist on the left, with "Me gusta" / "No me gusta" right next to it.
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = PlayerHorizontalPadding),
             ) {
+                Column(modifier = Modifier.weight(1f)) {
                 AnimatedContent(
                     targetState = mediaMetadata.title,
                     transitionSpec = { fadeIn() togetherWith fadeOut() },
@@ -1891,6 +1817,39 @@ fun BottomSheetPlayer(
                                     Toast.makeText(context, context.getString(R.string.copied_artist), Toast.LENGTH_SHORT).show()
                                 },
                             ),
+                    )
+                }
+                }
+                Spacer(Modifier.width(8.dp))
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(textButtonColor.copy(alpha = 0.2f))
+                        .clickable(onClick = playerConnection::toggleLike),
+                ) {
+                    Icon(
+                        painter = painterResource(
+                            if (currentSong?.song?.liked == true) R.drawable.favorite else R.drawable.favorite_border
+                        ),
+                        contentDescription = null,
+                        tint = textButtonColor,
+                        modifier = Modifier.align(Alignment.Center).size(24.dp),
+                    )
+                }
+                Spacer(Modifier.width(8.dp))
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(textButtonColor.copy(alpha = 0.2f))
+                        .clickable(onClick = playerConnection::dislikeCurrentSong),
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.thumb_down),
+                        contentDescription = "No me gusta",
+                        tint = textButtonColor,
+                        modifier = Modifier.align(Alignment.Center).size(24.dp),
                     )
                 }
             }
