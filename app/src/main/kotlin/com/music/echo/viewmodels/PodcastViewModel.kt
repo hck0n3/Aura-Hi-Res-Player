@@ -48,7 +48,8 @@ class PodcastViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            region.value = repository.configuredCountry()
+            // Use the user's saved podcast region if any, else the app's content country.
+            region.value = repository.savedRegion() ?: repository.configuredCountry()
             loadTrending()
         }
     }
@@ -58,6 +59,7 @@ class PodcastViewModel @Inject constructor(
         if (c == region.value) return
         region.value = c
         trending.value = emptyMap()
+        viewModelScope.launch { repository.saveRegion(c) }
         loadTrending()
     }
 

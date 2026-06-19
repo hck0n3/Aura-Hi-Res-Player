@@ -25,6 +25,7 @@ import iad1tya.echo.music.utils.reportException
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.net.URLDecoder
 import javax.inject.Inject
@@ -50,19 +51,29 @@ constructor(
             filter.collect { filter ->
                 if (filter == null) {
                     if (summaryPage == null) {
-                        YouTube
-                            .searchSummary(query)
-                            .onSuccess {
-                                val hideExplicit = context.dataStore.get(HideExplicitKey, false)
-                                val hideVideoSongs = context.dataStore.get(HideVideoSongsKey, false)
-                                val hideYoutubeShorts = context.dataStore.get(HideYoutubeShortsKey, false)
-                                summaryPage =
-                                    it.filterExplicit(
-                                        hideExplicit,
-                                    ).filterVideoSongs(hideVideoSongs).filterYoutubeShorts(hideYoutubeShorts)
-                            }.onFailure {
-                                reportException(it)
+                        // Retry on failure: the first search after launch can fail while the guest
+                        // session/visitorData isn't ready yet, which left the results stuck loading
+                        // until the user went back and re-entered.
+                        var attempt = 0
+                        while (summaryPage == null && attempt < 3) {
+                            YouTube
+                                .searchSummary(query)
+                                .onSuccess {
+                                    val hideExplicit = context.dataStore.get(HideExplicitKey, false)
+                                    val hideVideoSongs = context.dataStore.get(HideVideoSongsKey, false)
+                                    val hideYoutubeShorts = context.dataStore.get(HideYoutubeShortsKey, false)
+                                    summaryPage =
+                                        it.filterExplicit(
+                                            hideExplicit,
+                                        ).filterVideoSongs(hideVideoSongs).filterYoutubeShorts(hideYoutubeShorts)
+                                }.onFailure {
+                                    reportException(it)
+                                }
+                            if (summaryPage == null) {
+                                attempt++
+                                delay(700L * attempt)
                             }
+                        }
                     }
                 } else {
                     if (viewStateMap[filter.value] == null) {

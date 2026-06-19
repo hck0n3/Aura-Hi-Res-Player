@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.edit
 import dagger.hilt.android.qualifiers.ApplicationContext
 import iad1tya.echo.music.constants.ContentCountryKey
 import iad1tya.echo.music.constants.PinnedPodcastsKey
+import iad1tya.echo.music.constants.PodcastRegionKey
 import iad1tya.echo.music.utils.dataStore
 import iad1tya.echo.music.utils.get
 import kotlinx.coroutines.Dispatchers
@@ -50,6 +51,14 @@ class PodcastRepository @Inject constructor(
         val configured = context.dataStore.get(ContentCountryKey, "system")
         val code = if (configured.isNullOrBlank() || configured == "system") Locale.getDefault().country else configured
         return code.lowercase(Locale.ROOT).takeIf { it.length == 2 } ?: "us"
+    }
+
+    /** The region the user explicitly picked for podcasts (persisted), or null to use [configuredCountry]. */
+    suspend fun savedRegion(): String? =
+        context.dataStore.get(PodcastRegionKey, "").takeIf { it.length == 2 }
+
+    suspend fun saveRegion(code: String) {
+        context.dataStore.edit { it[PodcastRegionKey] = code.lowercase(Locale.ROOT) }
     }
 
     suspend fun search(query: String): List<PodcastShow> = withContext(Dispatchers.IO) {
