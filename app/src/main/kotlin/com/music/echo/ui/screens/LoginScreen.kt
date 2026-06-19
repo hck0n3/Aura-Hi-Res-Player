@@ -101,8 +101,14 @@ fun LoginScreen(
                         loadUrl("javascript:Android.onRetrieveVisitorData(window.yt.config_.VISITOR_DATA)")
                         loadUrl("javascript:Android.onRetrieveDataSyncId(window.yt.config_.DATASYNC_ID)")
 
-                        if (url?.startsWith("https://music.youtube.com") == true && !hasCompletedLogin) {
-                            innerTubeCookie = CookieManager.getInstance().getCookie(url)
+                        // getCookie(url) can return null (cookies not ready yet) — never force-assign it
+                        // (that crashed with "getCookie(...) must not be null"). Also require the
+                        // authenticated cookie (SAPISID) so we only complete once the user is actually
+                        // signed in; otherwise wait for the next onPageFinished.
+                        val pageCookie = if (url?.startsWith("https://music.youtube.com") == true)
+                            CookieManager.getInstance().getCookie(url) else null
+                        if (!hasCompletedLogin && !pageCookie.isNullOrBlank() && pageCookie.contains("SAPISID")) {
+                            innerTubeCookie = pageCookie
                             hasCompletedLogin = true
 
                             coroutineScope.launch {

@@ -1,7 +1,12 @@
-# Aura Hi-Res Player v5.7.16
+# Aura Hi-Res Player v5.7.17
 
-## Arreglo: cierre al buscar podcasts
-- La búsqueda de podcasts podía **cerrar la app** cuando el directorio devolvía el mismo podcast dos veces (clave repetida en la lista). Ya no: se quitan los duplicados (en shows y episodios).
+## Podcasts como una app dedicada
+- Al entrar a **Podcasts** ahora ves un **catálogo de lo más escuchado**, separado **por temas** (Comedia, Noticias, Sociedad, Negocios, Tecnología, Deportes, Salud, Cine y TV, Música…) — como Spotify/Apple.
+- Dentro de cada podcast, los episodios se ordenan **de menor a mayor** y se **separan por temporada** cuando el podcast trae esa información.
+- **Guarda tus podcasts** favoritos con el corazón ⭐: aparecen arriba en la sección **"Guardados"** para volver rápido.
+
+## Arreglo: cierre al iniciar sesión
+- Se corrigió un cierre al iniciar sesión en Google ("getCookie must not be null") en algunos equipos (Xiaomi/Android nuevos). Además, ahora la sesión solo se da por completada cuando de verdad has iniciado sesión.
 
 ## Incluye lo anterior
-- v5.7.15: Canvas (lienzos) arreglados con proveedor Tidal. v5.7.14: motor de podcasts (Apple/RSS).
+- v5.7.16: fix de cierre al buscar podcasts. v5.7.15: Canvas con proveedor Tidal.

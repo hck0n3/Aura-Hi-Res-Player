@@ -4,6 +4,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -13,8 +14,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -36,16 +38,18 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import iad1tya.echo.music.LocalPlayerConnection
 import iad1tya.echo.music.R
 import iad1tya.echo.music.extensions.toMediaItem
 import iad1tya.echo.music.playback.queues.ListQueue
+import iad1tya.echo.music.podcast.PodcastShow
 import iad1tya.echo.music.podcast.toMediaMetadata
+import iad1tya.echo.music.ui.theme.BrandAccent
 import iad1tya.echo.music.viewmodels.PodcastViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -58,7 +62,11 @@ fun PodcastScreen(
     val shows by viewModel.shows.collectAsState()
     val selectedShow by viewModel.selectedShow.collectAsState()
     val episodes by viewModel.episodes.collectAsState()
+    val trending by viewModel.trending.collectAsState()
+    val pinned by viewModel.pinned.collectAsState()
     val playerConnection = LocalPlayerConnection.current
+
+    val showPinned = selectedShow?.let { s -> pinned.any { it.id == s.id } } ?: false
 
     Scaffold(
         topBar = {
@@ -67,14 +75,23 @@ fun PodcastScreen(
                 navigationIcon = {
                     IconButton(onClick = {
                         if (selectedShow != null) viewModel.closeShow() else navController.navigateUp()
-                    }) {
-                        Icon(painterResource(R.drawable.arrow_back), contentDescription = null)
+                    }) { Icon(painterResource(R.drawable.arrow_back), contentDescription = null) }
+                },
+                actions = {
+                    selectedShow?.let { s ->
+                        IconButton(onClick = { viewModel.togglePin(s) }) {
+                            Icon(
+                                painter = painterResource(R.drawable.favorite),
+                                contentDescription = "Guardar",
+                                tint = if (showPinned) BrandAccent else MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
                 },
             )
         },
     ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp)) {
+        Column(Modifier.fillMaxSize().padding(padding)) {
             if (selectedShow == null) {
                 OutlinedTextField(
                     value = query,
@@ -84,29 +101,39 @@ fun PodcastScreen(
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                     keyboardActions = KeyboardActions(onSearch = { viewModel.search() }),
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                 )
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(8.dp))
+
                 if (viewModel.searching) {
                     Box(Modifier.fillMaxWidth().padding(24.dp), Alignment.Center) { CircularProgressIndicator() }
                 }
-                LazyColumn(Modifier.fillMaxSize()) {
-                    items(shows, key = { it.id }) { show ->
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.fillMaxWidth().clickable { viewModel.openShow(show) }.padding(vertical = 8.dp),
-                        ) {
-                            AsyncImage(
-                                model = show.artworkUrl,
-                                contentDescription = null,
-                                modifier = Modifier.size(56.dp).clip(RoundedCornerShape(8.dp)),
-                            )
-                            Spacer(Modifier.width(12.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text(show.title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                Text(show.author, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+
+                if (query.isNotBlank() && shows.isNotEmpty()) {
+                    // Search results
+                    LazyColumn(contentPadding = PaddingValues(horizontal = 16.dp)) {
+                        items(shows, key = { it.id }) { show ->
+                            ShowRow(show) { viewModel.openShow(show) }
+                        }
+                    }
+                } else {
+                    // Catalog: saved + trending by category
+                    LazyColumn {
+                        if (pinned.isNotEmpty()) {
+                            item { SectionHeader("Guardados") }
+                            item { ShowCarousel(pinned) { viewModel.openShow(it) } }
+                        }
+                        viewModel.categories.forEach { cat ->
+                            val list = trending[cat]
+                            if (!list.isNullOrEmpty()) {
+                                item(key = "h_${cat.genreId}") { SectionHeader(cat.name) }
+                                item(key = "c_${cat.genreId}") { ShowCarousel(list) { viewModel.openShow(it) } }
                             }
                         }
+                        if (viewModel.loadingTrending && trending.isEmpty()) {
+                            item { Box(Modifier.fillMaxWidth().padding(40.dp), Alignment.Center) { CircularProgressIndicator() } }
+                        }
+                        item { Spacer(Modifier.height(24.dp)) }
                     }
                 }
             } else {
@@ -117,41 +144,104 @@ fun PodcastScreen(
                         Text("No se pudieron cargar los episodios.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 } else {
-                    LazyColumn(Modifier.fillMaxSize()) {
-                        itemsIndexed(episodes, key = { _, ep -> ep.id }) { index, ep ->
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        playerConnection?.playQueue(
-                                            ListQueue(
-                                                title = selectedShow?.title,
-                                                items = episodes.map { it.toMediaMetadata().toMediaItem() },
-                                                startIndex = index,
+                    val bySeason = episodes.groupBy { it.season }
+                    LazyColumn(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)) {
+                        bySeason.forEach { (season, eps) ->
+                            if (season != null) {
+                                item(key = "season_$season") { SectionHeader("Temporada $season") }
+                            }
+                            itemsIndexed(eps, key = { _, ep -> ep.id }) { _, ep ->
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            val globalIndex = episodes.indexOfFirst { it.id == ep.id }
+                                            playerConnection?.playQueue(
+                                                ListQueue(
+                                                    title = selectedShow?.title,
+                                                    items = episodes.map { it.toMediaMetadata().toMediaItem() },
+                                                    startIndex = globalIndex.coerceAtLeast(0),
+                                                )
                                             )
-                                        )
+                                        }
+                                        .padding(vertical = 10.dp),
+                                ) {
+                                    AsyncImage(
+                                        model = ep.artworkUrl,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(48.dp).clip(RoundedCornerShape(8.dp)),
+                                    )
+                                    Spacer(Modifier.width(12.dp))
+                                    Column(Modifier.weight(1f)) {
+                                        Text(ep.title, style = MaterialTheme.typography.bodyLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                        val meta = buildString {
+                                            ep.episode?.let { append("Ep. $it") }
+                                            ep.durationSec?.let { if (isNotEmpty()) append(" · "); append("${it / 60} min") }
+                                        }
+                                        if (meta.isNotBlank()) {
+                                            Text(meta, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
                                     }
-                                    .padding(vertical = 10.dp),
-                            ) {
-                                AsyncImage(
-                                    model = ep.artworkUrl,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(48.dp).clip(RoundedCornerShape(8.dp)),
-                                )
-                                Spacer(Modifier.width(12.dp))
-                                Column(Modifier.weight(1f)) {
-                                    Text(ep.title, style = MaterialTheme.typography.bodyLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                    ep.durationSec?.let { secs ->
-                                        Text("${secs / 60} min", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    }
+                                    Icon(painterResource(R.drawable.play), contentDescription = null, modifier = Modifier.size(28.dp))
                                 }
-                                Icon(painterResource(R.drawable.play), contentDescription = null, modifier = Modifier.size(28.dp))
                             }
                         }
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun SectionHeader(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.titleMedium,
+        fontWeight = FontWeight.Bold,
+        modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 8.dp),
+    )
+}
+
+@Composable
+private fun ShowCarousel(shows: List<PodcastShow>, onClick: (PodcastShow) -> Unit) {
+    LazyRow(
+        contentPadding = PaddingValues(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        items(shows, key = { it.id }) { show ->
+            Column(
+                modifier = Modifier.width(130.dp).clickable { onClick(show) },
+            ) {
+                AsyncImage(
+                    model = show.artworkUrl,
+                    contentDescription = null,
+                    modifier = Modifier.size(130.dp).clip(RoundedCornerShape(12.dp)),
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(show.title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(show.author, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ShowRow(show: PodcastShow, onClick: () -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().clickable { onClick() }.padding(vertical = 8.dp),
+    ) {
+        AsyncImage(
+            model = show.artworkUrl,
+            contentDescription = null,
+            modifier = Modifier.size(56.dp).clip(RoundedCornerShape(8.dp)),
+        )
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(show.title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(show.author, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }
