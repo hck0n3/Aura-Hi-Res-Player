@@ -2750,19 +2750,20 @@ fun BottomSheetPlayer(
                     Modifier
                         .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal))
                         .padding(bottom = bottomPadding)
-                        .animateContentSize()
-                        // Swipe left/right anywhere on the player to go to the next/previous song.
-                        // (Interactive children like the slider consume their own drags first.)
-                        .SwipeGesture(
-                            enabled = isFullScreen,
-                            onSwipeRight = { playerConnection.seekToPrevious() },
-                            onSwipeLeft = { playerConnection.seekToNext() },
-                        ),
+                        .animateContentSize(),
                 ) {
                     Box(
                         contentAlignment = Alignment.TopCenter,
                         modifier = Modifier
-                            .weight(1f),
+                            .weight(1f)
+                            // Swipe the artwork left/right to change song. Placed here (deepest cover
+                            // container) and consuming horizontal drags so it wins over the bottom
+                            // sheet's vertical collapse gesture instead of minimizing the player.
+                            .SwipeGesture(
+                                enabled = isFullScreen,
+                                onSwipeRight = { playerConnection.seekToPrevious() },
+                                onSwipeLeft = { playerConnection.seekToNext() },
+                            ),
                     ) {
                         
                         val currentSliderPosition by rememberUpdatedState(sliderPosition)
