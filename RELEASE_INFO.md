@@ -1,8 +1,11 @@
-# Aura Hi-Res Player v5.7.37
+# Aura Hi-Res Player v5.7.38
 
-## Arreglado el cierre al tocar "Similar a"
-- Tocar la cabecera **"Similar a…"** en el Inicio cerraba la app cuando la canción sugerida no tenía álbum. Ya está corregido: si no hay álbum, simplemente no hace nada (y nunca se cierra).
-- Además incluye la red de seguridad de toques de la versión anterior, por si acaso.
+## "Similar a" honesto (sin inventar lo que no hay)
+- La cabecera **"Similar a…"** ahora solo es tocable (y muestra la flecha) cuando hay un destino real:
+  - Canción **con** álbum → abre el álbum.
+  - Canción **sin** álbum → abre su **artista** (que sí existe).
+  - Si no hay nada que abrir → **no es tocable** y no muestra flecha (no engaña al usuario).
+- Esto también elimina por completo el cierre al tocar "Similar a".
 
 ## Incluye lo anterior
-- v5.7.36: el reporte de fallos ya muestra el nombre "Aura Hi-Res Player". v5.7.35: Canvas apagado por defecto + Android Auto más estable.
+- v5.7.37: arreglo inicial del cierre en "Similar a". v5.7.36: red de seguridad de toques + nombre en el reporte de fallos.

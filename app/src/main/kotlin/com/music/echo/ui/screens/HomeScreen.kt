@@ -1614,6 +1614,17 @@ fun HomeScreen(
                             val recommendation = similarRecommendations?.getOrNull(section.index)
                             recommendation?.let {
                                 item(key = "similar_to_title_${section.index}") {
+                                    // Only expose a destination that actually exists, so the header
+                                    // never shows the tap arrow nor implies an album a song doesn't
+                                    // have. A song with no album falls back to its artist (real); if
+                                    // there's nothing to open, the header isn't clickable at all.
+                                    val similarDest: String? = when (val t = recommendation.title) {
+                                        is Song -> t.album?.id?.let { "album/$it" }
+                                            ?: t.artists.firstOrNull()?.id?.let { "artist/$it" }
+                                        is Album -> "album/${t.id}"
+                                        is Artist -> "artist/${t.id}"
+                                        is Playlist -> null
+                                    }
                                     NavigationTitle(
                                         label = stringResource(R.string.similar_to),
                                         title = recommendation.title.title,
@@ -1632,19 +1643,7 @@ fun HomeScreen(
                                                 )
                                             }
                                         },
-                                        onClick = {
-                                            when (recommendation.title) {
-                                                // A recommended song may have no album (common for
-                                                // YouTube tracks) — guard the album!! that used to
-                                                // crash when tapping the "Similar a" header.
-                                                is Song -> recommendation.title.album?.id?.let {
-                                                    navController.navigate("album/$it")
-                                                }
-                                                is Album -> navController.navigate("album/${recommendation.title.id}")
-                                                is Artist -> navController.navigate("artist/${recommendation.title.id}")
-                                                is Playlist -> {}
-                                            }
-                                        },
+                                        onClick = similarDest?.let { d -> { navController.navigate(d) } },
                                         modifier = Modifier.animateItem()
                                     )
                                 }
