@@ -37,6 +37,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.items
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -444,6 +450,40 @@ fun OnlineSearchResult(
                             key = { index, item -> "${summary.title}/${item.id}/$index" },
                         ) { index, item ->
                             ytItemContent(item, index, musicItems.size)
+                        }
+                    }
+
+                    // Universal search: podcasts (Apple/RSS) alongside the music results.
+                    val podcasts = viewModel.podcastResults
+                    if (podcasts.isNotEmpty()) {
+                        item(key = "podcasts_title") { NavigationTitle("Podcasts") }
+                        items(podcasts, key = { "podcast/${it.id}" }) { show ->
+                            androidx.compose.foundation.layout.Row(
+                                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        navController.navigate("podcasts?feedUrl=" + URLEncoder.encode(show.feedUrl, "UTF-8"))
+                                    }
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                            ) {
+                                coil3.compose.AsyncImage(
+                                    model = show.artworkUrl,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(48.dp).clip(RoundedCornerShape(8.dp)),
+                                )
+                                androidx.compose.foundation.layout.Spacer(Modifier.width(12.dp))
+                                androidx.compose.foundation.layout.Column(Modifier.weight(1f)) {
+                                    Text(show.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(
+                                        show.author,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                            }
                         }
                     }
 

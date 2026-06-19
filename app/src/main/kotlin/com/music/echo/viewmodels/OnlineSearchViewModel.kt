@@ -36,6 +36,7 @@ class OnlineSearchViewModel
 constructor(
     @ApplicationContext val context: Context,
     savedStateHandle: SavedStateHandle,
+    private val podcastRepository: iad1tya.echo.music.podcast.PodcastRepository,
 ) : ViewModel() {
     val query = try {
         URLDecoder.decode(savedStateHandle.get<String>("query")!!, "UTF-8")
@@ -45,6 +46,16 @@ constructor(
     val filter = MutableStateFlow<YouTube.SearchFilter?>(null)
     var summaryPage by mutableStateOf<SearchSummaryPage?>(null)
     val viewStateMap = mutableStateMapOf<String, ItemsPage?>()
+
+    /** Universal search: podcasts from the Apple/RSS engine, shown alongside the YouTube results. */
+    var podcastResults by mutableStateOf<List<iad1tya.echo.music.podcast.PodcastShow>>(emptyList())
+        private set
+
+    init {
+        viewModelScope.launch {
+            podcastResults = runCatching { podcastRepository.search(query) }.getOrDefault(emptyList()).take(8)
+        }
+    }
 
     init {
         viewModelScope.launch {
