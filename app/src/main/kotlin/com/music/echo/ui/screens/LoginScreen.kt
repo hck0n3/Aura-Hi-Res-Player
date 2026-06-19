@@ -50,25 +50,22 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import timber.log.Timber
 
-/** Cold-restarts the app so every screen reloads in the new (authenticated) state. */
+/**
+ * Cold-restarts the app so every screen reloads in the new (authenticated) state. Uses
+ * ProcessPhoenix (a dedicated relaunch process) which is reliable across devices — the previous
+ * AlarmManager / startActivity-then-exit approaches often just closed the app without reopening on
+ * Xiaomi/Doze devices.
+ */
 private fun restartApp(context: Context) {
-    val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)
-        ?.apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK) }
-    if (intent != null) {
-        // Schedule the relaunch via AlarmManager so the app reliably reopens AFTER we kill the
-        // process. Calling startActivity() right before exit(0) races on many devices and leaves the
-        // app simply closed (= "it didn't restart after login").
-        val pending = android.app.PendingIntent.getActivity(
-            context,
-            0xA0DA,
-            intent,
-            android.app.PendingIntent.FLAG_CANCEL_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE,
-        )
-        val am = context.getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager
-        am.set(android.app.AlarmManager.RTC, System.currentTimeMillis() + 350L, pending)
-    }
-    if (context is Activity) context.finish()
-    Runtime.getRuntime().exit(0)
+    runCatching { com.jakewharton.processphoenix.ProcessPhoenix.triggerRebirth(context) }
+        .onFailure {
+            // Fallback: best-effort relaunch + exit if Phoenix isn't available for some reason.
+            context.packageManager.getLaunchIntentForPackage(context.packageName)
+                ?.apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK) }
+                ?.let { context.startActivity(it) }
+            if (context is Activity) context.finishAffinity()
+            Runtime.getRuntime().exit(0)
+        }
 }
 
 @SuppressLint("SetJavaScriptEnabled")

@@ -41,8 +41,8 @@ android {
         buildConfigField("Boolean", "REQUIRE_SUBSCRIPTION", (!noSub).toString())
         minSdk = 26
         targetSdk = 36
-        versionCode = 581
-        versionName = "5.7.25"
+        versionCode = 582
+        versionName = "5.7.26"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -336,6 +336,8 @@ dependencies {
 
     coreLibraryDesugaring(libs.desugaring)
     implementation(libs.timber)
+    // Reliable cold app-restart (used after Google login) — replaces the flaky AlarmManager relaunch.
+    implementation("com.jakewharton:process-phoenix:3.0.0")
     implementation(libs.smoothCorner)
     implementation(libs.lottie.compose)
     implementation("androidx.compose.material:material-icons-extended:1.7.8")

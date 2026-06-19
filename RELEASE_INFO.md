@@ -1,7 +1,8 @@
-# Aura Hi-Res Player v5.7.25
+# Aura Hi-Res Player v5.7.26
 
-## Volumen más fuerte
-- Subí el volumen general de salida (~+2.7 dB) — antes había quedado bajo por el recorte que pusimos para evitar distorsión. El limitador true-peak sigue protegiendo de saturación, así que suena más fuerte y limpio. Si lo quieres aún más alto, avísame.
+## Arreglo: la app se cerraba al iniciar sesión
+- Después de iniciar sesión en Google, la app **debía reiniciarse** para aplicar la sesión, pero en algunos equipos (Xiaomi/ahorro de batería) **solo se cerraba** y no volvía a abrir. Ahora usa un reinicio confiable → vuelve a abrir ya con la sesión aplicada.
+- Esto además arregla que, ya con sesión iniciada, **no cargaran las sugerencias ni el apartado "Álbumes"** (era porque la sesión quedaba aplicada a medias al no reiniciar bien).
 
 ## Incluye lo anterior
-- v5.7.24: arreglo de cierre al descargar la actualización (Android 14+). v5.7.23: los podcasts recuerdan dónde te quedaste.
+- v5.7.25: volumen más fuerte. v5.7.24: arreglo de cierre al descargar la actualización.
