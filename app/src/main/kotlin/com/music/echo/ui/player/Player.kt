@@ -1729,24 +1729,45 @@ fun BottomSheetPlayer(
                                     )
                                 }
                             } else {
-                                FilledIconButton(
-                                    onClick = playerConnection::toggleLike,
-                                    shape = favShape,
-                                    colors = IconButtonDefaults.filledIconButtonColors(
-                                        containerColor = textButtonColor,
-                                        contentColor = iconButtonColor,
-                                    ),
-                                    modifier = Modifier.size(42.dp),
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 ) {
-                                    Icon(
-                                        painter = painterResource(
-                                            if (currentSong?.song?.liked == true)
-                                                R.drawable.favorite
-                                            else R.drawable.favorite_border
+                                    FilledIconButton(
+                                        onClick = playerConnection::toggleLike,
+                                        shape = favShape,
+                                        colors = IconButtonDefaults.filledIconButtonColors(
+                                            containerColor = textButtonColor,
+                                            contentColor = iconButtonColor,
                                         ),
-                                        contentDescription = null,
-                                        modifier = Modifier.size(24.dp)
-                                    )
+                                        modifier = Modifier.size(42.dp),
+                                    ) {
+                                        Icon(
+                                            painter = painterResource(
+                                                if (currentSong?.song?.liked == true)
+                                                    R.drawable.favorite
+                                                else R.drawable.favorite_border
+                                            ),
+                                            contentDescription = null,
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                    }
+                                    // "No me gusta" right next to the heart.
+                                    FilledIconButton(
+                                        onClick = playerConnection::dislikeCurrentSong,
+                                        shape = favShape,
+                                        colors = IconButtonDefaults.filledIconButtonColors(
+                                            containerColor = textButtonColor,
+                                            contentColor = iconButtonColor,
+                                        ),
+                                        modifier = Modifier.size(42.dp),
+                                    ) {
+                                        Icon(
+                                            painter = painterResource(R.drawable.thumb_down),
+                                            contentDescription = "No me gusta",
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -1908,6 +1929,24 @@ fun BottomSheetPlayer(
                                             else R.drawable.favorite_border
                                         ),
                                         contentDescription = null,
+                                        tint = textButtonColor,
+                                        modifier = Modifier
+                                            .align(Alignment.Center)
+                                            .size(24.dp),
+                                    )
+                                }
+                                Spacer(modifier = Modifier.size(8.dp))
+                                // "No me gusta" right next to the heart.
+                                Box(
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .clip(RoundedCornerShape(24.dp))
+                                        .background(textButtonColor.copy(alpha = 0.2f))
+                                        .clickable(onClick = playerConnection::dislikeCurrentSong),
+                                ) {
+                                    Icon(
+                                        painter = painterResource(R.drawable.thumb_down),
+                                        contentDescription = "No me gusta",
                                         tint = textButtonColor,
                                         modifier = Modifier
                                             .align(Alignment.Center)
