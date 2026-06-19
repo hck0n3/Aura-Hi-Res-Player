@@ -1174,6 +1174,22 @@ fun ContentSettings(
                     onClick = { onKeepGenreLaneChange(!keepGenreLane) }
                 ),
                 Material3SettingsItem(
+                    icon = painterResource(R.drawable.battery_charging),
+                    title = { Text("Evitar que el sistema cierre la app") },
+                    description = { Text("Quita la app de la optimización de batería para que la música no se corte en segundo plano y aparezca siempre en Android Auto (recomendado en Xiaomi/HyperOS).") },
+                    onClick = {
+                        iad1tya.echo.music.utils.BackgroundReliability.requestIgnoreBatteryOptimizations(context)
+                    }
+                ),
+                Material3SettingsItem(
+                    icon = painterResource(R.drawable.settings),
+                    title = { Text("Ajustes del sistema de la app") },
+                    description = { Text("Abre la ficha de la app para activar 'Inicio automático/Autostart' (necesario en algunas capas para que no la maten).") },
+                    onClick = {
+                        iad1tya.echo.music.utils.BackgroundReliability.openAppDetails(context)
+                    }
+                ),
+                Material3SettingsItem(
                     icon = painterResource(R.drawable.shuffle),
                     title = { Text(stringResource(R.string.randomize_home_order)) },
                     description = { Text(stringResource(R.string.randomize_home_order_desc)) },
