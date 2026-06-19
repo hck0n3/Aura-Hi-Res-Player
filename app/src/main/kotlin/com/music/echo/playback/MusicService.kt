@@ -261,7 +261,10 @@ class MusicService :
 
     @Inject
     lateinit var listenTogetherManager: iad1tya.echo.music.listentogether.ListenTogetherManager
-    
+
+    @Inject
+    lateinit var podcastProgressStore: iad1tya.echo.music.podcast.PodcastProgressStore
+
 
     private lateinit var audioManager: AudioManager
     private var audioFocusRequest: AudioFocusRequest? = null
@@ -520,6 +523,19 @@ class MusicService :
         player.addListener(sleepTimer)
         playerInitialized.value = true
         Timber.tag(TAG).d("Player successfully initialized")
+
+        // Remember podcast (direct-URL) playback position so episodes resume / show "finished".
+        scope.launch {
+            while (true) {
+                kotlinx.coroutines.delay(5000)
+                val snapshot = withContext(Dispatchers.Main) {
+                    val id = player.currentMediaItem?.mediaId
+                    if (id != null && id.startsWith("http", ignoreCase = true) && player.isPlaying && player.duration > 0)
+                        Triple(id, player.currentPosition, player.duration) else null
+                }
+                snapshot?.let { (id, pos, dur) -> runCatching { podcastProgressStore.save(id, pos, dur) } }
+            }
+        }
 
         audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         abandonAudioFocus()

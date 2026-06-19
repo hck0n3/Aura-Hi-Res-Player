@@ -31,6 +31,8 @@ val SpotifyAutoSyncSourceIdsKey = stringPreferencesKey("spotifyAutoSyncSourceIds
 val PinnedPodcastsKey = stringPreferencesKey("pinnedPodcasts")
 // Region (2-letter) the user picked for the podcast charts (persisted across sessions).
 val PodcastRegionKey = stringPreferencesKey("podcastRegion")
+// Per-episode playback progress (JSON map: audioUrl -> {pos,dur,fin,at}) so podcasts resume.
+val PodcastProgressKey = stringPreferencesKey("podcastProgress")
 // Seed-version gate (replaces the per-feature boolean guards). Seeds re-run whenever the stored
 // value is below App.CURRENT_SEED_VERSION; a restored backup carries an older value, so this
 // version's feature defaults re-apply after a restore ("new features appear"). See BackupGate.

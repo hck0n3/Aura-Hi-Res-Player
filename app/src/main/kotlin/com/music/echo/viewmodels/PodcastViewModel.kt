@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import iad1tya.echo.music.podcast.PodcastCategory
 import iad1tya.echo.music.podcast.PodcastEpisode
+import iad1tya.echo.music.podcast.PodcastProgressStore
 import iad1tya.echo.music.podcast.PodcastRepository
 import iad1tya.echo.music.podcast.PodcastShow
 import kotlinx.coroutines.Dispatchers
@@ -22,7 +23,11 @@ import javax.inject.Inject
 @HiltViewModel
 class PodcastViewModel @Inject constructor(
     private val repository: PodcastRepository,
+    progressStore: PodcastProgressStore,
 ) : ViewModel() {
+
+    /** Per-episode listen progress (audio URL -> progress) for resume / "finished" state. */
+    val progress = progressStore.progress.stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
 
     val categories: List<PodcastCategory> = repository.categories
 

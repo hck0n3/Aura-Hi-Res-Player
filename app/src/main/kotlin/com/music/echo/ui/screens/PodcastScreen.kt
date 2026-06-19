@@ -71,6 +71,7 @@ fun PodcastScreen(
     val trending by viewModel.trending.collectAsState()
     val pinned by viewModel.pinned.collectAsState()
     val region by viewModel.region.collectAsState()
+    val progress by viewModel.progress.collectAsState()
     var showRegionDialog by remember { mutableStateOf(false) }
     val playerConnection = LocalPlayerConnection.current
 
@@ -174,36 +175,49 @@ fun PodcastScreen(
                                 item(key = "season_$season") { SectionHeader("Temporada $season") }
                             }
                             itemsIndexed(eps, key = { _, ep -> ep.id }) { _, ep ->
+                                val ep0 = ep
+                                val prog = progress[ep0.id]
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .clickable {
-                                            val globalIndex = episodes.indexOfFirst { it.id == ep.id }
+                                            val globalIndex = episodes.indexOfFirst { it.id == ep0.id }
+                                            // Resume where the user left off (unless finished).
+                                            val resumeMs = progress[ep0.id]?.takeIf { !it.finished }?.positionMs ?: 0L
                                             playerConnection?.playQueue(
                                                 ListQueue(
                                                     title = selectedShow?.title,
                                                     items = episodes.map { it.toMediaMetadata().toMediaItem() },
                                                     startIndex = globalIndex.coerceAtLeast(0),
+                                                    position = resumeMs,
                                                 )
                                             )
                                         }
                                         .padding(vertical = 10.dp),
                                 ) {
                                     AsyncImage(
-                                        model = ep.artworkUrl,
+                                        model = ep0.artworkUrl,
                                         contentDescription = null,
                                         modifier = Modifier.size(48.dp).clip(RoundedCornerShape(8.dp)),
                                     )
                                     Spacer(Modifier.width(12.dp))
                                     Column(Modifier.weight(1f)) {
-                                        Text(ep.title, style = MaterialTheme.typography.bodyLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                        Text(ep0.title, style = MaterialTheme.typography.bodyLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                         val meta = buildString {
-                                            ep.episode?.let { append("Ep. $it") }
-                                            ep.durationSec?.let { if (isNotEmpty()) append(" · "); append("${it / 60} min") }
+                                            ep0.episode?.let { append("Ep. $it") }
+                                            ep0.durationSec?.let { if (isNotEmpty()) append(" · "); append("${it / 60} min") }
+                                        }
+                                        val stateText = when {
+                                            prog?.finished == true -> "✓ Finalizado"
+                                            prog != null && prog.positionMs > 0 -> "▶ Continuar (min ${prog.positionMs / 60000})"
+                                            else -> null
                                         }
                                         if (meta.isNotBlank()) {
                                             Text(meta, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
+                                        if (stateText != null) {
+                                            Text(stateText, style = MaterialTheme.typography.bodySmall, color = BrandAccent)
                                         }
                                     }
                                     Icon(painterResource(R.drawable.play), contentDescription = null, modifier = Modifier.size(28.dp))
