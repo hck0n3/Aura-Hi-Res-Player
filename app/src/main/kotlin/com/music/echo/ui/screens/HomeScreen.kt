@@ -7,6 +7,7 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
@@ -575,6 +576,7 @@ fun HomeScreen(
     val explorePage by viewModel.explorePage.collectAsState()
     val dailyDiscover by viewModel.dailyDiscover.collectAsState()
     val communityPlaylists by viewModel.communityPlaylists.collectAsState()
+    val pinnedPodcasts by viewModel.pinnedPodcasts.collectAsState(initial = emptyList())
 
     val allLocalItems by viewModel.allLocalItems.collectAsState()
     val allYtItems by viewModel.allYtItems.collectAsState()
@@ -959,6 +961,46 @@ fun HomeScreen(
                             viewModel.toggleChip(it)
                         }
                     )
+                }
+
+                if (pinnedPodcasts.isNotEmpty()) {
+                    item(key = "home_pinned_podcasts") {
+                        Column {
+                            Text(
+                                text = "Tus podcasts",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 8.dp),
+                            )
+                            LazyRow(
+                                contentPadding = PaddingValues(horizontal = 16.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            ) {
+                                items(pinnedPodcasts, key = { it.id }) { show ->
+                                    Column(
+                                        modifier = Modifier
+                                            .width(110.dp)
+                                            .clickable {
+                                                navController.navigate("podcasts?feedUrl=" + java.net.URLEncoder.encode(show.feedUrl, "UTF-8"))
+                                            },
+                                    ) {
+                                        coil3.compose.AsyncImage(
+                                            model = show.artworkUrl,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(110.dp).clip(RoundedCornerShape(12.dp)),
+                                        )
+                                        Spacer(Modifier.height(4.dp))
+                                        Text(
+                                            text = show.title,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
 
                 if (isLoading && homePage?.chips.isNullOrEmpty()) {

@@ -447,7 +447,16 @@ fun NavGraphBuilder.navigationBuilder(
         OnboardingSpotifyScreen(navController)
     }
 
-    composable("podcasts") {
+    composable(
+        "podcasts?feedUrl={feedUrl}",
+        arguments = listOf(
+            androidx.navigation.navArgument("feedUrl") {
+                type = androidx.navigation.NavType.StringType
+                nullable = true
+                defaultValue = null
+            },
+        ),
+    ) {
         PodcastScreen(navController)
     }
 

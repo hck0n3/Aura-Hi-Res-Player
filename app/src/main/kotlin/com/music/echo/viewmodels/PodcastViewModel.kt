@@ -3,8 +3,10 @@ package iad1tya.echo.music.viewmodels
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.flow.first
 import dagger.hilt.android.lifecycle.HiltViewModel
 import iad1tya.echo.music.podcast.PodcastCategory
 import iad1tya.echo.music.podcast.PodcastEpisode
@@ -24,7 +26,13 @@ import javax.inject.Inject
 class PodcastViewModel @Inject constructor(
     private val repository: PodcastRepository,
     private val progressStore: PodcastProgressStore,
+    savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
+
+    // Optional deep-link arg: open a specific show straight away (e.g. tapped from the home).
+    private val openFeedUrl: String? = savedStateHandle.get<String>("feedUrl")
+        ?.let { runCatching { java.net.URLDecoder.decode(it, "UTF-8") }.getOrDefault(it) }
+        ?.takeIf { it.isNotBlank() }
 
     /** Per-episode listen progress (audio URL -> progress) for resume / "finished" state. */
     val progress = progressStore.progress.stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
@@ -61,6 +69,14 @@ class PodcastViewModel @Inject constructor(
             // Use the user's saved podcast region if any, else the app's content country.
             region.value = repository.savedRegion() ?: repository.configuredCountry()
             loadTrending()
+        }
+        // Deep-link: open the requested show directly (matching a pinned show for full metadata).
+        openFeedUrl?.let { feed ->
+            viewModelScope.launch {
+                val show = repository.pinnedShows.first().find { it.feedUrl == feed }
+                    ?: PodcastShow(id = feed, title = "Podcast", author = "", artworkUrl = null, feedUrl = feed)
+                openShow(show)
+            }
         }
     }
 

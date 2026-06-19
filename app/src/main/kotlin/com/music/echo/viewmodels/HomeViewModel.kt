@@ -73,7 +73,11 @@ class HomeViewModel @Inject constructor(
     @ApplicationContext val context: Context,
     val database: MusicDatabase,
     val syncUtils: SyncUtils,
+    podcastRepository: iad1tya.echo.music.podcast.PodcastRepository,
 ) : ViewModel() {
+    /** Saved/pinned podcasts, surfaced on the home for quick access. */
+    val pinnedPodcasts: kotlinx.coroutines.flow.Flow<List<iad1tya.echo.music.podcast.PodcastShow>> =
+        podcastRepository.pinnedShows
     val isRefreshing = MutableStateFlow(false)
     val isLoading = MutableStateFlow(false)
     val isRandomizing = MutableStateFlow(false)

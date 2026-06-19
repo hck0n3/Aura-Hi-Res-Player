@@ -1,8 +1,8 @@
-# Aura Hi-Res Player v5.7.27
+# Aura Hi-Res Player v5.7.28
 
-## Podcasts: "Continuar escuchando"
-- Nueva sección **"Continuar escuchando"** arriba en Podcasts: los episodios que dejaste a medias, con su carátula, el podcast y el **minuto** donde te quedaste. Tócalos para **reanudar** justo desde ahí.
-- Se llena solo a medida que escuchas (se actualiza con tu progreso, también en segundo plano).
+## Tus podcasts guardados, en el Inicio
+- Los podcasts que **guardaste** (con el corazón) ahora aparecen en una fila **"Tus podcasts"** arriba en el **Inicio**, para acceder más rápido.
+- Tócalos y se **abre directo** el podcast con sus episodios.
 
 ## Incluye lo anterior
-- v5.7.26: la app reabre bien tras iniciar sesión. v5.7.25: volumen más fuerte.
+- v5.7.27: sección "Continuar escuchando" en Podcasts. v5.7.26: la app reabre bien tras iniciar sesión.
