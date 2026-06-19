@@ -130,9 +130,11 @@ object YTPlayerUtils {
         if (audioQuality == AudioQuality.LOSSLESS) {
             var qobuzAttempt: Result<PlaybackData>? = null
             var lastException: Exception? = null
-            for (attempt in 1..3) {
+            // 2×9s (was 3×15s): caps the worst-case lossless wait at ~18s before falling back to
+            // Saavn/Opus, so a slow/down Qobuz no longer makes every HiFi track take up to 45s to start.
+            for (attempt in 1..2) {
                 try {
-                    qobuzAttempt = kotlinx.coroutines.withTimeoutOrNull(15000L) {
+                    qobuzAttempt = kotlinx.coroutines.withTimeoutOrNull(9000L) {
                         val metadata = playerResponseForMetadata(videoId).getOrNull()
                         val title = knownTitle ?: metadata?.videoDetails?.title
                         val author = knownArtist ?: metadata?.videoDetails?.author?.replace(" - Topic", "")

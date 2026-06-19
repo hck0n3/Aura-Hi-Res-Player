@@ -1,7 +1,8 @@
-# Aura Hi-Res Player v5.7.40
+# Aura Hi-Res Player v5.7.41
 
-## El título "AURA HI-RES" ya se ve completo
-- El título del inicio ahora se **autoajusta al ancho de la pantalla**: se encoge lo justo para mostrar el nombre completo en cualquier dispositivo (antes en algunos móviles como el Pixel 8 se cortaba a "AURA").
+## Carga más rápida en modo HiFi (Lossless)
+- En calidad **Lossless**, cada canción buscaba en Qobuz hasta 3×15s (≈45s) antes de pasar a la siguiente fuente. Ahora el tope es ~18s (2×9s), así que las canciones empiezan mucho antes cuando Qobuz va lento.
+- ¿Notas la reproducción lenta? Si tienes **Calidad = Lossless**, esa búsqueda extra es lo que tarda. En **Ajustes → Sonido → Calidad de audio = Normal/Alta (Opus)** carga al instante (directo de YouTube).
 
 ## Incluye lo anterior
-- v5.7.39: podcasts arrancan a la primera + "Guardados" en cuadrícula con miniaturas. v5.7.38: "Similar a" honesto.
+- v5.7.40: el título "AURA HI-RES" se autoajusta. v5.7.39: podcasts arrancan a la primera + Guardados en cuadrícula.
