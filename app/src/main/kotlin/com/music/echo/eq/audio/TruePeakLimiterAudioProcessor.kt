@@ -53,8 +53,9 @@ class TruePeakLimiterAudioProcessor : AudioProcessor {
         private const val MAX_MAKEUP = 4.0f
         // Master output trim (linear): a global volume reduction so the loudness pipeline drives the
         // limiter less hard and stops sounding "too loud / distorted".
-        // 0.80 ≈ -1.9 dB — user asked for it louder again; the −1 dBTP limiter still catches peaks.
-        private const val OUTPUT_TRIM = 0.80f
+        // 0.92 ≈ -0.7 dB — user still wanted it louder; near unity. The -0.45 dBFS soft limiter
+        // (softLimit ceiling 0.95) still catches inter-sample peaks, so it stays clean.
+        private const val OUTPUT_TRIM = 0.92f
 
         /** Per-track loudness makeup (linear, >= 1). 1.0 = no boost. Set from MusicService. */
         @Volatile

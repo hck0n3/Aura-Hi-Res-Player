@@ -52,6 +52,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import javax.inject.Inject
@@ -537,6 +538,10 @@ class HomeViewModel @Inject constructor(
         val hideVideoSongs = context.dataStore.get(HideVideoSongsKey, false)
         val hideYoutubeShorts = context.dataStore.get(HideYoutubeShortsKey, false)
 
+        // Hard ceiling so a throttled/hung YouTube call (e.g. while a big Spotify import is hammering
+        // the network) can NEVER leave the home stuck "loading forever" — whatever arrived in time is
+        // shown, the rest is cancelled and the refresh spinner clears.
+        withTimeoutOrNull(25_000) {
         coroutineScope {
             launch(Dispatchers.IO) { getDailyDiscover() }
             launch(Dispatchers.IO) { getCommunityPlaylists() }
@@ -565,8 +570,9 @@ class HomeViewModel @Inject constructor(
                 launch(Dispatchers.IO) { loadAccountPlaylists() }
             }
         }
+        }
 
-        
+
         allYtItems.value = similarRecommendations.value?.flatMap { it.items }.orEmpty() +
                 homePage.value?.sections?.flatMap { it.items }.orEmpty()
     }

@@ -1,14 +1,9 @@
-# Aura Hi-Res Player v5.7.31
+# Aura Hi-Res Player v5.7.32
 
-## Podcasts ahora en la Biblioteca
-- El acceso a **Podcasts** se movió del menú de ajustes a la **Biblioteca** (junto a "Álbumes favoritos", "Release Radar", etc.), que es donde tiene más sentido.
+## Más estable con bibliotecas grandes (y más volumen)
+- **Arreglado el cuelgue al cambiar de canción** tras importar muchas canciones: la importación de Spotify ahora es más suave y ya no satura la red ni frena la reproducción.
+- **El Inicio ya no se queda cargando para siempre**: si la red va lenta, muestra lo que llegó y corta el resto (techo de 25 s).
+- **Volumen aún más fuerte** (cerca del máximo), sin distorsión.
 
-## Resumen de las mejoras de podcasts (v5.7.27–5.7.31)
-- **Continuar escuchando** con el minuto donde te quedaste.
-- Tus podcasts **guardados en el Inicio**.
-- **"Ir al podcast"** desde el reproductor.
-- **Búsqueda universal**: música y podcasts juntos.
-- Acceso a Podcasts desde la **Biblioteca**.
-
-## Incluye lo anterior
-- v5.7.30: búsqueda universal con podcasts. v5.7.26: la app reabre bien tras iniciar sesión.
+## Nota
+- Si importas miles de canciones, deja que la importación termine en segundo plano; tus "Me gusta" de Spotify aparecen en tu biblioteca al completarse.

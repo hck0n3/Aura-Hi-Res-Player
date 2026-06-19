@@ -937,7 +937,10 @@ class SpotifyImportRepository @Inject constructor(
     )
 
     companion object {
-        private const val MAX_CONCURRENT_MATCHES = 4
+        // Keep YouTube matching gentle: a big library (4000+ liked songs = 4000 searches) at high
+        // concurrency trips YouTube's IP rate-limiter, which then also throttles live playback's
+        // stream resolution — the song-change "hangs for minutes" bug. 2 is a safe, polite ceiling.
+        private const val MAX_CONCURRENT_MATCHES = 2
         private const val MAX_CONCURRENT_SPOTIFY_COUNT_REQUESTS = 4
         private const val TOKEN_EXPIRY_GRACE_MS = 60_000L
     }
