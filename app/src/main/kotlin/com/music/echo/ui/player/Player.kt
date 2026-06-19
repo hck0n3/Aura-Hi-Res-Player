@@ -233,7 +233,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 import iad1tya.echo.music.applecanvas.AppleMusicCanvasProvider
 import iad1tya.echo.music.canvas.AppleMusicArtistBackgroundProvider
 import iad1tya.echo.music.canvas.CanvasArtwork
-import iad1tya.echo.music.canvas.MonochromeApiCanvas
+import iad1tya.echo.music.canvas.TidalCanvasProvider
 import iad1tya.echo.music.constants.CanvasThumbnailAnimationKey
 import iad1tya.echo.music.extensions.metadata
 import iad1tya.echo.music.ui.player.CanvasArtworkPlaybackCache
@@ -591,15 +591,16 @@ fun BottomSheetPlayer(
             val a = normalizeCanvasArtistName(requestedArtist)
 
             val fetched = (if (requestedAlbum.isNotBlank()) {
-                    // Album-level lookup first — same as the album screen and the cover canvas. Most
-                    // Apple "Canvas" motion art is album/track scoped, so without this the player
-                    // background almost never finds anything (the per-song lookups below rarely hit).
-                    AppleMusicCanvasProvider.getByAlbumArtist(album = requestedAlbum, artist = a, storefront = storefront)
+                    // Album-level lookups first (most motion art is album/track scoped). Tidal has the
+                    // widest coverage of real video covers, so it's tried before Apple.
+                    TidalCanvasProvider.getByAlbumArtist(album = requestedAlbum, artist = a)
                         ?.takeIf { !it.preferredAnimationUrl.isNullOrBlank() }
+                        ?: AppleMusicCanvasProvider.getByAlbumArtist(album = requestedAlbum, artist = a, storefront = storefront)
+                            ?.takeIf { !it.preferredAnimationUrl.isNullOrBlank() }
                 } else null)
                 ?: echomusicCanvasProvider.getBySongArtist(s, a)
                 ?.takeIf { !it.preferredAnimationUrl.isNullOrBlank() }
-                ?: MonochromeApiCanvas.getBySongArtist(s, a, requestedAlbum)
+                ?: TidalCanvasProvider.getBySongArtist(s, a, requestedAlbum)
                 ?.takeIf { !it.preferredAnimationUrl.isNullOrBlank() }
                 ?: AppleMusicCanvasProvider.getBySongArtist(s, a, requestedAlbum, storefront)
                 ?.takeIf { !it.preferredAnimationUrl.isNullOrBlank() }

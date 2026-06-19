@@ -1,9 +1,9 @@
-# Aura Hi-Res Player v5.7.14
+# Aura Hi-Res Player v5.7.15
 
-## Podcasts de verdad (motor propio, sin depender de YouTube ni Spotify)
-- Nuevo apartado **Podcasts** (menú → Podcasts): busca en el directorio de **Apple/iTunes** y reproduce los **episodios reales** (audio directo del podcast), igual que en otras apps.
-- Funciona con la **inmensa mayoría** de podcasts del mundo (los mismos que ves en Spotify/Apple), **salvo** los exclusivos de Spotify (esos están bloqueados por DRM y no se pueden en ninguna app externa).
-- Los episodios se reproducen con tu reproductor normal (cola, controles, etc.).
+## Canvas (lienzos) arreglados — álbum y reproductor
+- Encontré la causa real: la app usaba un proveedor de Canvas **muerto** (no devolvía videos), por eso no animaba ni en el álbum ni en el reproductor.
+- Ahora usa el proveedor **Tidal** (videos de portada reales), igual que la versión de referencia → los Canvas **vuelven a funcionar** en el álbum y en el reproductor.
+- Ya venían **activados por defecto**; si los habías apagado, vuelve a activarlos en **Apariencia → Canvas** (y el de álbum en **Contenido**).
 
 ## Incluye lo anterior
-- v5.7.13: "Ocultar canciones con video" apagado por defecto. v5.7.12: TV menos gigante.
+- v5.7.14: motor de podcasts (Apple/RSS). v5.7.13: ocultar videos apagado por defecto.

@@ -11,8 +11,7 @@ import androidx.compose.runtime.setValue
 import iad1tya.echo.music.applecanvas.AppleMusicCanvasProvider
 import iad1tya.echo.music.echomusiccanvas.echomusicCanvasProvider
 import iad1tya.echo.music.canvas.CanvasArtwork
-import iad1tya.echo.music.canvas.MonochromeAlbumCanvas
-import iad1tya.echo.music.canvas.MonochromeApiCanvas
+import iad1tya.echo.music.canvas.TidalCanvasProvider
 import iad1tya.echo.music.ui.player.CanvasArtworkPlaybackCache
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -68,10 +67,11 @@ fun rememberAlbumCanvas(
                         song = s,
                         artist = a
                     )?.takeIf { !it.preferredAnimationUrl.isNullOrBlank() }
-                    ?: MonochromeAlbumCanvas.getByAlbumArtist(
+                    ?: TidalCanvasProvider.getByAlbumArtist(
                         album = s,
                         artist = a
-                    ) ?: MonochromeApiCanvas.getBySongArtist(
+                    )?.takeIf { !it.preferredAnimationUrl.isNullOrBlank() }
+                    ?: TidalCanvasProvider.getBySongArtist(
                         song = s,
                         artist = a,
                         album = albumTitle
