@@ -2687,8 +2687,14 @@ fun BottomSheetPlayer(
                         modifier = Modifier
                             .weight(1f)
                             .nestedScroll(state.preUpPostDownNestedScrollConnection)
+                            // Swipe the artwork left/right to change song (landscape).
+                            .SwipeGesture(
+                                enabled = isFullScreen,
+                                onSwipeRight = { playerConnection.seekToPrevious() },
+                                onSwipeLeft = { playerConnection.seekToNext() },
+                            )
                     ) {
-                        
+
                         val currentSliderPosition by rememberUpdatedState(sliderPosition)
                         val sliderPositionProvider = remember { { currentSliderPosition } }
                         val isExpandedProvider = remember(state) { { state.isExpanded } }
@@ -2744,7 +2750,14 @@ fun BottomSheetPlayer(
                     Modifier
                         .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal))
                         .padding(bottom = bottomPadding)
-                        .animateContentSize(),
+                        .animateContentSize()
+                        // Swipe left/right anywhere on the player to go to the next/previous song.
+                        // (Interactive children like the slider consume their own drags first.)
+                        .SwipeGesture(
+                            enabled = isFullScreen,
+                            onSwipeRight = { playerConnection.seekToPrevious() },
+                            onSwipeLeft = { playerConnection.seekToNext() },
+                        ),
                 ) {
                     Box(
                         contentAlignment = Alignment.TopCenter,
