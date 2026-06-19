@@ -113,6 +113,7 @@ import iad1tya.echo.music.constants.InnerTubeCookieKey
 import iad1tya.echo.music.constants.ListItemHeight
 import iad1tya.echo.music.constants.ListThumbnailSize
 import iad1tya.echo.music.constants.HomeTasteOnlyKey
+import iad1tya.echo.music.constants.HomeRichLayoutKey
 import iad1tya.echo.music.constants.RandomizeHomeOrderKey
 import iad1tya.echo.music.constants.ShowSpeedDialKey
 import iad1tya.echo.music.constants.SmallGridThumbnailHeight
@@ -598,6 +599,9 @@ fun HomeScreen(
     val (randomizeHomeOrder) = rememberPreference(RandomizeHomeOrderKey, true)
     val (showSpeedDial) = rememberPreference(ShowSpeedDialKey, true)
     val (tasteOnlyHome) = rememberPreference(HomeTasteOnlyKey, true)
+    val (homeRichLayout) = rememberPreference(HomeRichLayoutKey, true)
+    // Editorial look: bigger artwork cards in the taste rows. Null = compact (default component size).
+    val richCardHeight: androidx.compose.ui.unit.Dp? = if (homeRichLayout) GridThumbnailHeight * 1.25f else null
 
 
     val isLoggedIn = remember(innerTubeCookie) {
@@ -739,13 +743,14 @@ fun HomeScreen(
         }
     }
 
-    val ytGridItem: @Composable (YTItem) -> Unit = { item ->
+    val ytGridItem: @Composable (YTItem, androidx.compose.ui.unit.Dp?) -> Unit = { item, heightOverride ->
         YouTubeGridItem(
             item = item,
             isActive = item.id in listOf(mediaMetadata?.album?.id, mediaMetadata?.id),
             isPlaying = isPlaying,
             coroutineScope = scope,
             thumbnailRatio = 1f,
+            thumbnailHeightOverride = heightOverride,
             modifier = Modifier
                 .combinedClickable(
                     onClick = {
@@ -1501,7 +1506,7 @@ fun HomeScreen(
                                             items = accountPlaylists.distinctBy { it.id },
                                             key = { it.id },
                                         ) { item ->
-                                            ytGridItem(item)
+                                            ytGridItem(item, richCardHeight)
                                         }
                                     }
                                 }
@@ -1647,7 +1652,7 @@ fun HomeScreen(
                                         modifier = Modifier.animateItem()
                                     ) {
                                         items(recommendation.items) { item ->
-                                            ytGridItem(item)
+                                            ytGridItem(item, richCardHeight)
                                         }
                                     }
                                 }
@@ -1787,7 +1792,7 @@ fun HomeScreen(
                                             modifier = Modifier.animateItem()
                                         ) {
                                             items(sectionData.items) { item ->
-                                                ytGridItem(item)
+                                                ytGridItem(item, richCardHeight)
                                             }
                                         }
                                     }

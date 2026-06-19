@@ -22,6 +22,9 @@ val LastUpdateNotifiedTagKey = stringPreferencesKey("lastUpdateNotifiedTag")
 // algorithm on those). When true, the generic "From the community" and "Mood & genres" browse
 // sections are hidden so nothing unrelated to the user's taste appears.
 val HomeTasteOnlyKey = booleanPreferencesKey("homeTasteOnly")
+// Richer/editorial home layout (bigger artwork cards in the taste rows). On by default; the user
+// can turn it off from Appearance settings to return to the compact card look.
+val HomeRichLayoutKey = booleanPreferencesKey("homeRichLayout")
 // Optional genres the user picked during onboarding (CSV), a soft taste signal.
 val OnboardingGenresKey = stringPreferencesKey("onboardingGenres")
 // Scheduled Spotify playlist sync: how often to re-import (days; 0 = off) and which source ids (CSV).

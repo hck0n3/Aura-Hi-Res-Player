@@ -164,6 +164,10 @@ fun ContentSettings(
         iad1tya.echo.music.constants.HomeTasteOnlyKey,
         defaultValue = true
     )
+    val (homeRichLayout, onHomeRichLayoutChange) = rememberPreference(
+        iad1tya.echo.music.constants.HomeRichLayoutKey,
+        defaultValue = true
+    )
     val (ipVersion, onIpVersionChange) = rememberEnumPreference(
         IpVersionKey,
         defaultValue = IpVersion.AUTO
@@ -1122,6 +1126,27 @@ fun ContentSettings(
                         )
                     },
                     onClick = { onTasteOnlyHomeChange(!tasteOnlyHome) }
+                ),
+                Material3SettingsItem(
+                    icon = painterResource(R.drawable.home_outlined),
+                    title = { Text("Inicio enriquecido") },
+                    description = { Text("Carátulas más grandes y presentación editorial en el inicio. Desactívalo para volver al estilo compacto de cuadritos.") },
+                    trailingContent = {
+                        Switch(
+                            checked = homeRichLayout,
+                            onCheckedChange = onHomeRichLayoutChange,
+                            thumbContent = {
+                                Icon(
+                                    painter = painterResource(
+                                        id = if (homeRichLayout) R.drawable.check else R.drawable.close
+                                    ),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(SwitchDefaults.IconSize)
+                                )
+                            }
+                        )
+                    },
+                    onClick = { onHomeRichLayoutChange(!homeRichLayout) }
                 ),
                 Material3SettingsItem(
                     icon = painterResource(R.drawable.shuffle),

@@ -1,9 +1,8 @@
-# Aura Hi-Res Player v5.7.32
+# Aura Hi-Res Player v5.7.33
 
-## Más estable con bibliotecas grandes (y más volumen)
-- **Arreglado el cuelgue al cambiar de canción** tras importar muchas canciones: la importación de Spotify ahora es más suave y ya no satura la red ni frena la reproducción.
-- **El Inicio ya no se queda cargando para siempre**: si la red va lenta, muestra lo que llegó y corta el resto (techo de 25 s).
-- **Volumen aún más fuerte** (cerca del máximo), sin distorsión.
+## Inicio con mejor presentación
+- Nuevo **"Inicio enriquecido"**: las filas de tus gustos ahora se ven con **carátulas más grandes** y un estilo más editorial (menos "cuadritos chiquitos").
+- Si no te gusta, lo puedes **desactivar** en **Ajustes → Contenido → Inicio enriquecido** y vuelve al estilo compacto de antes.
 
-## Nota
-- Si importas miles de canciones, deja que la importación termine en segundo plano; tus "Me gusta" de Spotify aparecen en tu biblioteca al completarse.
+## Incluye lo anterior
+- v5.7.32: arreglado el cuelgue al cambiar de canción con bibliotecas grandes, el inicio ya no se queda cargando para siempre, y más volumen.

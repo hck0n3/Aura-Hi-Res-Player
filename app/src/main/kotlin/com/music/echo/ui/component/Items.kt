@@ -298,8 +298,9 @@ fun GridItem(
     thumbnailContent: @Composable BoxWithConstraintsScope.() -> Unit,
     thumbnailRatio: Float = 1f,
     fillMaxWidth: Boolean = false,
+    thumbnailHeightOverride: Dp? = null,
 ) {
-    val gridHeight = currentGridThumbnailHeight()
+    val gridHeight = thumbnailHeightOverride ?: currentGridThumbnailHeight()
     Column(
         modifier = if (fillMaxWidth) {
             modifier
@@ -1127,6 +1128,7 @@ fun YouTubeGridItem(
     isActive: Boolean = false,
     isPlaying: Boolean = false,
     fillMaxWidth: Boolean = false,
+    thumbnailHeightOverride: Dp? = null,
 ) = GridItem(
     title = {
         Text(
@@ -1197,6 +1199,7 @@ fun YouTubeGridItem(
     },
     thumbnailRatio = thumbnailRatio,
     fillMaxWidth = fillMaxWidth,
+    thumbnailHeightOverride = thumbnailHeightOverride,
     modifier = modifier
 )
 
