@@ -38,8 +38,8 @@ class PodcastViewModel @Inject constructor(
     val progress = progressStore.progress.stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
 
     /** Record that an episode was started (for the "Continuar escuchando" history). */
-    fun recordPlay(episode: PodcastEpisode, feedUrl: String?) {
-        viewModelScope.launch { progressStore.recordPlay(episode, feedUrl) }
+    fun recordPlay(episode: PodcastEpisode, feedUrl: String?, fallbackArtwork: String? = null) {
+        viewModelScope.launch { progressStore.recordPlay(episode, feedUrl, fallbackArtwork) }
     }
 
     val categories: List<PodcastCategory> = repository.categories

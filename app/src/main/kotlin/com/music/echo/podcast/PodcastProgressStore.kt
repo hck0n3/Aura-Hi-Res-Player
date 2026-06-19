@@ -42,7 +42,7 @@ class PodcastProgressStore @Inject constructor(
     suspend fun get(url: String): Progress? = parse(context.dataStore.get(PodcastProgressKey, ""))[url]
 
     /** Called when the user starts an episode: stores its display info, keeps any existing position. */
-    suspend fun recordPlay(episode: PodcastEpisode, feedUrl: String?) {
+    suspend fun recordPlay(episode: PodcastEpisode, feedUrl: String?, fallbackArtwork: String? = null) {
         context.dataStore.edit { prefs ->
             val map = parse(prefs[PodcastProgressKey]).toMutableMap()
             val existing = map[episode.id]
@@ -54,7 +54,9 @@ class PodcastProgressStore @Inject constructor(
                 updatedAt = System.currentTimeMillis(),
                 title = episode.title,
                 showTitle = episode.showTitle,
-                artworkUrl = episode.artworkUrl,
+                // Episode art, else the show's cover, else keep whatever we already had — so the
+                // "Continuar escuchando" card is never left without a thumbnail.
+                artworkUrl = episode.artworkUrl ?: fallbackArtwork ?: existing?.artworkUrl,
                 feedUrl = feedUrl ?: existing?.feedUrl,
             )
             prefs[PodcastProgressKey] = toJson(trim(map))

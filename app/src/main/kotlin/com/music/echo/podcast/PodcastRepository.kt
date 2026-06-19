@@ -151,6 +151,11 @@ class PodcastRepository @Inject constructor(
         var duration: String? = null
         var season: Int? = null
         var episodeNum: Int? = null
+        // Channel-level cover (always present in a podcast feed): final fallback so episodes — and the
+        // "Continuar escuchando" history built from them — always have artwork, even when the show was
+        // opened via a deep-link with no artwork (e.g. from the home or the player's "Ir al podcast").
+        var channelImage: String? = null
+        var inImage = false
         var text = StringBuilder()
 
         var event = parser.eventType
@@ -171,6 +176,10 @@ class PodcastRepository @Inject constructor(
                         inItem && (name.equals("itunes:image", true) || name.equals("image", true)) -> {
                             parser.getAttributeValue(null, "href")?.let { itemImage = it }
                         }
+                        !inItem && name.equals("itunes:image", true) -> {
+                            parser.getAttributeValue(null, "href")?.let { if (channelImage == null) channelImage = it }
+                        }
+                        !inItem && name.equals("image", true) -> { inImage = true; text = StringBuilder() }
                         else -> text = StringBuilder()
                     }
                 }
@@ -182,6 +191,9 @@ class PodcastRepository @Inject constructor(
                         inItem && name.equals("itunes:duration", true) -> duration = text.toString().trim()
                         inItem && name.equals("itunes:season", true) -> season = text.toString().trim().toIntOrNull()
                         inItem && name.equals("itunes:episode", true) -> episodeNum = text.toString().trim().toIntOrNull()
+                        inImage && !inItem && name.equals("url", true) ->
+                            if (channelImage == null) channelImage = text.toString().trim().takeIf { it.isNotBlank() }
+                        !inItem && name.equals("image", true) -> inImage = false
                         name.equals("item", true) -> {
                             val a = audioUrl
                             if (!a.isNullOrBlank()) {
@@ -190,7 +202,7 @@ class PodcastRepository @Inject constructor(
                                         id = a,
                                         title = title?.ifBlank { show.title } ?: show.title,
                                         audioUrl = a,
-                                        artworkUrl = itemImage ?: show.artworkUrl,
+                                        artworkUrl = itemImage ?: show.artworkUrl ?: channelImage,
                                         showTitle = show.title,
                                         author = show.author,
                                         durationSec = parseDuration(duration),

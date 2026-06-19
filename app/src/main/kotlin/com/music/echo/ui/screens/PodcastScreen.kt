@@ -215,7 +215,7 @@ fun PodcastScreen(
                                             val globalIndex = episodes.indexOfFirst { it.id == ep0.id }
                                             // Resume where the user left off (unless finished).
                                             val resumeMs = progress[ep0.id]?.takeIf { !it.finished }?.positionMs ?: 0L
-                                            viewModel.recordPlay(ep0, selectedShow?.feedUrl)
+                                            viewModel.recordPlay(ep0, selectedShow?.feedUrl, selectedShow?.artworkUrl)
                                             playerConnection?.playQueue(
                                                 ListQueue(
                                                     title = selectedShow?.title,

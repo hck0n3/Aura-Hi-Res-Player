@@ -1,8 +1,7 @@
-# Aura Hi-Res Player v5.7.33
+# Aura Hi-Res Player v5.7.34
 
-## Inicio con mejor presentación
-- Nuevo **"Inicio enriquecido"**: las filas de tus gustos ahora se ven con **carátulas más grandes** y un estilo más editorial (menos "cuadritos chiquitos").
-- Si no te gusta, lo puedes **desactivar** en **Ajustes → Contenido → Inicio enriquecido** y vuelve al estilo compacto de antes.
+## Portada en el historial de podcasts
+- Arreglado: en **"Continuar escuchando"** algunos episodios salían **sin portada**. Ahora el episodio siempre toma una portada (la suya, la del programa o la imagen del feed), así que el historial se ve completo.
 
 ## Incluye lo anterior
-- v5.7.32: arreglado el cuelgue al cambiar de canción con bibliotecas grandes, el inicio ya no se queda cargando para siempre, y más volumen.
+- v5.7.33: inicio enriquecido (con interruptor para desactivarlo). v5.7.32: arreglado el cuelgue al cambiar de canción + más volumen.
