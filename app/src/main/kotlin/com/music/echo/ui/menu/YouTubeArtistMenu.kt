@@ -193,6 +193,22 @@ fun YouTubeArtistMenu(
                                 }
                             }
                         }
+                    ),
+                    Material3MenuItemData(
+                        title = { Text(text = "No recomendar") },
+                        description = { Text(text = "Ocultar este artista de tus recomendaciones") },
+                        icon = {
+                            Icon(
+                                painter = painterResource(R.drawable.thumb_down),
+                                contentDescription = null,
+                            )
+                        },
+                        onClick = {
+                            coroutineScope.launch {
+                                iad1tya.echo.music.dislike.DislikeStoreEntryPoint.get(context).dislikeArtist(artist.id)
+                            }
+                            onDismiss()
+                        }
                     )
                 )
             )

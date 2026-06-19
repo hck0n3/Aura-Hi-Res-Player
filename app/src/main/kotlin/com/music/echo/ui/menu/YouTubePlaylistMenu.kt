@@ -406,6 +406,22 @@ fun YouTubePlaylistMenu(
         item {
             Material3MenuGroup(
                 items = listOfNotNull(
+                    Material3MenuItemData(
+                        title = { Text(text = "No recomendar") },
+                        description = { Text(text = "Ocultar esta lista de tus recomendaciones") },
+                        icon = {
+                            Icon(
+                                painter = painterResource(R.drawable.thumb_down),
+                                contentDescription = null,
+                            )
+                        },
+                        onClick = {
+                            coroutineScope.launch {
+                                iad1tya.echo.music.dislike.DislikeStoreEntryPoint.get(context).dislikePlaylist(playlist.id)
+                            }
+                            onDismiss()
+                        }
+                    ),
                     if (!isGuest) {
                         Material3MenuItemData(
                             title = { Text(text = stringResource(R.string.play_next)) },

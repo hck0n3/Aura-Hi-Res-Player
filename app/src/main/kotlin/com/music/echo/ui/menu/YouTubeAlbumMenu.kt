@@ -384,6 +384,22 @@ fun YouTubeAlbumMenu(
                         )
                     } else null,
                     Material3MenuItemData(
+                        title = { Text(text = "No recomendar") },
+                        description = { Text(text = "Ocultar este álbum de tus recomendaciones") },
+                        icon = {
+                            Icon(
+                                painter = painterResource(R.drawable.thumb_down),
+                                contentDescription = null,
+                            )
+                        },
+                        onClick = {
+                            coroutineScope.launch {
+                                iad1tya.echo.music.dislike.DislikeStoreEntryPoint.get(context).dislikeAlbum(albumItem.id)
+                            }
+                            onDismiss()
+                        }
+                    ),
+                    Material3MenuItemData(
                         title = { Text(text = stringResource(R.string.add_to_playlist)) },
                         description = { Text(text = stringResource(R.string.add_to_playlist_desc)) },
                         icon = {

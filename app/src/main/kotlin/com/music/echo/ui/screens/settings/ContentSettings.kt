@@ -168,6 +168,10 @@ fun ContentSettings(
         iad1tya.echo.music.constants.HomeRichLayoutKey,
         defaultValue = true
     )
+    val (keepGenreLane, onKeepGenreLaneChange) = rememberPreference(
+        iad1tya.echo.music.constants.KeepGenreLaneKey,
+        defaultValue = true
+    )
     val (ipVersion, onIpVersionChange) = rememberEnumPreference(
         IpVersionKey,
         defaultValue = IpVersion.AUTO
@@ -1147,6 +1151,27 @@ fun ContentSettings(
                         )
                     },
                     onClick = { onHomeRichLayoutChange(!homeRichLayout) }
+                ),
+                Material3SettingsItem(
+                    icon = painterResource(R.drawable.radio),
+                    title = { Text("Mantener el estilo en autoplay") },
+                    description = { Text("El reproductor automático intenta seguir en la misma línea (p. ej. música cristiana sigue cristiana). Detección por palabras clave; tus 'No me gusta' la afinan.") },
+                    trailingContent = {
+                        Switch(
+                            checked = keepGenreLane,
+                            onCheckedChange = onKeepGenreLaneChange,
+                            thumbContent = {
+                                Icon(
+                                    painter = painterResource(
+                                        id = if (keepGenreLane) R.drawable.check else R.drawable.close
+                                    ),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(SwitchDefaults.IconSize)
+                                )
+                            }
+                        )
+                    },
+                    onClick = { onKeepGenreLaneChange(!keepGenreLane) }
                 ),
                 Material3SettingsItem(
                     icon = painterResource(R.drawable.shuffle),
