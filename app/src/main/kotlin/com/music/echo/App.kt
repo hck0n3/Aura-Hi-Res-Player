@@ -399,16 +399,18 @@ class App : Application(), SingletonImageLoader.Factory {
     }
 
     override fun newImageLoader(context: PlatformContext): ImageLoader {
+        // Default the image cache to a large size (2 GB on disk, half the app's RAM in memory) so
+        // artwork loads instantly and isn't re-downloaded; the user can still lower it in settings.
         val cacheSize = runBlocking {
-            dataStore.data.map { it[MaxImageCacheSizeKey] ?: 512 }.first()
+            dataStore.data.map { it[MaxImageCacheSizeKey] ?: 2048 }.first()
         }
         return ImageLoader.Builder(this).apply {
             crossfade(true)
             allowHardware(Build.VERSION.SDK_INT >= Build.VERSION_CODES.P)
-            
+
             memoryCache {
                 MemoryCache.Builder()
-                    .maxSizePercent(context, 0.25)
+                    .maxSizePercent(context, 0.5)
                     .build()
             }
             if (cacheSize == 0) {

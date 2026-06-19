@@ -541,6 +541,20 @@ class MusicService :
             }
         }
 
+        // Persist the playback position periodically (not just on track/play changes), so if the app is
+        // killed mid-song — e.g. by an app update — it resumes exactly where it left off on next launch.
+        scope.launch {
+            while (true) {
+                kotlinx.coroutines.delay(8000)
+                val shouldSave = withContext(Dispatchers.Main) {
+                    player.isPlaying && player.mediaItemCount > 0
+                }
+                if (shouldSave && dataStore.get(PersistentQueueKey, true)) {
+                    runCatching { savePlaybackPositionToDisk() }
+                }
+            }
+        }
+
         audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         abandonAudioFocus()
         setupAudioFocusRequest()
@@ -1686,7 +1700,7 @@ class MusicService :
                     syncUtils.likeSong(song)
 
                     
-                    if (dataStore.get(AutoDownloadOnLikeKey, false) && song.liked) {
+                    if (dataStore.get(AutoDownloadOnLikeKey, true) && song.liked) {
                         
                         val downloadRequest =
                             androidx.media3.exoplayer.offline.DownloadRequest
@@ -2982,6 +2996,31 @@ class MusicService :
                         .onFailure {
                             reportException(it)
                         }
+                }
+            }
+        }
+    }
+
+    /**
+     * Lightweight position checkpoint: writes only the player-state file (index + position + flags),
+     * captured on the calling (Main) thread and flushed on IO. Used by the periodic saver so an app
+     * update mid-song resumes at the exact position. The queue file itself is saved on queue changes.
+     */
+    private fun savePlaybackPositionToDisk() {
+        if (player.mediaItemCount == 0) return
+        val state = PersistPlayerState(
+            playWhenReady = player.playWhenReady,
+            repeatMode = player.repeatMode,
+            shuffleModeEnabled = player.shuffleModeEnabled,
+            volume = player.volume,
+            currentPosition = player.currentPosition,
+            currentMediaItemIndex = player.currentMediaItemIndex,
+            playbackState = player.playbackState,
+        )
+        scope.launch(Dispatchers.IO) {
+            runCatching {
+                filesDir.resolve(PERSISTENT_PLAYER_STATE_FILE).outputStream().use { fos ->
+                    ObjectOutputStream(fos).use { it.writeObject(state) }
                 }
             }
         }

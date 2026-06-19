@@ -94,7 +94,9 @@ object AppModule {
         @ApplicationContext context: Context,
         databaseProvider: DatabaseProvider,
     ): SimpleCache {
-        val cacheSize = context.dataStore[MaxSongCacheSizeKey] ?: 1024
+        // Default to unlimited (-1 -> NoOpCacheEvictor): never evict cached songs unless the user
+        // picks a size limit in settings.
+        val cacheSize = context.dataStore[MaxSongCacheSizeKey] ?: -1
         return SimpleCache(
             context.filesDir.resolve("exoplayer"),
             when (cacheSize) {
