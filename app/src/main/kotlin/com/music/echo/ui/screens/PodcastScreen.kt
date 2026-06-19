@@ -52,7 +52,9 @@ import coil3.compose.AsyncImage
 import iad1tya.echo.music.LocalPlayerConnection
 import iad1tya.echo.music.R
 import iad1tya.echo.music.extensions.toMediaItem
+import iad1tya.echo.music.models.MediaMetadata
 import iad1tya.echo.music.playback.queues.ListQueue
+import iad1tya.echo.music.podcast.PodcastProgressStore
 import iad1tya.echo.music.podcast.PodcastShow
 import iad1tya.echo.music.podcast.toMediaMetadata
 import iad1tya.echo.music.ui.theme.BrandAccent
@@ -141,8 +143,36 @@ fun PodcastScreen(
                             color = BrandAccent,
                         )
                     }
-                    // Catalog: saved + trending by category
+                    // Catalog: continue listening + saved + trending by category
                     LazyColumn {
+                        val continueList = progress.values
+                            .filter { !it.finished && it.title.isNotBlank() && it.positionMs > 0 }
+                            .sortedByDescending { it.updatedAt }
+                            .take(15)
+                        if (continueList.isNotEmpty()) {
+                            item { SectionHeader("Continuar escuchando") }
+                            item {
+                                LazyRow(
+                                    contentPadding = PaddingValues(horizontal = 16.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                ) {
+                                    items(continueList, key = { it.audioUrl }) { p ->
+                                        ContinueCard(p) {
+                                            val md = MediaMetadata(
+                                                id = p.audioUrl,
+                                                title = p.title,
+                                                artists = listOf(MediaMetadata.Artist(null, p.showTitle)),
+                                                duration = (p.durationMs / 1000).toInt(),
+                                                thumbnailUrl = p.artworkUrl,
+                                            )
+                                            playerConnection?.playQueue(
+                                                ListQueue(title = p.showTitle, items = listOf(md.toMediaItem()), startIndex = 0, position = p.positionMs)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         if (pinned.isNotEmpty()) {
                             item { SectionHeader("Guardados") }
                             item { ShowCarousel(pinned) { viewModel.openShow(it) } }
@@ -185,6 +215,7 @@ fun PodcastScreen(
                                             val globalIndex = episodes.indexOfFirst { it.id == ep0.id }
                                             // Resume where the user left off (unless finished).
                                             val resumeMs = progress[ep0.id]?.takeIf { !it.finished }?.positionMs ?: 0L
+                                            viewModel.recordPlay(ep0, selectedShow?.feedUrl)
                                             playerConnection?.playQueue(
                                                 ListQueue(
                                                     title = selectedShow?.title,
@@ -267,6 +298,21 @@ private fun SectionHeader(text: String) {
         fontWeight = FontWeight.Bold,
         modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 8.dp),
     )
+}
+
+@Composable
+private fun ContinueCard(p: PodcastProgressStore.Progress, onClick: () -> Unit) {
+    Column(modifier = Modifier.width(150.dp).clickable { onClick() }) {
+        AsyncImage(
+            model = p.artworkUrl,
+            contentDescription = null,
+            modifier = Modifier.size(150.dp).clip(RoundedCornerShape(12.dp)),
+        )
+        Spacer(Modifier.height(6.dp))
+        Text(p.title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Text(p.showTitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text("▶ min ${p.positionMs / 60000}", style = MaterialTheme.typography.bodySmall, color = BrandAccent)
+    }
 }
 
 @Composable

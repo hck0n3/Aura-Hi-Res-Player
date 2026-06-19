@@ -23,11 +23,16 @@ import javax.inject.Inject
 @HiltViewModel
 class PodcastViewModel @Inject constructor(
     private val repository: PodcastRepository,
-    progressStore: PodcastProgressStore,
+    private val progressStore: PodcastProgressStore,
 ) : ViewModel() {
 
     /** Per-episode listen progress (audio URL -> progress) for resume / "finished" state. */
     val progress = progressStore.progress.stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
+
+    /** Record that an episode was started (for the "Continuar escuchando" history). */
+    fun recordPlay(episode: PodcastEpisode, feedUrl: String?) {
+        viewModelScope.launch { progressStore.recordPlay(episode, feedUrl) }
+    }
 
     val categories: List<PodcastCategory> = repository.categories
 

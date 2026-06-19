@@ -1,8 +1,8 @@
-# Aura Hi-Res Player v5.7.26
+# Aura Hi-Res Player v5.7.27
 
-## Arreglo: la app se cerraba al iniciar sesión
-- Después de iniciar sesión en Google, la app **debía reiniciarse** para aplicar la sesión, pero en algunos equipos (Xiaomi/ahorro de batería) **solo se cerraba** y no volvía a abrir. Ahora usa un reinicio confiable → vuelve a abrir ya con la sesión aplicada.
-- Esto además arregla que, ya con sesión iniciada, **no cargaran las sugerencias ni el apartado "Álbumes"** (era porque la sesión quedaba aplicada a medias al no reiniciar bien).
+## Podcasts: "Continuar escuchando"
+- Nueva sección **"Continuar escuchando"** arriba en Podcasts: los episodios que dejaste a medias, con su carátula, el podcast y el **minuto** donde te quedaste. Tócalos para **reanudar** justo desde ahí.
+- Se llena solo a medida que escuchas (se actualiza con tu progreso, también en segundo plano).
 
 ## Incluye lo anterior
-- v5.7.25: volumen más fuerte. v5.7.24: arreglo de cierre al descargar la actualización.
+- v5.7.26: la app reabre bien tras iniciar sesión. v5.7.25: volumen más fuerte.

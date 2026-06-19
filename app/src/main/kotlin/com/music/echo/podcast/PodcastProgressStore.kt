@@ -14,21 +14,26 @@ import javax.inject.Singleton
 
 /**
  * Remembers, per podcast episode (keyed by its audio URL), how far the user listened, whether they
- * finished it, and when it was last played — so episodes resume where they left off and show a
- * "finished" / "continue" state. Persisted in DataStore as a small JSON map.
+ * finished it, when it was last played, and the episode's display info (title, show, artwork, feed)
+ * — so episodes resume where they left off, show a "finished" / "continue" state, and power the
+ * "Continuar escuchando" history without re-downloading any RSS. Persisted as a small JSON map.
  */
 @Singleton
 class PodcastProgressStore @Inject constructor(
     @ApplicationContext private val context: Context,
 ) {
     data class Progress(
+        val audioUrl: String,
         val positionMs: Long,
         val durationMs: Long,
         val finished: Boolean,
         val updatedAt: Long,
+        val title: String,
+        val showTitle: String,
+        val artworkUrl: String?,
+        val feedUrl: String?,
     )
 
-    /** Treat an episode as finished when within ~30s of the end. */
     private fun isFinished(posMs: Long, durMs: Long) = durMs > 0 && posMs >= durMs - 30_000
 
     val progress: Flow<Map<String, Progress>> =
@@ -36,16 +41,49 @@ class PodcastProgressStore @Inject constructor(
 
     suspend fun get(url: String): Progress? = parse(context.dataStore.get(PodcastProgressKey, ""))[url]
 
+    /** Called when the user starts an episode: stores its display info, keeps any existing position. */
+    suspend fun recordPlay(episode: PodcastEpisode, feedUrl: String?) {
+        context.dataStore.edit { prefs ->
+            val map = parse(prefs[PodcastProgressKey]).toMutableMap()
+            val existing = map[episode.id]
+            map[episode.id] = Progress(
+                audioUrl = episode.audioUrl,
+                positionMs = existing?.positionMs ?: 0L,
+                durationMs = existing?.durationMs ?: ((episode.durationSec ?: 0) * 1000L),
+                finished = existing?.finished ?: false,
+                updatedAt = System.currentTimeMillis(),
+                title = episode.title,
+                showTitle = episode.showTitle,
+                artworkUrl = episode.artworkUrl,
+                feedUrl = feedUrl ?: existing?.feedUrl,
+            )
+            prefs[PodcastProgressKey] = toJson(trim(map))
+        }
+    }
+
+    /** Called periodically while playing: updates position/finished, keeps the display info. */
     suspend fun save(url: String, positionMs: Long, durationMs: Long) {
         if (url.isBlank() || positionMs < 0) return
         context.dataStore.edit { prefs ->
             val map = parse(prefs[PodcastProgressKey]).toMutableMap()
-            map[url] = Progress(positionMs, durationMs, isFinished(positionMs, durationMs), System.currentTimeMillis())
-            // Cap the stored set so it can't grow unbounded (keep the 200 most recent).
-            val trimmed = map.entries.sortedByDescending { it.value.updatedAt }.take(200).associate { it.key to it.value }
-            prefs[PodcastProgressKey] = toJson(trimmed)
+            val existing = map[url]
+            map[url] = Progress(
+                audioUrl = url,
+                positionMs = positionMs,
+                durationMs = durationMs,
+                finished = isFinished(positionMs, durationMs),
+                updatedAt = System.currentTimeMillis(),
+                title = existing?.title ?: "",
+                showTitle = existing?.showTitle ?: "",
+                artworkUrl = existing?.artworkUrl,
+                feedUrl = existing?.feedUrl,
+            )
+            prefs[PodcastProgressKey] = toJson(trim(map))
         }
     }
+
+    private fun trim(map: Map<String, Progress>): Map<String, Progress> =
+        map.entries.sortedByDescending { it.value.updatedAt }.take(200).associate { it.key to it.value }
 
     private fun parse(s: String?): Map<String, Progress> = runCatching {
         if (s.isNullOrBlank()) return emptyMap()
@@ -53,7 +91,20 @@ class PodcastProgressStore @Inject constructor(
         buildMap {
             obj.keys().forEach { url ->
                 val o = obj.optJSONObject(url) ?: return@forEach
-                put(url, Progress(o.optLong("pos"), o.optLong("dur"), o.optBoolean("fin"), o.optLong("at")))
+                put(
+                    url,
+                    Progress(
+                        audioUrl = url,
+                        positionMs = o.optLong("pos"),
+                        durationMs = o.optLong("dur"),
+                        finished = o.optBoolean("fin"),
+                        updatedAt = o.optLong("at"),
+                        title = o.optString("t"),
+                        showTitle = o.optString("s"),
+                        artworkUrl = o.optString("a").takeIf { it.isNotBlank() },
+                        feedUrl = o.optString("f").takeIf { it.isNotBlank() },
+                    ),
+                )
             }
         }
     }.getOrDefault(emptyMap())
@@ -61,7 +112,12 @@ class PodcastProgressStore @Inject constructor(
     private fun toJson(map: Map<String, Progress>): String {
         val obj = JSONObject()
         map.forEach { (url, p) ->
-            obj.put(url, JSONObject().put("pos", p.positionMs).put("dur", p.durationMs).put("fin", p.finished).put("at", p.updatedAt))
+            obj.put(
+                url,
+                JSONObject()
+                    .put("pos", p.positionMs).put("dur", p.durationMs).put("fin", p.finished).put("at", p.updatedAt)
+                    .put("t", p.title).put("s", p.showTitle).put("a", p.artworkUrl ?: "").put("f", p.feedUrl ?: ""),
+            )
         }
         return obj.toString()
     }
