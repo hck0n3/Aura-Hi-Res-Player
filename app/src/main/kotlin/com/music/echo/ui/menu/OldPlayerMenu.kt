@@ -562,6 +562,28 @@ fun OldPlayerMenu(
                         )
                     }
 
+                    // "No me gusta": dislike this song, skip it, and stop it being recommended again.
+                    if (!mediaMetadata.id.startsWith("http")) {
+                        add(
+                            Material3MenuItemData(
+                                title = { Text(text = "No me gusta") },
+                                description = { Text(text = "No volver a recomendar y saltar") },
+                                icon = {
+                                    Icon(
+                                        painter = painterResource(R.drawable.thumb_down),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(24.dp),
+                                    )
+                                },
+                                onClick = {
+                                    playerConnection.dislikeCurrentSong()
+                                    playerBottomSheetState.collapseSoft()
+                                    onDismiss()
+                                },
+                            )
+                        )
+                    }
+
                     // Podcast episode (direct-URL media): jump to the podcast/creator.
                     if (mediaMetadata.id.startsWith("http")) {
                         add(

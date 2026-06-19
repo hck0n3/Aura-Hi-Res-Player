@@ -75,6 +75,7 @@ class HomeViewModel @Inject constructor(
     val database: MusicDatabase,
     val syncUtils: SyncUtils,
     podcastRepository: iad1tya.echo.music.podcast.PodcastRepository,
+    private val dislikeStore: iad1tya.echo.music.dislike.DislikeStore,
 ) : ViewModel() {
     /** Saved/pinned podcasts, surfaced on the home for quick access. */
     val pinnedPodcasts: kotlinx.coroutines.flow.Flow<List<iad1tya.echo.music.podcast.PodcastShow>> =
@@ -528,15 +529,49 @@ class HomeViewModel @Inject constructor(
                 }
 
             val results = (artistDeferreds + songDeferreds + albumDeferreds).awaitAll()
-            similarRecommendations.value = results.filterNotNull().shuffled()
+            val dislikedNow = runCatching { dislikeStore.snapshot() }.getOrDefault(iad1tya.echo.music.dislike.DislikeStore.Disliked())
+            similarRecommendations.value = results.filterNotNull()
+                .filterNot { rec ->
+                    // Drop a whole "Similar a X" row if its seed is something the user disliked.
+                    when (val t = rec.title) {
+                        is iad1tya.echo.music.db.entities.Song -> t.id in dislikedNow.songs
+                        is iad1tya.echo.music.db.entities.Album -> t.id in dislikedNow.albums
+                        is iad1tya.echo.music.db.entities.Artist -> t.id in dislikedNow.artists
+                        else -> false
+                    }
+                }
+                .mapNotNull { rec ->
+                    val items = rec.items.filterDisliked(dislikedNow)
+                    if (items.isEmpty()) null else rec.copy(items = items)
+                }
+                .shuffled()
         }
     }
 
     
+    /** Drop anything the user marked "No me gusta" (the song, its artist, its album, or the item id). */
+    private fun List<com.music.innertube.models.YTItem>.filterDisliked(
+        d: iad1tya.echo.music.dislike.DislikeStore.Disliked,
+    ): List<com.music.innertube.models.YTItem> {
+        if (d.isEmpty) return this
+        return filterNot { item ->
+            when (item) {
+                is com.music.innertube.models.SongItem ->
+                    item.id in d.songs || item.artists.any { it.id != null && it.id in d.artists }
+                is com.music.innertube.models.AlbumItem ->
+                    item.id in d.albums || (item.artists?.any { it.id != null && it.id in d.artists } == true)
+                is com.music.innertube.models.ArtistItem -> item.id in d.artists
+                is com.music.innertube.models.PlaylistItem -> item.id in d.playlists
+                else -> false
+            }
+        }
+    }
+
     private suspend fun loadNetworkDataPhase() {
         val hideExplicit = context.dataStore.get(HideExplicitKey, false)
         val hideVideoSongs = context.dataStore.get(HideVideoSongsKey, false)
         val hideYoutubeShorts = context.dataStore.get(HideYoutubeShortsKey, false)
+        val dislikedNow = runCatching { dislikeStore.snapshot() }.getOrDefault(iad1tya.echo.music.dislike.DislikeStore.Disliked())
 
         // Hard ceiling so a throttled/hung YouTube call (e.g. while a big Spotify import is hammering
         // the network) can NEVER leave the home stuck "loading forever" — whatever arrived in time is
@@ -554,6 +589,7 @@ class HomeViewModel @Inject constructor(
                                 .filterExplicit(hideExplicit)
                                 .filterVideoSongs(hideVideoSongs)
                                 .filterYoutubeShorts(hideYoutubeShorts)
+                                .filterDisliked(dislikedNow)
                             if (filteredItems.isEmpty()) null else section.copy(items = filteredItems)
                         }
                     )

@@ -275,6 +275,14 @@ class PlayerConnection(
         }
     }
 
+    fun dislikeCurrentSong() {
+        try {
+            service.dislikeCurrentSong()
+        } catch (e: Exception) {
+            Timber.tag(TAG).e(e, "Error in dislikeCurrentSong")
+        }
+    }
+
     fun toggleMute() {
         service.toggleMute()
     }

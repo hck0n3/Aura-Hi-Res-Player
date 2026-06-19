@@ -265,6 +265,9 @@ class MusicService :
     @Inject
     lateinit var podcastProgressStore: iad1tya.echo.music.podcast.PodcastProgressStore
 
+    @Inject
+    lateinit var dislikeStore: iad1tya.echo.music.dislike.DislikeStore
+
 
     private lateinit var audioManager: AudioManager
     private var audioFocusRequest: AudioFocusRequest? = null
@@ -1705,6 +1708,39 @@ class MusicService :
 
     fun toggleStartRadio() {
         startRadioSeamlessly()
+    }
+
+    /**
+     * "No me gusta" for the current song: remembers the dislike (so it's filtered out of every
+     * recommendation surface and never auto-plays again), removes it from the rest of this queue, and
+     * skips to the next track. Also unlikes it if it was liked.
+     */
+    fun dislikeCurrentSong() {
+        val mediaId = player.currentMediaItem?.mediaId ?: return
+        scope.launch {
+            runCatching { dislikeStore.dislikeSong(mediaId) }
+            // If it was liked, drop the like (a dislike contradicts it).
+            runCatching {
+                val song = currentSong.first()?.song
+                if (song != null && song.liked) {
+                    val unliked = song.toggleLike()
+                    database.query { update(unliked); syncUtils.likeSong(unliked) }
+                }
+            }
+            // Purge any other copies of this track still queued ahead, then advance.
+            withContext(Dispatchers.Main) {
+                for (i in player.mediaItemCount - 1 downTo 0) {
+                    if (i != player.currentMediaItemIndex &&
+                        player.getMediaItemAt(i).mediaId == mediaId
+                    ) {
+                        player.removeMediaItem(i)
+                    }
+                }
+                if (player.hasNextMediaItem()) {
+                    player.seekToNext()
+                }
+            }
+        }
     }
 
     private fun setupLoudnessEnhancer() {

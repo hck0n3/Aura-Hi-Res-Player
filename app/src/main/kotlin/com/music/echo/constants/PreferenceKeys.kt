@@ -27,6 +27,9 @@ val HomeTasteOnlyKey = booleanPreferencesKey("homeTasteOnly")
 val HomeRichLayoutKey = booleanPreferencesKey("homeRichLayout")
 // Optional genres the user picked during onboarding (CSV), a soft taste signal.
 val OnboardingGenresKey = stringPreferencesKey("onboardingGenres")
+// "No me gusta": disliked song/artist/album/playlist ids (JSON {songs:[],artists:[],albums:[],playlists:[]}).
+// Filtered out of recommendations and skipped during playback so the algorithm stops surfacing them.
+val DislikedItemsKey = stringPreferencesKey("dislikedItems")
 // Scheduled Spotify playlist sync: how often to re-import (days; 0 = off) and which source ids (CSV).
 val SpotifyAutoSyncFreqDaysKey = intPreferencesKey("spotifyAutoSyncFreqDays")
 val SpotifyAutoSyncSourceIdsKey = stringPreferencesKey("spotifyAutoSyncSourceIds")
