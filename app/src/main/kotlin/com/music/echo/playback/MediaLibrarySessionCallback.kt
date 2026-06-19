@@ -106,12 +106,15 @@ constructor(
         return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
     }
 
-    @Deprecated("Deprecated in MediaLibrarySession.Callback")
     override fun onPlaybackResumption(
         mediaSession: MediaSession,
         controller: MediaSession.ControllerInfo
     ): ListenableFuture<MediaItemsWithStartPosition> {
-        return SettableFuture.create<MediaItemsWithStartPosition>()
+        // Must complete promptly: returning an unset SettableFuture made Android Auto hang waiting for
+        // the "resume playback" item, which left the app looking stuck / intermittently unavailable in
+        // the car. We have no persisted resumable queue to hand back here, so fail fast (the documented
+        // "nothing to resume" contract) instead of never completing.
+        return Futures.immediateFailedFuture(UnsupportedOperationException())
     }
 
     override fun onGetLibraryRoot(

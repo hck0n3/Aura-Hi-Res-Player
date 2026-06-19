@@ -44,6 +44,9 @@ val SeedVersionKey = intPreferencesKey("seed_version")
 val JrDefaultsAppliedKey = booleanPreferencesKey("jr_defaults_applied_v2")
 // One-time guard: defaults the in-app language to Spanish unless the user picked a language.
 val SpanishDefaultAppliedKey = booleanPreferencesKey("spanish_default_applied")
+// One-time guard: flips the cover "canvas" animations (player + album) OFF by default, for existing
+// installs too, without re-seeding everything. Runs once.
+val CanvasDefaultOffAppliedKey = booleanPreferencesKey("canvas_default_off_applied")
 val SpotifySpDcKey = stringPreferencesKey("spotify_sp_dc")
 val SpotifySpKeyKey = stringPreferencesKey("spotify_sp_key")
 val SpotifyAccountNameKey = stringPreferencesKey("spotify_account_name")

@@ -108,6 +108,7 @@ class App : Application(), SingletonImageLoader.Factory {
         reseedAfterRestoreIfNeeded()
         val settings = dataStore.data.first()
         seedDefaultsIfNeeded(settings)
+        migrateCanvasDefaultOff(settings)
         migrateLegacyIcon(settings)
         val locale = Locale.getDefault()
         val languageTag = locale.language
@@ -236,11 +237,12 @@ class App : Application(), SingletonImageLoader.Factory {
             p[iad1tya.echo.music.constants.LyricsGlowEffectKey] = true
             p[iad1tya.echo.music.constants.AppleMusicLyricsBlurKey] = true
 
-            // Visuals on by default: spectrum visualizer, player canvas, album canvas, artist video +
-            // artist background ("canvas") video.
+            // Visuals on by default: spectrum visualizer, artist video + artist background video.
+            // The cover "canvas" animations (player + album) are OFF by default per user request — the
+            // user opts in from settings (same as hide-video-songs being off by default).
             p[iad1tya.echo.music.constants.SpectrumVisualizerEnabledKey] = true
-            p[iad1tya.echo.music.constants.CanvasThumbnailAnimationKey] = true
-            p[iad1tya.echo.music.constants.AlbumCanvasEnabledKey] = true
+            p[iad1tya.echo.music.constants.CanvasThumbnailAnimationKey] = false
+            p[iad1tya.echo.music.constants.AlbumCanvasEnabledKey] = false
             p[iad1tya.echo.music.constants.ShowArtistVideoKey] = true
             p[iad1tya.echo.music.constants.ShowArtistBackgroundVideoKey] = true
 
@@ -271,6 +273,22 @@ class App : Application(), SingletonImageLoader.Factory {
             // Keep legacy flags consistent for any code still reading them.
             p[iad1tya.echo.music.constants.JrDefaultsAppliedKey] = true
             p[iad1tya.echo.music.constants.SpanishDefaultAppliedKey] = true
+        }
+    }
+
+    /**
+     * Flip the cover "canvas" animations (player + album) OFF for existing installs too, once — they
+     * were previously seeded ON. Gated by its own flag so it never disturbs anything else and never
+     * repeats; users who want them can turn them back on (and the flag keeps that choice).
+     */
+    private suspend fun migrateCanvasDefaultOff(settings: androidx.datastore.preferences.core.Preferences) {
+        if (settings[iad1tya.echo.music.constants.CanvasDefaultOffAppliedKey] == true) return
+        runCatching {
+            dataStore.edit { p ->
+                p[iad1tya.echo.music.constants.CanvasThumbnailAnimationKey] = false
+                p[iad1tya.echo.music.constants.AlbumCanvasEnabledKey] = false
+                p[iad1tya.echo.music.constants.CanvasDefaultOffAppliedKey] = true
+            }
         }
     }
 
