@@ -1438,143 +1438,8 @@ fun BottomSheetPlayer(
                         Spacer(modifier = Modifier.width(0.dp))
                     }
                 }
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .SwipeGesture(
-                            enabled = isFullScreen && swipeLyrics,
-                            onSwipeRight = { playerConnection.seekToPrevious() },
-                            onSwipeLeft = { playerConnection.seekToNext() }
-                        )
-                ) {
-                    AnimatedContent(
-                        targetState = mediaMetadata.title,
-                        transitionSpec = { fadeIn() togetherWith fadeOut() },
-                        label = "",
-                    ) { title ->
-                        Text(
-                            text = title,
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            color = TextBackgroundColor,
-                            modifier =
-                            Modifier
-                                .basicMarquee(iterations = 1, initialDelayMillis = 3000, velocity = 30.dp)
-                                .combinedClickable(
-                                    enabled = true,
-                                    indication = null,
-                                    interactionSource = remember { MutableInteractionSource() },
-                                    onClick = {
-                                        if (mediaMetadata.album != null) {
-                                            navController.navigate("album/${mediaMetadata.album.id}")
-                                            state.collapseSoft()
-                                        }
-                                    },
-                                    onLongClick = {
-                                        val clip = ClipData.newPlainText(context.getString(R.string.copied_title), title)
-                                        clipboardManager.setPrimaryClip(clip)
-                                        Toast
-                                            .makeText(context, context.getString(R.string.copied_title), Toast.LENGTH_SHORT)
-                                            .show()
-                                    }
-                                )
-                            ,
-                        )
-                    }
-
-                    Spacer(Modifier.height(4.dp))
-
-                    Row(
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        if (mediaMetadata.explicit) MIcon.Explicit()
-
-                        if (mediaMetadata.artists.any { it.name.isNotBlank() }) {
-                            val annotatedString = buildAnnotatedString {
-                                mediaMetadata.artists.forEachIndexed { index, artist ->
-                                    val tag = "artist_${artist.id.orEmpty()}"
-                                    pushStringAnnotation(tag = tag, annotation = artist.id.orEmpty())
-                                    withStyle(SpanStyle(color = TextBackgroundColor, fontSize = 16.sp)) {
-                                        append(artist.name)
-                                    }
-                                    pop()
-                                    if (index != mediaMetadata.artists.lastIndex) append(", ")
-                                }
-                            }
-
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .basicMarquee(iterations = 1, initialDelayMillis = 3000, velocity = 30.dp)
-                                    .padding(end = 12.dp)
-                            ) {
-                                var layoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
-                                var clickOffset by remember { mutableStateOf<Offset?>(null) }
-                                Text(
-                                    text = annotatedString,
-                                    style = MaterialTheme.typography.titleMedium.copy(color = TextBackgroundColor),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    onTextLayout = { layoutResult = it },
-                                    modifier = Modifier
-                                        .pointerInput(Unit) {
-                                            awaitPointerEventScope {
-                                                while (true) {
-                                                    val event = awaitPointerEvent()
-                                                    val tapPosition = event.changes.firstOrNull()?.position
-                                                    if (tapPosition != null) {
-                                                        clickOffset = tapPosition
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        .combinedClickable(
-                                            enabled = true,
-                                            indication = null,
-                                            interactionSource = remember { MutableInteractionSource() },
-                                            onClick = {
-                                                val tapPosition = clickOffset
-                                                val layout = layoutResult
-                                                if (tapPosition != null && layout != null) {
-                                                    val offset = layout.getOffsetForPosition(tapPosition)
-                                                    annotatedString
-                                                        .getStringAnnotations(offset, offset)
-                                                        .firstOrNull()
-                                                        ?.let { ann ->
-                                                            val artistId = ann.item
-                                                            if (artistId.isNotBlank()) {
-                                                                navController.navigate("artist/$artistId")
-                                                                state.collapseSoft()
-                                                            }
-                                                        }
-                                                }
-                                            },
-                                            onLongClick = {
-                                                val clip =
-                                                    ClipData.newPlainText(
-                                                        context.getString(R.string.copied_artist),
-                                                        annotatedString
-                                                    )
-                                                clipboardManager.setPrimaryClip(clip)
-                                                Toast
-                                                    .makeText(
-                                                        context,
-                                                        context.getString(R.string.copied_artist),
-                                                        Toast.LENGTH_SHORT
-                                                    )
-                                                    .show()
-                                            }
-                                        )
-                                )
-                            }
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.width(12.dp))
+                // Title moved below this button row (full width, larger) — see the block after the Row.
+                Spacer(Modifier.weight(1f))
 
                 if (useNewPlayerDesign) {
                     val shareShape = RoundedCornerShape(
@@ -1956,6 +1821,77 @@ fun BottomSheetPlayer(
                             }
                         }
                     }
+                }
+            }
+
+            // Song title + artist, BELOW the action buttons, full-width and larger so it's easy to read.
+            Spacer(Modifier.height(6.dp))
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = PlayerHorizontalPadding),
+            ) {
+                AnimatedContent(
+                    targetState = mediaMetadata.title,
+                    transitionSpec = { fadeIn() togetherWith fadeOut() },
+                    label = "playerTitle",
+                ) { title ->
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        color = TextBackgroundColor,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .basicMarquee(iterations = 1, initialDelayMillis = 3000, velocity = 30.dp)
+                            .combinedClickable(
+                                enabled = true,
+                                indication = null,
+                                interactionSource = remember { MutableInteractionSource() },
+                                onClick = {
+                                    if (mediaMetadata.album != null) {
+                                        navController.navigate("album/${mediaMetadata.album.id}")
+                                        state.collapseSoft()
+                                    }
+                                },
+                                onLongClick = {
+                                    val clip = ClipData.newPlainText(context.getString(R.string.copied_title), title)
+                                    clipboardManager.setPrimaryClip(clip)
+                                    Toast.makeText(context, context.getString(R.string.copied_title), Toast.LENGTH_SHORT).show()
+                                },
+                            ),
+                    )
+                }
+                Spacer(Modifier.height(2.dp))
+                if (mediaMetadata.artists.any { it.name.isNotBlank() }) {
+                    val artistText = mediaMetadata.artists.joinToString(", ") { it.name }
+                    Text(
+                        text = artistText,
+                        style = MaterialTheme.typography.titleMedium.copy(color = TextBackgroundColor),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .basicMarquee(iterations = 1, initialDelayMillis = 3000, velocity = 30.dp)
+                            .combinedClickable(
+                                enabled = true,
+                                indication = null,
+                                interactionSource = remember { MutableInteractionSource() },
+                                onClick = {
+                                    mediaMetadata.artists.firstOrNull { !it.id.isNullOrBlank() }?.id?.let { artistId ->
+                                        navController.navigate("artist/$artistId")
+                                        state.collapseSoft()
+                                    }
+                                },
+                                onLongClick = {
+                                    val clip = ClipData.newPlainText(context.getString(R.string.copied_artist), artistText)
+                                    clipboardManager.setPrimaryClip(clip)
+                                    Toast.makeText(context, context.getString(R.string.copied_artist), Toast.LENGTH_SHORT).show()
+                                },
+                            ),
+                    )
                 }
             }
 
