@@ -1,13 +1,10 @@
-# Aura Hi-Res Player v5.7.19
+# Aura Hi-Res Player v5.7.20
 
-## Canvas (lienzos) alineados con el código oficial
-- Igualé la lógica de los Canvas del **álbum** y del **reproductor** exactamente al código de referencia que sí funciona (proveedor Tidal + búsqueda por álbum/artista con validación). El álbum había quedado con una versión distinta; ahora vuelve a ser la oficial.
+## El botón de Canvas ahora se encuentra fácil
+- En español el interruptor de los lienzos se llamaba solo **"Lienzo"** y costaba encontrarlo. Ahora se llama **"Canvas (lienzo)"** en **Apariencia**, para activarlo sin perderte.
 
-## Importante para que se vean los Canvas
-1. Actualiza a **v5.7.19** (el arreglo del proveedor es de v5.7.15 en adelante).
-2. **Apariencia → "Canvas"** activado (es para el reproductor).
-3. El estilo de fondo del reproductor debe ser **Apple Music** para el Canvas de fondo.
-4. No todas las canciones/álbumes tienen Canvas; prueba con **artistas populares** (suelen tenerlo).
+## Recordatorio
+- Activa **Apariencia → "Canvas (lienzo)"**. Para el fondo animado del reproductor, usa el estilo **Apple Music**. No todas las canciones tienen Canvas (prueba con artistas populares).
 
 ## Incluye lo anterior
-- v5.7.18: podcasts por región. v5.7.15: Canvas con proveedor Tidal.
+- v5.7.19: Canvas del álbum igualado al código oficial. v5.7.15: proveedor Tidal.

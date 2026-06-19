@@ -668,8 +668,8 @@
     <string name="show_artist_background_video_desc">Muestra un video artístico en movimiento en bucle detrás de la imagen del artista</string>
     <string name="thumbnail_corner_radius">Radio de esquina de la miniatura</string>
     <string name="thumbnail_corner_radius_desc">Cambia el radio de las esquinas de la miniatura de la portada del álbum</string>
-    <string name="echomusic_canvas">Lienzo</string>
-    <string name="echomusic_canvas_desc">Muestra portadas de álbum animadas cuando estén disponibles</string>
+    <string name="echomusic_canvas">Canvas (lienzo)</string>
+    <string name="echomusic_canvas_desc">Muestra portadas animadas (video) en el reproductor y los álbumes cuando estén disponibles</string>
     <string name="show_album_canvas">Mostrar lienzo del álbum</string>
     <string name="show_album_canvas_desc">Muestra el lienzo animado en el álbum</string>
     <string name="rotating_thumbnail">Miniatura giratoria</string>
