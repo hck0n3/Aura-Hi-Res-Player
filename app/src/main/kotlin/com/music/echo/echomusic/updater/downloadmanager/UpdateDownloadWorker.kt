@@ -1,8 +1,11 @@
 package iad1tya.echo.music.echomusic.updater.downloadmanager
 
 import android.content.Context
+import android.content.pm.ServiceInfo
+import android.os.Build
 import android.os.Environment
 import androidx.work.CoroutineWorker
+import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import iad1tya.echo.music.R
@@ -10,147 +13,158 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
+import java.io.RandomAccessFile
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.zip.ZipInputStream
 
+/**
+ * Downloads the update APK. Runs as a FOREGROUND worker so Android won't kill it when the app is
+ * backgrounded, and RESUMES from the partial file (HTTP Range) instead of restarting from zero on
+ * every hiccup — which is why the download used to "keep restarting" / not continue in the
+ * background on some devices.
+ */
 class UpdateDownloadWorker(private val context: Context, workerParams: WorkerParameters) :
     CoroutineWorker(context, workerParams) {
+
+    override suspend fun getForegroundInfo(): ForegroundInfo {
+        val version = inputData.getString("version") ?: ""
+        val notification = DownloadNotificationManager.buildOngoingNotification(context, version, 0)
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            ForegroundInfo(
+                DownloadNotificationManager.FOREGROUND_NOTIFICATION_ID,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
+            )
+        } else {
+            ForegroundInfo(DownloadNotificationManager.FOREGROUND_NOTIFICATION_ID, notification)
+        }
+    }
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         val apkUrl = inputData.getString("apk_url") ?: return@withContext Result.failure()
         val version = inputData.getString("version") ?: "unknown"
         val fileSize = inputData.getString("file_size") ?: ""
 
+        // Run in the foreground so the OS keeps the download alive in the background.
+        runCatching { setForeground(getForegroundInfo()) }
         DownloadNotificationManager.showDownloadStarting(version, fileSize)
 
+        val isZip = apkUrl.contains("nightly.link") || apkUrl.endsWith(".zip")
+        val downloadDir = File(context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "echo_updates")
+        if (!downloadDir.exists()) downloadDir.mkdirs()
+        val downloadFile = if (isZip) File(downloadDir, "echo_temp.zip") else File(downloadDir, "echomusic.apk")
+
         try {
-            val url = URL(apkUrl)
-            val connection = url.openConnection() as HttpURLConnection
-            connection.requestMethod = "GET"
-            connection.instanceFollowRedirects = true
-            connection.connectTimeout = 30000
-            connection.readTimeout = 60000
+            // Resume from the bytes already on disk (APK only; zips re-download for a clean extract).
+            if (isZip && downloadFile.exists()) downloadFile.delete()
+            val existing = if (!isZip && downloadFile.exists()) downloadFile.length() else 0L
+
+            val connection = (URL(apkUrl).openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                instanceFollowRedirects = true
+                connectTimeout = 30000
+                readTimeout = 60000
+                if (existing > 0) setRequestProperty("Range", "bytes=$existing-")
+            }
             connection.connect()
 
-            if (connection.responseCode != HttpURLConnection.HTTP_OK) {
-                DownloadNotificationManager.showDownloadFailed(
-                    version,
-                    context.getString(R.string.server_error, connection.responseCode)
-                )
-                return@withContext Result.failure()
+            val code = connection.responseCode
+            if (code != HttpURLConnection.HTTP_OK && code != HttpURLConnection.HTTP_PARTIAL) {
+                DownloadNotificationManager.showDownloadFailed(version, context.getString(R.string.server_error, code))
+                return@withContext Result.retry()
             }
 
-            val fileLength = connection.contentLength
-            val inputStream = connection.inputStream
+            // 206 = server honoured the range -> resume/append. 200 = full body -> start fresh.
+            val resuming = code == HttpURLConnection.HTTP_PARTIAL && existing > 0
+            val startBytes = if (resuming) existing else 0L
+            val remaining = connection.contentLength.toLong()
+            val totalLength = if (remaining > 0) startBytes + remaining else -1L
 
-            val downloadDir = File(
-                context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS),
-                "echo_updates"
-            )
-            if (!downloadDir.exists()) {
-                downloadDir.mkdirs()
+            val output = if (resuming) {
+                RandomAccessFile(downloadFile, "rw").apply { seek(startBytes) }
+            } else {
+                if (downloadFile.exists()) downloadFile.delete()
+                RandomAccessFile(downloadFile, "rw")
             }
 
-            val isZip = apkUrl.contains("nightly.link") || apkUrl.endsWith(".zip")
-            val downloadFile = if (isZip) File(downloadDir, "echo_temp.zip") else File(downloadDir, "echomusic.apk")
-            val outputStream = FileOutputStream(downloadFile)
-
-            val buffer = ByteArray(8192)
-            var bytesRead: Int
-            var totalBytesRead: Long = 0
-
-            while (inputStream.read(buffer).also { bytesRead = it } != -1) {
-                if (isStopped) {
-                    outputStream.close()
-                    inputStream.close()
-                    connection.disconnect()
-                    if (downloadFile.exists()) {
-                        downloadFile.delete()
+            connection.inputStream.use { input ->
+                val buffer = ByteArray(64 * 1024)
+                var totalBytesRead = startBytes
+                var lastProgress = -1
+                var bytesRead: Int
+                while (input.read(buffer).also { bytesRead = it } != -1) {
+                    if (isStopped) {
+                        // Keep the partial file so the next run resumes instead of restarting.
+                        output.close(); connection.disconnect()
+                        return@withContext Result.retry()
                     }
-                    return@withContext Result.retry()
-                }
-
-                outputStream.write(buffer, 0, bytesRead)
-                totalBytesRead += bytesRead
-
-                if (fileLength > 0) {
-                    val progress = (totalBytesRead.toFloat() / fileLength.toFloat() * 100).toInt()
-                    
-                    DownloadNotificationManager.updateDownloadProgress(progress, version)
-                    
-                    setProgress(workDataOf("progress" to progress.toFloat() / 100f))
-                }
-            }
-
-            outputStream.flush()
-            outputStream.close()
-            inputStream.close()
-            connection.disconnect()
-
-            val finalFile = if (isZip) {
-                val targetApkFile = File(downloadDir, "echomusic.apk")
-                var extracted = false
-                try {
-                    ZipInputStream(downloadFile.inputStream()).use { zis ->
-                        var entry = zis.nextEntry
-                        while (entry != null) {
-                            if (!entry.isDirectory && entry.name.endsWith(".apk")) {
-                                FileOutputStream(targetApkFile).use { fos ->
-                                    zis.copyTo(fos)
-                                }
-                                extracted = true
-                                break
-                            }
-                            entry = zis.nextEntry
+                    output.write(buffer, 0, bytesRead)
+                    totalBytesRead += bytesRead
+                    if (totalLength > 0) {
+                        val progress = (totalBytesRead * 100 / totalLength).toInt()
+                        if (progress != lastProgress) {
+                            lastProgress = progress
+                            DownloadNotificationManager.updateDownloadProgress(progress, version)
+                            setProgress(workDataOf("progress" to progress / 100f))
+                            runCatching { setForeground(ForegroundInfo(
+                                DownloadNotificationManager.FOREGROUND_NOTIFICATION_ID,
+                                DownloadNotificationManager.buildOngoingNotification(context, version, progress),
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC else 0,
+                            )) }
                         }
                     }
-                } catch (e: Exception) {
-                    if (downloadFile.exists()) downloadFile.delete()
-                    DownloadNotificationManager.showDownloadFailed(
-                        version,
-                        e.message ?: "Failed to extract zip file"
-                    )
-                    return@withContext Result.failure()
-                } finally {
-                    if (downloadFile.exists()) {
-                        downloadFile.delete()
-                    }
                 }
-                if (!extracted) {
-                    DownloadNotificationManager.showDownloadFailed(
-                        version,
-                        "Could not find APK in zip"
-                    )
-                    return@withContext Result.failure()
-                }
-                targetApkFile
-            } else {
-                downloadFile
             }
+            output.close()
+            connection.disconnect()
+
+            val finalFile = if (isZip) extractApkFromZip(downloadFile, downloadDir, version) ?: return@withContext Result.failure()
+            else downloadFile
 
             if (version.startsWith("nightly-r")) {
-                val runNumberString = version.removePrefix("nightly-r")
-                val runNumber = runNumberString.toIntOrNull()
-                if (runNumber != null) {
-                    val sharedPreferences = context.getSharedPreferences("update_settings", Context.MODE_PRIVATE)
-                    sharedPreferences.edit().putInt("last_installed_nightly_run", runNumber).apply()
+                version.removePrefix("nightly-r").toIntOrNull()?.let { runNumber ->
+                    context.getSharedPreferences("update_settings", Context.MODE_PRIVATE)
+                        .edit().putInt("last_installed_nightly_run", runNumber).apply()
                 }
             }
 
-            // Also drop a copy in the public Downloads folder so the user can find / re-install it.
             val publicName = "Aura-Hi-Res-Player-${version.removePrefix("v")}.apk"
             iad1tya.echo.music.echomusic.updater.PublicDownloads.saveApk(context, finalFile, publicName)
-
             DownloadNotificationManager.showDownloadComplete(version, finalFile.absolutePath)
-
             Result.success(workDataOf("file_path" to finalFile.absolutePath))
         } catch (e: Exception) {
-            DownloadNotificationManager.showDownloadFailed(
-                version,
-                e.message ?: context.getString(R.string.download_failed)
-            )
-            Result.failure()
+            // Don't delete the partial: retry resumes from where it stopped (with WorkManager backoff).
+            DownloadNotificationManager.showDownloadFailed(version, e.message ?: context.getString(R.string.download_failed))
+            Result.retry()
         }
+    }
+
+    private fun extractApkFromZip(zipFile: File, dir: File, version: String): File? {
+        val targetApk = File(dir, "echomusic.apk")
+        var extracted = false
+        try {
+            ZipInputStream(zipFile.inputStream()).use { zis ->
+                var entry = zis.nextEntry
+                while (entry != null) {
+                    if (!entry.isDirectory && entry.name.endsWith(".apk")) {
+                        FileOutputStream(targetApk).use { fos -> zis.copyTo(fos) }
+                        extracted = true
+                        break
+                    }
+                    entry = zis.nextEntry
+                }
+            }
+        } catch (e: Exception) {
+            DownloadNotificationManager.showDownloadFailed(version, e.message ?: "Failed to extract zip file")
+            return null
+        } finally {
+            if (zipFile.exists()) zipFile.delete()
+        }
+        if (!extracted) {
+            DownloadNotificationManager.showDownloadFailed(version, "Could not find APK in zip")
+            return null
+        }
+        return targetApk
     }
 }

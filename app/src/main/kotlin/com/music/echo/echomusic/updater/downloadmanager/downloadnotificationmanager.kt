@@ -17,8 +17,27 @@ object DownloadNotificationManager {
     private lateinit var appContext: Context
 
     const val CHANNEL_ID = "download_progress_channel"
-    private const val CHANNEL_NAME = "Download Progress" 
+    private const val CHANNEL_NAME = "Download Progress"
     private const val NOTIFICATION_ID = 5678
+    const val FOREGROUND_NOTIFICATION_ID = NOTIFICATION_ID
+
+    /** Makes sure the channel exists even if initialize() wasn't called yet (e.g. from a Worker). */
+    fun ensureInitialized(context: Context) {
+        if (!::appContext.isInitialized) initialize(context.applicationContext)
+    }
+
+    /** Ongoing notification used to run the download as a foreground worker (survives backgrounding). */
+    fun buildOngoingNotification(context: Context, version: String, progress: Int): Notification {
+        ensureInitialized(context)
+        return NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_launcher_nobg)
+            .setContentTitle("Descargando actualización $version")
+            .setContentText(if (progress > 0) "$progress%" else "Preparando…")
+            .setProgress(100, progress.coerceIn(0, 100), progress <= 0)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .build()
+    }
 
     fun initialize(context: Context) {
         appContext = context

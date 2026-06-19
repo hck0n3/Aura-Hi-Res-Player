@@ -335,9 +335,16 @@ fun UpdateScreen(navController: NavHostController) {
                                             val urlToDownload = currentStatus.apkUrl ?: "https://github.com/hck0n3/Aura-Hi-Res-Player/releases/download/${currentStatus.version}/echomusic.apk"
                                             val downloadRequest = OneTimeWorkRequestBuilder<UpdateDownloadWorker>()
                                                 .setInputData(workDataOf("apk_url" to urlToDownload, "version" to currentStatus.version, "file_size" to currentStatus.size))
+                                                .setConstraints(
+                                                    androidx.work.Constraints.Builder()
+                                                        .setRequiredNetworkType(androidx.work.NetworkType.CONNECTED)
+                                                        .build()
+                                                )
+                                                .setBackoffCriteria(androidx.work.BackoffPolicy.LINEAR, 10, java.util.concurrent.TimeUnit.SECONDS)
                                                 .addTag("update_download")
                                                 .build()
-                                            WorkManager.getInstance(context).enqueueUniqueWork("update_download", ExistingWorkPolicy.REPLACE, downloadRequest)
+                                            // KEEP so a re-tap resumes the running download instead of restarting it.
+                                            WorkManager.getInstance(context).enqueueUniqueWork("update_download", ExistingWorkPolicy.KEEP, downloadRequest)
                                             isDownloading = true
                                         }
                                     },
