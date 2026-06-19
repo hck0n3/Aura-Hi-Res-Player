@@ -1,11 +1,9 @@
-# Aura Hi-Res Player v5.7.38
+# Aura Hi-Res Player v5.7.39
 
-## "Similar a" honesto (sin inventar lo que no hay)
-- La cabecera **"Similar a…"** ahora solo es tocable (y muestra la flecha) cuando hay un destino real:
-  - Canción **con** álbum → abre el álbum.
-  - Canción **sin** álbum → abre su **artista** (que sí existe).
-  - Si no hay nada que abrir → **no es tocable** y no muestra flecha (no engaña al usuario).
-- Esto también elimina por completo el cierre al tocar "Similar a".
+## Podcasts más pulidos
+- **Arranca a la primera**: los episodios ya empiezan a sonar al tocarlos, sin tener que dar pausa y luego play.
+- **"Guardados" mejor organizado**: ahora se muestran en una cuadrícula donde se ven todos, ordenados, en vez de una tira horizontal apretada.
+- **Miniaturas en Guardados**: las portadas ya aparecen; si un podcast no trae portada se muestra un ícono en su lugar (nunca un cuadro vacío). Además, al abrir un podcast se recupera su portada del feed.
 
 ## Incluye lo anterior
-- v5.7.37: arreglo inicial del cierre en "Similar a". v5.7.36: red de seguridad de toques + nombre en el reporte de fallos.
+- v5.7.38: "Similar a" honesto. v5.7.36: red de seguridad de toques + nombre del reporte de fallos.

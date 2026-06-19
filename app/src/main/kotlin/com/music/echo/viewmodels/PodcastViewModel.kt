@@ -121,7 +121,15 @@ class PodcastViewModel @Inject constructor(
         episodes.value = emptyList()
         viewModelScope.launch {
             loadingEpisodes = true
-            episodes.value = runCatching { repository.episodes(show) }.getOrDefault(emptyList())
+            val eps = runCatching { repository.episodes(show) }.getOrDefault(emptyList())
+            episodes.value = eps
+            // If the show was opened without a cover (e.g. via a deep-link), backfill it from the feed
+            // so pinning it saves real artwork and the "Guardados" thumbnail shows.
+            if (show.artworkUrl.isNullOrBlank()) {
+                eps.firstOrNull { !it.artworkUrl.isNullOrBlank() }?.artworkUrl?.let { art ->
+                    selectedShow.value = show.copy(artworkUrl = art)
+                }
+            }
             loadingEpisodes = false
         }
     }

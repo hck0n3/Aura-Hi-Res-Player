@@ -1336,7 +1336,10 @@ class MusicService :
                     initialStatus.position,
                 )
                 player.prepare()
-                player.playWhenReady = playWhenReady
+                // Use play() (not just playWhenReady=true) so playback actually starts on the first
+                // try — for direct-URL media (podcasts) setting the flag alone sometimes left it
+                // prepared-but-paused until a manual pause→play.
+                if (playWhenReady) player.play() else player.playWhenReady = false
             }
 
             

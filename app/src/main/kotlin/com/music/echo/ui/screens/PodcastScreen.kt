@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -175,7 +176,9 @@ fun PodcastScreen(
                         }
                         if (pinned.isNotEmpty()) {
                             item { SectionHeader("Guardados") }
-                            item { ShowCarousel(pinned) { viewModel.openShow(it) } }
+                            // A wrapping grid (not a cramped horizontal strip) so every saved show is
+                            // visible and neatly laid out.
+                            item { SavedShowsGrid(pinned.distinctBy { it.id }) { viewModel.openShow(it) } }
                         }
                         viewModel.categories.forEach { cat ->
                             val list = trending[cat]
@@ -303,11 +306,7 @@ private fun SectionHeader(text: String) {
 @Composable
 private fun ContinueCard(p: PodcastProgressStore.Progress, onClick: () -> Unit) {
     Column(modifier = Modifier.width(150.dp).clickable { onClick() }) {
-        AsyncImage(
-            model = p.artworkUrl,
-            contentDescription = null,
-            modifier = Modifier.size(150.dp).clip(RoundedCornerShape(12.dp)),
-        )
+        PodcastArtwork(p.artworkUrl, 150.dp)
         Spacer(Modifier.height(6.dp))
         Text(p.title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
         Text(p.showTitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -325,14 +324,56 @@ private fun ShowCarousel(shows: List<PodcastShow>, onClick: (PodcastShow) -> Uni
             Column(
                 modifier = Modifier.width(130.dp).clickable { onClick(show) },
             ) {
-                AsyncImage(
-                    model = show.artworkUrl,
-                    contentDescription = null,
-                    modifier = Modifier.size(130.dp).clip(RoundedCornerShape(12.dp)),
-                )
+                PodcastArtwork(show.artworkUrl, 130.dp)
                 Spacer(Modifier.height(6.dp))
                 Text(show.title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Text(show.author, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+    }
+}
+
+/** Podcast cover with a graceful placeholder when the show/episode has no artwork. */
+@Composable
+private fun PodcastArtwork(url: String?, size: androidx.compose.ui.unit.Dp, corner: androidx.compose.ui.unit.Dp = 12.dp) {
+    androidx.compose.foundation.layout.Box(
+        modifier = Modifier
+            .size(size)
+            .clip(RoundedCornerShape(corner))
+            .background(MaterialTheme.colorScheme.surfaceVariant),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (!url.isNullOrBlank()) {
+            AsyncImage(
+                model = url,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else {
+            Icon(
+                painterResource(R.drawable.queue_music),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(size * 0.4f),
+            )
+        }
+    }
+}
+
+/** Saved shows as a wrapping grid so all are visible and tidily organized. */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun SavedShowsGrid(shows: List<PodcastShow>, onClick: (PodcastShow) -> Unit) {
+    androidx.compose.foundation.layout.FlowRow(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        shows.forEach { show ->
+            Column(modifier = Modifier.width(104.dp).clickable { onClick(show) }) {
+                PodcastArtwork(show.artworkUrl, 104.dp)
+                Spacer(Modifier.height(6.dp))
+                Text(show.title, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
         }
     }
