@@ -1435,23 +1435,75 @@ fun HomeScreen(
                                     )
                                 }
 
+                                // Distinct look from the square "Marcación rápida" tiles: wide
+                                // horizontal "continue" cards (artwork + title with a ▶ accent).
                                 item(key = "keep_listening_list") {
-                                    val rows = if (keepListening.size > 6) 2 else 1
-                                    LazyHorizontalGrid(
-                                        state = rememberLazyGridState(),
-                                        rows = GridCells.Fixed(rows),
+                                    LazyRow(
                                         contentPadding = WindowInsets.systemBars.only(WindowInsetsSides.Horizontal)
                                             .asPaddingValues(),
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height((currentGridHeight + with(LocalDensity.current) {
-                                                MaterialTheme.typography.bodyLarge.lineHeight.toDp() * 2 +
-                                                        MaterialTheme.typography.bodyMedium.lineHeight.toDp() * 2
-                                            }) * rows)
-                                            .animateItem()
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                        modifier = Modifier.fillMaxWidth().animateItem(),
                                     ) {
-                                        items(keepListening) {
-                                            localGridItem(it)
+                                        items(keepListening, key = { it.id }) { item ->
+                                            val thumb = when (item) {
+                                                is Song -> item.song.thumbnailUrl
+                                                is Album -> item.album.thumbnailUrl
+                                                else -> null
+                                            }
+                                            val titleText = when (item) {
+                                                is Song -> item.song.title
+                                                is Album -> item.album.title
+                                                else -> ""
+                                            }
+                                            val subtitle = when (item) {
+                                                is Song -> item.artists.joinToString { it.name }
+                                                is Album -> item.artists.joinToString { it.name }
+                                                else -> ""
+                                            }
+                                            androidx.compose.material3.Surface(
+                                                shape = RoundedCornerShape(14.dp),
+                                                color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                                modifier = Modifier
+                                                    .width(250.dp)
+                                                    .clickable {
+                                                        when (item) {
+                                                            is Song -> if (item.id == mediaMetadata?.id) playerConnection.togglePlayPause()
+                                                                else playerConnection.playQueue(YouTubeQueue.radio(item.toMediaMetadata()))
+                                                            is Album -> navController.navigate("album/${item.id}")
+                                                            else -> {}
+                                                        }
+                                                    },
+                                            ) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    modifier = Modifier.padding(8.dp),
+                                                ) {
+                                                    coil3.compose.AsyncImage(
+                                                        model = thumb,
+                                                        contentDescription = null,
+                                                        modifier = Modifier.size(58.dp).clip(RoundedCornerShape(10.dp)),
+                                                    )
+                                                    Spacer(Modifier.width(10.dp))
+                                                    Column(Modifier.weight(1f)) {
+                                                        Text(
+                                                            "▶ $titleText",
+                                                            maxLines = 1,
+                                                            overflow = TextOverflow.Ellipsis,
+                                                            style = MaterialTheme.typography.bodyMedium,
+                                                            fontWeight = FontWeight.SemiBold,
+                                                        )
+                                                        if (subtitle.isNotBlank()) {
+                                                            Text(
+                                                                subtitle,
+                                                                maxLines = 1,
+                                                                overflow = TextOverflow.Ellipsis,
+                                                                style = MaterialTheme.typography.bodySmall,
+                                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                 }

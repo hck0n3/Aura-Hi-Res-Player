@@ -1,8 +1,7 @@
-# Aura Hi-Res Player v5.7.60
+# Aura Hi-Res Player v5.7.61
 
-## Sincronización con YouTube Music
-- **Tus "Me gusta" se sincronizan con YouTube Music** (con sesión iniciada): lo que marcas con el corazón también queda marcado en tu cuenta de YT Music.
-- **Lo que importes de Spotify** ahora también se **sube a tu biblioteca de YouTube Music**: al terminar la importación, tus "Me gusta" y biblioteca importados se reflejan en tu cuenta de YT Music.
+## "Seguir escuchando" con otro estilo
+- La sección **"Seguir escuchando"** del Inicio ahora se ve **distinta a "Marcación rápida"**: tarjetas anchas horizontales con carátula + título y un acento **▶**, en vez de los cuadritos.
 
-## Incluye lo anterior
-- v5.7.59: exportar playlists. v5.7.58: perfiles de EQ con efectos + exportar.
+## Resumen de esta tanda (v5.7.55–5.7.61)
+- Sonido sin distorsión · botones junto al título + menú "+" limpio · licencia en segundo plano · demo reforzado · perfiles de EQ con efectos + exportar · exportar playlists · sincronización con YouTube Music (likes + importación de Spotify) · "Seguir escuchando" rediseñado.
