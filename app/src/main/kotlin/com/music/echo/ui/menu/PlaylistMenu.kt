@@ -110,6 +110,33 @@ fun PlaylistMenu(
 
     val isPinned by database.speedDialDao.isPinned(playlist.id).collectAsState(initial = false)
 
+    // Export the playlist (its songs) to a JSON file the user picks.
+    val exportLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        if (uri != null) {
+            coroutineScope.launch(Dispatchers.IO) {
+                runCatching {
+                    val arr = org.json.JSONArray()
+                    songs.forEach { s ->
+                        arr.put(
+                            org.json.JSONObject()
+                                .put("id", s.id)
+                                .put("title", s.song.title)
+                                .put("artists", s.artists.joinToString(", ") { it.name })
+                        )
+                    }
+                    val out = org.json.JSONObject()
+                        .put("name", playlist.playlist.name)
+                        .put("songs", arr)
+                        .toString()
+                    context.contentResolver.openOutputStream(uri)?.use { it.write(out.toByteArray()) }
+                }
+            }
+        }
+        onDismiss()
+    }
+
     LaunchedEffect(songs) {
         if (songs.isEmpty()) return@LaunchedEffect
         downloadUtil.downloads.collect { downloads ->
@@ -367,6 +394,22 @@ fun PlaylistMenu(
         item {
             Material3MenuGroup(
                 items = buildList {
+                    add(
+                        Material3MenuItemData(
+                            title = { Text(text = "Exportar playlist") },
+                            description = { Text(text = "Guardar las canciones en un archivo") },
+                            icon = {
+                                Icon(
+                                    painter = painterResource(R.drawable.download),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            },
+                            onClick = {
+                                exportLauncher.launch("${playlist.playlist.name}.json")
+                            }
+                        )
+                    )
                     if (!isGuest) {
                         playlist.playlist.browseId?.let { browseId ->
                             add(
