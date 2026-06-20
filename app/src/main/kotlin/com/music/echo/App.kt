@@ -154,7 +154,12 @@ class App : Application(), SingletonImageLoader.Factory {
             }
         }
 
-        YouTube.useLoginForBrowse = settings[UseLoginForBrowse] ?: true
+        // Default OFF: discovery browses (home/explore/new releases) load via the reliable guest
+        // context. With it ON + a signed-in account, YouTube Music often returns an empty/limited
+        // catalog for those feeds, so "Sugerencias"/"Álbum" looked broken only while logged in.
+        // Account-specific calls (library, liked, playlists, artists) force setLogin=true regardless,
+        // so they keep working. Users can still turn it on in Settings.
+        YouTube.useLoginForBrowse = settings[UseLoginForBrowse] ?: false
         YouTube.ipVersion = settings[IpVersionKey]?.toEnum(defaultValue = IpVersion.AUTO) ?: IpVersion.AUTO
 
         val channel = NotificationChannel(

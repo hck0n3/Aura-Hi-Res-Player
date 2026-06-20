@@ -50,7 +50,7 @@ fun SettingDialoge(
     val accountName by homeViewModel.accountName.collectAsState()
     val accountImageUrl by homeViewModel.accountImageUrl.collectAsState()
 
-    val (useLoginForBrowse, onUseLoginForBrowseChange) = rememberPreference(UseLoginForBrowse, true)
+    val (useLoginForBrowse, onUseLoginForBrowseChange) = rememberPreference(UseLoginForBrowse, false)
     val (ytmSync, onYtmSyncChange) = rememberPreference(YtmSyncKey, true)
 
     Dialog(

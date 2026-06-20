@@ -1,7 +1,7 @@
-# Aura Hi-Res Player v5.7.61
+# Aura Hi-Res Player v5.7.62
 
-## "Seguir escuchando" con otro estilo
-- La sección **"Seguir escuchando"** del Inicio ahora se ve **distinta a "Marcación rápida"**: tarjetas anchas horizontales con carátula + título y un acento **▶**, en vez de los cuadritos.
-
-## Resumen de esta tanda (v5.7.55–5.7.61)
-- Sonido sin distorsión · botones junto al título + menú "+" limpio · licencia en segundo plano · demo reforzado · perfiles de EQ con efectos + exportar · exportar playlists · sincronización con YouTube Music (likes + importación de Spotify) · "Seguir escuchando" rediseñado.
+## Arreglo: las sugerencias/álbumes no cargaban con sesión iniciada
+- Cuando estabas conectado a Google (y Spotify), las pestañas **"Sugerencias"** y **"Álbum"** del buscador a veces salían vacías.
+- **Causa:** el descubrimiento (sugerencias, novedades, álbumes) se pedía a YouTube Music **con tu cuenta**, y en ese modo YouTube suele devolver un catálogo vacío o limitado.
+- **Solución:** ahora el descubrimiento se carga en modo **invitado** (fiable y completo). Tu biblioteca, "Me gusta", playlists y artistas siguen usando tu cuenta normal — no cambia nada de eso.
+- Si lo prefieres al revés, sigue estando el interruptor en Ajustes ("Usar inicio de sesión para explorar").
