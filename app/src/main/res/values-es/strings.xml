@@ -39,6 +39,7 @@
     <string name="filter_albums">Álbumes</string>
     <string name="filter_artists">Artistas</string>
     <string name="filter_playlists">Listas de reproducción</string>
+    <string name="update_signature_mismatch">No se pudo verificar la firma de la actualización. Instalación cancelada por seguridad.</string>
     <string name="filter_community_playlists">Listas de la comunidad</string>
     <string name="filter_featured_playlists">Listas destacadas</string>
     <string name="filter_bookmarked">En marcadores</string>

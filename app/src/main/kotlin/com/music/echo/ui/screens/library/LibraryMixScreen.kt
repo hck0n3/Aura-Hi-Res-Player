@@ -396,7 +396,7 @@ fun LibraryMixScreen(
                                 modifier = itemModifier
                             )
                             AutoPlaylistButton(
-                                title = "Podcasts",
+                                title = stringResource(R.string.podcasts),
                                 icon = R.drawable.queue_music,
                                 iconTint = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
                                 onClick = { navController.navigate("podcasts") },
@@ -717,7 +717,7 @@ fun LibraryMixScreen(
                                 modifier = itemModifier
                             )
                             AutoPlaylistButton(
-                                title = "Podcasts",
+                                title = stringResource(R.string.podcasts),
                                 icon = R.drawable.queue_music,
                                 iconTint = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
                                 onClick = { navController.navigate("podcasts") },

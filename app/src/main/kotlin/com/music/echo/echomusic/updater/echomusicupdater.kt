@@ -323,6 +323,17 @@ fun UpdateScreen(navController: NavHostController) {
                                                         return@let
                                                     }
                                                 }
+                                                // Defense-in-depth: refuse to install an update that isn't signed
+                                                // with our certificate (a tampered/MITM'd APK), before handing it
+                                                // to the system installer.
+                                                if (!ApkSignatureVerifier.matchesInstalledSignature(context, file)) {
+                                                    android.widget.Toast.makeText(
+                                                        context,
+                                                        context.getString(R.string.update_signature_mismatch),
+                                                        android.widget.Toast.LENGTH_LONG
+                                                    ).show()
+                                                    return@let
+                                                }
                                                 val uri = FileProvider.getUriForFile(context, "${context.packageName}.FileProvider", file)
                                                 val installIntent = Intent(Intent.ACTION_VIEW).apply {
                                                     setDataAndType(uri, "application/vnd.android.package-archive")

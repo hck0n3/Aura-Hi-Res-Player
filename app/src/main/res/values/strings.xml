@@ -58,6 +58,8 @@
     <string name="filter_artists">Artists</string>
     <string name="filter_local">Local</string>
     <string name="filter_playlists">Playlists</string>
+    <string name="podcasts">Podcasts</string>
+    <string name="update_signature_mismatch">Could not verify the update signature. Install cancelled for safety.</string>
     <string name="filter_community_playlists">Community playlists</string>
     <string name="filter_featured_playlists">Featured playlists</string>
     <string name="filter_bookmarked">Bookmarked</string>

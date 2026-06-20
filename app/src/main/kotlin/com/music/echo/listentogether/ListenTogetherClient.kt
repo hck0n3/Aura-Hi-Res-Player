@@ -562,9 +562,14 @@ class ListenTogetherClient @Inject constructor(
     }
     
     private fun releaseWakeLock() {
-        if (wakeLock?.isHeld == true) {
-            wakeLock?.release()
-            log(LogLevel.DEBUG, "Wake lock released")
+        try {
+            if (wakeLock?.isHeld == true) {
+                wakeLock?.release()
+                log(LogLevel.DEBUG, "Wake lock released")
+            }
+        } catch (e: Exception) {
+            // release() on an already-released lock throws; never let cleanup crash.
+            log(LogLevel.WARNING, "Wake lock release failed", e.message)
         }
     }
 

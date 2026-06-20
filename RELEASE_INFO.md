@@ -1,10 +1,14 @@
-# Aura Hi-Res Player v5.7.67
+# Aura Hi-Res Player v5.7.68
 
-## Artista: todos los álbumes en cuadrícula compacta
-- Al ver TODOS los álbumes de un artista ahora se muestran en **cuadrícula de 3 columnas**, ordenados por año (más nuevos primero) y cada portada con **título + año** (sin repetir el nombre del artista). Mismo aspecto cuidado por todas las rutas.
+## Seguridad y robustez (auditoría)
+- La **sesión de inicio** ya no se incluye en las copias de seguridad de Android (no se puede extraer por backup).
+- **Tráfico en claro desactivado** en toda la app (todo va por HTTPS/WSS).
+- El **actualizador verifica la firma** del APK antes de instalar (rechaza un archivo manipulado).
+- Menos micro-tirones: se quitaron lecturas de disco bloqueantes en la reproducción.
+- Mejor diagnóstico: varios errores que se tragaban ahora se registran.
 
-## Marcación rápida con otro diseño
-- Ahora son **portadas redondas con el título y el artista debajo** (en vez de cuadros con el texto encima). Más limpio y moderno.
+## Compartir registro de log
+- Al **compartir el log** ahora se envía como **archivo de texto adjunto** (antes algunas apps pegaban todo el texto en el mensaje).
 
-## Menos consumo de batería
-- Los guardados automáticos de posición/progreso ya **no despiertan el teléfono cada pocos segundos cuando la música está en pausa o parada**: solo trabajan mientras de verdad estás reproduciendo. Debería notarse en el consumo en segundo plano.
+## Pantalla completa
+- El interruptor **"ocultar la barra de estado en pantalla completa"** viene **activado por defecto**.

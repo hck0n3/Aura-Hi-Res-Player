@@ -211,7 +211,8 @@ object Spotify {
                 throw SpotifyException(412, "PersistedQueryNotFound for $operationName — hash may have rotated")
             }
 
-            return result.json!!
+            return result.json
+                ?: throw SpotifyException(500, "Empty GQL response for $operationName")
         }
 
         throw SpotifyException(412, "No valid hash found for $operationName")

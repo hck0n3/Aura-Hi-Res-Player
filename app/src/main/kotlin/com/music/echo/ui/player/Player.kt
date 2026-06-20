@@ -797,7 +797,7 @@ fun BottomSheetPlayer(
         mutableStateOf(false)
     }
 
-    val hideStatusBarOnFullscreen by rememberPreference(HideStatusBarOnFullscreenKey, defaultValue = false)
+    val hideStatusBarOnFullscreen by rememberPreference(HideStatusBarOnFullscreenKey, defaultValue = true)
 
     DisposableEffect(isFullScreen, hideStatusBarOnFullscreen) {
         val window = (context as? android.app.Activity)?.window
@@ -2734,7 +2734,7 @@ fun InlineLyricsView(
                         upsert(LyricsEntity(mediaMetadata.id, fetchedLyricsWithProvider.lyrics, fetchedLyricsWithProvider.provider))
                     }
                 } catch (e: Exception) {
-                    
+                    timber.log.Timber.e(e, "Lyrics fetch/save failed")
                 }
             }
         }

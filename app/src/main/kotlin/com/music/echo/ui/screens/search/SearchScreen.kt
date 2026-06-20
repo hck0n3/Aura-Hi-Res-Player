@@ -477,7 +477,7 @@ fun SearchScreen(
                         try {
                             focusRequester.requestFocus()
                         } catch (e: Exception) {
-                            
+                            timber.log.Timber.d("Search focus request skipped: ${e.message}")
                         }
                         isFirstLaunch = false
                     }

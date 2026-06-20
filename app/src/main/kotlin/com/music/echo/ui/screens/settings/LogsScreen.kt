@@ -166,10 +166,13 @@ private fun shareLog(context: Context, isCrash: Boolean, text: String) {
         val shareFile = File(dir, if (isCrash) "share_crash.txt" else "share_log.txt")
         shareFile.writeText(text)
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.FileProvider", shareFile)
+        // Share the .txt as a FILE attachment. Including EXTRA_TEXT made most apps paste the whole log
+        // as a message instead of attaching the document, so only the stream (file) is provided.
         val intent = Intent(Intent.ACTION_SEND).apply {
             type = "text/plain"
             putExtra(Intent.EXTRA_STREAM, uri)
-            putExtra(Intent.EXTRA_TEXT, text)
+            putExtra(Intent.EXTRA_SUBJECT, shareFile.name)
+            clipData = android.content.ClipData.newRawUri(shareFile.name, uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         context.startActivity(Intent.createChooser(intent, null))

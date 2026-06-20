@@ -364,6 +364,7 @@ constructor(
                         try {
                             database.query { insert(songItem.toMediaMetadata()) }
                         } catch (e: Exception) {
+                            timber.log.Timber.e(e, "Failed to cache search result song")
                         }
                         
                         searchResults.add(songItem.toMediaItem("${MusicService.SEARCH}/$query"))
@@ -556,6 +557,7 @@ constructor(
                                     searchResults.add(newSong)
                                 }
                             } catch (e: Exception) {
+                                timber.log.Timber.e(e, "Failed to cache voice-search result")
                             }
                         }
                     } catch (e: Exception) {

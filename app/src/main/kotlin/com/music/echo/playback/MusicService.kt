@@ -1873,7 +1873,7 @@ class MusicService :
         }
 
         if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) {
-            val repeatMode = runBlocking { dataStore.get(RepeatModeKey, REPEAT_MODE_OFF) }
+            val repeatMode = player.repeatMode  // live value; avoids a blocking disk read on the player thread
             if (repeatMode == REPEAT_MODE_ONE &&
                 previousMediaItemIndex != C.INDEX_UNSET &&
                 previousMediaItemIndex != player.currentMediaItemIndex) {
@@ -2015,7 +2015,7 @@ class MusicService :
     ) {
         
         if (playbackState == Player.STATE_ENDED) {
-            val repeatMode = runBlocking { dataStore.get(RepeatModeKey, REPEAT_MODE_OFF) }
+            val repeatMode = player.repeatMode  // live value; avoids a blocking disk read on the player thread
             if (repeatMode == REPEAT_MODE_ALL && player.mediaItemCount > 0) {
                 player.seekTo(0, 0)
                 player.prepare()
@@ -3133,7 +3133,7 @@ class MusicService :
         try {
             unregisterReceiver(screenStateReceiver)
         } catch (e: Exception) {
-            
+            Timber.tag(TAG).d("screenStateReceiver was not registered: ${e.message}")
         }
         audioManager.unregisterAudioDeviceCallback(audioDeviceCallback)
         castConnectionHandler?.release()
@@ -3212,7 +3212,7 @@ class MusicService :
                     currentPosition = player.currentPosition
                 )
             } catch (e: Exception) {
-                
+                Timber.tag(TAG).e(e, "Failed to update media metadata/notification")
             }
         }
     }
@@ -3444,7 +3444,7 @@ class MusicService :
                 fadingPlayer?.volume = 0f
                 player.volume = startVolume
                 cleanupCrossfade()
-            } catch (e: Exception) { }
+            } catch (e: Exception) { Timber.tag(TAG).e(e, "Crossfade cleanup failed") }
         }
     }
 

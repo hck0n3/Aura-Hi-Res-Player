@@ -1,10 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
-    <!-- Allow cleartext traffic for Listen Together local servers -->
-    <!-- We're already using WSS for the prod server -->
-    <base-config cleartextTrafficPermitted="true">
+    <!-- Cleartext (http/ws) is OFF app-wide: every real endpoint (YouTube, Spotify, LastFM, the Listen
+         Together prod server) is HTTPS/WSS, so this blocks accidental plaintext + MITM. -->
+    <base-config cleartextTrafficPermitted="false">
         <trust-anchors>
             <certificates src="system" />
         </trust-anchors>
     </base-config>
+    <!-- Only loopback / emulator-host keep cleartext, for testing a local Listen Together server.
+         A LAN local server would need ws(s)://https. -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">localhost</domain>
+        <domain includeSubdomains="true">127.0.0.1</domain>
+        <domain includeSubdomains="true">10.0.2.2</domain>
+    </domain-config>
 </network-security-config>
