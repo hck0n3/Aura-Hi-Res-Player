@@ -24,12 +24,13 @@ fun LicenseGate(appContent: @Composable () -> Unit) {
     }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var appState by remember { mutableStateOf<AppState?>(null) }
+    // Start from the last cached state so re-verification runs in the background without flashing the
+    // "verificando licencia" screen on every open; that screen only shows on the very first run.
+    var appState by remember { mutableStateOf(LicenseManager.lastResolvedState(context)) }
     var showEntry by remember { mutableStateOf(false) }
 
     fun refresh() {
         showEntry = false
-        appState = null
         scope.launch { appState = LicenseManager.evaluate(context) }
     }
 

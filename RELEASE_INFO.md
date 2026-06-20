@@ -1,8 +1,10 @@
-# Aura Hi-Res Player v5.7.56
+# Aura Hi-Res Player v5.7.57
 
-## Botones en línea junto al título
-- Junto al título ahora están, en orden: **➕  ❤  👎** (el "+" antes del corazón, "No me gusta" pegado a la derecha).
-- **Menú "+" más limpio**: quité lo que ya estaba afuera (Me gusta, No me gusta) y también **Ecualizador** (ya está en "Sonido") y **Avanzado**.
+## Verificación de licencia en segundo plano
+- Ya **no aparece la pantalla "verificando licencia"** cada vez que abres. La app entra de una con tu estado guardado y **re-verifica por detrás** sin molestar. Esa pantalla solo sale en el primer arranque.
+
+## Demo de 3 días
+- Reforcé el control del demo: una vez registrado, ya **no puede "reiniciarse"** para que dure de más; respeta los 3 días.
 
 ## Incluye lo anterior
-- v5.7.55: sonido sin distorsión (nivel más bajo). v5.7.54: Sonido/Temporizador dentro del "+".
+- v5.7.56: botones junto al título + menú "+" limpio. v5.7.55: sonido sin distorsión.

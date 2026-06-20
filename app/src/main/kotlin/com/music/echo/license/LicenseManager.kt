@@ -19,6 +19,17 @@ object LicenseManager {
     private const val KEY_LAST_VERIFIED = "last_verified_at"
     private const val KEY_DEMO_STARTED = "demo_started_at"
     private const val KEY_LAST_SEEN = "last_seen_at"
+    private const val KEY_LAST_STATE = "last_state"
+
+    /** Last resolved gate state, cached so re-verification can happen in the background without
+     *  flashing the "verificando licencia" screen every time the app opens. */
+    fun lastResolvedState(context: Context): LicenseLogic.AppState? =
+        prefs(context).getString(KEY_LAST_STATE, null)
+            ?.let { runCatching { LicenseLogic.AppState.valueOf(it) }.getOrNull() }
+
+    private fun saveResolved(context: Context, s: LicenseLogic.AppState) {
+        prefs(context).edit().putString(KEY_LAST_STATE, s.name).apply()
+    }
 
     private val backend = LicenseBackendClient()
 
@@ -93,11 +104,16 @@ object LicenseManager {
                 val demo = backend.fetchDemo(DeviceId.get(context), start = false)
                 if (demo != null && demo.hasDemo) {
                     val elapsed = (demo.serverTime - demo.startedAt).coerceAtLeast(0L)
-                    state = state.copy(demoStartedAt = now - elapsed, lastSeenAt = now)
+                    val serverStart = now - elapsed
+                    // Floor: once a start is recorded, the demo can never be made *newer* (a server
+                    // glitch or a re-register can't extend/restart the 3-day demo). Only earlier wins.
+                    val start = if (state.demoStartedAt > 0L) minOf(state.demoStartedAt, serverStart) else serverStart
+                    state = state.copy(demoStartedAt = start, lastSeenAt = now)
                     save(context, state)
                 }
             }
             return@withContext LicenseLogic.resolve(state, LicenseLogic.VerifyOutcome.UNVERIFIED, now)
+                .also { saveResolved(context, it) }
         }
 
         val outcome = if (isOnline(context)) {
@@ -110,7 +126,7 @@ object LicenseManager {
         } else {
             LicenseLogic.VerifyOutcome.UNVERIFIED
         }
-        LicenseLogic.resolve(state, outcome, now)
+        LicenseLogic.resolve(state, outcome, now).also { saveResolved(context, it) }
     }
 
     /** Called from the "Ya me suscribí" entry screen. Saves the key only when verification is ACTIVE. */
