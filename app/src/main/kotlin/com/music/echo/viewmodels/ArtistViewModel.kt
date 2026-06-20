@@ -120,28 +120,67 @@ class ArtistViewModel @Inject constructor(
                         }
                     }
 
-                    // Discography completion: YouTube omits some albums from the artist page (e.g. albums
-                    // credited to a "...4.40"-style sub-entity), so they only show up via a separate
-                    // search. Search the artist's albums and merge any missing ones — credited to this
-                    // artist — into the album section, so the whole discography lives ON the artist.
+                    // Discography completion: cross-check the artist's REAL discography (from iTunes)
+                    // against what YouTube returns and look up the missing albums on YouTube one by one,
+                    // then merge them into the album section. This surfaces albums YouTube omits from the
+                    // artist page (e.g. "Privé"), so the whole discography lives ON the artist instead of
+                    // forcing a separate search. Runs in the background after the first render.
                     launch(kotlinx.coroutines.Dispatchers.IO) {
                         val artistName = page.artist?.title ?: return@launch
-                        val found = YouTube.search(artistName, YouTube.SearchFilter.FILTER_ALBUM)
+                        val region = iad1tya.echo.music.utils.systemRegionCode()
+                        val norm = iad1tya.echo.music.utils.iTunesDiscography::normalizeTitle
+
+                        fun creditedToArtist(a: com.music.innertube.models.AlbumItem): Boolean =
+                            a.artists?.any { it.id == artistId || it.name.contains(artistName, ignoreCase = true) } == true
+
+                        // 1) Cheap pass: albums YouTube returns when searching the artist name.
+                        val byArtistSearch = YouTube.search(artistName, YouTube.SearchFilter.FILTER_ALBUM)
                             .getOrNull()?.items
                             ?.filterIsInstance<com.music.innertube.models.AlbumItem>()
-                            ?.filter { album ->
-                                album.artists?.any {
-                                    it.id == artistId || it.name.contains(artistName, ignoreCase = true)
-                                } == true
-                            }
-                            ?.filter { !hideExplicit || !it.explicit }
+                            ?.filter(::creditedToArtist)
                             .orEmpty()
-                        if (found.isEmpty()) return@launch
+
+                        // Titles we already have (artist page + the cheap pass), normalized for matching.
+                        val haveTitles = ((artistPage?.sections?.flatMap { it.items } ?: emptyList()) + byArtistSearch)
+                            .filterIsInstance<com.music.innertube.models.AlbumItem>()
+                            .map { norm(it.title) }
+                            .toMutableSet()
+
+                        // 2) Thorough pass: for each iTunes album we DON'T have, look it up on YouTube.
+                        val itunesTitles = iad1tya.echo.music.utils.iTunesDiscography.fetchAlbumTitles(artistName, region)
+                        val missingTitles = itunesTitles
+                            .filter { norm(it) !in haveTitles }
+                            .distinctBy { norm(it) }
+                            .take(12)
+
+                        val byTitleLookup = mutableListOf<com.music.innertube.models.AlbumItem>()
+                        for (title in missingTitles) {
+                            val target = norm(title)
+                            if (target.isBlank() || target in haveTitles) continue
+                            val match = YouTube.search("$artistName $title", YouTube.SearchFilter.FILTER_ALBUM)
+                                .getOrNull()?.items
+                                ?.filterIsInstance<com.music.innertube.models.AlbumItem>()
+                                ?.firstOrNull {
+                                    creditedToArtist(it) && run {
+                                        val yt = norm(it.title)
+                                        yt == target || (target.length >= 4 && (yt.contains(target) || target.contains(yt)))
+                                    }
+                                }
+                            if (match != null) {
+                                byTitleLookup.add(match)
+                                haveTitles.add(target)
+                            }
+                        }
+
+                        val extra = (byArtistSearch + byTitleLookup)
+                            .filter { !hideExplicit || !it.explicit }
+                            .distinctBy { it.id }
+                        if (extra.isEmpty()) return@launch
 
                         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                             val current = artistPage ?: return@withContext
                             val existingIds = current.sections.flatMap { it.items }.map { it.id }.toHashSet()
-                            val missing = found.filterNot { it.id in existingIds }
+                            val missing = extra.filterNot { it.id in existingIds }
                             if (missing.isEmpty()) return@withContext
                             val idx = current.sections.indexOfFirst {
                                 it.items.firstOrNull() is com.music.innertube.models.AlbumItem

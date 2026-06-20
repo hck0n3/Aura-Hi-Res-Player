@@ -1,10 +1,6 @@
-# Aura Hi-Res Player v5.7.70
+# Aura Hi-Res Player v5.7.71
 
-## Discografía completa dentro del artista
-- Ahora, al entrar a un artista, la app **completa su discografía** automáticamente: busca sus álbumes y **añade los que YouTube no incluía** en la página del artista (los que antes solo aparecían si los buscabas por separado, p. ej. "Privé" de Juan Luis Guerra). Todo queda **dentro del artista**.
-
-## Pestaña "Álbum" del buscador
-- Si el explorador de YouTube venía vacío, ahora usa el listado dedicado de novedades como respaldo, así deja de decir "no se pudieron cargar las sugerencias".
-
-## Ajustes
-- Coherencia del interruptor "Usar inicio de sesión para explorar" (queda apagado por defecto, como debe).
+## La discografía del artista se compara con internet y se completa
+- Al entrar a un artista, la app ahora **consulta su discografía real en internet** (base de datos de iTunes/Apple) y la **compara** con lo que ofrece YouTube.
+- Los álbumes que existen pero YouTube **no muestra dentro del artista** (como **"Privé" de Juan Luis Guerra**) se **buscan en YouTube uno por uno y se agregan** automáticamente. Esto aplica a **todos los artistas**.
+- Trabaja en segundo plano tras abrir el artista, así que no retrasa la carga.
