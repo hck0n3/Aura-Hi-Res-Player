@@ -15,7 +15,9 @@ import iad1tya.echo.music.utils.iTunesDiscography
 import iad1tya.echo.music.utils.systemRegionCode
 import iad1tya.echo.music.constants.HideExplicitKey
 import iad1tya.echo.music.constants.HideVideoSongsKey
+import iad1tya.echo.music.db.MusicDatabase
 import iad1tya.echo.music.models.ItemsPage
+import kotlinx.coroutines.flow.first
 import iad1tya.echo.music.utils.dataStore
 import iad1tya.echo.music.utils.get
 import iad1tya.echo.music.utils.reportException
@@ -31,6 +33,7 @@ class ArtistItemsViewModel
 @Inject
 constructor(
     @ApplicationContext val context: Context,
+    private val database: MusicDatabase,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
     private val browseId = savedStateHandle.get<String>("browseId")!!
@@ -71,19 +74,29 @@ constructor(
         }
     }
 
+    private suspend fun resolveArtistName(): String? {
+        val id = artistId ?: return null
+        runCatching { database.artist(id).first()?.artist?.name }.getOrNull()
+            ?.takeIf { it.isNotBlank() }?.let { return it }
+        return runCatching { YouTube.artist(id).getOrNull()?.artist?.title }.getOrNull()?.takeIf { it.isNotBlank() }
+    }
+
     private suspend fun enrichAlbums(hideExplicit: Boolean) {
         val baseAlbums = itemsPage.value?.items?.filterIsInstance<AlbumItem>().orEmpty()
         if (baseAlbums.isEmpty()) return
-        val artistName = baseAlbums.flatMap { it.artists.orEmpty() }
-            .firstOrNull { it.id == artistId && it.name.isNotBlank() }?.name
-            ?: baseAlbums.flatMap { it.artists.orEmpty() }
-                .mapNotNull { it.name.takeIf { n -> n.isNotBlank() } }
-                .groupingBy { it }.eachCount().maxByOrNull { it.value }?.key
-            ?: return
+        // moreEndpoint album items have artists = null, so the artist name must come from the DB/page.
+        val artistName = resolveArtistName() ?: return
         val norm = iTunesDiscography::normalizeTitle
 
-        fun credited(a: AlbumItem): Boolean =
-            a.artists?.any { it.id == artistId || it.name.contains(artistName, ignoreCase = true) } == true
+        fun credited(a: AlbumItem): Boolean {
+            val arts = a.artists
+            if (arts.isNullOrEmpty()) return true // the search was scoped to this artist; keep it
+            return arts.any {
+                it.id == artistId ||
+                    it.name.contains(artistName, ignoreCase = true) ||
+                    artistName.contains(it.name, ignoreCase = true)
+            }
+        }
 
         val have = baseAlbums.map { norm(it.title) }.toMutableSet()
         val additions = mutableListOf<AlbumItem>()

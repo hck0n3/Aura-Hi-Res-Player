@@ -1,8 +1,6 @@
-# Aura Hi-Res Player v5.7.73
+# Aura Hi-Res Player v5.7.74
 
-## "Ver todos los álbumes" del artista: estable y completo
-- Arreglada la regresión: ya no muestra a veces 10 y a veces 23 (eso era una "carrera" porque dependía de algo que se cargaba en segundo plano en la pantalla del artista).
-- Ahora la pantalla **"ver todos los álbumes"** carga así:
-  1. Primero muestra **la lista completa de YouTube** (sin recortar, así no se pierde ningún álbum).
-  2. Luego, en segundo plano, **añade los álbumes que faltan** tras comparar con la discografía real de internet (iTunes) y la búsqueda por artista — como **"Privé"**.
-- El carrusel del artista vuelve a ser limpio (sin parpadeo).
+## Arreglo REAL de la discografía incompleta del artista
+- Encontré la causa de fondo: en "ver todos los álbumes", los álbumes que da YouTube **no incluían el nombre del artista**, así que la app **no podía ejecutar** la comparación con internet (por eso seguía incompleta aunque los álbumes sí existieran al buscarlos por aparte).
+- Ahora el nombre del artista se obtiene de forma fiable (de tu biblioteca o de YouTube), así que la comparación **sí se ejecuta**: muestra primero todos los álbumes de YouTube y luego **añade los que faltan** (como "Privé") tras compararlos con la discografía real (iTunes) y buscarlos en YouTube.
+- Emparejado más flexible para no descartar variantes del artista (p. ej. "… 4.40").
