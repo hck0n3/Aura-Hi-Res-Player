@@ -810,14 +810,7 @@ fun ArtistScreen(
                                     // when present, otherwise open the already-loaded items in a grid.
                                     onClick = {
                                         val more = section.moreEndpoint
-                                        // For ALBUM sections, show our enriched list (the complete
-                                        // discography we merged from search/iTunes) via the buffer, instead
-                                        // of re-fetching YouTube's "more" page that omits albums like "Privé".
-                                        if (section.items.firstOrNull() is AlbumItem) {
-                                            ArtistSectionBuffer.title = section.title
-                                            ArtistSectionBuffer.items = section.items.distinctBy { it.id }
-                                            navController.navigate("artist/section_buffer")
-                                        } else if (more != null) {
+                                        if (more != null) {
                                             navController.navigate(
                                                 "artist/${viewModel.artistId}/items?browseId=${more.browseId}?params=${more.params}",
                                             )
