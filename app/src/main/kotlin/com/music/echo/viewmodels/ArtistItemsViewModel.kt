@@ -106,24 +106,12 @@ constructor(
         val have = baseAlbums.map { norm(it.title) }.toMutableSet()
         val additions = mutableListOf<com.music.innertube.models.YTItem>()
 
-        // 1) Albums from the artist-name album search — PAGINATE so prolific discographies are fully
-        //    covered. Using only the first page is why some artists weren't completing (the missing
-        //    albums were on later pages of the same search the user scrolls through manually).
-        var result = YouTube.search(artistName, YouTube.SearchFilter.FILTER_ALBUM).getOrNull()
-        var page = 0
-        while (result != null && page < 6) {
-            result.items.filterIsInstance<AlbumItem>().filter(::credited).forEach { alb ->
-                val t = norm(alb.title)
-                if (t.isNotBlank() && t !in have) { additions.add(alb); have.add(t) }
-            }
-            val cont = result.continuation ?: break
-            result = YouTube.searchContinuation(cont).getOrNull()
-            page++
-        }
-
-        // 2) Cross-check the real discography (iTunes) and look up still-missing titles on YouTube.
+        // The REAL discography (iTunes Apple Music: albums, EPs AND singles) is the AUTHORITY. We do NOT
+        // add albums off a broad YouTube search anymore — that pulled in tributes/compilations/karaoke
+        // that don't belong. For every iTunes release we don't already have, look it up on YouTube: first
+        // as a proper album, otherwise as a community/user playlist. Only real matches are added.
         val itunes = iTunesDiscography.fetchAlbumTitles(artistName, systemRegionCode())
-        val missing = itunes.filter { norm(it) !in have }.distinctBy { norm(it) }.take(20)
+        val missing = itunes.filter { norm(it) !in have }.distinctBy { norm(it) }.take(30)
         for (mt in missing) {
             val target = norm(mt)
             if (target.isBlank() || target in have) continue

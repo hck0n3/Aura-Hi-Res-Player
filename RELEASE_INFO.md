@@ -1,5 +1,8 @@
-# Aura Hi-Res Player v5.7.76
+# Aura Hi-Res Player v5.7.77
 
-## Discografía aún más completa: también desde playlists de la comunidad
-- Si a un artista le falta un álbum y **NO existe como álbum** en YouTube Music, pero **alguien lo subió como playlist** (ej.: "Lenguaje de Amor" de Alex Campos), la app ahora lo **encuentra y lo añade** a la discografía del artista.
-- Funciona para todos los artistas: por cada álbum que falta, primero busca el álbum oficial y, si no está, busca una playlist de la comunidad que coincida con el título y mencione al artista.
+## Discografía del artista: iTunes manda, sin meter cosas que no son
+- Ya no se cuelan compilaciones/tributos/karaoke: la app **deja de agregar álbumes por una búsqueda amplia**.
+- Ahora la discografía se completa SIEMPRE así:
+  1. **Consulta la discografía real en iTunes/Apple Music** (álbumes, EP y singles).
+  2. Por cada lanzamiento que falte, lo **busca en YouTube como álbum** y, si no existe, **como playlist de la comunidad/usuario**.
+  3. **Solo agrega lo que coincide** con esa discografía real — nada que no pertenezca.
