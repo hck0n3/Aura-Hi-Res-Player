@@ -140,8 +140,17 @@ class ArtistViewModel @Inject constructor(
                             ?.filter(::creditedToArtist)
                             .orEmpty()
 
-                        // Titles we already have (artist page + the cheap pass), normalized for matching.
-                        val haveTitles = ((artistPage?.sections?.flatMap { it.items } ?: emptyList()) + byArtistSearch)
+                        // 1b) YouTube's full "more albums" list (the carousel only previews a few).
+                        val albumSection = (artistPage?.sections ?: page.sections)
+                            .firstOrNull { it.items.firstOrNull() is com.music.innertube.models.AlbumItem }
+                        val fromMore = albumSection?.moreEndpoint?.let { ep ->
+                            YouTube.artistItems(ep).getOrNull()?.items
+                                ?.filterIsInstance<com.music.innertube.models.AlbumItem>()
+                                ?.filter(::creditedToArtist)
+                        }.orEmpty()
+
+                        // Titles we already have (artist page + the passes above), normalized for matching.
+                        val haveTitles = ((artistPage?.sections?.flatMap { it.items } ?: emptyList()) + byArtistSearch + fromMore)
                             .filterIsInstance<com.music.innertube.models.AlbumItem>()
                             .map { norm(it.title) }
                             .toMutableSet()
@@ -172,7 +181,7 @@ class ArtistViewModel @Inject constructor(
                             }
                         }
 
-                        val extra = (byArtistSearch + byTitleLookup)
+                        val extra = (byArtistSearch + fromMore + byTitleLookup)
                             .filter { !hideExplicit || !it.explicit }
                             .distinctBy { it.id }
                         if (extra.isEmpty()) return@launch
