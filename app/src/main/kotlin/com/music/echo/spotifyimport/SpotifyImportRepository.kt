@@ -60,6 +60,7 @@ import kotlin.math.roundToInt
 class SpotifyImportRepository @Inject constructor(
     @ApplicationContext private val context: Context,
     private val database: MusicDatabase,
+    private val syncUtils: iad1tya.echo.music.utils.SyncUtils,
 ) {
     private val mapperMutex = Mutex()
 
@@ -275,6 +276,15 @@ class SpotifyImportRepository @Inject constructor(
                         percent = progressPercent(sourceIndex + 1, sources.size, 0, 0),
                     ),
                 )
+            }
+
+            // Mirror the freshly-imported likes + library to YouTube Music (when signed in), so the
+            // Spotify import also lands in the user's YT Music library. Fire-and-forget (sync queue).
+            if (com.music.innertube.YouTube.cookie != null) {
+                runCatching {
+                    syncUtils.syncLikedSongs()
+                    syncUtils.syncLibrarySongs()
+                }
             }
 
             SpotifyImportSummaryUi(summaries)
