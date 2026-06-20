@@ -53,46 +53,48 @@ fun SpeedDialGridItem(
         )
 
         
+        // Cleaner look: a faint top scrim (keeps the pin legible) and a single smooth bottom scrim,
+        // instead of the old busy 4-stop gradient.
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(
                     Brush.verticalGradient(
-                        colors = listOf(
-                            Color.Black.copy(alpha = 0.4f), 
-                            Color.Transparent,
-                            Color.Black.copy(alpha = 0.6f),
-                            Color.Black.copy(alpha = 0.9f)
-                        )
+                        0f to Color.Black.copy(alpha = 0.25f),
+                        0.4f to Color.Transparent,
+                        1f to Color.Black.copy(alpha = 0.80f),
                     )
                 )
         )
 
-        
+        // Title sits in a soft translucent footer pill (rounded) for a fresher, more modern feel.
         Row(
             modifier = Modifier
                 .align(Alignment.BottomStart)
-                .padding(8.dp) 
-                .fillMaxWidth(),
+                .fillMaxWidth()
+                .padding(6.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(Color.Black.copy(alpha = 0.30f))
+                .padding(horizontal = 8.dp, vertical = 5.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
                 text = item.title,
-                style = MaterialTheme.typography.titleSmall, 
-                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
                 color = Color.White,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
             )
-            
-            
+
+
             if (item !is SongItem) {
                 Icon(
                     painter = painterResource(R.drawable.navigate_next),
                     contentDescription = null,
                     tint = Color.White,
-                    modifier = Modifier.size(20.dp)
+                    modifier = Modifier.size(18.dp)
                 )
         }
     }

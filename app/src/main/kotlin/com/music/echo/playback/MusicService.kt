@@ -429,6 +429,9 @@ class MusicService :
 
     
     var castConnectionHandler: CastConnectionHandler? = null
+    // Cast is initialized lazily on the first playback (see initializeCast) so the Cast framework never
+    // tries to promote this service to the foreground while the app is in the background.
+    private var castInitAttempted = false
         private set
 
     private val screenStateReceiver = object : BroadcastReceiver() {
@@ -603,10 +606,10 @@ class MusicService :
         ipVersion = dataStore.get(IpVersionKey).toEnum(IpVersion.AUTO)
         playerVolume = MutableStateFlow(dataStore.get(PlayerVolumeKey, 1f).coerceIn(0f, 1f))
 
-        
-        initializeCast()
+        // Cast is initialized lazily on first playback (see initializeCast) — NOT here in onCreate,
+        // which can run while the app is in the background and would crash on Android 12+.
 
-        
+
         scope.launch {
             eqProfileRepository.activeProfile.collect { profile ->
                 if (profile != null) {
@@ -2005,6 +2008,8 @@ class MusicService :
         }
 
         if (playbackState == Player.STATE_READY) {
+            // First real playback -> safe to bring up Cast now (service is foregrounded). No-op after once.
+            initializeCast()
             consecutivePlaybackErr = 0
             retryCount = 0
             waitingForNetworkConnection.value = false
@@ -3242,7 +3247,14 @@ class MusicService :
     }
 
     
+    // Initializing the Cast framework spins up GMS session listeners that can auto-resume a Cast
+    // session and ask Android to (re)start this service in the foreground. If that happens while the
+    // app is in the background (a system/Cast-triggered service creation), Android 12+ throws
+    // ForegroundServiceStartNotAllowedException and the app crashes. So we defer Cast init to the first
+    // real playback — by then the service is legitimately foregrounded and the start is allowed.
     private fun initializeCast() {
+        if (castInitAttempted) return
+        castInitAttempted = true
         if (dataStore.get(iad1tya.echo.music.constants.EnableGoogleCastKey, true)) {
             try {
                 castConnectionHandler = CastConnectionHandler(this, scope, this)

@@ -1,7 +1,8 @@
-# Aura Hi-Res Player v5.7.62
+# Aura Hi-Res Player v5.7.63
 
-## Arreglo: las sugerencias/álbumes no cargaban con sesión iniciada
-- Cuando estabas conectado a Google (y Spotify), las pestañas **"Sugerencias"** y **"Álbum"** del buscador a veces salían vacías.
-- **Causa:** el descubrimiento (sugerencias, novedades, álbumes) se pedía a YouTube Music **con tu cuenta**, y en ese modo YouTube suele devolver un catálogo vacío o limitado.
-- **Solución:** ahora el descubrimiento se carga en modo **invitado** (fiable y completo). Tu biblioteca, "Me gusta", playlists y artistas siguen usando tu cuenta normal — no cambia nada de eso.
-- Si lo prefieres al revés, sigue estando el interruptor en Ajustes ("Usar inicio de sesión para explorar").
+## Arreglos
+- **"Seguir escuchando" ya no muestra tarjetas en blanco.** Las entradas de **artista** salían vacías; ahora se ven bien (carátula + nombre, y al tocar abren el artista).
+- **Crash al abrir/reconectar (Google Cast) corregido.** En algunos móviles (p. ej. Xiaomi/Android 16) la app cerraba con error de "servicio en primer plano no permitido" cuando Cast intentaba reconectar en segundo plano. Ahora Cast se inicia solo al empezar a reproducir, así que ya no pasa.
+
+## Diseño
+- **"Marcación rápida" con look renovado**: degradado más limpio y el título en una barra translúcida redondeada (más moderno).

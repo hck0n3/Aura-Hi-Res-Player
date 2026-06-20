@@ -1445,14 +1445,18 @@ fun HomeScreen(
                                         modifier = Modifier.fillMaxWidth().animateItem(),
                                     ) {
                                         items(keepListening, key = { it.id }) { item ->
+                                            // keepListening mixes Songs, Albums AND Artists — handle all
+                                            // three so artist entries don't render as empty cards.
                                             val thumb = when (item) {
                                                 is Song -> item.song.thumbnailUrl
                                                 is Album -> item.album.thumbnailUrl
+                                                is iad1tya.echo.music.db.entities.Artist -> item.artist.thumbnailUrl
                                                 else -> null
                                             }
                                             val titleText = when (item) {
                                                 is Song -> item.song.title
                                                 is Album -> item.album.title
+                                                is iad1tya.echo.music.db.entities.Artist -> item.artist.name
                                                 else -> ""
                                             }
                                             val subtitle = when (item) {
@@ -1470,6 +1474,7 @@ fun HomeScreen(
                                                             is Song -> if (item.id == mediaMetadata?.id) playerConnection.togglePlayPause()
                                                                 else playerConnection.playQueue(YouTubeQueue.radio(item.toMediaMetadata()))
                                                             is Album -> navController.navigate("album/${item.id}")
+                                                            is iad1tya.echo.music.db.entities.Artist -> navController.navigate("artist/${item.id}")
                                                             else -> {}
                                                         }
                                                     },
