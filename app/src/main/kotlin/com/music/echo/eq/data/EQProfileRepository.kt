@@ -17,13 +17,17 @@ import javax.inject.Singleton
 
 @Serializable
 data class SavedEQProfile(
-    val id: String,                       
-    val name: String,                     
-    val deviceModel: String,              
-    val bands: List<ParametricEQBand>,    
-    val preamp: Double = 0.0,             
-    val isCustom: Boolean = false,        
-    val isActive: Boolean = false,        
+    val id: String,
+    val name: String,
+    val deviceModel: String,
+    val bands: List<ParametricEQBand>,
+    val preamp: Double = 0.0,
+    val isCustom: Boolean = false,
+    val isActive: Boolean = false,
+    // Sound effects snapshot saved WITH the EQ profile: which effects are on + their levels (Aura
+    // signature, bass, exciter, multiband comp, stereo width, dialogue, HRTF, loudness, audio enhance).
+    // Booleans are stored as 1f/0f. Restored when the profile is applied. Exportable as part of the JSON.
+    val effects: Map<String, Float> = emptyMap(),
     val addedTimestamp: Long = System.currentTimeMillis()
 )
 

@@ -173,10 +173,49 @@ class AxionEqViewModel @Inject constructor(
                 preamp = _preamp.value.toDouble(),
                 isCustom = true,
                 isActive = true,
+                // Save the active effects + their levels alongside the EQ curve.
+                effects = iad1tya.echo.music.eq.data.SoundEffectsSnapshot.capture(context),
             )
             eqProfileRepository.saveProfile(profile)
             eqProfileRepository.setActiveProfile(profile.id)
             _isDirty.value = false
+        }
+    }
+
+    /** Apply a saved profile: restore its EQ bands + preamp AND its sound-effects snapshot. */
+    fun applySavedProfile(profile: SavedEQProfile) {
+        val gains = FloatArray(n) { i -> profile.bands.getOrNull(i)?.gain?.toFloat() ?: 0f }
+        applyProfileBatch(gains, profile.preamp.toFloat())
+        viewModelScope.launch {
+            eqProfileRepository.setActiveProfile(profile.id)
+            iad1tya.echo.music.eq.data.SoundEffectsSnapshot.apply(context, profile.effects)
+        }
+    }
+
+    /** Write all custom profiles (EQ + effects) as JSON to a file the user picked (export). */
+    fun exportProfiles(uri: android.net.Uri) {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching {
+                val list = eqProfileRepository.getAllProfiles().filter { it.isCustom }
+                val text = kotlinx.serialization.json.Json { prettyPrint = true }
+                    .encodeToString(kotlinx.serialization.builtins.ListSerializer(SavedEQProfile.serializer()), list)
+                context.contentResolver.openOutputStream(uri)?.use { it.write(text.toByteArray()) }
+            }
+        }
+    }
+
+    /** Import profiles from a previously-exported JSON file. */
+    fun importProfiles(uri: android.net.Uri) {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching {
+                val text = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+                    ?: return@launch
+                val list = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+                    .decodeFromString(kotlinx.serialization.builtins.ListSerializer(SavedEQProfile.serializer()), text)
+                list.forEach { p ->
+                    eqProfileRepository.saveProfile(p.copy(id = "custom_${System.currentTimeMillis()}_${p.name.hashCode()}", isActive = false, isCustom = true))
+                }
+            }
         }
     }
 

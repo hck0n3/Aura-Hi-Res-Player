@@ -153,9 +153,32 @@ fun AxionEqScreen(
                     customProfiles = customProfiles,
                     bandGains = bandGains,
                     enabled = enabled,
-                    onApply = { viewModel.setBandsGains(it) },
+                    onApplyProfile = { viewModel.applySavedProfile(it) },
                     onEditClick = { showManageDialog = true },
                 )
+            }
+
+            // Export / import EQ profiles (EQ curve + effects) as a JSON file.
+            val exportLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+                androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/json")
+            ) { uri -> uri?.let { viewModel.exportProfiles(it) } }
+            val importLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+                androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
+            ) { uri -> uri?.let { viewModel.importProfiles(it) } }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                OutlinedButton(
+                    onClick = { exportLauncher.launch("aura-eq-perfiles.json") },
+                    modifier = Modifier.weight(1f),
+                    shape = MaterialTheme.shapes.medium,
+                ) { Text("Exportar perfiles") }
+                OutlinedButton(
+                    onClick = { importLauncher.launch(arrayOf("application/json")) },
+                    modifier = Modifier.weight(1f),
+                    shape = MaterialTheme.shapes.medium,
+                ) { Text("Importar") }
             }
 
             Spacer(modifier = Modifier.height(60.dp))
@@ -329,7 +352,7 @@ private fun CustomPresetRow(
     customProfiles: List<SavedEQProfile>,
     bandGains: FloatArray,
     enabled: Boolean,
-    onApply: (FloatArray) -> Unit,
+    onApplyProfile: (SavedEQProfile) -> Unit,
     onEditClick: () -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -368,7 +391,7 @@ private fun CustomPresetRow(
                 val selected = bandGains.indices.all { abs(bandGains[it] - gains[it]) < 0.5f }
                 FilterChip(
                     selected = selected,
-                    onClick = { if (enabled) onApply(gains) },
+                    onClick = { if (enabled) onApplyProfile(profile) },
                     enabled = enabled,
                     label = { Text(profile.name) },
                 )

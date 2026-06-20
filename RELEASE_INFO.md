@@ -1,10 +1,8 @@
-# Aura Hi-Res Player v5.7.57
+# Aura Hi-Res Player v5.7.58
 
-## Verificación de licencia en segundo plano
-- Ya **no aparece la pantalla "verificando licencia"** cada vez que abres. La app entra de una con tu estado guardado y **re-verifica por detrás** sin molestar. Esa pantalla solo sale en el primer arranque.
-
-## Demo de 3 días
-- Reforcé el control del demo: una vez registrado, ya **no puede "reiniciarse"** para que dure de más; respeta los 3 días.
+## Perfiles de ecualizador con efectos + exportar
+- Al **guardar un perfil de EQ** ahora también se guardan **qué efectos están activados y sus niveles** (firma Aura, graves, exciter, comp. multibanda, anchura estéreo, diálogo, HRTF, loudness, mejora). Al cargar el perfil, se restauran.
+- Nuevos botones **"Exportar perfiles" / "Importar"**: guardas tus perfiles (curva + efectos) en un archivo y los pasas a otro dispositivo.
 
 ## Incluye lo anterior
-- v5.7.56: botones junto al título + menú "+" limpio. v5.7.55: sonido sin distorsión.
+- v5.7.57: licencia en segundo plano. v5.7.56: botones junto al título.
