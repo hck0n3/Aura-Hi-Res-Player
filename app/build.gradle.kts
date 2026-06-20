@@ -41,8 +41,8 @@ android {
         buildConfigField("Boolean", "REQUIRE_SUBSCRIPTION", (!noSub).toString())
         minSdk = 26
         targetSdk = 36
-        versionCode = 620
-        versionName = "5.7.64"
+        versionCode = 621
+        versionName = "5.7.65"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
