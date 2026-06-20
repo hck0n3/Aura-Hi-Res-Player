@@ -98,8 +98,13 @@ constructor(
             }
         }
 
+        fun titleMatch(ytTitle: String, target: String): Boolean {
+            val yt = norm(ytTitle)
+            return yt == target || (target.length >= 4 && (yt.contains(target) || target.contains(yt)))
+        }
+
         val have = baseAlbums.map { norm(it.title) }.toMutableSet()
-        val additions = mutableListOf<AlbumItem>()
+        val additions = mutableListOf<com.music.innertube.models.YTItem>()
 
         // 1) Albums from the artist-name album search — PAGINATE so prolific discographies are fully
         //    covered. Using only the first page is why some artists weren't completing (the missing
@@ -122,15 +127,23 @@ constructor(
         for (mt in missing) {
             val target = norm(mt)
             if (target.isBlank() || target in have) continue
-            val match = YouTube.search("$artistName $mt", YouTube.SearchFilter.FILTER_ALBUM).getOrNull()?.items
+            // a) The album as a proper YouTube Music album.
+            val albumMatch = YouTube.search("$artistName $mt", YouTube.SearchFilter.FILTER_ALBUM).getOrNull()?.items
                 ?.filterIsInstance<AlbumItem>()
-                ?.firstOrNull {
-                    credited(it) && run {
-                        val yt = norm(it.title)
-                        yt == target || (target.length >= 4 && (yt.contains(target) || target.contains(yt)))
-                    }
+                ?.firstOrNull { credited(it) && titleMatch(it.title, target) }
+            if (albumMatch != null) { additions.add(albumMatch); have.add(target); continue }
+            // b) Fallback: a third party may have uploaded the album as a community playlist (e.g.
+            //    "Lenguaje de Amor" by Alex Campos). Add that so the discography is still complete.
+            val playlistMatch = YouTube.search("$artistName $mt", YouTube.SearchFilter.FILTER_COMMUNITY_PLAYLIST)
+                .getOrNull()?.items
+                ?.filterIsInstance<com.music.innertube.models.PlaylistItem>()
+                ?.firstOrNull { pl ->
+                    val t = norm(pl.title)
+                    (t == target || t.contains(target)) &&
+                        (pl.title.contains(artistName, ignoreCase = true) ||
+                            pl.author?.name?.contains(artistName, ignoreCase = true) == true)
                 }
-            if (match != null) { additions.add(match); have.add(target) }
+            if (playlistMatch != null) { additions.add(playlistMatch); have.add(target) }
         }
 
         if (additions.isEmpty()) return
