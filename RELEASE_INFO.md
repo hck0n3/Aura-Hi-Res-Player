@@ -1,14 +1,5 @@
-# Aura Hi-Res Player v5.7.68
+# Aura Hi-Res Player v5.7.69
 
-## Seguridad y robustez (auditoría)
-- La **sesión de inicio** ya no se incluye en las copias de seguridad de Android (no se puede extraer por backup).
-- **Tráfico en claro desactivado** en toda la app (todo va por HTTPS/WSS).
-- El **actualizador verifica la firma** del APK antes de instalar (rechaza un archivo manipulado).
-- Menos micro-tirones: se quitaron lecturas de disco bloqueantes en la reproducción.
-- Mejor diagnóstico: varios errores que se tragaban ahora se registran.
-
-## Compartir registro de log
-- Al **compartir el log** ahora se envía como **archivo de texto adjunto** (antes algunas apps pegaban todo el texto en el mensaje).
-
-## Pantalla completa
-- El interruptor **"ocultar la barra de estado en pantalla completa"** viene **activado por defecto**.
+## Arreglo: la pestaña "Sugerencias" (y "Álbum") no mostraban nada
+- Como la app fuerza el idioma a español, el **código de país del sistema quedaba vacío** y la lista de Apple Music (pestaña Sugerencias) se pedía con una dirección inválida → no salía nada.
+- Ahora se usa el **país real de tu dispositivo**, así que **Sugerencias** vuelve a cargar, y **Álbum/Explorar** usan tu región (en vez de quedarse siempre en "US").

@@ -24,6 +24,16 @@ fun setAppLocale(context: Context, locale: Locale) {
 }
 
 /**
+ * The device's real region (country) code, lowercased — read from the SYSTEM resources so it is NOT
+ * affected by the app forcing its UI language. Forcing "es" blanks out Locale.getDefault().country,
+ * which broke region feeds (e.g. the Apple Music charts URL became invalid). Falls back to "us".
+ */
+fun systemRegionCode(): String =
+    runCatching {
+        android.content.res.Resources.getSystem().configuration.locales[0].country
+    }.getOrNull()?.lowercase(Locale.ROOT)?.takeIf { it.isNotBlank() } ?: "us"
+
+/**
  * Resolves the in-app language from a lightweight SharedPreferences mirror. Safe to read in
  * attachBaseContext — DataStore must NEVER be read there: its blocking read at cold start
  * crashes/ANRs the launch (notably on some OEM ROMs). Defaults to Spanish ("es"). The mirror is

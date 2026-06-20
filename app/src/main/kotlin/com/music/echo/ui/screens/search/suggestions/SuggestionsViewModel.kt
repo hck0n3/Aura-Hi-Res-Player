@@ -47,7 +47,9 @@ class SuggestionsViewModel @Inject constructor() : ViewModel() {
 
     fun refresh(countryCode: String = "system", force: Boolean = false) {
         val resolvedCode = if (countryCode == "system") {
-            java.util.Locale.getDefault().country.lowercase()
+            // NOT Locale.getDefault(): the app forces "es" as its UI language, which blanks out the
+            // country and made the Apple charts URL invalid. Use the device's real region instead.
+            iad1tya.echo.music.utils.systemRegionCode()
         } else {
             countryCode.lowercase()
         }

@@ -127,7 +127,7 @@ fun SuggestionsTabContent(
                             viewModel.playTrack(track, playerConnection)
                         },
                         onMoreClick = {
-                            val code = if (regionCode == "system") java.util.Locale.getDefault().country.lowercase() else regionCode.lowercase()
+                            val code = if (regionCode == "system") iad1tya.echo.music.utils.systemRegionCode() else regionCode.lowercase()
                             uriHandler.openUri("https://music.apple.com/$code/charts")
                         }
                     )
@@ -155,7 +155,7 @@ fun SuggestionsTabContent(
                             viewModel.navigateToAlbum(album, navController)
                         },
                         onMoreClick = {
-                            val code = if (regionCode == "system") java.util.Locale.getDefault().country.lowercase() else regionCode.lowercase()
+                            val code = if (regionCode == "system") iad1tya.echo.music.utils.systemRegionCode() else regionCode.lowercase()
                             uriHandler.openUri("https://music.apple.com/$code/charts/albums")
                         }
                     )
@@ -171,7 +171,7 @@ fun SuggestionsTabContent(
                             viewModel.playVideo(video, playerConnection)
                         },
                         onMoreClick = {
-                            val code = if (regionCode == "system") java.util.Locale.getDefault().country.lowercase() else regionCode.lowercase()
+                            val code = if (regionCode == "system") iad1tya.echo.music.utils.systemRegionCode() else regionCode.lowercase()
                             uriHandler.openUri("https://music.apple.com/$code/charts/videos")
                         }
                     )

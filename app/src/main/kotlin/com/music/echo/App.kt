@@ -114,8 +114,11 @@ class App : Application(), SingletonImageLoader.Factory {
         val languageTag = locale.language
 
         YouTube.locale = YouTubeLocale(
+            // Forcing "es" blanks out locale.country, so derive the region from the real device locale
+            // (systemRegionCode) — otherwise everyone fell back to "US" for explore/charts.
             gl = settings[ContentCountryKey]?.takeIf { it != SYSTEM_DEFAULT }
                 ?: locale.country.takeIf { it in CountryCodeToName }
+                ?: iad1tya.echo.music.utils.systemRegionCode().uppercase().takeIf { it in CountryCodeToName }
                 ?: "US",
             hl = settings[ContentLanguageKey]?.takeIf { it != SYSTEM_DEFAULT }
                 ?: locale.language.takeIf { it in LanguageCodeToName }
