@@ -451,26 +451,9 @@ fun OldPlayerMenu(
                     }
 
                     
+                    // Me gusta / No me gusta moved next to the title (removed here to avoid duplicates).
                     val isLiked = currentSong?.song?.liked == true
-                    add(
-                        Material3MenuItemData(
-                            title = { Text(stringResource(if (isLiked) R.string.liked else R.string.like)) },
-                            icon = {
-                                Icon(
-                                    painter = painterResource(if (isLiked) R.drawable.favorite else R.drawable.favorite_border),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(24.dp),
-                                    tint = if (isLiked) MaterialTheme.colorScheme.error else androidx.compose.material3.LocalContentColor.current
-                                )
-                            },
-                            onClick = {
-                                playerConnection.toggleLike()
-                                onDismiss()
-                            }
-                        )
-                    )
 
-                    
                     if (!isListenTogetherGuest) {
                         add(
                             Material3MenuItemData(
@@ -559,28 +542,6 @@ fun OldPlayerMenu(
                                     playerBottomSheetState.collapseSoft()
                                     onDismiss()
                                 }
-                            )
-                        )
-                    }
-
-                    // "No me gusta": dislike this song, skip it, and stop it being recommended again.
-                    if (!mediaMetadata.id.startsWith("http")) {
-                        add(
-                            Material3MenuItemData(
-                                title = { Text(text = "No me gusta") },
-                                description = { Text(text = "No volver a recomendar y saltar") },
-                                icon = {
-                                    Icon(
-                                        painter = painterResource(R.drawable.thumb_down),
-                                        contentDescription = null,
-                                        modifier = Modifier.size(24.dp),
-                                    )
-                                },
-                                onClick = {
-                                    playerConnection.dislikeCurrentSong()
-                                    playerBottomSheetState.collapseSoft()
-                                    onDismiss()
-                                },
                             )
                         )
                     }
@@ -738,24 +699,6 @@ fun OldPlayerMenu(
 
                     add(
                         Material3MenuItemData(
-                            title = { Text(text = stringResource(R.string.equalizer)) },
-                            description = { Text(text = stringResource(R.string.equalizer_desc)) },
-                            icon = {
-                                Icon(
-                                    painter = painterResource(R.drawable.equalizer),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(24.dp)
-                                )
-                            },
-                            onClick = {
-                                navController.navigate("settings/equalizer")
-                                onDismiss()
-                            }
-                        )
-                    )
-
-                    add(
-                        Material3MenuItemData(
                             title = { Text(text = stringResource(R.string.sleep_timer)) },
                             icon = {
                                 Icon(
@@ -771,22 +714,6 @@ fun OldPlayerMenu(
                         )
                     )
 
-                    add(
-                        Material3MenuItemData(
-                            title = { Text(text = stringResource(R.string.advanced)) },
-                            description = { Text(text = stringResource(R.string.advanced_desc)) },
-                            icon = {
-                                Icon(
-                                    painter = painterResource(R.drawable.tune),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(24.dp)
-                                )
-                            },
-                            onClick = {
-                                showPitchTempoDialog = true
-                            }
-                        )
-                    )
                 }
             )
         }

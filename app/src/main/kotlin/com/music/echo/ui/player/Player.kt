@@ -1620,39 +1620,8 @@ fun BottomSheetPlayer(
                                 )
                             }
                         } else {
-                            Box(
-                                modifier = Modifier
-                                    .size(40.dp)
-                                    .clip(RoundedCornerShape(24.dp))
-                                    .background(textButtonColor.copy(alpha = 0.2f))
-                                    .clickable {
-                                        menuState.show {
-                                            OldPlayerMenu(
-                                                mediaMetadata = mediaMetadata,
-                                                navController = navController,
-                                                playerBottomSheetState = state,
-                                                onShowDetailsDialog = {
-                                                    mediaMetadata.id.let {
-                                                        bottomSheetPageState.show {
-                                                           ShowMediaInfo(it)
-                                                        }
-                                                    }
-                                                },
-                                                onSleepTimer = { showSleepTimerDialog = true },
-                                                onDismiss = menuState::dismiss
-                                            )
-                                        }
-                                    },
-                            ) {
-                                Icon(
-                                    painter = painterResource(R.drawable.add),
-                                    contentDescription = "Más opciones",
-                                    tint = textButtonColor,
-                                    modifier = Modifier
-                                        .align(Alignment.Center)
-                                        .size(24.dp)
-                                )
-                            }
+                            // "+" menu moved next to the title.
+                            Spacer(Modifier.size(0.dp))
                         }
                     }
 
@@ -1798,6 +1767,37 @@ fun BottomSheetPlayer(
                             ),
                     )
                 }
+                }
+                // "+" menu (Sonido, Ecualizador, Temporizador…) before the heart.
+                Spacer(Modifier.width(8.dp))
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(textButtonColor.copy(alpha = 0.2f))
+                        .clickable {
+                            menuState.show {
+                                OldPlayerMenu(
+                                    mediaMetadata = mediaMetadata,
+                                    navController = navController,
+                                    playerBottomSheetState = state,
+                                    onShowDetailsDialog = {
+                                        mediaMetadata.id.let {
+                                            bottomSheetPageState.show { ShowMediaInfo(it) }
+                                        }
+                                    },
+                                    onSleepTimer = { showSleepTimerDialog = true },
+                                    onDismiss = menuState::dismiss
+                                )
+                            }
+                        },
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.add),
+                        contentDescription = "Más opciones",
+                        tint = textButtonColor,
+                        modifier = Modifier.align(Alignment.Center).size(24.dp),
+                    )
                 }
                 Spacer(Modifier.width(8.dp))
                 Box(

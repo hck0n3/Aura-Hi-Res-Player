@@ -1,7 +1,8 @@
-# Aura Hi-Res Player v5.7.55
+# Aura Hi-Res Player v5.7.56
 
-## Sonido sin distorsión
-- Bajé el **nivel maestro** al valor que habías pedido para que no distorsione (≈ −5.2 dB). En másters muy fuertes el limitador ya no trabaja al límite, así que **suena más limpio**, sobre todo en **parlantes y Bluetooth** (donde algunas canciones distorsionaban).
+## Botones en línea junto al título
+- Junto al título ahora están, en orden: **➕  ❤  👎** (el "+" antes del corazón, "No me gusta" pegado a la derecha).
+- **Menú "+" más limpio**: quité lo que ya estaba afuera (Me gusta, No me gusta) y también **Ecualizador** (ya está en "Sonido") y **Avanzado**.
 
 ## Incluye lo anterior
-- v5.7.54: reproductor ordenado (Sonido/EQ/Temporizador dentro del "+").
+- v5.7.55: sonido sin distorsión (nivel más bajo). v5.7.54: Sonido/Temporizador dentro del "+".
