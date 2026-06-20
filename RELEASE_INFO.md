@@ -1,5 +1,10 @@
-# Aura Hi-Res Player v5.7.69
+# Aura Hi-Res Player v5.7.70
 
-## Arreglo: la pestaña "Sugerencias" (y "Álbum") no mostraban nada
-- Como la app fuerza el idioma a español, el **código de país del sistema quedaba vacío** y la lista de Apple Music (pestaña Sugerencias) se pedía con una dirección inválida → no salía nada.
-- Ahora se usa el **país real de tu dispositivo**, así que **Sugerencias** vuelve a cargar, y **Álbum/Explorar** usan tu región (en vez de quedarse siempre en "US").
+## Discografía completa dentro del artista
+- Ahora, al entrar a un artista, la app **completa su discografía** automáticamente: busca sus álbumes y **añade los que YouTube no incluía** en la página del artista (los que antes solo aparecían si los buscabas por separado, p. ej. "Privé" de Juan Luis Guerra). Todo queda **dentro del artista**.
+
+## Pestaña "Álbum" del buscador
+- Si el explorador de YouTube venía vacío, ahora usa el listado dedicado de novedades como respaldo, así deja de decir "no se pudieron cargar las sugerencias".
+
+## Ajustes
+- Coherencia del interruptor "Usar inicio de sesión para explorar" (queda apagado por defecto, como debe).

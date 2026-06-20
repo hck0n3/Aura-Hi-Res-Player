@@ -57,7 +57,7 @@ fun AccountSettingsScreen(
     val isLoggedIn = remember(innerTubeCookie) {
         "SAPISID" in parseCookieString(innerTubeCookie)
     }
-    val (useLoginForBrowse, onUseLoginForBrowseChange) = rememberPreference(UseLoginForBrowse, true)
+    val (useLoginForBrowse, onUseLoginForBrowseChange) = rememberPreference(UseLoginForBrowse, false)
     val (ytmSync, onYtmSyncChange) = rememberPreference(YtmSyncKey, true)
 
     val homeViewModel: HomeViewModel = hiltViewModel()

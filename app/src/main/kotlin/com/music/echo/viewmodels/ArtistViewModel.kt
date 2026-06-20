@@ -119,6 +119,49 @@ class ArtistViewModel @Inject constructor(
                             }
                         }
                     }
+
+                    // Discography completion: YouTube omits some albums from the artist page (e.g. albums
+                    // credited to a "...4.40"-style sub-entity), so they only show up via a separate
+                    // search. Search the artist's albums and merge any missing ones — credited to this
+                    // artist — into the album section, so the whole discography lives ON the artist.
+                    launch(kotlinx.coroutines.Dispatchers.IO) {
+                        val artistName = page.artist?.title ?: return@launch
+                        val found = YouTube.search(artistName, YouTube.SearchFilter.FILTER_ALBUM)
+                            .getOrNull()?.items
+                            ?.filterIsInstance<com.music.innertube.models.AlbumItem>()
+                            ?.filter { album ->
+                                album.artists?.any {
+                                    it.id == artistId || it.name.contains(artistName, ignoreCase = true)
+                                } == true
+                            }
+                            ?.filter { !hideExplicit || !it.explicit }
+                            .orEmpty()
+                        if (found.isEmpty()) return@launch
+
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                            val current = artistPage ?: return@withContext
+                            val existingIds = current.sections.flatMap { it.items }.map { it.id }.toHashSet()
+                            val missing = found.filterNot { it.id in existingIds }
+                            if (missing.isEmpty()) return@withContext
+                            val idx = current.sections.indexOfFirst {
+                                it.items.firstOrNull() is com.music.innertube.models.AlbumItem
+                            }
+                            val sections = current.sections.toMutableList()
+                            if (idx >= 0) {
+                                val sec = sections[idx]
+                                sections[idx] = sec.copy(items = (sec.items + missing).distinctBy { it.id })
+                            } else {
+                                sections.add(
+                                    com.music.innertube.pages.ArtistSection(
+                                        title = context.getString(iad1tya.echo.music.R.string.albums),
+                                        items = missing,
+                                        moreEndpoint = null,
+                                    )
+                                )
+                            }
+                            artistPage = current.copy(sections = sections)
+                        }
+                    }
                 }.onFailure {
                     reportException(it)
                 }
