@@ -460,7 +460,7 @@ fun LibraryMixScreen(
                         contentType = CONTENT_TYPE_HEADER,
                     ) {
                         androidx.compose.material3.Text(
-                            text = "Playlists",
+                            text = stringResource(R.string.filter_playlists),
                             style = androidx.compose.material3.MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 8.dp)
@@ -774,7 +774,7 @@ fun LibraryMixScreen(
                         contentType = CONTENT_TYPE_HEADER,
                     ) {
                         androidx.compose.material3.Text(
-                            text = "Playlists",
+                            text = stringResource(R.string.filter_playlists),
                             style = androidx.compose.material3.MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 8.dp)
