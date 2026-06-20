@@ -1,8 +1,6 @@
-# Aura Hi-Res Player v5.7.77
+# Aura Hi-Res Player v5.7.78
 
-## Discografía del artista: iTunes manda, sin meter cosas que no son
-- Ya no se cuelan compilaciones/tributos/karaoke: la app **deja de agregar álbumes por una búsqueda amplia**.
-- Ahora la discografía se completa SIEMPRE así:
-  1. **Consulta la discografía real en iTunes/Apple Music** (álbumes, EP y singles).
-  2. Por cada lanzamiento que falte, lo **busca en YouTube como álbum** y, si no existe, **como playlist de la comunidad/usuario**.
-  3. **Solo agrega lo que coincide** con esa discografía real — nada que no pertenezca.
+## "Ver todos los álbumes": completo, de una sola vez y más rápido
+- La discografía completa se arma usando **iTunes / Apple Music** como referencia (álbumes, EP y singles) y se busca cada lanzamiento en **YouTube / YouTube Music** y, si no existe como álbum, en **playlists de la comunidad**.
+- Las búsquedas ahora se hacen **en paralelo** (mucho más rápido), y la lista se muestra **toda de una sola vez** — ya no aparecen álbumes "después", en tandas.
+- Solo se agrega lo que coincide con la discografía real (nada de tributos/compilaciones).
