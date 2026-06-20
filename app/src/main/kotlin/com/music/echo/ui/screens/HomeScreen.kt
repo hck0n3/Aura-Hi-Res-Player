@@ -827,7 +827,9 @@ fun HomeScreen(
         if (accountPlaylists?.isNotEmpty() == true) list.add(HomeSection.AccountPlaylists)
         if (forgottenFavorites?.isNotEmpty() == true) list.add(HomeSection.ForgottenFavorites)
 
-        similarRecommendations?.indices?.forEach { i ->
+        // Cap the "Similar a…" shelves: more than a few near-identical rows just makes a long,
+        // monotonous tail at the bottom of the home.
+        similarRecommendations?.indices?.take(3)?.forEach { i ->
             list.add(HomeSection.SimilarRecommendation(i))
         }
 
@@ -888,21 +890,24 @@ fun HomeScreen(
                 base + modifier
             }
         } else {
+            // Logical reading order: quick access -> for you -> continue -> discover -> your library
+            // -> re-engage -> more like X. Keeping "Seguir escuchando" (a light row) between QuickPicks
+            // (hero) and "Daily Discover" (big carousel) means the two heavy carousels are never adjacent.
             val defaultOrder = mapOf(
-                HomeSection.QuickPicks to 1000,
-                HomeSection.SpeedDial to 100,
-                HomeSection.FromTheCommunity to 80,
-                HomeSection.DailyDiscover to 70,
-                HomeSection.KeepListening to 60,
-                HomeSection.AccountPlaylists to 50,
-                HomeSection.ForgottenFavorites to 40,
+                HomeSection.SpeedDial to 1000,
+                HomeSection.QuickPicks to 900,
+                HomeSection.KeepListening to 800,
+                HomeSection.DailyDiscover to 700,
+                HomeSection.AccountPlaylists to 600,
+                HomeSection.ForgottenFavorites to 500,
+                HomeSection.FromTheCommunity to 450,
                 HomeSection.MoodAndGenres to 10
             )
 
             list.sortedByDescending { section ->
                 when(section) {
-                    is HomeSection.SimilarRecommendation -> 30 - section.index
-                    is HomeSection.HomePageSection -> 20 - section.index
+                    is HomeSection.SimilarRecommendation -> 400 - section.index
+                    is HomeSection.HomePageSection -> 200 - section.index
                     else -> defaultOrder[section] ?: 0
                 }
             }
@@ -1211,6 +1216,20 @@ fun HomeScreen(
                         HomeSection.QuickPicks -> {
                             quickPicks?.takeIf { it.isNotEmpty() }?.let { quickPicks ->
 
+                                item(key = "quick_picks_title") {
+                                    NavigationTitle(
+                                        title = "Para ti",
+                                        onPlayAllClick = {
+                                            val items = quickPicks.map { it.toMediaMetadata().toMediaItem() }
+                                            if (items.isNotEmpty()) {
+                                                playerConnection.playQueue(
+                                                    ListQueue(title = "Para ti", items = items)
+                                                )
+                                            }
+                                        },
+                                        modifier = Modifier.animateItem()
+                                    )
+                                }
 
                                 item(key = "quick_picks_list") {
                                     val distinctQuickPicks = quickPicks.distinctBy { it.id }
@@ -1221,7 +1240,7 @@ fun HomeScreen(
                                         contentPadding = PaddingValues(horizontal = 16.dp),
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .height(290.dp)
+                                            .height(260.dp)
                                             .animateItem()
                                     ) { index ->
                                         val originalSong = distinctQuickPicks[index]
@@ -1390,7 +1409,7 @@ fun HomeScreen(
                                     Box(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .height(340.dp)
+                                            .height(310.dp)
                                             .padding(horizontal = 16.dp),
                                         contentAlignment = Alignment.Center
                                     ) {
@@ -1401,7 +1420,7 @@ fun HomeScreen(
                                             itemSpacing = 16.dp,
                                             modifier = Modifier
                                                 .fillMaxWidth()
-                                                .height(320.dp)
+                                                .height(300.dp)
                                         ) { i ->
                                             val item = discoverList[i]
                                             DailyDiscoverCard(
@@ -1429,8 +1448,18 @@ fun HomeScreen(
                         HomeSection.KeepListening -> {
                             keepListening?.takeIf { it.isNotEmpty() }?.let { keepListening ->
                                 item(key = "keep_listening_title") {
+                                    val klTitle = stringResource(R.string.keep_listening)
                                     NavigationTitle(
-                                        title = stringResource(R.string.keep_listening),
+                                        title = klTitle,
+                                        onPlayAllClick = {
+                                            val items = keepListening.filterIsInstance<Song>()
+                                                .map { it.toMediaMetadata().toMediaItem() }
+                                            if (items.isNotEmpty()) {
+                                                playerConnection.playQueue(
+                                                    ListQueue(title = klTitle, items = items)
+                                                )
+                                            }
+                                        },
                                         modifier = Modifier.animateItem()
                                     )
                                 }
@@ -1701,6 +1730,16 @@ fun HomeScreen(
                                             }
                                         },
                                         onClick = similarDest?.let { d -> { navController.navigate(d) } },
+                                        onPlayAllClick = {
+                                            val items = recommendation.items
+                                                .filterIsInstance<SongItem>()
+                                                .map { it.toMediaMetadata().toMediaItem() }
+                                            if (items.isNotEmpty()) {
+                                                playerConnection.playQueue(
+                                                    ListQueue(title = recommendation.title.title, items = items)
+                                                )
+                                            }
+                                        },
                                         modifier = Modifier.animateItem()
                                     )
                                 }

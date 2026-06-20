@@ -1,8 +1,9 @@
-# Aura Hi-Res Player v5.7.63
+# Aura Hi-Res Player v5.7.64
 
-## Arreglos
-- **"Seguir escuchando" ya no muestra tarjetas en blanco.** Las entradas de **artista** salían vacías; ahora se ven bien (carátula + nombre, y al tocar abren el artista).
-- **Crash al abrir/reconectar (Google Cast) corregido.** En algunos móviles (p. ej. Xiaomi/Android 16) la app cerraba con error de "servicio en primer plano no permitido" cuando Cast intentaba reconectar en segundo plano. Ahora Cast se inicia solo al empezar a reproducir, así que ya no pasa.
-
-## Diseño
-- **"Marcación rápida" con look renovado**: degradado más limpio y el título en una barra translúcida redondeada (más moderno).
+## Inicio más bonito y lógico
+- **Nuevo orden con sentido**: Marcación rápida (acceso rápido, arriba) → **Para ti** → Seguir escuchando → Tu descubrimiento diario → Playlists → Favoritos olvidados → Similar a…
+- **Los dos carruseles grandes ya no van pegados** (entre ellos queda "Seguir escuchando"), así se ve más ligero y se baja menos.
+- **"Para ti" ahora tiene su título** (antes aparecía sin encabezado).
+- **Botón "Reproducir todo"** también en Para ti, Seguir escuchando y "Similar a…" (antes solo en el descubrimiento diario).
+- **Menos filas repetidas** de "Similar a…" (máximo 3) para que el final no sea tan largo.
+- Alturas ajustadas para ver más contenido por pantalla.
