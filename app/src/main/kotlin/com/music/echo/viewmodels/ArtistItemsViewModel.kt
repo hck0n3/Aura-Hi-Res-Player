@@ -101,16 +101,24 @@ constructor(
         val have = baseAlbums.map { norm(it.title) }.toMutableSet()
         val additions = mutableListOf<AlbumItem>()
 
-        // 1) Albums YouTube returns when searching the artist name.
-        YouTube.search(artistName, YouTube.SearchFilter.FILTER_ALBUM).getOrNull()?.items
-            ?.filterIsInstance<AlbumItem>()?.filter(::credited)?.forEach { alb ->
+        // 1) Albums from the artist-name album search — PAGINATE so prolific discographies are fully
+        //    covered. Using only the first page is why some artists weren't completing (the missing
+        //    albums were on later pages of the same search the user scrolls through manually).
+        var result = YouTube.search(artistName, YouTube.SearchFilter.FILTER_ALBUM).getOrNull()
+        var page = 0
+        while (result != null && page < 6) {
+            result.items.filterIsInstance<AlbumItem>().filter(::credited).forEach { alb ->
                 val t = norm(alb.title)
                 if (t.isNotBlank() && t !in have) { additions.add(alb); have.add(t) }
             }
+            val cont = result.continuation ?: break
+            result = YouTube.searchContinuation(cont).getOrNull()
+            page++
+        }
 
         // 2) Cross-check the real discography (iTunes) and look up still-missing titles on YouTube.
         val itunes = iTunesDiscography.fetchAlbumTitles(artistName, systemRegionCode())
-        val missing = itunes.filter { norm(it) !in have }.distinctBy { norm(it) }.take(15)
+        val missing = itunes.filter { norm(it) !in have }.distinctBy { norm(it) }.take(20)
         for (mt in missing) {
             val target = norm(mt)
             if (target.isBlank() || target in have) continue

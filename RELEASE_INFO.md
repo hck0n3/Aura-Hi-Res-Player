@@ -1,6 +1,5 @@
-# Aura Hi-Res Player v5.7.74
+# Aura Hi-Res Player v5.7.75
 
-## Arreglo REAL de la discografía incompleta del artista
-- Encontré la causa de fondo: en "ver todos los álbumes", los álbumes que da YouTube **no incluían el nombre del artista**, así que la app **no podía ejecutar** la comparación con internet (por eso seguía incompleta aunque los álbumes sí existieran al buscarlos por aparte).
-- Ahora el nombre del artista se obtiene de forma fiable (de tu biblioteca o de YouTube), así que la comparación **sí se ejecuta**: muestra primero todos los álbumes de YouTube y luego **añade los que faltan** (como "Privé") tras compararlos con la discografía real (iTunes) y buscarlos en YouTube.
-- Emparejado más flexible para no descartar variantes del artista (p. ej. "… 4.40").
+## La discografía completa ahora funciona con TODOS los artistas
+- No estaba limitado a un artista: el problema era que la app solo miraba la **primera página** de la búsqueda de álbumes. Para artistas con muchos álbumes, los que faltaban estaban en las **páginas siguientes** (las que tú ves al hacer scroll en la búsqueda).
+- Ahora la app **recorre varias páginas** de la búsqueda del artista y además cruza con la discografía real (iTunes), así que **"ver todos los álbumes"** completa la discografía para cualquier artista, no solo uno.
