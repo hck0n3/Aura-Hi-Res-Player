@@ -119,13 +119,17 @@ constructor(
 
         val have = baseAlbums.map { norm(it.title) }.toMutableSet()
 
-        val itunes = iTunesDiscography.fetchAlbumTitles(artistName, systemRegionCode())
+        // iTunes / Apple Music is the authority. Query the US store (most complete for international
+        // artists) AND the local store, merged, so nothing is missed.
+        val itunesUs = async { iTunesDiscography.fetchAlbumTitles(artistName, "us") }
+        val itunesLocal = async { iTunesDiscography.fetchAlbumTitles(artistName, systemRegionCode()) }
+        val itunes = (itunesUs.await() + itunesLocal.await()).distinct()
         val missing = itunes
             .filter { norm(it).isNotBlank() && norm(it) !in have }
             .distinctBy { norm(it) }
-            .take(40)
+            .take(50)
 
-        val semaphore = Semaphore(8)
+        val semaphore = Semaphore(10)
         val found = missing.map { mt ->
             async {
                 semaphore.withPermit {
@@ -140,10 +144,11 @@ constructor(
                             .getOrNull()?.items?.filterIsInstance<com.music.innertube.models.PlaylistItem>()
                             ?.firstOrNull { p ->
                                 val t = norm(p.title)
-                                (t == target || t.contains(target)) &&
+                                (t == target || (target.length >= 4 && (t.contains(target) || target.contains(t)))) &&
                                     (p.title.contains(artistName, ignoreCase = true) ||
                                         p.author?.name?.contains(artistName, ignoreCase = true) == true)
                             }
+
                         if (pl != null) target to (pl as com.music.innertube.models.YTItem) else null
                     }
                 }

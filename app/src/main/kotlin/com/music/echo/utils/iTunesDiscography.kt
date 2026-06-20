@@ -48,10 +48,11 @@ object iTunesDiscography {
                     val o = el.jsonObject
                     val resultArtist = o["artistName"]?.jsonPrimitive?.contentOrNull ?: ""
                     val title = o["collectionName"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
-                    // Keep only releases actually credited to this artist (avoids tributes/compilations
-                    // by other people that merely mention the name).
-                    val credited = resultArtist.contains(artistName, ignoreCase = true) ||
-                        artistName.contains(resultArtist, ignoreCase = true)
+                    // Keep the artist's OWN releases (primary credit) — including "...4.40" variants — but
+                    // drop singles where they are only a guest ("X & Juan Luis Guerra") and tributes /
+                    // "Various Artists" compilations.
+                    val credited = resultArtist.startsWith(artistName, ignoreCase = true) ||
+                        artistName.startsWith(resultArtist, ignoreCase = true)
                     if (credited) title else null
                 }
                 ?.distinct()
@@ -60,12 +61,19 @@ object iTunesDiscography {
             Timber.w("iTunes discography fetch failed for $artistName: ${it.message}")
         }.getOrDefault(emptyList())
 
-    /** Normalize an album title so "Privé (Deluxe)" and "Privé" compare equal. */
+    /**
+     * Normalize an album title so "Privé - EP", "Privé (Deluxe)" and "Privé" all compare equal. Strips
+     * a trailing release-type suffix ("- EP", "- Single", "- Deluxe"...) but NOT a leading word (so
+     * "Single Ladies" stays intact), and drops parentheticals/punctuation/accents-insensitive symbols.
+     */
     fun normalizeTitle(raw: String): String =
         raw.lowercase()
             .replace(Regex("\\(.*?\\)"), " ")
             .replace(Regex("\\[.*?\\]"), " ")
-            .replace(Regex("(?i)\\b(deluxe|remaster(ed)?|edition|expanded|bonus|version|en vivo|live)\\b.*$"), " ")
+            .replace(
+                Regex("(?i)\\s*[-–—]\\s*(ep|single|deluxe|remaster(ed)?|edition|expanded|bonus|version|live|en vivo)\\b.*$"),
+                " ",
+            )
             .replace(Regex("[^\\p{L}\\p{Nd} ]"), " ")
             .replace(Regex("\\s+"), " ")
             .trim()
