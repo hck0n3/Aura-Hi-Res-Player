@@ -1,9 +1,10 @@
-# Aura Hi-Res Player v5.7.66
+# Aura Hi-Res Player v5.7.67
 
-## Artista: "ver todos los álbumes" menos básico
-- La pantalla de todos los álbumes de un artista ahora tiene una **cabecera con la foto del artista + "Álbumes" + conteo** (antes era solo un número suelto a la derecha).
-- Los álbumes salen **ordenados por año** (más nuevos primero).
-- Más aire entre las tarjetas (rejilla con espaciado).
+## Artista: todos los álbumes en cuadrícula compacta
+- Al ver TODOS los álbumes de un artista ahora se muestran en **cuadrícula de 3 columnas**, ordenados por año (más nuevos primero) y cada portada con **título + año** (sin repetir el nombre del artista). Mismo aspecto cuidado por todas las rutas.
 
-## Biblioteca
-- El encabezado **"Playlists"** estaba en inglés a la fuerza; ahora respeta el idioma ("Listas de reproducción").
+## Marcación rápida con otro diseño
+- Ahora son **portadas redondas con el título y el artista debajo** (en vez de cuadros con el texto encima). Más limpio y moderno.
+
+## Menos consumo de batería
+- Los guardados automáticos de posición/progreso ya **no despiertan el teléfono cada pocos segundos cuando la música está en pausa o parada**: solo trabajan mientras de verdad estás reproduciendo. Debería notarse en el consumo en segundo plano.

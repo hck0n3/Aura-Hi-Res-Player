@@ -132,13 +132,15 @@ fun LibraryAlbumGridItem(
     coroutineScope: CoroutineScope,
     album: Album,
     isActive: Boolean = false,
-    isPlaying: Boolean = false
+    isPlaying: Boolean = false,
+    subtitleYearOnly: Boolean = false,
 ) = AlbumGridItem(
     album = album,
     isActive = isActive,
     isPlaying = isPlaying,
     coroutineScope = coroutineScope,
     fillMaxWidth = true,
+    subtitleYearOnly = subtitleYearOnly,
     modifier = modifier
         .fillMaxWidth()
         .combinedClickable(

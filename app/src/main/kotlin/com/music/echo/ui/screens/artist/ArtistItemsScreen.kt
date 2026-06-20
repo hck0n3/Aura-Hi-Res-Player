@@ -9,7 +9,9 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
@@ -18,6 +20,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarScrollBehavior
@@ -31,6 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
@@ -210,13 +214,22 @@ fun ArtistItemsScreen(
     } else {
         LazyVerticalGrid(
             state = lazyGridState,
-            columns = GridCells.Adaptive(minSize = GridThumbnailHeight + if (gridItemSize == GridItemSize.BIG) 24.dp else (-24).dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
+            columns = GridCells.Fixed(3),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues()
         ) {
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                Text(
+                    text = "$title · ${itemsPage?.items.orEmpty().distinctBy { it.id }.size}",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                )
+            }
             items(
-                items = itemsPage?.items.orEmpty().distinctBy { it.id },
+                items = itemsPage?.items.orEmpty().distinctBy { it.id }
+                    .sortedByDescending { (it as? AlbumItem)?.year ?: 0 },
                 key = { it.id }
             ) { item ->
                 YouTubeGridItem(
@@ -228,6 +241,7 @@ fun ArtistItemsScreen(
                     },
                     isPlaying = isPlaying,
                     fillMaxWidth = true,
+                    albumSubtitleYearOnly = true,
                     coroutineScope = coroutineScope,
                     modifier = Modifier
                         .combinedClickable(

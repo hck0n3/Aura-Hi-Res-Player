@@ -4,6 +4,7 @@ package iad1tya.echo.music.ui.screens.artist
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -107,7 +108,9 @@ fun ArtistAlbumsScreen(
     ) {
         LazyVerticalGrid(
             state = lazyGridState,
-            columns = GridCells.Adaptive(minSize = GridThumbnailHeight + if (gridItemSize == GridItemSize.BIG) 24.dp else (-24).dp),
+            columns = GridCells.Fixed(3),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
             contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues()
         ) {
             item(
@@ -158,6 +161,7 @@ fun ArtistAlbumsScreen(
                     album = album,
                     isActive = album.id == mediaMetadata?.album?.id,
                     isPlaying = isPlaying,
+                    subtitleYearOnly = true,
                     modifier = Modifier.animateItem()
                 )
             }

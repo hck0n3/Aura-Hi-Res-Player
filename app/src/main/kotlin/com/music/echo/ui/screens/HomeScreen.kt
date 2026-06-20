@@ -1054,6 +1054,8 @@ fun HomeScreen(
                                     val rows = if (columns >= 6) 1 else if (columns >= 4) 2 else 3
                                     val itemsPerPage = columns * rows
                                     val itemWidth = availableWidth / columns
+                                    // Round cover + title + artist below -> each cell is taller than wide.
+                                    val cellHeight = itemWidth + 46.dp
 
                                     val pagerState = rememberPagerState(pageCount = { (items.size + itemsPerPage - 1) / itemsPerPage })
 
@@ -1070,7 +1072,7 @@ fun HomeScreen(
                                             modifier =
                                                 Modifier
                                                     .fillMaxWidth()
-                                                    .height(itemWidth * rows),
+                                                    .height(cellHeight * rows),
                                         ) { page ->
                                             val pageStartIndex = page * itemsPerPage
                                             val pageItems = items.drop(pageStartIndex).take(itemsPerPage)
@@ -1123,7 +1125,7 @@ fun HomeScreen(
                                                                 Box(
                                                                     modifier = Modifier
                                                                         .width(itemWidth)
-                                                                        .height(itemWidth)
+                                                                        .height(cellHeight)
                                                                         .padding(4.dp)
                                                                 ) {
                                                                     SpeedDialGridItem(

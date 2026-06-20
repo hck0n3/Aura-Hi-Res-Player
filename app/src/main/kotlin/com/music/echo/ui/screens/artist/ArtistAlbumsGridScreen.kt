@@ -2,11 +2,13 @@ package iad1tya.echo.music.ui.screens.artist
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -21,6 +23,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.music.innertube.models.AlbumItem
@@ -72,11 +75,24 @@ fun ArtistAlbumsGridScreen(
             scrollBehavior = scrollBehavior,
         )
         LazyVerticalGrid(
-            columns = GridCells.Adaptive(minSize = 140.dp),
+            columns = GridCells.Fixed(3),
             modifier = Modifier.fillMaxSize(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
             contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
         ) {
-            items(items = items, key = { it.id }) { item ->
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                Text(
+                    text = "$title · ${items.size}",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                )
+            }
+            items(
+                items = items.sortedByDescending { (it as? AlbumItem)?.year ?: 0 },
+                key = { it.id }
+            ) { item ->
                 YouTubeGridItem(
                     item = item,
                     isActive = when (item) {
@@ -87,8 +103,8 @@ fun ArtistAlbumsGridScreen(
                     isPlaying = isPlaying,
                     coroutineScope = coroutineScope,
                     thumbnailRatio = 1f,
+                    albumSubtitleYearOnly = true,
                     modifier = Modifier
-                        .padding(6.dp)
                         .combinedClickable(
                             onClick = {
                                 when (item) {

@@ -728,6 +728,9 @@ fun AlbumGridItem(
     isActive: Boolean = false,
     isPlaying: Boolean = false,
     fillMaxWidth: Boolean = false,
+    // When true the subtitle shows just the year (used on an artist's own albums grid, where repeating
+    // the artist on every card is redundant). Default keeps the artist name everywhere else.
+    subtitleYearOnly: Boolean = false,
 ) = GridItem(
     title = {
         Text(
@@ -741,7 +744,8 @@ fun AlbumGridItem(
     },
     subtitle = {
         Text(
-            text = album.artists.joinToString { it.name },
+            text = if (subtitleYearOnly) (album.album.year?.toString() ?: "")
+                   else album.artists.joinToString { it.name },
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.secondary,
             maxLines = 2,
@@ -1129,6 +1133,9 @@ fun YouTubeGridItem(
     isPlaying: Boolean = false,
     fillMaxWidth: Boolean = false,
     thumbnailHeightOverride: Dp? = null,
+    // When true an album's subtitle is just its year (used on an artist's own albums grid, where the
+    // artist name on every card is redundant). Default keeps "artist • year" everywhere else.
+    albumSubtitleYearOnly: Boolean = false,
 ) = GridItem(
     title = {
         Text(
@@ -1144,7 +1151,8 @@ fun YouTubeGridItem(
     subtitle = {
         val subtitle = when (item) {
             is SongItem -> joinByBullet(item.artists.joinToString { it.name }, makeTimeString(item.duration?.times(1000L)))
-            is AlbumItem -> joinByBullet(item.artists?.joinToString { it.name }, item.year?.toString())
+            is AlbumItem -> if (albumSubtitleYearOnly) item.year?.toString()
+                            else joinByBullet(item.artists?.joinToString { it.name }, item.year?.toString())
             is ArtistItem -> null
             is PlaylistItem -> joinByBullet(item.author?.name, item.songCountText)
         }

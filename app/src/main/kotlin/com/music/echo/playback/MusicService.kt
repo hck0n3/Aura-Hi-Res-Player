@@ -432,6 +432,9 @@ class MusicService :
     // Cast is initialized lazily on the first playback (see initializeCast) so the Cast framework never
     // tries to promote this service to the foreground while the app is in the background.
     private var castInitAttempted = false
+
+    // Periodic podcast-progress + position persistence; runs ONLY while playing (battery — see onCreate).
+    private var periodicPersistJob: kotlinx.coroutines.Job? = null
         private set
 
     private val screenStateReceiver = object : BroadcastReceiver() {
@@ -531,32 +534,10 @@ class MusicService :
         playerInitialized.value = true
         Timber.tag(TAG).d("Player successfully initialized")
 
-        // Remember podcast (direct-URL) playback position so episodes resume / show "finished".
-        scope.launch {
-            while (true) {
-                kotlinx.coroutines.delay(5000)
-                val snapshot = withContext(Dispatchers.Main) {
-                    val id = player.currentMediaItem?.mediaId
-                    if (id != null && id.startsWith("http", ignoreCase = true) && player.isPlaying && player.duration > 0)
-                        Triple(id, player.currentPosition, player.duration) else null
-                }
-                snapshot?.let { (id, pos, dur) -> runCatching { podcastProgressStore.save(id, pos, dur) } }
-            }
-        }
-
-        // Persist the playback position periodically (not just on track/play changes), so if the app is
-        // killed mid-song — e.g. by an app update — it resumes exactly where it left off on next launch.
-        scope.launch {
-            while (true) {
-                kotlinx.coroutines.delay(8000)
-                val shouldSave = withContext(Dispatchers.Main) {
-                    player.isPlaying && player.mediaItemCount > 0
-                }
-                if (shouldSave && dataStore.get(PersistentQueueKey, true)) {
-                    runCatching { savePlaybackPositionToDisk() }
-                }
-            }
-        }
+        // Podcast progress + periodic position persistence used to run in two while(true) loops that
+        // woke the CPU every 5s/8s for the WHOLE life of the service — even while paused or idle — which
+        // drained the battery. They now run only WHILE PLAYING, started/stopped from onIsPlayingChanged
+        // (see startPeriodicPersist). Position is also saved once on pause so nothing is lost.
 
         audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         abandonAudioFocus()
@@ -1986,6 +1967,46 @@ class MusicService :
         
         if (dataStore.get(PersistentQueueKey, true)) {
             saveQueueToDisk()
+        }
+    }
+
+    override fun onIsPlayingChanged(isPlaying: Boolean) {
+        if (isPlaying) {
+            startPeriodicPersist()
+        } else {
+            // Stop the periodic wake-ups while paused/idle and save the position once so nothing is lost.
+            periodicPersistJob?.cancel()
+            periodicPersistJob = null
+            if (dataStore.get(PersistentQueueKey, true)) {
+                scope.launch { runCatching { savePlaybackPositionToDisk() } }
+            }
+        }
+    }
+
+    /**
+     * Periodic podcast-progress + playback-position persistence, but ONLY while actually playing.
+     * Replaces two always-on while(true) loops that woke the CPU every 5s/8s even when paused/idle.
+     */
+    private fun startPeriodicPersist() {
+        if (periodicPersistJob?.isActive == true) return
+        periodicPersistJob = scope.launch {
+            var tick = 0
+            while (true) {
+                kotlinx.coroutines.delay(5000)
+                tick++
+                val podcast = withContext(Dispatchers.Main) {
+                    if (!player.isPlaying) return@withContext null
+                    val id = player.currentMediaItem?.mediaId
+                    if (id != null && id.startsWith("http", ignoreCase = true) && player.duration > 0)
+                        Triple(id, player.currentPosition, player.duration) else null
+                }
+                podcast?.let { (id, pos, dur) -> runCatching { podcastProgressStore.save(id, pos, dur) } }
+                // Persist queue position every other tick (~10s) so a mid-song kill resumes in place.
+                if (tick % 2 == 0 && dataStore.get(PersistentQueueKey, true)) {
+                    val ok = withContext(Dispatchers.Main) { player.isPlaying && player.mediaItemCount > 0 }
+                    if (ok) runCatching { savePlaybackPositionToDisk() }
+                }
+            }
         }
     }
 
