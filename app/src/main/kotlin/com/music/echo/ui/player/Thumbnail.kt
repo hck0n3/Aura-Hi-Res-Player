@@ -402,12 +402,11 @@ fun Thumbnail(
         }
 
         
-        // With Apple Music style the canvas normally plays as the full-screen background and the
-        // cover is hidden. If the user turned ON "canvas on the cover", keep the cover visible so it
-        // can animate too (parity with the album canvas).
-        val coverCanvasOn by rememberPreference(CanvasThumbnailAnimationKey, defaultValue = false)
+        // With Apple Music style the canvas plays FULL-SCREEN as the background, so the square cover card
+        // is always hidden in portrait (whether or not canvas is on) — the user wants a single full-screen
+        // animation, NOT a full-screen one plus a square cover in front.
         AnimatedVisibility(
-            visible = error == null && !(playerBackground == PlayerBackgroundStyle.APPLE_MUSIC && !isLandscape && !coverCanvasOn),
+            visible = error == null && !(playerBackground == PlayerBackgroundStyle.APPLE_MUSIC && !isLandscape),
             enter = fadeIn(),
             exit = fadeOut(),
             modifier = Modifier

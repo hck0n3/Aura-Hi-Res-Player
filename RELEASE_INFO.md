@@ -1,5 +1,5 @@
-# Aura Hi-Res Player v5.7.104
+# Aura Hi-Res Player v5.7.105
 
-## Más correcciones del proyecto base (Echo-Music)
-- **Anti-crash:** ahora se captura `ForegroundServiceStartNotAllowedException` al (re)iniciar la reproducción desde segundo plano, en vez de cerrar la app.
-- **Sugerencias más precisas:** al tocar una sugerencia, el emparejado de artista es bidireccional, así reproduce la canción correcta y no una con el mismo título de otro artista.
+## Estilo Apple Music: canvas a pantalla completa (sin doble carátula)
+- En el estilo de reproductor "Apple Music", al activar el Canvas ya NO aparecen dos portadas (una a pantalla completa y otra cuadrada delante).
+- Ahora se ve **una sola animación a pantalla completa**, como debe ser.
