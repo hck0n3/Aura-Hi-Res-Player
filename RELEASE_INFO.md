@@ -1,7 +1,5 @@
-# Aura Hi-Res Player v5.7.79
+# Aura Hi-Res Player v5.7.80
 
-## Discografía del artista: bug real encontrado y corregido
-- Verifiqué con la base de datos real: iTunes SÍ tiene los álbumes (ej. "Privé - EP" de Juan Luis Guerra), pero la app **no los emparejaba** porque:
-  1. No quitaba el sufijo "- EP" / "- Single" al comparar títulos (comparaba "privé ep" contra "privé").
-  2. El emparejado con playlists no era bidireccional.
-- Corregido. Además ahora consulta iTunes **EE.UU. + tu país** (más completo) y se queda con los **lanzamientos propios** del artista (no donde solo es invitado).
+## Artista: nueva sección "Aparece en" (estilo Spotify)
+- Al entrar a un artista, además de su discografía, ahora aparece una sección **"Aparece en"** con álbumes donde el artista participa como **invitado/colaborador** (no como artista principal).
+- Se arma cruzando los créditos de iTunes/Apple Music con YouTube. Carga en segundo plano poco después de abrir el artista.

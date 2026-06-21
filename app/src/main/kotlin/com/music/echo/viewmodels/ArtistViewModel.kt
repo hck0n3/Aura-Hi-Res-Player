@@ -25,7 +25,14 @@ import iad1tya.echo.music.utils.get
 import iad1tya.echo.music.utils.reportException
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
@@ -117,6 +124,47 @@ class ArtistViewModel @Inject constructor(
                                 _artistVideoSong.value = item
                                 return@forEach
                             }
+                        }
+                    }
+
+                    // "Aparece en" (Appears on), like Spotify: albums where this artist is a guest. Built
+                    // from iTunes guest credits + a parallel YouTube lookup, appended as its own section.
+                    launch(Dispatchers.IO) {
+                        val artistName = page.artist?.title ?: return@launch
+                        val norm = iad1tya.echo.music.utils.iTunesDiscography::normalizeTitle
+                        val guest = iad1tya.echo.music.utils.iTunesDiscography
+                            .fetchAppearsOn(artistName, "us")
+                            .take(15)
+                        if (guest.isEmpty()) return@launch
+                        val sem = Semaphore(8)
+                        val found = coroutineScope {
+                            guest.map { (title, primary) ->
+                                async {
+                                    sem.withPermit {
+                                        val target = norm(title)
+                                        YouTube.search("$primary $title", YouTube.SearchFilter.FILTER_ALBUM)
+                                            .getOrNull()?.items
+                                            ?.filterIsInstance<com.music.innertube.models.AlbumItem>()
+                                            ?.firstOrNull {
+                                                val yt = norm(it.title)
+                                                yt == target || (target.length >= 4 && (yt.contains(target) || target.contains(yt)))
+                                            }
+                                    }
+                                }
+                            }.awaitAll().filterNotNull()
+                        }
+                        val items = found.distinctBy { it.id }.filter { !hideExplicit || !it.explicit }
+                        if (items.isEmpty()) return@launch
+                        withContext(Dispatchers.Main) {
+                            val current = artistPage ?: return@withContext
+                            if (current.sections.any { it.title.equals("Aparece en", ignoreCase = true) }) return@withContext
+                            artistPage = current.copy(
+                                sections = current.sections + com.music.innertube.pages.ArtistSection(
+                                    title = "Aparece en",
+                                    items = items,
+                                    moreEndpoint = null,
+                                ),
+                            )
                         }
                     }
                 }.onFailure {

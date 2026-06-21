@@ -62,6 +62,40 @@ object iTunesDiscography {
         }.getOrDefault(emptyList())
 
     /**
+     * Releases where the artist only APPEARS (is a guest/feature, not the primary credit) — for an
+     * "Appears on" section like Spotify's. Returns (albumTitle, primaryArtist) so each can be found on
+     * YouTube. Skips "Various Artists" compilations and tributes.
+     */
+    suspend fun fetchAppearsOn(artistName: String, country: String = "us"): List<Pair<String, String>> =
+        runCatching {
+            val text = client.get("https://itunes.apple.com/search") {
+                parameter("term", artistName)
+                parameter("entity", "album")
+                parameter("attribute", "artistTerm")
+                parameter("limit", "200")
+                parameter("country", country)
+            }.bodyAsText()
+
+            json.parseToJsonElement(text).jsonObject["results"]?.jsonArray
+                ?.mapNotNull { el ->
+                    val o = el.jsonObject
+                    val resultArtist = o["artistName"]?.jsonPrimitive?.contentOrNull ?: ""
+                    val title = o["collectionName"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+                    val isGuest = resultArtist.contains(artistName, ignoreCase = true) &&
+                        !resultArtist.startsWith(artistName, ignoreCase = true) &&
+                        !artistName.startsWith(resultArtist, ignoreCase = true) &&
+                        !resultArtist.equals("Various Artists", ignoreCase = true) &&
+                        !title.contains("homenaje", ignoreCase = true) &&
+                        !title.contains("tribut", ignoreCase = true)
+                    if (isGuest) title to resultArtist else null
+                }
+                ?.distinctBy { normalizeTitle(it.first) }
+                .orEmpty()
+        }.onFailure {
+            Timber.w("iTunes appears-on fetch failed for $artistName: ${it.message}")
+        }.getOrDefault(emptyList())
+
+    /**
      * Normalize an album title so "Privé - EP", "Privé (Deluxe)" and "Privé" all compare equal. Strips
      * a trailing release-type suffix ("- EP", "- Single", "- Deluxe"...) but NOT a leading word (so
      * "Single Ladies" stays intact), and drops parentheticals/punctuation/accents-insensitive symbols.
