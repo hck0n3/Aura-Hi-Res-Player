@@ -149,7 +149,14 @@ constructor(
                                         p.author?.name?.contains(artistName, ignoreCase = true) == true)
                             }
 
-                        if (pl != null) target to (pl as com.music.innertube.models.YTItem) else null
+                        // Quality control: only add a community playlist if its tracks are NOT truncated
+                        // previews (the Lauren Daigle problem — list looks complete but songs play for
+                        // seconds). Reject short/preview uploads so the user gets full, playable audio.
+                        if (pl != null && isSourceComplete(pl.id)) {
+                            target to (pl as com.music.innertube.models.YTItem)
+                        } else {
+                            null
+                        }
                     }
                 }
             }
@@ -160,6 +167,20 @@ constructor(
             if (t !in have) { have.add(t); result.add(item) }
         }
         if (hideExplicit) result.filterExplicit(true) else result
+    }
+
+    /**
+     * Quality control for a community-uploaded source: reject it if its tracks look truncated/previews
+     * (median track under ~90 s) or it has too few tracks. Real album tracks average a few minutes, so a
+     * source full of 20-60 s clips is a bad/incomplete upload and is skipped.
+     */
+    private suspend fun isSourceComplete(playlistId: String): Boolean {
+        val songs = YouTube.playlist(playlistId).getOrNull()?.songs ?: return false
+        if (songs.size < 2) return false
+        val durations = songs.mapNotNull { it.duration }.filter { it > 0 }
+        if (durations.isEmpty()) return true // no duration metadata -> don't reject on that basis
+        val median = durations.sorted()[durations.size / 2]
+        return median >= 90
     }
 
     fun loadMore() {
