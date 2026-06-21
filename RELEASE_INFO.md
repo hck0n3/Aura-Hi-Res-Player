@@ -1,7 +1,7 @@
-# Aura Hi-Res Player v5.7.89
+# Aura Hi-Res Player v5.7.90
 
-## Smart Shuffle (Fase 2b)
-- El shuffle ahora es **inteligente**: empuja un poco hacia adelante las canciones que sueles disfrutar, pero **mantiene mucha aleatoriedad** para que siga sintiéndose aleatorio (no una lista fija de favoritas).
-- Usa el mismo motor de gustos on-device. Si aún no hay datos de gustos, hace el shuffle normal de siempre.
+## Recomendaciones con contexto de hora (Fase 3)
+- El motor de gustos ahora tiene **contexto por hora del día**: lo que sueles escuchar a esta hora pesa un poco más, así las mañanas suenan a mañana y las noches a noche.
+- (El Descubrimiento Diario ya te dice "Porque escuchas a…/Suena como…" con la canción que lo inspiró.)
 
-Nota: la búsqueda se mantiene "lo más relevante primero" (cuando buscas algo, quieres ESO), no se reordena por gustos a propósito.
+Con esto, las 3 fases de la IA de recomendación están completas: motor de gustos en el Inicio, autoplay/radio y shuffle inteligentes, y contexto horario. Todo 100% on-device y privado.

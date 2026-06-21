@@ -3,9 +3,12 @@ package iad1tya.echo.music.reco
 import iad1tya.echo.music.db.entities.EventWithSong
 import iad1tya.echo.music.db.entities.Song
 import iad1tya.echo.music.dislike.DislikeStore
+import java.time.Instant
 import java.time.ZoneId
+import kotlin.math.abs
 import kotlin.math.exp
 import kotlin.math.ln
+import kotlin.math.min
 
 /**
  * On-device "taste model". Builds an explainable affinity profile purely from the local listening
@@ -39,6 +42,9 @@ object AffinityEngine {
         val byName = HashMap<String, Double>()
         val lane = HashMap<String, Double>()
         val ln2 = ln(2.0)
+        val nowHour = runCatching {
+            Instant.ofEpochMilli(now).atZone(ZoneId.systemDefault()).hour
+        }.getOrDefault(12)
 
         events.asSequence().take(MAX_EVENTS).forEach { ews ->
             val ev = ews.event
@@ -49,12 +55,17 @@ object AffinityEngine {
             val ageDays = ((now - playedAt) / 86_400_000.0).coerceAtLeast(0.0)
             val decay = exp(-ln2 * ageDays / HALF_LIFE_DAYS)
 
+            // Time-of-day context: what you play around THIS hour counts a bit more, so mornings feel
+            // like mornings and nights like nights.
+            val hourDist = runCatching { circularHourDistance(ev.timestamp.hour, nowHour) }.getOrDefault(12)
+            val timeBoost = if (hourDist <= 3) 1.25 else 1.0
+
             val durMs = song.song.duration.takeIf { it > 0 }?.let { it.toLong() * 1000L } ?: 0L
             val completion = if (durMs > 0) (ev.playTime.toDouble() / durMs).coerceIn(0.0, 1.0) else 0.5
             // Map completion to a [-?..+1] quality: a skip (completion < SKIP_PIVOT) is negative, a full
             // listen is +1. This turns the play-time we already store into a free "skip" signal.
             val quality = (completion - SKIP_PIVOT) / (1.0 - SKIP_PIVOT)
-            var w = decay * quality
+            var w = decay * quality * timeBoost
             if (song.song.liked) w += decay * 0.5
 
             song.artists.forEach { a ->
@@ -68,6 +79,12 @@ object AffinityEngine {
 
         val maxW = byId.values.maxOrNull()?.takeIf { it > 0 } ?: 1.0
         return TasteProfile(byId, byName, lane, disliked, maxW)
+    }
+
+    /** Smallest distance between two hours on a 24h clock (0..12). */
+    private fun circularHourDistance(a: Int, b: Int): Int {
+        val d = abs(a - b)
+        return min(d, 24 - d)
     }
 }
 
