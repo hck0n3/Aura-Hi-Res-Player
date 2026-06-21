@@ -109,6 +109,7 @@ class App : Application(), SingletonImageLoader.Factory {
         val settings = dataStore.data.first()
         seedDefaultsIfNeeded(settings)
         migrateCanvasDefaultOn(settings)
+        migrateMiniPlayerDefaultBg(settings)
         migrateLegacyIcon(settings)
         val locale = Locale.getDefault()
         val languageTag = locale.language
@@ -234,8 +235,10 @@ class App : Application(), SingletonImageLoader.Factory {
             // works from first launch.
             p[iad1tya.echo.music.constants.PlayerBackgroundStyleKey] =
                 iad1tya.echo.music.constants.PlayerBackgroundStyle.APPLE_MUSIC.name
+            // Mini-player stays DEFAULT (clean theme bar): a dynamic mini background forces white text,
+            // which is illegible in light mode. DEFAULT keeps the readable gray (onSurface) text.
             p[iad1tya.echo.music.constants.MiniPlayerBackgroundStyleKey] =
-                iad1tya.echo.music.constants.PlayerBackgroundStyle.APPLE_MUSIC.name
+                iad1tya.echo.music.constants.PlayerBackgroundStyle.DEFAULT.name
             p[iad1tya.echo.music.constants.UseNewPlayerDesignKey] = false
             p[iad1tya.echo.music.constants.HidePlayerSliderKey] = true
 
@@ -288,6 +291,20 @@ class App : Application(), SingletonImageLoader.Factory {
      * were previously seeded ON. Gated by its own flag so it never disturbs anything else and never
      * repeats; users who want them can turn them back on (and the flag keeps that choice).
      */
+    private suspend fun migrateMiniPlayerDefaultBg(settings: androidx.datastore.preferences.core.Preferences) {
+        // The mini-player was seeded with a dynamic (APPLE_MUSIC) background, which forces white text that is
+        // illegible in light mode. Reset the mini-player background to DEFAULT once so its text is the
+        // readable gray (onSurface). Runs once; the user can pick a dynamic mini background again later.
+        if (settings[iad1tya.echo.music.constants.MiniPlayerDefaultBgAppliedKey] == true) return
+        runCatching {
+            dataStore.edit { p ->
+                p[iad1tya.echo.music.constants.MiniPlayerBackgroundStyleKey] =
+                    iad1tya.echo.music.constants.PlayerBackgroundStyle.DEFAULT.name
+                p[iad1tya.echo.music.constants.MiniPlayerDefaultBgAppliedKey] = true
+            }
+        }
+    }
+
     private suspend fun migrateCanvasDefaultOn(settings: androidx.datastore.preferences.core.Preferences) {
         // User request: ALL canvas/lienzo toggles enabled. Force them ON once (even for installs that had
         // the previous default-OFF migration), then remember it so the user's later choice is respected.
