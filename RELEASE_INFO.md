@@ -1,11 +1,5 @@
-# Aura Hi-Res Player v5.7.84
+# Aura Hi-Res Player v5.7.85
 
-## Búsqueda ordenada
-- Los resultados ahora salen en orden: **Artistas → Canciones → Álbumes → Listas → Podcasts** (los podcasts al final).
-- Al buscar, la lista te deja **posicionado arriba**.
-
-## Artista más rápido (precarga)
-- Al entrar a un artista, la app **precarga en segundo plano el contenido de sus álbumes**, así cuando abres un álbum sus canciones ya están listas (casi instantáneo).
-
-## "Aparece en" con más colaboraciones
-- La sección **"Aparece en"** ahora trae muchas más colaboraciones: además de álbumes, incluye **singles/feats** donde participa el artista (antes solo salían un par de álbumes).
+## "Aparece en" sin límite — colaboraciones reales
+- La sección **"Aparece en"** ya NO tiene tope. Se basa en la **información real** de iTunes/Apple Music (lista completa de colaboraciones del artista) y resuelve cada una en YouTube.
+- Incluye álbumes y singles/feats donde participa el artista. Para artistas muy colaborativos puede tardar unos segundos más en completarse (carga en segundo plano), pero muestra el resultado real.

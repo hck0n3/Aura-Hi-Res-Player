@@ -155,9 +155,10 @@ class ArtistViewModel @Inject constructor(
                     launch(Dispatchers.IO) {
                         val artistName = page.artist?.title ?: return@launch
                         val norm = iad1tya.echo.music.utils.iTunesDiscography::normalizeTitle
+                        // No cap: use the real list of collaborations from iTunes (its query already
+                        // returns up to 200) and resolve every one on YouTube.
                         val guest = iad1tya.echo.music.utils.iTunesDiscography
                             .fetchAppearsOn(artistName, "us")
-                            .take(30)
                         if (guest.isEmpty()) return@launch
                         val sem = Semaphore(8)
                         val found = coroutineScope {
