@@ -1,5 +1,6 @@
-# Aura Hi-Res Player v5.7.86
+# Aura Hi-Res Player v5.7.87
 
-## Arreglo de cierre inesperado (crash)
-- Corregido el cierre repentino que ocurría al ver un artista cuando la sección "Aparece en" mezclaba álbumes y singles/feats.
-- Causa: la lista reutilizaba el espacio de una canción para un álbum (estructuras distintas) y Compose se rompía. Ahora cada tipo se reutiliza solo con su mismo tipo, y la sección de canciones nunca intenta tratar un álbum como canción.
+## Recomendaciones más inteligentes (Fase 1: motor de gustos)
+- Nuevo **motor de afinidad on-device**: aprende de tu historial real de escucha — cada reproducción pesa según **qué tan reciente** es y **cuánto de la canción sonó** (saltar una canción a los segundos cuenta EN CONTRA; oírla entera cuenta a favor), más tus "Me gusta" y "No me gusta".
+- El **Inicio ya no ordena al azar**: QuickPicks, Favoritos olvidados y Tu Descubrimiento Diario ahora se **ordenan según tus gustos** (con un poco de variedad para que no sea idéntico cada vez).
+- 100% privado: nada sale del teléfono. Cuanto más usas la app, mejor te conoce.

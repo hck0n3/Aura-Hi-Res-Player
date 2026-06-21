@@ -100,6 +100,37 @@ class HomeViewModel @Inject constructor(
     val selectedChip = MutableStateFlow<HomePage.Chip?>(null)
     private val previousHomePage = MutableStateFlow<HomePage?>(null)
 
+    // On-device taste model (see AffinityEngine). Rebuilt once per load/refresh and reused to RANK every
+    // shelf by how much you'd actually like each candidate — instead of the old plain .shuffled().
+    @Volatile
+    private var tasteProfile: iad1tya.echo.music.reco.TasteProfile? = null
+
+    /** Rebuild the taste profile from the latest listening history + dislikes. Cheap, fully on-device. */
+    private suspend fun refreshTasteProfile() {
+        runCatching {
+            val events = database.events().first()
+            val disliked = runCatching { dislikeStore.snapshot() }
+                .getOrDefault(iad1tya.echo.music.dislike.DislikeStore.Disliked())
+            tasteProfile = iad1tya.echo.music.reco.AffinityEngine.buildProfile(events, disliked)
+        }
+    }
+
+    /** Rank songs by taste, with a little jitter so refreshes vary instead of being identical. */
+    private fun List<Song>.rankedByTaste(): List<Song> {
+        val p = tasteProfile ?: return shuffled()
+        val rnd = java.util.Random()
+        return sortedByDescending { p.score(it) + rnd.nextDouble() * 0.2 }
+    }
+
+    private fun tasteScoreYt(item: com.music.innertube.models.YTItem): Double {
+        val p = tasteProfile ?: return 0.0
+        return when (item) {
+            is com.music.innertube.models.SongItem -> p.scoreNames(item.artists.map { it.name }, item.title)
+            is com.music.innertube.models.AlbumItem -> p.scoreNames(item.artists?.map { it.name } ?: emptyList(), item.title)
+            else -> 0.0
+        }
+    }
+
     val allLocalItems = MutableStateFlow<List<LocalItem>>(emptyList())
     val allYtItems = MutableStateFlow<List<YTItem>>(emptyList())
 
@@ -248,7 +279,7 @@ class HomeViewModel @Inject constructor(
         val likedSongs = database.likedSongsByCreateDateAsc().first()
         if (likedSongs.isEmpty()) return
 
-        val seeds = likedSongs.shuffled().distinctBy { it.id }.take(5)
+        val seeds = likedSongs.distinctBy { it.id }.rankedByTaste().take(5)
 
         
         val items = java.util.Collections.synchronizedList(mutableListOf<DailyDiscoverItem>())
@@ -265,12 +296,13 @@ class HomeViewModel @Inject constructor(
                                     if (item.explicit) return@filter false
                                     true
                                 }
-                                .shuffled()
 
-                            
-                            val recommendation = recommendations.firstOrNull { rec ->
-                                rec.id != seed.id
-                            }
+                            // Pick the related song that best fits your taste (with a little jitter for
+                            // variety) instead of a random one.
+                            val rndPick = java.util.Random()
+                            val recommendation = recommendations
+                                .filter { it.id != seed.id }
+                                .maxByOrNull { tasteScoreYt(it) + rndPick.nextDouble() * 0.15 }
 
                             if (recommendation != null) {
                                 items.add(
@@ -288,7 +320,9 @@ class HomeViewModel @Inject constructor(
         }
 
         
-        dailyDiscover.value = items.toList().distinctBy { it.recommendation.id }.shuffled()
+        val rnd = java.util.Random()
+        dailyDiscover.value = items.toList().distinctBy { it.recommendation.id }
+            .sortedByDescending { tasteScoreYt(it.recommendation) + rnd.nextDouble() * 0.2 }
     }
 
     private suspend fun getQuickPicks() {
@@ -321,10 +355,10 @@ class HomeViewModel @Inject constructor(
                 
                 val combined = (relatedSongs + forgotten + ytSimilarSongs)
                     .distinctBy { it.id }
-                    .shuffled()
+                    .rankedByTaste()
                     .take(20)
 
-                quickPicks.value = combined.ifEmpty { relatedSongs.shuffled().take(20) }
+                quickPicks.value = combined.ifEmpty { relatedSongs.rankedByTaste().take(20) }
             }
             QuickPicks.LAST_LISTEN -> {
                 val song = database.events().first().firstOrNull()?.song
@@ -414,10 +448,13 @@ class HomeViewModel @Inject constructor(
     private suspend fun loadLocalDataPhase() {
         val hideVideoSongs = context.dataStore.get(HideVideoSongsKey, false)
 
+        // Build the taste model first so every shelf below can rank by it.
+        refreshTasteProfile()
+
         getQuickPicks()
 
         forgottenFavorites.value = database.forgottenFavorites().first()
-            .filterVideoSongs(hideVideoSongs).shuffled().take(20)
+            .filterVideoSongs(hideVideoSongs).rankedByTaste().take(20)
 
         val fromTimeStamp = System.currentTimeMillis() - 86400000L * 7 * 2
         val keepListeningSongs = database.mostPlayedSongs(fromTimeStamp, limit = 15, offset = 5).first()
