@@ -1,9 +1,19 @@
-# Aura Hi-Res Player v5.7.114
+# Aura Hi-Res Player v5.7.115
 
-## Reproducción aún más rápida al elegir una canción
-- Al tocar una canción nueva, la app hacía DOS peticiones de red una tras otra (el audio y luego los datos). Ahora van EN PARALELO, así que el inicio tarda menos.
-- (La precarga de la SIGUIENTE canción ya existía: al dejar que avance sola, la siguiente arranca casi al instante. Lo que se aceleró ahora es cuando TÚ eliges una canción manualmente.)
+## Los álbumes ahora abren al instante
+- Antes, cada vez que entrabas a un álbum la app volvía a descargar TODA su lista de canciones desde internet, pidiendo varias "páginas" seguidas. Eso hacía que tardara en abrir, sobre todo en álbumes o recopilaciones muy grandes.
+- Ahora, si ya habías abierto ese álbum antes, se muestra al momento usando lo que ya quedó guardado y solo refresca los datos por detrás, sin hacerte esperar.
 
-## Lo que se hizo (técnico, como lo haría un reproductor optimizado)
-- Petición principal (audio, cliente ANDROID_VR sin poToken) + petición de metadata: ahora simultáneas.
-- La metadata sigue con límite de tiempo para no bloquear nunca el inicio.
+## Las sugerencias de búsqueda de YouTube vuelven a aparecer
+- A veces el buscador no mostraba ninguna sugerencia porque YouTube cambia el lugar donde las coloca y la app las buscaba siempre en un sitio fijo.
+- Ahora la app las recoge de todo el resultado, así que las sugerencias aparecen siempre, sin importar el orden en que YouTube las mande.
+
+## La primera canción suena más rápido
+- Al abrir la app, el motor que prepara la reproducción tardaba en arrancar (esperaba 2,5 segundos antes de empezar a prepararse).
+- Ahora ese arranque se redujo a medio segundo, así que la primera canción que pones después de abrir la app empieza mucho antes. Las siguientes ya iban rápidas gracias a la precarga automática.
+
+## Lo que se hizo (técnico)
+- AlbumViewModel: si el álbum ya está cacheado en la base de datos, la actualización vía YouTube.album() se hace con withSongs = false (solo metadatos, sin bloquear).
+- YouTube.albumSongs: maxRequests reducido (de 50 a 1) para no estrangular la carga de álbumes enormes.
+- YouTube.searchSuggestions: en vez de un índice fijo (getOrNull(1)), ahora recolecta los musicResponsiveListItemRenderer con flatMap sobre todas las secciones de la respuesta.
+- MusicService: prewarm del PoToken reducido de 2500 ms a 500 ms para que la extracción de streaming esté lista casi de inmediato.
