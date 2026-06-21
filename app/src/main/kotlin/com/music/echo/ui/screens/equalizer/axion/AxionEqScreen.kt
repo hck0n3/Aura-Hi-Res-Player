@@ -124,6 +124,9 @@ fun AxionEqScreen(
 
             PreampCard(preamp = preamp, enabled = enabled, onPreampChange = { viewModel.setPreampLive(it) }, onCommit = { viewModel.commit() })
 
+            // Live preview of the overall EQ curve — easier to read the shape than 24 separate sliders.
+            EqCurvePreview(bandGains = bandGains, enabled = enabled)
+
             FactoryPresetRow(
                 bandGains = bandGains,
                 enabled = enabled,
@@ -197,6 +200,64 @@ fun AxionEqScreen(
 
             Spacer(modifier = Modifier.height(60.dp))
         }
+    }
+}
+
+@Composable
+private fun EqCurvePreview(bandGains: FloatArray, enabled: Boolean) {
+    val base = MaterialTheme.colorScheme.primary
+    val curveColor = if (enabled) base else base.copy(alpha = 0.35f)
+    val fillColor = curveColor.copy(alpha = 0.15f)
+    val gridColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+    val maxGain = iad1tya.echo.music.eq.data.EqConstants.GAIN_MAX
+    androidx.compose.foundation.Canvas(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(110.dp)
+            .clip(MaterialTheme.shapes.large)
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+    ) {
+        val w = size.width
+        val h = size.height
+        val mid = h / 2f
+        fun line(yFrac: Float, alpha: Float) = drawLine(
+            gridColor.copy(alpha = alpha),
+            androidx.compose.ui.geometry.Offset(0f, h * yFrac),
+            androidx.compose.ui.geometry.Offset(w, h * yFrac),
+            1.dp.toPx(),
+        )
+        line(0.5f, 0.6f)
+        line(0.12f, 0.25f)
+        line(0.88f, 0.25f)
+
+        val n = bandGains.size
+        if (n < 2) return@Canvas
+        fun px(i: Int) = w * i / (n - 1).toFloat()
+        fun py(g: Float) = (mid - (g / maxGain) * (mid * 0.85f)).coerceIn(0f, h)
+
+        val curve = androidx.compose.ui.graphics.Path()
+        val fill = androidx.compose.ui.graphics.Path()
+        curve.moveTo(px(0), py(bandGains[0]))
+        fill.moveTo(px(0), mid)
+        fill.lineTo(px(0), py(bandGains[0]))
+        for (i in 1 until n) {
+            val prevX = px(i - 1)
+            val prevY = py(bandGains.getOrElse(i - 1) { 0f })
+            val curX = px(i)
+            val curY = py(bandGains.getOrElse(i) { 0f })
+            val midX = (prevX + curX) / 2f
+            curve.cubicTo(midX, prevY, midX, curY, curX, curY)
+            fill.cubicTo(midX, prevY, midX, curY, curX, curY)
+        }
+        fill.lineTo(px(n - 1), mid)
+        fill.close()
+        drawPath(fill, fillColor)
+        drawPath(
+            curve,
+            curveColor,
+            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.5.dp.toPx()),
+        )
     }
 }
 

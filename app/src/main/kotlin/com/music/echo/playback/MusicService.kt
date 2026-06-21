@@ -3363,8 +3363,11 @@ class MusicService :
 
         
         
-        val savedRepeatMode = runBlocking { dataStore.get(RepeatModeKey, REPEAT_MODE_OFF) }
-        val savedShuffleEnabled = runBlocking { dataStore.get(ShuffleModeKey, false) }
+        // Live values — NOT runBlocking dataStore reads: two blocking disk reads here, right at the
+        // crossfade trigger, stuttered the smooth transition. player.repeatMode/shuffleModeEnabled mirror
+        // the persisted settings already.
+        val savedRepeatMode = player.repeatMode
+        val savedShuffleEnabled = player.shuffleModeEnabled
 
         
         val targetIndex = if (savedRepeatMode == REPEAT_MODE_ONE) {
