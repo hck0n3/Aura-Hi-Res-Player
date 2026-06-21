@@ -1,8 +1,11 @@
-# Aura Hi-Res Player v5.7.98
+# Aura Hi-Res Player v5.7.99
 
-## Nueva paleta oscura "Deep Teal / Midnight Green" (en prueba)
-- El fondo del modo oscuro deja de ser gris neutro y pasa a un **carbón muy oscuro con tinte cian/verde azulado** (#111A1D), con superficies graduadas hasta #1A282C.
-- Pensado para que el efecto de **cristal esmerilado (glassmorphism)** de barras y paneles tenga algo de color/luz que capturar (un negro puro lo aplanaría).
-- Los colores de acento siguen siendo dinámicos y el reproductor sigue usando la portada. Si tienes activado el modo "negro puro (AMOLED)", ese se respeta.
+## Pantalla del artista más limpia
+- Quitados los botones flotantes (reproducir / alternar) que aparecían al abrir un artista. La información del artista se mantiene visible en línea. Reproducir/mezclar siguen en la cabecera.
 
-Es una prueba reversible: si no te gusta, se quita.
+## Botón "+" del reproductor
+- En el menú "+" se quitó el Temporizador y se añadió **Ajustes**.
+
+## Modo claro mejorado
+- El fondo del modo claro deja de ser blanco puro y pasa a un **gris suave** bien contrastado, más agradable a la vista.
+- Mini-reproductor: el nombre de la canción ahora se lee bien (se oscurece el fondo del gradiente para que el texto blanco siempre contraste).

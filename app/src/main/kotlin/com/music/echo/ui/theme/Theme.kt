@@ -52,7 +52,7 @@ fun echomusicTheme(
         when {
             darkTheme && pureBlack -> baseColorScheme.pureBlack(true)
             darkTheme -> baseColorScheme.deepTeal()
-            else -> baseColorScheme
+            else -> baseColorScheme.softLight()
         }
     }
 
@@ -113,6 +113,22 @@ fun ColorScheme.deepTeal() = copy(
     surfaceContainerHigh = Color(0xFF1A282C),
     surfaceContainerHighest = Color(0xFF1F2F34),
     surfaceVariant = Color(0xFF1A282C),
+)
+
+/**
+ * Soft light theme: a gentle cool-grey instead of a harsh pure white, easier on the eyes while keeping
+ * strong contrast (text/icons stay dark from the base scheme). Graduated containers add subtle depth.
+ */
+fun ColorScheme.softLight() = copy(
+    background = Color(0xFFF1F3F4),
+    surface = Color(0xFFF1F3F4),
+    surfaceBright = Color(0xFFFAFBFC),
+    surfaceDim = Color(0xFFDCE0E2),
+    surfaceContainerLowest = Color(0xFFFFFFFF),
+    surfaceContainerLow = Color(0xFFF3F5F6),
+    surfaceContainer = Color(0xFFEBEEF0),
+    surfaceContainerHigh = Color(0xFFE5E9EB),
+    surfaceContainerHighest = Color(0xFFDFE4E6),
 )
 
 val ColorSaver = object : Saver<Color, Int> {

@@ -996,7 +996,9 @@ private fun MiniPlayerBackgroundLayer(
                     modifier = Modifier
                         .fillMaxSize()
                         .background(Brush.verticalGradient(gradientColors))
-                        .background(Color.Black.copy(alpha = 0.2f))
+                        // Darker scrim so the white song title/artist stay legible even when the album
+                        // art (and therefore the gradient) is light.
+                        .background(Color.Black.copy(alpha = 0.45f))
                 )
             }
         }

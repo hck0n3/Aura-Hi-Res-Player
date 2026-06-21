@@ -697,18 +697,20 @@ fun OldPlayerMenu(
                         )
                     )
 
+                    // Per user request: timer removed from the "+" menu, replaced with Settings.
                     add(
                         Material3MenuItemData(
-                            title = { Text(text = stringResource(R.string.sleep_timer)) },
+                            title = { Text(text = stringResource(R.string.settings)) },
                             icon = {
                                 Icon(
-                                    painter = painterResource(R.drawable.sleep_timer),
+                                    painter = painterResource(R.drawable.settings),
                                     contentDescription = null,
                                     modifier = Modifier.size(24.dp)
                                 )
                             },
                             onClick = {
-                                onSleepTimer()
+                                playerBottomSheetState.collapseSoft()
+                                navController.navigate("settings")
                                 onDismiss()
                             }
                         )

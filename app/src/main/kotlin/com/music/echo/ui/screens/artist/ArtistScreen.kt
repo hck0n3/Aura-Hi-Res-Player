@@ -975,8 +975,10 @@ fun ArtistScreen(
         val showLocalFab = librarySongs.isNotEmpty() && libraryArtist?.artist?.isLocal != true
         
         
+        // Floating buttons removed per user request: the artist info/description stays visible inline
+        // above, and play/shuffle live in the header. (Was a local/online toggle FAB.)
         HideOnScrollFAB(
-            visible = showLocalFab,
+            visible = false,
             lazyListState = lazyListState,
             icon = if (showLocal) R.drawable.language else R.drawable.library_music,
             onClick = {
@@ -993,7 +995,8 @@ fun ArtistScreen(
             } == true)
         )
 
-        if (canPlayAll) {
+        // Floating "Play all" button removed per user request (play/shuffle remain in the header).
+        if (false && canPlayAll) {
              androidx.compose.animation.AnimatedVisibility(
                 visible = isScrollingUp,
                 enter = androidx.compose.animation.slideInVertically { it * 2 },
