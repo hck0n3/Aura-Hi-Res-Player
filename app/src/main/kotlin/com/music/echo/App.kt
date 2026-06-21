@@ -108,7 +108,7 @@ class App : Application(), SingletonImageLoader.Factory {
         reseedAfterRestoreIfNeeded()
         val settings = dataStore.data.first()
         seedDefaultsIfNeeded(settings)
-        migrateCanvasDefaultOff(settings)
+        migrateCanvasDefaultOn(settings)
         migrateLegacyIcon(settings)
         val locale = Locale.getDefault()
         val languageTag = locale.language
@@ -245,12 +245,11 @@ class App : Application(), SingletonImageLoader.Factory {
             p[iad1tya.echo.music.constants.LyricsGlowEffectKey] = true
             p[iad1tya.echo.music.constants.AppleMusicLyricsBlurKey] = true
 
-            // Visuals on by default: spectrum visualizer, artist video + artist background video.
-            // The cover "canvas" animations (player + album) are OFF by default per user request — the
-            // user opts in from settings (same as hide-video-songs being off by default).
+            // Visuals on by default: spectrum visualizer, artist video + artist background video, and the
+            // cover "canvas" animations (player + album) — ON by default per user request.
             p[iad1tya.echo.music.constants.SpectrumVisualizerEnabledKey] = true
-            p[iad1tya.echo.music.constants.CanvasThumbnailAnimationKey] = false
-            p[iad1tya.echo.music.constants.AlbumCanvasEnabledKey] = false
+            p[iad1tya.echo.music.constants.CanvasThumbnailAnimationKey] = true
+            p[iad1tya.echo.music.constants.AlbumCanvasEnabledKey] = true
             p[iad1tya.echo.music.constants.ShowArtistVideoKey] = true
             p[iad1tya.echo.music.constants.ShowArtistBackgroundVideoKey] = true
 
@@ -289,13 +288,15 @@ class App : Application(), SingletonImageLoader.Factory {
      * were previously seeded ON. Gated by its own flag so it never disturbs anything else and never
      * repeats; users who want them can turn them back on (and the flag keeps that choice).
      */
-    private suspend fun migrateCanvasDefaultOff(settings: androidx.datastore.preferences.core.Preferences) {
-        if (settings[iad1tya.echo.music.constants.CanvasDefaultOffAppliedKey] == true) return
+    private suspend fun migrateCanvasDefaultOn(settings: androidx.datastore.preferences.core.Preferences) {
+        // User request: ALL canvas/lienzo toggles enabled. Force them ON once (even for installs that had
+        // the previous default-OFF migration), then remember it so the user's later choice is respected.
+        if (settings[iad1tya.echo.music.constants.CanvasDefaultOnAppliedKey] == true) return
         runCatching {
             dataStore.edit { p ->
-                p[iad1tya.echo.music.constants.CanvasThumbnailAnimationKey] = false
-                p[iad1tya.echo.music.constants.AlbumCanvasEnabledKey] = false
-                p[iad1tya.echo.music.constants.CanvasDefaultOffAppliedKey] = true
+                p[iad1tya.echo.music.constants.CanvasThumbnailAnimationKey] = true
+                p[iad1tya.echo.music.constants.AlbumCanvasEnabledKey] = true
+                p[iad1tya.echo.music.constants.CanvasDefaultOnAppliedKey] = true
             }
         }
     }

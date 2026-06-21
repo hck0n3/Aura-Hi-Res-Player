@@ -53,6 +53,8 @@ val SpanishDefaultAppliedKey = booleanPreferencesKey("spanish_default_applied")
 // One-time guard: flips the cover "canvas" animations (player + album) OFF by default, for existing
 // installs too, without re-seeding everything. Runs once.
 val CanvasDefaultOffAppliedKey = booleanPreferencesKey("canvas_default_off_applied")
+// One-time migration to force the canvas toggles ON (user request: all canvas/lienzo toggles enabled).
+val CanvasDefaultOnAppliedKey = booleanPreferencesKey("canvas_default_on_applied")
 val SpotifySpDcKey = stringPreferencesKey("spotify_sp_dc")
 val SpotifySpKeyKey = stringPreferencesKey("spotify_sp_key")
 val SpotifyAccountNameKey = stringPreferencesKey("spotify_account_name")

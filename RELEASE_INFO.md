@@ -1,6 +1,5 @@
-# Aura Hi-Res Player v5.7.107
+# Aura Hi-Res Player v5.7.108
 
-## Nuevo: Top de YouTube Music en Sugerencias
-- En la pantalla de Sugerencias ahora aparece el **Top de YouTube Music** (charts reales) junto al Top de Apple.
-- Como vienen directo de YouTube, al tocar una canción se reproduce **exactamente esa** (sin búsqueda, más rápido y preciso).
-- "Ver más" abre los charts de YouTube Music.
+## Canvas/Lienzo activados por defecto
+- Todas las animaciones de Canvas (portada del reproductor y de álbum) ahora vienen ACTIVADAS por defecto.
+- Se aplican automáticamente al abrir la app (también en instalaciones que las tenían apagadas). Puedes desactivarlas cuando quieras desde Ajustes.
