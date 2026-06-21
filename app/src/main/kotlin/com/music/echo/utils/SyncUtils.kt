@@ -427,16 +427,13 @@ class SyncUtils @Inject constructor(
 
                     localSongs.filterNot { it.id in remoteIds || it.song.isLocal }.forEach { song ->
                         try {
-                            val likedDate = song.song.likedDate
-                            if (likedDate == null || likedDate.toEpochSecond(ZoneOffset.UTC) > lastSync) {
-                                // Schedule a migration/backfill job for songs with null likedDate
-                                withRetry {
-                                    YouTube.likeVideo(song.id, true)
-                                }.onFailure { e ->
-                                    Timber.e(e, "Failed to like song on YouTube: ${song.id}")
-                                }
-                            } else {
-                                database.update(song.song.localToggleLike())
+                            // Push local likes up to the account; NEVER un-like locally here. Removing a
+                            // local like that hadn't synced yet is what made the heart "sometimes not work"
+                            // (the like would silently revert on the next sync).
+                            withRetry {
+                                YouTube.likeVideo(song.id, true)
+                            }.onFailure { e ->
+                                Timber.e(e, "Failed to like song on YouTube: ${song.id}")
                             }
                             delay(DB_OPERATION_DELAY_MS)
                         } catch (e: Exception) {
@@ -638,14 +635,9 @@ class SyncUtils @Inject constructor(
                     val remoteIds = remoteAlbums.map { it.id }.toSet()
                     val localAlbums = database.albumsLikedByNameAsc().first()
 
-                    localAlbums.filterNot { it.id in remoteIds }.forEach { album ->
-                        try {
-                            database.update(album.album.localToggleLike())
-                            delay(DB_OPERATION_DELAY_MS)
-                        } catch (e: Exception) {
-                            Timber.e(e, "Failed to update album: ${album.id}")
-                        }
-                    }
+                    // Additive only: do NOT un-favorite local albums that aren't in the remote account.
+                    // We don't push app-favorites to the YouTube account, so removing them here made the
+                    // user's favorite albums "disappear" on their own a few minutes after adding them.
 
                     remoteAlbums.forEach { album ->
                         try {

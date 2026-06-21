@@ -1761,32 +1761,37 @@ class MusicService :
 
     fun toggleLike() {
         scope.launch {
-            val songToToggle = currentSong.first()
-            songToToggle?.let {
-                val song = it.song.toggleLike()
-                database.query {
-                    update(song)
-                    syncUtils.likeSong(song)
-
-                    
-                    if (dataStore.get(AutoDownloadOnLikeKey, true) && song.liked) {
-                        
-                        val downloadRequest =
-                            androidx.media3.exoplayer.offline.DownloadRequest
-                                .Builder(song.id, song.id.toUri())
-                                .setCustomCacheKey(song.id)
-                                .setData(song.title.toByteArray())
-                                .build()
-                        androidx.media3.exoplayer.offline.DownloadService.sendAddDownload(
-                            this@MusicService,
-                            ExoDownloadService::class.java,
-                            downloadRequest,
-                            false
-                        )
-                    }
-                }
-                currentMediaMetadata.value = player.currentMetadata
+            val existing = currentSong.first()?.song
+            val song = if (existing != null) {
+                existing.toggleLike()
+            } else {
+                // Fresh online track not saved in the DB yet — insert it first so the like ALWAYS
+                // registers. Tapping like before the song was persisted used to silently do nothing,
+                // which is why the heart "sometimes worked and sometimes didn't".
+                val meta = player.currentMetadata ?: return@launch
+                database.query { insert(meta) }
+                (database.song(meta.id).first()?.song ?: return@launch).toggleLike()
             }
+            database.query {
+                update(song)
+                syncUtils.likeSong(song)
+
+                if (dataStore.get(AutoDownloadOnLikeKey, true) && song.liked) {
+                    val downloadRequest =
+                        androidx.media3.exoplayer.offline.DownloadRequest
+                            .Builder(song.id, song.id.toUri())
+                            .setCustomCacheKey(song.id)
+                            .setData(song.title.toByteArray())
+                            .build()
+                    androidx.media3.exoplayer.offline.DownloadService.sendAddDownload(
+                        this@MusicService,
+                        ExoDownloadService::class.java,
+                        downloadRequest,
+                        false
+                    )
+                }
+            }
+            currentMediaMetadata.value = player.currentMetadata
         }
     }
 
