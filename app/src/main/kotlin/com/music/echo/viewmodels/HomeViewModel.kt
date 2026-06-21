@@ -107,11 +107,22 @@ class HomeViewModel @Inject constructor(
 
     /** Rebuild the taste profile from the latest listening history + dislikes. Cheap, fully on-device. */
     private suspend fun refreshTasteProfile() {
+        val events = runCatching { database.events().first() }.getOrDefault(emptyList())
+        val disliked = runCatching { dislikeStore.snapshot() }
+            .getOrDefault(iad1tya.echo.music.dislike.DislikeStore.Disliked())
         runCatching {
-            val events = database.events().first()
-            val disliked = runCatching { dislikeStore.snapshot() }
-                .getOrDefault(iad1tya.echo.music.dislike.DislikeStore.Disliked())
-            tasteProfile = iad1tya.echo.music.reco.AffinityEngine.buildProfile(events, disliked)
+            val genres = iad1tya.echo.music.reco.GenreCache.snapshot(context)
+            tasteProfile = iad1tya.echo.music.reco.AffinityEngine.buildProfile(events, disliked, artistGenres = genres)
+        }
+        // Learn the real genres of your most-heard artists for next time — WiFi only (your choice).
+        if (events.isNotEmpty()) {
+            viewModelScope.launch(Dispatchers.IO) {
+                runCatching {
+                    val names = events.asSequence().take(400)
+                        .flatMap { it.song.artists.asSequence().map { a -> a.name } }.toList()
+                    iad1tya.echo.music.reco.GenreCache.enrich(context, names, onlyWifi = true)
+                }
+            }
         }
     }
 

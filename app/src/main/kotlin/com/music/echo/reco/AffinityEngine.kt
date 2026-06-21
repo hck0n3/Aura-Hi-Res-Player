@@ -37,10 +37,14 @@ object AffinityEngine {
         events: List<EventWithSong>,
         disliked: DislikeStore.Disliked,
         now: Long = System.currentTimeMillis(),
+        // Optional "artist name (lowercase) -> primary genre" map (from GenreCache/iTunes). When present,
+        // the engine also learns per-genre affinity; when empty it falls back to artist + lane only.
+        artistGenres: Map<String, String> = emptyMap(),
     ): TasteProfile {
         val byId = HashMap<String, Double>()
         val byName = HashMap<String, Double>()
         val lane = HashMap<String, Double>()
+        val genre = HashMap<String, Double>()
         val ln2 = ln(2.0)
         val nowHour = runCatching {
             Instant.ofEpochMilli(now).atZone(ZoneId.systemDefault()).hour
@@ -70,7 +74,12 @@ object AffinityEngine {
 
             song.artists.forEach { a ->
                 byId.merge(a.id, w, Double::plus)
-                if (a.name.isNotBlank()) byName.merge(a.name.lowercase(), w, Double::plus)
+                if (a.name.isNotBlank()) {
+                    byName.merge(a.name.lowercase(), w, Double::plus)
+                    artistGenres[a.name.lowercase()]?.takeIf { it.isNotBlank() }?.let { g ->
+                        genre.merge(g, w, Double::plus)
+                    }
+                }
             }
             GenreLane.laneOf(song.song.title, song.artists.joinToString(" ") { it.name })?.let { l ->
                 lane.merge(l, w, Double::plus)
@@ -78,7 +87,8 @@ object AffinityEngine {
         }
 
         val maxW = byId.values.maxOrNull()?.takeIf { it > 0 } ?: 1.0
-        return TasteProfile(byId, byName, lane, disliked, maxW)
+        val maxG = genre.values.maxOrNull()?.takeIf { it > 0 } ?: 1.0
+        return TasteProfile(byId, byName, lane, genre, artistGenres, disliked, maxW, maxG)
     }
 
     /** Smallest distance between two hours on a 24h clock (0..12). */
@@ -96,8 +106,11 @@ class TasteProfile internal constructor(
     private val artistWeightById: Map<String, Double>,
     private val artistWeightByName: Map<String, Double>,
     private val laneWeight: Map<String, Double>,
+    private val genreWeight: Map<String, Double>,
+    private val artistGenres: Map<String, String>,
     private val disliked: DislikeStore.Disliked,
     private val maxArtistWeight: Double,
+    private val maxGenreWeight: Double,
 ) {
     /** Score a locally-known song (best signal: we have its real artist ids). */
     fun score(song: Song): Double {
@@ -105,11 +118,13 @@ class TasteProfile internal constructor(
         if (e.id in disliked.songs) return AVOID
         if (e.albumId != null && e.albumId in disliked.albums) return AVOID
         if (song.artists.any { it.id in disliked.artists }) return AVOID
+        val names = song.artists.map { it.name }
         val raw = song.artists.maxOfOrNull {
             artistWeightById[it.id] ?: artistWeightByName[it.name.lowercase()] ?: 0.0
         } ?: 0.0
         var s = norm(raw)
-        if (laneFits(e.title, song.artists.joinToString(" ") { it.name })) s += LANE_BONUS
+        s += genreScore(names)
+        if (laneFits(e.title, names.joinToString(" "))) s += LANE_BONUS
         if (e.liked) s += LIKE_BONUS
         return s
     }
@@ -118,8 +133,17 @@ class TasteProfile internal constructor(
     fun scoreNames(artistNames: List<String>, title: String?): Double {
         val raw = artistNames.maxOfOrNull { artistWeightByName[it.lowercase()] ?: 0.0 } ?: 0.0
         var s = norm(raw)
+        s += genreScore(artistNames)
         if (laneFits(title, artistNames.joinToString(" "))) s += LANE_BONUS
         return s
+    }
+
+    /** Affinity for the artist's real genre (Latin, Rock, Hip-Hop...), when known via GenreCache. */
+    private fun genreScore(artistNames: List<String>): Double {
+        if (genreWeight.isEmpty()) return 0.0
+        val g = artistNames.firstNotNullOfOrNull { artistGenres[it.lowercase()] } ?: return 0.0
+        val w = genreWeight[g] ?: return 0.0
+        return (w / maxGenreWeight).coerceIn(-1.0, 1.0) * GENRE_BONUS
     }
 
     private fun laneFits(title: String?, artistText: String): Boolean {
@@ -134,5 +158,6 @@ class TasteProfile internal constructor(
         const val AVOID = -1_000_000.0
         private const val LANE_BONUS = 0.3
         private const val LIKE_BONUS = 0.3
+        private const val GENRE_BONUS = 0.4
     }
 }

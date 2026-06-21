@@ -96,6 +96,26 @@ object iTunesDiscography {
         }.getOrDefault(emptyList())
 
     /**
+     * Primary genre for [artistName] per iTunes (e.g. "Christian & Gospel", "Latin", "Rock", "Hip-Hop/Rap"),
+     * taken from their most relevant album. Null if unknown. Used to give the taste engine a real genre
+     * signal beyond the built-in keyword lanes.
+     */
+    suspend fun fetchArtistGenre(artistName: String, country: String = "us"): String? =
+        runCatching {
+            val text = client.get("https://itunes.apple.com/search") {
+                parameter("term", artistName)
+                parameter("entity", "album")
+                parameter("attribute", "artistTerm")
+                parameter("limit", "1")
+                parameter("country", country)
+            }.bodyAsText()
+
+            json.parseToJsonElement(text).jsonObject["results"]?.jsonArray
+                ?.firstOrNull()?.jsonObject?.get("primaryGenreName")?.jsonPrimitive?.contentOrNull
+                ?.takeIf { it.isNotBlank() }
+        }.getOrNull()
+
+    /**
      * Normalize an album title so "Privé - EP", "Privé (Deluxe)" and "Privé" all compare equal. Strips
      * a trailing release-type suffix ("- EP", "- Single", "- Deluxe"...) but NOT a leading word (so
      * "Single Ladies" stays intact), and drops parentheticals/punctuation/accents-insensitive symbols.

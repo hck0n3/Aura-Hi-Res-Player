@@ -1484,8 +1484,9 @@ class MusicService :
             val events = database.events().first()
             val disliked = runCatching { dislikeStore.snapshot() }
                 .getOrDefault(iad1tya.echo.music.dislike.DislikeStore.Disliked())
+            val genres = iad1tya.echo.music.reco.GenreCache.snapshot(this@MusicService)
             withContext(Dispatchers.Default) {
-                iad1tya.echo.music.reco.AffinityEngine.buildProfile(events, disliked)
+                iad1tya.echo.music.reco.AffinityEngine.buildProfile(events, disliked, artistGenres = genres)
             }.also {
                 cachedTaste = it
                 cachedTasteAt = now
