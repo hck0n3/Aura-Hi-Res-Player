@@ -570,6 +570,14 @@ class MusicService :
         playerInitialized.value = true
         Timber.tag(TAG).d("Player successfully initialized")
 
+        // Warm up the poToken WebView shortly after startup so the FIRST song starts faster (the slow
+        // botguard/WebView init happens ahead of play time instead of when you press play). Fully guarded;
+        // no-ops if the session/WebView isn't ready yet. Delayed so cipher init + visitorData settle first.
+        scope.launch(Dispatchers.IO) {
+            kotlinx.coroutines.delay(2500)
+            runCatching { iad1tya.echo.music.utils.YTPlayerUtils.prewarmPoToken() }
+        }
+
         // Podcast progress + periodic position persistence used to run in two while(true) loops that
         // woke the CPU every 5s/8s for the WHOLE life of the service — even while paused or idle — which
         // drained the battery. They now run only WHILE PLAYING, started/stopped from onIsPlayingChanged

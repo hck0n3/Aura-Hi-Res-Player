@@ -82,6 +82,19 @@ object YTPlayerUtils {
 
     private val poTokenGenerator = PoTokenGenerator()
 
+    /**
+     * Warm up the poToken WebView ahead of the first playback so the first song starts faster. Safe to
+     * call any time (no-ops if the session isn't ready yet); never throws.
+     */
+    fun prewarmPoToken() {
+        runCatching {
+            if (!MAIN_CLIENT.useWebPoTokens) return@runCatching
+            val isLoggedIn = YouTube.cookie != null
+            val sessionId = if (isLoggedIn) YouTube.dataSyncId else YouTube.visitorData
+            if (!sessionId.isNullOrBlank()) poTokenGenerator.prewarm(sessionId)
+        }
+    }
+
     
     private val MAIN_CLIENT: YouTubeClient = ANDROID_VR_1_43_32
 

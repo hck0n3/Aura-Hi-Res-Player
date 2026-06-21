@@ -71,6 +71,33 @@ class PoTokenGenerator {
         }
     }
 
+    /**
+     * Pre-create the WebView + streaming poToken (the slow botguard init) BEFORE the first playback, so
+     * the first song after opening the app starts faster. Fully guarded — never throws, never blocks
+     * playback; if anything fails it just no-ops and the normal path runs at play time.
+     */
+    fun prewarm(sessionId: String) {
+        if (!webViewSupported || webViewBadImpl) return
+        runCatching {
+            runBlocking {
+                withTimeout(POTOKEN_TIMEOUT_MS) {
+                    webPoTokenGenLock.withLock {
+                        val needsCreate = webPoTokenGenerator == null ||
+                            webPoTokenGenerator!!.isExpired ||
+                            webPoTokenSessionId != sessionId
+                        if (needsCreate) {
+                            webPoTokenSessionId = sessionId
+                            withContext(Dispatchers.Main) { webPoTokenGenerator?.close() }
+                            webPoTokenGenerator = PoTokenWebView.getNewPoTokenGenerator(CipherDeobfuscator.appContext)
+                            webPoTokenStreamingPot = webPoTokenGenerator!!.generatePoToken(webPoTokenSessionId!!)
+                            Timber.tag(TAG).d("poToken prewarmed for sessionId=${sessionId.take(16)}...")
+                        }
+                    }
+                }
+            }
+        }.onFailure { Timber.tag(TAG).d("poToken prewarm skipped: ${it.message}") }
+    }
+
     private companion object {
         // Healthy cold-start (WebView spin-up + botguard JS + token gen) is ~2–5s in practice;
         // 8s leaves slack for a slow device without making the user wait too long before the
