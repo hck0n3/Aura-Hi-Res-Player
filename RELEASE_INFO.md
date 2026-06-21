@@ -1,6 +1,7 @@
-# Aura Hi-Res Player v5.7.93
+# Aura Hi-Res Player v5.7.94
 
-## ARREGLO IMPORTANTE: la música no arrancaba tras restaurar un respaldo
-- Corregido el problema por el que, tras restaurar un respaldo grande, las canciones no empezaban a reproducirse.
-- Causa: el nuevo motor de gustos cargaba TODO tu historial de escucha (con todas sus relaciones) varias veces, y en historiales grandes eso saturaba la base de datos/memoria y bloqueaba el arranque de la canción.
-- Ahora el motor solo usa tu historial reciente (acotado), ya no se calcula al pulsar play, y el shuffle inteligente no recorre colas enormes en primer plano. Reproducción restaurada.
+## ARREGLO CRÍTICO: ya vuelve a reproducir música
+- YouTube cambió su reproductor y la app dejó de poder obtener el audio (todo funcionaba menos reproducir: "Failed to get stream URL").
+- Causas reales: la extracción de la firma de YouTube estaba desactualizada y faltaba el archivo "po_token.html" que YouTube ahora exige.
+- Se actualizó por completo el motor de extracción de YouTube (descifrado de firma + poToken) a una versión mantenida y vigente.
+- No se tocó el sonido, el volumen, la interfaz ni las recomendaciones.
