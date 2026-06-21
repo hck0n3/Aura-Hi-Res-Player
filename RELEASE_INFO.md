@@ -1,8 +1,9 @@
-# Aura Hi-Res Player v5.7.113
+# Aura Hi-Res Player v5.7.114
 
-## La reproducción empieza más rápido
-- Si tenías sesión iniciada, cada canción generaba un "poToken" en un WebView (lento) solo para los datos de seguimiento/normalización — y eso retrasaba el inicio varios segundos por pista.
-- Estudié cómo lo hace tu reproductor de escritorio: usa clientes que NO necesitan ese token. Tu app ya saca el audio con un cliente así (ANDROID_VR); el retraso estaba en los datos extra.
-- Ahora esa metadata ya no genera el token (no lo necesita) y, además, tiene un límite de tiempo para que NUNCA bloquee el inicio. El audio sale igual de fuerte (la normalización usa el cliente principal si hace falta).
+## Reproducción aún más rápida al elegir una canción
+- Al tocar una canción nueva, la app hacía DOS peticiones de red una tras otra (el audio y luego los datos). Ahora van EN PARALELO, así que el inicio tarda menos.
+- (La precarga de la SIGUIENTE canción ya existía: al dejar que avance sola, la siguiente arranca casi al instante. Lo que se aceleró ahora es cuando TÚ eliges una canción manualmente.)
 
-Resultado esperado: el play empieza notablemente antes, sobre todo al cambiar de canción con sesión iniciada.
+## Lo que se hizo (técnico, como lo haría un reproductor optimizado)
+- Petición principal (audio, cliente ANDROID_VR sin poToken) + petición de metadata: ahora simultáneas.
+- La metadata sigue con límite de tiempo para no bloquear nunca el inicio.

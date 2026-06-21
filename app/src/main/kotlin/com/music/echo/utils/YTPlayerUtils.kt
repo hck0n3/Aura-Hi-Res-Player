@@ -44,6 +44,7 @@ import java.net.ProxySelector
 import java.net.SocketAddress
 import java.net.URI
 import java.io.IOException
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
 
 object YTPlayerUtils {
@@ -459,32 +460,32 @@ object YTPlayerUtils {
         
         Timber.tag(logTag).d("Attempting to get player response using MAIN_CLIENT: ${MAIN_CLIENT.clientName}")
         PlaybackLogManager.log(PlaybackLogLevel.DEBUG, "Trying ${MAIN_CLIENT.clientName} (Main)")
-        var mainPlayerResponse = YouTube.player(videoId, playlistId, MAIN_CLIENT, signatureTimestamp.timestamp, poToken?.playerRequestPoToken).getOrThrow()
 
-        
-        
-        
-        var metadataResponse: PlayerResponse? = null
-        if (isLoggedIn) {
-            Timber.tag(logTag).d("Fetching metadata from METADATA_CLIENT (WEB_REMIX) for authenticated tracking")
-            try {
-                
-                // Metadata (videoDetails / loudness audioConfig / watch-history) does NOT need a stream
-                // poToken — only stream formats do, and those come from MAIN_CLIENT (ANDROID_VR). Generating
-                // a per-video poToken here meant a WebView call on EVERY track, the main cause of the slow
-                // start for logged-in users. Skip it and time-cap the request so it can never delay playback;
-                // audioConfig/videoDetails fall back to the main response when this is null.
-                metadataResponse = kotlinx.coroutines.withTimeoutOrNull(3000L) {
-                    YouTube.player(
-                        videoId, playlistId, METADATA_CLIENT,
-                        signatureTimestamp.timestamp, null
-                    ).getOrNull()
+        // Run the main stream request and the optional metadata request IN PARALLEL — they are independent
+        // network calls, so overlapping them (instead of back-to-back) cuts the start time. The metadata
+        // (watch-history + loudness audioConfig) needs no stream poToken; it is time-capped so it can never
+        // delay playback, and audioConfig/videoDetails fall back to the main response when it is null.
+        val resolved = kotlinx.coroutines.coroutineScope {
+            val metadataDeferred = if (isLoggedIn) {
+                async(kotlinx.coroutines.Dispatchers.IO) {
+                    kotlinx.coroutines.withTimeoutOrNull(3000L) {
+                        runCatching {
+                            YouTube.player(
+                                videoId, playlistId, METADATA_CLIENT,
+                                signatureTimestamp.timestamp, null
+                            ).getOrNull()
+                        }.getOrNull()
+                    }
                 }
-                Timber.tag(logTag).d("Metadata response obtained: ${metadataResponse?.playabilityStatus?.status}")
-            } catch (e: Exception) {
-                Timber.tag(logTag).e(e, "Failed to fetch metadata from METADATA_CLIENT")
-            }
+            } else null
+            val main = YouTube.player(
+                videoId, playlistId, MAIN_CLIENT,
+                signatureTimestamp.timestamp, poToken?.playerRequestPoToken
+            ).getOrThrow()
+            main to metadataDeferred?.await()
         }
+        var mainPlayerResponse = resolved.first
+        var metadataResponse: PlayerResponse? = resolved.second
 
         
         if (isUploadedTrack || playlistId?.contains("MLPT") == true) {
