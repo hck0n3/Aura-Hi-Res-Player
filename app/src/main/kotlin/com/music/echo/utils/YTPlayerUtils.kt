@@ -469,19 +469,17 @@ object YTPlayerUtils {
             Timber.tag(logTag).d("Fetching metadata from METADATA_CLIENT (WEB_REMIX) for authenticated tracking")
             try {
                 
-                var metaPoToken: PoTokenResult? = null
-                val metaSessionId = YouTube.dataSyncId
-                if (METADATA_CLIENT.useWebPoTokens && metaSessionId != null) {
-                    try {
-                        metaPoToken = poTokenGenerator.getWebClientPoToken(videoId, metaSessionId)
-                    } catch (e: Exception) {
-                        Timber.tag(logTag).e(e, "Metadata PoToken generation failed")
-                    }
+                // Metadata (videoDetails / loudness audioConfig / watch-history) does NOT need a stream
+                // poToken — only stream formats do, and those come from MAIN_CLIENT (ANDROID_VR). Generating
+                // a per-video poToken here meant a WebView call on EVERY track, the main cause of the slow
+                // start for logged-in users. Skip it and time-cap the request so it can never delay playback;
+                // audioConfig/videoDetails fall back to the main response when this is null.
+                metadataResponse = kotlinx.coroutines.withTimeoutOrNull(3000L) {
+                    YouTube.player(
+                        videoId, playlistId, METADATA_CLIENT,
+                        signatureTimestamp.timestamp, null
+                    ).getOrNull()
                 }
-                metadataResponse = YouTube.player(
-                    videoId, playlistId, METADATA_CLIENT,
-                    signatureTimestamp.timestamp, metaPoToken?.playerRequestPoToken
-                ).getOrNull()
                 Timber.tag(logTag).d("Metadata response obtained: ${metadataResponse?.playabilityStatus?.status}")
             } catch (e: Exception) {
                 Timber.tag(logTag).e(e, "Failed to fetch metadata from METADATA_CLIENT")

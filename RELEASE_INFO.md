@@ -1,13 +1,8 @@
-# Aura Hi-Res Player v5.7.112
+# Aura Hi-Res Player v5.7.113
 
-## Apariencia: ahora sigue el TEMA DEL SISTEMA
-- La app arranca siguiendo el tema del sistema (claro/oscuro según tu teléfono). Se aplica automáticamente, también en dispositivos ya instalados. Puedes cambiarlo en Ajustes.
+## La reproducción empieza más rápido
+- Si tenías sesión iniciada, cada canción generaba un "poToken" en un WebView (lento) solo para los datos de seguimiento/normalización — y eso retrasaba el inicio varios segundos por pista.
+- Estudié cómo lo hace tu reproductor de escritorio: usa clientes que NO necesitan ese token. Tu app ya saca el audio con un cliente así (ANDROID_VR); el retraso estaba en los datos extra.
+- Ahora esa metadata ya no genera el token (no lo necesita) y, además, tiene un límite de tiempo para que NUNCA bloquee el inicio. El audio sale igual de fuerte (la normalización usa el cliente principal si hace falta).
 
-## Botón de 3 puntos con el color del tema
-- El botón de los tres puntos (barra flotante inferior) ya usa el color principal del tema, no una tonalidad distinta que no pegaba.
-
-## Entrar a un artista ya no se queda cargando
-- Si la primera carga del artista fallaba (por saturación de YouTube), se quedaba pegado y había que salir y entrar varias veces. Ahora reintenta solo (hasta 3 veces).
-
-## Sugerencias: álbumes más visibles
-- La sección de álbumes (ahora "Álbumes populares") subió justo debajo de las canciones de Apple, para que no quede escondida. (El Top de YouTube se arregló en la versión anterior.)
+Resultado esperado: el play empieza notablemente antes, sobre todo al cambiar de canción con sesión iniciada.
