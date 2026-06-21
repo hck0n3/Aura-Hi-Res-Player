@@ -104,6 +104,7 @@ import iad1tya.echo.music.ui.utils.resize
 import iad1tya.echo.music.utils.rememberPreference
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.delay
 import iad1tya.echo.music.applecanvas.AppleMusicCanvasProvider
 import iad1tya.echo.music.echomusiccanvas.echomusicCanvasProvider
@@ -720,7 +721,9 @@ private fun ThumbnailItem(
                     if (canvasFetchInFlight) return@LaunchedEffect
                     canvasFetchInFlight = true
 
-                    val fetched = withContext(Dispatchers.IO) {
+                    // Overall cap: a slow/hanging canvas provider used to leave canvasFetchInFlight stuck
+                    // true forever (had to leave/re-enter to retry). The timeout guarantees it resets.
+                    val fetched = withTimeoutOrNull(8000L) { withContext(Dispatchers.IO) {
                         val metadata = item.metadata
                         val albumName = (metadata?.album?.title ?: item.mediaMetadata.albumTitle)?.toString()
                         val duration = metadata?.duration
@@ -766,10 +769,9 @@ private fun ThumbnailItem(
                                         storefront = storefront
                                     )?.takeIf { !it.preferredAnimationUrl.isNullOrBlank() }
                             }
-                    }
-                    
-                    
-                    
+                    } }
+
+
                     val requestedArtist = item.mediaMetadata.artist?.toString() ?: ""
                     val requestedTitle = item.mediaMetadata.title?.toString() ?: ""
                     

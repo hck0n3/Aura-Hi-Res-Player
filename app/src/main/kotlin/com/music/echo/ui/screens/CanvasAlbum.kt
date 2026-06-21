@@ -15,6 +15,7 @@ import iad1tya.echo.music.canvas.TidalCanvasProvider
 import iad1tya.echo.music.ui.player.CanvasArtworkPlaybackCache
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.util.Locale
 
 @Composable
@@ -43,7 +44,9 @@ fun rememberAlbumCanvas(
             return@LaunchedEffect
         }
 
-        val fetched = withContext(Dispatchers.IO) {
+        // Overall cap so a slow/hanging canvas provider can't leave the album "loading forever" — and so
+        // the flow reliably falls through to the Tidal fallback below instead of blocking on it.
+        val fetched = withTimeoutOrNull(8000L) { withContext(Dispatchers.IO) {
             val normalizedAlbumTitle = normalizeCanvasSongTitle(albumTitle)
             val normalizedFirstSongTitle = firstSongTitle?.let { normalizeCanvasSongTitle(it) }
             val normalizedArtistName = normalizeCanvasArtistName(artistName)
@@ -77,9 +80,9 @@ fun rememberAlbumCanvas(
                         artist = a
                     )?.takeIf { !it.preferredAnimationUrl.isNullOrBlank() }
                 }
-        }
+        } }
 
-        
+
         var validated = fetched?.let { artwork ->
             val resultArtist = artwork.artist
             if (resultArtist != null && artistName.isNotBlank()) {
@@ -91,12 +94,12 @@ fun rememberAlbumCanvas(
         }
 
         if (validated == null) {
-            val tidalFetched = withContext(Dispatchers.IO) {
+            val tidalFetched = withTimeoutOrNull(8000L) { withContext(Dispatchers.IO) {
                 TidalCanvasProvider.getByAlbumArtist(
                     album = albumTitle,
                     artist = artistName
                 )?.takeIf { !it.preferredAnimationUrl.isNullOrBlank() }
-            }
+            } }
             validated = tidalFetched?.let { artwork ->
                 val resultArtist = artwork.artist
                 val canvasAlbumName = artwork.albumName

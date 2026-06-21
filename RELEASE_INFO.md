@@ -1,6 +1,6 @@
-# Aura Hi-Res Player v5.7.100
+# Aura Hi-Res Player v5.7.101
 
-## Tus favoritos y "Me gusta" ya no desaparecen
-- Arreglado el bug por el que los **álbumes favoritos se borraban solos** a los pocos minutos: la sincronización con la cuenta quitaba el favorito a lo que no estuviera en YouTube. Ahora la sincronización **solo añade**, nunca borra tus favoritos locales.
-- Lo mismo para el **"Me gusta"** de canciones: ya no se revierte solo al sincronizar.
-- Además, el botón **"Me gusta" ahora siempre registra**: si la canción aún no estaba guardada, se guarda en el momento (antes el toque podía no hacer nada).
+## Canvas: se acabó la carga infinita
+- Antes, si un proveedor de canvas se quedaba colgado, el álbum/canción se quedaba "cargando" para siempre (había que entrar y salir varias veces).
+- Ahora la búsqueda de canvas tiene un **límite de tiempo (8s)**: si no encuentra nada, deja de cargar limpiamente y, además, ahora alcanza de forma fiable el proveedor de respaldo (Tidal) en vez de quedarse atascado en uno que falla.
+- Aplica tanto a los canvas de álbum como a los de canción.
