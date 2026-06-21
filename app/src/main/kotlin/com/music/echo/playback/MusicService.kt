@@ -519,7 +519,15 @@ class MusicService :
         super.onCreate()
         isRunning = true
 
-        
+        // Catch ForegroundServiceStartNotAllowedException (e.g. when playback is (re)started while the app
+        // is in the background) so it's logged/reported instead of crashing. (From upstream Echo-Music.)
+        setListener(object : Listener {
+            override fun onForegroundServiceStartNotAllowedException() {
+                Timber.tag(TAG).e("ForegroundServiceStartNotAllowedException caught by MediaSessionService listener")
+                reportException(Exception("ForegroundServiceStartNotAllowedException caught by MediaSessionService listener"))
+            }
+        })
+
         playerInitialized.value = false
 
         

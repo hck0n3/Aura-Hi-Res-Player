@@ -1,9 +1,5 @@
-# Aura Hi-Res Player v5.7.103
+# Aura Hi-Res Player v5.7.104
 
-## Integrado del proyecto base (Echo-Music) + arranque más rápido
-
-### Token de Apple Music dinámico (del upstream)
-- Tu token de Apple Music estaba CADUCADO (afectaba a la info de álbum y a los canvas de Apple). Ahora la app obtiene un **token fresco automáticamente** desde la web de Apple Music (con caché), tal como hace el proyecto base. Esto mejora los **canvas** y la información de álbumes de Apple.
-
-### Arranque de canciones más rápido (#8)
-- Bajado el búfer de arranque de ~2.5s a ~1s: cada canción empieza a sonar **~1.5s antes** al darle play o al saltar. (En redes muy malas podría haber alguna micro-pausa breve al inicio; es reversible.)
+## Más correcciones del proyecto base (Echo-Music)
+- **Anti-crash:** ahora se captura `ForegroundServiceStartNotAllowedException` al (re)iniciar la reproducción desde segundo plano, en vez de cerrar la app.
+- **Sugerencias más precisas:** al tocar una sugerencia, el emparejado de artista es bidireccional, así reproduce la canción correcta y no una con el mismo título de otro artista.

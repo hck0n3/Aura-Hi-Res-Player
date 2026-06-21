@@ -117,6 +117,14 @@ class SuggestionsViewModel @Inject constructor() : ViewModel() {
         }
     }
 
+    // Bidirectional artist match (from upstream Echo-Music): more robust than a one-way contains, so a
+    // suggestion plays the RIGHT song instead of a wrong same-title track by another artist.
+    private fun artistMatches(ytArtistName: String, suggestionArtist: String): Boolean {
+        val ytNorm = ytArtistName.trim().lowercase()
+        val apNorm = suggestionArtist.trim().lowercase()
+        return apNorm.contains(ytNorm) || ytNorm.contains(apNorm)
+    }
+
     fun playTrack(track: SuggestionTrack, playerConnection: PlayerConnection?) {
         viewModelScope.launch(Dispatchers.IO) {
             val query = "${track.title} ${track.artist}"
@@ -126,16 +134,16 @@ class SuggestionsViewModel @Inject constructor() : ViewModel() {
                 
                 val bestMatch = songs.firstOrNull { s ->
                     s.title.equals(track.title, ignoreCase = true) &&
-                    s.artists.any { a -> track.artist.contains(a.name, ignoreCase = true) }
+                    s.artists.any { a -> artistMatches(a.name, track.artist) }
                 } ?: 
                 
                 songs.firstOrNull { s ->
                     s.title.contains(track.title, ignoreCase = true) &&
-                    s.artists.any { a -> track.artist.contains(a.name, ignoreCase = true) }
+                    s.artists.any { a -> artistMatches(a.name, track.artist) }
                 } ?:
                 
                 songs.firstOrNull { s ->
-                    s.artists.any { a -> track.artist.contains(a.name, ignoreCase = true) }
+                    s.artists.any { a -> artistMatches(a.name, track.artist) }
                 } ?:
                 
                 songs.firstOrNull()
