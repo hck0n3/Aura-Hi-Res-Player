@@ -29,6 +29,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import javax.inject.Inject
@@ -47,6 +48,13 @@ constructor(
 
     val title = MutableStateFlow("")
     val itemsPage = MutableStateFlow<ItemsPage?>(null)
+
+    companion object {
+        // Per-artist cache of the completed (iTunes-driven) discography for this app session, so
+        // re-opening the same artist's albums shows the full list instantly instead of re-fetching.
+        private val completedCache =
+            java.util.concurrent.ConcurrentHashMap<String, List<com.music.innertube.models.YTItem>>()
+    }
 
     init {
         viewModelScope.launch {
@@ -67,14 +75,28 @@ constructor(
                     // For the albums list, build the COMPLETE discography up front (iTunes-driven, in
                     // parallel) and publish it in ONE shot, so the whole discography shows at once instead
                     // of extra albums popping in seconds later. Other lists publish as-is.
-                    val items =
-                        if (baseItems.any { it is AlbumItem }) {
-                            runCatching { buildCompleteDiscography(baseItems, hideExplicit) }
-                                .getOrDefault(baseItems)
+                    // Show the YouTube list IMMEDIATELY (fast), then complete it against iTunes/Apple Music
+                    // in the background and publish the full discography in ONE update (not in batches).
+                    itemsPage.value = ItemsPage(items = baseItems, continuation = artistItemsPage.continuation)
+                    if (baseItems.any { it is AlbumItem }) {
+                        val cacheKey = artistId ?: browseId
+                        val cached = completedCache[cacheKey]
+                        if (cached != null) {
+                            // Re-opening the same artist: show the full discography instantly.
+                            itemsPage.value =
+                                ItemsPage(items = cached, continuation = artistItemsPage.continuation)
                         } else {
-                            baseItems
+                            viewModelScope.launch {
+                                val complete = runCatching { buildCompleteDiscography(baseItems, hideExplicit) }
+                                    .getOrDefault(baseItems)
+                                if (complete.size > baseItems.size) {
+                                    completedCache[cacheKey] = complete
+                                    itemsPage.value =
+                                        ItemsPage(items = complete, continuation = artistItemsPage.continuation)
+                                }
+                            }
                         }
-                    itemsPage.value = ItemsPage(items = items, continuation = artistItemsPage.continuation)
+                    }
                 }.onFailure {
                     reportException(it)
                 }
@@ -133,6 +155,8 @@ constructor(
         val found = missing.map { mt ->
             async {
                 semaphore.withPermit {
+                  // Bound each lookup so one slow YouTube search can't stall the whole completion.
+                  withTimeoutOrNull(8000L) {
                     val target = norm(mt)
                     val album = YouTube.search("$artistName $mt", YouTube.SearchFilter.FILTER_ALBUM)
                         .getOrNull()?.items?.filterIsInstance<AlbumItem>()
@@ -158,6 +182,7 @@ constructor(
                             null
                         }
                     }
+                  }
                 }
             }
         }.awaitAll().filterNotNull()

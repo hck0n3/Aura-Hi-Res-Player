@@ -1,8 +1,9 @@
-# Aura Hi-Res Player v5.7.95
+# Aura Hi-Res Player v5.7.96
 
-## Funciones de la IA restauradas
-- Como el problema de reproducción era de YouTube (no de la IA), se devolvieron las tres cosas que se habían recortado:
-  1. La app vuelve a **precalentar tu perfil de gustos al darle play**, para que el shuffle inteligente esté listo de inmediato.
-  2. La IA vuelve a considerar tu **historial reciente completo** (hasta 3000 reproducciones, que es todo lo que el motor usa).
-  3. El **Smart Shuffle por gustos** vuelve a funcionar en colas de cualquier tamaño (sin el tope que se había puesto).
-- Se mantiene el arreglo de reproducción (extracción de YouTube) de la versión anterior.
+## La portada del vídeo ya no sale en negro
+- Al reproducir el audio de un vídeo, el reproductor ahora muestra siempre la **miniatura del vídeo** (antes podía quedar en negro porque la imagen en máxima resolución no existe para muchos vídeos).
+
+## Discografía del artista más rápida y fiel a iTunes/Apple Music
+- Al abrir "todos los álbumes" de un artista, ahora la lista **aparece al instante** y se **completa con iTunes/Apple Music** en una sola actualización (sin esperar a todo ni mostrar en tandas).
+- iTunes/Apple Music sigue siendo el filtro: lo que falta se busca en YouTube (álbum o playlist que coincida) y se integra.
+- **Más velocidad:** se recuerda el resultado por artista durante la sesión (reabrir es instantáneo) y cada búsqueda tiene un tope de tiempo para que una lenta no atasque el resto.

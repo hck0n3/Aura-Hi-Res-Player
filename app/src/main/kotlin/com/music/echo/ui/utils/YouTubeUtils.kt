@@ -13,10 +13,12 @@ fun String.resize(
     
     
     if (this.contains("i.ytimg.com")) {
-        val targetQuality = if (width != null && width >= 1200) "maxresdefault.jpg" else "hqdefault.jpg"
+        // Always use hqdefault for YouTube VIDEO thumbnails: maxresdefault.jpg does NOT exist for many
+        // videos (404 / gray placeholder), which left the player cover and background BLACK when playing a
+        // video's audio. hqdefault.jpg exists for every video, so the thumbnail always shows.
         return this.replace(
             Regex("(default|mqdefault|hqdefault|sddefault|maxresdefault)\\.jpg"),
-            targetQuality
+            "hqdefault.jpg",
         )
     }
 
