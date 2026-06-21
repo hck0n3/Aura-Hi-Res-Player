@@ -107,7 +107,7 @@ class HomeViewModel @Inject constructor(
 
     /** Rebuild the taste profile from the latest listening history + dislikes. Cheap, fully on-device. */
     private suspend fun refreshTasteProfile() {
-        val events = runCatching { database.recentEventsWithSong(1500).first() }.getOrDefault(emptyList())
+        val events = runCatching { database.recentEventsWithSong(3000).first() }.getOrDefault(emptyList())
         val disliked = runCatching { dislikeStore.snapshot() }
             .getOrDefault(iad1tya.echo.music.dislike.DislikeStore.Disliked())
         runCatching {
