@@ -1328,6 +1328,7 @@ class MusicService :
 
         currentQueue = queue
         queueTitle = null
+        scope.launch { runCatching { tasteProfile() } } // warm the taste cache for smart shuffle / autoplay
         val persistShuffleAcrossQueues = dataStore.get(PersistentShuffleAcrossQueuesKey, false)
         val previousShuffleEnabled = player.shuffleModeEnabled
         if (!persistShuffleAcrossQueues) {
@@ -2271,11 +2272,25 @@ class MusicService :
             }
             player.setShuffleOrder(DefaultShuffleOrder(shuffledIndices, System.currentTimeMillis()))
         } else {
-            val shuffledIndices = IntArray(totalCount) { it }
-            shuffledIndices.shuffle()
-            
+            val indices = (0 until totalCount).toMutableList()
+            val p = cachedTaste
+            if (p != null) {
+                // Smart shuffle: nudge tracks you tend to like toward the front, but keep plenty of
+                // randomness (random term dominates) so it still feels shuffled, not a fixed favourites
+                // list. Falls back to a plain shuffle when no taste profile is available yet.
+                val rnd = java.util.Random()
+                indices.sortByDescending { i ->
+                    val m = runCatching { player.getMediaItemAt(i).metadata }.getOrNull()
+                    val score = if (m != null) p.scoreNames(m.artists.map { it.name }, m.title) else 0.0
+                    score * 0.5 + rnd.nextDouble()
+                }
+            } else {
+                indices.shuffle()
+            }
+            val shuffledIndices = indices.toIntArray()
+
             val currentItemIndexInShuffled = shuffledIndices.indexOf(currentIndex)
-            if (currentItemIndexInShuffled != -1) { 
+            if (currentItemIndexInShuffled != -1) {
                 val temp = shuffledIndices[0]
                 shuffledIndices[0] = shuffledIndices[currentItemIndexInShuffled]
                 shuffledIndices[currentItemIndexInShuffled] = temp

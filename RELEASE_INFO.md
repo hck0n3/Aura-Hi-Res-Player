@@ -1,6 +1,7 @@
-# Aura Hi-Res Player v5.7.88
+# Aura Hi-Res Player v5.7.89
 
-## Autoplay y radio más inteligentes (Fase 2)
-- Lo que suena **a continuación** (autoplay y radio) ahora se **ordena según tus gustos** usando el mismo motor de afinidad del Inicio, con algo de variedad para que no sea repetitivo.
-- Además **descarta automáticamente** lo que marcaste en "No me gusta" (canciones y artistas) de la cola que se genera sola.
-- Todo on-device y privado. El perfil se reutiliza y se refresca solo cada pocos minutos.
+## Smart Shuffle (Fase 2b)
+- El shuffle ahora es **inteligente**: empuja un poco hacia adelante las canciones que sueles disfrutar, pero **mantiene mucha aleatoriedad** para que siga sintiéndose aleatorio (no una lista fija de favoritas).
+- Usa el mismo motor de gustos on-device. Si aún no hay datos de gustos, hace el shuffle normal de siempre.
+
+Nota: la búsqueda se mantiene "lo más relevante primero" (cuando buscas algo, quieres ESO), no se reordena por gustos a propósito.
