@@ -145,7 +145,7 @@ class ArtistViewModel @Inject constructor(
                                 async {
                                     sem.withPermit {
                                         if (database.album(id).first() != null) return@withPermit
-                                        YouTube.album(id).onSuccess { albumPage ->
+                                        YouTube.album(id, withSongs = false).onSuccess { albumPage ->
                                             runCatching { database.transaction { insert(albumPage) } }
                                         }
                                     }
@@ -165,9 +165,9 @@ class ArtistViewModel @Inject constructor(
                         // without hammering the network.
                         val guest = iad1tya.echo.music.utils.iTunesDiscography
                             .fetchAppearsOn(artistName, "us")
-                            .take(40)
+                            .take(10)
                         if (guest.isEmpty()) return@launch
-                        val sem = Semaphore(4)
+                        val sem = Semaphore(1)
                         val found = coroutineScope {
                             guest.map { (title, primary) ->
                                 async {
