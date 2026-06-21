@@ -1328,7 +1328,6 @@ class MusicService :
 
         currentQueue = queue
         queueTitle = null
-        scope.launch { runCatching { tasteProfile() } } // warm the taste cache for smart shuffle / autoplay
         val persistShuffleAcrossQueues = dataStore.get(PersistentShuffleAcrossQueuesKey, false)
         val previousShuffleEnabled = player.shuffleModeEnabled
         if (!persistShuffleAcrossQueues) {
@@ -1481,7 +1480,7 @@ class MusicService :
         val now = System.currentTimeMillis()
         cachedTaste?.let { if (now - cachedTasteAt < 5 * 60_000L) return it }
         return runCatching {
-            val events = database.events().first()
+            val events = database.recentEventsWithSong(1500).first()
             val disliked = runCatching { dislikeStore.snapshot() }
                 .getOrDefault(iad1tya.echo.music.dislike.DislikeStore.Disliked())
             val genres = iad1tya.echo.music.reco.GenreCache.snapshot(this@MusicService)
@@ -2281,7 +2280,9 @@ class MusicService :
         } else {
             val indices = (0 until totalCount).toMutableList()
             val p = cachedTaste
-            if (p != null) {
+            // Only score per-item for reasonably sized queues — on a huge restored queue, looking up every
+            // item's metadata on the main thread would jank/ANR, so fall back to a plain shuffle.
+            if (p != null && totalCount <= 500) {
                 // Smart shuffle: nudge tracks you tend to like toward the front, but keep plenty of
                 // randomness (random term dominates) so it still feels shuffled, not a fixed favourites
                 // list. Falls back to a plain shuffle when no taste profile is available yet.

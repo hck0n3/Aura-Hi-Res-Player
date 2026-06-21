@@ -1,5 +1,6 @@
-# Aura Hi-Res Player v5.7.92
+# Aura Hi-Res Player v5.7.93
 
-## Arreglo de cierre inesperado (crash) en las recomendaciones
-- Corregido el cierre que podía ocurrir al ordenar por gustos (Inicio, autoplay, shuffle).
-- Causa: el "toque de variedad" aleatorio se calculaba dentro de la comparación de ordenamiento, lo que volvía la comparación inconsistente y rompía el ordenador del sistema. Ahora se calcula una sola vez por canción antes de ordenar.
+## ARREGLO IMPORTANTE: la música no arrancaba tras restaurar un respaldo
+- Corregido el problema por el que, tras restaurar un respaldo grande, las canciones no empezaban a reproducirse.
+- Causa: el nuevo motor de gustos cargaba TODO tu historial de escucha (con todas sus relaciones) varias veces, y en historiales grandes eso saturaba la base de datos/memoria y bloqueaba el arranque de la canción.
+- Ahora el motor solo usa tu historial reciente (acotado), ya no se calcula al pulsar play, y el shuffle inteligente no recorre colas enormes en primer plano. Reproducción restaurada.

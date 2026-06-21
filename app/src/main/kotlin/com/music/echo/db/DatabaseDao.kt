@@ -1148,6 +1148,12 @@ interface DatabaseDao {
     @Query("SELECT * FROM event ORDER BY rowId DESC")
     fun events(): Flow<List<EventWithSong>>
 
+    // Bounded recent history for the taste engine: loading the ENTIRE history (with its song+artist
+    // relations) on big restored databases starved the playback path. The recent events dominate taste.
+    @Transaction
+    @Query("SELECT * FROM event ORDER BY rowId DESC LIMIT :limit")
+    fun recentEventsWithSong(limit: Int): Flow<List<EventWithSong>>
+
     @Transaction
     @Query("SELECT * FROM event ORDER BY rowId ASC LIMIT 1")
     fun firstEvent(): Flow<EventWithSong?>
