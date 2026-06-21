@@ -182,6 +182,9 @@ val PreventDuplicateTracksInQueueKey = booleanPreferencesKey("preventDuplicateTr
 val CrossfadeEnabledKey = booleanPreferencesKey("crossfadeEnabled")
 val CrossfadeDurationKey = floatPreferencesKey("crossfadeDuration")
 val CrossfadeGaplessKey = booleanPreferencesKey("crossfadeGapless")
+// Transition curve: 0 = Smooth/equal-power (default, no volume dip), 1 = Linear, 2 = Long S-curve,
+// 3 = Exponential (quick).
+val CrossfadeCurveKey = intPreferencesKey("crossfadeCurve")
 
 
 val MaxImageCacheSizeKey = intPreferencesKey("maxImageCacheSize")

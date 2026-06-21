@@ -40,6 +40,7 @@ import iad1tya.echo.music.constants.AudioOffload
 import iad1tya.echo.music.constants.AudioQuality
 import iad1tya.echo.music.constants.AudioQualityKey
 import iad1tya.echo.music.constants.AutoDownloadOnLikeKey
+import iad1tya.echo.music.constants.CrossfadeCurveKey
 import iad1tya.echo.music.constants.CrossfadeDurationKey
 import iad1tya.echo.music.constants.CrossfadeEnabledKey
 import iad1tya.echo.music.constants.CrossfadeGaplessKey
@@ -103,6 +104,10 @@ fun PlayerSettings(
     val (crossfadeDuration, onCrossfadeDurationChange) = rememberPreference(
         CrossfadeDurationKey,
         defaultValue = 5f
+    )
+    val (crossfadeCurve, onCrossfadeCurveChange) = rememberPreference(
+        CrossfadeCurveKey,
+        defaultValue = 0
     )
     val (crossfadeGapless, onCrossfadeGaplessChange) = rememberPreference(
         CrossfadeGaplessKey,
@@ -225,6 +230,10 @@ fun PlayerSettings(
         mutableStateOf(false)
     }
 
+    var showCrossfadeCurveDialog by remember {
+        mutableStateOf(false)
+    }
+
     val (downloadQuality, onDownloadQualityChange) = rememberEnumPreference(
         iad1tya.echo.music.constants.DownloadQualityKey,
         defaultValue = iad1tya.echo.music.constants.DownloadQuality.YOUTUBE
@@ -276,6 +285,29 @@ fun PlayerSettings(
                     iad1tya.echo.music.constants.DownloadQuality.LOSSLESS -> "Qobuz (Lossless)"
                 }
             }
+        )
+    }
+
+    val crossfadeCurveName: (Int) -> String = {
+        when (it) {
+            1 -> "Lineal"
+            2 -> "Suave larga (curva S)"
+            3 -> "Exponencial (rápida)"
+            else -> "Suave (igual potencia)"
+        }
+    }
+
+    if (showCrossfadeCurveDialog) {
+        EnumDialog(
+            onDismiss = { showCrossfadeCurveDialog = false },
+            onSelect = {
+                onCrossfadeCurveChange(it)
+                showCrossfadeCurveDialog = false
+            },
+            title = "Estilo de transición",
+            current = crossfadeCurve,
+            values = listOf(0, 1, 2, 3),
+            valueText = { crossfadeCurveName(it) }
         )
     }
 
@@ -482,6 +514,12 @@ fun PlayerSettings(
                                 )
                             }
                         }
+                    ))
+                    add(Material3SettingsItem(
+                        icon = painterResource(R.drawable.graphic_eq),
+                        title = { Text("Estilo de transición") },
+                        description = { Text(crossfadeCurveName(crossfadeCurve)) },
+                        onClick = { showCrossfadeCurveDialog = true }
                     ))
                     add(Material3SettingsItem(
                         icon = painterResource(R.drawable.album),

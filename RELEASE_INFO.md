@@ -1,7 +1,10 @@
-# Aura Hi-Res Player v5.7.109
+# Aura Hi-Res Player v5.7.110
 
-## Mini-reproductor: texto legible en modo claro
-- En algunos dispositivos el mini-reproductor mostraba el texto en BLANCO en modo claro (apenas se veía).
-- La causa: el fondo del mini venía en estilo dinámico (Apple Music), que fuerza texto blanco.
-- Ahora el mini-reproductor usa una barra limpia con el color del tema, así el texto sale en GRIS con buen contraste (igual que el resto de las letras). Se corrige solo al abrir la app.
-- El reproductor a pantalla completa sigue con su fondo estilo Apple Music intacto.
+## Transición suave (crossfade) mejorada + estilos
+- Antes la mezcla bajaba de volumen a la mitad de la transición (curva mal balanceada) y se notaban "escalones". 
+- Ahora la transición por defecto usa una curva de IGUAL POTENCIA: el volumen percibido se mantiene constante durante la mezcla (sin bajón), con pasos mucho más finos = suave de verdad.
+- Nuevo: puedes elegir el ESTILO de transición en Ajustes > Reproductor > Estilo de transición:
+  - Suave (igual potencia) — recomendado, sin bajón
+  - Lineal — mezcla pareja y neutra
+  - Suave larga (curva S) — entrada/salida muy gradual
+  - Exponencial (rápida) — relevo más marcado entre canciones

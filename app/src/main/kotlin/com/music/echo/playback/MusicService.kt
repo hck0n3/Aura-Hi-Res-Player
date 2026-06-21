@@ -90,6 +90,7 @@ import iad1tya.echo.music.constants.CrossfadeDurationKey
 import iad1tya.echo.music.constants.CrossfadeEnabledKey
 import iad1tya.echo.music.constants.SpectrumVisualizerEnabledKey
 import iad1tya.echo.music.constants.CrossfadeGaplessKey
+import iad1tya.echo.music.constants.CrossfadeCurveKey
 import iad1tya.echo.music.constants.DisableLoadMoreWhenRepeatAllKey
 import android.os.Handler
 import android.os.Looper
@@ -3549,20 +3550,21 @@ class MusicService :
 
         crossfadeJob = scope.launch {
             val duration = crossfadeDuration.toLong()
-            val steps = 20
+            // Finer steps (~40 ms) so the volume ramp is smooth, not stair-stepped like the old 20 steps.
+            val steps = (duration / 40L).toInt().coerceIn(24, 240)
             val stepTime = duration / steps
+            val curve = try { dataStore.get(CrossfadeCurveKey, 0) } catch (e: Exception) { 0 }
             val startVolume = try { fadingPlayer?.volume ?: 1f } catch(e:Exception) { 1f }
 
             for (i in 0..steps) {
                 if (!isActive) break
-                
+
                 while (!player.isPlaying && isActive) {
                     delay(100)
                 }
 
                 val progress = i / steps.toFloat()
-                val fadeIn = 1.0f - (1.0f - progress) * (1.0f - progress)
-                val fadeOut = (1.0f - progress) * (1.0f - progress)
+                val (fadeIn, fadeOut) = crossfadeGains(curve, progress)
 
                 try {
                     player.volume = startVolume * fadeIn
@@ -3577,6 +3579,27 @@ class MusicService :
                 player.volume = startVolume
                 cleanupCrossfade()
             } catch (e: Exception) { Timber.tag(TAG).e(e, "Crossfade cleanup failed") }
+        }
+    }
+
+    /**
+     * Gain pair (incoming, outgoing) for crossfade progress [p] in 0..1, per the selected style.
+     *  0 = Smooth/equal-power (default): sin/cos keep incoming^2 + outgoing^2 = 1, so the perceived
+     *      loudness stays constant through the blend — NO mid-transition volume dip.
+     *  1 = Linear: straight amplitude ramp (simple, slight dip).
+     *  2 = Long S-curve: equal-power but eased timing (very gradual in/out).
+     *  3 = Exponential (quick): each track dominates its half, snappier handover.
+     */
+    private fun crossfadeGains(curve: Int, p: Float): Pair<Float, Float> {
+        val half = (Math.PI / 2.0).toFloat()
+        return when (curve) {
+            1 -> p to (1f - p)
+            2 -> {
+                val s = p * p * (3f - 2f * p) // smoothstep
+                kotlin.math.sin(s * half) to kotlin.math.cos(s * half)
+            }
+            3 -> (p * p) to ((1f - p) * (1f - p))
+            else -> kotlin.math.sin(p * half) to kotlin.math.cos(p * half)
         }
     }
 
