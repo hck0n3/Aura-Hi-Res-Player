@@ -1,5 +1,5 @@
-# Aura Hi-Res Player v5.7.85
+# Aura Hi-Res Player v5.7.86
 
-## "Aparece en" sin límite — colaboraciones reales
-- La sección **"Aparece en"** ya NO tiene tope. Se basa en la **información real** de iTunes/Apple Music (lista completa de colaboraciones del artista) y resuelve cada una en YouTube.
-- Incluye álbumes y singles/feats donde participa el artista. Para artistas muy colaborativos puede tardar unos segundos más en completarse (carga en segundo plano), pero muestra el resultado real.
+## Arreglo de cierre inesperado (crash)
+- Corregido el cierre repentino que ocurría al ver un artista cuando la sección "Aparece en" mezclaba álbumes y singles/feats.
+- Causa: la lista reutilizaba el espacio de una canción para un álbum (estructuras distintas) y Compose se rompía. Ahora cada tipo se reutiliza solo con su mismo tipo, y la sección de canciones nunca intenta tratar un álbum como canción.

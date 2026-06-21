@@ -465,6 +465,9 @@ fun OnlineSearchResult(
                         itemsIndexed(
                             items = musicItems,
                             key = { index, item -> "${summary.title}/${item.id}/$index" },
+                            // Reuse slots only within the same item type (artist/song/album/playlist) so
+                            // reordering sections never reuses one type's slot as another (Compose crash).
+                            contentType = { _, item -> item::class },
                         ) { index, item ->
                             ytItemContent(item, index, musicItems.size)
                         }

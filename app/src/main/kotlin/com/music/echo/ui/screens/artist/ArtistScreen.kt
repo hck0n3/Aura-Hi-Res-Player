@@ -824,7 +824,13 @@ fun ArtistScreen(
                             }
                         }
 
-                        if ((section.items.firstOrNull() as? SongItem)?.album != null) {
+                        // Use the song-list layout ONLY when every item is a song (e.g. "Top songs").
+                        // Mixed sections like "Aparece en" (albums + collab singles) fall through to the
+                        // grid below, which handles every item type — and casting them all to SongItem here
+                        // would crash.
+                        if (section.items.all { it is SongItem } &&
+                            (section.items.firstOrNull() as? SongItem)?.album != null
+                        ) {
                             itemsIndexed(
                                 items = section.items.distinctBy { it.id },
                                 key = { _, it -> "youtube_song_${it.id}" },
@@ -888,6 +894,10 @@ fun ArtistScreen(
                                     items(
                                         items = section.items.distinctBy { it.id },
                                         key = { "youtube_album_${it.id}" },
+                                        // Reuse slots only within the same item type. A mixed section
+                                        // (albums + songs) would otherwise reuse a song slot as an album,
+                                        // which crashes Compose ("Cannot disable reuse from root...").
+                                        contentType = { it::class },
                                     ) { item ->
                                         YouTubeGridItem(
                                             item = item,
