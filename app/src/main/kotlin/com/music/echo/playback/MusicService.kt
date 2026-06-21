@@ -1506,10 +1506,16 @@ class MusicService :
                 val m = mi.metadata ?: return@filter true
                 m.id !in disliked.songs && m.artists.none { it.id != null && it.id in disliked.artists }
             }
-            .sortedByDescending { mi ->
-                val m = mi.metadata ?: return@sortedByDescending 0.0
-                p.scoreNames(m.artists.map { it.name }, m.title) + rnd.nextDouble() * 0.25
+            // Precompute the sort key ONCE per item: calling rnd inside the comparator would make it
+            // inconsistent between comparisons and crash TimSort ("Comparison method violates contract").
+            .map { mi ->
+                val m = mi.metadata
+                val key = if (m == null) 0.0
+                    else p.scoreNames(m.artists.map { it.name }, m.title) + rnd.nextDouble() * 0.25
+                mi to key
             }
+            .sortedByDescending { it.second }
+            .map { it.first }
     }
 
     fun getAutomixAlbum(albumId: String) {
@@ -2280,11 +2286,14 @@ class MusicService :
                 // randomness (random term dominates) so it still feels shuffled, not a fixed favourites
                 // list. Falls back to a plain shuffle when no taste profile is available yet.
                 val rnd = java.util.Random()
-                indices.sortByDescending { i ->
+                // Precompute each index's key ONCE (rnd inside the comparator would crash TimSort).
+                val keys = HashMap<Int, Double>(indices.size)
+                indices.forEach { i ->
                     val m = runCatching { player.getMediaItemAt(i).metadata }.getOrNull()
                     val score = if (m != null) p.scoreNames(m.artists.map { it.name }, m.title) else 0.0
-                    score * 0.5 + rnd.nextDouble()
+                    keys[i] = score * 0.5 + rnd.nextDouble()
                 }
+                indices.sortByDescending { keys[it] ?: 0.0 }
             } else {
                 indices.shuffle()
             }

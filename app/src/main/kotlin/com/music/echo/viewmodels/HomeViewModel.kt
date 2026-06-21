@@ -130,7 +130,11 @@ class HomeViewModel @Inject constructor(
     private fun List<Song>.rankedByTaste(): List<Song> {
         val p = tasteProfile ?: return shuffled()
         val rnd = java.util.Random()
-        return sortedByDescending { p.score(it) + rnd.nextDouble() * 0.2 }
+        // Precompute the key ONCE per item — rnd inside the comparator would be inconsistent between
+        // comparisons and crash TimSort ("Comparison method violates its general contract").
+        return map { it to (p.score(it) + rnd.nextDouble() * 0.2) }
+            .sortedByDescending { it.second }
+            .map { it.first }
     }
 
     private fun tasteScoreYt(item: com.music.innertube.models.YTItem): Double {
@@ -332,8 +336,11 @@ class HomeViewModel @Inject constructor(
 
         
         val rnd = java.util.Random()
+        // Precompute the key once per item (rnd inside the comparator would crash TimSort).
         dailyDiscover.value = items.toList().distinctBy { it.recommendation.id }
-            .sortedByDescending { tasteScoreYt(it.recommendation) + rnd.nextDouble() * 0.2 }
+            .map { it to (tasteScoreYt(it.recommendation) + rnd.nextDouble() * 0.2) }
+            .sortedByDescending { it.second }
+            .map { it.first }
     }
 
     private suspend fun getQuickPicks() {
