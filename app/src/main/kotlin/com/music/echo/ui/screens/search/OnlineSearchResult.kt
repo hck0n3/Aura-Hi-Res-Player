@@ -203,6 +203,11 @@ fun OnlineSearchResult(
 
     val searchFilter by viewModel.filter.collectAsState()
     val searchSummary = viewModel.summaryPage
+
+    // When new results arrive, position the list at the top.
+    LaunchedEffect(searchSummary, searchFilter) {
+        if (searchSummary != null || searchFilter != null) lazyListState.scrollToItem(0)
+    }
     val itemsPage by remember(searchFilter) {
         derivedStateOf {
             searchFilter?.value?.let {
@@ -435,7 +440,19 @@ fun OnlineSearchResult(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 if (searchFilter == null) {
-                    searchSummary?.summaries?.forEach { summary ->
+                    // Custom order: artists first, then songs (YouTube already ranks them by relevance),
+                    // then albums, then playlists. Podcasts are appended last, below.
+                    searchSummary?.summaries
+                        ?.sortedBy { s ->
+                            when (s.items.firstOrNull()) {
+                                is ArtistItem -> 0
+                                is SongItem -> 1
+                                is AlbumItem -> 2
+                                is com.music.innertube.models.PlaylistItem -> 3
+                                else -> 4
+                            }
+                        }
+                        ?.forEach { summary ->
                         // Drop YouTube video results (and any section left empty) — music only.
                         val musicItems = summary.items.filterNot {
                             it is com.music.innertube.models.SongItem && it.isVideoSong

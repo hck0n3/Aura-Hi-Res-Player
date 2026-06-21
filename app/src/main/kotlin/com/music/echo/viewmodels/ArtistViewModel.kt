@@ -30,6 +30,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
@@ -49,7 +50,7 @@ import kotlinx.coroutines.flow.StateFlow
 @HiltViewModel
 class ArtistViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
-    database: MusicDatabase,
+    private val database: MusicDatabase,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
     val artistId = savedStateHandle.get<String>("artistId")!!
@@ -127,6 +128,28 @@ class ArtistViewModel @Inject constructor(
                         }
                     }
 
+                    // Preload each album's contents in the background so opening an album (and its songs)
+                    // is instant. Skips albums already cached; gentle concurrency to not hammer the network.
+                    launch(Dispatchers.IO) {
+                        val albumIds = filteredSections.flatMap { it.items }
+                            .filterIsInstance<com.music.innertube.models.AlbumItem>()
+                            .map { it.id }.distinct().take(12)
+                        if (albumIds.isEmpty()) return@launch
+                        val sem = Semaphore(3)
+                        coroutineScope {
+                            albumIds.map { id ->
+                                async {
+                                    sem.withPermit {
+                                        if (database.album(id).first() != null) return@withPermit
+                                        YouTube.album(id).onSuccess { albumPage ->
+                                            runCatching { database.transaction { insert(albumPage) } }
+                                        }
+                                    }
+                                }
+                            }.awaitAll()
+                        }
+                    }
+
                     // "Aparece en" (Appears on), like Spotify: albums where this artist is a guest. Built
                     // from iTunes guest credits + a parallel YouTube lookup, appended as its own section.
                     launch(Dispatchers.IO) {
@@ -134,7 +157,7 @@ class ArtistViewModel @Inject constructor(
                         val norm = iad1tya.echo.music.utils.iTunesDiscography::normalizeTitle
                         val guest = iad1tya.echo.music.utils.iTunesDiscography
                             .fetchAppearsOn(artistName, "us")
-                            .take(15)
+                            .take(30)
                         if (guest.isEmpty()) return@launch
                         val sem = Semaphore(8)
                         val found = coroutineScope {
@@ -142,13 +165,23 @@ class ArtistViewModel @Inject constructor(
                                 async {
                                     sem.withPermit {
                                         val target = norm(title)
-                                        YouTube.search("$primary $title", YouTube.SearchFilter.FILTER_ALBUM)
+                                        fun matches(t: String) =
+                                            t == target || (target.length >= 4 && (t.contains(target) || target.contains(t)))
+                                        // As a full album/collection...
+                                        val album = YouTube.search("$primary $title", YouTube.SearchFilter.FILTER_ALBUM)
                                             .getOrNull()?.items
                                             ?.filterIsInstance<com.music.innertube.models.AlbumItem>()
-                                            ?.firstOrNull {
-                                                val yt = norm(it.title)
-                                                yt == target || (target.length >= 4 && (yt.contains(target) || target.contains(yt)))
+                                            ?.firstOrNull { matches(norm(it.title)) }
+                                        if (album != null) return@withPermit album as com.music.innertube.models.YTItem
+                                        // ...otherwise as a collab/feat single (most collaborations are songs).
+                                        val song = YouTube.search("$primary $title", YouTube.SearchFilter.FILTER_SONG)
+                                            .getOrNull()?.items
+                                            ?.filterIsInstance<com.music.innertube.models.SongItem>()
+                                            ?.firstOrNull { s ->
+                                                matches(norm(s.title)) &&
+                                                    s.artists.any { it.name.contains(artistName, ignoreCase = true) }
                                             }
+                                        song as? com.music.innertube.models.YTItem
                                     }
                                 }
                             }.awaitAll().filterNotNull()

@@ -1,10 +1,11 @@
-# Aura Hi-Res Player v5.7.83
+# Aura Hi-Res Player v5.7.84
 
-## Ecualizador: vista previa de la curva
-- Ahora, mientras ecualizas, ves la **curva de la ecualización en vivo** encima de las bandas. Con 24 bandas es mucho más fácil ver cómo va quedando.
+## Búsqueda ordenada
+- Los resultados ahora salen en orden: **Artistas → Canciones → Álbumes → Listas → Podcasts** (los podcasts al final).
+- Al buscar, la lista te deja **posicionado arriba**.
 
-## Transición entre canciones más suave
-- Arreglado el **tirón/traba** que se oía a veces durante el crossfade: quitamos dos lecturas de disco bloqueantes que ocurrían justo en el momento de la transición.
+## Artista más rápido (precarga)
+- Al entrar a un artista, la app **precarga en segundo plano el contenido de sus álbumes**, así cuando abres un álbum sus canciones ya están listas (casi instantáneo).
 
-## Volumen
-- Confirmado: el volumen sigue con el ajuste anti-distorsión que pediste (no se tocó).
+## "Aparece en" con más colaboraciones
+- La sección **"Aparece en"** ahora trae muchas más colaboraciones: además de álbumes, incluye **singles/feats** donde participa el artista (antes solo salían un par de álbumes).
