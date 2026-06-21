@@ -584,7 +584,7 @@ class MusicService :
         // botguard/WebView init happens ahead of play time instead of when you press play). Fully guarded;
         // no-ops if the session/WebView isn't ready yet. Delayed so cipher init + visitorData settle first.
         scope.launch(Dispatchers.IO) {
-            kotlinx.coroutines.delay(2500)
+            kotlinx.coroutines.delay(500)
             runCatching { iad1tya.echo.music.utils.YTPlayerUtils.prewarmPoToken() }
         }
 

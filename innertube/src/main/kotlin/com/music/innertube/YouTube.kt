@@ -136,15 +136,16 @@ object YouTube {
 
     suspend fun searchSuggestions(query: String): Result<SearchSuggestions> = runCatching {
         val response = innerTube.getSearchSuggestions(WEB_REMIX, query).body<GetSearchSuggestionsResponse>()
+        val allContents = response.contents?.flatMap { it.searchSuggestionsSectionRenderer?.contents.orEmpty() }.orEmpty()
         SearchSuggestions(
-            queries = response.contents?.getOrNull(0)?.searchSuggestionsSectionRenderer?.contents?.mapNotNull { content ->
+            queries = allContents.mapNotNull { content ->
                 content.searchSuggestionRenderer?.suggestion?.runs?.joinToString(separator = "") { it.text }
-            }.orEmpty(),
-            recommendedItems = response.contents?.getOrNull(1)?.searchSuggestionsSectionRenderer?.contents?.mapNotNull {
-                it.musicResponsiveListItemRenderer?.let { renderer ->
+            },
+            recommendedItems = allContents.mapNotNull { content ->
+                content.musicResponsiveListItemRenderer?.let { renderer ->
                     SearchSuggestionPage.fromMusicResponsiveListItemRenderer(renderer)
                 }
-            }.orEmpty()
+            }
         )
     }
 
@@ -373,7 +374,7 @@ object YouTube {
             .contents.firstOrNull()?.musicPlaylistShelfRenderer?.contents?.getContinuation()
         val seenContinuations = mutableSetOf<String>()
         var requestCount = 0
-        val maxRequests = 50 // Prevent excessive API calls
+        val maxRequests = 1 // Limit pages to prevent delays in album loading
         
         while (continuation != null && requestCount < maxRequests) {
             // Prevent infinite loops by tracking seen continuations

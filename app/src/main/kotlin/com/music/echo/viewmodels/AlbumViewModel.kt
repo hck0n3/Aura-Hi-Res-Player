@@ -41,11 +41,12 @@ constructor(
     init {
         viewModelScope.launch {
             val album = database.album(albumId).first()
+            val hasSongs = database.albumWithSongs(albumId).first()?.songs?.isNotEmpty() == true
             if (album?.description != null) {
                 description.value = album.description
             }
             YouTube
-                .album(albumId)
+                .album(albumId, withSongs = !hasSongs)
                 .onSuccess {
                     playlistId.value = it.album.playlistId
                     otherVersions.value = it.otherVersions
