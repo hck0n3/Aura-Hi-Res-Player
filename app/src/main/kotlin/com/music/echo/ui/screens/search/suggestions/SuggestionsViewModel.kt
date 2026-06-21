@@ -135,17 +135,18 @@ class SuggestionsViewModel @Inject constructor() : ViewModel() {
                 val bestMatch = songs.firstOrNull { s ->
                     s.title.equals(track.title, ignoreCase = true) &&
                     s.artists.any { a -> artistMatches(a.name, track.artist) }
-                } ?: 
-                
+                } ?:
+
                 songs.firstOrNull { s ->
                     s.title.contains(track.title, ignoreCase = true) &&
                     s.artists.any { a -> artistMatches(a.name, track.artist) }
                 } ?:
-                
-                songs.firstOrNull { s ->
-                    s.artists.any { a -> artistMatches(a.name, track.artist) }
-                } ?:
-                
+
+                // Prioritize the TITLE so tapping a chart song plays THAT song, not a different track by
+                // the same artist (the old "artist-only" / "first result" fallbacks played wrong songs).
+                songs.firstOrNull { s -> s.title.equals(track.title, ignoreCase = true) } ?:
+                songs.firstOrNull { s -> s.title.contains(track.title, ignoreCase = true) } ?:
+
                 songs.firstOrNull()
 
                 if (bestMatch != null) {
@@ -197,15 +198,15 @@ class SuggestionsViewModel @Inject constructor() : ViewModel() {
                     
                     val bestMatch = songs.firstOrNull { s ->
                         s.title.equals(video.title, ignoreCase = true) &&
-                        s.artists.any { a -> video.artist.contains(a.name, ignoreCase = true) }
+                        s.artists.any { a -> artistMatches(a.name, video.artist) }
                     } ?:
                     songs.firstOrNull { s ->
                         s.title.contains(video.title, ignoreCase = true) &&
-                        s.artists.any { a -> video.artist.contains(a.name, ignoreCase = true) }
+                        s.artists.any { a -> artistMatches(a.name, video.artist) }
                     } ?:
-                    songs.firstOrNull { s ->
-                        s.artists.any { a -> video.artist.contains(a.name, ignoreCase = true) }
-                    } ?:
+                    // Title-first so the right track plays (not a different song by the same artist).
+                    songs.firstOrNull { s -> s.title.equals(video.title, ignoreCase = true) } ?:
+                    songs.firstOrNull { s -> s.title.contains(video.title, ignoreCase = true) } ?:
                     songs.firstOrNull()
 
                     if (bestMatch != null) {

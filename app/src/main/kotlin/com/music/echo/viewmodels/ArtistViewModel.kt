@@ -133,9 +133,9 @@ class ArtistViewModel @Inject constructor(
                     launch(Dispatchers.IO) {
                         val albumIds = filteredSections.flatMap { it.items }
                             .filterIsInstance<com.music.innertube.models.AlbumItem>()
-                            .map { it.id }.distinct().take(12)
+                            .map { it.id }.distinct().take(6)
                         if (albumIds.isEmpty()) return@launch
-                        val sem = Semaphore(3)
+                        val sem = Semaphore(2)
                         coroutineScope {
                             albumIds.map { id ->
                                 async {
@@ -155,12 +155,15 @@ class ArtistViewModel @Inject constructor(
                     launch(Dispatchers.IO) {
                         val artistName = page.artist?.title ?: return@launch
                         val norm = iad1tya.echo.music.utils.iTunesDiscography::normalizeTitle
-                        // No cap: use the real list of collaborations from iTunes (its query already
-                        // returns up to 200) and resolve every one on YouTube.
+                        // Cap at 40 (covers virtually all real collaborations) with GENTLE concurrency:
+                        // resolving the full uncapped iTunes list (100+ items) with high concurrency flooded
+                        // YouTube and made the whole app's responses slower. 40 keeps it complete enough
+                        // without hammering the network.
                         val guest = iad1tya.echo.music.utils.iTunesDiscography
                             .fetchAppearsOn(artistName, "us")
+                            .take(40)
                         if (guest.isEmpty()) return@launch
-                        val sem = Semaphore(8)
+                        val sem = Semaphore(4)
                         val found = coroutineScope {
                             guest.map { (title, primary) ->
                                 async {
