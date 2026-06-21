@@ -51,6 +51,7 @@ fun echomusicTheme(
     val colorScheme = remember(baseColorScheme, pureBlack, darkTheme) {
         when {
             darkTheme && pureBlack -> baseColorScheme.pureBlack(true)
+            darkTheme -> baseColorScheme.deepTeal()
             else -> baseColorScheme
         }
     }
@@ -94,6 +95,25 @@ fun ColorScheme.pureBlack(apply: Boolean) =
         surface = Color.Black,
         background = Color.Black
     ) else this
+
+/**
+ * "Deep Teal / Midnight Green" dark surfaces: a very dark charcoal with a subtle cyan/teal tint instead
+ * of a neutral grey or pure black. The slight colour gives the glassmorphism blur something to pick up
+ * (a fully black background would flatten the frosted-glass effect), and the graduated surface containers
+ * add an almost-imperceptible depth. Accent colours (primary/secondary/etc.) are left untouched.
+ */
+fun ColorScheme.deepTeal() = copy(
+    background = Color(0xFF111A1D),
+    surface = Color(0xFF111A1D),
+    surfaceDim = Color(0xFF0E161A),
+    surfaceBright = Color(0xFF1F2F34),
+    surfaceContainerLowest = Color(0xFF0D1518),
+    surfaceContainerLow = Color(0xFF152024),
+    surfaceContainer = Color(0xFF172429),
+    surfaceContainerHigh = Color(0xFF1A282C),
+    surfaceContainerHighest = Color(0xFF1F2F34),
+    surfaceVariant = Color(0xFF1A282C),
+)
 
 val ColorSaver = object : Saver<Color, Int> {
     override fun restore(value: Int): Color = Color(value)
