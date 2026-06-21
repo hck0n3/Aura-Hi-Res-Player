@@ -146,8 +146,12 @@ constructor(
         val itunesUs = async { iTunesDiscography.fetchAlbumTitles(artistName, "us") }
         val itunesLocal = async { iTunesDiscography.fetchAlbumTitles(artistName, systemRegionCode()) }
         val itunes = (itunesUs.await() + itunesLocal.await()).distinct()
+        // Don't mix EPs/Singles into the Albums list (iTunes/Apple keep them separate). iTunes marks them
+        // as "Title - EP" / "Title - Single", so only complete FULL albums here.
+        val epOrSingle = Regex("(?i)[-–—]\\s*(ep|single)\\b|\\((?:ep|single)\\)")
         val missing = itunes
             .filter { norm(it).isNotBlank() && norm(it) !in have }
+            .filterNot { epOrSingle.containsMatchIn(it) }
             .distinctBy { norm(it) }
             .take(50)
 
