@@ -118,16 +118,18 @@ class ArtistViewModel @Inject constructor(
                     
                     
                     val topSongsSection = page.sections.find { it.items.firstOrNull() is com.music.innertube.models.SongItem }
-                    topSongsSection?.items?.forEach { item ->
-                        if (item is com.music.innertube.models.SongItem) {
-                            val canvas = ArtistVideoCanvasProvider.getBySongArtist(
-                                song = item.title,
-                                artist = page.artist?.title ?: ""
-                            )
-                            if (canvas?.preferredAnimationUrl != null) {
-                                _artistVideoUrl.value = canvas.preferredAnimationUrl
-                                _artistVideoSong.value = item
-                                return@forEach
+                    launch(Dispatchers.IO) {
+                        for (item in topSongsSection?.items.orEmpty()) {
+                            if (item is com.music.innertube.models.SongItem) {
+                                val canvas = ArtistVideoCanvasProvider.getBySongArtist(
+                                    song = item.title,
+                                    artist = page.artist?.title ?: ""
+                                )
+                                if (canvas?.preferredAnimationUrl != null) {
+                                    _artistVideoUrl.value = canvas.preferredAnimationUrl
+                                    _artistVideoSong.value = item
+                                    break
+                                }
                             }
                         }
                     }

@@ -417,10 +417,10 @@ object YouTube {
                 id = browseId,
                 title = response.header?.musicImmersiveHeaderRenderer?.title?.runs?.firstOrNull()?.text
                     ?: response.header?.musicVisualHeaderRenderer?.title?.runs?.firstOrNull()?.text
-                    ?: response.header?.musicHeaderRenderer?.title?.runs?.firstOrNull()?.text!!,
+                    ?: response.header?.musicHeaderRenderer?.title?.runs?.firstOrNull()?.text ?: "",
                 thumbnail = response.header?.musicImmersiveHeaderRenderer?.thumbnail?.musicThumbnailRenderer?.getThumbnailUrl()
                     ?: response.header?.musicVisualHeaderRenderer?.foregroundThumbnail?.musicThumbnailRenderer?.getThumbnailUrl()
-                    ?: response.header?.musicDetailHeaderRenderer?.thumbnail?.musicThumbnailRenderer?.getThumbnailUrl(),
+                    ?: response.header?.musicDetailHeaderRenderer?.thumbnail?.musicThumbnailRenderer?.getThumbnailUrl() ?: "",
                 channelId = response.header?.musicImmersiveHeaderRenderer?.subscriptionButton?.subscribeButtonRenderer?.channelId,
                 playEndpoint = response.contents?.singleColumnBrowseResultsRenderer?.tabs?.firstOrNull()
                     ?.tabRenderer?.content?.sectionListRenderer?.contents?.firstOrNull()?.musicShelfRenderer
@@ -433,7 +433,7 @@ object YouTube {
             ),
             sections = response.contents?.singleColumnBrowseResultsRenderer?.tabs?.firstOrNull()
                 ?.tabRenderer?.content?.sectionListRenderer?.contents
-                ?.mapNotNull(ArtistPage::fromSectionListRendererContent)!!,
+                ?.mapNotNull(ArtistPage::fromSectionListRendererContent) ?: emptyList(),
             description = descriptionRuns?.joinToString(separator = "") { it.text },
             subscriberCountText = response.header?.musicImmersiveHeaderRenderer?.subscriptionButton2
                 ?.subscribeButtonRenderer?.subscriberCountWithSubscribeText.extractCountText()

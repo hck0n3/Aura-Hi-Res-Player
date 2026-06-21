@@ -1,19 +1,13 @@
-# Aura Hi-Res Player v5.7.115
+# Aura Hi-Res Player v5.7.116
 
-## Los álbumes ahora abren al instante
-- Antes, cada vez que entrabas a un álbum la app volvía a descargar TODA su lista de canciones desde internet, pidiendo varias "páginas" seguidas. Eso hacía que tardara en abrir, sobre todo en álbumes o recopilaciones muy grandes.
-- Ahora, si ya habías abierto ese álbum antes, se muestra al momento usando lo que ya quedó guardado y solo refresca los datos por detrás, sin hacerte esperar.
+## Las páginas de artista abren al instante
+- Antes, al entrar a un artista la app se podía quedar atascada cargando: mientras preparaba la pantalla, se ponía a buscar uno por uno los videos animados (lienzos) de sus canciones, y eso bloqueaba la aparición del resto de la información.
+- Ahora esa búsqueda de videos se hace por detrás, en segundo plano. La foto, las canciones populares, los álbumes y la biografía aparecen de inmediato, y el video de fondo se suma cuando esté listo sin hacerte esperar.
 
-## Las sugerencias de búsqueda de YouTube vuelven a aparecer
-- A veces el buscador no mostraba ninguna sugerencia porque YouTube cambia el lugar donde las coloca y la app las buscaba siempre en un sitio fijo.
-- Ahora la app las recoge de todo el resultado, así que las sugerencias aparecen siempre, sin importar el orden en que YouTube las mande.
-
-## La primera canción suena más rápido
-- Al abrir la app, el motor que prepara la reproducción tardaba en arrancar (esperaba 2,5 segundos antes de empezar a prepararse).
-- Ahora ese arranque se redujo a medio segundo, así que la primera canción que pones después de abrir la app empieza mucho antes. Las siguientes ya iban rápidas gracias a la precarga automática.
+## Los artistas ya no se quedan en blanco
+- A veces, cuando YouTube no enviaba algún dato del artista (el nombre, la imagen o alguna sección), la app fallaba al armar la página y no mostraba nada.
+- Ahora la app tolera esos datos faltantes y muestra siempre lo que sí está disponible, en lugar de quedarse vacía.
 
 ## Lo que se hizo (técnico)
-- AlbumViewModel: si el álbum ya está cacheado en la base de datos, la actualización vía YouTube.album() se hace con withSongs = false (solo metadatos, sin bloquear).
-- YouTube.albumSongs: maxRequests reducido (de 50 a 1) para no estrangular la carga de álbumes enormes.
-- YouTube.searchSuggestions: en vez de un índice fijo (getOrNull(1)), ahora recolecta los musicResponsiveListItemRenderer con flatMap sobre todas las secciones de la respuesta.
-- MusicService: prewarm del PoToken reducido de 2500 ms a 500 ms para que la extracción de streaming esté lista casi de inmediato.
+- ArtistViewModel: el recorrido que resuelve el lienzo/video del artista (ArtistVideoCanvasProvider.getBySongArtist) se movió a launch(Dispatchers.IO) para que no bloquee el armado de la página.
+- YouTube.artist(): se eliminaron las aserciones no-nulas (!!) sobre el título, el thumbnail y las secciones; ahora usan respaldos seguros (cadena vacía y lista vacía) para no lanzar excepción cuando YouTube cambia el formato de la respuesta.
