@@ -102,6 +102,10 @@ class ArtistViewModel @Inject constructor(
             val hideExplicit = context.dataStore.get(HideExplicitKey, false)
             val hideVideoSongs = context.dataStore.get(HideVideoSongsKey, false)
             val hideYoutubeShorts = context.dataStore.get(HideYoutubeShortsKey, false)
+            // Retry transient failures (YouTube throttling) so the screen doesn't get stuck on the spinner,
+            // which forced the user to leave and re-enter the artist several times.
+            var attempt = 0
+            while (artistPage == null && attempt < 3) {
             YouTube.artist(artistId)
                 .onSuccess { page ->
                     val filteredSections = page.sections
@@ -205,8 +209,13 @@ class ArtistViewModel @Inject constructor(
                         }
                     }
                 }.onFailure {
-                    reportException(it)
+                    if (attempt >= 2) reportException(it)
                 }
+            if (artistPage == null) {
+                attempt++
+                if (attempt < 3) kotlinx.coroutines.delay(700L * attempt)
+            }
+            }
         }
     }
 }

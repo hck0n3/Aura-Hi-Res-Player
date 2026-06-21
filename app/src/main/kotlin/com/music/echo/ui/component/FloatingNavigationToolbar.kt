@@ -492,12 +492,13 @@ private fun floatingToolbarContainerColor(pureBlack: Boolean): Color {
 
 @Composable
 private fun floatingToolbarFabContainerColor(pureBlack: Boolean): Color {
-    return if (pureBlack) Color.White.copy(alpha = 0.12f) else MaterialTheme.colorScheme.tertiaryContainer
+    // Use the theme's primary accent (not tertiary, which is a different hue that clashed with the theme).
+    return if (pureBlack) Color.White.copy(alpha = 0.12f) else MaterialTheme.colorScheme.primaryContainer
 }
 
 @Composable
 private fun floatingToolbarFabContentColor(pureBlack: Boolean): Color {
-    return if (pureBlack) Color.White else MaterialTheme.colorScheme.onTertiaryContainer
+    return if (pureBlack) Color.White else MaterialTheme.colorScheme.onPrimaryContainer
 }
 
 @Composable

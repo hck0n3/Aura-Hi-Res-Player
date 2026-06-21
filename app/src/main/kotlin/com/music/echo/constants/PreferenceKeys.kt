@@ -58,6 +58,8 @@ val CanvasDefaultOnAppliedKey = booleanPreferencesKey("canvas_default_on_applied
 // One-time migration: mini-player background back to DEFAULT so its text stays readable (gray onSurface)
 // in light mode. The seeded APPLE_MUSIC mini background forced white text, illegible on a light bar.
 val MiniPlayerDefaultBgAppliedKey = booleanPreferencesKey("miniplayer_default_bg_applied")
+// One-time migration: appearance follows the SYSTEM theme (user request: start in system theme).
+val ThemeSystemDefaultAppliedKey = booleanPreferencesKey("theme_system_default_applied")
 val SpotifySpDcKey = stringPreferencesKey("spotify_sp_dc")
 val SpotifySpKeyKey = stringPreferencesKey("spotify_sp_key")
 val SpotifyAccountNameKey = stringPreferencesKey("spotify_account_name")

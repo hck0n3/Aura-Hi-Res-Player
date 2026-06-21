@@ -110,6 +110,7 @@ class App : Application(), SingletonImageLoader.Factory {
         seedDefaultsIfNeeded(settings)
         migrateCanvasDefaultOn(settings)
         migrateMiniPlayerDefaultBg(settings)
+        migrateThemeSystemDefault(settings)
         migrateLegacyIcon(settings)
         val locale = Locale.getDefault()
         val languageTag = locale.language
@@ -261,9 +262,10 @@ class App : Application(), SingletonImageLoader.Factory {
             p[iad1tya.echo.music.constants.HideVideoSongsKey] = false
             p[iad1tya.echo.music.constants.HideYoutubeShortsKey] = true
 
-            // AMOLED (pure black) dark theme on by default; dynamic (per-artwork) theme off.
+            // Appearance follows the SYSTEM theme by default (user request). AMOLED pure black still applies
+            // when the system is in dark mode; dynamic (per-artwork) theme off.
             p[iad1tya.echo.music.constants.DarkModeKey] =
-                iad1tya.echo.music.ui.screens.settings.DarkMode.ON.name
+                iad1tya.echo.music.ui.screens.settings.DarkMode.AUTO.name
             p[iad1tya.echo.music.constants.PureBlackKey] = true
             p[iad1tya.echo.music.constants.DynamicThemeKey] = false
             // Accent matches the "AURA HI-RES" title tones (tasteful teal). Material's TonalSpot
@@ -291,6 +293,19 @@ class App : Application(), SingletonImageLoader.Factory {
      * were previously seeded ON. Gated by its own flag so it never disturbs anything else and never
      * repeats; users who want them can turn them back on (and the flag keeps that choice).
      */
+    private suspend fun migrateThemeSystemDefault(settings: androidx.datastore.preferences.core.Preferences) {
+        // User request: appearance should start following the SYSTEM theme. Apply once (even on installs that
+        // had the old forced-dark default), then remember so the user's later choice is respected.
+        if (settings[iad1tya.echo.music.constants.ThemeSystemDefaultAppliedKey] == true) return
+        runCatching {
+            dataStore.edit { p ->
+                p[iad1tya.echo.music.constants.DarkModeKey] =
+                    iad1tya.echo.music.ui.screens.settings.DarkMode.AUTO.name
+                p[iad1tya.echo.music.constants.ThemeSystemDefaultAppliedKey] = true
+            }
+        }
+    }
+
     private suspend fun migrateMiniPlayerDefaultBg(settings: androidx.datastore.preferences.core.Preferences) {
         // The mini-player was seeded with a dynamic (APPLE_MUSIC) background, which forces white text that is
         // illegible in light mode. Reset the mini-player background to DEFAULT once so its text is the

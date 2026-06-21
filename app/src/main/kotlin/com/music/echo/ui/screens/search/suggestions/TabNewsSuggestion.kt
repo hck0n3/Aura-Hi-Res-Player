@@ -153,18 +153,6 @@ fun SuggestionsTabContent(
                 }
             }
 
-            suggestionArtists?.let { artists ->
-                item {
-                    TopArtistsSection(
-                        artists = artists,
-                        onArtistClick = { artist ->
-                            android.widget.Toast.makeText(context, "Cargando ${artist.name}...", android.widget.Toast.LENGTH_SHORT).show()
-                            viewModel.navigateToArtist(artist, navController)
-                        }
-                    )
-                }
-            }
-
             suggestionAlbums?.let { albums ->
                 item {
                     TrendingAlbumsSection(
@@ -176,6 +164,18 @@ fun SuggestionsTabContent(
                         onMoreClick = {
                             val code = if (regionCode == "system") iad1tya.echo.music.utils.systemRegionCode() else regionCode.lowercase()
                             uriHandler.openUri("https://music.apple.com/$code/charts/albums")
+                        }
+                    )
+                }
+            }
+
+            suggestionArtists?.let { artists ->
+                item {
+                    TopArtistsSection(
+                        artists = artists,
+                        onArtistClick = { artist ->
+                            android.widget.Toast.makeText(context, "Cargando ${artist.name}...", android.widget.Toast.LENGTH_SHORT).show()
+                            viewModel.navigateToArtist(artist, navController)
                         }
                     )
                 }
@@ -411,7 +411,7 @@ fun TrendingAlbumsSection(
     if (albums.isEmpty()) return
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(
-            text = "Trending Albums",
+            text = "Álbumes populares",
             style = MaterialTheme.typography.titleLarge,
             modifier = Modifier.padding(horizontal = 16.dp).padding(top = 16.dp)
         )
@@ -470,7 +470,7 @@ fun TrendingAlbumsSection(
                     }
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        text = "More",
+                        text = "Más",
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.Bold,
