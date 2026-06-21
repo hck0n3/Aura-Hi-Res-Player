@@ -111,15 +111,14 @@ class SuggestionsViewModel @Inject constructor() : ViewModel() {
                     }
 
                     // YouTube Music Top: real chart songs WITH their video ids, so they play exactly (no
-                    // search needed). Pulled from FEmusic_charts (TOP / TRENDING sections).
+                    // search needed). Pulled from FEmusic_charts. We take EVERY chart song (not just sections
+                    // tagged TOP/TRENDING): that tag is derived from the English section title, so in a
+                    // Spanish (or any non-English) region the titles are localized, every section falls back
+                    // to GENRE, and the old filter returned nothing -> the section never showed.
                     launch {
                         try {
                             val charts = YouTube.getChartsPage().getOrNull()
                             val topSongs = charts?.sections
-                                ?.filter {
-                                    it.chartType == com.music.innertube.pages.ChartsPage.ChartType.TOP ||
-                                        it.chartType == com.music.innertube.pages.ChartsPage.ChartType.TRENDING
-                                }
                                 ?.flatMap { it.items }
                                 ?.filterIsInstance<SongItem>()
                                 ?.distinctBy { it.id }

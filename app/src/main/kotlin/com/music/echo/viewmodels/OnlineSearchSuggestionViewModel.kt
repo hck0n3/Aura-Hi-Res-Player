@@ -20,14 +20,16 @@ import iad1tya.echo.music.utils.get
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-@OptIn(ExperimentalCoroutinesApi::class)
+@OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
 @HiltViewModel
 class OnlineSearchSuggestionViewModel
 @Inject
@@ -42,6 +44,9 @@ constructor(
     init {
         viewModelScope.launch {
             query
+                // Wait for a brief typing pause instead of firing a network request on every keystroke.
+                // Under slow networks this avoids a burst of cancelled requests and makes suggestions snappier.
+                .debounce(160)
                 .flatMapLatest { query ->
                     if (query.isEmpty()) {
                         database.searchHistory().map { history ->

@@ -1,10 +1,9 @@
-# Aura Hi-Res Player v5.7.110
+# Aura Hi-Res Player v5.7.111
 
-## Transición suave (crossfade) mejorada + estilos
-- Antes la mezcla bajaba de volumen a la mitad de la transición (curva mal balanceada) y se notaban "escalones". 
-- Ahora la transición por defecto usa una curva de IGUAL POTENCIA: el volumen percibido se mantiene constante durante la mezcla (sin bajón), con pasos mucho más finos = suave de verdad.
-- Nuevo: puedes elegir el ESTILO de transición en Ajustes > Reproductor > Estilo de transición:
-  - Suave (igual potencia) — recomendado, sin bajón
-  - Lineal — mezcla pareja y neutra
-  - Suave larga (curva S) — entrada/salida muy gradual
-  - Exponencial (rápida) — relevo más marcado entre canciones
+## El Top de YouTube Music ahora SÍ aparece en Sugerencias
+- No salía porque se filtraba por secciones con título "Top"/"Trending" EN INGLÉS; en región en español esos títulos vienen traducidos y el filtro dejaba la lista vacía.
+- Ahora se toman todas las canciones de los charts de YouTube (sin depender del idioma) → el Top de YouTube se ve en Sugerencias.
+
+## Búsqueda más ágil al escribir
+- El autocompletado ya no lanza una petición por cada tecla: espera una pausa breve antes de buscar. Bajo redes lentas evita ráfagas de peticiones y responde mejor.
+- Nota: la velocidad de los RESULTADOS depende de la respuesta de YouTube; ya se redujo la carga en segundo plano en versiones anteriores para que compita menos.
