@@ -95,8 +95,9 @@ object AppleMusicArtistBackgroundProvider {
     ): String? {
         return runCatching {
             val url = "$AMP_BASE_URL/v1/catalog/$storefront/search"
+            val token = AppleMusicTokenProvider.getToken()
             val response = client.get(url) {
-                header("Authorization", "Bearer $APPLE_MUSIC_TOKEN")
+                header("Authorization", "Bearer $token")
                 header("Origin", "https://music.apple.com")
                 header("Referer", "https://music.apple.com/")
                 header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
@@ -140,8 +141,9 @@ object AppleMusicArtistBackgroundProvider {
     ): String? {
         return runCatching {
             val url = "$AMP_BASE_URL/v1/catalog/$storefront/artists/$artistId"
+            val token = AppleMusicTokenProvider.getToken()
             val response = client.get(url) {
-                header("Authorization", "Bearer $APPLE_MUSIC_TOKEN")
+                header("Authorization", "Bearer $token")
                 header("Origin", "https://music.apple.com")
                 header("Referer", "https://music.apple.com/")
                 header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
