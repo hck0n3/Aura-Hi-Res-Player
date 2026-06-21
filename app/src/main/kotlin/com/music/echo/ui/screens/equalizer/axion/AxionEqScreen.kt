@@ -50,7 +50,14 @@ fun AxionEqScreen(
 
     var showSaveDialog by remember { mutableStateOf(false) }
     var showManageDialog by remember { mutableStateOf(false) }
+    var showDeviceDialog by remember { mutableStateOf(false) }
 
+    if (showDeviceDialog) {
+        DeviceEqDialog(
+            customProfiles = customProfiles,
+            onDismiss = { showDeviceDialog = false },
+        )
+    }
     if (showSaveDialog) {
         SavePresetDialog(
             onDismiss = { showSaveDialog = false },
@@ -181,9 +188,93 @@ fun AxionEqScreen(
                 ) { Text("Importar") }
             }
 
+            // Assign EQ profiles to output devices (phone / Bluetooth), applied automatically on connect.
+            OutlinedButton(
+                onClick = { showDeviceDialog = true },
+                modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.medium,
+            ) { Text("EQ por dispositivo") }
+
             Spacer(modifier = Modifier.height(60.dp))
         }
     }
+}
+
+@Composable
+private fun DeviceEqDialog(
+    customProfiles: List<iad1tya.echo.music.eq.data.SavedEQProfile>,
+    onDismiss: () -> Unit,
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val outputs = remember { iad1tya.echo.music.eq.data.EqDeviceProfileStore.connectedOutputs(context) }
+    val assignments = remember {
+        androidx.compose.runtime.mutableStateMapOf<String, String?>().apply {
+            outputs.forEach {
+                put(it.key, iad1tya.echo.music.eq.data.EqDeviceProfileStore.assignedProfileId(context, it.key))
+            }
+        }
+    }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("EQ por dispositivo") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    "Asigna un perfil de EQ a cada salida. Se aplicará solo cuando se conecte ese dispositivo.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (customProfiles.isEmpty()) {
+                    Text("Primero guarda al menos un perfil de EQ.", style = MaterialTheme.typography.bodyMedium)
+                }
+                outputs.forEach { out ->
+                    var expanded by remember { mutableStateOf(false) }
+                    val selectedName = customProfiles.firstOrNull { it.id == assignments[out.key] }?.name ?: "Ninguno"
+                    Column {
+                        Text(
+                            out.name,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+                        )
+                        androidx.compose.foundation.layout.Box {
+                            OutlinedButton(
+                                onClick = { expanded = true },
+                                enabled = customProfiles.isNotEmpty(),
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = MaterialTheme.shapes.small,
+                            ) { Text(selectedName) }
+                            androidx.compose.material3.DropdownMenu(
+                                expanded = expanded,
+                                onDismissRequest = { expanded = false },
+                            ) {
+                                androidx.compose.material3.DropdownMenuItem(
+                                    text = { Text("Ninguno") },
+                                    onClick = {
+                                        assignments[out.key] = null
+                                        iad1tya.echo.music.eq.data.EqDeviceProfileStore.assign(context, out.key, null)
+                                        expanded = false
+                                    },
+                                )
+                                customProfiles.forEach { p ->
+                                    androidx.compose.material3.DropdownMenuItem(
+                                        text = { Text(p.name) },
+                                        onClick = {
+                                            assignments[out.key] = p.id
+                                            iad1tya.echo.music.eq.data.EqDeviceProfileStore.assign(context, out.key, p.id)
+                                            expanded = false
+                                        },
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            androidx.compose.material3.TextButton(onClick = onDismiss) { Text("Listo") }
+        },
+    )
 }
 
 @Composable

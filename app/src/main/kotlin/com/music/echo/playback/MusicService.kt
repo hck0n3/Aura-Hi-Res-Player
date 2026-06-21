@@ -475,6 +475,37 @@ class MusicService :
                     }
                 }
             }
+            applyEqForCurrentOutput()
+        }
+
+        override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>?) {
+            super.onAudioDevicesRemoved(removedDevices)
+            applyEqForCurrentOutput()
+        }
+    }
+
+    /**
+     * PowerAmp-style per-output EQ: when the active audio output changes (e.g. a Bluetooth speaker
+     * connects/disconnects), apply the EQ profile the user assigned to it — or do nothing if none.
+     * Switches the EQ bands live, reflects them in the EQ screen, and persists the choice.
+     */
+    private fun applyEqForCurrentOutput() {
+        if (!::eqProfileRepository.isInitialized || !::equalizerService.isInitialized) return
+        scope.launch {
+            val key = iad1tya.echo.music.eq.data.EqDeviceProfileStore.currentOutputKey(this@MusicService)
+            val profileId = iad1tya.echo.music.eq.data.EqDeviceProfileStore
+                .assignedProfileId(this@MusicService, key) ?: return@launch
+            val profile = eqProfileRepository.getAllProfiles().firstOrNull { it.id == profileId } ?: return@launch
+            getSharedPreferences("echo_eq_prefs", Context.MODE_PRIVATE).edit().apply {
+                profile.bands.forEachIndexed { i, b -> putFloat("band24_$i", b.gain.toFloat()) }
+                putFloat("preampDb", profile.preamp.toFloat())
+                putBoolean("enabled", true)
+            }.apply()
+            eqProfileRepository.setActiveProfile(profile.id)
+            equalizerService.applyProfile(profile)
+            runCatching {
+                iad1tya.echo.music.eq.data.SoundEffectsSnapshot.apply(this@MusicService, profile.effects)
+            }
         }
     }
 
