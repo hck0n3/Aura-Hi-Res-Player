@@ -68,6 +68,7 @@ fun SuggestionsTabContent(
     val suggestionArtists by viewModel.suggestionArtists.collectAsState()
     val suggestionAlbums by viewModel.suggestionAlbums.collectAsState()
     val suggestionVideos by viewModel.suggestionVideos.collectAsState()
+    val youtubeTopTracks by viewModel.youtubeTopTracks.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val isManualLoading by viewModel.isManualLoading.collectAsState()
     val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
@@ -104,7 +105,7 @@ fun SuggestionsTabContent(
             modifier = Modifier.fillMaxSize(),
             contentPadding = contentPadding
         ) {
-        if (isLoading && !isManualLoading && suggestionTracks == null && suggestionArtists == null && suggestionAlbums == null && suggestionVideos == null) {
+        if (isLoading && !isManualLoading && suggestionTracks == null && suggestionArtists == null && suggestionAlbums == null && suggestionVideos == null && youtubeTopTracks == null) {
             item {
                 Box(
                     modifier = Modifier
@@ -116,6 +117,24 @@ fun SuggestionsTabContent(
                 }
             }
         }
+
+        youtubeTopTracks?.let { topYt ->
+                item {
+                    TrendingAppleMusicSection(
+                        tracks = topYt,
+                        countryCode = regionCode,
+                        title = "YouTube Music Top",
+                        moreLabel = "Ver más en YouTube Music",
+                        onTrackClick = { track ->
+                            android.widget.Toast.makeText(context, "Cargando ${track.title}...", android.widget.Toast.LENGTH_SHORT).show()
+                            viewModel.playTrack(track, playerConnection)
+                        },
+                        onMoreClick = {
+                            uriHandler.openUri("https://music.youtube.com/charts")
+                        }
+                    )
+                }
+            }
 
         suggestionTracks?.let { tracks ->
                 item {
@@ -178,7 +197,7 @@ fun SuggestionsTabContent(
                 }
             }
 
-            if (suggestionTracks == null && suggestionArtists == null && suggestionAlbums == null && suggestionVideos == null && !isLoading) {
+            if (suggestionTracks == null && suggestionArtists == null && suggestionAlbums == null && suggestionVideos == null && youtubeTopTracks == null && !isLoading) {
                 item {
                     Box(
                         modifier = Modifier.fillMaxWidth().padding(top = 100.dp),
@@ -200,7 +219,7 @@ fun SuggestionsTabContent(
             }
 
             
-            if (suggestionTracks != null || suggestionArtists != null || suggestionAlbums != null || suggestionVideos != null) {
+            if (suggestionTracks != null || suggestionArtists != null || suggestionAlbums != null || suggestionVideos != null || youtubeTopTracks != null) {
                 item {
                     Column(
                         modifier = Modifier.fillMaxWidth().padding(top = 48.dp, bottom = 32.dp),
@@ -229,7 +248,9 @@ fun TrendingAppleMusicSection(
     tracks: List<SuggestionTrack>,
     countryCode: String,
     onTrackClick: (SuggestionTrack) -> Unit,
-    onMoreClick: () -> Unit
+    onMoreClick: () -> Unit,
+    title: String = "Apple Music Top 100",
+    moreLabel: String = "Ver más en Apple Music",
 ) {
     if (tracks.isEmpty()) return
     val displayTracks = tracks.take(29)
@@ -239,7 +260,7 @@ fun TrendingAppleMusicSection(
 
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(
-            text = "Apple Music Top 100",
+            text = title,
             style = MaterialTheme.typography.titleLarge,
             modifier = Modifier.padding(horizontal = 16.dp).padding(top = 32.dp)
         )
@@ -277,7 +298,7 @@ fun TrendingAppleMusicSection(
                         ) {
                             Icon(painterResource(R.drawable.globe_search), null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
                             Spacer(Modifier.width(12.dp))
-                            Text("Ver más en Apple Music", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                            Text(moreLabel, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                         }
                     } else if (i < displayTracks.size) {
                         val track = displayTracks[i]

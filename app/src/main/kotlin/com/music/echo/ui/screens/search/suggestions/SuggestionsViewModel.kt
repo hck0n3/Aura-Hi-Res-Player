@@ -39,6 +39,9 @@ class SuggestionsViewModel @Inject constructor() : ViewModel() {
     private val _suggestionVideos = MutableStateFlow<List<SuggestionTrack>?>(null)
     val suggestionVideos: StateFlow<List<SuggestionTrack>?> = _suggestionVideos
 
+    private val _youtubeTopTracks = MutableStateFlow<List<SuggestionTrack>?>(null)
+    val youtubeTopTracks: StateFlow<List<SuggestionTrack>?> = _youtubeTopTracks
+
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading
 
@@ -67,6 +70,7 @@ class SuggestionsViewModel @Inject constructor() : ViewModel() {
                 _suggestionArtists.value = null
                 _suggestionAlbums.value = null
                 _suggestionVideos.value = null
+                _youtubeTopTracks.value = null
             }
 
             try {
@@ -105,6 +109,35 @@ class SuggestionsViewModel @Inject constructor() : ViewModel() {
                             Log.e("SuggestionsViewModel", "Failed to fetch videos", e)
                         }
                     }
+
+                    // YouTube Music Top: real chart songs WITH their video ids, so they play exactly (no
+                    // search needed). Pulled from FEmusic_charts (TOP / TRENDING sections).
+                    launch {
+                        try {
+                            val charts = YouTube.getChartsPage().getOrNull()
+                            val topSongs = charts?.sections
+                                ?.filter {
+                                    it.chartType == com.music.innertube.pages.ChartsPage.ChartType.TOP ||
+                                        it.chartType == com.music.innertube.pages.ChartsPage.ChartType.TRENDING
+                                }
+                                ?.flatMap { it.items }
+                                ?.filterIsInstance<SongItem>()
+                                ?.distinctBy { it.id }
+                                ?.take(40)
+                                ?.mapIndexed { index, s ->
+                                    SuggestionTrack(
+                                        rank = index + 1,
+                                        title = s.title,
+                                        artist = s.artists.joinToString { it.name },
+                                        thumbnailUrl = s.thumbnail,
+                                        videoId = s.id,
+                                    )
+                                }
+                            if (!topSongs.isNullOrEmpty()) _youtubeTopTracks.value = topSongs
+                        } catch (e: Exception) {
+                            Log.e("SuggestionsViewModel", "Failed to fetch YouTube Music top", e)
+                        }
+                    }
                 }
 
                 currentLoadedRegion = resolvedCode
@@ -127,6 +160,13 @@ class SuggestionsViewModel @Inject constructor() : ViewModel() {
 
     fun playTrack(track: SuggestionTrack, playerConnection: PlayerConnection?) {
         viewModelScope.launch(Dispatchers.IO) {
+            // YouTube Music chart song: we already have the exact video id, play it directly.
+            if (track.videoId != null) {
+                withContext(Dispatchers.Main) {
+                    playerConnection?.playQueue(YouTubeQueue(WatchEndpoint(videoId = track.videoId)))
+                }
+                return@launch
+            }
             val query = "${track.title} ${track.artist}"
             YouTube.search(query, YouTube.SearchFilter.FILTER_SONG).onSuccess { searchResult ->
                 val songs = searchResult.items.filterIsInstance<SongItem>()

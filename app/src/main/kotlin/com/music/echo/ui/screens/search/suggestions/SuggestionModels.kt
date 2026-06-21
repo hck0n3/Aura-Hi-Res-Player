@@ -7,7 +7,9 @@ data class SuggestionTrack(
     val title: String,
     val artist: String,
     val thumbnailUrl: String?,
-    val appleMusicUrl: String? = null
+    val appleMusicUrl: String? = null,
+    // When set (YouTube Music charts), play this video id directly instead of searching YouTube by name.
+    val videoId: String? = null,
 )
 
 data class SuggestionArtist(
