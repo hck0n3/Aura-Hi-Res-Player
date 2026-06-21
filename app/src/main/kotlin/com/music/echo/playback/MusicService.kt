@@ -396,6 +396,11 @@ class MusicService :
 
     val automixItems = MutableStateFlow<List<MediaItem>>(emptyList())
 
+    // Cached on-device taste model (see AffinityEngine), used to order what plays next (autoplay/radio)
+    // by your taste and to drop "No me gusta". Rebuilt at most every few minutes.
+    @Volatile private var cachedTaste: iad1tya.echo.music.reco.TasteProfile? = null
+    @Volatile private var cachedTasteAt: Long = 0L
+
     
     private var originalQueueSize: Int = 0
 
@@ -1426,7 +1431,7 @@ class MusicService :
                         player.removeMediaItems(currentIndex + 1, itemCount)
                     }
 
-                    player.addMediaItems(currentIndex + 1, radioItems)
+                    player.addMediaItems(currentIndex + 1, radioItems.orderedByTaste())
                     if (player.shuffleModeEnabled) {
                         val shufflePlaylistFirst = dataStore.get(ShufflePlaylistFirstKey, false)
                         applyShuffleOrder(player.currentMediaItemIndex, player.mediaItemCount, shufflePlaylistFirst)
@@ -1456,7 +1461,7 @@ class MusicService :
                                 if (itemCount > currentIndex + 1) {
                                     player.removeMediaItems(currentIndex + 1, itemCount)
                                 }
-                                player.addMediaItems(currentIndex + 1, radioItems)
+                                player.addMediaItems(currentIndex + 1, radioItems.orderedByTaste())
                                 if (player.shuffleModeEnabled) {
                                     val shufflePlaylistFirst = dataStore.get(ShufflePlaylistFirstKey, false)
                                     applyShuffleOrder(player.currentMediaItemIndex, player.mediaItemCount, shufflePlaylistFirst)
@@ -1469,6 +1474,40 @@ class MusicService :
                 }
             }
         }
+    }
+
+    private suspend fun tasteProfile(): iad1tya.echo.music.reco.TasteProfile? {
+        val now = System.currentTimeMillis()
+        cachedTaste?.let { if (now - cachedTasteAt < 5 * 60_000L) return it }
+        return runCatching {
+            val events = database.events().first()
+            val disliked = runCatching { dislikeStore.snapshot() }
+                .getOrDefault(iad1tya.echo.music.dislike.DislikeStore.Disliked())
+            withContext(Dispatchers.Default) {
+                iad1tya.echo.music.reco.AffinityEngine.buildProfile(events, disliked)
+            }.also {
+                cachedTaste = it
+                cachedTasteAt = now
+            }
+        }.getOrNull()
+    }
+
+    /** Order "what plays next" by taste (with jitter for variety) and drop disliked songs/artists. */
+    private suspend fun List<MediaItem>.orderedByTaste(): List<MediaItem> {
+        if (size < 2) return this
+        val p = tasteProfile() ?: return this
+        val disliked = runCatching { dislikeStore.snapshot() }
+            .getOrDefault(iad1tya.echo.music.dislike.DislikeStore.Disliked())
+        val rnd = java.util.Random()
+        return this
+            .filter { mi ->
+                val m = mi.metadata ?: return@filter true
+                m.id !in disliked.songs && m.artists.none { it.id != null && it.id in disliked.artists }
+            }
+            .sortedByDescending { mi ->
+                val m = mi.metadata ?: return@sortedByDescending 0.0
+                p.scoreNames(m.artists.map { it.name }, m.title) + rnd.nextDouble() * 0.25
+            }
     }
 
     fun getAutomixAlbum(albumId: String) {
@@ -1491,16 +1530,16 @@ class MusicService :
                         .onSuccess { firstResult ->
                             YouTube.next(WatchEndpoint(playlistId = firstResult.endpoint.playlistId))
                                 .onSuccess { secondResult ->
-                                    automixItems.value = secondResult.items.map { song ->
-                                        song.toMediaItem()
-                                    }
+                                    automixItems.value = secondResult.items
+                                        .map { it.toMediaItem() }
+                                        .orderedByTaste()
                                 }
                                 .onFailure {
                                     
                                     if (firstResult.items.isNotEmpty()) {
-                                        automixItems.value = firstResult.items.map { song ->
-                                            song.toMediaItem()
-                                        }
+                                        automixItems.value = firstResult.items
+                                            .map { it.toMediaItem() }
+                                            .orderedByTaste()
                                     }
                                 }
                         }
@@ -1516,7 +1555,7 @@ class MusicService :
                                         .filter { it.id != currentSong.id }
                                         .map { it.toMediaItem() }
                                     if (filteredItems.isNotEmpty()) {
-                                        automixItems.value = filteredItems
+                                        automixItems.value = filteredItems.orderedByTaste()
                                     }
                                 }.onFailure {
                                     
@@ -1526,8 +1565,7 @@ class MusicService :
                                                 .filter { it.id != currentSong.id }
                                                 .map { it.toMediaItem() }
                                             if (relatedItems.isNotEmpty()) {
-                                                automixItems.value = relatedItems
-
+                                                automixItems.value = relatedItems.orderedByTaste()
                                             }
                                         }
                                     }
