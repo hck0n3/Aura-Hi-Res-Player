@@ -3571,6 +3571,13 @@ class MusicService :
             val stepTime = duration / steps
             val curve = try { dataStore.get(CrossfadeCurveKey, 1) } catch (e: Exception) { 1 }
             val startVolume = try { fadingPlayer?.volume ?: 1f } catch(e:Exception) { 1f }
+            // Equal-power curves (1 = igual potencia, 2 = curva S) keep incoming^2 + outgoing^2 = 1, so the
+            // two OVERLAPPING players can sum above full-scale at the Android mixer (which does NOT limit)
+            // → a transient clip during the blend. Pull both players down by ~2.5 dB ONLY during the
+            // crossfade so the summed output stays under unity while keeping the constant-power feel. The
+            // surviving player is restored to full volume right after (see cleanup below). Linear (0) and
+            // exponential (3) already sum to <= 1.0, so they get no headroom (no needless volume dip).
+            val xfHeadroom = if (curve == 1 || curve == 2) 0.75f else 1f
 
             for (i in 0..steps) {
                 if (!isActive) break
@@ -3583,8 +3590,8 @@ class MusicService :
                 val (fadeIn, fadeOut) = crossfadeGains(curve, progress)
 
                 try {
-                    player.volume = startVolume * fadeIn
-                    fadingPlayer?.volume = startVolume * fadeOut
+                    player.volume = startVolume * fadeIn * xfHeadroom
+                    fadingPlayer?.volume = startVolume * fadeOut * xfHeadroom
                 } catch (e: Exception) { break }
 
                 delay(stepTime)

@@ -1,16 +1,7 @@
-# Aura Hi-Res Player 0.0.8
+# Aura Hi-Res Player 0.0.9
 
-## Transición suave entre canciones, activada por defecto
-- La **transición suave (crossfade)** viene activada, con **9 segundos** de duración y estilo **Suave (igual potencia)** — las dos canciones llevan la misma potencia durante la mezcla, sin bajón de volumen.
-- **Omitir silencios** y **saltar silencio al instante** vienen activados.
-
-## Arreglado: la transición ya no "suena dos veces"
-- Antes, al hacer la transición se oía la canción siguiente como duplicada al inicio. Era porque el reproductor que se desvanecía seguía avanzando solo a la canción siguiente (que ya estaba sonando en el otro reproductor). Corregido: ahora termina limpio.
-
-## Arreglado: el estilo de transición estaba mal etiquetado
-- En Ajustes, "Lineal" y "Suave (igual potencia)" estaban invertidos respecto a lo que realmente sonaba. Ahora el nombre coincide con el efecto real.
+## Transición suave (igual potencia) ahora sin recorte
+- La transición en estilo "Suave (igual potencia)" mantiene las dos canciones con la misma potencia, y ahora además **no puede saturar** durante el cruce: se aplica un pequeño margen (headroom) solo mientras se mezclan las dos pistas, así la suma nunca pasa del máximo en ningún dispositivo. Al terminar el cruce, el volumen vuelve a tope.
 
 ## Lo que se hizo (técnico)
-- Defaults (seed + migración única): CrossfadeEnabled=true, CrossfadeDuration=9s, CrossfadeCurve=1 (equal-power), SkipSilence=true, SkipSilenceInstant=true.
-- MusicService.performCrossfadeSwap: al iniciar el crossfade se le recorta la cola al reproductor saliente (REPEAT_MODE_OFF + removeMediaItems tras el ítem actual) para que no auto-avance a la pista siguiente y suene duplicada.
-- crossfadeGains: el default pasa de 0 (lineal) a 1 (igual potencia). PlayerSettings.crossfadeCurveName: etiquetas corregidas para que coincidan con la matemática real.
+- MusicService.performCrossfadeSwap: durante el crossfade con curvas de igual potencia (1 = igual potencia, 2 = curva S) se multiplica el volumen de ambos reproductores por ~0.75 (≈ −2.5 dB) para que la suma en el mixer de Android (que no limita) se mantenga bajo 0 dBFS; el reproductor superviviente se restaura a volumen completo al finalizar. Curvas lineal (0) y exponencial (3) ya suman ≤ 1.0, así que no llevan headroom.
