@@ -37,28 +37,48 @@ private data class Feature(val icon: Int, val title: String, val subtitle: Strin
 
 private val PLAYBACK_FEATURES = listOf(
     Feature(R.drawable.play, "Reproducción", "Sin cortes (gapless), crossfade, normalización de volumen y temporizador de apagado"),
+    Feature(R.drawable.videocam, "Video y segundo plano", "Alterna entre solo audio y video musical; sigue sonando en segundo plano y con la pantalla apagada"),
     Feature(R.drawable.graphic_eq, "Sonido y EQ", "Ecualizador de 24 bandas, Auto-EQ por modelo de auricular (+5000), sonoridad tipo TIDAL con limitador true-peak, firma Aura, realce de graves, excitador, compresor multibanda, ancho estéreo y sala virtual HRTF"),
     Feature(R.drawable.tune, "Sonido sin pérdida", "Reproduce en calidad sin pérdida desde Qobuz/Saavn cuando está disponible"),
     Feature(R.drawable.auto_awesome, "Mejorar calidad baja", "Reduce la distorsión (declip) y regenera agudos en fuentes de bajo bitrate"),
     Feature(R.drawable.equalizer, "Visualizador y control", "Visualizador de espectro y control de tempo/tono"),
-    Feature(R.drawable.lyrics, "Letras", "Sincronizadas, con traducción por IA y desenfoque estilo Apple Music"),
+    Feature(R.drawable.lyrics, "Letras", "Sincronizadas (palabra por palabra), con traducción por IA y desenfoque estilo Apple Music"),
     Feature(R.drawable.queue_music, "Cola", "Cola inteligente y gestión de 'a continuación'"),
+    Feature(R.drawable.bluetooth, "Reproducción inteligente", "Pausa al silenciar y reanuda al reconectar Bluetooth; notificación enriquecida estilo Dynamic Island"),
+)
+
+private val DISCOVERY_FEATURES = listOf(
+    Feature(R.drawable.discover_tune, "Recomendación en el dispositivo", "Una IA local aprende de tu recencia, saltos y hora del día para ordenar Inicio, autoplay, radio y shuffle, sin subir tu perfil"),
+    Feature(R.drawable.shuffle, "Smart Shuffle", "Mezcla ponderada por lo que de verdad te gusta"),
+    Feature(R.drawable.auto_awesome, "Listas con IA", "Crea playlists describiéndolas con una frase"),
+    Feature(R.drawable.favorite_border, "Filtros y coherencia", "El filtro 'No me gusta' aparta canciones de las recomendaciones y mantiene la coherencia de género en autoplay/radio"),
+    Feature(R.drawable.music_history, "Release Radar", "Nuevos lanzamientos de los artistas que sigues"),
+    Feature(R.drawable.library_music, "Discografía completa", "Catálogos de artista autocompletados, con sección 'Aparece en'"),
+    Feature(R.drawable.mic, "Reconocer canción", "Identifica la música que suena a tu alrededor"),
+    Feature(R.drawable.ic_search_mic, "Búsqueda por voz", "Busca hablando, además de explorar Charts, Estados de ánimo y Géneros"),
 )
 
 private val LIBRARY_FEATURES = listOf(
     Feature(R.drawable.library_music, "Biblioteca y sincronización", "Biblioteca, listas, 'me gusta' e historial de YouTube Music sincronizados"),
-    Feature(R.drawable.download, "Importar y migrar", "Importa de YouTube, Spotify (listas, me gusta y álbumes) y Aura Hi-Res Player (.jrpl.json)"),
+    Feature(R.drawable.download, "Importar y migrar", "Importa de YouTube, Spotify (listas, me gusta y álbumes) y Aura Hi-Res Player (.jrpl.json), y re-sigue tus artistas de Spotify"),
     Feature(R.drawable.sync, "Sincronización programada de Spotify", "Elige qué listas mantener al día y con qué frecuencia (diaria o semanal)"),
-    Feature(R.drawable.auto_awesome, "Listas con IA", "Crea playlists describiéndolas con una frase"),
-    Feature(R.drawable.music_history, "Release Radar e historial", "Nuevos lanzamientos de tus artistas, historial y estadísticas de escucha"),
+    Feature(R.drawable.download, "Modo sin conexión", "Descarga canciones, álbumes y playlists con un gestor de descargas dedicado"),
+    Feature(R.drawable.queue_music, "Podcasts", "Motor propio (Apple/iTunes + RSS) con progreso, fijado, búsqueda universal y reproducción por URL directa"),
+    Feature(R.drawable.folder_managed, "Medios locales", "Reproduce los archivos de música guardados en el dispositivo"),
+    Feature(R.drawable.music_history, "Historial y estadísticas", "Tu historial de escucha y estadísticas detalladas"),
+    Feature(R.drawable.backup, "Copia con Google Drive", "Respalda y restaura tu biblioteca (build con Google Play Services)"),
 )
 
 private val EXTRAS_FEATURES = listOf(
     Feature(R.drawable.home_outlined, "Tu inicio a tu gusto", "Elige tus artistas y géneros al empezar; el inicio se llena solo con tus artistas, lo que escuchas y tus favoritos, y YouTube recomienda en base a eso"),
     Feature(R.drawable.group_outlined, "Escuchar juntos", "Escucha sincronizada en tiempo real con amigos"),
     Feature(R.drawable.palette, "Temas y fondos", "Material You, modo oscuro puro AMOLED, acento dinámico y Canvas animado del artista y del álbum"),
+    Feature(R.drawable.tune, "Opciones de pantalla", "Escala de densidad, alta tasa de refresco, ocultar miniatura/videos/Shorts y recortar carátula"),
     Feature(R.drawable.share, "Compartir y widget", "Comparte con enlaces de YouTube Music y controla la música desde el widget de vinilo"),
+    Feature(R.drawable.ic_ringtone, "Establecer como tono", "Usa cualquier canción como tono de tu dispositivo"),
     Feature(R.drawable.play, "Android Auto y Android TV", "Compatible con Android Auto en el coche y con Android TV (se instala y navega con el control en televisores)"),
+    Feature(R.drawable.cast, "Google Cast", "Envía el audio a dispositivos Chromecast (build con Google Play Services)"),
+    Feature(R.drawable.notification, "Fiabilidad en segundo plano", "Exención opcional de batería contra apps que matan procesos y reinicio limpio tras iniciar sesión con Google"),
     Feature(R.drawable.download, "Actualizaciones", "Auto-actualización sin desinstalar y aviso semanal cuando hay una versión nueva"),
     Feature(R.drawable.auto_awesome, "Suscripción y demo", "Prueba gratis de 3 días y suscripción mensual"),
 )
@@ -124,6 +144,11 @@ fun AboutScreen(
             item {
                 AboutSectionCard(title = "Reproducción y audio") {
                     FeatureList(PLAYBACK_FEATURES)
+                }
+            }
+            item {
+                AboutSectionCard(title = "Descubrimiento e IA") {
+                    FeatureList(DISCOVERY_FEATURES)
                 }
             }
             item {

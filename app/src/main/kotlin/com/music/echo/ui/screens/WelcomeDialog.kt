@@ -132,6 +132,30 @@ fun WelcomeDialog(
                         title = "Listen Together",
                         subtitle = "Escucha música en tiempo real con tus amigos"
                     )
+                    WelcomeDivider()
+                    WelcomeFeatureRow(
+                        iconRes = R.drawable.discover_tune,
+                        title = "Recomendaciones con IA",
+                        subtitle = "Inicio, radio y mezclas que aprenden de tus gustos en el dispositivo; crea listas con una frase"
+                    )
+                    WelcomeDivider()
+                    WelcomeFeatureRow(
+                        iconRes = R.drawable.videocam,
+                        title = "Video musical",
+                        subtitle = "Alterna entre solo audio y video musical en HD"
+                    )
+                    WelcomeDivider()
+                    WelcomeFeatureRow(
+                        iconRes = R.drawable.mic,
+                        title = "Reconocer canción y buscar por voz",
+                        subtitle = "Identifica lo que suena a tu alrededor y busca hablando"
+                    )
+                    WelcomeDivider()
+                    WelcomeFeatureRow(
+                        iconRes = R.drawable.queue_music,
+                        title = "Podcasts",
+                        subtitle = "Motor propio de podcasts con progreso, fijado y búsqueda"
+                    )
                 }
 
                 Button(
