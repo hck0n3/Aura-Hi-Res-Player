@@ -2195,6 +2195,12 @@ class MusicService :
         }
         if (events.containsAny(EVENT_TIMELINE_CHANGED, EVENT_POSITION_DISCONTINUITY)) {
             currentMediaMetadata.value = player.currentMetadata
+            // Re-arm the crossfade trigger here too. For streamed songs (YouTube) the duration is
+            // frequently still C.TIME_UNSET at STATE_READY, so the first scheduleCrossfade() bailed and
+            // never retried — which is why crossfade did NOTHING on any song. A timeline change is when
+            // the real duration arrives; a position discontinuity (auto-advance / seek) changes how long
+            // until the trigger. Both must re-schedule. scheduleCrossfade() is idempotent (cancel + reset).
+            scheduleCrossfade()
         }
 
         
