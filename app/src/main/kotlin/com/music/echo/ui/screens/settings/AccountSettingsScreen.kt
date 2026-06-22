@@ -2,6 +2,7 @@
 
 package iad1tya.echo.music.ui.screens.settings
 
+import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -66,6 +67,7 @@ fun AccountSettingsScreen(
     val accountImageUrl by homeViewModel.accountImageUrl.collectAsState()
 
     var showLogoutDialog by remember { mutableStateOf(false) }
+    var showMirrorDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -199,6 +201,12 @@ fun AccountSettingsScreen(
                                 )
                             },
                             onClick = { onYtmSyncChange(!ytmSync) }
+                        ),
+                        Material3SettingsItem(
+                            icon = painterResource(R.drawable.sync),
+                            title = { Text("Espejar favoritos desde mi cuenta") },
+                            description = { Text("Deja tus favoritos del app idénticos a los de tu cuenta de YouTube. Puede quitar los que ya no estén en tu cuenta.") },
+                            onClick = { showMirrorDialog = true }
                         )
                     )
                 )
@@ -260,6 +268,51 @@ fun AccountSettingsScreen(
             ) {
                 Text(
                     text = stringResource(R.string.logout_dialog_message),
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+            }
+        }
+
+        if (showMirrorDialog) {
+            DefaultDialog(
+                onDismiss = { showMirrorDialog = false },
+                title = { Text("Espejar favoritos desde mi cuenta") },
+                buttons = {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
+                        modifier = Modifier.padding(top = 8.dp)
+                    ) {
+                        ToggleButton(
+                            checked = false,
+                            onCheckedChange = { showMirrorDialog = false },
+                            modifier = Modifier.weight(1f),
+                            shapes = ButtonGroupDefaults.connectedLeadingButtonShapes()
+                        ) {
+                            Text(stringResource(android.R.string.cancel))
+                        }
+
+                        ToggleButton(
+                            checked = true,
+                            onCheckedChange = {
+                                accountSettingsViewModel.mirrorFromAccount()
+                                Toast.makeText(
+                                    context,
+                                    "Sincronizando favoritos con tu cuenta…",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                                showMirrorDialog = false
+                            },
+                            modifier = Modifier.weight(1f),
+                            shapes = ButtonGroupDefaults.connectedTrailingButtonShapes()
+                        ) {
+                            Text("Espejar")
+                        }
+                    }
+                }
+            ) {
+                Text(
+                    text = "Esto dejará tus favoritos del app idénticos a los de tu cuenta de YouTube: añade los que falten y quita los que ya no estén en tu cuenta. Tu cuenta de YouTube no se modifica. ¿Continuar?",
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(bottom = 8.dp)
                 )

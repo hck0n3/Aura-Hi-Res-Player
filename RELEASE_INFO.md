@@ -1,15 +1,13 @@
-# Aura Hi-Res Player 0.0.1
+# Aura Hi-Res Player 0.0.2
 
-## Tus favoritos ya no desaparecen al sincronizar
-- Antes, al abrir la app, la sincronización con YouTube podía quitar canciones de "Favoritos" y de tu biblioteca aunque sí las tuvieras marcadas: comparaba contra una respuesta de YouTube que viene recortada y borraba todo lo que no apareciera en ella.
-- Lo mismo le pasaba a los álbumes favoritos y al contenido de algunas listas.
-- Ahora la sincronización es solo aditiva: nunca borra ni le quita el "me gusta" a algo que tengas guardado localmente; como mucho lo sube a tu cuenta.
-- ¿Se te bajaron los favoritos? Actualiza a esta versión, entra a Biblioteca → Favoritos y sincroniza: tus "me gusta" siguen en tu cuenta de YouTube y se restauran solos.
+## Nuevo: "Espejar favoritos desde mi cuenta"
+- En Ajustes → Cuenta hay un botón nuevo para dejar tus favoritos del app **idénticos** a los de tu cuenta de YouTube: añade los que falten y quita los que ya no estén en tu cuenta.
+- Es **manual y con confirmación** (tú decides cuándo), y **nunca toca tu cuenta de YouTube** — solo ajusta el app para que coincida.
+- Trae una salvaguarda: si tu cuenta responde vacía (fallo de conexión), **no borra nada** para no perder tus favoritos.
 
-## Relanzamiento como versión estable 0.0.1
-- Reiniciamos el número de versión a 0.0.1. Es solo el número visible; tu app se actualiza con normalidad y sin desinstalar.
+## Recordatorio: tus favoritos ya no se borran solos
+- La sincronización automática es aditiva: nunca te quita "me gusta" por su cuenta. Si en una versión anterior se te bajaron los favoritos, entra a Biblioteca → Favoritos y sincroniza (o usa el nuevo botón "Espejar"): tus "me gusta" siguen en tu cuenta de YouTube y vuelven.
 
 ## Lo que se hizo (técnico)
-- SyncUtils.executeSyncLibrarySongs: ya no llama a toggleLibrary() sobre canciones locales ausentes de la página remota de "liked videos" (esa página viene paginada/recortada, y toggleLibrary() además limpiaba liked/likedDate, lo que des-likeaba miles de favoritos). Ahora es aditivo: sube a la cuenta los temas locales que falten, nunca los borra.
-- SyncUtils.executeSyncPlaylist: una respuesta remota vacía ya no vacía la playlist local (casi siempre es un fetch transitorio).
-- SyncUtils.executeSyncSavedPlaylists: ya no des-marca playlists guardadas que falten de la página remota.
+- SyncUtils.executeMirrorLikedSongs: acción manual que reconcilia los "liked" locales contra la lista canónica "LM" de YouTube (vía .completed()): añade los remotos faltantes y quita los locales ausentes, solo en local. Guard: aborta si el remoto vuelve vacío.
+- AccountSettingsScreen: nuevo ítem "Espejar favoritos desde mi cuenta" + diálogo de confirmación; AccountSettingsViewModel.mirrorFromAccount() encola la operación.

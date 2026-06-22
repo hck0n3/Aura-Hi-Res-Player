@@ -62,6 +62,7 @@ sealed class SyncOperation {
     data class LikeSong(val song: SongEntity) : SyncOperation()
     data object CleanupDuplicates : SyncOperation()
     data object ClearAllSynced : SyncOperation()
+    data object MirrorLikedSongs : SyncOperation()
 }
 
 sealed class SyncStatus {
@@ -151,6 +152,7 @@ class SyncUtils @Inject constructor(
             is SyncOperation.LikeSong -> executeLikeSong(operation.song)
             is SyncOperation.CleanupDuplicates -> executeCleanupDuplicatePlaylists()
             is SyncOperation.ClearAllSynced -> executeClearAllSyncedContent()
+            is SyncOperation.MirrorLikedSongs -> executeMirrorLikedSongs()
         }
     }
 
@@ -249,6 +251,20 @@ class SyncUtils @Inject constructor(
             syncChannel.send(SyncOperation.LikedSongs)
         }
     }
+
+    /**
+     * Manual, user-initiated "mirror favorites from my account": makes the local liked songs match
+     * the YouTube account EXACTLY — adds the ones on the account and removes the local likes that are
+     * no longer on it. Unlike the automatic sync (which is purely additive on purpose), this can remove
+     * local likes, so it is ONLY ever run when the user explicitly taps the button and confirms.
+     */
+    fun mirrorLikedSongs() {
+        syncScope.launch {
+            syncChannel.send(SyncOperation.MirrorLikedSongs)
+        }
+    }
+
+    suspend fun mirrorLikedSongsSuspend() = executeMirrorLikedSongs()
 
     fun syncLibrarySongs() {
         syncScope.launch {
@@ -476,6 +492,83 @@ class SyncUtils @Inject constructor(
             }
         }.onFailure { e ->
             Timber.e(e, "Failed to sync liked songs after retries")
+            updateState { copy(likedSongs = SyncStatus.Error(e.message ?: "Unknown error")) }
+        }
+    }
+
+    private suspend fun executeMirrorLikedSongs() = withContext(Dispatchers.IO) {
+        if (!isLoggedIn()) {
+            Timber.w("Skipping mirrorLikedSongs - user not logged in")
+            return@withContext
+        }
+
+        updateState { copy(likedSongs = SyncStatus.Syncing, currentOperation = "Mirroring liked songs from account") }
+
+        withRetry {
+            YouTube.playlist("LM").completed()
+        }.onSuccess { result ->
+            result.onSuccess { page ->
+                try {
+                    val remoteSongs = page.songs
+                    val remoteIds = remoteSongs.map { it.id }.toSet()
+
+                    // SAFETY GUARD: never wipe the local favorites if the account came back empty (a
+                    // failed/anomalous fetch). The canonical "LM" liked playlist via .completed() is the
+                    // reliable source for likes (unlike the capped library views), but an empty result is
+                    // always treated as an error, not "you unliked everything".
+                    if (remoteIds.isEmpty()) {
+                        Timber.w("mirrorLikedSongs: remote returned empty; aborting to avoid wiping favorites")
+                        updateState { copy(likedSongs = SyncStatus.Error("Empty remote — aborted to protect favorites")) }
+                        return@onSuccess
+                    }
+
+                    // 1) Additive: make sure everything on the account is liked locally.
+                    val now = LocalDateTime.now()
+                    remoteSongs.forEachIndexed { index, song ->
+                        try {
+                            val dbSong = database.song(song.id).firstOrNull()
+                            val timestamp = now.minusSeconds(index.toLong())
+                            val isVideoSong = song.isVideoSong
+                            database.transaction {
+                                if (dbSong == null) {
+                                    insert(song.toMediaMetadata()) {
+                                        it.copy(liked = true, likedDate = timestamp, isVideo = isVideoSong)
+                                    }
+                                } else if (!dbSong.song.liked) {
+                                    update(dbSong.song.copy(liked = true, likedDate = timestamp, isVideo = isVideoSong))
+                                }
+                            }
+                            delay(DB_OPERATION_DELAY_MS)
+                        } catch (e: Exception) {
+                            Timber.e(e, "mirrorLikedSongs: failed to add song ${song.id}")
+                        }
+                    }
+
+                    // 2) Mirror: remove local likes that are no longer on the account. Local files are left
+                    // alone. Done locally only — the account is the source of truth, so there's nothing to
+                    // push up (the song is already not liked on the account).
+                    val localLiked = database.likedSongsByNameAsc().first()
+                    localLiked.filterNot { it.id in remoteIds || it.song.isLocal }.forEach { song ->
+                        try {
+                            database.update(song.song.copy(liked = false, likedDate = null))
+                            delay(DB_OPERATION_DELAY_MS)
+                        } catch (e: Exception) {
+                            Timber.e(e, "mirrorLikedSongs: failed to unlike song ${song.id}")
+                        }
+                    }
+
+                    updateState { copy(likedSongs = SyncStatus.Completed) }
+                    Timber.d("mirrorLikedSongs: mirrored ${remoteSongs.size} liked songs from account")
+                } catch (e: Exception) {
+                    Timber.e(e, "Error mirroring liked songs")
+                    updateState { copy(likedSongs = SyncStatus.Error(e.message ?: "Unknown error")) }
+                }
+            }.onFailure { e ->
+                Timber.e(e, "Failed to fetch liked songs from YouTube (mirror)")
+                updateState { copy(likedSongs = SyncStatus.Error(e.message ?: "Unknown error")) }
+            }
+        }.onFailure { e ->
+            Timber.e(e, "Failed to mirror liked songs after retries")
             updateState { copy(likedSongs = SyncStatus.Error(e.message ?: "Unknown error")) }
         }
     }

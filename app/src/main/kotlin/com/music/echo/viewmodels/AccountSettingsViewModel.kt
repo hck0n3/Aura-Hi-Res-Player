@@ -32,7 +32,18 @@ class AccountSettingsViewModel @Inject constructor(
         }
     }
 
-    
+    /**
+     * User-initiated "mirror favorites from my account": makes local liked songs match the YouTube
+     * account exactly (adds missing, removes local likes no longer on the account). Only called from
+     * the explicit, confirmed button in Account settings.
+     */
+    fun mirrorFromAccount() {
+        viewModelScope.launch(Dispatchers.IO) {
+            syncUtils.mirrorLikedSongs()
+        }
+    }
+
+
     fun logoutKeepData(context: Context, onCookieChange: (String) -> Unit) {
         viewModelScope.launch(Dispatchers.IO) {
             App.forgetAccount(context)
