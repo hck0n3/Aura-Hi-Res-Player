@@ -497,12 +497,24 @@ class SyncUtils @Inject constructor(
                     val remoteIds = remoteSongs.map { it.id }.toSet()
                     val localSongs = database.songsByNameAsc().first()
 
-                    localSongs.filterNot { it.id in remoteIds }.forEach { song ->
+                    // Additive only: NEVER drop a song from the local library just because it isn't in
+                    // this remote "liked videos" page. That page is paginated/capped and routinely returns
+                    // fewer items than the user actually has, and toggleLibrary() ALSO clears `liked` /
+                    // `likedDate` — so reconciling against it silently un-liked thousands of favorites
+                    // (4000 -> 1700). Push local-only library adds UP to the account instead, exactly like
+                    // the liked-songs and liked-albums syncs already do.
+                    localSongs.filterNot { it.id in remoteIds || it.song.isLocal }.forEach { song ->
                         try {
-                            database.update(song.song.toggleLibrary())
+                            if (song.song.inLibrary != null) {
+                                withRetry {
+                                    YouTube.toggleSongLibrary(song.id, true)
+                                }.onFailure { e ->
+                                    Timber.e(e, "Failed to add song to YouTube library: ${song.id}")
+                                }
+                            }
                             delay(DB_OPERATION_DELAY_MS)
                         } catch (e: Exception) {
-                            Timber.e(e, "Failed to update song: ${song.id}")
+                            Timber.e(e, "Failed to push library song: ${song.id}")
                         }
                     }
 
@@ -848,19 +860,9 @@ class SyncUtils @Inject constructor(
                     val remotePlaylists = page.items.filterIsInstance<PlaylistItem>()
                         .filterNot { it.id == "LM" || it.id == "SE" }
                         .reversed()
-                    val remoteIds = remotePlaylists.map { it.id }.toSet()
-
                     val localPlaylists = database.playlistsByNameAsc().first()
-                    localPlaylists.filterNot { it.playlist.browseId in remoteIds }
-                        .filterNot { it.playlist.browseId == null }
-                        .forEach { playlist ->
-                            try {
-                                database.update(playlist.playlist.localToggleLike())
-                                delay(DB_OPERATION_DELAY_MS)
-                            } catch (e: Exception) {
-                                Timber.e(e, "Failed to update playlist: ${playlist.id}")
-                            }
-                        }
+                    // Additive only: don't un-bookmark local saved playlists that are missing from this
+                    // remote page (it can be incomplete). Same reasoning as the liked songs/albums syncs.
 
                     for (playlist in remotePlaylists) {
                         try {
@@ -947,10 +949,10 @@ class SyncUtils @Inject constructor(
                     Timber.d("syncPlaylist: Fetched ${songs.size} songs from remote")
 
                     if (songs.isEmpty()) {
-                        Timber.w("syncPlaylist: Remote playlist is empty, clearing local playlist")
-                        database.withTransaction {
-                            database.clearPlaylist(playlistId)
-                        }
+                        // Do NOT clear the local playlist here. A successful-but-empty response is almost
+                        // always a transient/anomalous fetch, and wiping the local copy permanently loses
+                        // the user's songs. Leave the local playlist untouched.
+                        Timber.w("syncPlaylist: Remote playlist returned empty; leaving local playlist intact")
                         return@onSuccess
                     }
 
