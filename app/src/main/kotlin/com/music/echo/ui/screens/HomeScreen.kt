@@ -649,7 +649,9 @@ fun HomeScreen(
     }
 
     NetworkReload(
-        onReload = viewModel::refresh
+        // Only auto-reload on reconnect if the home never loaded (a failed first load). A populated
+        // home is NOT auto-refreshed — the user refreshes manually (pull to refresh).
+        onReload = { if (homePage == null && quickPicks.isNullOrEmpty()) viewModel.refresh() },
     )
 
     if (selectedChip != null) {

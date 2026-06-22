@@ -350,36 +350,32 @@ class HomeViewModel @Inject constructor(
                 val relatedSongs = database.quickPicks().first().filterVideoSongs(hideVideoSongs)
                 val forgotten = database.forgottenFavorites().first().filterVideoSongs(hideVideoSongs).take(8)
 
-                
-                val recentSong = database.events().first().firstOrNull()?.song
-                val ytSimilarSongs = mutableListOf<Song>()
+                // Paint quick picks from LOCAL data immediately so the home appears fast — don't block the
+                // first paint on a YouTube "related" network call. Guard against blanking a populated
+                // shelf on a transient empty read (the "home went empty" bug); empty only on first load.
+                val localQuick = (relatedSongs + forgotten).distinctBy { it.id }.rankedByTaste().take(20)
+                if (localQuick.isNotEmpty() || quickPicks.value == null) quickPicks.value = localQuick
 
+                // Enrich with YouTube "related to your last play" in the background and update once it
+                // returns — this no longer delays the home from appearing.
+                val recentSong = database.events().first().firstOrNull()?.song
                 if (recentSong != null) {
-                    val endpoint = YouTube.next(WatchEndpoint(videoId = recentSong.id)).getOrNull()?.relatedEndpoint
-                    if (endpoint != null) {
+                    viewModelScope.launch(Dispatchers.IO) {
+                        val endpoint = YouTube.next(WatchEndpoint(videoId = recentSong.id))
+                            .getOrNull()?.relatedEndpoint ?: return@launch
                         YouTube.related(endpoint).onSuccess { page ->
-                            
+                            val ytSimilarSongs = mutableListOf<Song>()
                             page.songs.take(10).forEach { ytSong ->
                                 database.song(ytSong.id).first()?.let { localSong ->
-                                    if (!hideVideoSongs || !localSong.song.isVideo) {
-                                        ytSimilarSongs.add(localSong)
-                                    }
+                                    if (!hideVideoSongs || !localSong.song.isVideo) ytSimilarSongs.add(localSong)
                                 }
                             }
+                            val combined = (relatedSongs + forgotten + ytSimilarSongs)
+                                .distinctBy { it.id }.rankedByTaste().take(20)
+                            if (combined.isNotEmpty()) quickPicks.value = combined
                         }
                     }
                 }
-
-                
-                val combined = (relatedSongs + forgotten + ytSimilarSongs)
-                    .distinctBy { it.id }
-                    .rankedByTaste()
-                    .take(20)
-
-                val newQuickPicks = combined.ifEmpty { relatedSongs.rankedByTaste().take(20) }
-                // Don't blank an already-populated shelf on a transient empty read (the intermittent
-                // "home went empty until I restarted" bug); only allow empty on the very first load.
-                if (newQuickPicks.isNotEmpty() || quickPicks.value == null) quickPicks.value = newQuickPicks
             }
             QuickPicks.LAST_LISTEN -> {
                 val song = database.events().first().firstOrNull()?.song
@@ -677,12 +673,51 @@ class HomeViewModel @Inject constructor(
     private suspend fun load() {
         isLoading.value = true
 
-        
         loadLocalDataPhase()
         isLoading.value = false
 
-        
         loadNetworkDataPhase()
+        saveSnapshot()
+    }
+
+    /** Cache the loaded home at process level so returning to Home / resuming restores it instantly. */
+    private fun saveSnapshot() {
+        snapshot = HomeSnapshot(
+            quickPicks = quickPicks.value,
+            dailyDiscover = dailyDiscover.value,
+            forgottenFavorites = forgottenFavorites.value,
+            keepListening = keepListening.value,
+            similarRecommendations = similarRecommendations.value,
+            accountPlaylists = accountPlaylists.value,
+            homePage = homePage.value,
+            explorePage = explorePage.value,
+            communityPlaylists = communityPlaylists.value,
+            allLocalItems = allLocalItems.value,
+            allYtItems = allYtItems.value,
+        )
+    }
+
+    companion object {
+        // Process-level snapshot of the loaded home. A recreated ViewModel (returning to the Home tab
+        // or resuming the app from the background) restores from this INSTANTLY and does NOT auto-reload
+        // — after that, refreshing is manual (pull to refresh). Only a cold app start (fresh process =
+        // null snapshot) loads from scratch.
+        @Volatile
+        private var snapshot: HomeSnapshot? = null
+
+        private class HomeSnapshot(
+            val quickPicks: List<Song>?,
+            val dailyDiscover: List<DailyDiscoverItem>?,
+            val forgottenFavorites: List<Song>?,
+            val keepListening: List<LocalItem>?,
+            val similarRecommendations: List<SimilarRecommendation>?,
+            val accountPlaylists: List<PlaylistItem>?,
+            val homePage: HomePage?,
+            val explorePage: ExplorePage?,
+            val communityPlaylists: List<CommunityPlaylistItem>?,
+            val allLocalItems: List<LocalItem>,
+            val allYtItems: List<YTItem>,
+        )
     }
 
     private val _isLoadingMore = MutableStateFlow(false)
@@ -768,15 +803,32 @@ class HomeViewModel @Inject constructor(
     init {
 
         
-        viewModelScope.launch(Dispatchers.IO) {
-            context.dataStore.data
-                .map { it[InnerTubeCookieKey] }
-                .distinctUntilChanged()
-                .first()
+        val restored = snapshot
+        if (restored != null) {
+            // Returning to Home / resuming the app: restore the already-loaded home instantly and DON'T
+            // auto-reload (the user refreshes manually). Only a cold app start loads from scratch.
+            quickPicks.value = restored.quickPicks
+            dailyDiscover.value = restored.dailyDiscover
+            forgottenFavorites.value = restored.forgottenFavorites
+            keepListening.value = restored.keepListening
+            similarRecommendations.value = restored.similarRecommendations
+            accountPlaylists.value = restored.accountPlaylists
+            homePage.value = restored.homePage
+            explorePage.value = restored.explorePage
+            communityPlaylists.value = restored.communityPlaylists
+            allLocalItems.value = restored.allLocalItems
+            allYtItems.value = restored.allYtItems
+        } else {
+            viewModelScope.launch(Dispatchers.IO) {
+                context.dataStore.data
+                    .map { it[InnerTubeCookieKey] }
+                    .distinctUntilChanged()
+                    .first()
 
-            // Guard the initial load so a transient exception (e.g. a throttled DB/network read) can't
-            // silently kill the coroutine and leave the home blank until the app is restarted.
-            runCatching { load() }.onFailure { reportException(it) }
+                // Guard the initial load so a transient exception (e.g. a throttled DB/network read)
+                // can't silently kill the coroutine and leave the home blank until the app is restarted.
+                runCatching { load() }.onFailure { reportException(it) }
+            }
         }
 
         
