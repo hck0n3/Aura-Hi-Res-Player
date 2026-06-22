@@ -44,9 +44,10 @@ constructor(
     init {
         viewModelScope.launch {
             query
-                // Wait for a brief typing pause instead of firing a network request on every keystroke.
-                // Under slow networks this avoids a burst of cancelled requests and makes suggestions snappier.
-                .debounce(160)
+                // Near-instant, YouTube-style suggestions from the very first letter. 80 ms is short
+                // enough to feel immediate yet still coalesces a fast burst of keystrokes; flatMapLatest
+                // cancels any in-flight request when the next character arrives, so no request pile-up.
+                .debounce(80)
                 .flatMapLatest { query ->
                     if (query.isEmpty()) {
                         database.searchHistory().map { history ->

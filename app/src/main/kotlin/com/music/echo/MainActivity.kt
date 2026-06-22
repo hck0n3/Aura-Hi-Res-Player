@@ -412,7 +412,19 @@ class MainActivity : ComponentActivity() {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 val layoutParams = window.attributes
                 if (enableHighRefreshRate) {
-                    layoutParams.preferredDisplayModeId = 0
+                    // Actively request the panel's HIGHEST refresh-rate mode at the current resolution,
+                    // instead of leaving it to the system (= 0) — several OEMs cap non-game apps at 60 Hz
+                    // unless the app asks. This makes scrolling/animations run at 90/120 Hz when supported.
+                    val modes = window.windowManager.defaultDisplay.supportedModes
+                    val current = window.windowManager.defaultDisplay.mode
+                    val best = modes
+                        .filter {
+                            it.physicalWidth == current.physicalWidth &&
+                                it.physicalHeight == current.physicalHeight
+                        }
+                        .maxByOrNull { it.refreshRate }
+                        ?: modes.maxByOrNull { it.refreshRate }
+                    layoutParams.preferredDisplayModeId = best?.modeId ?: 0
                 } else {
                     val modes = window.windowManager.defaultDisplay.supportedModes
                     val mode60 = modes.firstOrNull { kotlin.math.abs(it.refreshRate - 60f) < 1f }
