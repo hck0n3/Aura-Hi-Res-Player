@@ -7,7 +7,6 @@
   <p><em>Reproductor de música Hi-Res para Android — sonido potente sin distorsión, ecualizador en tiempo real, videos y lienzos animados, letras sincronizadas, modo sin conexión, podcasts e IA de recomendación en el dispositivo.</em></p>
 
   [![GitHub Release](https://img.shields.io/github/v/release/hck0n3/Aura-Hi-Res-Player?style=for-the-badge&color=6f42c1)](https://github.com/hck0n3/Aura-Hi-Res-Player/releases/latest)
-  [![GitHub Stars](https://img.shields.io/github/stars/hck0n3/Aura-Hi-Res-Player?style=for-the-badge&color=e3b341)](https://github.com/hck0n3/Aura-Hi-Res-Player/stargazers)
   [![License](https://img.shields.io/badge/License-GPL--3.0-28a745?style=for-the-badge)](LICENSE)
   [![Platform](https://img.shields.io/badge/Platform-Android%208%2B-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://github.com/hck0n3/Aura-Hi-Res-Player/releases/latest)
 
@@ -21,16 +20,9 @@
 
 ---
 
-> **Built on [Echo Music](https://github.com/EchoMusicApp/Echo-Music).** Aura Hi-Res Player is a customized, Spanish-first fork focused on audiophile sound, music video / canvas playback, podcasts, and smarter on-device recommendations. Licensed under GPL-3.0 — see [Credits & Acknowledgements](#credits--acknowledgements).
->
-> **Basado en [Echo Music](https://github.com/EchoMusicApp/Echo-Music).** Aura Hi-Res Player es una versión personalizada (en español por defecto) centrada en el sonido de alta fidelidad, la reproducción de video/lienzos, los podcasts y unas recomendaciones más inteligentes en el dispositivo.
-
----
-
 ## Table of Contents
 
 - [Overview](#overview)
-- [Screenshots](#screenshots)
 - [Features](#features)
   - [High-Fidelity Audio](#high-fidelity-audio)
   - [Streaming & Playback](#streaming--playback)
@@ -42,53 +34,15 @@
 - [Características (Español)](#características-español)
 - [Installation / Instalación](#installation--instalación)
 - [Building from Source](#building-from-source)
-- [Credits & Acknowledgements](#credits--acknowledgements)
 - [License](#license)
 
 ---
 
 ## Overview
 
-Aura Hi-Res Player delivers a premium, ad-free listening experience on top of YouTube Music's vast catalog, then layers on a serious audiophile sound chain and a set of extras you won't find in a stock client: real-time equalization, headphone Auto-EQ, music-video and animated canvas playback, an independent podcast engine, Spotify import, and an on-device AI that learns your taste.
+Aura Hi-Res Player delivers a premium, ad-free listening experience on top of a vast music catalog, then layers on a serious audiophile sound chain and a set of extras you won't find in a stock client: real-time equalization, headphone Auto-EQ, music-video and animated canvas playback, an independent podcast engine, Spotify import, and an on-device AI that learns your taste.
 
-*Aura Hi-Res Player ofrece una experiencia premium y sin anuncios sobre el catálogo de YouTube Music, con una cadena de sonido de alta fidelidad y un conjunto de extras: ecualización en tiempo real, Auto-EQ por auriculares, reproducción de video y lienzos animados, motor propio de podcasts, importación desde Spotify y una IA que aprende tus gustos directamente en el dispositivo.*
-
----
-
-## Screenshots
-
-<div align="center">
-  <table style="margin: 0 auto; border-collapse: collapse;">
-    <tr>
-      <td align="center" style="padding: 10px; border: none;">
-        <strong>Home</strong><br><br>
-        <img src="Screenshots/sc_1.png" alt="Home Screen" width="200" style="border-radius: 8px;"/>
-      </td>
-      <td align="center" style="padding: 10px; border: none;">
-        <strong>Player</strong><br><br>
-        <img src="Screenshots/sc_2.png" alt="Music Player" width="200" style="border-radius: 8px;"/>
-      </td>
-      <td align="center" style="padding: 10px; border: none;">
-        <strong>Synced Lyrics</strong><br><br>
-        <img src="Screenshots/sc_3.png" alt="Synchronized Lyrics" width="200" style="border-radius: 8px;"/>
-      </td>
-    </tr>
-    <tr>
-      <td align="center" style="padding: 10px; border: none;">
-        <strong>Search & Explore</strong><br><br>
-        <img src="Screenshots/sc_4.png" alt="Search & Explore" width="200" style="border-radius: 8px;"/>
-      </td>
-      <td align="center" style="padding: 10px; border: none;">
-        <strong>Library</strong><br><br>
-        <img src="Screenshots/sc_5.png" alt="Music Library" width="200" style="border-radius: 8px;"/>
-      </td>
-      <td align="center" style="padding: 10px; border: none;">
-        <strong>Song Recognition</strong><br><br>
-        <img src="Screenshots/sc_6.png" alt="Song Recognition" width="200" style="border-radius: 8px;"/>
-      </td>
-    </tr>
-  </table>
-</div>
+*Aura Hi-Res Player ofrece una experiencia premium y sin anuncios sobre un enorme catálogo musical, con una cadena de sonido de alta fidelidad y un conjunto de extras: ecualización en tiempo real, Auto-EQ por auriculares, reproducción de video y lienzos animados, motor propio de podcasts, importación desde Spotify y una IA que aprende tus gustos directamente en el dispositivo.*
 
 ---
 
@@ -98,14 +52,14 @@ Aura Hi-Res Player delivers a premium, ad-free listening experience on top of Yo
 - **TIDAL-grade loudness, no distortion** — content is normalized to **−14 LUFS** (quiet tracks are brought up with makeup gain) and protected by a **2× oversampled true-peak limiter at −1 dBTP**, so everything sounds loud and full without clipping.
 - **Multiband compression** — tightens the mix for a consistent, powerful sound across tracks.
 - **Real-time graphic equalizer** — standard **ISO frequency bands**, applied live without restarting playback (no audio drop while you tweak).
-- **Auto-EQ** — automatic headphone correction using the online **AutoEq** database; pick your model and the app applies a measured target curve.
+- **Auto-EQ** — automatic headphone correction from an online measurement database; pick your model and the app applies a measured target curve.
 - **Per-device EQ profiles** — different correction per output device.
 - **Uniform crossfade** — selectable transition styles (linear, equal-power, long S-curve, exponential) with even volume across the blend.
 
 ### Streaming & Playback
-- **Ad-free** streaming over the YouTube Music catalog.
+- **Ad-free** streaming over a huge online music catalog.
 - **Music videos & audio** — switch between audio-only and full music-video playback.
-- **Animated canvases** — looping video backdrops while a song plays (Tidal & Apple-style providers).
+- **Animated canvases** — looping video backdrops while a song plays.
 - **Background playback** — keep listening with the screen off or other apps open.
 - **Offline mode** — download tracks, albums, and playlists via a dedicated download manager.
 - **Fast start & smart preloading** — the first song starts quickly and the next ones are pre-warmed.
@@ -117,40 +71,40 @@ Aura Hi-Res Player delivers a premium, ad-free listening experience on top of Yo
 - **Rich playback notifications** — including Dynamic Island-style presentation on supported devices.
 
 ### Discovery & AI
-- **On-device recommendation AI (AffinityEngine)** — learns from recency, skips, and time-of-day to rank your **Home**, autoplay, radio, and smart shuffle — all locally, no profile uploads.
+- **On-device recommendation engine** — learns from recency, skips, and time-of-day to rank your **Home**, autoplay, radio, and smart shuffle — all locally, no profile uploads.
 - **Smart Shuffle** — shuffle weighted by what you actually like.
 - **AI playlist from text** — describe a vibe and get a generated playlist.
 - **"Dislike" filtering** — disliked tracks are kept out of recommendations and autoplay.
 - **Genre coherence** — keeps autoplay/radio within a consistent lane instead of drifting.
 - **Release radar** — surfaces new releases from artists you follow.
-- **Auto-completed discography** — authoritative artist catalogs (iTunes + YouTube), including an "Appears on" section.
-- **Song recognition** — identify music playing around you (ShazamKit-based).
+- **Auto-completed discography** — authoritative artist catalogs, including an "Appears on" section.
+- **Song recognition** — identify music playing around you.
 - **Voice search** and rich browsing of Charts, Moods, and Genres.
 
 ### Library & Import
 - **Import from Spotify** — bring over playlists and liked songs.
 - **Migrate Spotify artists** — re-follow your Spotify artists inside the app.
 - **Save playlist to library** and **favorite albums**.
-- **Podcasts** — an independent engine (Apple/iTunes + RSS) with progress tracking, pinning, universal search, and direct-URL playback — works regardless of YouTube/Spotify.
+- **Podcasts** — an independent engine (Apple/iTunes + RSS) with progress tracking, pinning, universal search, and direct-URL playback.
 - **Google Drive sync / backup** — back up and restore your library (GMS build).
 
 ### Lyrics
 - **Synced lyrics** with multiple animation styles.
 - **Word-by-word** synchronization.
-- **Lyrics+** provider for better accuracy and coverage.
+- **Enhanced lyrics provider** for better accuracy and coverage.
 - **AI translation** — translate lyrics into any language inline.
 
 ### Visuals & Personalization
 - **Spanish by default** — full Spanish localization out of the box, plus other languages.
 - **Vinyl turntable widget** — a home-screen widget styled like a record player.
 - **Material You theming** — system theme by default, themed accents, dynamic color.
-- **UI density scale**, **high refresh rate** support, **hide player thumbnail**, **crop album art**, **hide video songs**, **hide YouTube Shorts**.
+- **UI density scale**, **high refresh rate** support, **hide player thumbnail**, **crop album art**, **hide video songs**, **hide Shorts**.
 
 ### Reliability & Integrations
 - **Background reliability** — optional battery-optimization exemption to resist aggressive OEM task-killers.
 - **Clean restart after Google sign-in** — reliable cold-restart so login changes apply cleanly.
 - **Set as ringtone** — use any song as your device ringtone.
-- **Share via Odesli** — share songs as Song.link for cross-platform listening.
+- **Cross-platform share links** — share songs as a universal link.
 - **Smart playback** — pause on mute, resume on Bluetooth reconnect.
 
 ---
@@ -161,18 +115,18 @@ Aura Hi-Res Player delivers a premium, ad-free listening experience on top of Yo
 - Sonido potente tipo TIDAL **sin distorsión**: normalización a **−14 LUFS** (sube las canciones flojas) + **limitador de pico real a −1 dBTP**.
 - **Compresión multibanda** para un sonido parejo y con cuerpo.
 - **Ecualizador en tiempo real** con bandas **ISO**, sin cortes de audio al ajustar.
-- **Auto-EQ** por auriculares usando la base de datos online **AutoEq**, y **perfiles de EQ por dispositivo**.
+- **Auto-EQ** por auriculares y **perfiles de EQ por dispositivo**.
 - **Crossfade uniforme** con estilos de transición seleccionables y volumen parejo.
 
 **Reproducción**
-- Streaming **sin anuncios** sobre YouTube Music; **video musical** y solo audio.
+- Streaming **sin anuncios**; **video musical** y solo audio.
 - **Lienzos animados** de fondo, **reproducción en segundo plano** y **modo sin conexión** (descargas).
 - **Inicio rápido** y precarga; **Google Cast**, **Android Auto**, **Android TV**, **medios locales** y **Escuchar juntos**.
 
 **Descubrimiento e IA**
-- **IA de recomendación en el dispositivo (AffinityEngine)**: aprende de tu recencia, saltos y hora del día para ordenar Inicio, autoplay, radio y smart shuffle.
+- **Motor de recomendación en el dispositivo**: aprende de tu recencia, saltos y hora del día para ordenar Inicio, autoplay, radio y smart shuffle.
 - **Smart Shuffle**, **lista por IA a partir de un texto**, filtro de **"No me gusta"**, **coherencia de género** y **release radar**.
-- **Discografía autocompletada** (iTunes + YouTube, con "Aparece en"), **reconocimiento de canciones**, **búsqueda por voz** y exploración de Charts/Estados de ánimo/Géneros.
+- **Discografía autocompletada** (con "Aparece en"), **reconocimiento de canciones**, **búsqueda por voz** y exploración de Charts/Estados de ánimo/Géneros.
 
 **Biblioteca**
 - **Importar desde Spotify** (listas y "me gusta"), **migrar artistas de Spotify**, **guardar playlist en la biblioteca** y **álbumes favoritos**.
@@ -180,11 +134,11 @@ Aura Hi-Res Player delivers a premium, ad-free listening experience on top of Yo
 - **Copia de seguridad con Google Drive**.
 
 **Letras y personalización**
-- **Letras sincronizadas** (varios estilos, palabra por palabra, Lyrics+ y **traducción por IA**).
+- **Letras sincronizadas** (varios estilos, palabra por palabra y **traducción por IA**).
 - **App en español por defecto**, **widget de vinilo**, tema Material You y opciones de densidad, alta tasa de refresco, ocultar miniatura/videos/Shorts.
 
 **Fiabilidad**
-- **Exención de batería** contra apps que matan procesos, **reinicio limpio tras iniciar sesión con Google**, **establecer como tono**, **compartir vía Odesli**, pausa al silenciar y reanudar al reconectar Bluetooth.
+- **Exención de batería** contra apps que matan procesos, **reinicio limpio tras iniciar sesión con Google**, **establecer como tono**, **compartir con enlace universal**, pausa al silenciar y reanudar al reconectar Bluetooth.
 
 ---
 
@@ -217,24 +171,7 @@ Download the latest signed APK from the **[Releases page](https://github.com/hck
    ./gradlew assembleArm64FossDebug      # arm64, FOSS
    ./gradlew assembleUniversalGmsRelease # all ABIs, GMS, release
    ```
-   Requires **JDK 21**. Release builds are signed via the `STORE_PASSWORD` / `KEY_ALIAS` / `KEY_PASSWORD` environment variables (CI generates a fallback keystore when no signing secrets are set).
-
----
-
-## Credits & Acknowledgements
-
-Aura Hi-Res Player is a fork of **[Echo Music](https://github.com/EchoMusicApp/Echo-Music)** by [iad1tya](https://github.com/iad1tya). Huge thanks to the upstream project and the wider open-source ecosystem it builds on:
-
-| Project | Role |
-| :--- | :--- |
-| [Echo Music](https://github.com/EchoMusicApp/Echo-Music) | Upstream base app and architecture |
-| [Metrolist](https://github.com/MetrolistGroup/Metrolist) & [Vivi Music](https://github.com/vivizzz007/vivi-music) | Foundational inspiration and reference |
-| [Better Lyrics](https://better-lyrics.boidu.dev/) | Lyrics enhancement and synchronization |
-| [SimpMusic](https://github.com/maxrave-dev/SimpMusic) | Lyrics implementation reference |
-| [Music Recognizer](https://github.com/aleksey-saenko/MusicRecognizer) | Audio recognition |
-| [AutoEq](https://github.com/jaakkopasanen/AutoEq) | Headphone correction profiles for Auto-EQ |
-
-If you'd like to support the original developer, see the support links on the [Echo Music](https://github.com/EchoMusicApp/Echo-Music) repository.
+   Requires **JDK 21**. Release builds are signed via the `STORE_PASSWORD` / `KEY_ALIAS` / `KEY_PASSWORD` environment variables.
 
 ---
 

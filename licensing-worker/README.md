@@ -1,4 +1,4 @@
-# JR MUSIC PRO — License Worker
+# Aura Hi-Res Player — License Worker
 
 Cloudflare Worker that verifies Gumroad subscriptions and enforces one device per subscription.
 
