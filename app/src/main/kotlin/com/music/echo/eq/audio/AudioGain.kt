@@ -44,15 +44,18 @@ fun normalizationMultiplier(
  * plays as loud as a streaming service (TIDAL/Spotify-style), instead of being left quiet. [loudnessDb]
  * is the stream's loudness relative to reference (YouTube convention: normalize by `-loudnessDb`). Only
  * the positive (boost) part is returned here — attenuation of loud masters is handled separately by
- * [normalizationMultiplier]. Capped at [maxBoostDb] (default +12 dB, matching the true-peak limiter's
- * combined-makeup ceiling MAX_MAKEUP) so quiet/very-quiet tracks are actually leveled up to roughly the
- * same loudness as everything else; the true-peak limiter downstream turns the resulting peaks into a
- * clean ceiling, never clipping. (Was +6 dB, which left quiet songs noticeably softer than the rest.)
+ * [normalizationMultiplier]. Capped at [maxBoostDb] so a very quiet track isn't boosted so hard that it
+ * over-drives the downstream true-peak limiter — too much makeup makes the limiter reduce gain heavily,
+ * which sounds like harmonic saturation / a harsh, "boxy" voice, especially at max volume.
+ *
+ * History: started at +6 dB (clean but left quiet songs softer than the rest); briefly +12 dB (leveled
+ * them but over-drove the limiter → audible distortion at high volume). Now +8 dB — a balance: quiet
+ * songs are noticeably lifted without slamming the limiter.
  */
 fun loudnessMakeupDb(
     loudnessDb: Double?,
     enabled: Boolean,
-    maxBoostDb: Double = 12.0,
+    maxBoostDb: Double = 8.0,
 ): Double {
     if (!enabled || loudnessDb == null) return 0.0
     return (-loudnessDb).coerceIn(0.0, maxBoostDb)
