@@ -256,7 +256,7 @@ fun SubscriptionEntryScreen(
             onClick = { openGumroad(context) },
             modifier = Modifier.fillMaxWidth().height(48.dp),
             shape = RoundedCornerShape(16.dp),
-        ) { Text("Suscribirme ($10/mes)", fontWeight = FontWeight.SemiBold) }
+        ) { Text("Suscribirme y obtener licencia", fontWeight = FontWeight.SemiBold) }
         Spacer(Modifier.height(4.dp))
         TextButton(onClick = onBack) { Text("Volver", color = Accent) }
     }
