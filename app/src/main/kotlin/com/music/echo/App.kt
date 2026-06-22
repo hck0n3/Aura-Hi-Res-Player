@@ -111,6 +111,7 @@ class App : Application(), SingletonImageLoader.Factory {
         migrateCanvasDefaultOn(settings)
         migrateMiniPlayerDefaultBg(settings)
         migrateThemeSystemDefault(settings)
+        migrateThemeSystemOnlyV2(settings)
         migrateLegacyIcon(settings)
         val locale = Locale.getDefault()
         val languageTag = locale.language
@@ -268,7 +269,10 @@ class App : Application(), SingletonImageLoader.Factory {
             // used if the user later turns the dynamic theme off.
             p[iad1tya.echo.music.constants.DarkModeKey] =
                 iad1tya.echo.music.ui.screens.settings.DarkMode.AUTO.name
-            p[iad1tya.echo.music.constants.PureBlackKey] = true
+            // pureBlack MUST be false here: with darkMode=AUTO, leaving pureBlack=true lit up BOTH the
+            // "Follow system" and "AMOLED" cards at once (they're independent in the UI). "System theme
+            // only" means AUTO + no pure-black.
+            p[iad1tya.echo.music.constants.PureBlackKey] = false
             p[iad1tya.echo.music.constants.DynamicThemeKey] = true
             // Fallback accent (only applies when dynamic theme is OFF): matches the "AURA HI-RES" tones.
             p[iad1tya.echo.music.constants.SelectedThemeColorKey] = 0xFF36C5E0.toInt()
@@ -303,6 +307,26 @@ class App : Application(), SingletonImageLoader.Factory {
                 p[iad1tya.echo.music.constants.DarkModeKey] =
                     iad1tya.echo.music.ui.screens.settings.DarkMode.AUTO.name
                 p[iad1tya.echo.music.constants.ThemeSystemDefaultAppliedKey] = true
+            }
+        }
+    }
+
+    /**
+     * One-time (v2): force the clean "system theme only" state for EVERYONE on this update. The earlier
+     * seed/migration could leave darkMode=AUTO together with pureBlack=true, which lit up BOTH the
+     * "Follow system" and "AMOLED" cards at once. This resets to AUTO + pureBlack OFF + dynamic ON so the
+     * user lands on the new system theme with exactly one selection. Runs once (own flag); afterwards the
+     * user's later theme choices are respected.
+     */
+    private suspend fun migrateThemeSystemOnlyV2(settings: androidx.datastore.preferences.core.Preferences) {
+        if (settings[iad1tya.echo.music.constants.ThemeSystemOnlyV2AppliedKey] == true) return
+        runCatching {
+            dataStore.edit { p ->
+                p[iad1tya.echo.music.constants.DarkModeKey] =
+                    iad1tya.echo.music.ui.screens.settings.DarkMode.AUTO.name
+                p[iad1tya.echo.music.constants.PureBlackKey] = false
+                p[iad1tya.echo.music.constants.DynamicThemeKey] = true
+                p[iad1tya.echo.music.constants.ThemeSystemOnlyV2AppliedKey] = true
             }
         }
     }

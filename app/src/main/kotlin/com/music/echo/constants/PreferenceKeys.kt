@@ -60,6 +60,9 @@ val CanvasDefaultOnAppliedKey = booleanPreferencesKey("canvas_default_on_applied
 val MiniPlayerDefaultBgAppliedKey = booleanPreferencesKey("miniplayer_default_bg_applied")
 // One-time migration: appearance follows the SYSTEM theme (user request: start in system theme).
 val ThemeSystemDefaultAppliedKey = booleanPreferencesKey("theme_system_default_applied")
+// One-time migration v2: force the clean "system theme only" state on update (AUTO + pureBlack OFF +
+// dynamic ON), so existing users land on the new system theme and never see two theme cards selected.
+val ThemeSystemOnlyV2AppliedKey = booleanPreferencesKey("theme_system_only_v2_applied")
 val SpotifySpDcKey = stringPreferencesKey("spotify_sp_dc")
 val SpotifySpKeyKey = stringPreferencesKey("spotify_sp_key")
 val SpotifyAccountNameKey = stringPreferencesKey("spotify_account_name")

@@ -185,14 +185,17 @@ fun ThemeScreen(
                             modifier = Modifier.weight(1f),
                             title = stringResource(R.string.dark_theme_follow_system),
                             icon = Icons.Rounded.BrightnessAuto,
-                            isSelected = darkMode == DarkMode.AUTO,
+                            // Mutually exclusive with AMOLED: pureBlack forces a dark look, so it can never
+                            // be "follow system" at the same time. Without !pureBlack this card lit up
+                            // together with AMOLED.
+                            isSelected = darkMode == DarkMode.AUTO && !pureBlack,
                             onClick = { onDarkModeChange(DarkMode.AUTO); onPureBlackChange(false) }
                         )
                         ThemeModeCard(
                             modifier = Modifier.weight(1f),
                             title = "Light",
                             icon = Icons.Rounded.LightMode,
-                            isSelected = darkMode == DarkMode.OFF,
+                            isSelected = darkMode == DarkMode.OFF && !pureBlack,
                             onClick = { onDarkModeChange(DarkMode.OFF); onPureBlackChange(false) }
                         )
                     }
