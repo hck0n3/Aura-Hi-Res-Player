@@ -1,8 +1,9 @@
-# Aura Hi-Res Player 0.0.4
+# Aura Hi-Res Player 0.0.5
 
-## Arreglado: tras restaurar un respaldo, la app no reproducía
-- Al restaurar, arrancaba la sincronización de tus favoritos y, si esa sincronización se cancelaba, el proceso no se detenía: recorría toda tu biblioteca lanzando errores cientos de veces por segundo, saturaba el CPU y la reproducción dejaba de funcionar.
-- Ahora la sincronización se detiene limpiamente al cancelarse. Restaurar un respaldo ya no satura la app ni rompe la reproducción, y las copias futuras tampoco tendrán este problema.
+## Arreglado: el Inicio salía vacío tras el onboarding del primer arranque
+- Al abrir la app por primera vez y elegir tus artistas y géneros, el Inicio aparecía vacío hasta que cerrabas y volvías a abrir la app.
+- Ahora, al terminar el onboarding, el Inicio se recarga solo con los artistas que acabas de elegir — sin tener que reiniciar.
 
 ## Lo que se hizo (técnico)
-- SyncUtils: los bucles de sincronización ahora re-lanzan CancellationException en lugar de tragársela en `catch (e: Exception)`. Antes, una cancelación dejaba el bucle "vivo" iterando miles de canciones al instante (flood de "Failed to process song / Job was cancelled" + pico de CPU), lo que impedía reproducir justo después de restaurar.
+- HomeViewModel guardaba un snapshot del Inicio en su primera carga, que ocurría ANTES de completar el onboarding (biblioteca vacía → Inicio vacío); al volver, restauraba ese snapshot vacío y no recargaba.
+- Ahora observa `OnboardingArtistsDoneKey`: cuando el onboarding se completa durante la sesión, invalida el snapshot y recarga el Inicio con la nueva selección.

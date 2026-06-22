@@ -25,6 +25,7 @@ import iad1tya.echo.music.constants.HideExplicitKey
 import iad1tya.echo.music.constants.HideVideoSongsKey
 import iad1tya.echo.music.constants.HideYoutubeShortsKey
 import iad1tya.echo.music.constants.InnerTubeCookieKey
+import iad1tya.echo.music.constants.OnboardingArtistsDoneKey
 import iad1tya.echo.music.constants.QuickPicks
 import iad1tya.echo.music.constants.QuickPicksKey
 import iad1tya.echo.music.db.MusicDatabase
@@ -45,7 +46,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -831,7 +835,23 @@ class HomeViewModel @Inject constructor(
             }
         }
 
-        
+        // First-run onboarding finishes AFTER this ViewModel already ran its initial home load (with an
+        // empty library) and cached an empty snapshot — so returning to Home just restored that blank
+        // snapshot and the home stayed empty until the app was restarted. Reload once when onboarding
+        // completes so the artists the user just picked seed the home immediately.
+        viewModelScope.launch(Dispatchers.IO) {
+            context.dataStore.data
+                .map { it[OnboardingArtistsDoneKey] ?: false }
+                .distinctUntilChanged()
+                .drop(1) // ignore the current value; only react to onboarding completing this session
+                .filter { it }
+                .collect {
+                    snapshot = null
+                    runCatching { load() }.onFailure { reportException(it) }
+                }
+        }
+
+
         viewModelScope.launch(Dispatchers.IO) {
             syncUtils.tryAutoSync()
         }
