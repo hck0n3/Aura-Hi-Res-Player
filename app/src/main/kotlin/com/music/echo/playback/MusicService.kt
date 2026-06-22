@@ -848,10 +848,15 @@ class MusicService :
 
         combine(
             dataStore.data.map { it[AudioOffload] ?: false },
-            dataStore.data.map { it[CrossfadeEnabledKey] ?: false }
-        ) { offloadPref, crossfadeEnabled ->
-             
-             if (crossfadeEnabled) false else offloadPref
+            dataStore.data.map { it[CrossfadeEnabledKey] ?: false },
+            dataStore.data.map { it[AudioNormalizationKey] ?: true }
+        ) { offloadPref, crossfadeEnabled, normalizationEnabled ->
+             // Audio offload streams compressed audio straight to the DSP hardware, BYPASSING the whole
+             // AudioProcessor chain — EQ, JR DSP, loudness normalization AND the true-peak limiter. With
+             // the limiter bypassed, a loud master can clip/distort. So only allow offload when BOTH
+             // crossfade and loudness normalization are off; otherwise the limiter must stay in the path.
+             // Normalization is on by default, so the default config always keeps the limiter active.
+             if (crossfadeEnabled || normalizationEnabled) false else offloadPref
         }.distinctUntilChanged()
         .collectLatest(scope) { useOffload ->
              player.setOffloadEnabled(useOffload)
@@ -1035,7 +1040,10 @@ class MusicService :
                 runBlocking {
                     val offload = dataStore.get(AudioOffload, false)
                     val crossfade = dataStore.get(CrossfadeEnabledKey, false)
-                    setOffloadEnabled(if (crossfade) false else offload)
+                    // Offload bypasses the limiter/normalization; keep it off whenever crossfade or
+                    // loudness normalization is on, so the true-peak limiter always runs (no distortion).
+                    val normalization = dataStore.get(AudioNormalizationKey, true)
+                    setOffloadEnabled(if (crossfade || normalization) false else offload)
                     skipSilenceEnabled = dataStore.get(SkipSilenceKey, false)
                 }
                 addAnalyticsListener(PlaybackStatsListener(false, this@MusicService))
