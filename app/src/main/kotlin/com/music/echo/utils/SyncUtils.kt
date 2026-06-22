@@ -131,6 +131,10 @@ class SyncUtils @Inject constructor(
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
+                            // Never swallow coroutine cancellation: doing so let the sync loop keep
+                            // running after its job was cancelled, blasting through every song and
+                            // flooding logs / pegging the CPU (made playback fail right after a restore).
+                            if (e is CancellationException) throw e
                     Timber.e(e, "Error processing sync operation: $operation")
                 }
             }
@@ -163,6 +167,10 @@ class SyncUtils @Inject constructor(
                 .first()
             cookie?.let { "SAPISID" in parseCookieString(it) } ?: false
         } catch (e: Exception) {
+                            // Never swallow coroutine cancellation: doing so let the sync loop keep
+                            // running after its job was cancelled, blasting through every song and
+                            // flooding logs / pegging the CPU (made playback fail right after a restore).
+                            if (e is CancellationException) throw e
             Timber.e(e, "Error checking login status")
             false
         }
@@ -180,6 +188,10 @@ class SyncUtils @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                            // Never swallow coroutine cancellation: doing so let the sync loop keep
+                            // running after its job was cancelled, blasting through every song and
+                            // flooding logs / pegging the CPU (made playback fail right after a restore).
+                            if (e is CancellationException) throw e
                 Timber.w(e, "Attempt ${attempt + 1}/$maxRetries failed")
                 if (attempt == maxRetries - 1) {
                     return Result.failure(e)
@@ -401,6 +413,10 @@ class SyncUtils @Inject constructor(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
+                            // Never swallow coroutine cancellation: doing so let the sync loop keep
+                            // running after its job was cancelled, blasting through every song and
+                            // flooding logs / pegging the CPU (made playback fail right after a restore).
+                            if (e is CancellationException) throw e
             Timber.e(e, "Error during full sync")
             updateState { copy(overallStatus = SyncStatus.Error(e.message ?: "Unknown error"), currentOperation = "") }
         }
@@ -453,6 +469,10 @@ class SyncUtils @Inject constructor(
                             }
                             delay(DB_OPERATION_DELAY_MS)
                         } catch (e: Exception) {
+                            // Never swallow coroutine cancellation: doing so let the sync loop keep
+                            // running after its job was cancelled, blasting through every song and
+                            // flooding logs / pegging the CPU (made playback fail right after a restore).
+                            if (e is CancellationException) throw e
                             Timber.e(e, "Failed to update song: ${song.id}")
                         }
                     }
@@ -476,6 +496,10 @@ class SyncUtils @Inject constructor(
                             }
                             delay(DB_OPERATION_DELAY_MS)
                         } catch (e: Exception) {
+                            // Never swallow coroutine cancellation: doing so let the sync loop keep
+                            // running after its job was cancelled, blasting through every song and
+                            // flooding logs / pegging the CPU (made playback fail right after a restore).
+                            if (e is CancellationException) throw e
                             Timber.e(e, "Failed to process song: ${song.id}")
                         }
                     }
@@ -483,6 +507,10 @@ class SyncUtils @Inject constructor(
                     updateState { copy(likedSongs = SyncStatus.Completed) }
                     Timber.d("Synced ${remoteSongs.size} liked songs")
                 } catch (e: Exception) {
+                            // Never swallow coroutine cancellation: doing so let the sync loop keep
+                            // running after its job was cancelled, blasting through every song and
+                            // flooding logs / pegging the CPU (made playback fail right after a restore).
+                            if (e is CancellationException) throw e
                     Timber.e(e, "Error processing liked songs")
                     updateState { copy(likedSongs = SyncStatus.Error(e.message ?: "Unknown error")) }
                 }
@@ -540,6 +568,10 @@ class SyncUtils @Inject constructor(
                             }
                             delay(DB_OPERATION_DELAY_MS)
                         } catch (e: Exception) {
+                            // Never swallow coroutine cancellation: doing so let the sync loop keep
+                            // running after its job was cancelled, blasting through every song and
+                            // flooding logs / pegging the CPU (made playback fail right after a restore).
+                            if (e is CancellationException) throw e
                             Timber.e(e, "mirrorLikedSongs: failed to add song ${song.id}")
                         }
                     }
@@ -553,6 +585,10 @@ class SyncUtils @Inject constructor(
                             database.update(song.song.copy(liked = false, likedDate = null))
                             delay(DB_OPERATION_DELAY_MS)
                         } catch (e: Exception) {
+                            // Never swallow coroutine cancellation: doing so let the sync loop keep
+                            // running after its job was cancelled, blasting through every song and
+                            // flooding logs / pegging the CPU (made playback fail right after a restore).
+                            if (e is CancellationException) throw e
                             Timber.e(e, "mirrorLikedSongs: failed to unlike song ${song.id}")
                         }
                     }
@@ -560,6 +596,10 @@ class SyncUtils @Inject constructor(
                     updateState { copy(likedSongs = SyncStatus.Completed) }
                     Timber.d("mirrorLikedSongs: mirrored ${remoteSongs.size} liked songs from account")
                 } catch (e: Exception) {
+                            // Never swallow coroutine cancellation: doing so let the sync loop keep
+                            // running after its job was cancelled, blasting through every song and
+                            // flooding logs / pegging the CPU (made playback fail right after a restore).
+                            if (e is CancellationException) throw e
                     Timber.e(e, "Error mirroring liked songs")
                     updateState { copy(likedSongs = SyncStatus.Error(e.message ?: "Unknown error")) }
                 }
@@ -607,6 +647,10 @@ class SyncUtils @Inject constructor(
                             }
                             delay(DB_OPERATION_DELAY_MS)
                         } catch (e: Exception) {
+                            // Never swallow coroutine cancellation: doing so let the sync loop keep
+                            // running after its job was cancelled, blasting through every song and
+                            // flooding logs / pegging the CPU (made playback fail right after a restore).
+                            if (e is CancellationException) throw e
                             Timber.e(e, "Failed to push library song: ${song.id}")
                         }
                     }
@@ -623,6 +667,10 @@ class SyncUtils @Inject constructor(
                             }
                             delay(DB_OPERATION_DELAY_MS)
                         } catch (e: Exception) {
+                            // Never swallow coroutine cancellation: doing so let the sync loop keep
+                            // running after its job was cancelled, blasting through every song and
+                            // flooding logs / pegging the CPU (made playback fail right after a restore).
+                            if (e is CancellationException) throw e
                             Timber.e(e, "Failed to process song: ${song.id}")
                         }
                     }
@@ -630,6 +678,10 @@ class SyncUtils @Inject constructor(
                     updateState { copy(librarySongs = SyncStatus.Completed) }
                     Timber.d("Synced ${remoteSongs.size} library songs")
                 } catch (e: Exception) {
+                            // Never swallow coroutine cancellation: doing so let the sync loop keep
+                            // running after its job was cancelled, blasting through every song and
+                            // flooding logs / pegging the CPU (made playback fail right after a restore).
+                            if (e is CancellationException) throw e
                     Timber.e(e, "Error processing library songs")
                     updateState { copy(librarySongs = SyncStatus.Error(e.message ?: "Unknown error")) }
                 }
@@ -682,6 +734,10 @@ class SyncUtils @Inject constructor(
                             database.update(song.song.toggleUploaded())
                             delay(DB_OPERATION_DELAY_MS)
                         } catch (e: Exception) {
+                            // Never swallow coroutine cancellation: doing so let the sync loop keep
+                            // running after its job was cancelled, blasting through every song and
+                            // flooding logs / pegging the CPU (made playback fail right after a restore).
+                            if (e is CancellationException) throw e
                             Timber.e(e, "[UPLOAD_DEBUG] Failed to update song: ${song.id}")
                         }
                     }
@@ -703,6 +759,10 @@ class SyncUtils @Inject constructor(
                             }
                             delay(DB_OPERATION_DELAY_MS)
                         } catch (e: Exception) {
+                            // Never swallow coroutine cancellation: doing so let the sync loop keep
+                            // running after its job was cancelled, blasting through every song and
+                            // flooding logs / pegging the CPU (made playback fail right after a restore).
+                            if (e is CancellationException) throw e
                             Timber.e(e, "[UPLOAD_DEBUG] Failed to process song: ${song.id}")
                         }
                     }
@@ -710,6 +770,10 @@ class SyncUtils @Inject constructor(
                     updateState { copy(uploadedSongs = SyncStatus.Completed) }
                     Timber.d("[UPLOAD_DEBUG] Synced ${remoteSongs.size} uploaded songs successfully")
                 } catch (e: Exception) {
+                            // Never swallow coroutine cancellation: doing so let the sync loop keep
+                            // running after its job was cancelled, blasting through every song and
+                            // flooding logs / pegging the CPU (made playback fail right after a restore).
+                            if (e is CancellationException) throw e
                     Timber.e(e, "[UPLOAD_DEBUG] Error processing uploaded songs")
                     updateState { copy(uploadedSongs = SyncStatus.Error(e.message ?: "Unknown error")) }
                 }
@@ -759,6 +823,10 @@ class SyncUtils @Inject constructor(
                             }
                             delay(DB_OPERATION_DELAY_MS)
                         } catch (e: Exception) {
+                            // Never swallow coroutine cancellation: doing so let the sync loop keep
+                            // running after its job was cancelled, blasting through every song and
+                            // flooding logs / pegging the CPU (made playback fail right after a restore).
+                            if (e is CancellationException) throw e
                             Timber.e(e, "Failed to process album: ${album.id}")
                         }
                     }
@@ -766,6 +834,10 @@ class SyncUtils @Inject constructor(
                     updateState { copy(likedAlbums = SyncStatus.Completed) }
                     Timber.d("Synced ${remoteAlbums.size} liked albums")
                 } catch (e: Exception) {
+                            // Never swallow coroutine cancellation: doing so let the sync loop keep
+                            // running after its job was cancelled, blasting through every song and
+                            // flooding logs / pegging the CPU (made playback fail right after a restore).
+                            if (e is CancellationException) throw e
                     Timber.e(e, "Error processing liked albums")
                     updateState { copy(likedAlbums = SyncStatus.Error(e.message ?: "Unknown error")) }
                 }
@@ -801,6 +873,10 @@ class SyncUtils @Inject constructor(
                             database.update(album.album.toggleUploaded())
                             delay(DB_OPERATION_DELAY_MS)
                         } catch (e: Exception) {
+                            // Never swallow coroutine cancellation: doing so let the sync loop keep
+                            // running after its job was cancelled, blasting through every song and
+                            // flooding logs / pegging the CPU (made playback fail right after a restore).
+                            if (e is CancellationException) throw e
                             Timber.e(e, "Failed to update album: ${album.id}")
                         }
                     }
@@ -820,6 +896,10 @@ class SyncUtils @Inject constructor(
                             }.onFailure { reportException(it) }
                             delay(DB_OPERATION_DELAY_MS)
                         } catch (e: Exception) {
+                            // Never swallow coroutine cancellation: doing so let the sync loop keep
+                            // running after its job was cancelled, blasting through every song and
+                            // flooding logs / pegging the CPU (made playback fail right after a restore).
+                            if (e is CancellationException) throw e
                             Timber.e(e, "Failed to process album: ${album.id}")
                         }
                     }
@@ -827,6 +907,10 @@ class SyncUtils @Inject constructor(
                     updateState { copy(uploadedAlbums = SyncStatus.Completed) }
                     Timber.d("Synced ${remoteAlbums.size} uploaded albums")
                 } catch (e: Exception) {
+                            // Never swallow coroutine cancellation: doing so let the sync loop keep
+                            // running after its job was cancelled, blasting through every song and
+                            // flooding logs / pegging the CPU (made playback fail right after a restore).
+                            if (e is CancellationException) throw e
                     Timber.e(e, "Error processing uploaded albums")
                     updateState { copy(uploadedAlbums = SyncStatus.Error(e.message ?: "Unknown error")) }
                 }
@@ -872,6 +956,10 @@ class SyncUtils @Inject constructor(
                             }
                             delay(DB_OPERATION_DELAY_MS)
                         } catch (e: Exception) {
+                            // Never swallow coroutine cancellation: doing so let the sync loop keep
+                            // running after its job was cancelled, blasting through every song and
+                            // flooding logs / pegging the CPU (made playback fail right after a restore).
+                            if (e is CancellationException) throw e
                             Timber.e(e, "Failed to subscribe artist on YouTube: ${artist.id}")
                         }
                     }
@@ -883,6 +971,10 @@ class SyncUtils @Inject constructor(
                                 try {
                                     YouTube.getChannelId(artist.id).takeIf { it.isNotEmpty() }
                                 } catch (e: Exception) {
+                            // Never swallow coroutine cancellation: doing so let the sync loop keep
+                            // running after its job was cancelled, blasting through every song and
+                            // flooding logs / pegging the CPU (made playback fail right after a restore).
+                            if (e is CancellationException) throw e
                                     null
                                 }
                             } else null
@@ -917,6 +1009,10 @@ class SyncUtils @Inject constructor(
                             }
                             delay(DB_OPERATION_DELAY_MS)
                         } catch (e: Exception) {
+                            // Never swallow coroutine cancellation: doing so let the sync loop keep
+                            // running after its job was cancelled, blasting through every song and
+                            // flooding logs / pegging the CPU (made playback fail right after a restore).
+                            if (e is CancellationException) throw e
                             Timber.e(e, "Failed to process artist: ${artist.id}")
                         }
                     }
@@ -924,6 +1020,10 @@ class SyncUtils @Inject constructor(
                     updateState { copy(artists = SyncStatus.Completed) }
                     Timber.d("Synced ${remoteArtists.size} artist subscriptions")
                 } catch (e: Exception) {
+                            // Never swallow coroutine cancellation: doing so let the sync loop keep
+                            // running after its job was cancelled, blasting through every song and
+                            // flooding logs / pegging the CPU (made playback fail right after a restore).
+                            if (e is CancellationException) throw e
                     Timber.e(e, "Error processing artist subscriptions")
                     updateState { copy(artists = SyncStatus.Error(e.message ?: "Unknown error")) }
                 }
@@ -985,6 +1085,10 @@ class SyncUtils @Inject constructor(
                             executeSyncPlaylist(playlist.id, playlistEntity.id)
                             delay(DB_OPERATION_DELAY_MS)
                         } catch (e: Exception) {
+                            // Never swallow coroutine cancellation: doing so let the sync loop keep
+                            // running after its job was cancelled, blasting through every song and
+                            // flooding logs / pegging the CPU (made playback fail right after a restore).
+                            if (e is CancellationException) throw e
                             Timber.e(e, "Failed to sync playlist ${playlist.title}")
                         }
                     }
@@ -992,6 +1096,10 @@ class SyncUtils @Inject constructor(
                     updateState { copy(playlists = SyncStatus.Completed) }
                     Timber.d("Synced ${remotePlaylists.size} saved playlists")
                 } catch (e: Exception) {
+                            // Never swallow coroutine cancellation: doing so let the sync loop keep
+                            // running after its job was cancelled, blasting through every song and
+                            // flooding logs / pegging the CPU (made playback fail right after a restore).
+                            if (e is CancellationException) throw e
                     Timber.e(e, "Error processing saved playlists")
                     updateState { copy(playlists = SyncStatus.Error(e.message ?: "Unknown error")) }
                 }
@@ -1022,10 +1130,18 @@ class SyncUtils @Inject constructor(
                     executeSyncPlaylist(playlist.playlist.browseId!!, playlist.playlist.id)
                     delay(DB_OPERATION_DELAY_MS)
                 } catch (e: Exception) {
+                            // Never swallow coroutine cancellation: doing so let the sync loop keep
+                            // running after its job was cancelled, blasting through every song and
+                            // flooding logs / pegging the CPU (made playback fail right after a restore).
+                            if (e is CancellationException) throw e
                     Timber.e(e, "Failed to sync playlist ${playlist.playlist.name}")
                 }
             }
         } catch (e: Exception) {
+                            // Never swallow coroutine cancellation: doing so let the sync loop keep
+                            // running after its job was cancelled, blasting through every song and
+                            // flooding logs / pegging the CPU (made playback fail right after a restore).
+                            if (e is CancellationException) throw e
             Timber.e(e, "Error syncing auto-sync playlists")
         }
     }
@@ -1086,6 +1202,10 @@ class SyncUtils @Inject constructor(
                     }
                     Timber.d("syncPlaylist: Successfully synced playlist")
                 } catch (e: Exception) {
+                            // Never swallow coroutine cancellation: doing so let the sync loop keep
+                            // running after its job was cancelled, blasting through every song and
+                            // flooding logs / pegging the CPU (made playback fail right after a restore).
+                            if (e is CancellationException) throw e
                     Timber.e(e, "Error processing playlist sync")
                 }
             }.onFailure { e ->
@@ -1115,12 +1235,20 @@ class SyncUtils @Inject constructor(
                             database.delete(duplicate.playlist)
                             delay(DB_OPERATION_DELAY_MS)
                         } catch (e: Exception) {
+                            // Never swallow coroutine cancellation: doing so let the sync loop keep
+                            // running after its job was cancelled, blasting through every song and
+                            // flooding logs / pegging the CPU (made playback fail right after a restore).
+                            if (e is CancellationException) throw e
                             Timber.e(e, "Failed to remove duplicate playlist: ${duplicate.id}")
                         }
                     }
                 }
             }
         } catch (e: Exception) {
+                            // Never swallow coroutine cancellation: doing so let the sync loop keep
+                            // running after its job was cancelled, blasting through every song and
+                            // flooding logs / pegging the CPU (made playback fail right after a restore).
+                            if (e is CancellationException) throw e
             Timber.e(e, "Error cleaning up duplicate playlists")
         }
     }
@@ -1188,6 +1316,10 @@ class SyncUtils @Inject constructor(
             updateState { copy(overallStatus = SyncStatus.Completed, currentOperation = "") }
             Timber.d("clearAllSyncedContent: Cleanup completed successfully")
         } catch (e: Exception) {
+                            // Never swallow coroutine cancellation: doing so let the sync loop keep
+                            // running after its job was cancelled, blasting through every song and
+                            // flooding logs / pegging the CPU (made playback fail right after a restore).
+                            if (e is CancellationException) throw e
             Timber.e(e, "clearAllSyncedContent: Error during cleanup")
             updateState { copy(overallStatus = SyncStatus.Error(e.message ?: "Unknown error"), currentOperation = "") }
         }

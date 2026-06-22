@@ -1,13 +1,8 @@
-# Aura Hi-Res Player 0.0.3
+# Aura Hi-Res Player 0.0.4
 
-## Sonido sin distorsión, garantizado en cualquier dispositivo
-- El limitador true-peak y la normalización de volumen ahora nunca se saltan sin querer: si tenías activado el "audio offload" (que mandaba el sonido directo al hardware y se brincaba el limitador), ahora se desactiva solo mientras la normalización esté encendida. Así un tema con master fuerte ya no puede saturar.
-
-## Arreglado: el tema mostraba dos opciones seleccionadas a la vez
-- En Ajustes → Tema aparecían marcados al mismo tiempo "Seguir sistema" y "AMOLED". Ahora solo puede haber uno seleccionado.
-- Al actualizar, tu app queda automáticamente en el **tema del sistema** (claro/oscuro automático + colores dinámicos) para que veas el tema nuevo desde que abres. Puedes cambiarlo cuando quieras.
+## Arreglado: tras restaurar un respaldo, la app no reproducía
+- Al restaurar, arrancaba la sincronización de tus favoritos y, si esa sincronización se cancelaba, el proceso no se detenía: recorría toda tu biblioteca lanzando errores cientos de veces por segundo, saturaba el CPU y la reproducción dejaba de funcionar.
+- Ahora la sincronización se detiene limpiamente al cancelarse. Restaurar un respaldo ya no satura la app ni rompe la reproducción, y las copias futuras tampoco tendrán este problema.
 
 ## Lo que se hizo (técnico)
-- App.seedDefaultsIfNeeded: el seed ya no fuerza pureBlack=true junto a darkMode=AUTO (eso encendía a la vez "Seguir sistema" y "AMOLED").
-- App.migrateThemeSystemOnlyV2: migración única que deja a los usuarios existentes en AUTO + pureBlack OFF + tema dinámico ON al actualizar.
-- ThemeScreen: las tarjetas "Seguir sistema"/"Light"/"Dark" requieren !pureBlack, así nunca se muestran dos modos seleccionados.
+- SyncUtils: los bucles de sincronización ahora re-lanzan CancellationException en lugar de tragársela en `catch (e: Exception)`. Antes, una cancelación dejaba el bucle "vivo" iterando miles de canciones al instante (flood de "Failed to process song / Job was cancelled" + pico de CPU), lo que impedía reproducir justo después de restaurar.
