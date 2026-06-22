@@ -812,7 +812,7 @@ fun ArtistScreen(
                                         val more = section.moreEndpoint
                                         if (more != null) {
                                             navController.navigate(
-                                                "artist/${viewModel.artistId}/items?browseId=${more.browseId}?params=${more.params}",
+                                                "artist/${viewModel.artistId}/items?browseId=${more.browseId}&params=${more.params}",
                                             )
                                         } else {
                                             ArtistSectionBuffer.title = section.title

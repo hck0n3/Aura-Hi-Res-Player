@@ -543,22 +543,8 @@ class MusicService :
                     NotificationManager.IMPORTANCE_LOW
                 )
             )
-            val pending = PendingIntent.getActivity(
-                this,
-                0,
-                Intent(this, MainActivity::class.java),
-                PendingIntent.FLAG_IMMUTABLE
-            )
-            val notification: Notification = NotificationCompat.Builder(this, CHANNEL_ID)
-                .setContentTitle(getString(R.string.music_player))
-                .setContentText("")
-                .setSmallIcon(R.drawable.ic_launcher_nobg)  
-                .setContentIntent(pending)
-                .setOngoing(true)
-                .build()
-            startForeground(NOTIFICATION_ID, notification)
         } catch (e: Exception) {
-            Timber.tag(TAG).e(e, "Failed to create foreground notification")
+            Timber.tag(TAG).e(e, "Failed to create notification channel")
             reportException(e)
         }
 
@@ -3584,22 +3570,22 @@ class MusicService :
 
     /**
      * Gain pair (incoming, outgoing) for crossfade progress [p] in 0..1, per the selected style.
-     *  0 = Smooth/equal-power (default): sin/cos keep incoming^2 + outgoing^2 = 1, so the perceived
-     *      loudness stays constant through the blend — NO mid-transition volume dip.
-     *  1 = Linear: straight amplitude ramp (simple, slight dip).
+     *  0 = Linear (default): straight amplitude ramp (1 - p). Prevents amplitude sum from exceeding 1.0,
+     *      avoiding harsh ducking by the TruePeakLimiter at the end of the audio chain.
+     *  1 = Smooth/equal-power: sin/cos keep incoming^2 + outgoing^2 = 1. Can cause limiting/pumping.
      *  2 = Long S-curve: equal-power but eased timing (very gradual in/out).
      *  3 = Exponential (quick): each track dominates its half, snappier handover.
      */
     private fun crossfadeGains(curve: Int, p: Float): Pair<Float, Float> {
         val half = (Math.PI / 2.0).toFloat()
         return when (curve) {
-            1 -> p to (1f - p)
+            1 -> kotlin.math.sin(p * half) to kotlin.math.cos(p * half)
             2 -> {
                 val s = p * p * (3f - 2f * p) // smoothstep
                 kotlin.math.sin(s * half) to kotlin.math.cos(s * half)
             }
             3 -> (p * p) to ((1f - p) * (1f - p))
-            else -> kotlin.math.sin(p * half) to kotlin.math.cos(p * half)
+            else -> p to (1f - p)
         }
     }
 

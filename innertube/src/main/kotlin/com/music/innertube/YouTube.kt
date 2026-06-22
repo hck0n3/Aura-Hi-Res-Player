@@ -362,16 +362,21 @@ object YouTube {
 
     suspend fun albumSongs(playlistId: String, album: AlbumItem? = null): Result<List<SongItem>> = runCatching {
         var response = innerTube.browse(WEB_REMIX, "VL$playlistId").body<BrowseResponse>()
-        val songs = response.contents?.twoColumnBrowseResultsRenderer
+        val songs = (response.contents?.twoColumnBrowseResultsRenderer
             ?.secondaryContents?.sectionListRenderer
             ?.contents?.firstOrNull()
             ?.musicPlaylistShelfRenderer?.contents?.getItems()
             ?.mapNotNull {
                 AlbumPage.getSong(it, album)
-            }!!
+            } ?: response.contents?.singleColumnBrowseResultsRenderer?.tabs?.firstOrNull()?.tabRenderer?.content?.sectionListRenderer
+            ?.contents?.firstOrNull()?.musicPlaylistShelfRenderer?.contents?.getItems()?.mapNotNull {
+                AlbumPage.getSong(it, album)
+            } ?: emptyList())
             .toMutableList()
-        var continuation = response.contents.twoColumnBrowseResultsRenderer.secondaryContents.sectionListRenderer
-            .contents.firstOrNull()?.musicPlaylistShelfRenderer?.contents?.getContinuation()
+        var continuation = response.contents?.twoColumnBrowseResultsRenderer?.secondaryContents?.sectionListRenderer
+            ?.contents?.firstOrNull()?.musicPlaylistShelfRenderer?.contents?.getContinuation()
+            ?: response.contents?.singleColumnBrowseResultsRenderer?.tabs?.firstOrNull()?.tabRenderer?.content?.sectionListRenderer
+            ?.contents?.firstOrNull()?.musicPlaylistShelfRenderer?.contents?.getContinuation()
         val seenContinuations = mutableSetOf<String>()
         var requestCount = 0
         val maxRequests = 1 // Limit pages to prevent delays in album loading
