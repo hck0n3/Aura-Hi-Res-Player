@@ -63,6 +63,9 @@ val ThemeSystemDefaultAppliedKey = booleanPreferencesKey("theme_system_default_a
 // One-time migration v2: force the clean "system theme only" state on update (AUTO + pureBlack OFF +
 // dynamic ON), so existing users land on the new system theme and never see two theme cards selected.
 val ThemeSystemOnlyV2AppliedKey = booleanPreferencesKey("theme_system_only_v2_applied")
+// One-time migration: turn on the requested playback defaults (crossfade ON @ 9s, skip silence ON,
+// skip silence instantly ON) for existing users once; afterwards their own choices are respected.
+val PlaybackDefaultsV1AppliedKey = booleanPreferencesKey("playback_defaults_v1_applied")
 val SpotifySpDcKey = stringPreferencesKey("spotify_sp_dc")
 val SpotifySpKeyKey = stringPreferencesKey("spotify_sp_key")
 val SpotifyAccountNameKey = stringPreferencesKey("spotify_account_name")

@@ -112,6 +112,7 @@ class App : Application(), SingletonImageLoader.Factory {
         migrateMiniPlayerDefaultBg(settings)
         migrateThemeSystemDefault(settings)
         migrateThemeSystemOnlyV2(settings)
+        migratePlaybackDefaults(settings)
         migrateLegacyIcon(settings)
         val locale = Locale.getDefault()
         val languageTag = locale.language
@@ -263,6 +264,14 @@ class App : Application(), SingletonImageLoader.Factory {
             p[iad1tya.echo.music.constants.HideVideoSongsKey] = false
             p[iad1tya.echo.music.constants.HideYoutubeShortsKey] = true
 
+            // Playback defaults (user request): smooth transition (crossfade) ON at 9s with the
+            // equal-power curve (1 = "Suave/igual potencia"), skip silence ON and skip silence instantly ON.
+            p[iad1tya.echo.music.constants.CrossfadeEnabledKey] = true
+            p[iad1tya.echo.music.constants.CrossfadeDurationKey] = 9f
+            p[iad1tya.echo.music.constants.CrossfadeCurveKey] = 1
+            p[iad1tya.echo.music.constants.SkipSilenceKey] = true
+            p[iad1tya.echo.music.constants.SkipSilenceInstantKey] = true
+
             // Appearance follows the SYSTEM theme by default (user request): light/dark AUTO and the
             // system dynamic (Material You) colour theme ON — so a fresh install has ONLY the automatic
             // system theme selected, not a manual colour. The teal accent below is just the fallback
@@ -327,6 +336,25 @@ class App : Application(), SingletonImageLoader.Factory {
                 p[iad1tya.echo.music.constants.PureBlackKey] = false
                 p[iad1tya.echo.music.constants.DynamicThemeKey] = true
                 p[iad1tya.echo.music.constants.ThemeSystemOnlyV2AppliedKey] = true
+            }
+        }
+    }
+
+    /**
+     * One-time: apply the requested playback defaults for EVERYONE on this update — smooth transition
+     * (crossfade) ON at 9s, skip silence ON, and skip silence instantly ON. Runs once (own flag);
+     * afterwards the user's later choices are respected.
+     */
+    private suspend fun migratePlaybackDefaults(settings: androidx.datastore.preferences.core.Preferences) {
+        if (settings[iad1tya.echo.music.constants.PlaybackDefaultsV1AppliedKey] == true) return
+        runCatching {
+            dataStore.edit { p ->
+                p[iad1tya.echo.music.constants.CrossfadeEnabledKey] = true
+                p[iad1tya.echo.music.constants.CrossfadeDurationKey] = 9f
+                p[iad1tya.echo.music.constants.CrossfadeCurveKey] = 1
+                p[iad1tya.echo.music.constants.SkipSilenceKey] = true
+                p[iad1tya.echo.music.constants.SkipSilenceInstantKey] = true
+                p[iad1tya.echo.music.constants.PlaybackDefaultsV1AppliedKey] = true
             }
         }
     }

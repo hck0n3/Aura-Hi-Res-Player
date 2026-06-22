@@ -3523,7 +3523,21 @@ class MusicService :
         fadingPlayer?.removeListener(this)
         fadingPlayer?.removeListener(sleepTimer)
 
-        
+        // Stop the outgoing player from auto-advancing into the NEXT track as it fades out. It still
+        // holds the full queue, so when the current song ends mid-fade it would start the next song —
+        // which the incoming player is ALSO playing → "the next track plays twice at once" at the start
+        // of the transition. Drop everything after its current item and disable repeat so it just ends.
+        try {
+            fadingPlayer?.let { fp ->
+                fp.repeatMode = androidx.media3.common.Player.REPEAT_MODE_OFF
+                val next = fp.currentMediaItemIndex + 1
+                if (next in 1 until fp.mediaItemCount) fp.removeMediaItems(next, fp.mediaItemCount)
+            }
+        } catch (e: Exception) {
+            Timber.tag(TAG).e(e, "crossfade: failed to cap fading player queue")
+        }
+
+
         player.addListener(object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 if (isCrossfading && fadingPlayer != null) {
@@ -3555,7 +3569,7 @@ class MusicService :
             // Finer steps (~40 ms) so the volume ramp is smooth, not stair-stepped like the old 20 steps.
             val steps = (duration / 40L).toInt().coerceIn(24, 240)
             val stepTime = duration / steps
-            val curve = try { dataStore.get(CrossfadeCurveKey, 0) } catch (e: Exception) { 0 }
+            val curve = try { dataStore.get(CrossfadeCurveKey, 1) } catch (e: Exception) { 1 }
             val startVolume = try { fadingPlayer?.volume ?: 1f } catch(e:Exception) { 1f }
 
             for (i in 0..steps) {
@@ -3586,9 +3600,9 @@ class MusicService :
 
     /**
      * Gain pair (incoming, outgoing) for crossfade progress [p] in 0..1, per the selected style.
-     *  0 = Linear (default): straight amplitude ramp (1 - p). Prevents amplitude sum from exceeding 1.0,
-     *      avoiding harsh ducking by the TruePeakLimiter at the end of the audio chain.
-     *  1 = Smooth/equal-power: sin/cos keep incoming^2 + outgoing^2 = 1. Can cause limiting/pumping.
+     *  0 = Linear: straight amplitude ramp (1 - p); amplitude sum never exceeds 1.0.
+     *  1 = Smooth/equal-power (default): sin/cos keep incoming^2 + outgoing^2 = 1 (constant power), so
+     *      both tracks carry the SAME power through the blend — the natural, even crossfade.
      *  2 = Long S-curve: equal-power but eased timing (very gradual in/out).
      *  3 = Exponential (quick): each track dominates its half, snappier handover.
      */

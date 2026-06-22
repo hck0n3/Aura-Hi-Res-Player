@@ -107,7 +107,7 @@ fun PlayerSettings(
     )
     val (crossfadeCurve, onCrossfadeCurveChange) = rememberPreference(
         CrossfadeCurveKey,
-        defaultValue = 0
+        defaultValue = 1
     )
     val (crossfadeGapless, onCrossfadeGaplessChange) = rememberPreference(
         CrossfadeGaplessKey,
@@ -290,10 +290,12 @@ fun PlayerSettings(
 
     val crossfadeCurveName: (Int) -> String = {
         when (it) {
-            1 -> "Lineal"
+            // Labels must match the actual gain math in MusicService.crossfadeGains: 0 = linear (p,1-p),
+            // 1 = equal-power (sin/cos). They were previously swapped, so "Suave" played linear math.
+            1 -> "Suave (igual potencia)"
             2 -> "Suave larga (curva S)"
             3 -> "Exponencial (rápida)"
-            else -> "Suave (igual potencia)"
+            else -> "Lineal"
         }
     }
 
