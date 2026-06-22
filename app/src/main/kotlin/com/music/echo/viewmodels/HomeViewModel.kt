@@ -376,7 +376,10 @@ class HomeViewModel @Inject constructor(
                     .rankedByTaste()
                     .take(20)
 
-                quickPicks.value = combined.ifEmpty { relatedSongs.rankedByTaste().take(20) }
+                val newQuickPicks = combined.ifEmpty { relatedSongs.rankedByTaste().take(20) }
+                // Don't blank an already-populated shelf on a transient empty read (the intermittent
+                // "home went empty until I restarted" bug); only allow empty on the very first load.
+                if (newQuickPicks.isNotEmpty() || quickPicks.value == null) quickPicks.value = newQuickPicks
             }
             QuickPicks.LAST_LISTEN -> {
                 val song = database.events().first().firstOrNull()?.song
@@ -471,8 +474,9 @@ class HomeViewModel @Inject constructor(
 
         getQuickPicks()
 
-        forgottenFavorites.value = database.forgottenFavorites().first()
+        val newForgotten = database.forgottenFavorites().first()
             .filterVideoSongs(hideVideoSongs).rankedByTaste().take(20)
+        if (newForgotten.isNotEmpty() || forgottenFavorites.value == null) forgottenFavorites.value = newForgotten
 
         val fromTimeStamp = System.currentTimeMillis() - 86400000L * 7 * 2
         val keepListeningSongs = database.mostPlayedSongs(fromTimeStamp, limit = 15, offset = 5).first()
@@ -481,7 +485,9 @@ class HomeViewModel @Inject constructor(
             .filter { it.album.thumbnailUrl != null }.shuffled().take(5)
         val keepListeningArtists = database.mostPlayedArtists(fromTimeStamp).first()
             .filter { it.artist.isYouTubeArtist && it.artist.thumbnailUrl != null }.shuffled().take(5)
-        keepListening.value = (keepListeningSongs + keepListeningAlbums + keepListeningArtists).shuffled()
+        val newKeepListening = (keepListeningSongs + keepListeningAlbums + keepListeningArtists).shuffled()
+        // Same guard: a transient empty read must not wipe a populated "keep listening" shelf.
+        if (newKeepListening.isNotEmpty() || keepListening.value == null) keepListening.value = newKeepListening
 
         allLocalItems.value = (quickPicks.value.orEmpty() + forgottenFavorites.value.orEmpty() + keepListening.value.orEmpty())
             .filter { it is Song || it is Album }
@@ -768,7 +774,9 @@ class HomeViewModel @Inject constructor(
                 .distinctUntilChanged()
                 .first()
 
-            load()
+            // Guard the initial load so a transient exception (e.g. a throttled DB/network read) can't
+            // silently kill the coroutine and leave the home blank until the app is restarted.
+            runCatching { load() }.onFailure { reportException(it) }
         }
 
         
