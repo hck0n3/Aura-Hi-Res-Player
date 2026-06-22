@@ -1,38 +1,29 @@
 <div align="center">
-  <img src="assets/Echo-new.png" alt="Echo Music Logo" width="140"/>
 
-  <h1>Echo Music</h1>
+  <h1>Aura Hi-Res Player</h1>
 
-  <p><strong>A modern Android music app with ad-free streaming, synced lyrics, offline playback, and an intuitive user experience.
-</strong></p>
+  <p><strong>A high-fidelity Android music player — TIDAL-grade loudness without distortion, real-time EQ &amp; Auto-EQ, music videos &amp; animated canvases, synced lyrics, offline playback, podcasts, and an on-device recommendation AI.</strong></p>
 
-  [![GitHub Release](https://img.shields.io/github/v/release/iad1tya/Echo-Music?style=for-the-badge&color=6f42c1)](https://github.com/iad1tya/Echo-Music/releases)
-  [![GitHub Stars](https://img.shields.io/github/stars/iad1tya/Echo-Music?style=for-the-badge&color=e3b341)](https://github.com/iad1tya/Echo-Music/stargazers)
-  [![License](https://img.shields.io/github/license/iad1tya/Echo-Music?style=for-the-badge&color=28a745)](LICENSE)
-  [![Telegram](https://img.shields.io/badge/Telegram-Join-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white)](https://t.me/EchoMusicApp)
-  [![Discord](https://img.shields.io/badge/Discord-Join-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/EcfV3AxH5c)
+  <p><em>Reproductor de música Hi-Res para Android — sonido potente sin distorsión, ecualizador en tiempo real, videos y lienzos animados, letras sincronizadas, modo sin conexión, podcasts e IA de recomendación en el dispositivo.</em></p>
 
-  
-  <a href="https://trendshift.io/repositories/20485" target="_blank">
-    <img src="https://trendshift.io/api/badge/repositories/20485" alt="EchoMusicApp%2FEcho-Music | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/>
-  </a>
+  [![GitHub Release](https://img.shields.io/github/v/release/hck0n3/Aura-Hi-Res-Player?style=for-the-badge&color=6f42c1)](https://github.com/hck0n3/Aura-Hi-Res-Player/releases/latest)
+  [![GitHub Stars](https://img.shields.io/github/stars/hck0n3/Aura-Hi-Res-Player?style=for-the-badge&color=e3b341)](https://github.com/hck0n3/Aura-Hi-Res-Player/stargazers)
+  [![License](https://img.shields.io/badge/License-GPL--3.0-28a745?style=for-the-badge)](LICENSE)
+  [![Platform](https://img.shields.io/badge/Platform-Android%208%2B-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://github.com/hck0n3/Aura-Hi-Res-Player/releases/latest)
 
   <br>
 
-  <a href="https://echomusic.fun/download">
+  <a href="https://github.com/hck0n3/Aura-Hi-Res-Player/releases/latest">
     <img src="assets/download.png" alt="Download" width="180"/>
   </a>
-  &nbsp;
-  <a href="https://echomusic.fun/obtainium">
-    <img src="assets/obtainium.png" alt="Get it on Obtainium" width="180"/>
-  </a>
+
 </div>
 
 ---
 
-## Overview
-
-Echo Music delivers a seamless, premium listening experience by leveraging YouTube Music's vast library — without the ads. It adds powerful extras including offline downloads, real-time synchronized lyrics, and environment-aware music recognition.
+> **Built on [Echo Music](https://github.com/EchoMusicApp/Echo-Music).** Aura Hi-Res Player is a customized, Spanish-first fork focused on audiophile sound, music video / canvas playback, podcasts, and smarter on-device recommendations. Licensed under GPL-3.0 — see [Credits & Acknowledgements](#credits--acknowledgements).
+>
+> **Basado en [Echo Music](https://github.com/EchoMusicApp/Echo-Music).** Aura Hi-Res Player es una versión personalizada (en español por defecto) centrada en el sonido de alta fidelidad, la reproducción de video/lienzos, los podcasts y unas recomendaciones más inteligentes en el dispositivo.
 
 ---
 
@@ -41,21 +32,26 @@ Echo Music delivers a seamless, premium listening experience by leveraging YouTu
 - [Overview](#overview)
 - [Screenshots](#screenshots)
 - [Features](#features)
-  - [What's New](#whats-new)
+  - [High-Fidelity Audio](#high-fidelity-audio)
   - [Streaming & Playback](#streaming--playback)
-  - [Discovery & Echo Find](#discovery--echo-find)
+  - [Discovery & AI](#discovery--ai)
+  - [Library & Import](#library--import)
   - [Lyrics](#lyrics)
-  - [Integrations](#integrations)
-  - [Smart Playback](#smart-playback)
-  - [Customization](#customization)
-- [Installation & Setup](#installation--setup)
-  - [Android Installation](#android-installation)
-  - [Building from Source](#building-from-source)
-- [Community & Support](#community--support)
-- [Support the Project](#support-the-project)
-  - [Cryptocurrency](#cryptocurrency)
-- [Special Thanks](#special-thanks)
-- [Star History](#star-history)
+  - [Visuals & Personalization](#visuals--personalization)
+  - [Reliability & Integrations](#reliability--integrations)
+- [Características (Español)](#características-español)
+- [Installation / Instalación](#installation--instalación)
+- [Building from Source](#building-from-source)
+- [Credits & Acknowledgements](#credits--acknowledgements)
+- [License](#license)
+
+---
+
+## Overview
+
+Aura Hi-Res Player delivers a premium, ad-free listening experience on top of YouTube Music's vast catalog, then layers on a serious audiophile sound chain and a set of extras you won't find in a stock client: real-time equalization, headphone Auto-EQ, music-video and animated canvas playback, an independent podcast engine, Spotify import, and an on-device AI that learns your taste.
+
+*Aura Hi-Res Player ofrece una experiencia premium y sin anuncios sobre el catálogo de YouTube Music, con una cadena de sonido de alta fidelidad y un conjunto de extras: ecualización en tiempo real, Auto-EQ por auriculares, reproducción de video y lienzos animados, motor propio de podcasts, importación desde Spotify y una IA que aprende tus gustos directamente en el dispositivo.*
 
 ---
 
@@ -65,30 +61,30 @@ Echo Music delivers a seamless, premium listening experience by leveraging YouTu
   <table style="margin: 0 auto; border-collapse: collapse;">
     <tr>
       <td align="center" style="padding: 10px; border: none;">
-        <strong>Home Screen</strong><br><br>
-        <img src="Screenshots/sc_1.png" alt="Home Screen" width="200" style="border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.2);"/>
+        <strong>Home</strong><br><br>
+        <img src="Screenshots/sc_1.png" alt="Home Screen" width="200" style="border-radius: 8px;"/>
       </td>
       <td align="center" style="padding: 10px; border: none;">
-        <strong>Music Player</strong><br><br>
-        <img src="Screenshots/sc_2.png" alt="Music Player" width="200" style="border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.2);"/>
+        <strong>Player</strong><br><br>
+        <img src="Screenshots/sc_2.png" alt="Music Player" width="200" style="border-radius: 8px;"/>
       </td>
       <td align="center" style="padding: 10px; border: none;">
-        <strong>Synchronized Lyrics</strong><br><br>
-        <img src="Screenshots/sc_3.png" alt="Synchronized Lyrics" width="200" style="border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.2);"/>
+        <strong>Synced Lyrics</strong><br><br>
+        <img src="Screenshots/sc_3.png" alt="Synchronized Lyrics" width="200" style="border-radius: 8px;"/>
       </td>
     </tr>
     <tr>
       <td align="center" style="padding: 10px; border: none;">
         <strong>Search & Explore</strong><br><br>
-        <img src="Screenshots/sc_4.png" alt="Search & Explore" width="200" style="border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.2);"/>
+        <img src="Screenshots/sc_4.png" alt="Search & Explore" width="200" style="border-radius: 8px;"/>
       </td>
       <td align="center" style="padding: 10px; border: none;">
-        <strong>Music Library</strong><br><br>
-        <img src="Screenshots/sc_5.png" alt="Music Library" width="200" style="border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.2);"/>
+        <strong>Library</strong><br><br>
+        <img src="Screenshots/sc_5.png" alt="Music Library" width="200" style="border-radius: 8px;"/>
       </td>
       <td align="center" style="padding: 10px; border: none;">
-        <strong>Echo Find (Recognition)</strong><br><br>
-        <img src="Screenshots/sc_6.png" alt="Echo Find" width="200" style="border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.2);"/>
+        <strong>Song Recognition</strong><br><br>
+        <img src="Screenshots/sc_6.png" alt="Song Recognition" width="200" style="border-radius: 8px;"/>
       </td>
     </tr>
   </table>
@@ -98,154 +94,150 @@ Echo Music delivers a seamless, premium listening experience by leveraging YouTu
 
 ## Features
 
-### What's New
-- **Redesigned UI** — Cleaner, faster, and more intuitive interface from the ground up.
-- **Import from Spotify** — Bring your playlists and tracks over with ease.
-- **Listen Together** — Sync music in real time, similar to Spotify Jam.
-- **Podcast Support** — Listen to podcasts alongside your music library.
-- **Local Media Support** — Play music files stored directly on your device.
-- **Dynamic Island Support** — Enhanced playback notifications on supported Android devices.
+### High-Fidelity Audio
+- **TIDAL-grade loudness, no distortion** — content is normalized to **−14 LUFS** (quiet tracks are brought up with makeup gain) and protected by a **2× oversampled true-peak limiter at −1 dBTP**, so everything sounds loud and full without clipping.
+- **Multiband compression** — tightens the mix for a consistent, powerful sound across tracks.
+- **Real-time graphic equalizer** — standard **ISO frequency bands**, applied live without restarting playback (no audio drop while you tweak).
+- **Auto-EQ** — automatic headphone correction using the online **AutoEq** database; pick your model and the app applies a measured target curve.
+- **Per-device EQ profiles** — different correction per output device.
+- **Uniform crossfade** — selectable transition styles (linear, equal-power, long S-curve, exponential) with even volume across the blend.
 
 ### Streaming & Playback
-- **Ad-Free** — Stream without any interruptions.
-- **Seamless Playback** — Switch effortlessly between audio-only and video modes.
-- **Background Playback** — Listen while using other apps or with the screen off.
-- **Offline Mode** — Download tracks, albums, and playlists via a dedicated download manager.
-- **Crossfade** — Smooth transitions between tracks.
-- **Canvas Animations** — Visual animations while playing music.
+- **Ad-free** streaming over the YouTube Music catalog.
+- **Music videos & audio** — switch between audio-only and full music-video playback.
+- **Animated canvases** — looping video backdrops while a song plays (Tidal & Apple-style providers).
+- **Background playback** — keep listening with the screen off or other apps open.
+- **Offline mode** — download tracks, albums, and playlists via a dedicated download manager.
+- **Fast start & smart preloading** — the first song starts quickly and the next ones are pre-warmed.
+- **Google Cast / Chromecast** — beam audio to Cast devices (GMS build).
+- **Android Auto** — stable in-car experience that survives reconnects.
+- **Android TV** — leanback launcher support for the big screen.
+- **Local media** — play music files stored on the device.
+- **Listen Together** — sync playback with friends in real time.
+- **Rich playback notifications** — including Dynamic Island-style presentation on supported devices.
 
-### Discovery & Echo Find
-- **Echo Find** — Identify songs playing around you using advanced audio recognition.
-- **Smart Recommendations** — Personalized suggestions based on your listening history.
-- **Comprehensive Browsing** — Explore Charts, Podcasts, Moods, and Genres.
+### Discovery & AI
+- **On-device recommendation AI (AffinityEngine)** — learns from recency, skips, and time-of-day to rank your **Home**, autoplay, radio, and smart shuffle — all locally, no profile uploads.
+- **Smart Shuffle** — shuffle weighted by what you actually like.
+- **AI playlist from text** — describe a vibe and get a generated playlist.
+- **"Dislike" filtering** — disliked tracks are kept out of recommendations and autoplay.
+- **Genre coherence** — keeps autoplay/radio within a consistent lane instead of drifting.
+- **Release radar** — surfaces new releases from artists you follow.
+- **Auto-completed discography** — authoritative artist catalogs (iTunes + YouTube), including an "Appears on" section.
+- **Song recognition** — identify music playing around you (ShazamKit-based).
+- **Voice search** and rich browsing of Charts, Moods, and Genres.
+
+### Library & Import
+- **Import from Spotify** — bring over playlists and liked songs.
+- **Migrate Spotify artists** — re-follow your Spotify artists inside the app.
+- **Save playlist to library** and **favorite albums**.
+- **Podcasts** — an independent engine (Apple/iTunes + RSS) with progress tracking, pinning, universal search, and direct-URL playback — works regardless of YouTube/Spotify.
+- **Google Drive sync / backup** — back up and restore your library (GMS build).
 
 ### Lyrics
-- **Multiple Lyric Animations** — Choose from various lyric display styles.
-- **Word-by-Word Lyrics** — Precise per-word synchronization.
-- **Lyrics+** — New lyrics provider for improved accuracy and coverage.
-- **AI Translation** — Built-in Google Translate integration for lyrics in any language.
+- **Synced lyrics** with multiple animation styles.
+- **Word-by-word** synchronization.
+- **Lyrics+** provider for better accuracy and coverage.
+- **AI translation** — translate lyrics into any language inline.
 
-### Integrations
-- **Music Sharing via Odesli** — Share songs as Song.link for cross-platform listening.
-- **Set as Ringtone** — Directly set any song as your device ringtone.
+### Visuals & Personalization
+- **Spanish by default** — full Spanish localization out of the box, plus other languages.
+- **Vinyl turntable widget** — a home-screen widget styled like a record player.
+- **Material You theming** — system theme by default, themed accents, dynamic color.
+- **UI density scale**, **high refresh rate** support, **hide player thumbnail**, **crop album art**, **hide video songs**, **hide YouTube Shorts**.
 
-### Smart Playback
-- **Pause on Mute** — Auto-pause when your device is muted.
-- **Resume on Bluetooth** — Playback resumes when headphones or earbuds reconnect.
-
-### Customization
-- **UI Density Scale** — Adjust interface spacing to your preference.
-- **High Refresh Rate Support** — Smoother UI and animations on supported displays.
-- **Hide Player Thumbnail** — Keep the player minimal without album art.
-- **Crop Album Art** — Adjust album art display to fit your style.
-- **Hide Video Songs** — Filter out video content from your feed.
-- **Hide YouTube Shorts** — Keep Shorts out of your music browsing.
+### Reliability & Integrations
+- **Background reliability** — optional battery-optimization exemption to resist aggressive OEM task-killers.
+- **Clean restart after Google sign-in** — reliable cold-restart so login changes apply cleanly.
+- **Set as ringtone** — use any song as your device ringtone.
+- **Share via Odesli** — share songs as Song.link for cross-platform listening.
+- **Smart playback** — pause on mute, resume on Bluetooth reconnect.
 
 ---
 
-## Installation & Setup
+## Características (Español)
 
-### Android Installation
+**Audio de alta fidelidad**
+- Sonido potente tipo TIDAL **sin distorsión**: normalización a **−14 LUFS** (sube las canciones flojas) + **limitador de pico real a −1 dBTP**.
+- **Compresión multibanda** para un sonido parejo y con cuerpo.
+- **Ecualizador en tiempo real** con bandas **ISO**, sin cortes de audio al ajustar.
+- **Auto-EQ** por auriculares usando la base de datos online **AutoEq**, y **perfiles de EQ por dispositivo**.
+- **Crossfade uniforme** con estilos de transición seleccionables y volumen parejo.
 
-Download the latest pre-compiled APK from the [Releases Page](https://github.com/iad1tya/Echo-Music/releases/latest).
+**Reproducción**
+- Streaming **sin anuncios** sobre YouTube Music; **video musical** y solo audio.
+- **Lienzos animados** de fondo, **reproducción en segundo plano** y **modo sin conexión** (descargas).
+- **Inicio rápido** y precarga; **Google Cast**, **Android Auto**, **Android TV**, **medios locales** y **Escuchar juntos**.
 
-### Building from Source
+**Descubrimiento e IA**
+- **IA de recomendación en el dispositivo (AffinityEngine)**: aprende de tu recencia, saltos y hora del día para ordenar Inicio, autoplay, radio y smart shuffle.
+- **Smart Shuffle**, **lista por IA a partir de un texto**, filtro de **"No me gusta"**, **coherencia de género** y **release radar**.
+- **Discografía autocompletada** (iTunes + YouTube, con "Aparece en"), **reconocimiento de canciones**, **búsqueda por voz** y exploración de Charts/Estados de ánimo/Géneros.
 
-1. **Clone the Repository**
+**Biblioteca**
+- **Importar desde Spotify** (listas y "me gusta"), **migrar artistas de Spotify**, **guardar playlist en la biblioteca** y **álbumes favoritos**.
+- **Podcasts** con motor propio (Apple/iTunes + RSS): progreso, fijado, búsqueda universal.
+- **Copia de seguridad con Google Drive**.
+
+**Letras y personalización**
+- **Letras sincronizadas** (varios estilos, palabra por palabra, Lyrics+ y **traducción por IA**).
+- **App en español por defecto**, **widget de vinilo**, tema Material You y opciones de densidad, alta tasa de refresco, ocultar miniatura/videos/Shorts.
+
+**Fiabilidad**
+- **Exención de batería** contra apps que matan procesos, **reinicio limpio tras iniciar sesión con Google**, **establecer como tono**, **compartir vía Odesli**, pausa al silenciar y reanudar al reconectar Bluetooth.
+
+---
+
+## Installation / Instalación
+
+Download the latest signed APK from the **[Releases page](https://github.com/hck0n3/Aura-Hi-Res-Player/releases/latest)**.
+*Descarga el APK firmado más reciente desde la **[página de Releases](https://github.com/hck0n3/Aura-Hi-Res-Player/releases/latest)**.*
+
+- **`Aura-Hi-Res-Player-<version>.apk`** — arm64 build, the small default download for modern phones.
+- **`Aura-Hi-Res-Player-<version>-universal.apk`** — all ABIs (armeabi-v7a/arm64/x86), for Android TV and older 32-bit devices.
+
+> If you see an "App not installed" error when updating, uninstall the previous version first.
+> Si al actualizar ves el error "Aplicación no instalada", desinstala primero la versión anterior.
+
+---
+
+## Building from Source
+
+1. **Clone**
    ```bash
-   git clone https://github.com/iad1tya/Echo-Music.git
-   cd Echo-Music
+   git clone https://github.com/hck0n3/Aura-Hi-Res-Player.git
+   cd Aura-Hi-Res-Player
    ```
-
-2. **Configure Android SDK**
-   Create a `local.properties` file:
+2. **Configure the Android SDK** — create a `local.properties` file:
    ```bash
    echo "sdk.dir=/path/to/your/android/sdk" > local.properties
    ```
-   *(For detailed paths on Windows/macOS/Linux, refer to [SETUP.md](SETUP.md))*
-
-3. **Firebase Configuration (Optional)**
-   Firebase is required for analytics and crash reporting. See the instructions in [SETUP.md](SETUP.md#3-configure-firebase-optional) for adding your `google-services.json`.
-
-4. **Build the Application**
-   Echo Music has two build variants: **FOSS** (without Google Play Services / Cast) and **GMS** (with Cast support).
-   
-   To build the FOSS Universal Debug variant:
+3. **Build.** There are two variants — **FOSS** (no Google Play Services / Cast) and **GMS** (with Cast & Drive):
    ```bash
-   ./gradlew assembleUniversalFossDebug
+   ./gradlew assembleArm64FossDebug      # arm64, FOSS
+   ./gradlew assembleUniversalGmsRelease # all ABIs, GMS, release
    ```
-   To build the GMS Universal Debug variant:
-   ```bash
-   ./gradlew assembleUniversalGmsDebug
-   ```
-   *(For optimized ARM64 builds, release builds, or other options, refer to [SETUP.md](SETUP.md))*
+   Requires **JDK 21**. Release builds are signed via the `STORE_PASSWORD` / `KEY_ALIAS` / `KEY_PASSWORD` environment variables (CI generates a fallback keystore when no signing secrets are set).
 
 ---
 
-## Community & Support
+## Credits & Acknowledgements
 
-Join the community for updates, discussions, and help.
+Aura Hi-Res Player is a fork of **[Echo Music](https://github.com/EchoMusicApp/Echo-Music)** by [iad1tya](https://github.com/iad1tya). Huge thanks to the upstream project and the wider open-source ecosystem it builds on:
 
-<div align="center">
-  <a href="https://discord.gg/EcfV3AxH5c">
-    <img src="assets/discord.png" alt="Discord Logo" width="140"/>
-  </a>
-  &nbsp;&nbsp;&nbsp;&nbsp;
-  <a href="https://t.me/EchoMusicApp">
-    <img src="assets/telegram.png" alt="Telegram Logo" width="130"/>
-  </a>
-</div>
-
----
-
-## Support the Project
-
-If Echo Music has been useful to you, consider supporting its development.
-
-<div align="center">
-  <a href="https://buymeacoffee.com/iad1tya">
-    <img src="assets/bmac.png" alt="Buy Me A Coffee Logo" width="140"/>
-  </a>
-  &nbsp;&nbsp;&nbsp;&nbsp;
-  <a href="https://intradeus.github.io/http-protocol-redirector/?r=upi://pay?pa=iad1tya@upi&pn=Aditya%20Yadav&am=&tn=Thank%20You">
-    <img src="assets/upi.svg" alt="UPI Logo" width="100"/>
-  </a>
-  &nbsp;&nbsp;&nbsp;&nbsp;
-  <a href="https://www.patreon.com/cw/iad1tya">
-    <img src="assets/patreon3.png" alt="Patreon Logo" width="100"/>
-  </a>
-</div>
-
-### Cryptocurrency
-
-| Network | Address |
+| Project | Role |
 | :--- | :--- |
-| Bitcoin | `bc1qcvyr7eekha8uytmffcvgzf4h7xy7shqzke35fy` |
-| Ethereum | `0x51bc91022E2dCef9974D5db2A0e22d57B360e700` |
-| Solana | `9wjca3EQnEiqzqgy7N5iqS1JGXJiknMQv6zHgL96t94S` |
-
----
-
-## Special Thanks
-
-Echo Music stands on the shoulders of several excellent open-source projects. Sincere thanks to:
-
-| Project | Description |
-| :--- | :--- |
-| [Metrolist](https://github.com/MetrolistGroup/Metrolist) & [Vivi Music](https://github.com/vivizzz007/vivi-music) | Foundational inspiration and architecture reference |
-| [ArchiveTune](https://github.com/koiverse/ArchiveTune) | Material You UI inspiration |
+| [Echo Music](https://github.com/EchoMusicApp/Echo-Music) | Upstream base app and architecture |
+| [Metrolist](https://github.com/MetrolistGroup/Metrolist) & [Vivi Music](https://github.com/vivizzz007/vivi-music) | Foundational inspiration and reference |
 | [Better Lyrics](https://better-lyrics.boidu.dev/) | Lyrics enhancement and synchronization |
 | [SimpMusic](https://github.com/maxrave-dev/SimpMusic) | Lyrics implementation reference |
-| [Music Recognizer](https://github.com/aleksey-saenko/MusicRecognizer) | Audio recognition (Echo Find) |
+| [Music Recognizer](https://github.com/aleksey-saenko/MusicRecognizer) | Audio recognition |
+| [AutoEq](https://github.com/jaakkopasanen/AutoEq) | Headphone correction profiles for Auto-EQ |
+
+If you'd like to support the original developer, see the support links on the [Echo Music](https://github.com/EchoMusicApp/Echo-Music) repository.
 
 ---
 
-## Star History
+## License
 
-[![Star History Chart](https://api.star-history.com/svg?repos=EchoMusicApp/Echo-Music&type=timeline&legend=top-left)](https://www.star-history.com/#EchoMusicApp/Echo-Music&type=timeline&legend=top-left)
-
----
-
-<div align="center">
-  Licensed under <a href="LICENSE">GPL-3.0</a>
-</div>
+Licensed under **[GPL-3.0](LICENSE)**.
