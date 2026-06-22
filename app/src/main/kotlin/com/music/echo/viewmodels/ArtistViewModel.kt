@@ -146,27 +146,12 @@ class ArtistViewModel @Inject constructor(
                         }
                     }
 
-                    // Preload each album's contents in the background so opening an album (and its songs)
-                    // is instant. Skips albums already cached; gentle concurrency to not hammer the network.
-                    launch(Dispatchers.IO) {
-                        val albumIds = filteredSections.flatMap { it.items }
-                            .filterIsInstance<com.music.innertube.models.AlbumItem>()
-                            .map { it.id }.distinct().take(6)
-                        if (albumIds.isEmpty()) return@launch
-                        val sem = Semaphore(2)
-                        coroutineScope {
-                            albumIds.map { id ->
-                                async {
-                                    sem.withPermit {
-                                        if (database.album(id).first() != null) return@withPermit
-                                        YouTube.album(id, withSongs = false).onSuccess { albumPage ->
-                                            runCatching { database.transaction { insert(albumPage) } }
-                                        }
-                                    }
-                                }
-                            }.awaitAll()
-                        }
-                    }
+                    // NOTE: an album-preload used to run here, fetching up to 6 albums the moment the
+                    // artist page opened. It saturated YouTube (which then throttles for ~30s), so the
+                    // FIRST album you tapped hung ~30s while re-entering worked (the storm was over). It
+                    // also only cached album metadata (withSongs=false), which AlbumViewModel re-fetches
+                    // anyway — net-negative. Removed: albums now load cleanly on open (AlbumViewModel)
+                    // and are cached for instant re-open, with no background storm starving that open.
 
                     // "Aparece en" (Appears on), like Spotify: albums where this artist is a guest. Built
                     // from iTunes guest credits + a parallel YouTube lookup, appended as its own section.
