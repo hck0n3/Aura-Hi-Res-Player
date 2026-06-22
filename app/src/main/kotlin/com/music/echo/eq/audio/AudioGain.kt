@@ -41,16 +41,18 @@ fun normalizationMultiplier(
 
 /**
  * Loudness makeup gain (dB, >= 0) that brings a quiet track UP toward the reference loudness so it
- * plays as loud as a streaming service (TIDAL-style), instead of being left quiet. [loudnessDb] is
- * the stream's loudness relative to reference (YouTube convention: normalize by `-loudnessDb`). Only
+ * plays as loud as a streaming service (TIDAL/Spotify-style), instead of being left quiet. [loudnessDb]
+ * is the stream's loudness relative to reference (YouTube convention: normalize by `-loudnessDb`). Only
  * the positive (boost) part is returned here — attenuation of loud masters is handled separately by
- * [normalizationMultiplier]. Capped at [maxBoostDb] so we never chase unrealistic targets; the
- * true-peak limiter downstream turns the remaining peaks into clean ceiling, never clipping.
+ * [normalizationMultiplier]. Capped at [maxBoostDb] (default +12 dB, matching the true-peak limiter's
+ * combined-makeup ceiling MAX_MAKEUP) so quiet/very-quiet tracks are actually leveled up to roughly the
+ * same loudness as everything else; the true-peak limiter downstream turns the resulting peaks into a
+ * clean ceiling, never clipping. (Was +6 dB, which left quiet songs noticeably softer than the rest.)
  */
 fun loudnessMakeupDb(
     loudnessDb: Double?,
     enabled: Boolean,
-    maxBoostDb: Double = 6.0,
+    maxBoostDb: Double = 12.0,
 ): Double {
     if (!enabled || loudnessDb == null) return 0.0
     return (-loudnessDb).coerceIn(0.0, maxBoostDb)

@@ -94,8 +94,9 @@ class AudioGainTest {
     }
 
     @Test fun makeupIsCappedAtMaxBoost() {
-        // loudnessDb -20 → would be +20 dB → capped at default 6 dB (conservative for small speakers)
-        assertEquals(6.0, loudnessMakeupDb(-20.0, enabled = true), 1e-9)
+        // loudnessDb -20 → would be +20 dB → capped at the default +12 dB (the true-peak limiter's
+        // combined-makeup ceiling); quiet tracks are leveled up, the limiter keeps it clean.
+        assertEquals(12.0, loudnessMakeupDb(-20.0, enabled = true), 1e-9)
     }
 
     // ── dbToLinear ──
