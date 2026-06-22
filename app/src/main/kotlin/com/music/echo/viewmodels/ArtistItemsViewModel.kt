@@ -161,12 +161,15 @@ constructor(
             .distinctBy { norm(it) }
             .take(50)
 
-        val semaphore = Semaphore(10)
+        // 6 concurrent searches (was 10): 10 at once can itself trip YouTube throttling, which then
+        // times out individual lookups and silently drops real albums (e.g. "Lenguaje de Amor").
+        val semaphore = Semaphore(6)
         val found = missing.map { mt ->
             async {
                 semaphore.withPermit {
                   // Bound each lookup so one slow YouTube search can't stall the whole completion.
-                  withTimeoutOrNull(8000L) {
+                  // 12s (was 8s) gives a throttled search enough time to return before being dropped.
+                  withTimeoutOrNull(12000L) {
                     val target = norm(mt)
                     val album = YouTube.search("$artistName $mt", YouTube.SearchFilter.FILTER_ALBUM)
                         .getOrNull()?.items?.filterIsInstance<AlbumItem>()
