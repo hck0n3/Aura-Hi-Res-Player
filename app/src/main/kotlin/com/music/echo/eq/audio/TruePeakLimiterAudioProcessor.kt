@@ -53,10 +53,10 @@ class TruePeakLimiterAudioProcessor : AudioProcessor {
         private const val MAX_MAKEUP = 4.0f
         // Master output trim (linear): a global volume reduction so the loudness pipeline drives the
         // limiter less hard and stops sounding "too loud / distorted".
-        // 0.55 ≈ -5.2 dB — restored to the level the user asked for when prioritising clean sound over
-        // loudness (no distortion, esp. on external/Bluetooth speakers). The limiter has plenty of
-        // headroom now, so transients stay clean.
-        private const val OUTPUT_TRIM = 0.55f
+        // 0.85 ≈ -1.4 dB — streaming-loudness target (~-14 LUFS, like Spotify/YouTube/TIDAL): loud and
+        // full, +3.8 dB vs the old 0.55, while staying ~1.4 dB under unity so the -1 dBTP true-peak
+        // limiter (CEILING) still guarantees clean output on every device (DAC / Bluetooth / speaker).
+        private const val OUTPUT_TRIM = 0.85f
 
         /** Per-track loudness makeup (linear, >= 1). 1.0 = no boost. Set from MusicService. */
         @Volatile

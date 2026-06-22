@@ -25,6 +25,16 @@ export default {
     const deviceId = body && body.device_id;
     if (!licenseKey || !deviceId) return json({ status: "invalid" }, 400);
 
+    // Perpetual master keys (owner / QA team): always active, on ANY device, with NO device binding and
+    // NO expiry. Read ONLY from the MASTER_KEYS secret (comma-separated) — never hardcoded in source, so
+    // they can't leak through the public repo and be used to bypass the paid subscription. This is fully
+    // separate from and does not alter the Gumroad subscription flow below.
+    const masterKeys = (env.MASTER_KEYS || "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (masterKeys.includes(licenseKey)) return json({ status: "active" });
+
     const gum = await verifyGumroad(env.PRODUCT_ID, licenseKey);
     if (gum === "invalid") return json({ status: "invalid" });
     if (gum === "ended") return json({ status: "ended" });

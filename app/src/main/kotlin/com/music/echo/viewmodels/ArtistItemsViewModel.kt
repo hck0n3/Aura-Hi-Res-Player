@@ -141,11 +141,17 @@ constructor(
 
         val have = baseAlbums.map { norm(it.title) }.toMutableSet()
 
-        // iTunes / Apple Music is the authority. Query the US store (most complete for international
-        // artists) AND the local store, merged, so nothing is missed.
-        val itunesUs = async { iTunesDiscography.fetchAlbumTitles(artistName, "us") }
-        val itunesLocal = async { iTunesDiscography.fetchAlbumTitles(artistName, systemRegionCode()) }
-        val itunes = (itunesUs.await() + itunesLocal.await()).distinct()
+        // iTunes / Apple Music is the authority on which releases exist. Query several stores in
+        // parallel and merge — the US store, the device's local store, and the main Spanish-speaking
+        // markets — so a Latin/regional artist's catalog (e.g. Alex Campos) isn't cut short by the US
+        // store alone. Each store is one cheap request; only releases that ALSO resolve on YouTube are
+        // actually added, so extra stores can only make the list more complete, never add junk.
+        val stores = listOf("us", systemRegionCode(), "mx", "es", "co", "ar", "cl").distinct()
+        val itunes = stores
+            .map { store -> async { iTunesDiscography.fetchAlbumTitles(artistName, store) } }
+            .awaitAll()
+            .flatten()
+            .distinct()
         // Don't mix EPs/Singles into the Albums list (iTunes/Apple keep them separate). iTunes marks them
         // as "Title - EP" / "Title - Single", so only complete FULL albums here.
         val epOrSingle = Regex("(?i)[-–—]\\s*(ep|single)\\b|\\((?:ep|single)\\)")

@@ -79,6 +79,13 @@ class ArtistViewModel @Inject constructor(
         }
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
+    companion object {
+        // In-memory, per-session cache of the fetched artist page keyed by artistId, so re-opening an
+        // artist renders instantly (no spinner) while a fresh copy is still fetched in the background.
+        private val pageCache =
+            java.util.concurrent.ConcurrentHashMap<String, ArtistPage>()
+    }
+
     init {
         
         viewModelScope.launch {
@@ -102,10 +109,14 @@ class ArtistViewModel @Inject constructor(
             val hideExplicit = context.dataStore.get(HideExplicitKey, false)
             val hideVideoSongs = context.dataStore.get(HideVideoSongsKey, false)
             val hideYoutubeShorts = context.dataStore.get(HideYoutubeShortsKey, false)
+            // Instant re-open: show this session's cached artist page immediately (no spinner), then
+            // still refresh from YouTube below so the data stays up to date.
+            if (artistPage == null) pageCache[artistId]?.let { artistPage = it }
             // Retry transient failures (YouTube throttling) so the screen doesn't get stuck on the spinner,
             // which forced the user to leave and re-enter the artist several times.
             var attempt = 0
-            while (artistPage == null && attempt < 3) {
+            var loaded = false
+            while (!loaded && attempt < 3) {
             YouTube.artist(artistId)
                 .onSuccess { page ->
                     val filteredSections = page.sections
@@ -115,8 +126,9 @@ class ArtistViewModel @Inject constructor(
                         .filter { section -> section.items.isNotEmpty() }
 
                     artistPage = page.copy(sections = filteredSections)
-                    
-                    
+                    pageCache[artistId] = artistPage!!
+                    loaded = true
+
                     val topSongsSection = page.sections.find { it.items.firstOrNull() is com.music.innertube.models.SongItem }
                     launch(Dispatchers.IO) {
                         for (item in topSongsSection?.items.orEmpty()) {
@@ -213,7 +225,7 @@ class ArtistViewModel @Inject constructor(
                 }.onFailure {
                     if (attempt >= 2) reportException(it)
                 }
-            if (artistPage == null) {
+            if (!loaded) {
                 attempt++
                 if (attempt < 3) kotlinx.coroutines.delay(700L * attempt)
             }

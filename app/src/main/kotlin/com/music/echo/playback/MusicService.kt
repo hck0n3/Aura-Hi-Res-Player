@@ -1770,27 +1770,29 @@ class MusicService :
 
     fun toggleLike() {
         scope.launch {
-            val existing = currentSong.first()?.song
-            val song = if (existing != null) {
-                existing.toggleLike()
-            } else {
-                // Fresh online track not saved in the DB yet — insert it first so the like ALWAYS
-                // registers. Tapping like before the song was persisted used to silently do nothing,
-                // which is why the heart "sometimes worked and sometimes didn't".
-                val meta = player.currentMetadata ?: return@launch
-                database.query { insert(meta) }
-                (database.song(meta.id).first()?.song ?: return@launch).toggleLike()
-            }
+            val meta = player.currentMetadata ?: return@launch
+            // Insert (if needed) + read-back + toggle + update MUST happen inside ONE database.query
+            // task. database.query runs its block asynchronously on the query executor, so the old code
+            // used two separate query{} calls and raced: it read the song back BEFORE the insert had
+            // committed, got null and silently bailed (return@launch) — which is why the heart did
+            // "absolutely nothing" on online tracks not yet saved to the library. One task = the insert
+            // is guaranteed committed before we read it, so the like ALWAYS registers.
             database.query {
-                update(song)
-                syncUtils.likeSong(song)
+                var base = getSongByIdBlocking(meta.id)?.song
+                if (base == null) {
+                    insert(meta)
+                    base = getSongByIdBlocking(meta.id)?.song
+                }
+                val toggled = base?.toggleLike() ?: return@query
+                update(toggled)
+                syncUtils.likeSong(toggled)
 
-                if (dataStore.get(AutoDownloadOnLikeKey, true) && song.liked) {
+                if (dataStore.get(AutoDownloadOnLikeKey, true) && toggled.liked) {
                     val downloadRequest =
                         androidx.media3.exoplayer.offline.DownloadRequest
-                            .Builder(song.id, song.id.toUri())
-                            .setCustomCacheKey(song.id)
-                            .setData(song.title.toByteArray())
+                            .Builder(toggled.id, toggled.id.toUri())
+                            .setCustomCacheKey(toggled.id)
+                            .setData(toggled.title.toByteArray())
                             .build()
                     androidx.media3.exoplayer.offline.DownloadService.sendAddDownload(
                         this@MusicService,

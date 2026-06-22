@@ -55,26 +55,46 @@ class CoilBitmapLoader(
 
     override fun loadBitmap(uri: Uri): ListenableFuture<Bitmap> =
         scope.future(Dispatchers.IO) {
-            val request = ImageRequest.Builder(context)
-                .data(uri)
-                .allowHardware(false)
-                .build()
-
-            val result = context.imageLoader.execute(request)
-
-            when (result) {
-                is ErrorResult -> {
-                    createFallbackBitmap()
+            // 1) Try Coil (uses the app's image cache).
+            val viaCoil = runCatching {
+                val request = ImageRequest.Builder(context)
+                    .data(uri)
+                    .allowHardware(false)
+                    .build()
+                when (val result = context.imageLoader.execute(request)) {
+                    is SuccessResult -> result.image.toBitmap().copyIfNeeded()
+                    is ErrorResult -> null
                 }
-                is SuccessResult -> {
-                    try {
-                        val bitmap = result.image.toBitmap()
-                        bitmap.copyIfNeeded()
-                    } catch (e: Exception) {
-                        Timber.tag("CoilBitmapLoader").w(e, "Failed to convert image to bitmap")
-                        createFallbackBitmap()
+            }.getOrNull()
+            if (viaCoil != null) return@future viaCoil
+
+            // 2) Fallback: download the bytes directly. Coil can fail to run in the MediaSession
+            //    service context (singleton imageLoader / network component not ready), which left
+            //    the media notification with no large icon — only the app icon showed. A plain
+            //    HTTP fetch makes the cover load reliably for the notification.
+            val direct = runCatching {
+                when (uri.scheme?.lowercase()) {
+                    "http", "https" -> {
+                        val conn = (java.net.URL(uri.toString()).openConnection()
+                                as java.net.HttpURLConnection).apply {
+                            connectTimeout = 10_000
+                            readTimeout = 10_000
+                            doInput = true
+                        }
+                        try {
+                            conn.inputStream.use { BitmapFactory.decodeStream(it) }?.copyIfNeeded()
+                        } finally {
+                            conn.disconnect()
+                        }
                     }
+                    else -> context.contentResolver.openInputStream(uri)
+                        ?.use { BitmapFactory.decodeStream(it) }?.copyIfNeeded()
                 }
+            }.getOrElse {
+                Timber.tag("CoilBitmapLoader").w(it, "Direct artwork fetch failed")
+                null
             }
+
+            direct ?: createFallbackBitmap()
         }
 }
