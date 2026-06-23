@@ -1,8 +1,8 @@
-# Aura Hi-Res Player 0.4.1
+# Aura Hi-Res Player 0.4.2
 
-## Sincronización YouTube Music: el login ya te devuelve a la selección 🔁
-- Antes, al iniciar sesión con Google la app se **reiniciaba** y nunca volvías a la pantalla para elegir qué sincronizar.
-- Ahora, igual que la migración de Spotify: **inicias sesión → la app vuelve sola a la pantalla "Sincronizar desde YouTube Music"** para que elijas qué traer (me gusta, álbumes, artistas, suscripciones, playlists). Al terminar, el programa queda con tu contenido.
+## Arreglo real: el login de YouTube Music ahora SÍ te lleva a la selección 🔁
+- En 0.4.1 el flag se limpiaba antes de tiempo y eso **cancelaba** la navegación → la app se quedaba en el inicio y no te dejaba elegir.
+- Ahora, tras iniciar sesión y reiniciar, la app **abre sola la pantalla "Sincronizar desde YouTube Music"** para que elijas qué traer (me gusta, álbumes, artistas, suscripciones, playlists), igual que Spotify.
 
 ## Técnico
-- Flag `OpenYtmSyncAfterLoginKey`: se marca al pulsar "Iniciar sesión" desde el apartado de sync; el login hace su cold-restart habitual (ProcessPhoenix) y, tras reiniciar, MainActivity navega automáticamente a `settings/ytm_sync`.
+- MainActivity: en el LaunchedEffect del flag se **navega primero y se limpia el flag después** (limpiar antes cambiaba la key del LaunchedEffect y cancelaba el delay/navigate). Delay 700 ms para asegurar el grafo de navegación.

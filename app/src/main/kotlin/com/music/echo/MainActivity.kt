@@ -790,9 +790,11 @@ class MainActivity : ComponentActivity() {
                     rememberPreference(iad1tya.echo.music.constants.OpenYtmSyncAfterLoginKey, false)
                 LaunchedEffect(openYtmSyncAfterLogin) {
                     if (openYtmSyncAfterLogin) {
-                        setOpenYtmSyncAfterLogin(false)
-                        kotlinx.coroutines.delay(500)
+                        // Wait for the nav graph to be ready, navigate, THEN clear the flag. Clearing
+                        // first would flip this LaunchedEffect's key and cancel it mid-delay → no nav.
+                        kotlinx.coroutines.delay(700)
                         runCatching { navController.navigate("settings/ytm_sync") }
+                        setOpenYtmSyncAfterLogin(false)
                     }
                 }
 
