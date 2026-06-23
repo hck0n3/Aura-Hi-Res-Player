@@ -10,6 +10,7 @@ import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.sin
+import kotlin.math.sqrt
 
 /**
  * Final stage of the player chain: loudness makeup + **two-band** true-peak soft limiter.
@@ -131,7 +132,12 @@ class TruePeakLimiterAudioProcessor : AudioProcessor {
             outputBuffer.clear()
         }
 
-        val mk = (loudnessMakeup * eqMakeup).coerceAtMost(MAX_MAKEUP) * OUTPUT_TRIM
+        // When the EQ is boosting, only restore HALF the auto-headroom it pulled (sqrt of eqMakeup) so the
+        // boosted output isn't too hot (you no longer have to drop the preamp by hand). Safe now that the
+        // limiter is multiband: the boosted band stays present, the rest stays full, and there's no
+        // broadband ducking/"waves" — just a clean, calmer level.
+        val eqGain = if (eqMakeup > 1f) sqrt(eqMakeup) else eqMakeup
+        val mk = (loudnessMakeup * eqGain).coerceAtMost(MAX_MAKEUP) * OUTPUT_TRIM
         if (!enabled) {
             outputBuffer.put(inputBuffer)
             outputBuffer.flip()

@@ -1,8 +1,8 @@
-# Aura Hi-Res Player 0.1.6
+# Aura Hi-Res Player 0.1.7
 
-## Ecualizador con pegada real: subir graves ya NO baja toda la canción
-- El gran cambio que pediste, estilo Poweramp. Antes, al subir una banda (sobre todo graves), el limitador bajaba el volumen de TODA la mezcla cada vez que esa banda pegaba un pico.
-- Ahora el limitador es **multibanda**: separa los graves del resto y controla cada parte por separado. Subes los graves → solo los graves se controlan, **los medios/agudos se quedan a tope** → la canción ya no baja de volumen al ecualizar. EQ con pegada y limpio.
+## Ecualizador: ya no queda demasiado alto al subir bandas
+- Con el limitador multibanda nuevo, subir bandas dejaba el sonido muy alto y había que bajar el preamp a mano. Ahora el ecualizador da **headroom automático** al realzar: el nivel queda parejo y cómodo, sin que tengas que tocar el preamp.
+- Se mantiene todo lo bueno del multibanda: las subidas pegan, el resto de la canción NO baja, y sin distorsión ni "oleadas".
 
 ## Lo que se hizo (técnico)
-- TruePeakLimiterAudioProcessor: ahora es un limitador true-peak de 2 bandas. División por filtro complementario (graves = paso-bajo ~250 Hz; resto = señal − graves; suman exactamente la entrada → sin colorear cuando no limita). Cada banda con su detección de pico 2× oversampled y su envolvente (ataque instantáneo, release suave), recombinadas con un softLimit de seguridad. Así un realce de graves ya no "ducked" toda la pista.
+- TruePeakLimiterAudioProcessor: cuando el EQ realza, se restaura solo la mitad del auto-headroom (sqrt del eqMakeup). Ahora es seguro porque el limitador es multibanda (no hay ducking de banda ancha), así que baja el nivel del realce sin pumping.
