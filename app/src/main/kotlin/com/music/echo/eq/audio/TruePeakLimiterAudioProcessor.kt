@@ -5,24 +5,28 @@ import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.util.UnstableApi
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.cos
 import kotlin.math.max
+import kotlin.math.sin
 
 /**
- * Final stage of the player chain: loudness makeup + true-peak soft limiter.
+ * Final stage of the player chain: loudness makeup + **two-band** true-peak soft limiter.
  *
- * Two jobs, in float, so the output is "loud and full like a streaming service" yet never clips:
- *  1. **Makeup gain** ([makeupGain], linear, >= 1) brings quiet tracks UP toward the reference
- *     loudness (set per-track by MusicService from [loudnessMakeupDb]). This is what fixes the
- *     "sounds too quiet" feel — attenuation of loud masters is still done upstream by
- *     [NormalizationGainAudioProcessor].
- *  2. **True-peak limiting**: peaks are detected on a 2x-oversampled signal (linear-interpolated
- *     midpoints) so inter-sample / high-frequency transient peaks — the harsh treble that a
- *     per-sample limiter misses — are caught. Gain reduction is shared across channels (stereo
- *     image preserved), instant-attack (guarantees the ceiling) and smooth-release (transparent),
- *     with a [softLimit] safety net just below full scale.
+ *  1. **Makeup gain** ([loudnessMakeup] × [eqMakeup], linear, >= 1) brings quiet tracks up and cancels
+ *     the EQ's auto-headroom so boosting bands doesn't lower the volume.
+ *  2. **Multiband true-peak limiting**: the signal is split into a LOW band (< ~250 Hz) and the REST
+ *     via a complementary crossover (low = low-pass, high = signal − low → they sum back to the exact
+ *     input, so there is NO coloration when nothing is being limited). Each band is peak-limited
+ *     independently. This is the key to a Poweramp-like EQ: when you boost the bass, only the bass band
+ *     is held to the ceiling — the mids/highs stay at full level, so the whole song no longer "drops in
+ *     volume" every time the boosted band peaks (which a single broadband limiter did).
  *
- * Replaces the old per-sample soft clip that lived inside [JrDspAudioProcessor].
+ *  Peaks are detected on a 2×-oversampled signal (interpolated midpoints) per band so inter-sample /
+ *  high-frequency transient peaks are caught; gain reduction is shared across channels (stereo image
+ *  preserved), instant-attack (guarantees the ceiling), smooth-release (transparent), with a [softLimit]
+ *  safety net on the recombined output just below full scale.
  */
 @UnstableApi
 class TruePeakLimiterAudioProcessor : AudioProcessor {
@@ -33,40 +37,40 @@ class TruePeakLimiterAudioProcessor : AudioProcessor {
     private var inputEnded = false
     private var outputBuffer: ByteBuffer = EMPTY_BUFFER
 
-    // Oversampling history (post-makeup, pre-limit) + release envelope.
-    private var prevL = 0f
-    private var prevR = 0f
-    private var gainEnv = 1f
+    // Crossover low-pass coefficients (computed per sample rate in [configure]).
+    private var lpB0 = 0.0; private var lpB1 = 0.0; private var lpB2 = 0.0
+    private var lpA1 = 0.0; private var lpA2 = 0.0
+    // Crossover low-pass state (transposed DF2), per channel.
+    private var lpZ1L = 0.0; private var lpZ2L = 0.0
+    private var lpZ1R = 0.0; private var lpZ2R = 0.0
+
+    // Per-band oversampling history + per-band release envelopes (shared across channels).
+    private var prevLowL = 0f; private var prevLowR = 0f
+    private var prevHighL = 0f; private var prevHighR = 0f
+    private var lowGainEnv = 1f
+    private var highGainEnv = 1f
 
     companion object {
         private val EMPTY_BUFFER: ByteBuffer =
             ByteBuffer.allocateDirect(0).order(ByteOrder.nativeOrder())
 
-        // Gain-reduction ceiling = -1 dBTP (0.891), the streaming-industry true-peak standard
-        // (Spotify / TIDAL / Apple / YouTube). With 2× oversampling this is a real true-peak ceiling,
-        // leaving safe headroom against inter-sample peaks at the DAC.
+        // Gain-reduction ceiling = -1 dBTP (0.891), the streaming-industry true-peak standard.
         private const val CEILING = 0.891f
         // Smooth release: gain recovers gently after a peak (slow → transparent, no pumping).
         private const val RELEASE_COEFF = 0.0006f
-        // Hard cap on the combined makeup (loudness × EQ-headroom) ≈ +12 dB, so they can't stack into
-        // an extreme boost that the limiter would have to slam (which sounds like distortion).
+        // Hard cap on the combined makeup (loudness × EQ-headroom) ≈ +12 dB.
         private const val MAX_MAKEUP = 4.0f
-        // Master output trim (linear): a global volume reduction so the loudness pipeline drives the
-        // limiter less hard and stops sounding "too loud / distorted".
-        // 0.85 ≈ -1.4 dB — streaming-loudness target (~-14 LUFS, like Spotify/YouTube/TIDAL): loud and
-        // full, +3.8 dB vs the old 0.55, while staying ~1.4 dB under unity so the -1 dBTP true-peak
-        // limiter (CEILING) still guarantees clean output on every device (DAC / Bluetooth / speaker).
+        // Master output trim (linear): ~-1.4 dB, streaming-loudness target (~-14 LUFS).
         private const val OUTPUT_TRIM = 0.85f
+        // Crossover split frequency: bass (where boosts have the most energy and cause the worst
+        // broadband ducking) vs everything else.
+        private const val CROSSOVER_HZ = 250.0
 
         /** Per-track loudness makeup (linear, >= 1). 1.0 = no boost. Set from MusicService. */
         @Volatile
         var loudnessMakeup: Float = 1f
 
-        /**
-         * Cancels the EQ's auto-headroom attenuation (linear, >= 1) so boosting bands no longer drops
-         * the volume; set by [CustomEqualizerAudioProcessor]. Multiplied with [loudnessMakeup]; the
-         * limiter catches the resulting peaks → loud EQ, no clipping.
-         */
+        /** Cancels the EQ's auto-headroom (linear, >= 1) so boosting bands doesn't drop the volume. */
         @Volatile
         var eqMakeup: Float = 1f
 
@@ -81,9 +85,38 @@ class TruePeakLimiterAudioProcessor : AudioProcessor {
         if (encoding != C.ENCODING_PCM_16BIT || channelCount > 2) {
             throw AudioProcessor.UnhandledAudioFormatException(inputAudioFormat)
         }
+        computeCrossover(inputAudioFormat.sampleRate)
         resetState()
         isActive = true
         return inputAudioFormat
+    }
+
+    /** RBJ low-pass biquad for the crossover, normalized (a0 = 1), Q = 1/√2 (Butterworth). */
+    private fun computeCrossover(sampleRate: Int) {
+        val w0 = 2.0 * PI * CROSSOVER_HZ / sampleRate
+        val cosw = cos(w0)
+        val sinw = sin(w0)
+        val alpha = sinw / (2.0 * 0.70710678)
+        val a0 = 1.0 + alpha
+        lpB0 = ((1.0 - cosw) / 2.0) / a0
+        lpB1 = (1.0 - cosw) / a0
+        lpB2 = ((1.0 - cosw) / 2.0) / a0
+        lpA1 = (-2.0 * cosw) / a0
+        lpA2 = (1.0 - alpha) / a0
+    }
+
+    private fun lowpassL(x: Double): Double {
+        val y = lpB0 * x + lpZ1L
+        lpZ1L = lpB1 * x - lpA1 * y + lpZ2L
+        lpZ2L = lpB2 * x - lpA2 * y
+        return y
+    }
+
+    private fun lowpassR(x: Double): Double {
+        val y = lpB0 * x + lpZ1R
+        lpZ1R = lpB1 * x - lpA1 * y + lpZ2R
+        lpZ2R = lpB2 * x - lpA2 * y
+        return y
     }
 
     override fun isActive(): Boolean = isActive
@@ -100,7 +133,6 @@ class TruePeakLimiterAudioProcessor : AudioProcessor {
 
         val mk = (loudnessMakeup * eqMakeup).coerceAtMost(MAX_MAKEUP) * OUTPUT_TRIM
         if (!enabled) {
-            // Transparent passthrough: no makeup, no limiting.
             outputBuffer.put(inputBuffer)
             outputBuffer.flip()
             return
@@ -111,15 +143,31 @@ class TruePeakLimiterAudioProcessor : AudioProcessor {
             repeat(frames) {
                 val xl = (inputBuffer.getShort() / 32768.0f) * mk
                 val xr = (inputBuffer.getShort() / 32768.0f) * mk
-                // 2x-oversampled inter-sample peak estimate (interpolated midpoints + current).
-                val ml = (prevL + xl) * 0.5f
-                val mr = (prevR + xr) * 0.5f
-                val peak = max(max(abs(xl), abs(xr)), max(abs(ml), abs(mr)))
-                applyGainEnvelope(peak)
-                val outL = softLimit(xl * gainEnv, ceiling = 0.98f, knee = 0.95f)
-                val outR = softLimit(xr * gainEnv, ceiling = 0.98f, knee = 0.95f)
-                prevL = xl
-                prevR = xr
+
+                // Complementary 2-band split: low = LPF, high = signal − low (sum back to the input).
+                val lowL = lowpassL(xl.toDouble()).toFloat()
+                val lowR = lowpassR(xr.toDouble()).toFloat()
+                val highL = xl - lowL
+                val highR = xr - lowR
+
+                // 2×-oversampled per-band peaks.
+                val lowPeak = max(
+                    max(abs(lowL), abs(lowR)),
+                    max(abs((prevLowL + lowL) * 0.5f), abs((prevLowR + lowR) * 0.5f)),
+                )
+                val highPeak = max(
+                    max(abs(highL), abs(highR)),
+                    max(abs((prevHighL + highL) * 0.5f), abs((prevHighR + highR) * 0.5f)),
+                )
+                lowGainEnv = nextEnv(lowGainEnv, lowPeak)
+                highGainEnv = nextEnv(highGainEnv, highPeak)
+
+                val outL = softLimit(lowL * lowGainEnv + highL * highGainEnv, ceiling = 0.98f, knee = 0.95f)
+                val outR = softLimit(lowR * lowGainEnv + highR * highGainEnv, ceiling = 0.98f, knee = 0.95f)
+
+                prevLowL = lowL; prevLowR = lowR
+                prevHighL = highL; prevHighR = highR
+
                 outputBuffer.putShort((outL * 32768.0f).coerceIn(-32768.0f, 32767.0f).toInt().toShort())
                 outputBuffer.putShort((outR * 32768.0f).coerceIn(-32768.0f, 32767.0f).toInt().toShort())
             }
@@ -128,11 +176,15 @@ class TruePeakLimiterAudioProcessor : AudioProcessor {
             val samples = remaining / 2
             repeat(samples) {
                 val x = (inputBuffer.getShort() / 32768.0f) * mk
-                val m = (prevL + x) * 0.5f
-                val peak = max(abs(x), abs(m))
-                applyGainEnvelope(peak)
-                val out = softLimit(x * gainEnv, ceiling = 0.98f, knee = 0.95f)
-                prevL = x
+                val low = lowpassL(x.toDouble()).toFloat()
+                val high = x - low
+                val lowPeak = max(abs(low), abs((prevLowL + low) * 0.5f))
+                val highPeak = max(abs(high), abs((prevHighL + high) * 0.5f))
+                lowGainEnv = nextEnv(lowGainEnv, lowPeak)
+                highGainEnv = nextEnv(highGainEnv, highPeak)
+                val out = softLimit(low * lowGainEnv + high * highGainEnv, ceiling = 0.98f, knee = 0.95f)
+                prevLowL = low
+                prevHighL = high
                 outputBuffer.putShort((out * 32768.0f).coerceIn(-32768.0f, 32767.0f).toInt().toShort())
             }
             while (inputBuffer.hasRemaining()) outputBuffer.put(inputBuffer.get())
@@ -142,16 +194,15 @@ class TruePeakLimiterAudioProcessor : AudioProcessor {
     }
 
     /** Instant attack (clamp gain down now → guarantees the ceiling), smooth release (transparent). */
-    private fun applyGainEnvelope(peak: Float) {
+    private fun nextEnv(current: Float, peak: Float): Float {
         val target = if (peak > CEILING) CEILING / peak else 1f
-        gainEnv = if (target < gainEnv) target
-        else gainEnv + (target - gainEnv) * RELEASE_COEFF
+        return if (target < current) target else current + (target - current) * RELEASE_COEFF
     }
 
     private fun resetState() {
-        prevL = 0f
-        prevR = 0f
-        gainEnv = 1f
+        lpZ1L = 0.0; lpZ2L = 0.0; lpZ1R = 0.0; lpZ2R = 0.0
+        prevLowL = 0f; prevLowR = 0f; prevHighL = 0f; prevHighR = 0f
+        lowGainEnv = 1f; highGainEnv = 1f
     }
 
     override fun getOutput(): ByteBuffer {
