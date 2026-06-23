@@ -1,8 +1,9 @@
-# Aura Hi-Res Player 0.4.2
+# Aura Hi-Res Player 0.4.3
 
-## Arreglo real: el login de YouTube Music ahora SÍ te lleva a la selección 🔁
-- En 0.4.1 el flag se limpiaba antes de tiempo y eso **cancelaba** la navegación → la app se quedaba en el inicio y no te dejaba elegir.
-- Ahora, tras iniciar sesión y reiniciar, la app **abre sola la pantalla "Sincronizar desde YouTube Music"** para que elijas qué traer (me gusta, álbumes, artistas, suscripciones, playlists), igual que Spotify.
+## Tus artistas de YouTube Music ahora salen como seguidos 👤
+- Al sincronizar desde YouTube Music, **todos los artistas que se importan** (no solo tus suscripciones de canal, también los de tus "me gusta", álbumes y biblioteca) quedan **marcados como seguidos** y aparecen en "tus artistas" — igual que la importación de Spotify.
+- Aplica al sincronizar **Artistas y suscripciones**, **Me gusta**, **Álbumes** o **Sincronizar todo**.
 
 ## Técnico
-- MainActivity: en el LaunchedEffect del flag se **navega primero y se limpia el flag después** (limpiar antes cambiaba la key del LaunchedEffect y cancelaba el delay/navigate). Delay 700 ms para asegurar el grafo de navegación.
+- Nuevo DAO `followArtistsWithContent(now)`: marca `bookmarkedAt` en todo artista que tenga canciones o álbumes en la biblioteca y no esté ya seguido.
+- Se llama al final de `executeSyncArtistsSubscriptions`, `executeSyncLikedSongs` y `executeSyncLikedAlbums` (y por tanto también en "Sincronizar todo"). La migración selectiva ya insertaba artistas como seguidos.

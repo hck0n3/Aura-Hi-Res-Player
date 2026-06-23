@@ -504,6 +504,8 @@ class SyncUtils @Inject constructor(
                         }
                     }
 
+                    // Imported song artists also become followed, so "your artists" fills up like Spotify.
+                    runCatching { database.followArtistsWithContent(LocalDateTime.now()) }
                     updateState { copy(likedSongs = SyncStatus.Completed) }
                     Timber.d("Synced ${remoteSongs.size} liked songs")
                 } catch (e: Exception) {
@@ -831,6 +833,8 @@ class SyncUtils @Inject constructor(
                         }
                     }
 
+                    // Album artists become followed too, so "your artists" reflects all imports.
+                    runCatching { database.followArtistsWithContent(LocalDateTime.now()) }
                     updateState { copy(likedAlbums = SyncStatus.Completed) }
                     Timber.d("Synced ${remoteAlbums.size} liked albums")
                 } catch (e: Exception) {
@@ -1017,6 +1021,9 @@ class SyncUtils @Inject constructor(
                         }
                     }
 
+                    // Follow EVERY imported artist (also those from liked/library content, not just
+                    // channel subscriptions) so they all appear under "your artists", like Spotify.
+                    runCatching { database.followArtistsWithContent(LocalDateTime.now()) }
                     updateState { copy(artists = SyncStatus.Completed) }
                     Timber.d("Synced ${remoteArtists.size} artist subscriptions")
                 } catch (e: Exception) {

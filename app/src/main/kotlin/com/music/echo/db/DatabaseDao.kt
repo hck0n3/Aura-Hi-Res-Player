@@ -1300,6 +1300,20 @@ interface DatabaseDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     fun insert(artist: ArtistEntity)
 
+    /** Follow (bookmark) every artist that has songs or albums in the library but isn't followed yet —
+     *  so artists imported/synced from YouTube Music show up under "your artists", like Spotify follows. */
+    @Query(
+        """
+        UPDATE artist SET bookmarkedAt = :now
+        WHERE bookmarkedAt IS NULL AND id IN (
+            SELECT artistId FROM song_artist_map
+            UNION
+            SELECT artistId FROM album_artist_map
+        )
+        """
+    )
+    fun followArtistsWithContent(now: java.time.LocalDateTime)
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     fun insert(album: AlbumEntity): Long
 
