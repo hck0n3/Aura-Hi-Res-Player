@@ -317,6 +317,9 @@ object YTPlayerUtils {
                         val artistScore = wordOverlapScore(artist, saavnArtists, maxPts = 20)
                         score += artistScore
                         if (candidate.explicitContent) score += 5
+                        // Penalize karaoke/instrumental/remix/etc. variants unless the YT title itself
+                        // asks for that variant — avoids substituting a karaoke version of the song.
+                        score += com.music.jiosaavn.SaavnMatcher.variantPenalty(title, candidate.name)
                         // Require a real artist match (when we know the YT artist). Title alone could
                         // otherwise pass the threshold and substitute a DIFFERENT artist's same-titled
                         // song (e.g. another "Dirt") — the wrong-song bug.

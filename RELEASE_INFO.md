@@ -1,9 +1,8 @@
-# Aura Hi-Res Player 0.4.3
+# Aura Hi-Res Player 0.4.4
 
-## Tus artistas de YouTube Music ahora salen como seguidos 👤
-- Al sincronizar desde YouTube Music, **todos los artistas que se importan** (no solo tus suscripciones de canal, también los de tus "me gusta", álbumes y biblioteca) quedan **marcados como seguidos** y aparecen en "tus artistas" — igual que la importación de Spotify.
-- Aplica al sincronizar **Artistas y suscripciones**, **Me gusta**, **Álbumes** o **Sincronizar todo**.
+## Mejor match de audio (Saavn): adiós versiones karaoke/instrumental 🎯
+- Al resolver una canción desde Saavn, ahora se **penalizan** las variantes karaoke, instrumental, "minus one", cover, remix, lo-fi, sped up, slowed y reverb — **a menos que tú las pidas** en el título.
+- Resultado: menos veces te suena por error una versión karaoke/instrumental en lugar del tema original.
 
 ## Técnico
-- Nuevo DAO `followArtistsWithContent(now)`: marca `bookmarkedAt` en todo artista que tenga canciones o álbumes en la biblioteca y no esté ya seguido.
-- Se llama al final de `executeSyncArtistsSubscriptions`, `executeSyncLikedSongs` y `executeSyncLikedAlbums` (y por tanto también en "Sincronizar todo"). La migración selectiva ya insertaba artistas como seguidos.
+- Portado del upstream Echo (PR #571): nuevo `com.music.jiosaavn.SaavnMatcher.variantPenalty()` (con test) aplicado en el scoring de `YTPlayerUtils`. Sin tocar la base de datos. Bajo riesgo.
