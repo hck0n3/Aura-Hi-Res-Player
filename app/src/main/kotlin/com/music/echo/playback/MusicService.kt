@@ -288,6 +288,8 @@ class MusicService :
     private var crossfadeDuration = 5000f
     private var crossfadeGapless = true
     private var crossfadeTriggerJob: Job? = null
+    // Builds + buffers the incoming player a few seconds BEFORE the fade so the transition has no gap.
+    private var crossfadePreloadJob: Job? = null
 
     private val secondaryPlayerListener = object : Player.Listener {
         override fun onPlayerError(error: PlaybackException) {
@@ -3299,9 +3301,15 @@ class MusicService :
         player.removeListener(this)
         player.removeListener(sleepTimer)
         playerSilenceProcessors.remove(player)
-        
-        
-        
+
+        // Release crossfade players (incl. any preloaded incoming one) so they don't leak.
+        crossfadeTriggerJob?.cancel()
+        crossfadePreloadJob?.cancel()
+        runCatching { secondaryPlayer?.release() }
+        secondaryPlayer = null
+        runCatching { fadingPlayer?.release() }
+        fadingPlayer = null
+
         player.release()
         discordUpdateJob?.cancel()
         super.onDestroy()
@@ -3449,6 +3457,18 @@ class MusicService :
     private fun scheduleCrossfade() {
         crossfadeTriggerJob?.cancel()
         crossfadeTriggerJob = null
+        crossfadePreloadJob?.cancel()
+        crossfadePreloadJob = null
+        // Release any incoming player we preloaded for a transition that's no longer happening (user
+        // skipped, seeked, queue changed) so we never leak a second ExoPlayer.
+        if (!isCrossfading) {
+            secondaryPlayer?.let {
+                it.stop()
+                it.clearMediaItems()
+                it.release()
+            }
+            secondaryPlayer = null
+        }
         if (!crossfadeEnabled || player.duration == C.TIME_UNSET || player.duration <= crossfadeDuration) return
         if (crossfadeGapless && isNextItemGapless()) return
         if (!player.hasNextMediaItem() && player.repeatMode != REPEAT_MODE_ONE) return
@@ -3458,6 +3478,24 @@ class MusicService :
         if (delayMs <= 0) return
 
         val targetMediaId = player.currentMediaItem?.mediaId
+
+        // Preload (build + buffer) the incoming player a few seconds BEFORE the fade so it's already
+        // playing the instant the fade starts. This removes the occasional cut/gap on slow networks,
+        // where the incoming player used to begin buffering only when the fade had already started.
+        val preloadDelay = (delayMs - CROSSFADE_PRELOAD_LEAD_MS).coerceAtLeast(0L)
+        crossfadePreloadJob = scope.launch {
+            delay(preloadDelay)
+            if (isActive && !isCrossfading && player.isPlaying &&
+                player.currentMediaItem?.mediaId == targetMediaId
+            ) {
+                val targetIndex = if (player.repeatMode == REPEAT_MODE_ONE) {
+                    player.currentMediaItemIndex
+                } else {
+                    player.nextMediaItemIndex
+                }
+                prepareSecondaryPlayer(targetIndex)
+            }
+        }
 
         crossfadeTriggerJob = scope.launch {
             delay(delayMs)
@@ -3494,36 +3532,42 @@ class MusicService :
         }
         if (targetIndex == C.INDEX_UNSET) return
 
-        secondaryPlayer = createExoPlayer()
-        val secPlayer = secondaryPlayer!!
-        secPlayer.addListener(secondaryPlayerListener)
-
-        val itemCount = player.mediaItemCount
-        val items = mutableListOf<MediaItem>()
-        
-        for (i in 0 until itemCount) {
-            items.add(player.getMediaItemAt(i))
+        // Reuse the player we preloaded (already buffering ahead) if present; otherwise build it now.
+        if (secondaryPlayer == null) {
+            prepareSecondaryPlayer(targetIndex)
         }
-
-        secPlayer.setMediaItems(items)
-        
-        secPlayer.seekTo(targetIndex, 0)
-        secPlayer.volume = 0f
-
-        
-        secPlayer.repeatMode = savedRepeatMode
-        secPlayer.shuffleModeEnabled = savedShuffleEnabled
-
-        secPlayer.prepare()
+        val secPlayer = secondaryPlayer ?: return
         secPlayer.playWhenReady = true
 
         performCrossfadeSwap()
 
-        
+
         if (savedShuffleEnabled) {
             val shufflePlaylistFirst = dataStore.get(ShufflePlaylistFirstKey, false)
             applyShuffleOrder(player.currentMediaItemIndex, player.mediaItemCount, shufflePlaylistFirst)
         }
+    }
+
+    /** Build the incoming player (full queue, seeked to [targetIndex], muted, buffering) WITHOUT swapping. */
+    private fun prepareSecondaryPlayer(targetIndex: Int) {
+        if (secondaryPlayer != null || isCrossfading) return
+        if (targetIndex == C.INDEX_UNSET) return
+
+        val sec = createExoPlayer()
+        sec.addListener(secondaryPlayerListener)
+
+        val items = mutableListOf<MediaItem>()
+        for (i in 0 until player.mediaItemCount) {
+            items.add(player.getMediaItemAt(i))
+        }
+        sec.setMediaItems(items)
+        sec.seekTo(targetIndex, 0)
+        sec.volume = 0f
+        sec.repeatMode = player.repeatMode
+        sec.shuffleModeEnabled = player.shuffleModeEnabled
+        sec.playWhenReady = false // buffer ahead silently; startCrossfade flips this on at the fade
+        sec.prepare()
+        secondaryPlayer = sec
     }
 
     private fun performCrossfadeSwap() {
@@ -3670,6 +3714,8 @@ class MusicService :
         const val PERSISTENT_PLAYER_STATE_FILE = "persistent_player_state.data"
         const val MAX_CONSECUTIVE_ERR = 5
         const val MAX_RETRY_COUNT = 10
+        // How early (ms before the fade) to build + buffer the incoming player so the crossfade has no gap.
+        private const val CROSSFADE_PRELOAD_LEAD_MS = 6000L
         
         private const val MAX_GAIN_MB = 300 
         private const val MIN_GAIN_MB = -1500 

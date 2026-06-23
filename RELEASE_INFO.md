@@ -1,20 +1,8 @@
-# Aura Hi-Res Player 0.2.0
+# Aura Hi-Res Player 0.2.1
 
-## Arreglo: dar "me gusta" ya no baja el volumen 🔊
-- La auto-descarga al dar like re-guardaba el formato sin loudness y la normalización caía al valor por defecto → bajaba el volumen. Ahora la pista en curso no se re-normaliza al darle like, y nunca se sobrescribe el loudness real con vacío.
-
-## Descarga al gustar un álbum 💿
-- Al dar "me gusta" a un álbum ahora también se descarga completo (igual que con las canciones). Respeta tu ajuste de "descargar al dar me gusta".
-
-## Efectos eliminados 🧹
-- Se quitaron **Sala virtual (HRTF)** y **Compresor multibanda** de Efectos DSP (y quedan desactivados aunque los tuvieras encendidos). El resto del sonido (EQ, Tono, normalización, limitador multibanda, firma Aura, etc.) sigue igual.
-
-## En camino (próximas versiones)
-- Mostrar y sincronizar tu contenido de YouTube Music (bidireccional, estilo "todo en uno") + en la introducción.
-- Copia de seguridad/importación selectiva (playlists, artistas, presets por separado).
-- Mejorar las transiciones (precargar la pista entrante para que no haya cortes).
+## Transiciones sin cortes 🎚️
+- La pista entrante ahora se **precarga y bufferea unos segundos ANTES** de que empiece el fundido, así suena en el instante exacto en que arranca la transición. Esto elimina el corte/silencio ocasional que aparecía cuando la red iba lenta (antes la siguiente canción empezaba a cargar recién cuando ya había comenzado el fundido).
+- Si saltas de canción o cambias la cola, el player precargado se libera solo (sin fugas).
 
 ## Técnico
-- MusicService.setupLoudnessEnhancer: el guard no re-aplica normalización a la pista en curso (solo "upgrade" de default→loudness real); el upsert de formato preserva el loudness existente si la nueva carga no lo trae.
-- JrDspAudioProcessor.Config: hrtfEnabled/mbCompEnabled forzados a false; toggles quitados de SoundSettings; menciones fuera de About/README.
-- utils/AutoDownload.downloadSongsIfAutoOnLike(): descarga las canciones de un álbum al gustarlo (gated por AutoDownloadOnLikeKey), usado en AlbumMenu y AlbumScreen.
+- MusicService: nuevo `crossfadePreloadJob` + `prepareSecondaryPlayer()` que construye y bufferea el player entrante (cola completa, posicionado en la siguiente, en silencio) ~6 s antes del fundido (CROSSFADE_PRELOAD_LEAD_MS). `startCrossfade()` reutiliza ese player precargado (o lo crea como fallback). Limpieza en `scheduleCrossfade()` y `onDestroy()`.
