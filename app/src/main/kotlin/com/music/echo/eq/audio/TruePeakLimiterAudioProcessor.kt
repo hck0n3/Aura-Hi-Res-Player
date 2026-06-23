@@ -7,7 +7,6 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.abs
 import kotlin.math.max
-import kotlin.math.sqrt
 
 /**
  * Final stage of the player chain: loudness makeup + true-peak soft limiter.
@@ -99,14 +98,7 @@ class TruePeakLimiterAudioProcessor : AudioProcessor {
             outputBuffer.clear()
         }
 
-        // EQ headroom (Poweramp-style "powerful but clean"): when the EQ is boosting, only restore HALF
-        // the auto-headroom it pulled (use sqrt of eqMakeup). The boosted band stays just as present
-        // RELATIVE to the mix (+N vs the rest), but its peaks no longer push the whole signal so far
-        // over the ceiling that the broadband true-peak limiter has to duck/pump the entire mix — which
-        // is exactly the "everything drops in waves when I raise a band" the user heard. The trade is a
-        // little baseline loudness (turn the device up) for an EQ that hits clean instead of mushy.
-        val eqGain = if (eqMakeup > 1f) sqrt(eqMakeup) else eqMakeup
-        val mk = (loudnessMakeup * eqGain).coerceAtMost(MAX_MAKEUP) * OUTPUT_TRIM
+        val mk = (loudnessMakeup * eqMakeup).coerceAtMost(MAX_MAKEUP) * OUTPUT_TRIM
         if (!enabled) {
             // Transparent passthrough: no makeup, no limiting.
             outputBuffer.put(inputBuffer)
