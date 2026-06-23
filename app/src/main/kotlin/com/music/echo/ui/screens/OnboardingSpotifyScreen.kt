@@ -65,6 +65,11 @@ fun OnboardingSpotifyScreen(
                 ) { Text("Conectar Spotify y elegir qué migrar") }
                 Spacer(Modifier.height(8.dp))
                 OutlinedButton(
+                    onClick = { navController.navigate("settings/ytm_sync") },
+                    modifier = Modifier.fillMaxWidth().height(50.dp),
+                ) { Text("Sincronizar YouTube Music") }
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(
                     onClick = { showLoginPrompt = true },
                     modifier = Modifier.fillMaxWidth().height(50.dp),
                 ) { Text("Continuar") }
@@ -100,7 +105,7 @@ fun OnboardingSpotifyScreen(
             )
             Spacer(Modifier.height(16.dp))
             Text(
-                "¿Usas YouTube Music? Al iniciar sesión en Google podrás sincronizar tu contenido (me gusta, álbumes, artistas, suscripciones y playlists) cuando quieras desde Ajustes ▸ Cuenta ▸ Sincronización con YouTube Music.",
+                "¿Usas YouTube Music? Sincroniza tu contenido (me gusta, álbumes, artistas, suscripciones y playlists) con el botón de abajo, o cuando quieras desde Ajustes ▸ Importar ▸ Sincronizar desde YouTube Music.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,

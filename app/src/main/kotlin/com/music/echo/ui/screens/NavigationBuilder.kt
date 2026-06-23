@@ -415,6 +415,10 @@ fun NavGraphBuilder.navigationBuilder(
         SpotifyImportScreen(navController)
     }
 
+    composable("settings/ytm_sync") {
+        iad1tya.echo.music.ui.screens.settings.YtmSyncScreen(navController, scrollBehavior)
+    }
+
     composable(route = "settings/integrations/listen_together") {
         ListenTogetherSettings(navController, scrollBehavior)
     }

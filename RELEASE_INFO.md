@@ -1,22 +1,11 @@
-# Aura Hi-Res Player 0.3.0
+# Aura Hi-Res Player 0.3.1
 
-## Sincronización con YouTube Music (hub manual) 🔁
-- Nuevo apartado en **Ajustes ▸ Cuenta ▸ "Sincronización con YouTube Music"** (visible al iniciar sesión). Tú eliges qué traer y cuándo — nada se sincroniza solo:
-  - **Sincronizar todo** (me gusta, álbumes, artistas, suscripciones, playlists, biblioteca)
-  - **Me gusta (canciones)**
-  - **Álbumes favoritos**
-  - **Artistas y suscripciones**
-  - **Playlists guardadas**
-  - **Biblioteca (canciones)**
-  - **Subidas (canciones y álbumes)**
-- Así haces que tu contenido de la cuenta **aparezca** cuando quieras, en un solo lugar ("todo en uno").
-- Se menciona en la **introducción** (paso de migración) y en Bienvenida/Acerca de.
-
-## Notas
-- Es un **hub manual** (lo pediste así): no hay auto-sync al loguear; tú disparas cada sincronización.
-- Próximo refinamiento posible: elegir **qué playlists** mostrar de forma individual.
+## Sincronización de YouTube Music: ahora en su sitio 🔁
+- El apartado para **elegir qué sincronizar de YouTube Music** se movió a **Ajustes ▸ Importar ▸ "Sincronizar desde YouTube Music"** (junto a "Importar desde Spotify"), para que todo tenga orden.
+- Ya **no** está en la pantalla de Cuenta.
+- También aparece en el **primer inicio** (paso de migración): botón "Sincronizar YouTube Music". Si aún no iniciaste sesión, el propio apartado te ofrece iniciar sesión.
 
 ## Técnico
-- AccountSettingsViewModel: `syncAll/syncLikedSongs/syncLikedAlbums/syncArtists/syncPlaylists/syncLibrarySongs/syncUploads` sobre las funciones `*Suspend` ya existentes de SyncUtils.
-- AccountSettingsScreen: grupo "Sincronización con YouTube Music" (solo logueado) con acción + toast por tipo.
-- OnboardingSpotifyScreen / WelcomeDialog / AboutScreen: mención del hub.
+- Nueva pantalla `YtmSyncScreen` (ruta `settings/ytm_sync`), auto-gestiona el login (si no, botón de iniciar sesión).
+- Entrada en BackupAndRestore ▸ Importar + botón en OnboardingSpotifyScreen.
+- Quitado el grupo de sync de AccountSettingsScreen (se conservan los métodos del ViewModel).

@@ -219,6 +219,12 @@ fun BackupAndRestore(
                                 onClick = { navController.navigate("settings/spotify_import") }
                             ),
                             Material3SettingsItem(
+                                title = { Text("Sincronizar desde YouTube Music") },
+                                description = { Text("Trae tu me gusta, álbumes, artistas, suscripciones y playlists de tu cuenta") },
+                                icon = painterResource(R.drawable.sync),
+                                onClick = { navController.navigate("settings/ytm_sync") }
+                            ),
+                            Material3SettingsItem(
                                 title = { Text("Importar desde archivo local") },
                                 icon = painterResource(R.drawable.restore),
                                 onClick = {
