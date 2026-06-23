@@ -1,8 +1,8 @@
-# Aura Hi-Res Player 0.1.1
+# Aura Hi-Res Player 0.1.2
 
-## Arreglado: saturación de la voz a volumen alto
-- En una versión reciente, la nivelación subía demasiado las canciones flojas (+12 dB) y eso exigía de más al limitador, lo que ensuciaba la voz (áspera/estridente o "entubada"), sobre todo a volumen máximo.
-- Ahora la subida de las canciones flojas es más moderada (+8 dB): se siguen nivelando, pero sin saturar. Las fuertes y los picos se siguen controlando igual.
+## Arreglado: el volumen "en olas" (pumping) y la saturación
+- Subir tanto las canciones flojas exigía de más al limitador, lo que se oía como saturación o como el volumen subiendo y bajando solo ("olas"). Volvimos la subida de las flojas a +6 dB, el punto donde el sonido queda limpio: sin saturación y sin pumping.
+- Las canciones fuertes y los picos se siguen controlando igual.
 
 ## Lo que se hizo (técnico)
-- AudioGain.loudnessMakeupDb: el tope de makeup de loudness baja de +12 dB a +8 dB para no sobre-conducir el TruePeakLimiter (la causa de la saturación armónica audible a alto volumen). Test unitario actualizado.
+- AudioGain.loudnessMakeupDb: el tope de makeup vuelve a +6 dB (de +8). Subirlo más sobre-conducía el TruePeakLimiter → artefactos audibles (saturación armónica, luego pumping). Para subir las flojas más sin esos artefactos se requiere normalización peak-aware (aplicar solo la ganancia que cabe bajo el true-peak del tema). Test unitario actualizado.
