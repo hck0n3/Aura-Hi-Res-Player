@@ -1,8 +1,22 @@
-# Aura Hi-Res Player 0.2.1
+# Aura Hi-Res Player 0.3.0
 
-## Transiciones sin cortes 🎚️
-- La pista entrante ahora se **precarga y bufferea unos segundos ANTES** de que empiece el fundido, así suena en el instante exacto en que arranca la transición. Esto elimina el corte/silencio ocasional que aparecía cuando la red iba lenta (antes la siguiente canción empezaba a cargar recién cuando ya había comenzado el fundido).
-- Si saltas de canción o cambias la cola, el player precargado se libera solo (sin fugas).
+## Sincronización con YouTube Music (hub manual) 🔁
+- Nuevo apartado en **Ajustes ▸ Cuenta ▸ "Sincronización con YouTube Music"** (visible al iniciar sesión). Tú eliges qué traer y cuándo — nada se sincroniza solo:
+  - **Sincronizar todo** (me gusta, álbumes, artistas, suscripciones, playlists, biblioteca)
+  - **Me gusta (canciones)**
+  - **Álbumes favoritos**
+  - **Artistas y suscripciones**
+  - **Playlists guardadas**
+  - **Biblioteca (canciones)**
+  - **Subidas (canciones y álbumes)**
+- Así haces que tu contenido de la cuenta **aparezca** cuando quieras, en un solo lugar ("todo en uno").
+- Se menciona en la **introducción** (paso de migración) y en Bienvenida/Acerca de.
+
+## Notas
+- Es un **hub manual** (lo pediste así): no hay auto-sync al loguear; tú disparas cada sincronización.
+- Próximo refinamiento posible: elegir **qué playlists** mostrar de forma individual.
 
 ## Técnico
-- MusicService: nuevo `crossfadePreloadJob` + `prepareSecondaryPlayer()` que construye y bufferea el player entrante (cola completa, posicionado en la siguiente, en silencio) ~6 s antes del fundido (CROSSFADE_PRELOAD_LEAD_MS). `startCrossfade()` reutiliza ese player precargado (o lo crea como fallback). Limpieza en `scheduleCrossfade()` y `onDestroy()`.
+- AccountSettingsViewModel: `syncAll/syncLikedSongs/syncLikedAlbums/syncArtists/syncPlaylists/syncLibrarySongs/syncUploads` sobre las funciones `*Suspend` ya existentes de SyncUtils.
+- AccountSettingsScreen: grupo "Sincronización con YouTube Music" (solo logueado) con acción + toast por tipo.
+- OnboardingSpotifyScreen / WelcomeDialog / AboutScreen: mención del hub.

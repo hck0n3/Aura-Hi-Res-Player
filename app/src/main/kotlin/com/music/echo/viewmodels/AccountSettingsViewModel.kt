@@ -53,4 +53,24 @@ class AccountSettingsViewModel @Inject constructor(
         }
     }
 
+    // ── Manual YouTube Music sync hub ── (user triggers each on demand; nothing runs automatically)
+
+    /** Pull everything from the account at once: liked songs/albums, subscriptions, saved playlists, library. */
+    fun syncAll() = viewModelScope.launch(Dispatchers.IO) { syncUtils.performFullSyncSuspend() }
+
+    fun syncLikedSongs() = viewModelScope.launch(Dispatchers.IO) { syncUtils.syncLikedSongsSuspend() }
+
+    fun syncLikedAlbums() = viewModelScope.launch(Dispatchers.IO) { syncUtils.syncLikedAlbumsSuspend() }
+
+    fun syncArtists() = viewModelScope.launch(Dispatchers.IO) { syncUtils.syncArtistsSubscriptionsSuspend() }
+
+    fun syncPlaylists() = viewModelScope.launch(Dispatchers.IO) { syncUtils.syncSavedPlaylistsSuspend() }
+
+    fun syncLibrarySongs() = viewModelScope.launch(Dispatchers.IO) { syncUtils.syncLibrarySongsSuspend() }
+
+    fun syncUploads() = viewModelScope.launch(Dispatchers.IO) {
+        syncUtils.syncUploadedSongsSuspend()
+        syncUtils.syncUploadedAlbumsSuspend()
+    }
+
 }

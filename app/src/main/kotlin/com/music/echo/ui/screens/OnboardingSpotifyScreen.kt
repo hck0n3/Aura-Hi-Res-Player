@@ -98,6 +98,13 @@ fun OnboardingSpotifyScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
             )
+            Spacer(Modifier.height(16.dp))
+            Text(
+                "¿Usas YouTube Music? Al iniciar sesión en Google podrás sincronizar tu contenido (me gusta, álbumes, artistas, suscripciones y playlists) cuando quieras desde Ajustes ▸ Cuenta ▸ Sincronización con YouTube Music.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
         }
     }
 

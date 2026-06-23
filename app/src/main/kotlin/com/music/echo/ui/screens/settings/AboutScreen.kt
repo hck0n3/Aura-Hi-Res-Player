@@ -59,7 +59,7 @@ private val DISCOVERY_FEATURES = listOf(
 )
 
 private val LIBRARY_FEATURES = listOf(
-    Feature(R.drawable.library_music, "Biblioteca y sincronización", "Biblioteca, listas, 'me gusta' e historial de YouTube Music sincronizados"),
+    Feature(R.drawable.library_music, "Biblioteca y sincronización", "Sincroniza tu contenido de YouTube Music cuando quieras desde Ajustes ▸ Cuenta: me gusta, álbumes, artistas, suscripciones, playlists y biblioteca (hub manual, tú eliges qué y cuándo)"),
     Feature(R.drawable.download, "Importar y migrar", "Importa de YouTube, Spotify (listas, me gusta y álbumes) y Aura Hi-Res Player (.jrpl.json), y re-sigue tus artistas de Spotify"),
     Feature(R.drawable.sync, "Sincronización programada de Spotify", "Elige qué listas mantener al día y con qué frecuencia (diaria o semanal)"),
     Feature(R.drawable.download, "Modo sin conexión", "Descarga canciones, álbumes y playlists con un gestor de descargas dedicado"),

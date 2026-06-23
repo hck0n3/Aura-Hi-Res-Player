@@ -81,8 +81,8 @@ fun WelcomeDialog(
                     WelcomeDivider()
                     WelcomeFeatureRow(
                         iconRes = R.drawable.login,
-                        title = "Tu biblioteca y tu Spotify",
-                        subtitle = "Sincroniza playlists, favoritos e historial de YouTube, e importa tus listas, me gusta y álbumes de Spotify"
+                        title = "Tu biblioteca: YouTube Music y Spotify",
+                        subtitle = "Sincroniza cuando quieras tu contenido de YouTube Music (me gusta, álbumes, artistas, suscripciones y playlists) desde Ajustes ▸ Cuenta, e importa tus listas, me gusta y álbumes de Spotify"
                     )
                     WelcomeDivider()
                     WelcomeFeatureRow(
