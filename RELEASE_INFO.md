@@ -1,10 +1,9 @@
-# Aura Hi-Res Player 0.5.0
+# Aura Hi-Res Player 0.5.1
 
-## Paga sin salir de la app 💳
-- El botón **"Suscribirme por $3.74/mes"** ahora abre el checkout de Gumroad **dentro de la app** (Chrome Custom Tab), sin mandarte a otra aplicación.
-- Al terminar el pago, copias la clave de licencia que Gumroad muestra en el recibo; al volver a la app **se detecta sola desde el portapapeles y se activa automáticamente** — sin pegar a mano.
-- Sigue funcionando todo lo de antes: pegado manual de la clave, la **llave maestra** y la verificación de suscripción intactas.
+## Arreglos del primer inicio (onboarding) 🧩
+- **Login de YouTube Music ya no se reinicia ni te saca de la página** → ahora sí puedes iniciar sesión. (El causante era un flag que reaccionaba al instante de tocar "Iniciar sesión" y te mandaba a la selección antes de tiempo; ahora se lee una sola vez al arrancar, tras el reinicio del login.)
+- **Spotify y YouTube quedan separados**: la introducción solo migra **Spotify**; **YouTube Music** se sincroniza cuando quieras desde **Ajustes ▸ Importar ▸ Sincronizar desde YouTube Music** (ahí el login funciona bien).
 
 ## Técnico
-- `androidx.browser` (Custom Tabs); `openGumroad` usa `CustomTabsIntent` con fallback a navegador externo.
-- `LicenseScreens.SubscriptionEntryScreen`: observador `ON_RESUME` que lee el portapapeles, valida el formato de licencia (XXXXXXXX-…×4) y activa vía `LicenseManager.activateSubscription`. Todo aditivo.
+- MainActivity: la apertura post-login de la pantalla de sync YT pasa a `LaunchedEffect(Unit)` (lectura única del flag al arrancar vía DataStore), en vez de un efecto reactivo que se disparaba al marcar el flag en sesión.
+- OnboardingSpotifyScreen: quitado el botón "Sincronizar YouTube Music" (queda solo Spotify + una mención de dónde está YT).

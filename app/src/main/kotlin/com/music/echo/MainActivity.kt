@@ -225,6 +225,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import timber.log.Timber
@@ -784,17 +785,21 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                // After the YouTube Music login cold-restart, return the user to the sync selection
-                // screen (like Spotify's import returns to its picker) so they choose what to sync.
-                val (openYtmSyncAfterLogin, setOpenYtmSyncAfterLogin) =
+                // ONE-SHOT at startup only: if the YouTube Music login (which cold-restarts the app) set
+                // this flag in the PREVIOUS process, return now to the sync selection. Reading it
+                // reactively also fired the instant the user tapped "Iniciar sesión" — yanking them off
+                // the login screen ("the page keeps restarting / I can't log in"). LaunchedEffect(Unit)
+                // runs once on launch, so setting the flag later in-session never triggers a navigation.
+                val (_, clearOpenYtmSyncAfterLogin) =
                     rememberPreference(iad1tya.echo.music.constants.OpenYtmSyncAfterLoginKey, false)
-                LaunchedEffect(openYtmSyncAfterLogin) {
-                    if (openYtmSyncAfterLogin) {
-                        // Wait for the nav graph to be ready, navigate, THEN clear the flag. Clearing
-                        // first would flip this LaunchedEffect's key and cancel it mid-delay → no nav.
+                LaunchedEffect(Unit) {
+                    val open = context.dataStore.data
+                        .map { it[iad1tya.echo.music.constants.OpenYtmSyncAfterLoginKey] ?: false }
+                        .first()
+                    if (open) {
+                        clearOpenYtmSyncAfterLogin(false)
                         kotlinx.coroutines.delay(700)
                         runCatching { navController.navigate("settings/ytm_sync") }
-                        setOpenYtmSyncAfterLogin(false)
                     }
                 }
 
