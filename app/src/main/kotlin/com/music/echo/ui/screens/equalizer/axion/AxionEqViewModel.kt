@@ -19,11 +19,15 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import kotlin.math.abs
 
 /**
  * Pure mapping: per-band dB gains + band types → ParametricEQ bands.
  * Gain is stored directly in dB (matches the desktop engine; no scaling).
  */
+/** Max bass/treble tone-shelf boost/cut (dB). */
+private const val TONE_LIMIT = 12f
+
 fun buildEqBands(gainsDb: FloatArray, types: IntArray): List<ParametricEQBand> =
     EqConstants.FREQUENCIES.mapIndexed { i, freq ->
         ParametricEQBand(
@@ -67,6 +71,12 @@ class AxionEqViewModel @Inject constructor(
 
     private val _preamp = MutableStateFlow(prefs.getFloat("preampDb", 0f))
     val preamp = _preamp.asStateFlow()
+
+    // Poweramp-style manual tone: broad, musical bass/treble shelves (dB), separate from the 24 bands.
+    private val _bassBoost = MutableStateFlow(prefs.getFloat("bassBoostDb", 0f))
+    val bassBoost = _bassBoost.asStateFlow()
+    private val _trebleBoost = MutableStateFlow(prefs.getFloat("trebleBoostDb", 0f))
+    val trebleBoost = _trebleBoost.asStateFlow()
 
     private val _isDirty = MutableStateFlow(false)
     val isDirty = _isDirty.asStateFlow()
@@ -159,7 +169,13 @@ class AxionEqViewModel @Inject constructor(
 
     fun reset() {
         _preamp.value = 0f
-        prefs.edit().putFloat("preampDb", 0f).apply()
+        _bassBoost.value = 0f
+        _trebleBoost.value = 0f
+        prefs.edit()
+            .putFloat("preampDb", 0f)
+            .putFloat("bassBoostDb", 0f)
+            .putFloat("trebleBoostDb", 0f)
+            .apply()
         setBandsGains(FloatArray(n) { 0f })
     }
 
@@ -169,7 +185,7 @@ class AxionEqViewModel @Inject constructor(
                 id = "custom_${System.currentTimeMillis()}",
                 name = name,
                 deviceModel = "Equalizer",
-                bands = buildEqBands(_bandGains.value, _bandTypes.value),
+                bands = allBands(),
                 preamp = _preamp.value.toDouble(),
                 isCustom = true,
                 isActive = true,
@@ -229,7 +245,7 @@ class AxionEqViewModel @Inject constructor(
                 id = "echo_tuning",
                 name = "JR Tuning",
                 deviceModel = "Equalizer",
-                bands = buildEqBands(_bandGains.value, _bandTypes.value),
+                bands = allBands(),
                 preamp = _preamp.value.toDouble(),
                 isCustom = false,
                 isActive = true,
@@ -245,7 +261,7 @@ class AxionEqViewModel @Inject constructor(
         id = "echo_tuning",
         name = "JR Tuning",
         deviceModel = "Equalizer",
-        bands = buildEqBands(_bandGains.value, _bandTypes.value),
+        bands = allBands(),
         preamp = _preamp.value.toDouble(),
         isCustom = false,
         isActive = true,
@@ -273,12 +289,48 @@ class AxionEqViewModel @Inject constructor(
         if (_enabled.value) equalizerService.applyProfile(liveProfile())
     }
 
+    /** Live bass-shelf drag (Poweramp-style tone). Range +/- [TONE_LIMIT] dB. */
+    fun setBassBoostLive(db: Float) {
+        _bassBoost.value = db.coerceIn(-TONE_LIMIT, TONE_LIMIT)
+        _isDirty.value = true
+        if (_enabled.value) equalizerService.applyProfile(liveProfile())
+    }
+
+    /** Live treble-shelf drag (Poweramp-style tone). */
+    fun setTrebleBoostLive(db: Float) {
+        _trebleBoost.value = db.coerceIn(-TONE_LIMIT, TONE_LIMIT)
+        _isDirty.value = true
+        if (_enabled.value) equalizerService.applyProfile(liveProfile())
+    }
+
+    /** Broad, musical bass/treble shelves appended to the 24 graphic bands (the "rich" tone controls). */
+    private fun toneShelves(): List<ParametricEQBand> = buildList {
+        if (abs(_bassBoost.value) > 0.01f) add(
+            ParametricEQBand(
+                frequency = 90.0, gain = _bassBoost.value.toDouble(), q = 0.7,
+                filterType = FilterType.LSC, enabled = true,
+            ),
+        )
+        if (abs(_trebleBoost.value) > 0.01f) add(
+            ParametricEQBand(
+                frequency = 10000.0, gain = _trebleBoost.value.toDouble(), q = 0.7,
+                filterType = FilterType.HSC, enabled = true,
+            ),
+        )
+    }
+
+    /** The 24 graphic bands plus the bass/treble tone shelves — the full filter set sent to the DSP. */
+    private fun allBands(): List<ParametricEQBand> =
+        buildEqBands(_bandGains.value, _bandTypes.value) + toneShelves()
+
     /** Persist the current tuning once — call on slider release (onValueChangeFinished). */
     fun commit() {
         val editor = prefs.edit()
         _bandGains.value.forEachIndexed { i, f -> editor.putFloat("band24_$i", f) }
         _bandTypes.value.forEachIndexed { i, t -> editor.putInt("type24_$i", t) }
         editor.putFloat("preampDb", _preamp.value)
+        editor.putFloat("bassBoostDb", _bassBoost.value)
+        editor.putFloat("trebleBoostDb", _trebleBoost.value)
         editor.apply()
         if (_enabled.value) viewModelScope.launch {
             val p = liveProfile()

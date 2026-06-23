@@ -44,8 +44,8 @@ android {
         // Public version reset to a fresh stable 0.0.1 for the Aura Hi-Res Player relaunch.
         // versionCode stays monotonic (never below the last shipped 673) so the in-app updater and
         // sideload-install-over-existing keep working; only the user-facing versionName resets.
-        versionCode = 690
-        versionName = "0.1.7"
+        versionCode = 691
+        versionName = "0.1.8"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true

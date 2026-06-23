@@ -36,9 +36,9 @@ import iad1tya.echo.music.ui.utils.backToMain
 private data class Feature(val icon: Int, val title: String, val subtitle: String)
 
 private val PLAYBACK_FEATURES = listOf(
-    Feature(R.drawable.play, "Reproducción", "Sin cortes (gapless), crossfade, normalización de volumen y temporizador de apagado"),
+    Feature(R.drawable.play, "Reproducción", "Sin cortes (gapless), transición suave (crossfade) lineal de 10s, normalización de volumen y temporizador de apagado"),
     Feature(R.drawable.videocam, "Video y segundo plano", "Alterna entre solo audio y video musical; sigue sonando en segundo plano y con la pantalla apagada"),
-    Feature(R.drawable.graphic_eq, "Sonido y EQ", "Ecualizador de 24 bandas, Auto-EQ por modelo de auricular (+5000), sonoridad tipo TIDAL con limitador true-peak, firma Aura, realce de graves, excitador, compresor multibanda, ancho estéreo y sala virtual HRTF"),
+    Feature(R.drawable.graphic_eq, "Sonido y EQ", "Ecualizador de 24 bandas con potenciadores manuales de Graves y Agudos (Tono estilo Poweramp), limitador multibanda anti-distorsión con headroom automático, Auto-EQ por modelo de auricular (+5000), sonoridad tipo TIDAL con limitador true-peak, firma Aura, realce de graves, excitador, compresor multibanda, ancho estéreo y sala virtual HRTF"),
     Feature(R.drawable.tune, "Sonido sin pérdida", "Reproduce en calidad sin pérdida desde Qobuz/Saavn cuando está disponible"),
     Feature(R.drawable.auto_awesome, "Mejorar calidad baja", "Reduce la distorsión (declip) y regenera agudos en fuentes de bajo bitrate"),
     Feature(R.drawable.equalizer, "Visualizador y control", "Visualizador de espectro y control de tempo/tono"),

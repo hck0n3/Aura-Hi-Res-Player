@@ -390,6 +390,12 @@ class MusicService :
     private var isAudioEffectSessionOpened = false
     private var loudnessEnhancer: LoudnessEnhancer? = null
 
+    // Which mediaId we've already applied REAL loudness normalization to. Used so a format re-store for
+    // the SAME already-playing track (e.g. liking it kicks off an auto-download that re-saves the format)
+    // doesn't recompute the gain and audibly bump the volume mid-song.
+    private var lastNormalizedId: String? = null
+    private var lastNormalizedHadLoudness: Boolean = false
+
     private var discordRpc: DiscordRPC? = null
     private var lastPlaybackSpeed = 1.0f
     private var discordUpdateJob: kotlinx.coroutines.Job? = null
@@ -869,7 +875,7 @@ class MusicService :
             dataStore.data.map { prefs ->
                 Triple(
                     prefs[CrossfadeEnabledKey] ?: false,
-                    prefs[CrossfadeDurationKey] ?: 5f,
+                    prefs[CrossfadeDurationKey] ?: 10f,
                     prefs[CrossfadeGaplessKey] ?: true
                 )
             },
@@ -1892,6 +1898,12 @@ class MusicService :
                     
                     val loudness = format?.loudnessDb ?: format?.perceptualLoudnessDb
 
+                    // Already normalized THIS track with real loudness? Don't re-apply — it would jump
+                    // the volume mid-song (e.g. when liking re-stores the format via auto-download).
+                    if (currentMediaId == lastNormalizedId && lastNormalizedHadLoudness && loudness != null) {
+                        return@launch
+                    }
+
                     withContext(Dispatchers.Main) {
                         if (loudness != null) {
                             val loudnessDb = loudness.toFloat()
@@ -1909,11 +1921,15 @@ class MusicService :
                             TruePeakLimiterAudioProcessor.loudnessMakeup =
                                 dbToLinear(loudnessMakeupDb(loudnessDb.toDouble(), enabled = true))
                             loudnessEnhancer?.enabled = false
+                            lastNormalizedId = currentMediaId
+                            lastNormalizedHadLoudness = true
                             Timber.tag(TAG).i("Normalization set (loudnessDb=$loudnessDb, makeup=${TruePeakLimiterAudioProcessor.loudnessMakeup})")
                         } else {
                             NormalizationGainAudioProcessor.gain = 1.0f
                             TruePeakLimiterAudioProcessor.loudnessMakeup = 1.0f
                             loudnessEnhancer?.enabled = false
+                            lastNormalizedId = currentMediaId
+                            lastNormalizedHadLoudness = false
                             Timber.tag(TAG).w("Normalization enabled but no loudness data - unity gain")
                         }
                     }
@@ -3569,7 +3585,7 @@ class MusicService :
             // Finer steps (~40 ms) so the volume ramp is smooth, not stair-stepped like the old 20 steps.
             val steps = (duration / 40L).toInt().coerceIn(24, 240)
             val stepTime = duration / steps
-            val curve = try { dataStore.get(CrossfadeCurveKey, 1) } catch (e: Exception) { 1 }
+            val curve = try { dataStore.get(CrossfadeCurveKey, 0) } catch (e: Exception) { 0 }
             val startVolume = try { fadingPlayer?.volume ?: 1f } catch(e:Exception) { 1f }
             // Equal-power curves (1 = igual potencia, 2 = curva S) keep incoming^2 + outgoing^2 = 1, so the
             // two OVERLAPPING players can sum above full-scale at the Android mixer (which does NOT limit)

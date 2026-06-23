@@ -45,6 +45,8 @@ fun AxionEqScreen(
     val enabled by viewModel.enabled.collectAsState()
     val bandGains by viewModel.bandGains.collectAsState()
     val preamp by viewModel.preamp.collectAsState()
+    val bassBoost by viewModel.bassBoost.collectAsState()
+    val trebleBoost by viewModel.trebleBoost.collectAsState()
     val isDirty by viewModel.isDirty.collectAsState()
     val customProfiles by viewModel.customProfiles.collectAsState()
 
@@ -123,6 +125,15 @@ fun AxionEqScreen(
             )
 
             PreampCard(preamp = preamp, enabled = enabled, onPreampChange = { viewModel.setPreampLive(it) }, onCommit = { viewModel.commit() })
+
+            ToneCard(
+                bass = bassBoost,
+                treble = trebleBoost,
+                enabled = enabled,
+                onBass = { viewModel.setBassBoostLive(it) },
+                onTreble = { viewModel.setTrebleBoostLive(it) },
+                onCommit = { viewModel.commit() },
+            )
 
             // Live preview of the overall EQ curve — easier to read the shape than 24 separate sliders.
             EqCurvePreview(bandGains = bandGains, enabled = enabled)
@@ -361,6 +372,61 @@ private fun PreampCard(preamp: Float, enabled: Boolean, onPreampChange: (Float) 
             onValueChange = onPreampChange,
             onValueChangeFinished = onCommit,
             valueRange = EqConstants.PREAMP_MIN..EqConstants.PREAMP_MAX,
+            enabled = enabled,
+        )
+    }
+}
+
+/** Poweramp-style manual tone: broad, musical Bass + Treble shelves. */
+@Composable
+private fun ToneCard(
+    bass: Float,
+    treble: Float,
+    enabled: Boolean,
+    onBass: (Float) -> Unit,
+    onTreble: (Float) -> Unit,
+    onCommit: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.extraLarge)
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text("Tono", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+        ToneSlider("Graves", bass, enabled, onBass, onCommit)
+        ToneSlider("Agudos", treble, enabled, onTreble, onCommit)
+    }
+}
+
+@Composable
+private fun ToneSlider(
+    label: String,
+    value: Float,
+    enabled: Boolean,
+    onChange: (Float) -> Unit,
+    onCommit: () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline,
+            )
+            Text(
+                text = "%+.0f dB".format(value),
+                style = MaterialTheme.typography.labelMedium,
+                color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline,
+            )
+        }
+        Slider(
+            value = value,
+            onValueChange = onChange,
+            onValueChangeFinished = onCommit,
+            valueRange = -12f..12f,
             enabled = enabled,
         )
     }

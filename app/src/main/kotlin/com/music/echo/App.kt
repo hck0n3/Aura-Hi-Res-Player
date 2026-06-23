@@ -264,11 +264,11 @@ class App : Application(), SingletonImageLoader.Factory {
             p[iad1tya.echo.music.constants.HideVideoSongsKey] = false
             p[iad1tya.echo.music.constants.HideYoutubeShortsKey] = true
 
-            // Playback defaults (user request): smooth transition (crossfade) ON at 9s with the
-            // equal-power curve (1 = "Suave/igual potencia"), skip silence ON and skip silence instantly ON.
+            // Playback defaults (user request): smooth transition (crossfade) ON at 10s with the linear
+            // curve (0 = "Lineal"), skip silence ON and skip silence instantly ON.
             p[iad1tya.echo.music.constants.CrossfadeEnabledKey] = true
-            p[iad1tya.echo.music.constants.CrossfadeDurationKey] = 9f
-            p[iad1tya.echo.music.constants.CrossfadeCurveKey] = 1
+            p[iad1tya.echo.music.constants.CrossfadeDurationKey] = 10f
+            p[iad1tya.echo.music.constants.CrossfadeCurveKey] = 0
             p[iad1tya.echo.music.constants.SkipSilenceKey] = true
             p[iad1tya.echo.music.constants.SkipSilenceInstantKey] = true
 
@@ -346,15 +346,16 @@ class App : Application(), SingletonImageLoader.Factory {
      * afterwards the user's later choices are respected.
      */
     private suspend fun migratePlaybackDefaults(settings: androidx.datastore.preferences.core.Preferences) {
-        if (settings[iad1tya.echo.music.constants.PlaybackDefaultsV1AppliedKey] == true) return
+        if (settings[iad1tya.echo.music.constants.PlaybackDefaultsV2AppliedKey] == true) return
         runCatching {
             dataStore.edit { p ->
                 p[iad1tya.echo.music.constants.CrossfadeEnabledKey] = true
-                p[iad1tya.echo.music.constants.CrossfadeDurationKey] = 9f
-                p[iad1tya.echo.music.constants.CrossfadeCurveKey] = 1
+                p[iad1tya.echo.music.constants.CrossfadeDurationKey] = 10f
+                p[iad1tya.echo.music.constants.CrossfadeCurveKey] = 0
                 p[iad1tya.echo.music.constants.SkipSilenceKey] = true
                 p[iad1tya.echo.music.constants.SkipSilenceInstantKey] = true
                 p[iad1tya.echo.music.constants.PlaybackDefaultsV1AppliedKey] = true
+                p[iad1tya.echo.music.constants.PlaybackDefaultsV2AppliedKey] = true
             }
         }
     }

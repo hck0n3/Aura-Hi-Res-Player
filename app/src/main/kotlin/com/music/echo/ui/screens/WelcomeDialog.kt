@@ -87,8 +87,8 @@ fun WelcomeDialog(
                     WelcomeDivider()
                     WelcomeFeatureRow(
                         iconRes = R.drawable.equalizer,
-                        title = "Ecualizador de 24 bandas + AutoEq",
-                        subtitle = "Ecualizador gráfico de 24 bandas, JR DSP y perfiles AutoEq para más de 5000 auriculares"
+                        title = "Ecualizador de 24 bandas + Tono",
+                        subtitle = "EQ gráfico de 24 bandas con potenciadores manuales de Graves y Agudos (estilo Poweramp), limitador multibanda anti-distorsión, JR DSP y perfiles AutoEq para +5000 auriculares"
                     )
                     WelcomeDivider()
                     WelcomeFeatureRow(
