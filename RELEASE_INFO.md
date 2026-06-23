@@ -1,11 +1,17 @@
 # Aura Hi-Res Player 0.5.2
 
-## YouTube Music en la introducción — paso propio y funcionando 🎬
-- Ahora el primer inicio tiene **dos pasos de migración SEPARADOS**: primero **Spotify**, luego **YouTube Music** (cada uno en su pantalla).
-- En el paso de YouTube: tocas **"Conectar YouTube Music"** → inicias sesión → la app se reinicia (es normal en el login de Google) y **vuelve sola a la pantalla para elegir qué sincronizar** (me gusta, álbumes, artistas, suscripciones, playlists). Si ya estás logueado, va directo a elegir. Puedes **Omitir**.
-- Ya **no se reinicia en bucle ni te saca del login** (arreglado en 0.5.1): el regreso a la selección se hace una sola vez tras el reinicio.
+## 🔊 ARREGLO CRÍTICO: reproducía sin sonido
+- Síntoma: la música "sonaba" (avanzaba) pero **no se escuchaba ni en altavoz ni en Bluetooth**.
+- Causa: durante un crossfade/atenuación el `player.volume` baja temporalmente, y el estado del reproductor **guardaba ese volumen transitorio**. Si la app se guardaba/cerraba durante un fundido, persistía un volumen ~0 y **toda la reproducción quedaba muda** para siempre.
+- Arreglo en 3 capas:
+  1. **Repara**: si tu volumen quedó guardado en ~0, al abrir se restablece a volumen completo → tu app deja de estar muda.
+  2. **Previene**: el estado ahora guarda **tu volumen real**, nunca el transitorio del fundido.
+  3. **Blinda**: un crossfade cancelado (al saltar de tema) **siempre** restaura el volumen (try/finally).
+
+## 🎬 YouTube Music en la introducción — paso propio, sin login forzado
+- El primer inicio tiene dos pasos de migración **separados**: **Spotify**, luego **YouTube Music**.
+- El paso de YouTube **ya no fuerza el login**: "Sincronizar YouTube Music" abre la pantalla para **elegir qué traer**; si no tienes sesión, la inicias ahí (opcional). También puedes **Omitir**.
 
 ## Técnico
-- Nueva `OnboardingYouTubeScreen` (ruta `onboarding_youtube`), encadenada: artists → genres → spotify → **youtube** → home.
-- Login: marca `OpenYtmSyncAfterLoginKey` y abre el login; MainActivity lo lee una sola vez al arrancar y navega a `settings/ytm_sync`. Si ya hay sesión, va directo. "Omitir" limpia el flag.
-- OnboardingSpotifyScreen: "Continuar" pasa al paso de YouTube (se le quitó el prompt de Google de Spotify).
+- MusicService: persistir `playerVolume.value` (no `player.volume`); reparar volumen persistido <0.05 → 1; crossfade con `try/finally` que restaura el volumen del usuario y limpia.
+- OnboardingYouTubeScreen (ruta `onboarding_youtube`) encadenado tras Spotify; navega a `settings/ytm_sync` (sin login automático).

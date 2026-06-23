@@ -634,7 +634,11 @@ class MusicService :
 
         audioQuality = dataStore.get(AudioQualityKey).toEnum(iad1tya.echo.music.constants.AudioQuality.OPUS)
         ipVersion = dataStore.get(IpVersionKey).toEnum(IpVersion.AUTO)
-        playerVolume = MutableStateFlow(dataStore.get(PlayerVolumeKey, 1f).coerceIn(0f, 1f))
+        // Repair: a persisted ~0 volume means it was captured mid-crossfade/duck by the old bug (a real
+        // "I want silence" never persists as 0 — the user pauses/mutes instead). Treat it as full.
+        playerVolume = MutableStateFlow(
+            dataStore.get(PlayerVolumeKey, 1f).let { if (it < 0.05f) 1f else it.coerceIn(0f, 1f) },
+        )
 
         // Cast is initialized lazily on first playback (see initializeCast) — NOT here in onCreate,
         // which can run while the app is in the background and would crash on Android 12+.
@@ -967,7 +971,8 @@ class MusicService :
                         
                         
                         
-                        playerVolume.value = playerState.volume
+                        // Same repair on queue restore: a near-0 persisted volume = the old capture bug.
+                        playerVolume.value = playerState.volume.let { if (it < 0.05f) 1f else it.coerceIn(0f, 1f) }
 
                         
                         if (playerState.currentMediaItemIndex < player.mediaItemCount) {
@@ -3188,7 +3193,10 @@ class MusicService :
             playWhenReady = player.playWhenReady,
             repeatMode = player.repeatMode,
             shuffleModeEnabled = player.shuffleModeEnabled,
-            volume = player.volume,
+            // Persist the USER's intended volume, never the live player.volume (which is transiently
+            // lowered during a crossfade or audio-focus duck). Saving the transient value and restoring
+            // it later left playback permanently silent.
+            volume = (if (::playerVolume.isInitialized) playerVolume.value else player.volume),
             currentPosition = player.currentPosition,
             currentMediaItemIndex = player.currentMediaItemIndex,
             playbackState = player.playbackState,
@@ -3230,7 +3238,10 @@ class MusicService :
                 playWhenReady = player.playWhenReady,
                 repeatMode = player.repeatMode,
                 shuffleModeEnabled = player.shuffleModeEnabled,
-                volume = player.volume,
+                // Persist the USER's intended volume, never the live player.volume (which is transiently
+            // lowered during a crossfade or audio-focus duck). Saving the transient value and restoring
+            // it later left playback permanently silent.
+            volume = (if (::playerVolume.isInitialized) playerVolume.value else player.volume),
                 currentPosition = player.currentPosition,
                 currentMediaItemIndex = player.currentMediaItemIndex,
                 playbackState = player.playbackState
@@ -3639,29 +3650,37 @@ class MusicService :
             // exponential (3) already sum to <= 1.0, so they get no headroom (no needless volume dip).
             val xfHeadroom = if (curve == 1 || curve == 2) 0.75f else 1f
 
-            for (i in 0..steps) {
-                if (!isActive) break
-
-                while (!player.isPlaying && isActive) {
-                    delay(100)
-                }
-
-                val progress = i / steps.toFloat()
-                val (fadeIn, fadeOut) = crossfadeGains(curve, progress)
-
-                try {
-                    player.volume = startVolume * fadeIn * xfHeadroom
-                    fadingPlayer?.volume = startVolume * fadeOut * xfHeadroom
-                } catch (e: Exception) { break }
-
-                delay(stepTime)
-            }
-
             try {
-                fadingPlayer?.volume = 0f
-                player.volume = startVolume
-                cleanupCrossfade()
-            } catch (e: Exception) { Timber.tag(TAG).e(e, "Crossfade cleanup failed") }
+                for (i in 0..steps) {
+                    if (!isActive) break
+
+                    while (!player.isPlaying && isActive) {
+                        delay(100)
+                    }
+
+                    val progress = i / steps.toFloat()
+                    val (fadeIn, fadeOut) = crossfadeGains(curve, progress)
+
+                    try {
+                        player.volume = startVolume * fadeIn * xfHeadroom
+                        fadingPlayer?.volume = startVolume * fadeOut * xfHeadroom
+                    } catch (e: Exception) { break }
+
+                    delay(stepTime)
+                }
+            } finally {
+                // ALWAYS end the crossfade cleanly — even if it's cancelled (skip/stop) mid-fade, which
+                // throws from delay() and would otherwise skip the restore and leave the surviving player
+                // silent for the rest of the session. Restore it to the user's real volume + tear down.
+                runCatching {
+                    player.volume = when {
+                        !::playerVolume.isInitialized -> startVolume
+                        isMuted.value -> 0f
+                        else -> playerVolume.value
+                    }
+                }
+                runCatching { cleanupCrossfade() }
+            }
         }
     }
 
