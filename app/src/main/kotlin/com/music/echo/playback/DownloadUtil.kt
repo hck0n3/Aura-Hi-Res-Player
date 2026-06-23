@@ -44,7 +44,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -211,24 +210,6 @@ constructor(
                             when (download.state) {
                                 Download.STATE_COMPLETED -> {
                                     database.updateDownloadedInfo(download.request.id, true, LocalDateTime.now())
-                                    // Best-effort: measure the real integrated loudness (ITU-R BS.1770) of the
-                                    // freshly downloaded file and store it, so volume normalization is accurate
-                                    // even when YouTube's loudness metadata is missing or off. Any failure just
-                                    // keeps the existing value — never breaks the download or playback.
-                                    runCatching {
-                                        val id = download.request.id
-                                        val measured = DownloadLoudnessMeasurer.measureLoudnessDb(
-                                            downloadCache, id, download.request.uri, 0L,
-                                        )
-                                        if (measured != null) {
-                                            val existing = database.format(id).first()
-                                            if (existing != null) {
-                                                database.query { upsert(existing.copy(loudnessDb = measured)) }
-                                            }
-                                        }
-                                    }.onFailure {
-                                        timber.log.Timber.tag("DownloadLoudness").w(it, "measure hook failed")
-                                    }
                                 }
                                 Download.STATE_FAILED,
                                 Download.STATE_STOPPED,

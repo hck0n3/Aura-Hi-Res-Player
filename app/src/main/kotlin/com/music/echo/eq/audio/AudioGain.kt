@@ -48,16 +48,15 @@ fun normalizationMultiplier(
  * over-drives the downstream true-peak limiter — too much makeup makes the limiter reduce gain heavily,
  * which sounds like harmonic saturation / a harsh, "boxy" voice, especially at max volume.
  *
- * History: +6 dB was the long-standing clean default. Pushing it to +12 then +8 dB to lift quiet
- * songs more over-drove the limiter → audible artifacts (harsh/"boxy" saturation, then pumping /
- * "volume in waves") at high volume. Back to +6 dB — the artifact-free point. Lifting quiet songs
- * MORE without these limiter artifacts needs peak-aware normalization (apply only the gain that fits
- * under the track's true-peak headroom), not a bigger blind makeup.
+ * Capped at [maxBoostDb] = +12 dB — the configuration the user confirmed sounded best (the v0.0.9
+ * setup). The artifacts they later heard (saturation, then pumping) came from the per-download
+ * loudness measurement added afterwards, not from this makeup, so that measurement was removed and
+ * this stays at +12.
  */
 fun loudnessMakeupDb(
     loudnessDb: Double?,
     enabled: Boolean,
-    maxBoostDb: Double = 6.0,
+    maxBoostDb: Double = 12.0,
 ): Double {
     if (!enabled || loudnessDb == null) return 0.0
     return (-loudnessDb).coerceIn(0.0, maxBoostDb)

@@ -94,9 +94,8 @@ class AudioGainTest {
     }
 
     @Test fun makeupIsCappedAtMaxBoost() {
-        // loudnessDb -20 → would be +20 dB → capped at the default +6 dB (the artifact-free point;
-        // more makeup over-drove the limiter into audible saturation / pumping at high volume).
-        assertEquals(6.0, loudnessMakeupDb(-20.0, enabled = true), 1e-9)
+        // loudnessDb -20 → would be +20 dB → capped at the default +12 dB (the v0.0.9 configuration).
+        assertEquals(12.0, loudnessMakeupDb(-20.0, enabled = true), 1e-9)
     }
 
     // ── dbToLinear ──
