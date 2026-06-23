@@ -4,7 +4,12 @@ package iad1tya.echo.music.ui.screens.settings
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.only
@@ -20,6 +25,7 @@ import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.material3.Switch
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
@@ -156,6 +162,24 @@ fun BackupAndRestore(
         }
     }
 
+    // Selective migration (playlists / all artists / all EQ presets) — additive, never destructive.
+    var showSelectiveExportDialog by rememberSaveable { mutableStateOf(false) }
+    val selectedPlaylistIds = remember { mutableStateListOf<String>() }
+    var includeArtists by rememberSaveable { mutableStateOf(true) }
+    var includePresets by rememberSaveable { mutableStateOf(true) }
+    val selectivePlaylists by viewModel.playlists.collectAsState()
+
+    val selectiveExportLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+            if (uri != null) viewModel.exportSelective(
+                context, uri, selectedPlaylistIds.toList(), includeArtists, includePresets,
+            )
+        }
+    val selectiveImportLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            if (uri != null) viewModel.importSelective(context, uri)
+        }
+
     var currentScreen by rememberSaveable { mutableStateOf(BackupSubScreen.MAIN) }
 
     BackHandler(enabled = currentScreen != BackupSubScreen.MAIN) {
@@ -193,6 +217,12 @@ fun BackupAndRestore(
                                         }.backup"
                                     )
                                 }
+                            ),
+                            Material3SettingsItem(
+                                title = { Text("Migración selectiva (Aura)") },
+                                description = { Text("Elige qué playlists migrar, y/o todos los artistas y todos los presets de EQ") },
+                                icon = painterResource(R.drawable.backup),
+                                onClick = { showSelectiveExportDialog = true }
                             )
                         )
                     )
@@ -254,6 +284,14 @@ fun BackupAndRestore(
                                 icon = painterResource(R.drawable.playlist_add),
                                 onClick = {
                                     importJrLauncher.launch(arrayOf("application/json", "text/plain", "*/*"))
+                                }
+                            ),
+                            Material3SettingsItem(
+                                title = { Text("Importar migración selectiva (Aura)") },
+                                description = { Text("Playlists, artistas y presets exportados de Aura — aditivo, no borra nada") },
+                                icon = painterResource(R.drawable.restore),
+                                onClick = {
+                                    selectiveImportLauncher.launch(arrayOf("application/json", "*/*"))
                                 }
                             )
                         )
@@ -360,7 +398,104 @@ fun BackupAndRestore(
         progress = csvImportProgress,
         recentLogs = csvRecentLogs.toList(),
         onDismiss = {
-            
+
+        },
+    )
+
+    if (showSelectiveExportDialog) {
+        SelectiveExportDialog(
+            playlists = selectivePlaylists,
+            selectedIds = selectedPlaylistIds,
+            includeArtists = includeArtists,
+            includePresets = includePresets,
+            onToggleArtists = { includeArtists = it },
+            onTogglePresets = { includePresets = it },
+            onDismiss = { showSelectiveExportDialog = false },
+            onExport = {
+                showSelectiveExportDialog = false
+                val formatter = DateTimeFormatter.ofPattern("yyyyMMddHHmmss")
+                selectiveExportLauncher.launch("aura-migracion-${LocalDateTime.now().format(formatter)}.json")
+            },
+        )
+    }
+}
+
+@Composable
+private fun SelectiveExportDialog(
+    playlists: List<iad1tya.echo.music.db.entities.Playlist>,
+    selectedIds: androidx.compose.runtime.snapshots.SnapshotStateList<String>,
+    includeArtists: Boolean,
+    includePresets: Boolean,
+    onToggleArtists: (Boolean) -> Unit,
+    onTogglePresets: (Boolean) -> Unit,
+    onDismiss: () -> Unit,
+    onExport: () -> Unit,
+) {
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Migración selectiva") },
+        text = {
+            Column {
+                Text(
+                    "Elige qué exportar a un archivo. Al importarlo se añade a tu biblioteca sin borrar nada.",
+                    style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.padding(4.dp))
+                androidx.compose.foundation.layout.Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    Switch(checked = includeArtists, onCheckedChange = onToggleArtists)
+                    Spacer(Modifier.padding(4.dp))
+                    Text("Todos los artistas seguidos")
+                }
+                androidx.compose.foundation.layout.Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    Switch(checked = includePresets, onCheckedChange = onTogglePresets)
+                    Spacer(Modifier.padding(4.dp))
+                    Text("Todos los presets de EQ")
+                }
+                Spacer(Modifier.padding(4.dp))
+                Text("Playlists (elige cuáles):", style = androidx.compose.material3.MaterialTheme.typography.titleSmall)
+                if (playlists.isEmpty()) {
+                    Text(
+                        "No tienes playlists.",
+                        style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
+                        color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.heightIn(max = 240.dp),
+                    ) {
+                        items(playlists) { pl ->
+                            val id = pl.playlist.id
+                            val checked = selectedIds.contains(id)
+                            androidx.compose.foundation.layout.Row(
+                                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { if (checked) selectedIds.remove(id) else selectedIds.add(id) }
+                                    .padding(vertical = 4.dp),
+                            ) {
+                                androidx.compose.material3.Checkbox(
+                                    checked = checked,
+                                    onCheckedChange = { if (it) selectedIds.add(id) else selectedIds.remove(id) },
+                                )
+                                Spacer(Modifier.padding(4.dp))
+                                Text(pl.playlist.name)
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            androidx.compose.material3.TextButton(
+                onClick = onExport,
+                enabled = selectedIds.isNotEmpty() || includeArtists || includePresets,
+            ) { Text("Exportar") }
+        },
+        dismissButton = {
+            androidx.compose.material3.TextButton(onClick = onDismiss) {
+                Text(stringResource(android.R.string.cancel))
+            }
         },
     )
 }

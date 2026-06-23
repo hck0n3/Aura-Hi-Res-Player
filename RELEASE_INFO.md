@@ -1,11 +1,14 @@
-# Aura Hi-Res Player 0.3.1
+# Aura Hi-Res Player 0.4.0
 
-## Sincronización de YouTube Music: ahora en su sitio 🔁
-- El apartado para **elegir qué sincronizar de YouTube Music** se movió a **Ajustes ▸ Importar ▸ "Sincronizar desde YouTube Music"** (junto a "Importar desde Spotify"), para que todo tenga orden.
-- Ya **no** está en la pantalla de Cuenta.
-- También aparece en el **primer inicio** (paso de migración): botón "Sincronizar YouTube Music". Si aún no iniciaste sesión, el propio apartado te ofrece iniciar sesión.
+## Migración selectiva (copia por partes) 🧳
+- En **Ajustes ▸ Copia de seguridad ▸ "Migración selectiva (Aura)"** ahora eliges exactamente qué exportar a un archivo:
+  - **Playlists**: marca las que quieras (seleccionable).
+  - **Todos los artistas** seguidos, de una vez.
+  - **Todos los presets de EQ**, de una vez.
+- Para traerlo: **Ajustes ▸ Importar ▸ "Importar migración selectiva (Aura)"**.
+- La importación es **estrictamente aditiva**: solo añade, **nunca borra** nada de tu biblioteca (en el peor caso, un duplicado — jamás pérdida de datos). Las playlists se reconstruyen con el importador probado.
 
 ## Técnico
-- Nueva pantalla `YtmSyncScreen` (ruta `settings/ytm_sync`), auto-gestiona el login (si no, botón de iniciar sesión).
-- Entrada en BackupAndRestore ▸ Importar + botón en OnboardingSpotifyScreen.
-- Quitado el grupo de sync de AccountSettingsScreen (se conservan los métodos del ViewModel).
+- `SelectiveBackup` (JSON): playlists en formato `JrPlaylistFile` (reusa `JrPlaylistImporter`), artistas (`ArtistRec`) y presets (`SavedEQProfile`).
+- BackupRestoreViewModel: `exportSelective` (solo lectura de la biblioteca) e `importSelective` (aditivo: JrPlaylistImporter por playlist, insert de artistas con bookmarked, `saveProfile` de presets con id nuevo).
+- UI: diálogo de selección en la pantalla de Copia + entrada en Importar.

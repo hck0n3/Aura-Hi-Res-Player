@@ -30,6 +30,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.serialization.json.Json
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewModelScope
 import timber.log.Timber
@@ -55,7 +58,13 @@ data class ConvertedSongLog(
 @HiltViewModel
 class BackupRestoreViewModel @Inject constructor(
     val database: MusicDatabase,
+    private val eqProfileRepository: iad1tya.echo.music.eq.data.EQProfileRepository,
 ) : ViewModel() {
+
+    /** Local playlists for the selective-export picker. */
+    val playlists: StateFlow<List<iad1tya.echo.music.db.entities.Playlist>> =
+        database.playlists(iad1tya.echo.music.constants.PlaylistSortType.NAME, false)
+            .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.Eagerly, emptyList())
 
     fun backup(context: Context, uri: Uri) {
         runCatching {
@@ -193,6 +202,121 @@ class BackupRestoreViewModel @Inject constructor(
             reportException(it)
             Timber.tag("RESTORE").e(it, "Due to new architecture this backup can't be restored")
             Toast.makeText(context, "Debido a la nueva arquitectura, esta copia de seguridad no se puede restaurar", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /**
+     * Selective export: only [playlistIds], optionally all followed artists and all EQ presets, into a
+     * single mergeable `.json`. Read-only on the library, so it can't corrupt anything.
+     */
+    fun exportSelective(
+        context: Context,
+        uri: Uri,
+        playlistIds: List<String>,
+        includeArtists: Boolean,
+        includePresets: Boolean,
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                val pls = playlistIds.mapNotNull { pid ->
+                    val pl = database.playlist(pid).first() ?: return@mapNotNull null
+                    val songs = database.playlistSongs(pid).first()
+                    iad1tya.echo.music.playlistimport.JrPlaylistImporter.JrPlaylistFile(
+                        name = pl.playlist.name,
+                        tracks = songs.map { ps ->
+                            iad1tya.echo.music.playlistimport.JrPlaylistImporter.JrTrack(
+                                title = ps.song.song.title,
+                                artist = ps.song.artists.joinToString(", ") { it.name },
+                                youtubeVideoId = ps.song.song.id,
+                            )
+                        },
+                    )
+                }
+                val artists = if (includeArtists) {
+                    database.artists(iad1tya.echo.music.constants.ArtistSortType.NAME, false).first()
+                        .filter { it.artist.bookmarkedAt != null }
+                        .map {
+                            iad1tya.echo.music.playlistimport.SelectiveBackup.ArtistRec(
+                                id = it.artist.id,
+                                name = it.artist.name,
+                                thumbnailUrl = it.artist.thumbnailUrl,
+                                channelId = it.artist.channelId,
+                            )
+                        }
+                } else emptyList()
+                val presets = if (includePresets) eqProfileRepository.profiles.first() else emptyList()
+                val bundle = iad1tya.echo.music.playlistimport.SelectiveBackup(
+                    playlists = pls, artists = artists, eqPresets = presets,
+                )
+                val text = Json.encodeToString(
+                    iad1tya.echo.music.playlistimport.SelectiveBackup.serializer(), bundle,
+                )
+                context.contentResolver.openOutputStream(uri)?.use { it.write(text.toByteArray()) }
+            }.onSuccess {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "Exportación creada", Toast.LENGTH_SHORT).show()
+                }
+            }.onFailure {
+                reportException(it)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "No se pudo exportar", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    /**
+     * Selective import. Strictly ADDITIVE: playlists go through the tested [JrPlaylistImporter] (creates
+     * new playlists), artists/presets are inserted (followed artists kept). Nothing is ever deleted, so
+     * the worst case is a duplicate — never data loss.
+     */
+    fun importSelective(context: Context, uri: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                val text = context.contentResolver.openInputStream(uri)?.use {
+                    it.readBytes().decodeToString()
+                } ?: return@runCatching null
+                val bundle = Json { ignoreUnknownKeys = true }.decodeFromString(
+                    iad1tya.echo.music.playlistimport.SelectiveBackup.serializer(), text,
+                )
+                bundle.playlists.forEach {
+                    iad1tya.echo.music.playlistimport.JrPlaylistImporter.import(database, it)
+                }
+                bundle.artists.forEach { a ->
+                    database.query {
+                        insert(
+                            ArtistEntity(
+                                id = a.id,
+                                name = a.name,
+                                thumbnailUrl = a.thumbnailUrl,
+                                channelId = a.channelId,
+                                bookmarkedAt = java.time.LocalDateTime.now(),
+                            ),
+                        )
+                    }
+                }
+                bundle.eqPresets.forEach { p ->
+                    eqProfileRepository.saveProfile(
+                        p.copy(
+                            id = "custom_${System.currentTimeMillis()}_${p.name.hashCode()}",
+                            isActive = false,
+                            isCustom = true,
+                        ),
+                    )
+                }
+                bundle
+            }.onSuccess { b ->
+                withContext(Dispatchers.Main) {
+                    val msg = if (b == null) "No se pudo importar"
+                    else "Importado: ${b.playlists.size} playlists, ${b.artists.size} artistas, ${b.eqPresets.size} presets"
+                    Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                }
+            }.onFailure {
+                reportException(it)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "No se pudo importar", Toast.LENGTH_SHORT).show()
+                }
+            }
         }
     }
 
