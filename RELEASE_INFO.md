@@ -1,14 +1,8 @@
-# Aura Hi-Res Player 0.4.0
+# Aura Hi-Res Player 0.4.1
 
-## Migración selectiva (copia por partes) 🧳
-- En **Ajustes ▸ Copia de seguridad ▸ "Migración selectiva (Aura)"** ahora eliges exactamente qué exportar a un archivo:
-  - **Playlists**: marca las que quieras (seleccionable).
-  - **Todos los artistas** seguidos, de una vez.
-  - **Todos los presets de EQ**, de una vez.
-- Para traerlo: **Ajustes ▸ Importar ▸ "Importar migración selectiva (Aura)"**.
-- La importación es **estrictamente aditiva**: solo añade, **nunca borra** nada de tu biblioteca (en el peor caso, un duplicado — jamás pérdida de datos). Las playlists se reconstruyen con el importador probado.
+## Sincronización YouTube Music: el login ya te devuelve a la selección 🔁
+- Antes, al iniciar sesión con Google la app se **reiniciaba** y nunca volvías a la pantalla para elegir qué sincronizar.
+- Ahora, igual que la migración de Spotify: **inicias sesión → la app vuelve sola a la pantalla "Sincronizar desde YouTube Music"** para que elijas qué traer (me gusta, álbumes, artistas, suscripciones, playlists). Al terminar, el programa queda con tu contenido.
 
 ## Técnico
-- `SelectiveBackup` (JSON): playlists en formato `JrPlaylistFile` (reusa `JrPlaylistImporter`), artistas (`ArtistRec`) y presets (`SavedEQProfile`).
-- BackupRestoreViewModel: `exportSelective` (solo lectura de la biblioteca) e `importSelective` (aditivo: JrPlaylistImporter por playlist, insert de artistas con bookmarked, `saveProfile` de presets con id nuevo).
-- UI: diálogo de selección en la pantalla de Copia + entrada en Importar.
+- Flag `OpenYtmSyncAfterLoginKey`: se marca al pulsar "Iniciar sesión" desde el apartado de sync; el login hace su cold-restart habitual (ProcessPhoenix) y, tras reiniciar, MainActivity navega automáticamente a `settings/ytm_sync`.

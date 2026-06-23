@@ -784,6 +784,18 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
+                // After the YouTube Music login cold-restart, return the user to the sync selection
+                // screen (like Spotify's import returns to its picker) so they choose what to sync.
+                val (openYtmSyncAfterLogin, setOpenYtmSyncAfterLogin) =
+                    rememberPreference(iad1tya.echo.music.constants.OpenYtmSyncAfterLoginKey, false)
+                LaunchedEffect(openYtmSyncAfterLogin) {
+                    if (openYtmSyncAfterLogin) {
+                        setOpenYtmSyncAfterLogin(false)
+                        kotlinx.coroutines.delay(500)
+                        runCatching { navController.navigate("settings/ytm_sync") }
+                    }
+                }
+
                 DisposableEffect(Unit) {
                     val listener = Consumer<Intent> { intent ->
                         handleDeepLinkIntent(intent, navController)

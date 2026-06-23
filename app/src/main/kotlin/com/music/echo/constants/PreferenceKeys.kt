@@ -68,6 +68,9 @@ val ThemeSystemOnlyV2AppliedKey = booleanPreferencesKey("theme_system_only_v2_ap
 val PlaybackDefaultsV1AppliedKey = booleanPreferencesKey("playback_defaults_v1_applied")
 // v2: crossfade duration 11s + linear curve (user request). Re-applied once on update.
 val PlaybackDefaultsV2AppliedKey = booleanPreferencesKey("playback_defaults_v2_applied")
+// Set before the YouTube Music login (which cold-restarts the app) so that, after the restart, we
+// return the user to the YouTube Music sync selection screen — like Spotify's import flow.
+val OpenYtmSyncAfterLoginKey = booleanPreferencesKey("open_ytm_sync_after_login")
 val SpotifySpDcKey = stringPreferencesKey("spotify_sp_dc")
 val SpotifySpKeyKey = stringPreferencesKey("spotify_sp_key")
 val SpotifyAccountNameKey = stringPreferencesKey("spotify_account_name")

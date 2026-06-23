@@ -56,6 +56,8 @@ fun YtmSyncScreen(
     val context = LocalContext.current
     val (innerTubeCookie, _) = rememberPreference(InnerTubeCookieKey, "")
     val isLoggedIn = remember(innerTubeCookie) { "SAPISID" in parseCookieString(innerTubeCookie) }
+    // Login cold-restarts the app; this flag brings the user back here (selection) after the restart.
+    val (_, setOpenAfterLogin) = rememberPreference(iad1tya.echo.music.constants.OpenYtmSyncAfterLoginKey, false)
 
     fun toast(msg: String) = Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
 
@@ -90,7 +92,10 @@ fun YtmSyncScreen(
                 )
                 Spacer(Modifier.height(16.dp))
                 Button(
-                    onClick = { navController.navigate("login") },
+                    onClick = {
+                        setOpenAfterLogin(true)
+                        navController.navigate("login")
+                    },
                     modifier = Modifier.fillMaxWidth().height(50.dp),
                 ) { Text(stringResource(R.string.login)) }
                 return@Column
