@@ -62,6 +62,22 @@ fun loudnessMakeupDb(
     return (-loudnessDb).coerceIn(0.0, maxBoostDb)
 }
 
+/**
+ * Loudness (dB vs reference) to assume for a track with NO loudness metadata. Many non-YouTube sources
+ * (Saavn/Qobuz/local) don't report loudness; treating them as a typical loud master (positive value →
+ * a small attenuation, never a boost) keeps them from playing noticeably LOUDER than normalized tracks,
+ * so the whole library stays at a consistent volume.
+ */
+const val DEFAULT_UNKNOWN_LOUDNESS_DB: Double = 4.0
+
+/**
+ * The loudness value (dB vs reference) to normalize a track by: the real [loudnessDb] if present, else
+ * [perceptualLoudnessDb], else [DEFAULT_UNKNOWN_LOUDNESS_DB]. Ensures EVERY track is normalized (none
+ * plays at its raw, un-leveled volume).
+ */
+fun effectiveLoudnessDb(loudnessDb: Double?, perceptualLoudnessDb: Double?): Double =
+    loudnessDb ?: perceptualLoudnessDb ?: DEFAULT_UNKNOWN_LOUDNESS_DB
+
 /** Linear amplitude multiplier for a dB gain (e.g. -6 dB → 0.501, +6 dB → 1.995). */
 fun dbToLinear(db: Double): Float = 10.0.pow(db / 20.0).toFloat()
 

@@ -1,8 +1,10 @@
 package iad1tya.echo.music.eq.audio
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.math.abs
+import kotlin.math.log10
 
 class AudioGainTest {
 
@@ -96,6 +98,35 @@ class AudioGainTest {
     @Test fun makeupIsCappedAtMaxBoost() {
         // loudnessDb -20 → would be +20 dB → capped at the default +12 dB (the v0.0.9 configuration).
         assertEquals(12.0, loudnessMakeupDb(-20.0, enabled = true), 1e-9)
+    }
+
+    // ── consistency: every track lands at the SAME reference loudness ──
+
+    @Test fun everyTrackReachesTheSameReference() {
+        // Net gain (attenuation dB + makeup dB) == -loudnessDb within the +/-12 caps, so a loud master
+        // and a quiet track end up at the same perceived volume ("all songs the same loudness").
+        for (l in -9..9) {
+            val ld = l.toDouble()
+            val net = 20.0 * log10(normalizationMultiplier(ld, enabled = true).toDouble()) +
+                loudnessMakeupDb(ld, enabled = true)
+            assertEquals("loudnessDb=$ld", -ld, net, 0.05)
+        }
+    }
+
+    // ── effectiveLoudnessDb (no track escapes normalization) ──
+
+    @Test fun effectiveLoudnessPrefersRealThenPerceptualThenDefault() {
+        assertEquals(3.0, effectiveLoudnessDb(3.0, 9.0), 1e-9)            // prefer real loudnessDb
+        assertEquals(7.0, effectiveLoudnessDb(null, 7.0), 1e-9)          // fall back to perceptual
+        assertEquals(DEFAULT_UNKNOWN_LOUDNESS_DB, effectiveLoudnessDb(null, null), 1e-9)
+    }
+
+    @Test fun unknownLoudnessIsAttenuatedNotBoosted() {
+        // A track with no loudness metadata (common on non-YouTube sources) is treated as a loud master:
+        // attenuated, never boosted, so it can't blast louder than the normalized tracks.
+        val d = effectiveLoudnessDb(null, null)
+        assertTrue("unknown track attenuated", normalizationMultiplier(d, enabled = true) < 1f)
+        assertEquals("unknown track not boosted", 0.0, loudnessMakeupDb(d, enabled = true), 1e-9)
     }
 
     // ── dbToLinear ──

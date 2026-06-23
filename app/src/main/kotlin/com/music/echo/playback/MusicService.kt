@@ -157,6 +157,7 @@ import iad1tya.echo.music.eq.audio.TruePeakLimiterAudioProcessor
 import iad1tya.echo.music.eq.audio.normalizationMultiplier
 import iad1tya.echo.music.eq.audio.loudnessMakeupDb
 import iad1tya.echo.music.eq.audio.dbToLinear
+import iad1tya.echo.music.eq.audio.effectiveLoudnessDb
 import iad1tya.echo.music.eq.audio.SpectrumBus
 import iad1tya.echo.music.eq.data.EQProfileRepository
 import iad1tya.echo.music.extensions.SilentHandler
@@ -1896,42 +1897,31 @@ class MusicService :
                     Timber.tag(TAG).d("Format loudnessDb: ${format?.loudnessDb}, perceptualLoudnessDb: ${format?.perceptualLoudnessDb}")
 
                     
-                    val loudness = format?.loudnessDb ?: format?.perceptualLoudnessDb
+                    // Normalize EVERY track to the same reference so none plays louder than another. Use
+                    // the real loudness when present, else a conservative default (so non-YouTube tracks
+                    // without metadata don't blast at their raw level).
+                    val hasRealLoudness = format?.loudnessDb != null || format?.perceptualLoudnessDb != null
+                    val loudnessDb = effectiveLoudnessDb(format?.loudnessDb, format?.perceptualLoudnessDb)
 
                     // Already normalized THIS track with real loudness? Don't re-apply — it would jump
                     // the volume mid-song (e.g. when liking re-stores the format via auto-download).
-                    if (currentMediaId == lastNormalizedId && lastNormalizedHadLoudness && loudness != null) {
+                    if (currentMediaId == lastNormalizedId && lastNormalizedHadLoudness && hasRealLoudness) {
                         return@launch
                     }
 
                     withContext(Dispatchers.Main) {
-                        if (loudness != null) {
-                            val loudnessDb = loudness.toFloat()
-                            val targetGain = (-loudnessDb * 100).toInt()
-                            val clampedGain = targetGain.coerceIn(MIN_GAIN_MB, MAX_GAIN_MB)
-
-                            Timber.tag(TAG).d("Calculated raw normalization gain: $targetGain mB (from loudness: $loudnessDb)")
-
-                            // Two-stage loudness normalization to a reference (TIDAL-style):
-                            //  • attenuate loud masters (≤ 0 dB) here, in 16-bit, clip-free;
-                            //  • boost quiet tracks UP (makeup, ≥ 0 dB) in float inside the true-peak
-                            //    limiter, which catches the resulting peaks → loud + full, no clip.
-                            NormalizationGainAudioProcessor.gain =
-                                normalizationMultiplier(loudnessDb.toDouble(), enabled = true)
-                            TruePeakLimiterAudioProcessor.loudnessMakeup =
-                                dbToLinear(loudnessMakeupDb(loudnessDb.toDouble(), enabled = true))
-                            loudnessEnhancer?.enabled = false
-                            lastNormalizedId = currentMediaId
-                            lastNormalizedHadLoudness = true
-                            Timber.tag(TAG).i("Normalization set (loudnessDb=$loudnessDb, makeup=${TruePeakLimiterAudioProcessor.loudnessMakeup})")
-                        } else {
-                            NormalizationGainAudioProcessor.gain = 1.0f
-                            TruePeakLimiterAudioProcessor.loudnessMakeup = 1.0f
-                            loudnessEnhancer?.enabled = false
-                            lastNormalizedId = currentMediaId
-                            lastNormalizedHadLoudness = false
-                            Timber.tag(TAG).w("Normalization enabled but no loudness data - unity gain")
-                        }
+                        // Two-stage loudness normalization to a reference (TIDAL-style):
+                        //  • attenuate loud masters (≤ 0 dB) here, in 16-bit, clip-free;
+                        //  • boost quiet tracks UP (makeup, ≥ 0 dB) in float inside the true-peak limiter,
+                        //    which catches the resulting peaks → loud + full, no clip.
+                        NormalizationGainAudioProcessor.gain =
+                            normalizationMultiplier(loudnessDb, enabled = true)
+                        TruePeakLimiterAudioProcessor.loudnessMakeup =
+                            dbToLinear(loudnessMakeupDb(loudnessDb, enabled = true))
+                        loudnessEnhancer?.enabled = false
+                        lastNormalizedId = currentMediaId
+                        lastNormalizedHadLoudness = hasRealLoudness
+                        Timber.tag(TAG).i("Normalization set (loudnessDb=$loudnessDb, real=$hasRealLoudness, makeup=${TruePeakLimiterAudioProcessor.loudnessMakeup})")
                     }
                 } else {
                     NormalizationGainAudioProcessor.gain = 1.0f
