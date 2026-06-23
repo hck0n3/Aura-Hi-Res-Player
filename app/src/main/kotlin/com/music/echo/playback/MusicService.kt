@@ -828,12 +828,14 @@ class MusicService :
                 JrDspAudioProcessor.Config(
                     signatureEnabled = prefs[iad1tya.echo.music.constants.AuraSignatureToneEnabledKey] ?: true,
                     loudnessEnabled = prefs[iad1tya.echo.music.constants.JrLoudnessEnabledKey] ?: false,
-                    hrtfEnabled = prefs[iad1tya.echo.music.constants.JrHrtfEnabledKey] ?: false,
+                    // Virtual room (HRTF) removed — always off regardless of any old saved preference.
+                    hrtfEnabled = false,
                     bassEnhanceEnabled = prefs[iad1tya.echo.music.constants.JrBassEnhanceEnabledKey] ?: false,
                     bassEnhanceAmount = prefs[iad1tya.echo.music.constants.JrBassEnhanceAmountKey] ?: 0.28f,
                     exciterEnabled = prefs[iad1tya.echo.music.constants.JrExciterEnabledKey] ?: false,
                     exciterAmount = prefs[iad1tya.echo.music.constants.JrExciterAmountKey] ?: 0.15f,
-                    mbCompEnabled = prefs[iad1tya.echo.music.constants.JrMbCompEnabledKey] ?: false,
+                    // Multiband compressor removed — always off regardless of any old saved preference.
+                    mbCompEnabled = false,
                     stereoWidthEnabled = prefs[iad1tya.echo.music.constants.JrStereoWidthEnabledKey] ?: false,
                     stereoWidth = prefs[iad1tya.echo.music.constants.JrStereoWidthKey] ?: 1.0f,
                     dialogueEnabled = prefs[iad1tya.echo.music.constants.JrDialogueEnabledKey] ?: false,
@@ -1903,9 +1905,13 @@ class MusicService :
                     val hasRealLoudness = format?.loudnessDb != null || format?.perceptualLoudnessDb != null
                     val loudnessDb = effectiveLoudnessDb(format?.loudnessDb, format?.perceptualLoudnessDb)
 
-                    // Already normalized THIS track with real loudness? Don't re-apply — it would jump
-                    // the volume mid-song (e.g. when liking re-stores the format via auto-download).
-                    if (currentMediaId == lastNormalizedId && lastNormalizedHadLoudness && hasRealLoudness) {
+                    // Don't re-apply normalization for the track that's already playing — it would change
+                    // the volume mid-song (e.g. liking it kicks off an auto-download that re-stores the
+                    // format, sometimes WITHOUT loudness, which previously made the volume drop). Re-apply
+                    // only to UPGRADE a track first normalized with the default to its real loudness.
+                    val sameTrack = currentMediaId == lastNormalizedId
+                    val wouldUpgradeToReal = !lastNormalizedHadLoudness && hasRealLoudness
+                    if (sameTrack && !wouldUpgradeToReal) {
                         return@launch
                     }
 
@@ -3042,8 +3048,12 @@ class MusicService :
                     }
                 }
 
-                val loudnessDb = nonNullPlayback.audioConfig?.loudnessDb
-                val perceptualLoudnessDb = nonNullPlayback.audioConfig?.perceptualLoudnessDb
+                // Keep any loudness we already had if this (re)fetch doesn't carry it — e.g. the
+                // auto-download on "like" re-stores the format and can come back WITHOUT loudness;
+                // overwriting the real value with null made normalization fall back to the default and
+                // drop the volume.
+                val loudnessDb = nonNullPlayback.audioConfig?.loudnessDb ?: dbFormat?.loudnessDb
+                val perceptualLoudnessDb = nonNullPlayback.audioConfig?.perceptualLoudnessDb ?: dbFormat?.perceptualLoudnessDb
 
                 Timber.tag(TAG).d("Storing format for $mediaId with loudnessDb: $loudnessDb, perceptualLoudnessDb: $perceptualLoudnessDb")
                 if (loudnessDb == null && perceptualLoudnessDb == null) {

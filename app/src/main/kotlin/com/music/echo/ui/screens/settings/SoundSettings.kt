@@ -54,8 +54,6 @@ fun SoundSettings(
 
     val (jrLoudness, onJrLoudnessChange) =
         rememberPreference(iad1tya.echo.music.constants.JrLoudnessEnabledKey, defaultValue = false)
-    val (jrHrtf, onJrHrtfChange) =
-        rememberPreference(iad1tya.echo.music.constants.JrHrtfEnabledKey, defaultValue = false)
     val (jrBass, onJrBassChange) =
         rememberPreference(iad1tya.echo.music.constants.JrBassEnhanceEnabledKey, defaultValue = false)
     val (jrBassAmt, onJrBassAmtChange) =
@@ -64,8 +62,6 @@ fun SoundSettings(
         rememberPreference(iad1tya.echo.music.constants.JrExciterEnabledKey, defaultValue = false)
     val (jrExciterAmt, onJrExciterAmtChange) =
         rememberPreference(iad1tya.echo.music.constants.JrExciterAmountKey, defaultValue = 0.15f)
-    val (jrMbComp, onJrMbCompChange) =
-        rememberPreference(iad1tya.echo.music.constants.JrMbCompEnabledKey, defaultValue = false)
     val (jrStereo, onJrStereoChange) =
         rememberPreference(iad1tya.echo.music.constants.JrStereoWidthEnabledKey, defaultValue = false)
     val (jrStereoAmt, onJrStereoAmtChange) =
@@ -177,15 +173,6 @@ fun SoundSettings(
                 ),
                 Material3SettingsItem(
                     icon = painterResource(R.drawable.graphic_eq),
-                    title = { Text("Sala virtual (HRTF)") },
-                    description = { Text("Simulación binaural de altavoces para auriculares") },
-                    trailingContent = {
-                        Switch(checked = jrHrtf, onCheckedChange = onJrHrtfChange, thumbContent = thumb(jrHrtf))
-                    },
-                    onClick = { onJrHrtfChange(!jrHrtf) },
-                ),
-                Material3SettingsItem(
-                    icon = painterResource(R.drawable.graphic_eq),
                     title = { Text("Realce de graves") },
                     description = {
                         Column {
@@ -211,15 +198,6 @@ fun SoundSettings(
                         Switch(checked = jrExciter, onCheckedChange = onJrExciterChange, thumbContent = thumb(jrExciter))
                     },
                     onClick = { onJrExciterChange(!jrExciter) },
-                ),
-                Material3SettingsItem(
-                    icon = painterResource(R.drawable.graphic_eq),
-                    title = { Text("Compresor multibanda") },
-                    description = { Text("Control dinámico en 3 bandas; doma los agudos para un sonido parejo") },
-                    trailingContent = {
-                        Switch(checked = jrMbComp, onCheckedChange = onJrMbCompChange, thumbContent = thumb(jrMbComp))
-                    },
-                    onClick = { onJrMbCompChange(!jrMbComp) },
                 ),
                 Material3SettingsItem(
                     icon = painterResource(R.drawable.graphic_eq),

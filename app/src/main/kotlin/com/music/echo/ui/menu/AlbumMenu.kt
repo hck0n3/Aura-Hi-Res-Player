@@ -269,8 +269,15 @@ fun AlbumMenu(
         trailingContent = {
             IconButton(
                 onClick = {
+                    val willLike = album.album.bookmarkedAt == null
                     database.query {
                         update(album.album.toggleLike())
+                    }
+                    // Liking an album also downloads it (mirrors per-song download-on-like).
+                    if (willLike) {
+                        coroutineScope.launch {
+                            iad1tya.echo.music.utils.downloadSongsIfAutoOnLike(context, songs)
+                        }
                     }
                 },
             ) {

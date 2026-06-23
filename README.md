@@ -50,7 +50,6 @@ Aura Hi-Res Player delivers a premium, ad-free listening experience on top of a 
 
 ### High-Fidelity Audio
 - **TIDAL-grade loudness, no distortion** — content is normalized to **−14 LUFS** (quiet tracks are brought up with makeup gain) and protected by a **2× oversampled true-peak limiter at −1 dBTP**, so everything sounds loud and full without clipping.
-- **Multiband compression** — tightens the mix for a consistent, powerful sound across tracks.
 - **Real-time graphic equalizer** — standard **ISO frequency bands**, applied live without restarting playback (no audio drop while you tweak).
 - **Auto-EQ** — automatic headphone correction from an online measurement database; pick your model and the app applies a measured target curve.
 - **Per-device EQ profiles** — different correction per output device.
@@ -113,7 +112,6 @@ Aura Hi-Res Player delivers a premium, ad-free listening experience on top of a 
 
 **Audio de alta fidelidad**
 - Sonido potente tipo TIDAL **sin distorsión**: normalización a **−14 LUFS** (sube las canciones flojas) + **limitador de pico real a −1 dBTP**.
-- **Compresión multibanda** para un sonido parejo y con cuerpo.
 - **Ecualizador en tiempo real** con bandas **ISO**, sin cortes de audio al ajustar.
 - **Auto-EQ** por auriculares y **perfiles de EQ por dispositivo**.
 - **Crossfade uniforme** con estilos de transición seleccionables y volumen parejo.

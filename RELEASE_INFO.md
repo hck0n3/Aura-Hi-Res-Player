@@ -1,15 +1,20 @@
-# Aura Hi-Res Player 0.1.9
+# Aura Hi-Res Player 0.2.0
 
-## Adiós voz rasposa a máximo volumen 🔊
-- A volumen máximo, la señal salía demasiado "caliente" (techo −1 dBTP) y **saturaba el amplificador del teléfono** → voz rasposa. Ahora el techo de salida baja ~2.5 dB (headroom para el amp): suena **limpio incluso a tope**, sin distorsión y sin "oleadas" (el multibanda sigue intacto).
-- Baja el mismo nivel para TODAS las canciones, así que la consistencia entre temas no cambia — solo un nivel general más cómodo. Si lo quieres más fuerte, sube el volumen del dispositivo (ahora con margen) o el preamp del EQ.
+## Arreglo: dar "me gusta" ya no baja el volumen 🔊
+- La auto-descarga al dar like re-guardaba el formato sin loudness y la normalización caía al valor por defecto → bajaba el volumen. Ahora la pista en curso no se re-normaliza al darle like, y nunca se sobrescribe el loudness real con vacío.
 
-## Volumen parejo en TODAS las canciones 🎚️
-- Antes, las pistas sin metadato de loudness (común en fuentes que no son YouTube: descargas, Saavn/Qobuz) se saltaban la normalización y sonaban a su nivel nativo → unas más fuertes que otras.
-- Ahora **toda** pista se normaliza al mismo nivel de referencia; si no hay metadato, se usa un valor conservador para que no suene más fuerte que el resto.
+## Descarga al gustar un álbum 💿
+- Al dar "me gusta" a un álbum ahora también se descarga completo (igual que con las canciones). Respeta tu ajuste de "descargar al dar me gusta".
+
+## Efectos eliminados 🧹
+- Se quitaron **Sala virtual (HRTF)** y **Compresor multibanda** de Efectos DSP (y quedan desactivados aunque los tuvieras encendidos). El resto del sonido (EQ, Tono, normalización, limitador multibanda, firma Aura, etc.) sigue igual.
+
+## En camino (próximas versiones)
+- Mostrar y sincronizar tu contenido de YouTube Music (bidireccional, estilo "todo en uno") + en la introducción.
+- Copia de seguridad/importación selectiva (playlists, artistas, presets por separado).
+- Mejorar las transiciones (precargar la pista entrante para que no haya cortes).
 
 ## Técnico
-- TruePeakLimiterAudioProcessor: CEILING 0.891→0.67 y OUTPUT_TRIM 0.85→0.64 (≈ −2.5 dB de headroom uniforme); softLimit final 0.74/0.70.
-- AudioGain: `effectiveLoudnessDb()` + `DEFAULT_UNKNOWN_LOUDNESS_DB` (4 dB) → ninguna pista escapa de la normalización.
-- MusicService.setupLoudnessEnhancer: normaliza con `effectiveLoudnessDb` (se quitó la rama de ganancia unidad para pistas sin loudness); se mantiene el guard por mediaId (no salta el volumen al dar me gusta).
-- Tests JVM AudioGain: consistencia (ganancia neta = −loudnessDb), atenuación-sólo, makeup acotado y default para loudness desconocido.
+- MusicService.setupLoudnessEnhancer: el guard no re-aplica normalización a la pista en curso (solo "upgrade" de default→loudness real); el upsert de formato preserva el loudness existente si la nueva carga no lo trae.
+- JrDspAudioProcessor.Config: hrtfEnabled/mbCompEnabled forzados a false; toggles quitados de SoundSettings; menciones fuera de About/README.
+- utils/AutoDownload.downloadSongsIfAutoOnLike(): descarga las canciones de un álbum al gustarlo (gated por AutoDownloadOnLikeKey), usado en AlbumMenu y AlbumScreen.

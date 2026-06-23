@@ -76,6 +76,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.launch
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
@@ -483,8 +484,15 @@ fun AlbumScreen(
                         
                         Surface(
                             onClick = {
+                                val willLike = albumWithSongs.album.bookmarkedAt == null
                                 database.query {
                                     update(albumWithSongs.album.toggleLike())
+                                }
+                                // Liking an album also downloads it (mirrors per-song download-on-like).
+                                if (willLike) {
+                                    coroutineScope.launch {
+                                        iad1tya.echo.music.utils.downloadSongsIfAutoOnLike(context, albumWithSongs.songs)
+                                    }
                                 }
                             },
                             shape = CircleShape,
