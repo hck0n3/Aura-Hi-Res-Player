@@ -1,9 +1,11 @@
-# Aura Hi-Res Player 0.5.1
+# Aura Hi-Res Player 0.5.2
 
-## Arreglos del primer inicio (onboarding) 🧩
-- **Login de YouTube Music ya no se reinicia ni te saca de la página** → ahora sí puedes iniciar sesión. (El causante era un flag que reaccionaba al instante de tocar "Iniciar sesión" y te mandaba a la selección antes de tiempo; ahora se lee una sola vez al arrancar, tras el reinicio del login.)
-- **Spotify y YouTube quedan separados**: la introducción solo migra **Spotify**; **YouTube Music** se sincroniza cuando quieras desde **Ajustes ▸ Importar ▸ Sincronizar desde YouTube Music** (ahí el login funciona bien).
+## YouTube Music en la introducción — paso propio y funcionando 🎬
+- Ahora el primer inicio tiene **dos pasos de migración SEPARADOS**: primero **Spotify**, luego **YouTube Music** (cada uno en su pantalla).
+- En el paso de YouTube: tocas **"Conectar YouTube Music"** → inicias sesión → la app se reinicia (es normal en el login de Google) y **vuelve sola a la pantalla para elegir qué sincronizar** (me gusta, álbumes, artistas, suscripciones, playlists). Si ya estás logueado, va directo a elegir. Puedes **Omitir**.
+- Ya **no se reinicia en bucle ni te saca del login** (arreglado en 0.5.1): el regreso a la selección se hace una sola vez tras el reinicio.
 
 ## Técnico
-- MainActivity: la apertura post-login de la pantalla de sync YT pasa a `LaunchedEffect(Unit)` (lectura única del flag al arrancar vía DataStore), en vez de un efecto reactivo que se disparaba al marcar el flag en sesión.
-- OnboardingSpotifyScreen: quitado el botón "Sincronizar YouTube Music" (queda solo Spotify + una mención de dónde está YT).
+- Nueva `OnboardingYouTubeScreen` (ruta `onboarding_youtube`), encadenada: artists → genres → spotify → **youtube** → home.
+- Login: marca `OpenYtmSyncAfterLoginKey` y abre el login; MainActivity lo lee una sola vez al arrancar y navega a `settings/ytm_sync`. Si ya hay sesión, va directo. "Omitir" limpia el flag.
+- OnboardingSpotifyScreen: "Continuar" pasa al paso de YouTube (se le quitó el prompt de Google de Spotify).

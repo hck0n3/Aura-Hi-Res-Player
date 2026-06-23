@@ -451,6 +451,10 @@ fun NavGraphBuilder.navigationBuilder(
         OnboardingSpotifyScreen(navController)
     }
 
+    composable("onboarding_youtube") {
+        OnboardingYouTubeScreen(navController)
+    }
+
     composable(
         "podcasts?feedUrl={feedUrl}",
         arguments = listOf(
