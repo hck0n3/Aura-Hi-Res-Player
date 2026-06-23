@@ -63,8 +63,28 @@ private val ScreenGradient = Brush.verticalGradient(
 )
 private val Accent = BrandAccent
 
+// Opens the Gumroad checkout in an in-app Chrome Custom Tab (the user never leaves the app). Falls
+// back to any external browser if Custom Tabs aren't available on the device.
 private fun openGumroad(context: Context) {
-    runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(GUMROAD_URL))) }
+    val uri = Uri.parse(GUMROAD_URL)
+    runCatching {
+        androidx.browser.customtabs.CustomTabsIntent.Builder()
+            .setShowTitle(true)
+            .build()
+            .launchUrl(context, uri)
+    }.onFailure {
+        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, uri)) }
+    }
+}
+
+/** Returns clipboard text if it looks like a Gumroad license key (XXXXXXXX-…×4), else null. */
+private fun clipboardLicenseKey(context: Context): String? {
+    val clip = (context.getSystemService(Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager)
+        ?: return null
+    val text = clip.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.text?.toString()?.trim()
+        ?: return null
+    val licenseFormat = Regex("^[A-Za-z0-9]{8}(-[A-Za-z0-9]{8}){3}$")
+    return text.takeIf { licenseFormat.matches(it) }
 }
 
 @Composable
@@ -199,10 +219,60 @@ fun SubscriptionEntryScreen(
     var loading by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf<String?>(null) }
     var statusColor by remember { mutableStateOf(Color(0xFFFF6B6B)) }
+    var autoTried by remember { mutableStateOf<String?>(null) }
+
+    fun activate(k: String) {
+        if (k.isBlank() || loading) return
+        loading = true
+        status = null
+        scope.launch {
+            val result = LicenseManager.activateSubscription(context, k)
+            loading = false
+            when (result) {
+                LicenseStatus.ACTIVE -> onActivated()
+                LicenseStatus.ENDED -> {
+                    statusColor = Color(0xFFFFB74D)
+                    status = "Esta suscripción está cancelada o vencida. Renueva el pago en Gumroad."
+                }
+                LicenseStatus.DEVICE_MISMATCH -> {
+                    statusColor = Color(0xFFFFB74D)
+                    status = "Esta clave ya está en uso en otro equipo. Usa el equipo original o espera unos días."
+                }
+                LicenseStatus.INVALID_KEY -> {
+                    statusColor = Color(0xFFFF6B6B)
+                    status = "Clave inválida. Revisa que la copiaste completa."
+                }
+                LicenseStatus.NETWORK_ERROR -> {
+                    statusColor = Color(0xFFFF6B6B)
+                    status = "Sin conexión. Conéctate a internet e inténtalo de nuevo."
+                }
+            }
+        }
+    }
+
+    // After paying in the in-app Gumroad checkout, the user copies the license key shown on the receipt.
+    // On returning here (ON_RESUME) we auto-detect it from the clipboard and activate it — no manual paste.
+    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                val detected = clipboardLicenseKey(context)
+                if (detected != null && detected != autoTried && detected != key) {
+                    autoTried = detected
+                    key = detected
+                    statusColor = Accent
+                    status = "Licencia detectada, activando…"
+                    activate(detected)
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     LicenseScaffold(
         subtitle = "Activar suscripción",
-        hint = "Pega la clave de licencia que Gumroad te envió por correo.",
+        hint = "Toca \"Suscribirme\", paga sin salir de la app y la licencia se activa sola. O pega tu clave.",
     ) {
         OutlinedTextField(
             value = key,
@@ -225,31 +295,7 @@ fun SubscriptionEntryScreen(
             text = if (loading) "Verificando…" else "Activar",
             enabled = !loading && key.isNotBlank(),
         ) {
-            loading = true
-            status = null
-            scope.launch {
-                val result = LicenseManager.activateSubscription(context, key)
-                loading = false
-                when (result) {
-                    LicenseStatus.ACTIVE -> onActivated()
-                    LicenseStatus.ENDED -> {
-                        statusColor = Color(0xFFFFB74D)
-                        status = "Esta suscripción está cancelada o vencida. Renueva el pago en Gumroad."
-                    }
-                    LicenseStatus.DEVICE_MISMATCH -> {
-                        statusColor = Color(0xFFFFB74D)
-                        status = "Esta clave ya está en uso en otro equipo. Usa el equipo original o espera unos días."
-                    }
-                    LicenseStatus.INVALID_KEY -> {
-                        statusColor = Color(0xFFFF6B6B)
-                        status = "Clave inválida. Revisa que la copiaste completa."
-                    }
-                    LicenseStatus.NETWORK_ERROR -> {
-                        statusColor = Color(0xFFFF6B6B)
-                        status = "Sin conexión. Conéctate a internet e inténtalo de nuevo."
-                    }
-                }
-            }
+            activate(key)
         }
         Spacer(Modifier.height(12.dp))
         OutlinedButton(

@@ -44,8 +44,8 @@ android {
         // Public version reset to a fresh stable 0.0.1 for the Aura Hi-Res Player relaunch.
         // versionCode stays monotonic (never below the last shipped 673) so the in-app updater and
         // sideload-install-over-existing keep working; only the user-facing versionName resets.
-        versionCode = 701
-        versionName = "0.4.4"
+        versionCode = 702
+        versionName = "0.5.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -346,6 +346,8 @@ dependencies {
     implementation(libs.timber)
     // Reliable cold app-restart (used after Google login) — replaces the flaky AlarmManager relaunch.
     implementation("com.jakewharton:process-phoenix:3.0.0")
+    // In-app browser (Chrome Custom Tabs) for the in-app Gumroad checkout (no leaving the app).
+    implementation("androidx.browser:browser:1.8.0")
     implementation(libs.smoothCorner)
     implementation(libs.lottie.compose)
     implementation("androidx.compose.material:material-icons-extended:1.7.8")

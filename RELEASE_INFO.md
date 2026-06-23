@@ -1,8 +1,10 @@
-# Aura Hi-Res Player 0.4.4
+# Aura Hi-Res Player 0.5.0
 
-## Mejor match de audio (Saavn): adiós versiones karaoke/instrumental 🎯
-- Al resolver una canción desde Saavn, ahora se **penalizan** las variantes karaoke, instrumental, "minus one", cover, remix, lo-fi, sped up, slowed y reverb — **a menos que tú las pidas** en el título.
-- Resultado: menos veces te suena por error una versión karaoke/instrumental en lugar del tema original.
+## Paga sin salir de la app 💳
+- El botón **"Suscribirme por $3.74/mes"** ahora abre el checkout de Gumroad **dentro de la app** (Chrome Custom Tab), sin mandarte a otra aplicación.
+- Al terminar el pago, copias la clave de licencia que Gumroad muestra en el recibo; al volver a la app **se detecta sola desde el portapapeles y se activa automáticamente** — sin pegar a mano.
+- Sigue funcionando todo lo de antes: pegado manual de la clave, la **llave maestra** y la verificación de suscripción intactas.
 
 ## Técnico
-- Portado del upstream Echo (PR #571): nuevo `com.music.jiosaavn.SaavnMatcher.variantPenalty()` (con test) aplicado en el scoring de `YTPlayerUtils`. Sin tocar la base de datos. Bajo riesgo.
+- `androidx.browser` (Custom Tabs); `openGumroad` usa `CustomTabsIntent` con fallback a navegador externo.
+- `LicenseScreens.SubscriptionEntryScreen`: observador `ON_RESUME` que lee el portapapeles, valida el formato de licencia (XXXXXXXX-…×4) y activa vía `LicenseManager.activateSubscription`. Todo aditivo.
