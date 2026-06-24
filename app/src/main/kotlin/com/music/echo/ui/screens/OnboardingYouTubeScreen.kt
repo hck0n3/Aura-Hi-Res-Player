@@ -47,12 +47,9 @@ fun OnboardingYouTubeScreen(
         bottomBar = {
             Column(Modifier.fillMaxWidth().padding(16.dp)) {
                 Button(
-                    onClick = {
-                        // Leaving onboarding → clear ALL its steps from the back stack.
-                        navController.navigate("settings/ytm_sync") {
-                            popUpTo("onboarding_artists") { inclusive = true }
-                        }
-                    },
+                    // Onboarding flag → the sync screen shows a "Comenzar a usar Aura" button so the user
+                    // finishes from there without going back. Keep onboarding on the stack (no popUpTo).
+                    onClick = { navController.navigate("settings/ytm_sync?onboarding=true") },
                     modifier = Modifier.fillMaxWidth().height(50.dp),
                 ) { Text("Sincronizar YouTube Music") }
                 Spacer(Modifier.height(8.dp))

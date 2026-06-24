@@ -52,6 +52,7 @@ fun YtmSyncScreen(
     navController: NavController,
     scrollBehavior: TopAppBarScrollBehavior,
     viewModel: AccountSettingsViewModel = hiltViewModel(),
+    onboarding: Boolean = false,
 ) {
     val context = LocalContext.current
     val (innerTubeCookie, _) = rememberPreference(InnerTubeCookieKey, "")
@@ -72,6 +73,24 @@ fun YtmSyncScreen(
                 },
                 scrollBehavior = scrollBehavior,
             )
+        },
+        bottomBar = {
+            // During onboarding, finish from here without going back — the sync keeps running in the
+            // background (WorkManager), so the user can move on to the app immediately.
+            if (onboarding) {
+                androidx.compose.foundation.layout.Column(
+                    Modifier.fillMaxWidth().padding(16.dp),
+                ) {
+                    androidx.compose.material3.Button(
+                        onClick = {
+                            navController.navigate("home") {
+                                popUpTo("onboarding_artists") { inclusive = true }
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth().height(50.dp),
+                    ) { Text("Comenzar a usar Aura") }
+                }
+            }
         },
     ) { padding ->
         Column(

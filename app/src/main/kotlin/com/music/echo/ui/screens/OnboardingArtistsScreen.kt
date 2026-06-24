@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -107,8 +108,14 @@ fun OnboardingArtistsScreen(
                     enabled = selected.size >= MIN_ARTISTS && !finishing,
                     modifier = Modifier.fillMaxWidth().height(52.dp),
                 ) {
-                    Text(if (finishing) "Guardando…" else "Finalizar")
+                    Text(if (finishing) "Guardando…" else "Siguiente")
                 }
+                // This step is optional too — let the user skip it like the others.
+                TextButton(
+                    onClick = { navController.navigate("onboarding_genres") },
+                    enabled = !finishing,
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Omitir") }
             }
         },
     ) { padding ->

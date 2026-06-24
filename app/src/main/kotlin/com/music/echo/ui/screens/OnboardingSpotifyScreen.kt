@@ -45,7 +45,7 @@ fun OnboardingSpotifyScreen(
         bottomBar = {
             Column(Modifier.fillMaxWidth().padding(16.dp)) {
                 Button(
-                    onClick = { navController.navigate("settings/spotify_import") },
+                    onClick = { navController.navigate("settings/spotify_import?onboarding=true") },
                     modifier = Modifier.fillMaxWidth().height(50.dp),
                 ) { Text("Conectar Spotify y elegir qué migrar") }
                 Spacer(Modifier.height(8.dp))

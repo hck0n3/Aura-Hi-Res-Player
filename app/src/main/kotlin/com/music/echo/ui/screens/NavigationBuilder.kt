@@ -411,12 +411,25 @@ fun NavGraphBuilder.navigationBuilder(
         IntegrationScreen(navController, scrollBehavior)
     }
 
-    composable("settings/spotify_import") {
-        SpotifyImportScreen(navController)
+    composable(
+        route = "settings/spotify_import?onboarding={onboarding}",
+        arguments = listOf(navArgument("onboarding") { type = NavType.BoolType; defaultValue = false }),
+    ) { backStackEntry ->
+        SpotifyImportScreen(
+            navController,
+            onboarding = backStackEntry.arguments?.getBoolean("onboarding") ?: false,
+        )
     }
 
-    composable("settings/ytm_sync") {
-        iad1tya.echo.music.ui.screens.settings.YtmSyncScreen(navController, scrollBehavior)
+    composable(
+        route = "settings/ytm_sync?onboarding={onboarding}",
+        arguments = listOf(navArgument("onboarding") { type = NavType.BoolType; defaultValue = false }),
+    ) { backStackEntry ->
+        iad1tya.echo.music.ui.screens.settings.YtmSyncScreen(
+            navController,
+            scrollBehavior,
+            onboarding = backStackEntry.arguments?.getBoolean("onboarding") ?: false,
+        )
     }
 
     composable(route = "settings/integrations/listen_together") {

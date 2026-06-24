@@ -58,6 +58,7 @@ import android.net.Uri
 fun SpotifyImportScreen(
     navController: NavController,
     spotifyImportViewModel: SpotifyImportViewModel = hiltViewModel(),
+    onboarding: Boolean = false,
 ) {
     val state by spotifyImportViewModel.uiState.collectAsStateWithLifecycle()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
@@ -93,6 +94,18 @@ fun SpotifyImportScreen(
                 },
                 scrollBehavior = scrollBehavior
             )
+        },
+        bottomBar = {
+            // During first-run onboarding, let the user move forward to the next step from HERE,
+            // without having to press back.
+            if (onboarding) {
+                Column(Modifier.fillMaxWidth().padding(16.dp)) {
+                    Button(
+                        onClick = { navController.navigate("onboarding_youtube") },
+                        modifier = Modifier.fillMaxWidth().height(50.dp),
+                    ) { Text("Continuar (siguiente paso)") }
+                }
+            }
         }
     ) { innerPadding ->
         LazyColumn(
