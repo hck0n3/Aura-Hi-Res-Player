@@ -1,10 +1,9 @@
-# Aura Hi-Res Player 0.6.19
+# Aura Hi-Res Player 0.6.20
 
-## Videos oficiales del artista 🎬
-- En la página de cada artista ahora aparece una sección **"Videos oficiales"** con sus videos oficiales (de YouTube), **reproducibles** con el modo video integrado: tócalos y se ven con sonido.
-- Aparece automáticamente cuando hay videos; si no hay, no se muestra (no estorba).
-
-> Nota sobre iTunes: la API de iTunes solo da **vistas previas de ~30s + enlaces a Apple Music**, no un video reproducible. Por eso la fuente que de verdad reproduce es **YouTube**. Si quieres, en una próxima versión añado enlaces "Ver en Apple Music" como descubrimiento extra.
+## Reconocer música desde Ajustes Rápidos 🎙️
+- Nuevo **tile de Ajustes Rápidos** (el panel que bajas desde arriba): tócalo para **reconocer la canción que suena** sin abrir la app. Reusa el mismo motor (Shazam) del widget.
+- Para añadirlo: baja el panel de Ajustes Rápidos → editar/lápiz → arrastra "Aura" (o el ícono de micrófono) a tus tiles activos.
 
 ## Técnico
-- `ArtistViewModel`: tras cargar la página del artista, un `launch(IO)` busca `YouTube.search(artista, FILTER_VIDEO)`, filtra `isVideoSong` + coincidencia de artista (máx 12) y añade un `ArtistSection("Videos oficiales", …)`. La UI del artista ya renderiza secciones nuevas (LazyRow de `YouTubeGridItem`); reproducir un video usa el flujo existente (`playQueue(YouTubeQueue(WatchEndpoint(videoId)))`) → modo video. Aislado: cualquier fallo de red deja la página intacta.
+- Nuevo `RecognitionTileService` (`android.service.quicksettings.TileService`) que emite el mismo broadcast `ACTION_START_RECOGNITION` del widget (reusa permisos + foreground service). Registrado en el manifest con `BIND_QUICK_SETTINGS_TILE` + `QS_TILE`.
+- Picture-in-Picture queda como siguiente pieza (requiere prueba en dispositivo).

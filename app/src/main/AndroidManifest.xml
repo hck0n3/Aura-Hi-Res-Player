@@ -256,6 +256,18 @@
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
+        <!-- Quick Settings tile to start music recognition (Shazam) without opening the app. -->
+        <service
+            android:name=".widget.RecognitionTileService"
+            android:exported="true"
+            android:icon="@drawable/mic"
+            android:label="@string/recognition"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
         <!-- WorkManager runs the resumable update download as a foreground worker; Android 14+ requires
              the requested foregroundServiceType (dataSync) to be declared on this service, else
              startForeground crashes with "foregroundServiceType ... is not a subset". -->
