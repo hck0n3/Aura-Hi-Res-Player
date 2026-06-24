@@ -377,9 +377,11 @@ fun Thumbnail(
         // Video mode: play the music video in a DEDICATED player (proven canvas pattern), on top of the
         // pager. MusicService pauses the music engine while this is shown (the video carries its own audio).
         if (videoShowing) {
+            val videoStartMs by playerConnection.videoStartMs.collectAsState()
             MusicVideoPlayer(
                 url = videoUrl!!,
                 isPlaying = true,
+                startPositionMs = videoStartMs,
                 onEnded = { playerConnection.exitVideoMode() },
                 modifier = Modifier
                     .matchParentSize()

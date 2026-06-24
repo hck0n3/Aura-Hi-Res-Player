@@ -148,6 +148,7 @@ class PlayerConnection(
     val isMuted = service.isMuted
     val videoMode = service.videoMode
     val videoUrl = service.videoUrl
+    val videoStartMs = service.videoStartMs
     fun toggleVideoMode() = service.toggleVideoMode()
     fun exitVideoMode() = service.exitVideoMode()
 

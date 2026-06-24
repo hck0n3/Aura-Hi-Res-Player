@@ -1,31 +1,23 @@
-# Aura Hi-Res Player 0.6.11
+# Aura Hi-Res Player 0.6.12 (video: posición + diagnóstico)
 
-## Modo video reconstruido sobre lo que SÍ funciona 🎥
-Tras varios intentos metiendo el video en el reproductor de música principal (sin éxito), ahora el
-video usa **el mismo motor probado del canvas** de tu app — un reproductor dedicado con el
-`User-Agent` correcto para los servidores de YouTube (sin ese encabezado, las URLs de video daban
-**403** y nunca cargaban; esa era la causa real).
+## Cambios
+1. **El video continúa desde donde ibas** (ya no reinicia la canción): al activar video se pasa la
+   posición actual y el reproductor de video hace seek a ese punto.
+2. **Diagnóstico en pantalla**: arriba a la izquierda del video aparece un texto pequeño con el estado
+   real, p. ej. `itag=22 · estado=ready · vid=1 aud=1 · size=1280x720 · frame=sí`.
 
-Cómo funciona ahora:
-- Al activar **video**: se resuelve un stream **combinado (video+audio)**, el **motor de música se
-  pausa** y el videoclip se reproduce **con su propio sonido**, con proporción correcta y sin
-  portada/canvas detrás.
-- Al **desactivar** (o cuando el video termina): **vuelve el audio** donde estaba.
-- Si un tema no tiene video combinado: aparece un **toast con el motivo** (diagnóstico).
+### Por qué el diagnóstico
+"Se oye pero no se ve" puede ser por dos cosas distintas; ese texto lo aclara:
+- `vid=0` → el stream NO trae pista de video (formato equivocado).
+- `vid=1` pero `frame=no` → hay video pero no se pinta (render/superficie).
+- `itag=140/251` → me dio un formato de SOLO audio.
+- `ERR=...` → error de decodificación/red.
 
-> Nota: durante el video, el audio sale del propio video (sin EQ/DSP), tal como elegiste para máxima
-> fiabilidad. Tu audio normal (con EQ/DSP) queda intacto fuera del modo video.
-
-### Cómo probarlo
-Canción **con videoclip** → botón **video** → debe verse el video con sonido. Si sale
-"Video falló — …", mándame ese texto.
+**Qué hacer:** activa video y mándame una **captura** de ese texto. Con eso arreglo el punto exacto.
 
 ## Técnico
-- Nuevo `MusicVideoPlayer.kt` (calcado de `CanvasArtworkPlayer`): ExoPlayer propio + `OkHttpDataSource`
-  con interceptor de `User-Agent` por cliente; `TextureView` en `AspectRatioFrameLayout` (RESIZE_MODE_FIT);
-  `volume=1`, `REPEAT_MODE_OFF`; `onEnded` → sale del modo video.
-- `findFormat(preferVideo)` prefiere **muxed** (itag 22→18→otro) de `streamingData.formats`.
-- `MusicService.toggleVideoMode`: resuelve la URL muxed, **pausa** el player principal y publica
-  `videoUrl`; `exitVideoMode()` **reanuda**. Se eliminó el `MergingMediaSource`/`#video`; el player
-  principal vuelve a ser sólo audio (`DefaultMediaSourceFactory`).
-- `PlayerConnection`: expone `videoUrl` + `exitVideoMode()`. `Thumbnail` usa `MusicVideoPlayer`.
+- `MusicVideoPlayer`: `setMediaItem(item, startPositionMs)`; overlay de diagnóstico (itag de la URL,
+  estado del player, nº de pistas video/audio vía `onTracksChanged`, `onVideoSizeChanged`,
+  `onRenderedFirstFrame`, `onPlayerError`).
+- `MusicService.toggleVideoMode`: publica `videoStartMs = player.currentPosition` antes de pausar.
+- `PlayerConnection`/`Thumbnail`: pasan `videoStartMs` al reproductor de video.

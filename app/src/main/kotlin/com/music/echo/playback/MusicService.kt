@@ -437,6 +437,8 @@ class MusicService :
     val videoMode: kotlinx.coroutines.flow.StateFlow<Boolean> = _videoMode
     private val _videoUrl = MutableStateFlow<String?>(null)
     val videoUrl: kotlinx.coroutines.flow.StateFlow<String?> = _videoUrl
+    private val _videoStartMs = MutableStateFlow(0L)
+    val videoStartMs: kotlinx.coroutines.flow.StateFlow<Long> = _videoStartMs
 
     
     private var currentMediaIdRetryCount = mutableMapOf<String, Int>()
@@ -2917,7 +2919,9 @@ class MusicService :
                     return@withContext
                 }
                 videoUrlCache[id] = url to (System.currentTimeMillis() + 5 * 60 * 1000L)
-                // Pause the music engine and hand the audio over to the dedicated video player.
+                // Pause the music engine and hand the audio over to the dedicated video player, which
+                // continues from the SAME position so the song doesn't restart from the beginning.
+                _videoStartMs.value = player.currentPosition.coerceAtLeast(0L)
                 wasPlayingBeforeVideo = player.playWhenReady
                 player.pause()
                 _videoUrl.value = url
