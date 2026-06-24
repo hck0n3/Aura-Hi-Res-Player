@@ -197,6 +197,9 @@ import iad1tya.echo.music.ui.component.WavySlider
 import iad1tya.echo.music.ui.component.rememberBottomSheetState
 import iad1tya.echo.music.ui.menu.OldPlayerMenu
 import iad1tya.echo.music.ui.menu.PlayerMenu
+import iad1tya.echo.music.ui.menu.AddToPlaylistDialog
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import iad1tya.echo.music.ui.component.VolumeSlider
 import iad1tya.echo.music.ui.screens.settings.DarkMode
 import iad1tya.echo.music.ui.theme.PlayerColorExtractor
@@ -788,6 +791,21 @@ fun BottomSheetPlayer(
     var showChoosePlaylistDialog by rememberSaveable {
         mutableStateOf(false)
     }
+    val addToPlaylistScope = rememberCoroutineScope()
+    AddToPlaylistDialog(
+        isVisible = showChoosePlaylistDialog,
+        onGetSong = { playlist ->
+            val meta = mediaMetadata
+            if (meta != null) {
+                database.transaction { insert(meta) }
+                addToPlaylistScope.launch(Dispatchers.IO) {
+                    playlist.playlist.browseId?.let { com.music.innertube.YouTube.addToPlaylist(it, meta.id) }
+                }
+            }
+            listOfNotNull(meta?.id)
+        },
+        onDismiss = { showChoosePlaylistDialog = false }
+    )
 
     var showInlineLyrics by rememberSaveable {
         mutableStateOf(false)
@@ -1771,72 +1789,98 @@ fun BottomSheetPlayer(
                     )
                 }
                 }
-                // "+" menu (Sonido, Ecualizador, Temporizador…) before the heart.
-                Spacer(Modifier.width(8.dp))
-                Box(
+                // Action buttons moved to the scrollable labeled row below (YouTube-Music style).
+            }
+
+            Spacer(Modifier.height(10.dp))
+            // YouTube-Music-style scrollable action row — every key action is labeled and visible here
+            // instead of hidden in the "+" menu.
+            run {
+                val chipBg = textButtonColor.copy(alpha = 0.18f)
+                val liked = currentSong?.song?.liked == true
+                Row(
                     modifier = Modifier
-                        .size(40.dp)
-                        .clip(RoundedCornerShape(24.dp))
-                        .background(textButtonColor.copy(alpha = 0.2f))
-                        .clickable {
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = PlayerHorizontalPadding),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    PlayerActionChip(
+                        label = "Me gusta",
+                        tint = if (liked) iconButtonColor else textButtonColor,
+                        container = if (liked) textButtonColor else chipBg,
+                        onClick = playerConnection::toggleLike,
+                    ) {
+                        Icon(
+                            painter = painterResource(if (liked) R.drawable.favorite else R.drawable.favorite_border),
+                            contentDescription = null,
+                            tint = if (liked) iconButtonColor else textButtonColor,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                    PlayerActionChip("No me gusta", textButtonColor, chipBg, playerConnection::dislikeCurrentSong) {
+                        Icon(painterResource(R.drawable.thumb_down), null, tint = textButtonColor, modifier = Modifier.size(20.dp))
+                    }
+                    PlayerActionChip("Agregar", textButtonColor, chipBg, { showChoosePlaylistDialog = true }) {
+                        Icon(painterResource(R.drawable.playlist_add), null, tint = textButtonColor, modifier = Modifier.size(20.dp))
+                    }
+                    PlayerActionChip(
+                        label = "Descargar",
+                        tint = textButtonColor,
+                        container = chipBg,
+                        onClick = {
+                            when (download?.state) {
+                                Download.STATE_COMPLETED, Download.STATE_QUEUED, Download.STATE_DOWNLOADING ->
+                                    DownloadService.sendRemoveDownload(context, ExoDownloadService::class.java, mediaMetadata.id, false)
+                                else -> {
+                                    database.transaction { insert(mediaMetadata) }
+                                    DownloadService.sendAddDownload(
+                                        context, ExoDownloadService::class.java,
+                                        DownloadRequest.Builder(mediaMetadata.id, mediaMetadata.id.toUri())
+                                            .setCustomCacheKey(mediaMetadata.id)
+                                            .setData(mediaMetadata.title.toByteArray()).build(),
+                                        false,
+                                    )
+                                }
+                            }
+                        },
+                    ) {
+                        when (download?.state) {
+                            Download.STATE_COMPLETED -> Icon(painterResource(R.drawable.offline), null, tint = textButtonColor, modifier = Modifier.size(20.dp))
+                            Download.STATE_QUEUED, Download.STATE_DOWNLOADING -> CircularWavyProgressIndicator(modifier = Modifier.size(18.dp))
+                            else -> Icon(painterResource(R.drawable.download), null, tint = textButtonColor, modifier = Modifier.size(20.dp))
+                        }
+                    }
+                    PlayerActionChip("Mix", textButtonColor, chipBg, { playerConnection.startRadioSeamlessly() }) {
+                        Icon(painterResource(R.drawable.radio), null, tint = textButtonColor, modifier = Modifier.size(20.dp))
+                    }
+                    PlayerActionChip("Audio", textButtonColor, chipBg, { navController.navigate("settings/equalizer") }) {
+                        Icon(painterResource(R.drawable.graphic_eq), null, tint = textButtonColor, modifier = Modifier.size(20.dp))
+                    }
+                    PlayerActionChip(
+                        label = "Más",
+                        tint = textButtonColor,
+                        container = chipBg,
+                        onClick = {
                             menuState.show {
                                 OldPlayerMenu(
                                     mediaMetadata = mediaMetadata,
                                     navController = navController,
                                     playerBottomSheetState = state,
-                                    onShowDetailsDialog = {
-                                        mediaMetadata.id.let {
-                                            bottomSheetPageState.show { ShowMediaInfo(it) }
-                                        }
-                                    },
+                                    onShowDetailsDialog = { mediaMetadata.id.let { bottomSheetPageState.show { ShowMediaInfo(it) } } },
                                     onSleepTimer = { showSleepTimerDialog = true },
-                                    onDismiss = menuState::dismiss
+                                    onDismiss = menuState::dismiss,
                                 )
                             }
                         },
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.add),
-                        contentDescription = "Más opciones",
-                        tint = textButtonColor,
-                        modifier = Modifier.align(Alignment.Center).size(24.dp),
-                    )
-                }
-                Spacer(Modifier.width(8.dp))
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(RoundedCornerShape(24.dp))
-                        .background(textButtonColor.copy(alpha = 0.2f))
-                        .clickable(onClick = playerConnection::toggleLike),
-                ) {
-                    Icon(
-                        painter = painterResource(
-                            if (currentSong?.song?.liked == true) R.drawable.favorite else R.drawable.favorite_border
-                        ),
-                        contentDescription = null,
-                        tint = textButtonColor,
-                        modifier = Modifier.align(Alignment.Center).size(24.dp),
-                    )
-                }
-                Spacer(Modifier.width(8.dp))
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(RoundedCornerShape(24.dp))
-                        .background(textButtonColor.copy(alpha = 0.2f))
-                        .clickable(onClick = playerConnection::dislikeCurrentSong),
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.thumb_down),
-                        contentDescription = "No me gusta",
-                        tint = textButtonColor,
-                        modifier = Modifier.align(Alignment.Center).size(24.dp),
-                    )
+                    ) {
+                        Icon(painterResource(R.drawable.add), null, tint = textButtonColor, modifier = Modifier.size(20.dp))
+                    }
                 }
             }
 
-            // Tighter gap so the title + buttons sit lower, closer to the progress bar (one-handed reach).
+            // Tighter gap so the title sits lower, closer to the progress bar (one-handed reach).
             Spacer(Modifier.height(8.dp))
 
             if (spectrumVisualizerEnabled) {
@@ -2706,6 +2750,35 @@ fun BottomSheetPlayer(
             },
             )
         }
+    }
+}
+
+/** YouTube-Music-style labeled action chip (icon + name) for the player's scrollable action row. */
+@Composable
+private fun PlayerActionChip(
+    label: String,
+    tint: Color,
+    container: Color,
+    onClick: () -> Unit,
+    leading: @Composable () -> Unit,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .background(container)
+            .clickable(onClick = onClick)
+            .padding(start = 12.dp, end = 16.dp, top = 9.dp, bottom = 9.dp),
+    ) {
+        leading()
+        Spacer(Modifier.width(6.dp))
+        Text(
+            text = label,
+            color = tint,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+        )
     }
 }
 
