@@ -2945,6 +2945,21 @@ class MusicService :
         val id = item.mediaId
         // Only the current track is ever a video source — restore any previous one to audio first.
         if (videoModeMediaId != null && videoModeMediaId != id) restoreVideoTrackToAudio()
+
+        // Video PODCAST episode: it already carries a direct video stream — swap to it immediately, no
+        // YouTube resolution (the id here is an http audio URL, which YTPlayerUtils can't resolve anyway).
+        val podcastVideo = player.currentMetadata?.podcastVideoUrl
+        if (!podcastVideo.isNullOrEmpty()) { swapToVideo(id, podcastVideo); return }
+        // A direct/local track with no video stream (e.g. an audio-only podcast reached while sticky video
+        // is still armed) can't show video — disarm video mode and play audio quietly (no failed-resolution
+        // toast, and crucially no stuck spinner: leaving _videoMode=true here would show an endless spinner
+        // over the cover with no video and no on-screen toggle to exit). Mirrors the no-video YouTube path.
+        if (id.startsWith("http", ignoreCase = true) || id.isLocalMediaId()) {
+            _videoMode.value = false
+            _videoUrl.value = null
+            return
+        }
+
         _videoUrl.value = null  // spinner while resolving
         val cached = videoUrlCache[id]?.takeIf { it.second > System.currentTimeMillis() }?.first
         if (!cached.isNullOrEmpty()) { swapToVideo(id, cached); return }

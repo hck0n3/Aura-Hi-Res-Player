@@ -1563,7 +1563,7 @@ fun BottomSheetPlayer(
                             }
                         }
 
-                        if (mediaMetadata?.isVideoSong == true) {
+                        if (mediaMetadata?.isVideoSong == true || mediaMetadata?.podcastVideoUrl?.isNotEmpty() == true) {
                             FilledIconButton(
                                 onClick = { playerConnection.toggleVideoMode() },
                                 shape = favShape,
@@ -1686,9 +1686,9 @@ fun BottomSheetPlayer(
                                 )
                             }
                         } else {
-                            // Video toggle only (for video songs); the like/dislike buttons moved next
-                            // to the song title.
-                            if (mediaMetadata?.isVideoSong == true) {
+                            // Video toggle only (for video songs AND video podcasts); the like/dislike
+                            // buttons moved next to the song title.
+                            if (mediaMetadata?.isVideoSong == true || mediaMetadata?.podcastVideoUrl?.isNotEmpty() == true) {
                                 Box(
                                     modifier = Modifier
                                         .size(40.dp)

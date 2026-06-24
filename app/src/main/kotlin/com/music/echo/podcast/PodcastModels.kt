@@ -42,6 +42,8 @@ data class PodcastEpisode(
     val id: String,
     val title: String,
     val audioUrl: String,
+    /** Direct video stream (e.g. video/mp4 enclosure) if this is a VIDEO podcast — enables the audio↔video toggle. */
+    val videoUrl: String? = null,
     val artworkUrl: String?,
     val showTitle: String,
     val author: String,
@@ -60,4 +62,5 @@ fun PodcastEpisode.toMediaMetadata() = MediaMetadata(
     artists = listOf(MediaMetadata.Artist(id = null, name = showTitle)),
     duration = durationSec ?: -1,
     thumbnailUrl = artworkUrl,
+    podcastVideoUrl = videoUrl,
 )

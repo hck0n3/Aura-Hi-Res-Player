@@ -147,6 +147,7 @@ class PodcastRepository @Inject constructor(
         var inItem = false
         var title: String? = null
         var audioUrl: String? = null
+        var videoUrl: String? = null
         var itemImage: String? = null
         var duration: String? = null
         var season: Int? = null
@@ -166,12 +167,20 @@ class PodcastRepository @Inject constructor(
                     when {
                         name.equals("item", true) -> {
                             inItem = true
-                            title = null; audioUrl = null; itemImage = null; duration = null; season = null; episodeNum = null
+                            title = null; audioUrl = null; videoUrl = null; itemImage = null; duration = null; season = null; episodeNum = null
                         }
                         inItem && name.equals("enclosure", true) -> {
                             val u = parser.getAttributeValue(null, "url")
                             val type = parser.getAttributeValue(null, "type") ?: ""
-                            if (!u.isNullOrBlank() && (type.startsWith("audio") || audioUrl == null)) audioUrl = u
+                            when {
+                                // Video podcast enclosure (e.g. video/mp4): keep it separately so the player can
+                                // offer an audio↔video toggle. We still need an audioUrl as the primary stream.
+                                type.startsWith("video") && !u.isNullOrBlank() && videoUrl == null -> videoUrl = u
+                                // Audio enclosure, or (only when no audio AND no video found yet) a first
+                                // fallback — so a sibling image/transcript/poster enclosure can't hijack the
+                                // primary stream of a video-only episode.
+                                !u.isNullOrBlank() && (type.startsWith("audio") || (audioUrl == null && videoUrl == null)) -> audioUrl = u
+                            }
                         }
                         inItem && (name.equals("itunes:image", true) || name.equals("image", true)) -> {
                             parser.getAttributeValue(null, "href")?.let { itemImage = it }
@@ -195,13 +204,16 @@ class PodcastRepository @Inject constructor(
                             if (channelImage == null) channelImage = text.toString().trim().takeIf { it.isNotBlank() }
                         !inItem && name.equals("image", true) -> inImage = false
                         name.equals("item", true) -> {
-                            val a = audioUrl
+                            // A video-only podcast (video enclosure, no audio) still plays: use the video URL
+                            // as the primary stream (ExoPlayer plays it; the toggle just shows/hides the surface).
+                            val a = audioUrl ?: videoUrl
                             if (!a.isNullOrBlank()) {
                                 episodes.add(
                                     PodcastEpisode(
                                         id = a,
                                         title = title?.ifBlank { show.title } ?: show.title,
                                         audioUrl = a,
+                                        videoUrl = videoUrl,
                                         artworkUrl = itemImage ?: show.artworkUrl ?: channelImage,
                                         showTitle = show.title,
                                         author = show.author,

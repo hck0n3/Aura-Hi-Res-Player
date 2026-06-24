@@ -21,6 +21,8 @@ data class MediaMetadata(
     val album: Album? = null,
     val setVideoId: String? = null,
     val musicVideoType: String? = null,
+    /** Direct video stream URL for a VIDEO PODCAST episode (played as-is, not resolved via YouTube). */
+    val podcastVideoUrl: String? = null,
     val explicit: Boolean = false,
     val liked: Boolean = false,
     val likedDate: LocalDateTime? = null,
