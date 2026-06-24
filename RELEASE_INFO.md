@@ -1,17 +1,20 @@
-# Aura Hi-Res Player 0.6.16
+# Aura Hi-Res Player 0.6.17
 
-## Botones del reproductor estilo YouTube Music 🎛️
-- El **título y artista** ahora ocupan todo el ancho y se leen mejor (los botones ya no los aprietan).
-- Debajo, una **fila horizontal desplazable** con botones **etiquetados** (icono + nombre), estilo YT Music, que combinan con tu tema:
-  **Me gusta · No me gusta · Agregar · Descargar · Mix · Audio · +**
-- Cada acción es directa y **visible** (ya no escondida en el "+"):
-  - **Agregar** → elegir playlist.
-  - **Descargar** → muestra el estado (descargando / descargada).
-  - **Mix** → inicia radio.
-  - **Audio** → abre el **ecualizador / ajustes de audio** (donde antes estaba la letra).
-  - **+** → opciones avanzadas restantes (shuffle, repetir, ver artista/álbum, biblioteca, detalles, etc.).
+## Pantalla horizontal e inmersión 🔄
+- **Rotar con video** → el video pasa a **pantalla completa** y los **controles se ocultan solos** (toca para mostrarlos/ocultarlos).
+- **Rotar con canvas** (fondo animado Apple Music) → el **canvas a pantalla completa**, también con controles que se auto-ocultan.
 
-> Si quieres que saque también alguna de las opciones avanzadas del "+" a la fila, dime cuáles.
+## Cambio video↔canción más rápido en gama baja ⚡
+- Ahora se **pre-cargan** las URLs de video en segundo plano (la actual y la siguiente cuando estás en video), así el cambio es casi instantáneo en teléfonos lentos.
+
+## Botones del reproductor
+- La fila de botones ahora **se difumina en el borde** para que se note que hay **más opciones desplazando**.
+- **Arreglado el botón "Audio"**: ahora abre el ecualizador (antes el reproductor lo tapaba y parecía que no hacía nada).
+
+## Primer inicio (Android con 3 botones)
+- En las pantallas de bienvenida/migración, los botones ya **respetan la barra de navegación** de Android (antes quedaban debajo y no se podían tocar en celulares sin gestos).
 
 ## Técnico
-- `Player.kt`: nuevo `PlayerActionChip` (pill icono+label); fila `horizontalScroll` bajo el título; quitados los botones de la fila del título. `AddToPlaylistDialog` cableado al `showChoosePlaylistDialog`. Acciones reutilizadas: `toggleLike`, `dislikeCurrentSong`, descarga (`DownloadService`), `startRadioSeamlessly`, `navigate("settings/equalizer")`.
+- `Player.kt`: rama landscape con `if videoMode → fullscreen video / else if canvas → fullscreen canvas / else split`, overlay de controles con auto-hide (3.5s). Fade del borde en la fila de chips (`drawWithContent` DstIn). "Audio" añade `state.collapseSoft()`.
+- `MusicService.prefetchVideoUrl()` precachea muxed (actual + siguiente) cuando se usa video.
+- Onboarding screens: `navigationBarsPadding()` en los bottomBars.

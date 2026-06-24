@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -85,7 +86,7 @@ fun OnboardingArtistsScreen(
             })
         },
         bottomBar = {
-            Column(Modifier.fillMaxWidth().padding(16.dp)) {
+            Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(16.dp)) {
                 Text(
                     text = if (selected.size < MIN_ARTISTS)
                         "Seleccionados: ${selected.size} (faltan ${MIN_ARTISTS - selected.size})"

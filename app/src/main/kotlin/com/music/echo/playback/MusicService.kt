@@ -434,6 +434,11 @@ class MusicService :
     private var videoModeMediaId: String? = null
     private var videoModeOriginalUri: String? = null
     private val videoUrlCache = HashMap<String, Pair<String, Long>>()
+    // Set once the user has used video this session → we then prefetch upcoming tracks' video URLs in the
+    // background so toggling/switching video is instant (big win on low-end devices), without wasting work
+    // for users who never open video.
+    @Volatile
+    private var userHasUsedVideo = false
     private val _videoMode = MutableStateFlow(false)
     val videoMode: kotlinx.coroutines.flow.StateFlow<Boolean> = _videoMode
     private val _videoUrl = MutableStateFlow<String?>(null)
@@ -2007,6 +2012,15 @@ class MusicService :
         if (_videoMode.value && mediaItem != null && mediaItem.mediaId != videoModeMediaId) {
             applyVideoToCurrent()
         }
+        // Prefetch video URLs so toggling/switching video is instant on low-end devices: the current track
+        // (so a later toggle is a cache hit) and, in sticky video, the next track (instant auto-advance).
+        if (userHasUsedVideo && !_videoMode.value) prefetchVideoUrl(mediaItem?.mediaId)
+        if (_videoMode.value) {
+            val nextIdx = player.nextMediaItemIndex
+            if (nextIdx != C.INDEX_UNSET) {
+                prefetchVideoUrl(runCatching { player.getMediaItemAt(nextIdx).mediaId }.getOrNull())
+            }
+        }
 
         if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) {
             val repeatMode = player.repeatMode  // live value; avoids a blocking disk read on the player thread
@@ -2900,8 +2914,21 @@ class MusicService :
         if (_videoMode.value) {
             exitVideoMode()
         } else {
+            userHasUsedVideo = true
             _videoMode.value = true
             applyVideoToCurrent()
+        }
+    }
+
+    /** Background-resolve a track's muxed video URL into the cache so a later toggle/switch is instant. */
+    private fun prefetchVideoUrl(id: String?) {
+        if (id.isNullOrEmpty() || id.isLocalMediaId() || id.startsWith("http", ignoreCase = true)) return
+        if (videoUrlCache[id]?.takeIf { it.second > System.currentTimeMillis() } != null) return
+        scope.launch(Dispatchers.IO) {
+            val url = runCatching { YTPlayerUtils.videoStreamUrl(id, connectivityManager) }.getOrNull()
+            if (!url.isNullOrEmpty()) {
+                videoUrlCache[id] = url to (System.currentTimeMillis() + 5 * 60 * 1000L)
+            }
         }
     }
 

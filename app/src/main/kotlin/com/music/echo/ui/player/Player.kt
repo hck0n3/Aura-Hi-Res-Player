@@ -75,6 +75,7 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedIconButton
 import androidx.compose.material3.ProvideTextStyle
@@ -117,6 +118,7 @@ import androidx.compose.ui.graphics.toArgb
 import coil3.size.Size as CoilSize
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -1801,6 +1803,17 @@ fun BottomSheetPlayer(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
+                        // Fade the right edge so it's clear the row scrolls / there are more buttons.
+                        .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                        .drawWithContent {
+                            drawContent()
+                            drawRect(
+                                brush = Brush.horizontalGradient(
+                                    0f to Color.Black, 0.86f to Color.Black, 1f to Color.Transparent,
+                                ),
+                                blendMode = BlendMode.DstIn,
+                            )
+                        }
                         .horizontalScroll(rememberScrollState())
                         .padding(horizontal = PlayerHorizontalPadding),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -1855,7 +1868,12 @@ fun BottomSheetPlayer(
                     PlayerActionChip("Mix", textButtonColor, chipBg, { playerConnection.startRadioSeamlessly() }) {
                         Icon(painterResource(R.drawable.radio), null, tint = textButtonColor, modifier = Modifier.size(20.dp))
                     }
-                    PlayerActionChip("Audio", textButtonColor, chipBg, { navController.navigate("settings/equalizer") }) {
+                    PlayerActionChip("Audio", textButtonColor, chipBg, {
+                        // Collapse the player first so the equalizer screen is actually visible (otherwise
+                        // the expanded player sheet covers it and it looks like nothing happened).
+                        navController.navigate("settings/equalizer")
+                        state.collapseSoft()
+                    }) {
                         Icon(painterResource(R.drawable.graphic_eq), null, tint = textButtonColor, modifier = Modifier.size(20.dp))
                     }
                     PlayerActionChip(
@@ -2587,7 +2605,101 @@ fun BottomSheetPlayer(
 
         when (LocalConfiguration.current.orientation) {
             Configuration.ORIENTATION_LANDSCAPE -> {
-                
+              val videoUrlLs by playerConnection.videoUrl.collectAsState()
+              if (videoMode && !videoUrlLs.isNullOrEmpty()) {
+                // Rotated + video → FULLSCREEN video with auto-hiding controls (tap toggles them).
+                var lsControls by remember { mutableStateOf(true) }
+                LaunchedEffect(lsControls, isPlaying) {
+                    if (lsControls) { delay(3500); lsControls = false }
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black)
+                        .pointerInput(Unit) { detectTapGestures { lsControls = !lsControls } },
+                ) {
+                    PlayerVideoSurface(
+                        playerConnection = playerConnection,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                    androidx.compose.animation.AnimatedVisibility(
+                        visible = lsControls,
+                        enter = fadeIn(),
+                        exit = fadeOut(),
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth(),
+                    ) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(20.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color.Black.copy(alpha = 0.4f))
+                                .windowInsetsPadding(WindowInsets.systemBars)
+                                .padding(horizontal = 24.dp, vertical = 14.dp),
+                        ) {
+                            Spacer(Modifier.weight(1f))
+                            IconButton(onClick = { playerConnection.seekToPrevious() }) {
+                                Icon(painterResource(R.drawable.skip_previous), null, tint = Color.White, modifier = Modifier.size(34.dp))
+                            }
+                            IconButton(onClick = { playerConnection.player.togglePlayPause() }) {
+                                Icon(painterResource(if (isPlaying) R.drawable.pause else R.drawable.play), null, tint = Color.White, modifier = Modifier.size(44.dp))
+                            }
+                            IconButton(onClick = { playerConnection.seekToNext() }) {
+                                Icon(painterResource(R.drawable.skip_next), null, tint = Color.White, modifier = Modifier.size(34.dp))
+                            }
+                            Spacer(Modifier.weight(1f))
+                            IconButton(onClick = { playerConnection.exitVideoMode() }) {
+                                Icon(painterResource(R.drawable.music_note), null, tint = Color.White, modifier = Modifier.size(30.dp))
+                            }
+                        }
+                    }
+                }
+              } else if (canvasArtwork != null) {
+                // Rotated + canvas (Apple-Music animated background) → show it FULLSCREEN (the background
+                // canvas already fills the screen behind) with auto-hiding controls (tap toggles them).
+                var lsCanvasControls by remember { mutableStateOf(true) }
+                LaunchedEffect(lsCanvasControls, isPlaying) {
+                    if (lsCanvasControls) { delay(3500); lsCanvasControls = false }
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .pointerInput(Unit) { detectTapGestures { lsCanvasControls = !lsCanvasControls } },
+                ) {
+                    androidx.compose.animation.AnimatedVisibility(
+                        visible = lsCanvasControls,
+                        enter = fadeIn(),
+                        exit = fadeOut(),
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth(),
+                    ) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(20.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color.Black.copy(alpha = 0.35f))
+                                .windowInsetsPadding(WindowInsets.systemBars)
+                                .padding(horizontal = 24.dp, vertical = 14.dp),
+                        ) {
+                            Spacer(Modifier.weight(1f))
+                            IconButton(onClick = { playerConnection.seekToPrevious() }) {
+                                Icon(painterResource(R.drawable.skip_previous), null, tint = Color.White, modifier = Modifier.size(34.dp))
+                            }
+                            IconButton(onClick = { playerConnection.player.togglePlayPause() }) {
+                                Icon(painterResource(if (isPlaying) R.drawable.pause else R.drawable.play), null, tint = Color.White, modifier = Modifier.size(44.dp))
+                            }
+                            IconButton(onClick = { playerConnection.seekToNext() }) {
+                                Icon(painterResource(R.drawable.skip_next), null, tint = Color.White, modifier = Modifier.size(34.dp))
+                            }
+                            Spacer(Modifier.weight(1f))
+                        }
+                    }
+                }
+              } else {
                 val density = LocalDensity.current
                 val verticalPadding = max(
                     WindowInsets.systemBars.getTop(density),
@@ -2659,6 +2771,7 @@ fun BottomSheetPlayer(
                         Spacer(Modifier.weight(1f))
                     }
                 }
+              }
             }
 
             else -> {

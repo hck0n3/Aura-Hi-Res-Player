@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -43,7 +44,7 @@ fun OnboardingSpotifyScreen(
             })
         },
         bottomBar = {
-            Column(Modifier.fillMaxWidth().padding(16.dp)) {
+            Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(16.dp)) {
                 Button(
                     onClick = { navController.navigate("settings/spotify_import?onboarding=true") },
                     modifier = Modifier.fillMaxWidth().height(50.dp),
