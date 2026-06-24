@@ -1,11 +1,13 @@
-# Aura Hi-Res Player 0.6.8 (diagnóstico de video)
+# Aura Hi-Res Player 0.6.9
 
-## Build de diagnóstico 🔎
-El modo video sigue fallando al obtener el stream y, tras varios intentos, en vez de adivinar quiero el **motivo exacto**. Esta versión cambia el toast genérico por uno que muestra **por qué** falló (ej. "Could not find format" = ningún cliente entregó formato de video, error de red, etc.).
+## Video: buscar en AMBAS listas de formatos 🎥
+`findFormat` para video ahora revisa **a la vez** los formatos adaptativos (`adaptiveFormats`) **y** los combinados/muxed (`formats`). Así, si el cliente entrega el video por cualquiera de las dos vías (p. ej. TVHTML5 con itag 18/22 muxed), lo encuentra y arranca el video de inmediato — en vez de fallar con "no disponible".
 
-**Qué hacer:** activa video en una canción con videoclip y manda el **texto completo del toast** (sale en grande unos segundos). Con eso se arregla el punto exacto en una sola ronda.
+Se mantiene el **toast diagnóstico**: si aún fallara, mostrará el motivo exacto para afinarlo.
 
-No cambia nada del audio ni rompe nada — solo expone la causa.
+### Cómo probarlo
+Canción **con videoclip** → botón **video** → debe verse el video (sin portada/canvas). Si sale "Video falló — …", mándame ese texto.
 
 ## Técnico
-- `YTPlayerUtils.videoStreamUrlDiag()` devuelve `Result<String>` (no traga la excepción). `toggleVideoMode` muestra `"${ExceptionClass}: ${message}"` en el toast (LENGTH_LONG) al fallar.
+- `findFormat(preferVideo)`: `allFormats = adaptiveFormats + formats`, filtra video (no av01, avc1 ≤720p preferido). Cubre tanto el merge (video-only adaptativo) como muxed directo.
+- Sigue activo: cliente de video TVHTML5, recreación del media source por URI `#video`, portada/canvas ocultos en modo video, y `videoStreamUrlDiag` con motivo en el toast.

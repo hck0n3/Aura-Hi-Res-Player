@@ -874,10 +874,11 @@ object YTPlayerUtils {
             // VIDEO-ONLY adaptive format — the player merges it with the audio stream. Avoid AV1 (av01):
             // many phones can't hardware-decode it. Prefer H.264 (avc1, widest support), then VP9, capped
             // at 720p for a sane fixed quality + bandwidth.
-            val videos = playerResponse.streamingData?.adaptiveFormats
-                ?.filter { !it.isAudio && it.mimeType.startsWith("video/") }
-                ?.filter { !it.url.isNullOrEmpty() || !it.signatureCipher.isNullOrEmpty() || !it.cipher.isNullOrEmpty() }
-                ?.filter { !it.mimeType.contains("av01") }
+            val allFormats = (playerResponse.streamingData?.adaptiveFormats.orEmpty() + playerResponse.streamingData?.formats.orEmpty())
+            val videos = allFormats
+                .filter { !it.isAudio && it.mimeType.startsWith("video/") }
+                .filter { !it.url.isNullOrEmpty() || !it.signatureCipher.isNullOrEmpty() || !it.cipher.isNullOrEmpty() }
+                .filter { !it.mimeType.contains("av01") }
             val capped = videos?.filter { (it.height ?: 0) in 1..720 }?.takeIf { it.isNotEmpty() } ?: videos
             return capped?.filter { it.mimeType.contains("avc1") }?.maxByOrNull { it.height ?: 0 }
                 ?: capped?.maxByOrNull { it.height ?: 0 }
