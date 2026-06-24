@@ -278,6 +278,11 @@ class SpotifyImportRepository @Inject constructor(
                 )
             }
 
+            // Follow EVERY artist brought in by the import (also the song artists from imported
+            // playlists/albums, not only the explicitly-followed Spotify artists), so the home and
+            // recommendations reflect them. Additive — never removes follows.
+            runCatching { database.followArtistsWithContent(java.time.LocalDateTime.now()) }
+
             // Mirror the freshly-imported likes + library to YouTube Music (when signed in), so the
             // Spotify import also lands in the user's YT Music library. Fire-and-forget (sync queue).
             if (com.music.innertube.YouTube.cookie != null) {

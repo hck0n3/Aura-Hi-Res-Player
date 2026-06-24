@@ -13,12 +13,12 @@ fun String.resize(
     
     
     if (this.contains("i.ytimg.com")) {
-        // Always use hqdefault for YouTube VIDEO thumbnails: maxresdefault.jpg does NOT exist for many
-        // videos (404 / gray placeholder), which left the player cover and background BLACK when playing a
-        // video's audio. hqdefault.jpg exists for every video, so the thumbnail always shows.
+        // Use sddefault (640×480) for YouTube VIDEO thumbnails — clearly sharper than hqdefault (480×360)
+        // so covers aren't pixelated on big screens, while still existing for virtually every video
+        // (unlike maxresdefault, which 404s for many → black cover/background).
         return this.replace(
             Regex("(default|mqdefault|hqdefault|sddefault|maxresdefault)\\.jpg"),
-            "hqdefault.jpg",
+            "sddefault.jpg",
         )
     }
 

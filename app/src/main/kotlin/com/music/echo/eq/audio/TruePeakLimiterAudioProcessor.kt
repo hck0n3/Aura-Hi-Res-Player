@@ -10,7 +10,6 @@ import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.sin
-import kotlin.math.sqrt
 
 /**
  * Final stage of the player chain: loudness makeup + **two-band** true-peak soft limiter.
@@ -55,19 +54,18 @@ class TruePeakLimiterAudioProcessor : AudioProcessor {
         private val EMPTY_BUFFER: ByteBuffer =
             ByteBuffer.allocateDirect(0).order(ByteOrder.nativeOrder())
 
-        // Gain-reduction ceiling ≈ -3.5 dBTP (0.67). Intentionally BELOW the -1 dBTP streaming standard:
-        // the lower digital ceiling leaves analog headroom so the phone's amp/speaker isn't overdriven
-        // at MAX volume (the cause of the "raspy"/saturated voice) — the DSP output is the same at every
-        // volume, so only feeding the amp a calmer signal fixes max-volume distortion.
-        private const val CEILING = 0.67f
+        // Gain-reduction ceiling ≈ -1.7 dBTP (0.82). Raised back up (from the very conservative 0.67) so
+        // phone SPEAKERS aren't too quiet, while still leaving a little analog headroom vs the -1 dBTP
+        // streaming standard. The multiband limiter + softLimit keep it digitally clean (no clipping).
+        private const val CEILING = 0.82f
         // Smooth release: gain recovers gently after a peak (slow → transparent, no pumping).
         private const val RELEASE_COEFF = 0.0006f
         // Hard cap on the combined makeup (loudness × EQ-headroom) ≈ +12 dB.
         private const val MAX_MAKEUP = 4.0f
-        // Master output trim (linear) ≈ -3.9 dB. Lowered (with CEILING) so the whole output sits well
-        // under full scale → amp headroom at max volume. Scales every track equally, so the relative
-        // loudness between songs (consistency) is unchanged — just a calmer overall level.
-        private const val OUTPUT_TRIM = 0.64f
+        // Master output trim (linear) ≈ -2.2 dB. Raised (with CEILING) so phone speakers play at a
+        // proper level. Scales every track equally, so the relative loudness between songs (consistency)
+        // is unchanged.
+        private const val OUTPUT_TRIM = 0.78f
         // Crossover split frequency: bass (where boosts have the most energy and cause the worst
         // broadband ducking) vs everything else.
         private const val CROSSOVER_HZ = 250.0
@@ -137,11 +135,12 @@ class TruePeakLimiterAudioProcessor : AudioProcessor {
             outputBuffer.clear()
         }
 
-        // When the EQ is boosting, only restore HALF the auto-headroom it pulled (sqrt of eqMakeup) so the
-        // boosted output isn't too hot (you no longer have to drop the preamp by hand). Safe now that the
-        // limiter is multiband: the boosted band stays present, the rest stays full, and there's no
+        // FULLY restore the auto-headroom the EQ pulled (so raising a band no longer drops the overall
+        // volume — the band goes up, the rest stays). The multiband limiter catches the boosted band's
+        // peaks, so it stays clean. (Previously we only restored half, which is why boosting felt quieter.)
+        // Safe now that the limiter is multiband: the boosted band stays present, the rest stays full, no
         // broadband ducking/"waves" — just a clean, calmer level.
-        val eqGain = if (eqMakeup > 1f) sqrt(eqMakeup) else eqMakeup
+        val eqGain = eqMakeup
         val mk = (loudnessMakeup * eqGain).coerceAtMost(MAX_MAKEUP) * OUTPUT_TRIM
         if (!enabled) {
             outputBuffer.put(inputBuffer)
@@ -173,8 +172,8 @@ class TruePeakLimiterAudioProcessor : AudioProcessor {
                 lowGainEnv = nextEnv(lowGainEnv, lowPeak)
                 highGainEnv = nextEnv(highGainEnv, highPeak)
 
-                val outL = softLimit(lowL * lowGainEnv + highL * highGainEnv, ceiling = 0.74f, knee = 0.70f)
-                val outR = softLimit(lowR * lowGainEnv + highR * highGainEnv, ceiling = 0.74f, knee = 0.70f)
+                val outL = softLimit(lowL * lowGainEnv + highL * highGainEnv, ceiling = 0.92f, knee = 0.88f)
+                val outR = softLimit(lowR * lowGainEnv + highR * highGainEnv, ceiling = 0.92f, knee = 0.88f)
 
                 prevLowL = lowL; prevLowR = lowR
                 prevHighL = highL; prevHighR = highR
@@ -193,7 +192,7 @@ class TruePeakLimiterAudioProcessor : AudioProcessor {
                 val highPeak = max(abs(high), abs((prevHighL + high) * 0.5f))
                 lowGainEnv = nextEnv(lowGainEnv, lowPeak)
                 highGainEnv = nextEnv(highGainEnv, highPeak)
-                val out = softLimit(low * lowGainEnv + high * highGainEnv, ceiling = 0.74f, knee = 0.70f)
+                val out = softLimit(low * lowGainEnv + high * highGainEnv, ceiling = 0.92f, knee = 0.88f)
                 prevLowL = low
                 prevHighL = high
                 outputBuffer.putShort((out * 32768.0f).coerceIn(-32768.0f, 32767.0f).toInt().toShort())

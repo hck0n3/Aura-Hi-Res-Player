@@ -392,7 +392,14 @@ class HomeViewModel @Inject constructor(
 
     private suspend fun getCommunityPlaylists() {
         val fromTimeStamp = System.currentTimeMillis() - 86400000L * 7 * 4
-        val artistSeeds = database.mostPlayedArtists(fromTimeStamp, limit = 10).first()
+        // Seed from BOTH most-played AND followed/synced artists, so artists brought in by a YouTube
+        // Music / Spotify sync (which have no play history yet) also shape the home — not only the few
+        // artists picked at onboarding.
+        val artistSeeds = (
+            database.mostPlayedArtists(fromTimeStamp, limit = 10).first() +
+                database.artistsBookmarkedByCreateDateAsc().first()
+            )
+            .distinctBy { it.id }
             .filter { it.artist.isYouTubeArtist }
             .shuffled().take(3)
         val songSeeds = database.mostPlayedSongs(fromTimeStamp, limit = 5).first()
