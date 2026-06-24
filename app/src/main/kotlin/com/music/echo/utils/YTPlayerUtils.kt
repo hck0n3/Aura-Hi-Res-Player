@@ -486,18 +486,13 @@ object YTPlayerUtils {
                     }
                 }
             } else null
-            val main = if (preferVideo) {
-                // Video mode: ask a muxed-capable client so streamingData.formats has a real video stream.
-                YouTube.player(
-                    videoId, playlistId, VIDEO_CLIENT,
-                    signatureTimestamp.timestamp, null,
-                ).getOrThrow()
-            } else {
-                YouTube.player(
-                    videoId, playlistId, MAIN_CLIENT,
-                    signatureTimestamp.timestamp, poToken?.playerRequestPoToken,
-                ).getOrThrow()
-            }
+            // Both the audio AND the video-only stream come from MAIN_CLIENT's adaptiveFormats, so the
+            // video URL goes through the exact same (already working) cipher + PoToken pipeline as audio.
+            // The player merges the video-only track with the audio track (MergingMediaSource).
+            val main = YouTube.player(
+                videoId, playlistId, MAIN_CLIENT,
+                signatureTimestamp.timestamp, poToken?.playerRequestPoToken,
+            ).getOrThrow()
             main to metadataDeferred?.await()
         }
         var mainPlayerResponse = resolved.first
@@ -853,12 +848,17 @@ object YTPlayerUtils {
         preferVideo: Boolean = false,
     ): PlayerResponse.StreamingData.Format? {
         if (preferVideo) {
-            // Muxed (video+audio) progressive formats live in streamingData.formats.
-            val muxed = playerResponse.streamingData?.formats
+            // VIDEO-ONLY adaptive format — the player merges it with the audio stream. Avoid AV1 (av01):
+            // many phones can't hardware-decode it. Prefer H.264 (avc1, widest support), then VP9, capped
+            // at 720p for a sane fixed quality + bandwidth.
+            val videos = playerResponse.streamingData?.adaptiveFormats
+                ?.filter { !it.isAudio && it.mimeType.startsWith("video/") }
                 ?.filter { !it.url.isNullOrEmpty() || !it.signatureCipher.isNullOrEmpty() || !it.cipher.isNullOrEmpty() }
-            return muxed?.firstOrNull { it.itag == 22 }       // 720p
-                ?: muxed?.firstOrNull { it.itag == 18 }        // 360p
-                ?: muxed?.maxByOrNull { it.bitrate }
+                ?.filter { !it.mimeType.contains("av01") }
+            val capped = videos?.filter { (it.height ?: 0) in 1..720 }?.takeIf { it.isNotEmpty() } ?: videos
+            return capped?.filter { it.mimeType.contains("avc1") }?.maxByOrNull { it.height ?: 0 }
+                ?: capped?.maxByOrNull { it.height ?: 0 }
+                ?: capped?.maxByOrNull { it.bitrate }
         }
 
         Timber.tag(logTag).d("Finding format with audioQuality: $audioQuality, network metered: ${connectivityManager.isActiveNetworkMetered}")

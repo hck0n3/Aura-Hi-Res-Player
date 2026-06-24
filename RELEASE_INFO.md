@@ -1,13 +1,16 @@
-# Aura Hi-Res Player 0.6.4
+# Aura Hi-Res Player 0.6.5
 
-## Introducción más fluida (solo avanzar) 🎬
-- Dentro de **Importar desde Spotify** (primer inicio) hay un botón **"Continuar (siguiente paso)"** abajo — ya no tienes que ir hacia atrás para seguir.
-- Dentro de **Sincronizar desde YouTube Music** (primer inicio) hay un botón **"Comenzar a usar Aura"** abajo — terminas desde ahí; la sincronización sigue en segundo plano.
-- El paso de **Artistas** ahora se puede **Omitir** (como Géneros). Ningún paso te obliga.
+## El modo video por fin reproduce el video 🎥
+Antes el botón de video decía que lo hacía pero solo se veía la portada/canvas. La razón: YouTube ya casi no entrega un stream "combinado" (video+audio en uno). Ahora Aura **trae el video y el audio por separado y los une en el reproductor** (como hacen los reproductores de YouTube):
 
-## Fotos de artistas 👤
-- Al sincronizar, ahora se **rellenan las fotos** de los artistas que entraron sin portada (p. ej. los que vinieron solo por canciones). Es acotado y suave (no satura tu red), y se completa según vas sincronizando.
+- Funciona en **todos** los videos disponibles (los streams separados sí están siempre).
+- Calidad **fija** ~720p, priorizando **H.264** (compatible con casi todos los teléfonos; se evita AV1).
+- **Aislado al modo video**: el audio normal **no cambia ni corre riesgo**.
+- Si un tema **no** tiene video, no se interrumpe el sonido: vuelve a solo-audio y te avisa ("Este video no está disponible").
+
+### Cómo probarlo
+Pon una canción con videoclip, abre el reproductor y toca el botón de **video**. Debe verse el video con su sonido. Si dice "no disponible", ese tema no tiene videoclip en YouTube.
 
 ## Técnico
-- Rutas `settings/spotify_import` y `settings/ytm_sync` con arg `onboarding`; los pasos navegan con `?onboarding=true` (bottomBar para avanzar/terminar). OnboardingArtistsScreen: "Omitir".
-- SyncUtils.fillMissingArtistImages() (máx 250/run, throttle 150 ms) tras el sync de artistas; DAO `bookmarkedArtistsMissingImage`.
+- `MergingMediaSource(video-only adaptativo + audio)`. La URL de video se **pre-resuelve** en `toggleVideoMode` (fuera del hilo principal); solo se fusiona si la URL está lista → un fallo de video nunca corta el audio.
+- Video-only sale del **mismo MAIN_CLIENT** que el audio → idéntico descifrado + PoToken. `findFormat(preferVideo)` elige avc1 ≤720p (sin av01). Clave de fuente de video con prefijo `ECHOVIDEO::`.
