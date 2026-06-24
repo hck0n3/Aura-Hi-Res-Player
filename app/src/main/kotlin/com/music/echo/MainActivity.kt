@@ -262,6 +262,8 @@ class MainActivity : ComponentActivity() {
     private var pendingIntent: Intent? = null
 
     private var playerConnection by mutableStateOf<PlayerConnection?>(null)
+    // True while the app is in Android Picture-in-Picture mode (video floating window).
+    private var inPipMode by mutableStateOf(false)
 
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
@@ -340,6 +342,38 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    // Picture-in-Picture: when the user leaves the app while a video is playing, float it in a PiP window
+    // so the video keeps showing. (Audio already keeps playing via the foreground service regardless.)
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        if (playerConnection?.videoMode?.value == true && playerConnection?.isPlaying?.value == true) {
+            enterPipModeIfVideo()
+        }
+    }
+
+    private fun enterPipModeIfVideo() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val pc = playerConnection ?: return
+        if (pc.videoMode.value != true) return
+        val builder = android.app.PictureInPictureParams.Builder()
+        runCatching {
+            val size = pc.player.videoSize
+            if (size.width > 0 && size.height > 0) {
+                val ratio = (size.width.toFloat() / size.height).coerceIn(0.45f, 2.3f)
+                builder.setAspectRatio(android.util.Rational((ratio * 1000f).toInt(), 1000))
+            }
+        }
+        runCatching { enterPictureInPictureMode(builder.build()) }
+    }
+
+    override fun onPictureInPictureModeChanged(
+        isInPictureInPictureMode: Boolean,
+        newConfig: android.content.res.Configuration,
+    ) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        inPipMode = isInPictureInPictureMode
+    }
+
     // Safety net for touch dispatch: some OEM input pipelines (notably Xiaomi's "Mirror") can drive
     // Compose's pointer dispatch into a rare NullPointerException deep in obfuscated framework code,
     // which would otherwise take down the whole app on a single tap. Dropping one stray touch is far
@@ -388,6 +422,7 @@ class MainActivity : ComponentActivity() {
                     database = database,
                     downloadUtil = downloadUtil,
                     syncUtils = syncUtils,
+                    inPipMode = inPipMode,
                 )
             }
         }
@@ -401,10 +436,23 @@ class MainActivity : ComponentActivity() {
         database: MusicDatabase,
         downloadUtil: DownloadUtil,
         syncUtils: SyncUtils,
+        inPipMode: Boolean = false,
     ) {
         val enableDynamicTheme by rememberPreference(DynamicThemeKey, defaultValue = true)
         val enableHighRefreshRate by rememberPreference(EnableHighRefreshRateKey, defaultValue = true)
         val context = LocalContext.current
+
+        // In Picture-in-Picture, render ONLY the video fullscreen in the floating window (the main player
+        // keeps playing; this surface just shows its frames). The rest of the app UI is skipped.
+        if (inPipMode && playerConnection != null) {
+            Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+                iad1tya.echo.music.ui.player.PlayerVideoSurface(
+                    playerConnection = playerConnection,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+            return
+        }
 
         // Updates are manual: no automatic update check on startup.
 

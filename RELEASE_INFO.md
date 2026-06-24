@@ -1,9 +1,10 @@
-# Aura Hi-Res Player 0.6.20
+# Aura Hi-Res Player 0.6.21
 
-## Reconocer música desde Ajustes Rápidos 🎙️
-- Nuevo **tile de Ajustes Rápidos** (el panel que bajas desde arriba): tócalo para **reconocer la canción que suena** sin abrir la app. Reusa el mismo motor (Shazam) del widget.
-- Para añadirlo: baja el panel de Ajustes Rápidos → editar/lápiz → arrastra "Aura" (o el ícono de micrófono) a tus tiles activos.
+## Picture-in-Picture 📺
+- Si sales de la app (botón de inicio) **mientras se reproduce un video**, ahora el video **flota en una ventana** Picture-in-Picture y sigue viéndose mientras usas otras apps.
+- En la ventana PiP se muestra **solo el video**; tócala para volver a la app. El audio nunca se corta (lo lleva el servicio en primer plano).
+
+> Es la primera versión de PiP — pruébala en tu cel. Si ves algo raro (parpadeo al encoger/agrandar, o que no entra en PiP en tu Android), dime y lo afino (la revisión interna solo detectó un posible parpadeo de 1 frame durante la animación, sin errores).
 
 ## Técnico
-- Nuevo `RecognitionTileService` (`android.service.quicksettings.TileService`) que emite el mismo broadcast `ACTION_START_RECOGNITION` del widget (reusa permisos + foreground service). Registrado en el manifest con `BIND_QUICK_SETTINGS_TILE` + `QS_TILE`.
-- Picture-in-Picture queda como siguiente pieza (requiere prueba en dispositivo).
+- `MainActivity`: `supportsPictureInPicture=true`; `onUserLeaveHint()` → `enterPipModeIfVideo()` (PiP solo si `videoMode` + reproduciendo) con aspect ratio de `player.videoSize` (clamp 0.45..2.3, API≥O, `runCatching`); `onPictureInPictureModeChanged` → estado `inPipMode`; en PiP, `echomusicApp` renderiza solo `PlayerVideoSurface` a pantalla completa.
