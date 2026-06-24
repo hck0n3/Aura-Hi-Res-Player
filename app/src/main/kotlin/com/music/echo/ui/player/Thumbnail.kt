@@ -923,7 +923,19 @@ private fun ThumbnailImage(
             .background(MaterialTheme.colorScheme.surfaceVariant)
     ) {
         var currentUrl by remember(artworkUri) {
-            mutableStateOf(artworkUri)
+            // For YouTube VIDEO thumbnails the passed url is sddefault (640×480) — pixelated as a big player
+            // cover. Start from maxresdefault (1280×720, sharp, no letterbox) and fall back to sddefault on
+            // 404 (onError). Non-ytimg covers (googleusercontent, already hi-res) are left untouched.
+            mutableStateOf(
+                artworkUri?.let {
+                    if (it.contains("i.ytimg.com")) {
+                        it.replace(
+                            Regex("(default|mqdefault|hqdefault|sddefault|maxresdefault)\\.jpg"),
+                            "maxresdefault.jpg",
+                        )
+                    } else it
+                }
+            )
         }
         AsyncImage(
             model = ImageRequest.Builder(LocalContext.current)
@@ -937,9 +949,11 @@ private fun ThumbnailImage(
             error = painterResource(R.drawable.ic_launcher_nobg),
             fallback = painterResource(R.drawable.ic_launcher_nobg),
             onError = {
+                // maxresdefault 404s for some videos → fall back to sddefault (640×480, always exists),
+                // which is still sharper than the old hqdefault and avoids a blank cover.
                 val url = currentUrl
                 if (url != null && url.contains("maxresdefault.jpg")) {
-                    currentUrl = url.replace("maxresdefault.jpg", "hqdefault.jpg")
+                    currentUrl = url.replace("maxresdefault.jpg", "sddefault.jpg")
                 }
             },
             modifier = Modifier.fillMaxSize()
