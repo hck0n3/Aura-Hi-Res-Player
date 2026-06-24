@@ -1,11 +1,10 @@
-# Aura Hi-Res Player 0.6.18
+# Aura Hi-Res Player 0.6.19
 
-## IA: 2 arreglos + Mix con indicador
-- **Géneros del onboarding ahora SÍ sirven.** Antes elegías géneros al inicio y no se usaban para nada. Ahora **siembran tu motor de recomendaciones** (mapeados a los géneros de iTunes), así Home y la reproducción tiran hacia lo que elegiste desde el primer día.
-- **Proveedor "Claude" quitado** de la traducción de letras: estaba roto (formato de API incorrecto) y solo daba error. Para usar modelos Claude, elige **OpenRouter** (que sí los sirve). OpenAI / Gemini / OpenRouter / Perplexity / DeepL / Mistral siguen igual.
-- **Mix/Radio con indicador:** el botón **Mix** ahora se **resalta** cuando está activo (iniciaste una radio) y se apaga al reproducir una cola nueva — así sabes cuándo está encendido.
+## Videos oficiales del artista 🎬
+- En la página de cada artista ahora aparece una sección **"Videos oficiales"** con sus videos oficiales (de YouTube), **reproducibles** con el modo video integrado: tócalos y se ven con sonido.
+- Aparece automáticamente cuando hay videos; si no hay, no se muestra (no estorba).
+
+> Nota sobre iTunes: la API de iTunes solo da **vistas previas de ~30s + enlaces a Apple Music**, no un video reproducible. Por eso la fuente que de verdad reproduce es **YouTube**. Si quieres, en una próxima versión añado enlaces "Ver en Apple Music" como descubrimiento extra.
 
 ## Técnico
-- Nuevo `reco/OnboardingGenres.kt` (mapeo chip-español → iTunes primaryGenreName); `AffinityEngine.buildProfile(onboardingGenres=…)` siembra afinidad de género; leído en `HomeViewModel` y `MusicService`.
-- `AiSettings`: eliminado "Claude" de proveedores/ayuda/modelos.
-- `MusicService._mixActive` (true en `startRadioSeamlessly`, false en `playQueue`), expuesto en `PlayerConnection`; chip Mix resaltado.
+- `ArtistViewModel`: tras cargar la página del artista, un `launch(IO)` busca `YouTube.search(artista, FILTER_VIDEO)`, filtra `isVideoSong` + coincidencia de artista (máx 12) y añade un `ArtistSection("Videos oficiales", …)`. La UI del artista ya renderiza secciones nuevas (LazyRow de `YouTubeGridItem`); reproducir un video usa el flujo existente (`playQueue(YouTubeQueue(WatchEndpoint(videoId)))`) → modo video. Aislado: cualquier fallo de red deja la página intacta.

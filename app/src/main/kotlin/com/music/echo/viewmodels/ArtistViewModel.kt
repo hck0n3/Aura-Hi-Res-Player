@@ -207,6 +207,33 @@ class ArtistViewModel @Inject constructor(
                             )
                         }
                     }
+
+                    // "Videos oficiales": the artist's official music videos from YouTube, playable via the
+                    // integrated video mode. (iTunes only exposes ~30s previews + Apple links, not playable
+                    // streams, so YouTube is the playable source for this section.)
+                    launch(Dispatchers.IO) {
+                        val artistName = page.artist?.title ?: return@launch
+                        val videos = YouTube.search(artistName, YouTube.SearchFilter.FILTER_VIDEO)
+                            .getOrNull()?.items
+                            ?.filterIsInstance<com.music.innertube.models.SongItem>()
+                            ?.filter { v -> v.isVideoSong && v.artists.any { it.name.contains(artistName, ignoreCase = true) } }
+                            ?.filter { !hideExplicit || !it.explicit }
+                            ?.distinctBy { it.id }
+                            ?.take(12)
+                            .orEmpty()
+                        if (videos.isEmpty()) return@launch
+                        withContext(Dispatchers.Main) {
+                            val current = artistPage ?: return@withContext
+                            if (current.sections.any { it.title.equals("Videos oficiales", ignoreCase = true) }) return@withContext
+                            artistPage = current.copy(
+                                sections = current.sections + com.music.innertube.pages.ArtistSection(
+                                    title = "Videos oficiales",
+                                    items = videos,
+                                    moreEndpoint = null,
+                                ),
+                            )
+                        }
+                    }
                 }.onFailure {
                     if (attempt >= 2) reportException(it)
                 }
