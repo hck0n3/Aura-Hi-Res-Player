@@ -1,14 +1,11 @@
-# Aura Hi-Res Player 0.6.7
+# Aura Hi-Res Player 0.6.8 (diagnóstico de video)
 
-## Video: cliente correcto + video al frente 🎥
-Dos arreglos sobre el modo video:
+## Build de diagnóstico 🔎
+El modo video sigue fallando al obtener el stream y, tras varios intentos, en vez de adivinar quiero el **motivo exacto**. Esta versión cambia el toast genérico por uno que muestra **por qué** falló (ej. "Could not find format" = ningún cliente entregó formato de video, error de red, etc.).
 
-1. **"Este video no está disponible" (aunque sí existía):** el stream de video salía del cliente de **solo audio** (ANDROID_VR), que no devuelve formatos de video → siempre fallaba. Ahora el video sale de **TVHTML5** (cliente con video adaptativo). El **audio sigue igual** (ANDROID_VR), sin riesgo.
-2. **Video al frente:** al activar video se **ocultan la portada y el canvas** por completo, así solo se ve el videoclip (ya iba encima, ahora sin nada detrás compitiendo).
+**Qué hacer:** activa video en una canción con videoclip y manda el **texto completo del toast** (sale en grande unos segundos). Con eso se arregla el punto exacto en una sola ronda.
 
-### Cómo probarlo
-Canción **con videoclip** → reproductor → botón **video** → debe verse el video con su sonido, sin portada/canvas. Si sale "no disponible", ese tema no tiene videoclip o el cliente no lo entregó — dime y pruebo otro cliente.
+No cambia nada del audio ni rompe nada — solo expone la causa.
 
 ## Técnico
-- `resolvePlaybackData(preferVideo=true)` vuelve a usar `VIDEO_CLIENT` (TVHTML5) para el request principal; `findFormat(preferVideo)` elige formato de **video adaptativo** (avc1 ≤720p, sin av01). El audio del merge se resuelve por separado con MAIN_CLIENT.
-- Thumbnail: la tarjeta portada/canvas se oculta (`!videoModeOn`) en modo video.
+- `YTPlayerUtils.videoStreamUrlDiag()` devuelve `Result<String>` (no traga la excepción). `toggleVideoMode` muestra `"${ExceptionClass}: ${message}"` en el toast (LENGTH_LONG) al fallar.

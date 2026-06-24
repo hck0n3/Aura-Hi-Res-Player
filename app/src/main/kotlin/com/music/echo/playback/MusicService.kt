@@ -2922,13 +2922,19 @@ class MusicService :
         _videoMode.value = true
         videoUrlCache.remove(id)
         scope.launch(Dispatchers.IO) {
-            val url = runCatching { YTPlayerUtils.videoStreamUrl(id, connectivityManager) }.getOrNull()
+            val result = runCatching { YTPlayerUtils.videoStreamUrlDiag(id, connectivityManager) }
+                .getOrElse { Result.failure(it) }
+            val url = result.getOrNull()
             withContext(Dispatchers.Main) {
                 if (videoModeMediaId != id) return@withContext // toggled off while resolving
                 if (url.isNullOrEmpty()) {
                     videoModeMediaId = null
                     _videoMode.value = false
-                    Toast.makeText(this@MusicService, "Este video no está disponible", Toast.LENGTH_SHORT).show()
+                    // DIAGNOSTIC toast: show the real failure reason so we know exactly where video
+                    // resolution breaks (e.g. "Could not find format" = no video format from the client).
+                    val ex = result.exceptionOrNull()
+                    val reason = ex?.let { "${it.javaClass.simpleName}: ${it.message}" } ?: "sin formato de video"
+                    Toast.makeText(this@MusicService, "Video falló — $reason", Toast.LENGTH_LONG).show()
                     return@withContext
                 }
                 videoUrlCache[id] = url to (System.currentTimeMillis() + 5 * 60 * 1000L)

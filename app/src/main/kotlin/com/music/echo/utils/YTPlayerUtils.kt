@@ -849,6 +849,21 @@ object YTPlayerUtils {
         preferVideo = true,
     ).getOrNull()?.streamUrl
 
+    /**
+     * Diagnostic variant of [videoStreamUrl]: returns the failure REASON instead of swallowing it, plus
+     * a count of how many video adaptive formats the chosen client actually exposed — so the UI can show
+     * exactly why video mode failed (no format vs network vs playability vs decipher).
+     */
+    suspend fun videoStreamUrlDiag(
+        videoId: String,
+        connectivityManager: ConnectivityManager,
+    ): Result<String> = resolvePlaybackData(
+        videoId = videoId,
+        audioQuality = AudioQuality.OPUS,
+        connectivityManager = connectivityManager,
+        preferVideo = true,
+    ).mapCatching { it.streamUrl }
+
     private fun findFormat(
         playerResponse: PlayerResponse,
         audioQuality: AudioQuality,
