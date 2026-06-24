@@ -371,6 +371,9 @@ fun Thumbnail(
     val videoUrl by playerConnection.videoUrl.collectAsState()
     val videoShowing = videoModeOn && !videoUrl.isNullOrEmpty()
 
+    // Back while in video mode exits video (and resumes the music) instead of collapsing the player.
+    BackHandler(enabled = videoModeOn) { playerConnection.exitVideoMode() }
+
     Box(
         modifier = modifier
     ) {
@@ -383,8 +386,11 @@ fun Thumbnail(
                 isPlaying = true,
                 startPositionMs = videoStartMs,
                 onEnded = { playerConnection.exitVideoMode() },
+                // fillMaxSize (NOT matchParentSize): the Thumbnail Box uses animateContentSize, so when the
+                // cover card is hidden a matchParentSize child collapses to 0 (video + overlay invisible).
+                // fillMaxSize makes the video the sizing child, so the box keeps the full area.
                 modifier = Modifier
-                    .matchParentSize()
+                    .fillMaxSize()
                     .zIndex(2f),
             )
         }

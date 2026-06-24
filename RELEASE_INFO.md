@@ -1,23 +1,19 @@
-# Aura Hi-Res Player 0.6.12 (video: posición + diagnóstico)
+# Aura Hi-Res Player 0.6.13
 
-## Cambios
-1. **El video continúa desde donde ibas** (ya no reinicia la canción): al activar video se pasa la
-   posición actual y el reproductor de video hace seek a ese punto.
-2. **Diagnóstico en pantalla**: arriba a la izquierda del video aparece un texto pequeño con el estado
-   real, p. ej. `itag=22 · estado=ready · vid=1 aud=1 · size=1280x720 · frame=sí`.
+## El video ya tiene tamaño (debería verse) 🎥
+La causa de que NO se viera nada (ni siquiera el texto de diagnóstico) era de **layout**, no de
+stream: el Thumbnail usa `animateContentSize`, y al ocultar la portada, el video quedaba con
+**tamaño 0**. Por eso solo se oía el audio del clip y se veía el canvas de fondo.
 
-### Por qué el diagnóstico
-"Se oye pero no se ve" puede ser por dos cosas distintas; ese texto lo aclara:
-- `vid=0` → el stream NO trae pista de video (formato equivocado).
-- `vid=1` pero `frame=no` → hay video pero no se pinta (render/superficie).
-- `itag=140/251` → me dio un formato de SOLO audio.
-- `ERR=...` → error de decodificación/red.
+Arreglos:
+- El video ahora usa `fillMaxSize` → ocupa el área real y **se ve** (con su texto de diagnóstico).
+- **Atrás (back)** mientras hay video → sale del modo video y **reanuda el audio** (ya no se queda mudo).
+- El video sigue continuando desde la posición de la canción (no reinicia).
 
-**Qué hacer:** activa video y mándame una **captura** de ese texto. Con eso arreglo el punto exacto.
+### Cómo probarlo
+Canción **con videoclip** → botón **video** → debe **verse el video** (arriba a la izquierda sale el
+texto de diagnóstico). Si se ve bien, en la próxima quito ese texto. Si no, **mándame ese texto**.
 
 ## Técnico
-- `MusicVideoPlayer`: `setMediaItem(item, startPositionMs)`; overlay de diagnóstico (itag de la URL,
-  estado del player, nº de pistas video/audio vía `onTracksChanged`, `onVideoSizeChanged`,
-  `onRenderedFirstFrame`, `onPlayerError`).
-- `MusicService.toggleVideoMode`: publica `videoStartMs = player.currentPosition` antes de pausar.
-- `PlayerConnection`/`Thumbnail`: pasan `videoStartMs` al reproductor de video.
+- `Thumbnail`: `MusicVideoPlayer` pasa de `matchParentSize` a `fillMaxSize` (con `animateContentSize`
+  un hijo matchParentSize colapsa a 0). `BackHandler(enabled = videoModeOn)` → `exitVideoMode()`.
