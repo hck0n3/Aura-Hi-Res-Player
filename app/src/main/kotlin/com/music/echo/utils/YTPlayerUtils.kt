@@ -872,15 +872,19 @@ object YTPlayerUtils {
     ): PlayerResponse.StreamingData.Format? {
         if (preferVideo) {
             // Video mode is INTEGRATED into the main player as a SINGLE source, so it MUST be a MUXED
-            // (video+audio) stream — a video-only stream would play the song silently. Return only muxed
-            // (itag 22 (720p) → 18 (360p) → any other muxed), or null if none exists (the caller then keeps
-            // playing audio and shows "video no disponible"). NO video-only fallback. TVHTML5 (VIDEO_CLIENT)
-            // reliably exposes itag 18/22.
+            // (video+audio) stream — a video-only stream would play the song silently. Muxed only exists at
+            // itag 22 (720p) and 18 (360p). Quality is chosen by connection: on WiFi/unmetered prefer 720p,
+            // on metered (mobile data) prefer 360p to save data + load faster on low-end devices. Falls back
+            // to the other muxed quality, then any muxed; null if none (caller keeps audio + "no disponible").
+            // NO video-only fallback. TVHTML5 (VIDEO_CLIENT) reliably exposes itag 18/22.
             val muxed = playerResponse.streamingData?.formats
                 ?.filter { !it.url.isNullOrEmpty() || !it.signatureCipher.isNullOrEmpty() || !it.cipher.isNullOrEmpty() }
                 ?.filter { !it.isAudio && it.mimeType.startsWith("video/") }
-            return muxed?.firstOrNull { it.itag == 22 }
-                ?: muxed?.firstOrNull { it.itag == 18 }
+            val metered = connectivityManager.isActiveNetworkMetered
+            val primaryItag = if (metered) 18 else 22
+            val secondaryItag = if (metered) 22 else 18
+            return muxed?.firstOrNull { it.itag == primaryItag }
+                ?: muxed?.firstOrNull { it.itag == secondaryItag }
                 ?: muxed?.maxByOrNull { it.bitrate }
         }
 
