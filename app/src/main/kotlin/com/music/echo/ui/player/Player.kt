@@ -1800,6 +1800,7 @@ fun BottomSheetPlayer(
             run {
                 val chipBg = textButtonColor.copy(alpha = 0.18f)
                 val liked = currentSong?.song?.liked == true
+                val mixActive by playerConnection.mixActive.collectAsState()
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1865,8 +1866,13 @@ fun BottomSheetPlayer(
                             else -> Icon(painterResource(R.drawable.download), null, tint = textButtonColor, modifier = Modifier.size(20.dp))
                         }
                     }
-                    PlayerActionChip("Mix", textButtonColor, chipBg, { playerConnection.startRadioSeamlessly() }) {
-                        Icon(painterResource(R.drawable.radio), null, tint = textButtonColor, modifier = Modifier.size(20.dp))
+                    PlayerActionChip(
+                        label = "Mix",
+                        tint = if (mixActive) iconButtonColor else textButtonColor,
+                        container = if (mixActive) textButtonColor else chipBg,
+                        onClick = { playerConnection.startRadioSeamlessly() },
+                    ) {
+                        Icon(painterResource(R.drawable.radio), null, tint = if (mixActive) iconButtonColor else textButtonColor, modifier = Modifier.size(20.dp))
                     }
                     PlayerActionChip("Audio", textButtonColor, chipBg, {
                         // Collapse the player first so the equalizer screen is actually visible (otherwise

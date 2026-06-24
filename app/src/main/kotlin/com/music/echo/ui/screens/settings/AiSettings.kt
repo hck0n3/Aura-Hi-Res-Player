@@ -71,7 +71,6 @@ fun AiSettings(
         "OpenRouter" to "https://openrouter.ai/api/v1/chat/completions",
         "OpenAI" to "https://api.openai.com/v1/chat/completions",
         "Perplexity" to "https://api.perplexity.ai/chat/completions",
-        "Claude" to "https://api.anthropic.com/v1/messages",
         "Gemini" to "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
         "XAi" to "https://api.x.ai/v1/chat/completions",
         "Mistral" to "https://api.mistral.ai/v1/chat/completions",
@@ -84,7 +83,6 @@ fun AiSettings(
         "OpenRouter" to stringResource(R.string.ai_provider_openrouter_help),
         "OpenAI" to stringResource(R.string.ai_provider_openai_help),
         "Perplexity" to stringResource(R.string.ai_provider_perplexity_help),
-        "Claude" to stringResource(R.string.ai_provider_claude_help),
         "Gemini" to stringResource(R.string.ai_provider_gemini_help),
         "XAi" to stringResource(R.string.ai_provider_xai_help),
         "Mistral" to stringResource(R.string.ai_provider_mistral_help),
@@ -107,12 +105,6 @@ fun AiSettings(
             "gpt-4o",
             "gpt-4-turbo"
         ),
-        "Claude" to listOf(
-            "claude-3-5-haiku-latest",
-            "claude-3-5-sonnet-latest",
-            "claude-3-opus-latest"
-        ),
-        
         "Gemini" to listOf(
             "gemini-2.5-flash-lite",
             "gemini-2.5-flash",

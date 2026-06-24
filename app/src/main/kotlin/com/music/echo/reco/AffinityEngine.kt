@@ -33,6 +33,9 @@ object AffinityEngine {
     /** Below this fraction of the song, a play is treated as a skip (negative signal). */
     private const val SKIP_PIVOT = 0.30
 
+    /** Baseline weight given to each onboarding-selected genre so brand-new users still get genre affinity. */
+    private const val ONBOARDING_GENRE_SEED = 2.0
+
     suspend fun buildProfile(
         events: List<EventWithSong>,
         disliked: DislikeStore.Disliked,
@@ -40,6 +43,9 @@ object AffinityEngine {
         // Optional "artist name (lowercase) -> primary genre" map (from GenreCache/iTunes). When present,
         // the engine also learns per-genre affinity; when empty it falls back to artist + lane only.
         artistGenres: Map<String, String> = emptyMap(),
+        // The user's onboarding genre picks (already mapped to iTunes genre names) — seeded as baseline
+        // affinity so the first-run "¿Qué géneros te gustan?" step actually influences recommendations.
+        onboardingGenres: List<String> = emptyList(),
     ): TasteProfile {
         val byId = HashMap<String, Double>()
         val byName = HashMap<String, Double>()
@@ -85,6 +91,10 @@ object AffinityEngine {
                 lane.merge(l, w, Double::plus)
             }
         }
+
+        // Seed onboarding genre picks: strong signal for a new user with no history, a light nudge once
+        // real listening history accumulates (history weights grow past the seed over time).
+        onboardingGenres.forEach { g -> if (g.isNotBlank()) genre.merge(g, ONBOARDING_GENRE_SEED, Double::plus) }
 
         val maxW = byId.values.maxOrNull()?.takeIf { it > 0 } ?: 1.0
         val maxG = genre.values.maxOrNull()?.takeIf { it > 0 } ?: 1.0

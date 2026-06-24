@@ -116,7 +116,8 @@ class HomeViewModel @Inject constructor(
             .getOrDefault(iad1tya.echo.music.dislike.DislikeStore.Disliked())
         runCatching {
             val genres = iad1tya.echo.music.reco.GenreCache.snapshot(context)
-            tasteProfile = iad1tya.echo.music.reco.AffinityEngine.buildProfile(events, disliked, artistGenres = genres)
+            val onboarding = iad1tya.echo.music.reco.OnboardingGenres.itunesGenres(context)
+            tasteProfile = iad1tya.echo.music.reco.AffinityEngine.buildProfile(events, disliked, artistGenres = genres, onboardingGenres = onboarding)
         }
         // Learn the real genres of your most-heard artists for next time — WiFi only (your choice).
         if (events.isNotEmpty()) {

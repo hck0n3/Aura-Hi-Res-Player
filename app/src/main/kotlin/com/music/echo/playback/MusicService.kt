@@ -439,6 +439,10 @@ class MusicService :
     // for users who never open video.
     @Volatile
     private var userHasUsedVideo = false
+    // Mix/Radio active = the user started a radio from the current song (so the UI can highlight "Mix").
+    // Reset when they play a fresh queue.
+    private val _mixActive = MutableStateFlow(false)
+    val mixActive: kotlinx.coroutines.flow.StateFlow<Boolean> = _mixActive
     private val _videoMode = MutableStateFlow(false)
     val videoMode: kotlinx.coroutines.flow.StateFlow<Boolean> = _videoMode
     private val _videoUrl = MutableStateFlow<String?>(null)
@@ -1369,6 +1373,7 @@ class MusicService :
         queue: Queue,
         playWhenReady: Boolean = true,
     ) {
+        _mixActive.value = false  // fresh user-chosen queue → Mix/Radio no longer active
         if (!scope.isActive) scope = CoroutineScope(Dispatchers.Main) + Job()
 
         
@@ -1452,6 +1457,7 @@ class MusicService :
         }
 
         val currentMediaMetadata = player.currentMetadata ?: return
+        _mixActive.value = true
 
         val currentIndex = player.currentMediaItemIndex
         val currentMediaId = currentMediaMetadata.id
@@ -1540,8 +1546,9 @@ class MusicService :
             val disliked = runCatching { dislikeStore.snapshot() }
                 .getOrDefault(iad1tya.echo.music.dislike.DislikeStore.Disliked())
             val genres = iad1tya.echo.music.reco.GenreCache.snapshot(this@MusicService)
+            val onboarding = iad1tya.echo.music.reco.OnboardingGenres.itunesGenres(this@MusicService)
             withContext(Dispatchers.Default) {
-                iad1tya.echo.music.reco.AffinityEngine.buildProfile(events, disliked, artistGenres = genres)
+                iad1tya.echo.music.reco.AffinityEngine.buildProfile(events, disliked, artistGenres = genres, onboardingGenres = onboarding)
             }.also {
                 cachedTaste = it
                 cachedTasteAt = now
