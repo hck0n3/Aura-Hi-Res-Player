@@ -2883,12 +2883,23 @@ class MusicService :
     fun toggleVideoMode() {
         val item = player.currentMediaItem ?: return
         val id = item.mediaId
+        val baseUri = item.localConfiguration?.uri?.toString()?.substringBefore("#video")
+            ?: "https://music.youtube.com/watch?v=$id"
 
-        fun rebuildCurrentItem() {
+        // Rebuild the current item so ExoPlayer actually REBUILDS its media source — the ONLY way the
+        // video-merge factory runs. replaceMediaItem with an UNCHANGED item just updates metadata and
+        // keeps the old audio-only source (this is exactly why the video never appeared). Flipping the
+        // URI (#video marker) makes ProgressiveMediaSource.canUpdateMediaItem return false → full
+        // recreation. customCacheKey stays = mediaId so the resolver keys/caches audio exactly the same.
+        fun rebuildCurrentItem(forVideo: Boolean) {
             val idx = player.currentMediaItemIndex
             val pos = player.currentPosition
             val wasPlaying = player.playWhenReady
-            player.replaceMediaItem(idx, item)
+            val rebuilt = item.buildUpon()
+                .setUri(if (forVideo) "$baseUri#video" else baseUri)
+                .setCustomCacheKey(id)
+                .build()
+            player.replaceMediaItem(idx, rebuilt)
             player.seekTo(idx, pos)
             player.playWhenReady = wasPlaying
             player.prepare()
@@ -2900,7 +2911,7 @@ class MusicService :
             videoModeMediaId = null
             _videoMode.value = false
             videoUrlCache.remove(id)
-            rebuildCurrentItem()
+            rebuildCurrentItem(forVideo = false)
             return
         }
 
@@ -2921,7 +2932,7 @@ class MusicService :
                     return@withContext
                 }
                 videoUrlCache[id] = url to (System.currentTimeMillis() + 5 * 60 * 1000L)
-                rebuildCurrentItem()
+                rebuildCurrentItem(forVideo = true)
             }
         }
     }
