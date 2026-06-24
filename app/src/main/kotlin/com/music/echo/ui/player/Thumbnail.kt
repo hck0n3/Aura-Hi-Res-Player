@@ -367,15 +367,12 @@ fun Thumbnail(
     var showSeekEffect by remember { mutableStateOf(false) }
     var seekDirection by remember { mutableStateOf("") }
 
+    val videoModeOn by playerConnection.videoMode.collectAsState()
+
     Box(
         modifier = modifier
-            .graphicsLayer {
-
-                compositingStrategy = CompositingStrategy.Offscreen
-            }
     ) {
         // Video mode (Option A): overlay the music video over the cover, on top of the pager.
-        val videoModeOn by playerConnection.videoMode.collectAsState()
         if (videoModeOn) {
             PlayerVideoSurface(
                 playerConnection = playerConnection,
@@ -385,21 +382,28 @@ fun Thumbnail(
             )
         }
         
-        AnimatedVisibility(
-            visible = error != null,
-            enter = fadeIn(),
-            exit = fadeOut(),
+        Box(
             modifier = Modifier
-                .padding(32.dp)
-                .align(Alignment.Center),
+                .matchParentSize()
+                .graphicsLayer {
+                    compositingStrategy = CompositingStrategy.Offscreen
+                }
         ) {
-            error?.let { playbackError ->
-                PlaybackError(
-                    error = playbackError,
-                    retry = playerConnection.player::prepare,
-                )
+            AnimatedVisibility(
+                visible = error != null,
+                enter = fadeIn(),
+                exit = fadeOut(),
+                modifier = Modifier
+                    .padding(32.dp)
+                    .align(Alignment.Center),
+            ) {
+                error?.let { playbackError ->
+                    PlaybackError(
+                        error = playbackError,
+                        retry = playerConnection.player::prepare,
+                    )
+                }
             }
-        }
 
         
         // With Apple Music style the canvas plays FULL-SCREEN as the background, so the square cover card
@@ -500,6 +504,8 @@ fun Thumbnail(
         }
 
         
+        }
+
         LaunchedEffect(showSeekEffect) {
             if (showSeekEffect) {
                 delay(1000)
