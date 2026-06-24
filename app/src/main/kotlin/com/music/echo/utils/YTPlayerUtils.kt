@@ -99,7 +99,12 @@ object YTPlayerUtils {
     
     private val MAIN_CLIENT: YouTubeClient = ANDROID_VR_1_43_32
 
-    
+    // For VIDEO mode we need a client that returns muxed (video+audio) progressive formats — the music/VR
+    // clients only return adaptive (separate) streams, so the video URL came back null and only audio
+    // played. TVHTML5 reliably exposes itag 18 (360p) / 22 (720p) muxed without web PoTokens.
+    private val VIDEO_CLIENT: YouTubeClient = TVHTML5
+
+
     private val METADATA_CLIENT: YouTubeClient = WEB_REMIX
 
     private val STREAM_FALLBACK_CLIENTS: Array<YouTubeClient> = arrayOf(
@@ -481,10 +486,18 @@ object YTPlayerUtils {
                     }
                 }
             } else null
-            val main = YouTube.player(
-                videoId, playlistId, MAIN_CLIENT,
-                signatureTimestamp.timestamp, poToken?.playerRequestPoToken
-            ).getOrThrow()
+            val main = if (preferVideo) {
+                // Video mode: ask a muxed-capable client so streamingData.formats has a real video stream.
+                YouTube.player(
+                    videoId, playlistId, VIDEO_CLIENT,
+                    signatureTimestamp.timestamp, null,
+                ).getOrThrow()
+            } else {
+                YouTube.player(
+                    videoId, playlistId, MAIN_CLIENT,
+                    signatureTimestamp.timestamp, poToken?.playerRequestPoToken,
+                ).getOrThrow()
+            }
             main to metadataDeferred?.await()
         }
         var mainPlayerResponse = resolved.first

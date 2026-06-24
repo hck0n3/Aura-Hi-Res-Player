@@ -1,18 +1,12 @@
-# Aura Hi-Res Player 0.6.2
+# Aura Hi-Res Player 0.6.3
 
-## Sincronización robusta (no se interrumpe) 🔁🛡️
-- "Sincronizar todo" (y cada tipo) ahora corre en **segundo plano vía WorkManager**: **sobrevive aunque cierres la app** y **reintenta solo hasta completarse** (con red). Como las sincronizaciones son aditivas, si se interrumpe simplemente continúa llenando tu biblioteca, sin perder ni duplicar nada.
+## El modo Video ahora SÍ muestra el video 🎬
+- Antes, al cambiar a "Video" decía que lo hacía pero solo sonaba el audio: el cliente de reproducción (el que da buen audio) solo entrega streams **separados** (video y audio por aparte), así que la URL de video volvía vacía y caía a audio.
+- Ahora, **solo en modo video**, se pide el stream **combinado** (video+audio) a un cliente que sí lo entrega → el video se reproduce en la carátula. (En canciones que tengan video disponible.)
+- No afecta el audio normal (el cambio está aislado al modo video).
 
-## Introducción más clara 🎬
-- Los pasos ahora **solo avanzan** (Artistas → Géneros → Spotify → YouTube → Inicio), con botón **"Siguiente"** y un **"Comenzar"** al final que te lleva al inicio. Ya no tienes que "regresar" para continuar. Puedes ir hacia atrás solo si tú quieres (botón atrás del sistema).
-
-## Quitada "Realce de graves" 🧹
-- Se eliminó el efecto **Realce de graves** de Efectos DSP (queda desactivado aunque lo tuvieras). El resto del sonido sigue igual.
-
-## Pendiente (necesito tu confirmación)
-- "Sincronizar todo" trajo 88 de tus 500+ artistas: la paginación está bien (hasta 50 páginas). Probablemente sean tus **suscripciones de canal** (otro conjunto) vs. la pestaña **"Artistas"** de tu biblioteca. Dime cuál de los dos son tus 500 y ajusto el endpoint.
+## Nota
+- El video sale del stream combinado (~360p en muchos casos). Subir la calidad requiere fusionar los streams separados (un cambio mayor) — lo dejo para después si quieres mejor resolución.
 
 ## Técnico
-- utils/YtmSyncWorker (CoroutineWorker + EntryPoint a SyncUtils, NetworkType.CONNECTED, backoff, ExistingWorkPolicy.KEEP). El hub enqueue por tipo.
-- Onboarding: quitados los popUpTo intermedios; "Comenzar"/"Sincronizar" hacen popUpTo onboarding_artists.
-- JrDsp bassEnhanceEnabled=false; item quitado de SoundSettings; mención fuera de About.
+- YTPlayerUtils: nuevo `VIDEO_CLIENT = TVHTML5` usado en el request principal cuando `preferVideo=true` (devuelve formatos muxed itag 18/22); el camino de audio sigue con ANDROID_VR.

@@ -1465,6 +1465,11 @@ interface DatabaseDao {
     @Update
     fun update(artist: ArtistEntity)
 
+    /** Followed artists with no cover image yet (e.g. artists that came in only via synced songs) —
+     *  used to fetch and fill their picture in the background. */
+    @Query("SELECT * FROM artist WHERE bookmarkedAt IS NOT NULL AND (thumbnailUrl IS NULL OR thumbnailUrl = '') LIMIT :limit")
+    suspend fun bookmarkedArtistsMissingImage(limit: Int): List<ArtistEntity>
+
     @Update
     fun update(album: AlbumEntity)
 
