@@ -37,7 +37,7 @@ private data class Feature(val icon: Int, val title: String, val subtitle: Strin
 
 private val PLAYBACK_FEATURES = listOf(
     Feature(R.drawable.play, "Reproducción", "Sin cortes (gapless), transición suave (crossfade) lineal de 10s, normalización de volumen al mismo nivel en todas las canciones y temporizador de apagado"),
-    Feature(R.drawable.videocam, "Video y segundo plano", "Alterna entre solo audio y video musical; sigue sonando en segundo plano y con la pantalla apagada"),
+    Feature(R.drawable.videocam, "Video musical", "Reproduce el videoclip con su sonido dentro del reproductor (cuando está disponible), sigue en video al cambiar de canción; pantalla completa al girar el teléfono, Picture-in-Picture (ventana flotante) y cambio rápido entre audio y video. El audio sigue en segundo plano y con la pantalla apagada"),
     Feature(R.drawable.graphic_eq, "Sonido y EQ", "Ecualizador de 24 bandas con potenciadores manuales de Graves y Agudos (Tono estilo Poweramp), limitador multibanda anti-distorsión con headroom automático, Auto-EQ por modelo de auricular (+5000), sonoridad tipo TIDAL con limitador true-peak, firma Aura, excitador y ancho estéreo"),
     Feature(R.drawable.tune, "Sonido sin pérdida", "Reproduce en calidad sin pérdida desde Qobuz/Saavn cuando está disponible"),
     Feature(R.drawable.auto_awesome, "Mejorar calidad baja", "Reduce la distorsión (declip) y regenera agudos en fuentes de bajo bitrate"),
@@ -53,8 +53,8 @@ private val DISCOVERY_FEATURES = listOf(
     Feature(R.drawable.auto_awesome, "Listas con IA", "Crea playlists describiéndolas con una frase"),
     Feature(R.drawable.favorite_border, "Filtros y coherencia", "El filtro 'No me gusta' aparta canciones de las recomendaciones y mantiene la coherencia de género en autoplay/radio"),
     Feature(R.drawable.music_history, "Release Radar", "Nuevos lanzamientos de los artistas que sigues"),
-    Feature(R.drawable.library_music, "Discografía completa", "Catálogos de artista autocompletados, con sección 'Aparece en'"),
-    Feature(R.drawable.mic, "Reconocer canción", "Identifica la música que suena a tu alrededor"),
+    Feature(R.drawable.library_music, "Discografía completa", "Catálogos de artista autocompletados, con secciones 'Aparece en' y 'Videos oficiales' (reproducibles)"),
+    Feature(R.drawable.mic, "Reconocer canción", "Identifica la música que suena a tu alrededor, desde la app, el widget o un mosaico de Ajustes Rápidos"),
     Feature(R.drawable.ic_search_mic, "Búsqueda por voz", "Busca hablando, además de explorar Charts, Estados de ánimo y Géneros"),
 )
 
@@ -72,7 +72,7 @@ private val LIBRARY_FEATURES = listOf(
 private val EXTRAS_FEATURES = listOf(
     Feature(R.drawable.home_outlined, "Tu inicio a tu gusto", "Elige tus artistas y géneros al empezar; el inicio se llena solo con tus artistas, lo que escuchas y tus favoritos, y YouTube recomienda en base a eso"),
     Feature(R.drawable.group_outlined, "Escuchar juntos", "Escucha sincronizada en tiempo real con amigos"),
-    Feature(R.drawable.palette, "Temas y fondos", "Material You, modo oscuro puro AMOLED, acento dinámico y Canvas animado del artista y del álbum"),
+    Feature(R.drawable.palette, "Temas y fondos", "Material You, modo oscuro puro AMOLED, acento dinámico y Canvas animado del artista y del álbum (a pantalla completa al girar el teléfono)"),
     Feature(R.drawable.tune, "Opciones de pantalla", "Escala de densidad, alta tasa de refresco, ocultar miniatura/videos/Shorts y recortar carátula"),
     Feature(R.drawable.share, "Compartir y widget", "Comparte con enlaces de YouTube Music y controla la música desde el widget de vinilo"),
     Feature(R.drawable.ic_ringtone, "Establecer como tono", "Usa cualquier canción como tono de tu dispositivo"),

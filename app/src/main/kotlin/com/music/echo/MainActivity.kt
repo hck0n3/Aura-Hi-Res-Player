@@ -422,7 +422,6 @@ class MainActivity : ComponentActivity() {
                     database = database,
                     downloadUtil = downloadUtil,
                     syncUtils = syncUtils,
-                    inPipMode = inPipMode,
                 )
             }
         }
@@ -436,23 +435,13 @@ class MainActivity : ComponentActivity() {
         database: MusicDatabase,
         downloadUtil: DownloadUtil,
         syncUtils: SyncUtils,
-        inPipMode: Boolean = false,
     ) {
         val enableDynamicTheme by rememberPreference(DynamicThemeKey, defaultValue = true)
         val enableHighRefreshRate by rememberPreference(EnableHighRefreshRateKey, defaultValue = true)
         val context = LocalContext.current
-
-        // In Picture-in-Picture, render ONLY the video fullscreen in the floating window (the main player
-        // keeps playing; this surface just shows its frames). The rest of the app UI is skipped.
-        if (inPipMode && playerConnection != null) {
-            Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
-                iad1tya.echo.music.ui.player.PlayerVideoSurface(
-                    playerConnection = playerConnection,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
-            return
-        }
+        // NOTE: do NOT tear down / early-return the whole app UI when entering PiP — rebuilding the entire
+        // NavHost on every app-switch froze the app for seconds (and could pause playback). PiP simply shows
+        // the current content (the video player) in the floating window; no special teardown.
 
         // Updates are manual: no automatic update check on startup.
 

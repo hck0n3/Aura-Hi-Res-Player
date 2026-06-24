@@ -391,15 +391,15 @@ fun Thumbnail(
                     .zIndex(2f),
             )
         } else if (videoModeOn) {
-            // Resolving the muxed stream — immediate feedback so switching to video doesn't feel dead.
+            // Resolving the muxed stream — show a spinner OVER the still-visible cover/canvas (no black
+            // screen), then the video replaces it once ready.
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .zIndex(2f)
-                    .background(Color.Black),
+                    .zIndex(2f),
                 contentAlignment = Alignment.Center,
             ) {
-                CircularProgressIndicator(color = Color.White)
+                CircularProgressIndicator()
             }
         }
 
@@ -431,9 +431,9 @@ fun Thumbnail(
         // is always hidden in portrait (whether or not canvas is on) — the user wants a single full-screen
         // animation, NOT a full-screen one plus a square cover in front.
         AnimatedVisibility(
-            // Hide the cover/canvas card as soon as video mode is on (a spinner covers the resolve gap),
-            // so the video area is clean.
-            visible = !videoModeOn && error == null && !(playerBackground == PlayerBackgroundStyle.APPLE_MUSIC && !isLandscape),
+            // Keep the cover/canvas visible while the video stream resolves (the spinner overlays it) and
+            // only hide it once the video is actually showing — so there's never a black screen.
+            visible = !videoShowing && error == null && !(playerBackground == PlayerBackgroundStyle.APPLE_MUSIC && !isLandscape),
             enter = fadeIn(),
             exit = fadeOut(),
             modifier = Modifier

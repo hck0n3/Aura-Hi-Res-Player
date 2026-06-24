@@ -142,13 +142,13 @@ fun WelcomeDialog(
                     WelcomeFeatureRow(
                         iconRes = R.drawable.videocam,
                         title = "Video musical",
-                        subtitle = "Alterna entre solo audio y video musical en HD"
+                        subtitle = "Mira el videoclip con sonido, sigue en video entre canciones; pantalla completa al girar, ventana flotante (Picture-in-Picture) y sección 'Videos oficiales' en cada artista"
                     )
                     WelcomeDivider()
                     WelcomeFeatureRow(
                         iconRes = R.drawable.mic,
                         title = "Reconocer canción y buscar por voz",
-                        subtitle = "Identifica lo que suena a tu alrededor y busca hablando"
+                        subtitle = "Identifica lo que suena a tu alrededor (desde la app, el widget o Ajustes Rápidos) y busca hablando"
                     )
                     WelcomeDivider()
                     WelcomeFeatureRow(
