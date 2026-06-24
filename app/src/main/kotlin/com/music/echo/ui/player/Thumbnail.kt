@@ -368,14 +368,19 @@ fun Thumbnail(
     var seekDirection by remember { mutableStateOf("") }
 
     val videoModeOn by playerConnection.videoMode.collectAsState()
+    val videoUrl by playerConnection.videoUrl.collectAsState()
+    val videoShowing = videoModeOn && !videoUrl.isNullOrEmpty()
 
     Box(
         modifier = modifier
     ) {
-        // Video mode (Option A): overlay the music video over the cover, on top of the pager.
-        if (videoModeOn) {
-            PlayerVideoSurface(
-                playerConnection = playerConnection,
+        // Video mode: play the music video in a DEDICATED player (proven canvas pattern), on top of the
+        // pager. MusicService pauses the music engine while this is shown (the video carries its own audio).
+        if (videoShowing) {
+            MusicVideoPlayer(
+                url = videoUrl!!,
+                isPlaying = true,
+                onEnded = { playerConnection.exitVideoMode() },
                 modifier = Modifier
                     .matchParentSize()
                     .zIndex(2f),
@@ -410,8 +415,9 @@ fun Thumbnail(
         // is always hidden in portrait (whether or not canvas is on) — the user wants a single full-screen
         // animation, NOT a full-screen one plus a square cover in front.
         AnimatedVisibility(
-            // Hide the cover/canvas card entirely while video mode is on, so only the music video shows.
-            visible = !videoModeOn && error == null && !(playerBackground == PlayerBackgroundStyle.APPLE_MUSIC && !isLandscape),
+            // Hide the cover/canvas card only once the video is actually showing, so there's no black gap
+            // while the muxed URL resolves (the cover stays until the video player is ready).
+            visible = !videoShowing && error == null && !(playerBackground == PlayerBackgroundStyle.APPLE_MUSIC && !isLandscape),
             enter = fadeIn(),
             exit = fadeOut(),
             modifier = Modifier

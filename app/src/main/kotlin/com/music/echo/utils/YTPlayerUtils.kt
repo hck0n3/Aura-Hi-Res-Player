@@ -871,18 +871,26 @@ object YTPlayerUtils {
         preferVideo: Boolean = false,
     ): PlayerResponse.StreamingData.Format? {
         if (preferVideo) {
-            // VIDEO-ONLY adaptive format — the player merges it with the audio stream. Avoid AV1 (av01):
-            // many phones can't hardware-decode it. Prefer H.264 (avc1, widest support), then VP9, capped
-            // at 720p for a sane fixed quality + bandwidth.
-            val allFormats = (playerResponse.streamingData?.adaptiveFormats.orEmpty() + playerResponse.streamingData?.formats.orEmpty())
-            val videos = allFormats
+            // Video plays in a DEDICATED player that needs a SINGLE stream WITH SOUND, so prefer a MUXED
+            // (video+audio) progressive format from streamingData.formats: itag 22 (720p) → itag 18
+            // (360p) → any other muxed. Only if no muxed exists, fall back to a progressive video (last
+            // resort; could be silent). TVHTML5 (VIDEO_CLIENT) reliably exposes itag 18/22.
+            val muxed = playerResponse.streamingData?.formats
+                ?.filter { !it.url.isNullOrEmpty() || !it.signatureCipher.isNullOrEmpty() || !it.cipher.isNullOrEmpty() }
+                ?.filter { !it.isAudio && it.mimeType.startsWith("video/") }
+            muxed?.firstOrNull { it.itag == 22 }?.let { return it }
+            muxed?.firstOrNull { it.itag == 18 }?.let { return it }
+            muxed?.maxByOrNull { it.bitrate }?.let { return it }
+
+            // Fallback: any non-AV1 progressive video ≤720p from either list.
+            val allFormats = playerResponse.streamingData?.adaptiveFormats.orEmpty() +
+                playerResponse.streamingData?.formats.orEmpty()
+            return allFormats
                 .filter { !it.isAudio && it.mimeType.startsWith("video/") }
                 .filter { !it.url.isNullOrEmpty() || !it.signatureCipher.isNullOrEmpty() || !it.cipher.isNullOrEmpty() }
                 .filter { !it.mimeType.contains("av01") }
-            val capped = videos?.filter { (it.height ?: 0) in 1..720 }?.takeIf { it.isNotEmpty() } ?: videos
-            return capped?.filter { it.mimeType.contains("avc1") }?.maxByOrNull { it.height ?: 0 }
-                ?: capped?.maxByOrNull { it.height ?: 0 }
-                ?: capped?.maxByOrNull { it.bitrate }
+                .filter { (it.height ?: 0) in 1..720 }
+                .maxByOrNull { it.height ?: 0 }
         }
 
         Timber.tag(logTag).d("Finding format with audioQuality: $audioQuality, network metered: ${connectivityManager.isActiveNetworkMetered}")
