@@ -406,7 +406,8 @@ fun Thumbnail(
         // is always hidden in portrait (whether or not canvas is on) — the user wants a single full-screen
         // animation, NOT a full-screen one plus a square cover in front.
         AnimatedVisibility(
-            visible = error == null && !(playerBackground == PlayerBackgroundStyle.APPLE_MUSIC && !isLandscape),
+            // Hide the cover/canvas card entirely while video mode is on, so only the music video shows.
+            visible = !videoModeOn && error == null && !(playerBackground == PlayerBackgroundStyle.APPLE_MUSIC && !isLandscape),
             enter = fadeIn(),
             exit = fadeOut(),
             modifier = Modifier

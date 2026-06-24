@@ -1,14 +1,14 @@
-# Aura Hi-Res Player 0.6.6
+# Aura Hi-Res Player 0.6.7
 
-## El video por fin se RENDERIZA 🎥✅
-La fusión de video+audio (0.6.5) estaba bien, pero **nunca llegaba a ejecutarse**. La razón real (la causa de que el video no apareciera en NINGÚN intento):
+## Video: cliente correcto + video al frente 🎥
+Dos arreglos sobre el modo video:
 
-> Al activar video, el reproductor reemplazaba la canción por **el mismo item**. ExoPlayer, al no ver cambios, hacía una actualización "ligera" (solo metadatos) y **no reconstruía** su motor interno — así que el código que arma el video nunca corría. Veías la portada/canvas con el audio igual.
-
-**Fix:** al activar video cambio la URI del item (marcador `#video`), lo que **obliga a ExoPlayer a reconstruir** el motor → la fusión de video+audio por fin se ejecuta y se dibuja en pantalla. La clave de caché no cambia, así que el **audio se resuelve/cachea idéntico** (sin riesgo).
+1. **"Este video no está disponible" (aunque sí existía):** el stream de video salía del cliente de **solo audio** (ANDROID_VR), que no devuelve formatos de video → siempre fallaba. Ahora el video sale de **TVHTML5** (cliente con video adaptativo). El **audio sigue igual** (ANDROID_VR), sin riesgo.
+2. **Video al frente:** al activar video se **ocultan la portada y el canvas** por completo, así solo se ve el videoclip (ya iba encima, ahora sin nada detrás compitiendo).
 
 ### Cómo probarlo
-Pon una canción **con videoclip**, abre el reproductor y toca el botón de **video**. Ahora debe **verse el video con su sonido**. Si sale "Este video no está disponible", ese tema no tiene videoclip en YouTube — prueba otro.
+Canción **con videoclip** → reproductor → botón **video** → debe verse el video con su sonido, sin portada/canvas. Si sale "no disponible", ese tema no tiene videoclip o el cliente no lo entregó — dime y pruebo otro cliente.
 
 ## Técnico
-- `toggleVideoMode` ahora reconstruye el item con `setUri(base + "#video")` (y lo quita al apagar), manteniendo `customCacheKey = mediaId`. Esto invalida `ProgressiveMediaSource.canUpdateMediaItem` → recreación completa del media source → corre la fábrica que devuelve `MergingMediaSource(video-only + audio)`.
+- `resolvePlaybackData(preferVideo=true)` vuelve a usar `VIDEO_CLIENT` (TVHTML5) para el request principal; `findFormat(preferVideo)` elige formato de **video adaptativo** (avc1 ≤720p, sin av01). El audio del merge se resuelve por separado con MAIN_CLIENT.
+- Thumbnail: la tarjeta portada/canvas se oculta (`!videoModeOn`) en modo video.

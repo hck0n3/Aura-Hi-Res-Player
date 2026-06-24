@@ -486,13 +486,21 @@ object YTPlayerUtils {
                     }
                 }
             } else null
-            // Both the audio AND the video-only stream come from MAIN_CLIENT's adaptiveFormats, so the
-            // video URL goes through the exact same (already working) cipher + PoToken pipeline as audio.
-            // The player merges the video-only track with the audio track (MergingMediaSource).
-            val main = YouTube.player(
-                videoId, playlistId, MAIN_CLIENT,
-                signatureTimestamp.timestamp, poToken?.playerRequestPoToken,
-            ).getOrThrow()
+            // Video mode needs a client that actually returns VIDEO adaptive formats. MAIN_CLIENT
+            // (ANDROID_VR) is audio-focused and returns no usable video, so for video we query
+            // VIDEO_CLIENT (TVHTML5), which reliably returns adaptive video. The player then merges this
+            // video-only track with the (separately resolved, MAIN_CLIENT) audio track. Audio is untouched.
+            val main = if (preferVideo) {
+                YouTube.player(
+                    videoId, playlistId, VIDEO_CLIENT,
+                    signatureTimestamp.timestamp, null,
+                ).getOrThrow()
+            } else {
+                YouTube.player(
+                    videoId, playlistId, MAIN_CLIENT,
+                    signatureTimestamp.timestamp, poToken?.playerRequestPoToken,
+                ).getOrThrow()
+            }
             main to metadataDeferred?.await()
         }
         var mainPlayerResponse = resolved.first
