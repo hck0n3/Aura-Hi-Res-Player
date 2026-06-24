@@ -1,24 +1,25 @@
-# Aura Hi-Res Player 0.6.14
+# Aura Hi-Res Player 0.6.15
 
-## Video pulido ✨
-Con el video ya funcionando, esta versión lo deja redondo:
+## Modo video reintegrado en el motor principal 🎥 (un solo reproductor)
+El video ahora es una **pista del mismo reproductor** que lleva el audio (ya no hay un reproductor aparte). Eso arregla de raíz lo que reportaste:
+- ✅ **Sin doble audio**, nunca.
+- ✅ Al **minimizar**, el **audio sigue** en segundo plano (con notificación) — sin cortes.
+- ✅ La **barra de progreso adelanta/retrocede** el video.
+- ✅ **Sin parpadeo** de la barra.
+- ✅ **Sigue en video** al cambiar de canción (hasta que tú lo apagues).
+- ✅ Controles nativos (play/pausa, siguiente, anterior) controlan lo que ves.
+- ✅ Rotar no detiene el video.
+- ✅ La **letra** se desactiva mientras ves el video.
 
-- **Sin texto de diagnóstico** (era temporal).
-- **Al salir del video, el audio continúa donde iba el video** (ya no salta atrás).
-- **La barra de tiempo avanza** mientras ves el video.
-- **Apariencia limpia**: se oculta el canvas de fondo en modo video (ya no se ve la portada superpuesta detrás).
-- **Cambio más responsivo**: al tocar video sale un indicador de carga al instante (ya no se siente "muerto").
-- **Rotar la pantalla** ya no detiene el video, y **bloquear/desbloquear** ya no lo reinicia (continúa donde iba).
+> Nota: el video usa el stream combinado (con su audio, sin EQ). Si una canción no tiene ese formato, sale "Video no disponible" y sigue en audio. Entre canciones puede haber un breve cargado al entrar el video (lo afino luego).
 
-## Correcciones de robustez (revisión interna)
-- Cancelar el video durante la carga ya **no** hace que el audio salte a una posición vieja.
-- En modo video, la barra **no** se puede arrastrar por error (movía el reproductor pausado y "rebotaba").
-- Al salir del video con la música en pausa, la barra **vuelve correctamente** a la posición/duración de la canción.
+## Mejoras traídas de Echo (upstream) ✨
+- **Portada de playlist:** si YouTube rechaza la subida (403), ahora se guarda **en local** en vez de fallar en silencio.
+- **Doble-tap al centro** de la carátula = **play/pausa** (los lados siguen siendo adelantar/atrás).
+- **Exportar playlist a CSV** (además del JSON).
+- **Copia de seguridad** se crea en segundo plano (no congela con bibliotecas grandes).
+- Timeouts de red de reproducción ahora van a **recuperación** (menos cuelgues de carga).
+- Quitado un borrado de base de datos heredado del arranque (protege tu historial/estadísticas).
 
 ## Técnico
-- `exitVideoMode` solo reanuda en la posición del video si un video realmente se reprodujo; resetea
-  `_videoPositionMs/_videoDurationMs` al salir / fallar / cambiar de pista.
-- Seekbar: callbacks de los 4 estilos de slider gateados con `!videoMode`.
-- `LaunchedEffect(videoMode)` restaura `position/duration` del player principal al salir.
-- Diagnóstico eliminado de `MusicVideoPlayer`; reporta progreso vía `reportVideoProgress`.
-- `AndroidManifest` MainActivity con `configChanges` (no recrea en rotación).
+- `MusicService`: `videoDataSourceFactory` (OkHttp + User-Agent por cliente, sin caché) + `createMediaSourceFactory` que enruta la pista de video; `swapToVideo`/`restoreVideoTrackToAudio`/`applyVideoToCurrent`; sticky en `onMediaItemTransition`; error en pista de video → `exitVideoMode` (fallback a audio); crossfade desactivado en video; `findFormat(preferVideo)` solo muxed.

@@ -148,12 +148,8 @@ class PlayerConnection(
     val isMuted = service.isMuted
     val videoMode = service.videoMode
     val videoUrl = service.videoUrl
-    val videoStartMs = service.videoStartMs
-    val videoPositionMs = service.videoPositionMs
-    val videoDurationMs = service.videoDurationMs
     fun toggleVideoMode() = service.toggleVideoMode()
     fun exitVideoMode() = service.exitVideoMode()
-    fun reportVideoProgress(positionMs: Long, durationMs: Long) = service.reportVideoProgress(positionMs, durationMs)
 
     val waitingForNetworkConnection = service.waitingForNetworkConnection
     

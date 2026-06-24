@@ -871,26 +871,17 @@ object YTPlayerUtils {
         preferVideo: Boolean = false,
     ): PlayerResponse.StreamingData.Format? {
         if (preferVideo) {
-            // Video plays in a DEDICATED player that needs a SINGLE stream WITH SOUND, so prefer a MUXED
-            // (video+audio) progressive format from streamingData.formats: itag 22 (720p) → itag 18
-            // (360p) → any other muxed. Only if no muxed exists, fall back to a progressive video (last
-            // resort; could be silent). TVHTML5 (VIDEO_CLIENT) reliably exposes itag 18/22.
+            // Video mode is INTEGRATED into the main player as a SINGLE source, so it MUST be a MUXED
+            // (video+audio) stream — a video-only stream would play the song silently. Return only muxed
+            // (itag 22 (720p) → 18 (360p) → any other muxed), or null if none exists (the caller then keeps
+            // playing audio and shows "video no disponible"). NO video-only fallback. TVHTML5 (VIDEO_CLIENT)
+            // reliably exposes itag 18/22.
             val muxed = playerResponse.streamingData?.formats
                 ?.filter { !it.url.isNullOrEmpty() || !it.signatureCipher.isNullOrEmpty() || !it.cipher.isNullOrEmpty() }
                 ?.filter { !it.isAudio && it.mimeType.startsWith("video/") }
-            muxed?.firstOrNull { it.itag == 22 }?.let { return it }
-            muxed?.firstOrNull { it.itag == 18 }?.let { return it }
-            muxed?.maxByOrNull { it.bitrate }?.let { return it }
-
-            // Fallback: any non-AV1 progressive video ≤720p from either list.
-            val allFormats = playerResponse.streamingData?.adaptiveFormats.orEmpty() +
-                playerResponse.streamingData?.formats.orEmpty()
-            return allFormats
-                .filter { !it.isAudio && it.mimeType.startsWith("video/") }
-                .filter { !it.url.isNullOrEmpty() || !it.signatureCipher.isNullOrEmpty() || !it.cipher.isNullOrEmpty() }
-                .filter { !it.mimeType.contains("av01") }
-                .filter { (it.height ?: 0) in 1..720 }
-                .maxByOrNull { it.height ?: 0 }
+            return muxed?.firstOrNull { it.itag == 22 }
+                ?: muxed?.firstOrNull { it.itag == 18 }
+                ?: muxed?.maxByOrNull { it.bitrate }
         }
 
         Timber.tag(logTag).d("Finding format with audioQuality: $audioQuality, network metered: ${connectivityManager.isActiveNetworkMetered}")

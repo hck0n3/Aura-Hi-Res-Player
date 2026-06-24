@@ -381,17 +381,11 @@ fun Thumbnail(
         // Video mode: play the music video in a DEDICATED player (proven canvas pattern), on top of the
         // pager. MusicService pauses the music engine while this is shown (the video carries its own audio).
         if (videoShowing) {
-            val videoStartMs by playerConnection.videoStartMs.collectAsState()
-            val videoResumeMs by playerConnection.videoPositionMs.collectAsState()
-            MusicVideoPlayer(
-                url = videoUrl!!,
-                isPlaying = true,
-                // Resume where the video was (survives rotation / lock-unlock / recomposition), not the start.
-                startPositionMs = maxOf(videoStartMs, videoResumeMs),
-                onEnded = { playerConnection.exitVideoMode() },
-                onProgress = { p, d -> playerConnection.reportVideoProgress(p, d) },
-                // fillMaxSize (NOT matchParentSize): the Thumbnail Box uses animateContentSize, so a
-                // matchParentSize child collapses to 0 once the cover card is hidden (video invisible).
+            // Video is INTEGRATED into the main player; this surface just renders it. fillMaxSize (NOT
+            // matchParentSize): the Thumbnail Box uses animateContentSize, so a matchParentSize child
+            // collapses to 0 once the cover card is hidden.
+            PlayerVideoSurface(
+                playerConnection = playerConnection,
                 modifier = Modifier
                     .fillMaxSize()
                     .zIndex(2f),
@@ -677,6 +671,12 @@ private fun ThumbnailItem(
                 detectTapGestures(
                     onDoubleTap = { offset ->
                         if (isListenTogetherGuest) return@detectTapGestures
+
+                        // Center band → play/pause; the left/right halves keep the incremental seek.
+                        if (offset.x in (size.width * 0.35f)..(size.width * 0.65f)) {
+                            playerConnection.togglePlayPause()
+                            return@detectTapGestures
+                        }
 
                         val currentPosition = playerConnection.player.currentPosition
                         val duration = playerConnection.player.duration

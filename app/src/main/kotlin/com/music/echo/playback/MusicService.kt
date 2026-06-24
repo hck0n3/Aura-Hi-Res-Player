@@ -426,25 +426,18 @@ class MusicService :
     
     private val bypassCacheForQualityChange = mutableSetOf<String>()
 
-    // Video mode: the music video plays in a DEDICATED UI player (MusicVideoPlayer) — NOT the main
-    // music ExoPlayer — using the proven canvas data-source pattern. While it's on, the main music
-    // engine is paused. videoMode flags the UI to show the surface; videoUrl is the resolved muxed URL.
+    // Video mode is INTEGRATED into the main player (one engine). videoMode = sticky on/off intent;
+    // videoUrl = resolved muxed URL of the current video track (null while resolving → UI spinner).
+    // videoModeMediaId = the track whose source is currently the video stream; videoModeOriginalUri
+    // restores that track to its normal audio source.
     @Volatile
     private var videoModeMediaId: String? = null
+    private var videoModeOriginalUri: String? = null
     private val videoUrlCache = HashMap<String, Pair<String, Long>>()
-    private var wasPlayingBeforeVideo = false
     private val _videoMode = MutableStateFlow(false)
     val videoMode: kotlinx.coroutines.flow.StateFlow<Boolean> = _videoMode
     private val _videoUrl = MutableStateFlow<String?>(null)
     val videoUrl: kotlinx.coroutines.flow.StateFlow<String?> = _videoUrl
-    private val _videoStartMs = MutableStateFlow(0L)
-    val videoStartMs: kotlinx.coroutines.flow.StateFlow<Long> = _videoStartMs
-    // Live position/duration reported by the dedicated video player, so the seekbar can advance during
-    // video mode and so exiting resumes the music exactly where the video was.
-    private val _videoPositionMs = MutableStateFlow(0L)
-    val videoPositionMs: kotlinx.coroutines.flow.StateFlow<Long> = _videoPositionMs
-    private val _videoDurationMs = MutableStateFlow(0L)
-    val videoDurationMs: kotlinx.coroutines.flow.StateFlow<Long> = _videoDurationMs
 
     
     private var currentMediaIdRetryCount = mutableMapOf<String, Int>()
@@ -2009,14 +2002,10 @@ class MusicService :
         mediaItem: MediaItem?,
         reason: Int,
     ) {
-        // Exit video mode when the track changes (the dedicated video player targets the current track).
-        if (videoModeMediaId != null && mediaItem?.mediaId != videoModeMediaId) {
-            videoModeMediaId = null
-            _videoMode.value = false
-            _videoUrl.value = null
-            _videoPositionMs.value = 0L
-            _videoDurationMs.value = 0L
-            wasPlayingBeforeVideo = false
+        // Sticky video mode: when the track changes while video mode is on, swap the NEW current track to
+        // its video (restoring the previous one to audio). Stays in video until the user turns it off.
+        if (_videoMode.value && mediaItem != null && mediaItem.mediaId != videoModeMediaId) {
+            applyVideoToCurrent()
         }
 
         if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) {
@@ -2456,6 +2445,7 @@ class MusicService :
         }
         return error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
                 error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT ||
+                error.errorCode == PlaybackException.ERROR_CODE_TIMEOUT ||
                 error.errorCode == PlaybackException.ERROR_CODE_IO_INVALID_HTTP_CONTENT_TYPE ||
                 error.cause is java.net.ConnectException ||
                 error.cause is java.net.UnknownHostException ||
@@ -2488,6 +2478,17 @@ class MusicService :
         val mediaId = player.currentMediaItem?.mediaId
         Timber.tag(TAG).w(error, "Player error occurred for $mediaId: errorCode=${error.errorCode}, message=${error.message}")
         reportException(error)
+
+        // VIDEO MODE: if the failing item is the video track (e.g. its muxed URL expired / 403'd), the
+        // audio-oriented recovery below would retry the same dead URL and eventually kill the track. Instead
+        // drop the stale cached URL and fall back to AUDIO (exitVideoMode restores the normal source), so the
+        // song keeps playing. The user can re-enable video to re-resolve a fresh stream.
+        if (videoModeMediaId != null && mediaId == videoModeMediaId) {
+            videoUrlCache.remove(mediaId)
+            exitVideoMode()
+            Toast.makeText(this, "Video no disponible — volviendo a audio", Toast.LENGTH_SHORT).show()
+            return
+        }
 
         
         if (mediaId != null && hasExceededRetryLimit(mediaId)) {
@@ -2889,81 +2890,97 @@ class MusicService :
     }
 
     /**
-     * Toggles video mode for the current track. The video plays in a DEDICATED UI player
-     * ([iad1tya.echo.music.ui.player.MusicVideoPlayer]) using the proven canvas data-source pattern —
-     * NOT the main music ExoPlayer (feeding the video URL through the main player never rendered). When
-     * video mode turns on we resolve a muxed (video+audio) URL, PAUSE the music engine, and publish the
-     * URL for the UI; when it turns off (or the video ends) we resume the music engine.
+     * Toggles video mode. INTEGRATED into the MAIN player: the current track's media source is swapped to
+     * its muxed (video+audio) stream (resolved via [YTPlayerUtils.videoStreamUrlDiag], served by
+     * [videoDataSourceFactory] with the right User-Agent) and rendered on the main player's TextureView.
+     * One engine → background audio, native transport/seek, no double audio. Sticky across track changes
+     * (see onMediaItemTransition). The music is NEVER paused; only the current track's source changes.
      */
     fun toggleVideoMode() {
+        if (_videoMode.value) {
+            exitVideoMode()
+        } else {
+            _videoMode.value = true
+            applyVideoToCurrent()
+        }
+    }
+
+    /** Resolve the current track's muxed video URL and swap its source in-place (audio is never stopped). */
+    private fun applyVideoToCurrent() {
         val item = player.currentMediaItem ?: return
         val id = item.mediaId
-
-        val turningOn = videoModeMediaId != id
-        if (!turningOn) {
-            exitVideoMode()
-            return
-        }
-
-        // Turning ON. Flag the UI immediately, then resolve the muxed URL OFF the main thread. If there
-        // is no video for this track, revert silently and tell the user why (diagnostic toast). The music
-        // engine is only paused once we actually have a URL, so a failed resolve never stops the audio.
-        videoModeMediaId = id
-        _videoMode.value = true
-        videoUrlCache.remove(id)
+        // Only the current track is ever a video source — restore any previous one to audio first.
+        if (videoModeMediaId != null && videoModeMediaId != id) restoreVideoTrackToAudio()
+        _videoUrl.value = null  // spinner while resolving
+        val cached = videoUrlCache[id]?.takeIf { it.second > System.currentTimeMillis() }?.first
+        if (!cached.isNullOrEmpty()) { swapToVideo(id, cached); return }
         scope.launch(Dispatchers.IO) {
             val result = runCatching { YTPlayerUtils.videoStreamUrlDiag(id, connectivityManager) }
                 .getOrElse { Result.failure(it) }
             val url = result.getOrNull()
             withContext(Dispatchers.Main) {
-                if (videoModeMediaId != id) return@withContext // toggled off while resolving
+                if (!_videoMode.value || player.currentMediaItem?.mediaId != id) return@withContext
                 if (url.isNullOrEmpty()) {
-                    videoModeMediaId = null
                     _videoMode.value = false
                     _videoUrl.value = null
-                    _videoPositionMs.value = 0L
-                    _videoDurationMs.value = 0L
                     val ex = result.exceptionOrNull()
                     val reason = ex?.let { "${it.javaClass.simpleName}: ${it.message}" } ?: "sin formato de video"
                     Toast.makeText(this@MusicService, "Video falló — $reason", Toast.LENGTH_LONG).show()
                     return@withContext
                 }
                 videoUrlCache[id] = url to (System.currentTimeMillis() + 5 * 60 * 1000L)
-                // Pause the music engine and hand the audio over to the dedicated video player, which
-                // continues from the SAME position so the song doesn't restart from the beginning.
-                _videoStartMs.value = player.currentPosition.coerceAtLeast(0L)
-                _videoPositionMs.value = _videoStartMs.value
-                _videoDurationMs.value = 0L
-                wasPlayingBeforeVideo = player.playWhenReady
-                player.pause()
-                _videoUrl.value = url
+                swapToVideo(id, url)
             }
         }
     }
 
-    /** Leaves video mode: stop the dedicated video player (via cleared state) and resume the music WHERE
-     * the video was (not where it was paused), so the audio continues seamlessly. */
-    fun exitVideoMode() {
-        if (!_videoMode.value && _videoUrl.value == null) return
-        // Only resume the music at the video's position if a video ACTUALLY played this session. Otherwise
-        // (user cancels during the resolve spinner / fast double-toggle) a stale position from a previous
-        // video would wrongly jump the main player.
-        val videoActuallyPlayed = _videoUrl.value != null
-        val resumeAt = _videoPositionMs.value
-        videoModeMediaId = null
-        _videoMode.value = false
-        _videoUrl.value = null
-        _videoPositionMs.value = 0L
-        _videoDurationMs.value = 0L
-        if (videoActuallyPlayed && resumeAt > 0) runCatching { player.seekTo(resumeAt) }
-        if (wasPlayingBeforeVideo) player.play()
-        wasPlayingBeforeVideo = false
+    /** Swap the current item's source URI to [url] (the muxed stream) so the factory builds a video source
+     * rendered on the main player. Keeps position + play state. */
+    private fun swapToVideo(id: String, url: String) {
+        val idx = player.currentMediaItemIndex
+        val item = player.currentMediaItem ?: return
+        if (item.mediaId != id) return
+        videoModeOriginalUri = item.localConfiguration?.uri?.toString()
+        videoModeMediaId = id
+        val pos = player.currentPosition
+        val playing = player.playWhenReady
+        player.replaceMediaItem(idx, item.buildUpon().setUri(url).build())
+        player.seekTo(idx, pos)
+        player.playWhenReady = playing
+        player.prepare()
+        _videoUrl.value = url
     }
 
-    /** Called by the dedicated video player to report its live position/duration. */
-    fun reportVideoProgress(positionMs: Long, durationMs: Long) {
-        _videoPositionMs.value = positionMs.coerceAtLeast(0L)
-        if (durationMs > 0) _videoDurationMs.value = durationMs
+    /** Restore the video track (wherever it sits in the queue) back to its normal audio source. */
+    private fun restoreVideoTrackToAudio() {
+        val vid = videoModeMediaId ?: return
+        val origUri = videoModeOriginalUri
+        videoModeMediaId = null
+        videoModeOriginalUri = null
+        if (origUri == null) return
+        for (i in 0 until player.mediaItemCount) {
+            val it = runCatching { player.getMediaItemAt(i) }.getOrNull() ?: continue
+            if (it.mediaId == vid) {
+                val isCurrent = i == player.currentMediaItemIndex
+                val pos = if (isCurrent) player.currentPosition else 0L
+                val playing = player.playWhenReady
+                player.replaceMediaItem(i, it.buildUpon().setUri(origUri).build())
+                if (isCurrent) {
+                    player.seekTo(i, pos)
+                    player.playWhenReady = playing
+                    player.prepare()
+                }
+                break
+            }
+        }
+    }
+
+    /** Leaves video mode: restore the current track to audio (playback continues at the same position). */
+    fun exitVideoMode() {
+        if (!_videoMode.value && videoModeMediaId == null) return
+        _videoMode.value = false
+        _videoUrl.value = null
+        restoreVideoTrackToAudio()
     }
 
     private fun createDataSourceFactory(): DataSource.Factory {
@@ -3160,13 +3177,66 @@ class MusicService :
         }
     }
 
-    // The main music player is AUDIO-ONLY. Video mode is handled by a separate, dedicated UI player
-    // (MusicVideoPlayer), so this stays a plain factory — no merge, no video plumbing here.
-    private fun createMediaSourceFactory() =
-        DefaultMediaSourceFactory(
+    // Data source for the VIDEO-mode track: a plain OkHttp source that sets the correct per-client
+    // User-Agent for googlevideo URLs (they 403 without it). No app cache (avoids colliding with the
+    // audio cache and re-streams cleanly on seek). This is the fix that makes video render on the MAIN
+    // player (feeding the video URL through the normal audio data source never worked).
+    private val videoDataSourceFactory: DataSource.Factory by lazy {
+        val ok = okhttp3.OkHttpClient.Builder()
+            .proxy(com.music.innertube.YouTube.proxy)
+            .addInterceptor { chain ->
+                val req = chain.request()
+                val host = req.url.host
+                val isYt = host.endsWith("googlevideo.com") || host.endsWith("youtube.com") ||
+                    host.endsWith("googleusercontent.com") || host.endsWith("youtube-nocookie.com") ||
+                    host.endsWith("ytimg.com")
+                if (!isYt) return@addInterceptor chain.proceed(req)
+                val c = req.url.queryParameter("c")?.trim().orEmpty()
+                val agent = when {
+                    c.startsWith("WEB", true) -> com.music.innertube.models.YouTubeClient.USER_AGENT_WEB
+                    c.startsWith("IOS", true) -> com.music.innertube.models.YouTubeClient.IOS.userAgent
+                    c.startsWith("ANDROID_VR", true) -> com.music.innertube.models.YouTubeClient.ANDROID_VR_NO_AUTH.userAgent
+                    c.startsWith("ANDROID", true) -> com.music.innertube.models.YouTubeClient.MOBILE.userAgent
+                    else -> com.music.innertube.models.YouTubeClient.USER_AGENT_WEB
+                }
+                chain.proceed(req.newBuilder().header("User-Agent", agent).build())
+            }
+            .build()
+        DefaultDataSource.Factory(this, androidx.media3.datasource.okhttp.OkHttpDataSource.Factory(ok))
+    }
+
+    // Video mode is INTEGRATED into the main player: the current track's source is swapped to its muxed
+    // (video+audio) stream (via [videoDataSourceFactory]) and rendered on the main player's TextureView.
+    // One engine → background audio, native transport/seek, no double audio. Other tracks stay audio.
+    private fun createMediaSourceFactory(): androidx.media3.exoplayer.source.MediaSource.Factory {
+        val default = DefaultMediaSourceFactory(
             createDataSourceFactory(),
             androidx.media3.extractor.DefaultExtractorsFactory()
         )
+        val videoFactory = androidx.media3.exoplayer.source.ProgressiveMediaSource.Factory(videoDataSourceFactory)
+        return object : androidx.media3.exoplayer.source.MediaSource.Factory {
+            override fun getSupportedTypes(): IntArray = default.supportedTypes
+            override fun setDrmSessionManagerProvider(
+                provider: androidx.media3.exoplayer.drm.DrmSessionManagerProvider
+            ): androidx.media3.exoplayer.source.MediaSource.Factory {
+                default.setDrmSessionManagerProvider(provider); return this
+            }
+            override fun setLoadErrorHandlingPolicy(
+                policy: androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
+            ): androidx.media3.exoplayer.source.MediaSource.Factory {
+                default.setLoadErrorHandlingPolicy(policy); return this
+            }
+            override fun createMediaSource(
+                mediaItem: MediaItem
+            ): androidx.media3.exoplayer.source.MediaSource {
+                // The video-mode track's item URI was swapped to the muxed stream URL (swapToVideo).
+                if (mediaItem.mediaId == videoModeMediaId) {
+                    return videoFactory.createMediaSource(mediaItem)
+                }
+                return default.createMediaSource(mediaItem)
+            }
+        }
+    }
 
     private fun createRenderersFactory(
         eqProcessor: CustomEqualizerAudioProcessor,
@@ -3543,6 +3613,10 @@ class MusicService :
             secondaryPlayer = null
         }
         if (!crossfadeEnabled || player.duration == C.TIME_UNSET || player.duration <= crossfadeDuration) return
+        // Crossfade builds a SECOND ExoPlayer and copies the queue into it; the video item (a cache-less
+        // muxed source with no TextureView attached on the secondary player) would break. Skip crossfade
+        // entirely while video mode is on.
+        if (_videoMode.value) return
         if (crossfadeGapless && isNextItemGapless()) return
         if (!player.hasNextMediaItem() && player.repeatMode != REPEAT_MODE_ONE) return
 

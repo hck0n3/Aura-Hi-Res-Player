@@ -792,6 +792,8 @@ fun BottomSheetPlayer(
     var showInlineLyrics by rememberSaveable {
         mutableStateOf(false)
     }
+    // Lyrics aren't available while watching the video — close them when video mode turns on.
+    LaunchedEffect(videoMode) { if (videoMode && showInlineLyrics) showInlineLyrics = false }
 
     var isFullScreen by rememberSaveable {
         mutableStateOf(false)
@@ -834,28 +836,10 @@ fun BottomSheetPlayer(
         }
     }
 
-    // In video mode the music engine is paused, so drive the seekbar from the dedicated video player.
-    LaunchedEffect(videoMode) {
-        if (videoMode) {
-            while (isActive) {
-                delay(200)
-                if (sliderPosition == null) {
-                    position = playerConnection.videoPositionMs.value
-                    val d = playerConnection.videoDurationMs.value
-                    if (d > 0) duration = d
-                }
-            }
-        } else {
-            // Leaving video mode: restore the seekbar to the MAIN player at once. The music may be paused,
-            // so the isPlaying/playbackState effects above won't refresh it on their own.
-            position = playerConnection.player.currentPosition
-            duration = playerConnection.player.duration
-        }
-    }
-
-
+    // Video is integrated into the main player now, so the seekbar reads the main player's position
+    // natively (no separate video position plumbing, no flicker, native scrubbing).
     LaunchedEffect(playbackState, mediaMetadata?.id) {
-        if (!isCasting && !videoMode) {
+        if (!isCasting) {
             position = playerConnection.player.currentPosition
             duration = playerConnection.player.duration
         }
@@ -1869,12 +1853,12 @@ fun BottomSheetPlayer(
                         value = (sliderPosition ?: effectivePosition).toFloat(),
                         valueRange = 0f..(if (duration == C.TIME_UNSET) 0f else duration.toFloat()),
                         onValueChange = {
-                            if (!isListenTogetherGuest && !videoMode) {
+                            if (!isListenTogetherGuest) {
                                 sliderPosition = it.toLong()
                             }
                         },
                         onValueChangeFinished = {
-                            if (!isListenTogetherGuest && !videoMode) {
+                            if (!isListenTogetherGuest) {
                                 sliderPosition?.let {
                                     if (isCasting) {
                                         castHandler?.seekTo(it)
@@ -1903,7 +1887,7 @@ fun BottomSheetPlayer(
                             value = (sliderPosition ?: effectivePosition).toFloat(),
                             valueRange = 0f..(if (duration == C.TIME_UNSET) 0f else duration.toFloat()),
                             onValueChange = {
-                                if (!videoMode) sliderPosition = it.toLong()
+                                sliderPosition = it.toLong()
                             },
                             onValueChangeFinished = {
                                 sliderPosition?.let {
@@ -1930,7 +1914,7 @@ fun BottomSheetPlayer(
                             value = (sliderPosition ?: effectivePosition).toFloat(),
                             valueRange = 0f..(if (duration == C.TIME_UNSET) 0f else duration.toFloat()),
                             onValueChange = {
-                                if (!videoMode) sliderPosition = it.toLong()
+                                sliderPosition = it.toLong()
                             },
                             onValueChangeFinished = {
                                 sliderPosition?.let {
@@ -1974,12 +1958,12 @@ fun BottomSheetPlayer(
                         value = (sliderPosition ?: effectivePosition).toFloat(),
                         valueRange = 0f..(if (duration == C.TIME_UNSET) 0f else duration.toFloat()),
                         onValueChange = {
-                            if (!isListenTogetherGuest && !videoMode) {
+                            if (!isListenTogetherGuest) {
                                 sliderPosition = it.toLong()
                             }
                         },
                         onValueChangeFinished = {
-                            if (!isListenTogetherGuest && !videoMode) {
+                            if (!isListenTogetherGuest) {
                                 sliderPosition?.let {
                                     if (isCasting) {
                                         castHandler?.seekTo(it)
@@ -2717,7 +2701,8 @@ fun BottomSheetPlayer(
             showInlineLyrics = showInlineLyrics,
             playerBackground = playerBackground,
             onToggleLyrics = {
-                showInlineLyrics = !showInlineLyrics
+                // Lyrics aren't available while watching the video.
+                if (!videoMode) showInlineLyrics = !showInlineLyrics
             },
             )
         }

@@ -137,6 +137,26 @@ fun PlaylistMenu(
         onDismiss()
     }
 
+    // Export the playlist as a CSV (Title,Artists) — spreadsheet-friendly.
+    val exportCsvLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.CreateDocument("text/csv")
+    ) { uri ->
+        if (uri != null) {
+            coroutineScope.launch(Dispatchers.IO) {
+                runCatching {
+                    val esc = { v: String -> "\"" + v.replace("\"", "\"\"") + "\"" }
+                    val sb = StringBuilder("Title,Artists\n")
+                    songs.forEach { s ->
+                        sb.append(esc(s.song.title)).append(',')
+                            .append(esc(s.artists.joinToString("; ") { it.name })).append('\n')
+                    }
+                    context.contentResolver.openOutputStream(uri)?.use { it.write(sb.toString().toByteArray()) }
+                }
+            }
+        }
+        onDismiss()
+    }
+
     LaunchedEffect(songs) {
         if (songs.isEmpty()) return@LaunchedEffect
         downloadUtil.downloads.collect { downloads ->
@@ -407,6 +427,22 @@ fun PlaylistMenu(
                             },
                             onClick = {
                                 exportLauncher.launch("${playlist.playlist.name}.json")
+                            }
+                        )
+                    )
+                    add(
+                        Material3MenuItemData(
+                            title = { Text(text = "Exportar CSV") },
+                            description = { Text(text = "Título y artistas (para hojas de cálculo)") },
+                            icon = {
+                                Icon(
+                                    painter = painterResource(R.drawable.download),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            },
+                            onClick = {
+                                exportCsvLauncher.launch("${playlist.playlist.name}.csv")
                             }
                         )
                     )

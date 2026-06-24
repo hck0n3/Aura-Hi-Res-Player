@@ -967,9 +967,16 @@ fun LocalPlaylistHeader(
                         }
                     }.onFailure {
                         if (it is ClientRequestException) {
-                            snackbarHostState.showSnackbar("${it.response.status.value} ${it.response.status.description}")
+                            snackbarHostState.showSnackbar("${it.response.status.value} ${it.response.status.description} — portada guardada en local")
                         }
                         reportException(it)
+                        // Fallback: the YouTube thumbnail upload failed (often a 403). Keep the user's chosen
+                        // cover LOCALLY (same path as a local playlist) instead of a silent no-op.
+                        overrideThumbnail.value = uri.toString()
+                        isCustomThumbnail = true
+                        database.query {
+                            update(playlist.playlist.copy(thumbnailUrl = uri.toString()))
+                        }
                     }
                 }
             }

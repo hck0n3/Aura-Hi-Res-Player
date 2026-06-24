@@ -67,13 +67,11 @@ class App : Application(), SingletonImageLoader.Factory {
         com.music.jiosaavn.DeviceRouter.init(this)
         Timber.d("Device ID: ${com.music.jiosaavn.DeviceRouter.getDeviceId()} | Assigned JioSaavn Server: ${com.music.jiosaavn.DeviceRouter.getCurrentServer()}")
 
-        val prefs = getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
-        if (!prefs.getBoolean("cleared_db_v5", false)) {
-            deleteDatabase("song.db")
-            prefs.edit().putBoolean("cleared_db_v5", true).apply()
-        }
+        // NOTE: do NOT add a destructive deleteDatabase("song.db") on startup. The Room schema has
+        // complete migration coverage (see MusicDatabase), so wiping the DB only erases the user's
+        // history/stats/playlists/downloads. The old one-time `cleared_db_v5` wipe was removed.
 
-        
+
         CrashHandler.install(this)
 
         
