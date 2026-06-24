@@ -1031,8 +1031,11 @@ class MusicService :
                     .setBufferDurationsMs(
                         DefaultLoadControl.DEFAULT_MIN_BUFFER_MS,
                         DefaultLoadControl.DEFAULT_MAX_BUFFER_MS,
+                        // Start playing as soon as ~0.5 s is buffered (was 1 s) so the first sound comes
+                        // sooner, especially on slower phones (e.g. Honor 90 Lite). Most of the start
+                        // delay there is YouTube stream URL resolution on the CPU, not buffering.
+                        500,
                         1000,
-                        2000,
                     )
                     .build(),
             )
