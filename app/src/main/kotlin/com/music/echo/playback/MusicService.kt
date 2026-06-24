@@ -439,6 +439,12 @@ class MusicService :
     val videoUrl: kotlinx.coroutines.flow.StateFlow<String?> = _videoUrl
     private val _videoStartMs = MutableStateFlow(0L)
     val videoStartMs: kotlinx.coroutines.flow.StateFlow<Long> = _videoStartMs
+    // Live position/duration reported by the dedicated video player, so the seekbar can advance during
+    // video mode and so exiting resumes the music exactly where the video was.
+    private val _videoPositionMs = MutableStateFlow(0L)
+    val videoPositionMs: kotlinx.coroutines.flow.StateFlow<Long> = _videoPositionMs
+    private val _videoDurationMs = MutableStateFlow(0L)
+    val videoDurationMs: kotlinx.coroutines.flow.StateFlow<Long> = _videoDurationMs
 
     
     private var currentMediaIdRetryCount = mutableMapOf<String, Int>()
@@ -2008,6 +2014,8 @@ class MusicService :
             videoModeMediaId = null
             _videoMode.value = false
             _videoUrl.value = null
+            _videoPositionMs.value = 0L
+            _videoDurationMs.value = 0L
             wasPlayingBeforeVideo = false
         }
 
@@ -2913,6 +2921,8 @@ class MusicService :
                     videoModeMediaId = null
                     _videoMode.value = false
                     _videoUrl.value = null
+                    _videoPositionMs.value = 0L
+                    _videoDurationMs.value = 0L
                     val ex = result.exceptionOrNull()
                     val reason = ex?.let { "${it.javaClass.simpleName}: ${it.message}" } ?: "sin formato de video"
                     Toast.makeText(this@MusicService, "Video falló — $reason", Toast.LENGTH_LONG).show()
@@ -2922,6 +2932,8 @@ class MusicService :
                 // Pause the music engine and hand the audio over to the dedicated video player, which
                 // continues from the SAME position so the song doesn't restart from the beginning.
                 _videoStartMs.value = player.currentPosition.coerceAtLeast(0L)
+                _videoPositionMs.value = _videoStartMs.value
+                _videoDurationMs.value = 0L
                 wasPlayingBeforeVideo = player.playWhenReady
                 player.pause()
                 _videoUrl.value = url
@@ -2929,14 +2941,29 @@ class MusicService :
         }
     }
 
-    /** Leaves video mode: stop the dedicated video player (via cleared state) and resume the music. */
+    /** Leaves video mode: stop the dedicated video player (via cleared state) and resume the music WHERE
+     * the video was (not where it was paused), so the audio continues seamlessly. */
     fun exitVideoMode() {
         if (!_videoMode.value && _videoUrl.value == null) return
+        // Only resume the music at the video's position if a video ACTUALLY played this session. Otherwise
+        // (user cancels during the resolve spinner / fast double-toggle) a stale position from a previous
+        // video would wrongly jump the main player.
+        val videoActuallyPlayed = _videoUrl.value != null
+        val resumeAt = _videoPositionMs.value
         videoModeMediaId = null
         _videoMode.value = false
         _videoUrl.value = null
+        _videoPositionMs.value = 0L
+        _videoDurationMs.value = 0L
+        if (videoActuallyPlayed && resumeAt > 0) runCatching { player.seekTo(resumeAt) }
         if (wasPlayingBeforeVideo) player.play()
         wasPlayingBeforeVideo = false
+    }
+
+    /** Called by the dedicated video player to report its live position/duration. */
+    fun reportVideoProgress(positionMs: Long, durationMs: Long) {
+        _videoPositionMs.value = positionMs.coerceAtLeast(0L)
+        if (durationMs > 0) _videoDurationMs.value = durationMs
     }
 
     private fun createDataSourceFactory(): DataSource.Factory {

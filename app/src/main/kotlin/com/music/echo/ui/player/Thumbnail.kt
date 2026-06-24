@@ -35,6 +35,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
@@ -381,20 +382,33 @@ fun Thumbnail(
         // pager. MusicService pauses the music engine while this is shown (the video carries its own audio).
         if (videoShowing) {
             val videoStartMs by playerConnection.videoStartMs.collectAsState()
+            val videoResumeMs by playerConnection.videoPositionMs.collectAsState()
             MusicVideoPlayer(
                 url = videoUrl!!,
                 isPlaying = true,
-                startPositionMs = videoStartMs,
+                // Resume where the video was (survives rotation / lock-unlock / recomposition), not the start.
+                startPositionMs = maxOf(videoStartMs, videoResumeMs),
                 onEnded = { playerConnection.exitVideoMode() },
-                // fillMaxSize (NOT matchParentSize): the Thumbnail Box uses animateContentSize, so when the
-                // cover card is hidden a matchParentSize child collapses to 0 (video + overlay invisible).
-                // fillMaxSize makes the video the sizing child, so the box keeps the full area.
+                onProgress = { p, d -> playerConnection.reportVideoProgress(p, d) },
+                // fillMaxSize (NOT matchParentSize): the Thumbnail Box uses animateContentSize, so a
+                // matchParentSize child collapses to 0 once the cover card is hidden (video invisible).
                 modifier = Modifier
                     .fillMaxSize()
                     .zIndex(2f),
             )
+        } else if (videoModeOn) {
+            // Resolving the muxed stream — immediate feedback so switching to video doesn't feel dead.
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .zIndex(2f)
+                    .background(Color.Black),
+                contentAlignment = Alignment.Center,
+            ) {
+                CircularProgressIndicator(color = Color.White)
+            }
         }
-        
+
         Box(
             modifier = Modifier
                 .matchParentSize()
@@ -423,9 +437,9 @@ fun Thumbnail(
         // is always hidden in portrait (whether or not canvas is on) — the user wants a single full-screen
         // animation, NOT a full-screen one plus a square cover in front.
         AnimatedVisibility(
-            // Hide the cover/canvas card only once the video is actually showing, so there's no black gap
-            // while the muxed URL resolves (the cover stays until the video player is ready).
-            visible = !videoShowing && error == null && !(playerBackground == PlayerBackgroundStyle.APPLE_MUSIC && !isLandscape),
+            // Hide the cover/canvas card as soon as video mode is on (a spinner covers the resolve gap),
+            // so the video area is clean.
+            visible = !videoModeOn && error == null && !(playerBackground == PlayerBackgroundStyle.APPLE_MUSIC && !isLandscape),
             enter = fadeIn(),
             exit = fadeOut(),
             modifier = Modifier

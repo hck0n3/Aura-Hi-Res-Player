@@ -825,18 +825,37 @@ fun BottomSheetPlayer(
     LaunchedEffect(isPlaying, isCasting) {
         if (!isCasting && isPlaying) {
             while (isActive) {
-                delay(100) 
-                if (sliderPosition == null) { 
+                delay(100)
+                if (sliderPosition == null) {
                     position = playerConnection.player.currentPosition
                     duration = playerConnection.player.duration
                 }
             }
         }
     }
-    
-    
+
+    // In video mode the music engine is paused, so drive the seekbar from the dedicated video player.
+    LaunchedEffect(videoMode) {
+        if (videoMode) {
+            while (isActive) {
+                delay(200)
+                if (sliderPosition == null) {
+                    position = playerConnection.videoPositionMs.value
+                    val d = playerConnection.videoDurationMs.value
+                    if (d > 0) duration = d
+                }
+            }
+        } else {
+            // Leaving video mode: restore the seekbar to the MAIN player at once. The music may be paused,
+            // so the isPlaying/playbackState effects above won't refresh it on their own.
+            position = playerConnection.player.currentPosition
+            duration = playerConnection.player.duration
+        }
+    }
+
+
     LaunchedEffect(playbackState, mediaMetadata?.id) {
-        if (!isCasting) {
+        if (!isCasting && !videoMode) {
             position = playerConnection.player.currentPosition
             duration = playerConnection.player.duration
         }
@@ -1173,7 +1192,7 @@ fun BottomSheetPlayer(
                                             modifier = Modifier.fillMaxSize()
                                         )
 
-                                        if (enableCanvas && canvasArtwork != null && backgroundAlpha > 0.01f) {
+                                        if (enableCanvas && canvasArtwork != null && backgroundAlpha > 0.01f && !videoMode) {
                                             BackgroundVideoView(
                                                 videoUrl = canvasArtwork?.animated ?: canvasArtwork?.videoUrl ?: "",
                                                 isPlaying = isPlaying,
@@ -1850,12 +1869,12 @@ fun BottomSheetPlayer(
                         value = (sliderPosition ?: effectivePosition).toFloat(),
                         valueRange = 0f..(if (duration == C.TIME_UNSET) 0f else duration.toFloat()),
                         onValueChange = {
-                            if (!isListenTogetherGuest) {
+                            if (!isListenTogetherGuest && !videoMode) {
                                 sliderPosition = it.toLong()
                             }
                         },
                         onValueChangeFinished = {
-                            if (!isListenTogetherGuest) {
+                            if (!isListenTogetherGuest && !videoMode) {
                                 sliderPosition?.let {
                                     if (isCasting) {
                                         castHandler?.seekTo(it)
@@ -1884,7 +1903,7 @@ fun BottomSheetPlayer(
                             value = (sliderPosition ?: effectivePosition).toFloat(),
                             valueRange = 0f..(if (duration == C.TIME_UNSET) 0f else duration.toFloat()),
                             onValueChange = {
-                                sliderPosition = it.toLong()
+                                if (!videoMode) sliderPosition = it.toLong()
                             },
                             onValueChangeFinished = {
                                 sliderPosition?.let {
@@ -1911,7 +1930,7 @@ fun BottomSheetPlayer(
                             value = (sliderPosition ?: effectivePosition).toFloat(),
                             valueRange = 0f..(if (duration == C.TIME_UNSET) 0f else duration.toFloat()),
                             onValueChange = {
-                                sliderPosition = it.toLong()
+                                if (!videoMode) sliderPosition = it.toLong()
                             },
                             onValueChangeFinished = {
                                 sliderPosition?.let {
@@ -1955,12 +1974,12 @@ fun BottomSheetPlayer(
                         value = (sliderPosition ?: effectivePosition).toFloat(),
                         valueRange = 0f..(if (duration == C.TIME_UNSET) 0f else duration.toFloat()),
                         onValueChange = {
-                            if (!isListenTogetherGuest) {
+                            if (!isListenTogetherGuest && !videoMode) {
                                 sliderPosition = it.toLong()
                             }
                         },
                         onValueChangeFinished = {
-                            if (!isListenTogetherGuest) {
+                            if (!isListenTogetherGuest && !videoMode) {
                                 sliderPosition?.let {
                                     if (isCasting) {
                                         castHandler?.seekTo(it)

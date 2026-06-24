@@ -1,19 +1,24 @@
-# Aura Hi-Res Player 0.6.13
+# Aura Hi-Res Player 0.6.14
 
-## El video ya tiene tamaño (debería verse) 🎥
-La causa de que NO se viera nada (ni siquiera el texto de diagnóstico) era de **layout**, no de
-stream: el Thumbnail usa `animateContentSize`, y al ocultar la portada, el video quedaba con
-**tamaño 0**. Por eso solo se oía el audio del clip y se veía el canvas de fondo.
+## Video pulido ✨
+Con el video ya funcionando, esta versión lo deja redondo:
 
-Arreglos:
-- El video ahora usa `fillMaxSize` → ocupa el área real y **se ve** (con su texto de diagnóstico).
-- **Atrás (back)** mientras hay video → sale del modo video y **reanuda el audio** (ya no se queda mudo).
-- El video sigue continuando desde la posición de la canción (no reinicia).
+- **Sin texto de diagnóstico** (era temporal).
+- **Al salir del video, el audio continúa donde iba el video** (ya no salta atrás).
+- **La barra de tiempo avanza** mientras ves el video.
+- **Apariencia limpia**: se oculta el canvas de fondo en modo video (ya no se ve la portada superpuesta detrás).
+- **Cambio más responsivo**: al tocar video sale un indicador de carga al instante (ya no se siente "muerto").
+- **Rotar la pantalla** ya no detiene el video, y **bloquear/desbloquear** ya no lo reinicia (continúa donde iba).
 
-### Cómo probarlo
-Canción **con videoclip** → botón **video** → debe **verse el video** (arriba a la izquierda sale el
-texto de diagnóstico). Si se ve bien, en la próxima quito ese texto. Si no, **mándame ese texto**.
+## Correcciones de robustez (revisión interna)
+- Cancelar el video durante la carga ya **no** hace que el audio salte a una posición vieja.
+- En modo video, la barra **no** se puede arrastrar por error (movía el reproductor pausado y "rebotaba").
+- Al salir del video con la música en pausa, la barra **vuelve correctamente** a la posición/duración de la canción.
 
 ## Técnico
-- `Thumbnail`: `MusicVideoPlayer` pasa de `matchParentSize` a `fillMaxSize` (con `animateContentSize`
-  un hijo matchParentSize colapsa a 0). `BackHandler(enabled = videoModeOn)` → `exitVideoMode()`.
+- `exitVideoMode` solo reanuda en la posición del video si un video realmente se reprodujo; resetea
+  `_videoPositionMs/_videoDurationMs` al salir / fallar / cambiar de pista.
+- Seekbar: callbacks de los 4 estilos de slider gateados con `!videoMode`.
+- `LaunchedEffect(videoMode)` restaura `position/duration` del player principal al salir.
+- Diagnóstico eliminado de `MusicVideoPlayer`; reporta progreso vía `reportVideoProgress`.
+- `AndroidManifest` MainActivity con `configChanges` (no recrea en rotación).

@@ -58,18 +58,10 @@ fun MusicVideoPlayer(
     startPositionMs: Long,
     modifier: Modifier = Modifier,
     onEnded: () -> Unit = {},
+    onProgress: (positionMs: Long, durationMs: Long) -> Unit = { _, _ -> },
 ) {
     val context = LocalContext.current
     var videoAspectRatio by remember(url) { mutableFloatStateOf(16f / 9f) }
-
-    // --- diagnostics ---
-    val itag = remember(url) { runCatching { Uri.parse(url).getQueryParameter("itag") }.getOrNull() ?: "?" }
-    var diag by remember(url) { mutableStateOf("resolviendo…") }
-    var videoTracks by remember(url) { mutableStateOf(-1) }
-    var audioTracks by remember(url) { mutableStateOf(-1) }
-    var sizeText by remember(url) { mutableStateOf("-") }
-    var firstFrame by remember(url) { mutableStateOf(false) }
-    var errText by remember(url) { mutableStateOf("") }
 
     val okHttpClient = remember {
         OkHttpClient.Builder()
@@ -139,6 +131,16 @@ fun MusicVideoPlayer(
         exoPlayer.playWhenReady = isPlaying
     }
 
+    // Report live position/duration up so the seekbar advances during video and exiting resumes audio
+    // exactly where the video was.
+    LaunchedEffect(exoPlayer) {
+        while (true) {
+            val dur = exoPlayer.duration
+            onProgress(exoPlayer.currentPosition, if (dur > 0) dur else 0L)
+            kotlinx.coroutines.delay(250)
+        }
+    }
+
     DisposableEffect(exoPlayer) {
         val listener = object : Player.Listener {
             override fun onVideoSizeChanged(videoSize: VideoSize) {
@@ -150,34 +152,9 @@ fun MusicVideoPlayer(
                     }
                     if (height > 0) videoAspectRatio = width / height
                 }
-                sizeText = "${videoSize.width}x${videoSize.height}"
-            }
-
-            override fun onTracksChanged(tracks: Tracks) {
-                var v = 0; var a = 0
-                for (group in tracks.groups) {
-                    when (group.type) {
-                        C.TRACK_TYPE_VIDEO -> v += group.length
-                        C.TRACK_TYPE_AUDIO -> a += group.length
-                    }
-                }
-                videoTracks = v; audioTracks = a
-            }
-
-            override fun onRenderedFirstFrame() { firstFrame = true }
-
-            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
-                errText = "${error.errorCodeName}: ${error.message}"
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
-                diag = when (playbackState) {
-                    Player.STATE_IDLE -> "idle"
-                    Player.STATE_BUFFERING -> "buffering"
-                    Player.STATE_READY -> "ready"
-                    Player.STATE_ENDED -> "ended"
-                    else -> "?"
-                }
                 if (playbackState == Player.STATE_ENDED) onEnded()
             }
         }
@@ -201,34 +178,20 @@ fun MusicVideoPlayer(
         onDispose { exoPlayer.release() }
     }
 
-    Box(modifier = modifier, contentAlignment = Alignment.Center) {
-        AndroidView(
-            factory = { viewContext ->
-                AspectRatioFrameLayout(viewContext).apply {
+    AndroidView(
+        factory = { viewContext ->
+            AspectRatioFrameLayout(viewContext).apply {
+                layoutParams = ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT)
+                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                val textureView = TextureView(viewContext).apply {
                     layoutParams = ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT)
-                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                    val textureView = TextureView(viewContext).apply {
-                        layoutParams = ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT)
-                    }
-                    addView(textureView)
-                    exoPlayer.setVideoTextureView(textureView)
-                    setBackgroundColor(android.graphics.Color.BLACK)
                 }
-            },
-            update = { view -> view.setAspectRatio(videoAspectRatio) },
-            modifier = Modifier.fillMaxSize(),
-        )
-
-        // DIAGNOSTIC overlay — temporary. Tells us exactly what's happening with the video.
-        Text(
-            text = "itag=$itag · estado=$diag · vid=$videoTracks aud=$audioTracks · size=$sizeText · " +
-                "frame=${if (firstFrame) "sí" else "no"}" + (if (errText.isNotEmpty()) " · ERR=$errText" else ""),
-            color = Color.White,
-            fontSize = 10.sp,
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .background(Color(0xCC000000))
-                .padding(4.dp),
-        )
-    }
+                addView(textureView)
+                exoPlayer.setVideoTextureView(textureView)
+                setBackgroundColor(android.graphics.Color.BLACK)
+            }
+        },
+        update = { view -> view.setAspectRatio(videoAspectRatio) },
+        modifier = modifier,
+    )
 }
