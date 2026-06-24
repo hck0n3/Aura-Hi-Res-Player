@@ -110,6 +110,8 @@ class SyncUtils @Inject constructor(
         private const val MAX_RETRIES = 3
         private const val INITIAL_RETRY_DELAY_MS = 1000L
         private const val DB_OPERATION_DELAY_MS = 50L
+        // Max artist cover photos to fetch per sync run (bounded so it never hammers the network/API).
+        private const val MAX_ARTIST_IMAGE_FETCH = 250
     }
 
     init {
@@ -1026,6 +1028,9 @@ class SyncUtils @Inject constructor(
                     runCatching { database.followArtistsWithContent(LocalDateTime.now()) }
                     updateState { copy(artists = SyncStatus.Completed) }
                     Timber.d("Synced ${remoteArtists.size} artist subscriptions")
+                    // Fill in missing artist cover photos (e.g. artists that came in only via songs) —
+                    // bounded + throttled so it doesn't hammer the network/API.
+                    runCatching { fillMissingArtistImages() }
                 } catch (e: Exception) {
                             // Never swallow coroutine cancellation: doing so let the sync loop keep
                             // running after its job was cancelled, blasting through every song and
@@ -1042,6 +1047,35 @@ class SyncUtils @Inject constructor(
             Timber.e(e, "Failed to sync artist subscriptions after retries")
             updateState { copy(artists = SyncStatus.Error(e.message ?: "Unknown error")) }
         }
+    }
+
+    /**
+     * Fill missing artist cover photos. Many followed artists (especially those that came in only via
+     * synced songs) have no image, so "your artists" shows blanks. Fetch each one's picture from its
+     * artist page and store it. BOUNDED (max [MAX_ARTIST_IMAGE_FETCH] per run) and throttled so it never
+     * hammers the network/API; re-running the sync fills more. Runs inside the background sync worker.
+     */
+    private suspend fun fillMissingArtistImages() = withContext(Dispatchers.IO) {
+        if (!isLoggedIn()) return@withContext
+        val missing = runCatching { database.bookmarkedArtistsMissingImage(MAX_ARTIST_IMAGE_FETCH) }
+            .getOrNull().orEmpty()
+        if (missing.isEmpty()) return@withContext
+        var filled = 0
+        for (a in missing) {
+            if (a.isLocal || a.id.isBlank()) continue
+            try {
+                val thumb = YouTube.artist(a.id).getOrNull()?.artist?.thumbnail
+                if (!thumb.isNullOrBlank() && thumb != a.thumbnailUrl) {
+                    database.update(a.copy(thumbnailUrl = thumb))
+                    filled++
+                }
+                delay(150) // gentle throttle to avoid rate limits
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                Timber.e(e, "Failed to fetch artist image: ${a.id}")
+            }
+        }
+        Timber.d("Filled $filled missing artist images (of ${missing.size} checked)")
     }
 
     private suspend fun executeSyncSavedPlaylists() = withContext(Dispatchers.IO) {
