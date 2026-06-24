@@ -836,7 +836,8 @@ class MusicService :
                     loudnessEnabled = prefs[iad1tya.echo.music.constants.JrLoudnessEnabledKey] ?: false,
                     // Virtual room (HRTF) removed — always off regardless of any old saved preference.
                     hrtfEnabled = false,
-                    bassEnhanceEnabled = prefs[iad1tya.echo.music.constants.JrBassEnhanceEnabledKey] ?: false,
+                    // Bass enhancer removed — always off regardless of any old saved preference.
+                    bassEnhanceEnabled = false,
                     bassEnhanceAmount = prefs[iad1tya.echo.music.constants.JrBassEnhanceAmountKey] ?: 0.28f,
                     exciterEnabled = prefs[iad1tya.echo.music.constants.JrExciterEnabledKey] ?: false,
                     exciterAmount = prefs[iad1tya.echo.music.constants.JrExciterAmountKey] ?: 0.15f,

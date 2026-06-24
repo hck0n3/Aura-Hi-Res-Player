@@ -100,9 +100,8 @@ fun OnboardingArtistsScreen(
                         scope.launch {
                             viewModel.finish()
                             finishing = false
-                            navController.navigate("onboarding_genres") {
-                                popUpTo("onboarding_artists") { inclusive = true }
-                            }
+                            // Forward only; keep this step on the back stack so the user can go back.
+                            navController.navigate("onboarding_genres")
                         }
                     },
                     enabled = selected.size >= MIN_ARTISTS && !finishing,

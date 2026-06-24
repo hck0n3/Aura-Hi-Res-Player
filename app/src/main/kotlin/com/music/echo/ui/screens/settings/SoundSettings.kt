@@ -54,10 +54,6 @@ fun SoundSettings(
 
     val (jrLoudness, onJrLoudnessChange) =
         rememberPreference(iad1tya.echo.music.constants.JrLoudnessEnabledKey, defaultValue = false)
-    val (jrBass, onJrBassChange) =
-        rememberPreference(iad1tya.echo.music.constants.JrBassEnhanceEnabledKey, defaultValue = false)
-    val (jrBassAmt, onJrBassAmtChange) =
-        rememberPreference(iad1tya.echo.music.constants.JrBassEnhanceAmountKey, defaultValue = 0.28f)
     val (jrExciter, onJrExciterChange) =
         rememberPreference(iad1tya.echo.music.constants.JrExciterEnabledKey, defaultValue = false)
     val (jrExciterAmt, onJrExciterAmtChange) =
@@ -170,20 +166,6 @@ fun SoundSettings(
                         Switch(checked = jrLoudness, onCheckedChange = onJrLoudnessChange, thumbContent = thumb(jrLoudness))
                     },
                     onClick = { onJrLoudnessChange(!jrLoudness) },
-                ),
-                Material3SettingsItem(
-                    icon = painterResource(R.drawable.graphic_eq),
-                    title = { Text("Realce de graves") },
-                    description = {
-                        Column {
-                            Text("Armónicos de subgraves psicoacústicos")
-                            if (jrBass) Slider(value = jrBassAmt, onValueChange = onJrBassAmtChange, valueRange = 0f..1f)
-                        }
-                    },
-                    trailingContent = {
-                        Switch(checked = jrBass, onCheckedChange = onJrBassChange, thumbContent = thumb(jrBass))
-                    },
-                    onClick = { onJrBassChange(!jrBass) },
                 ),
                 Material3SettingsItem(
                     icon = painterResource(R.drawable.graphic_eq),

@@ -53,9 +53,8 @@ fun OnboardingGenresScreen(
     var selected by remember { mutableStateOf(setOf<String>()) }
 
     fun goSpotifyStep() {
-        navController.navigate("onboarding_spotify") {
-            popUpTo("onboarding_genres") { inclusive = true }
-        }
+        // Forward only; keep this step on the back stack so the user can go back if they want.
+        navController.navigate("onboarding_spotify")
     }
 
     fun persistAndContinue() {

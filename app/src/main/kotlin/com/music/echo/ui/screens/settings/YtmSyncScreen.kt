@@ -102,11 +102,18 @@ fun YtmSyncScreen(
             }
 
             Text(
-                "Elige qué traer de tu cuenta. Nada se sincroniza solo: tú decides qué y cuándo.",
+                "Elige qué traer de tu cuenta. La sincronización corre en segundo plano y continúa aunque " +
+                    "cierres la app, hasta completarse. Tú decides qué y cuándo.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(vertical = 12.dp),
             )
+
+            val W = iad1tya.echo.music.utils.YtmSyncWorker
+            fun start(type: String, msg: String) {
+                W.enqueue(context, type)
+                toast(msg)
+            }
 
             Material3SettingsGroup(
                 items = listOf(
@@ -114,37 +121,37 @@ fun YtmSyncScreen(
                         icon = painterResource(R.drawable.sync),
                         title = { Text("Sincronizar todo") },
                         description = { Text("Me gusta, álbumes, artistas, suscripciones, playlists y biblioteca") },
-                        onClick = { viewModel.syncAll(); toast("Sincronizando todo…") },
+                        onClick = { start(W.TYPE_ALL, "Sincronizando todo… (continúa en segundo plano)") },
                     ),
                     Material3SettingsItem(
                         icon = painterResource(R.drawable.favorite),
                         title = { Text("Me gusta (canciones)") },
-                        onClick = { viewModel.syncLikedSongs(); toast("Sincronizando me gusta…") },
+                        onClick = { start(W.TYPE_LIKED_SONGS, "Sincronizando me gusta…") },
                     ),
                     Material3SettingsItem(
                         icon = painterResource(R.drawable.favorite_border),
                         title = { Text("Álbumes favoritos") },
-                        onClick = { viewModel.syncLikedAlbums(); toast("Sincronizando álbumes…") },
+                        onClick = { start(W.TYPE_LIKED_ALBUMS, "Sincronizando álbumes…") },
                     ),
                     Material3SettingsItem(
                         icon = painterResource(R.drawable.add_circle),
                         title = { Text("Artistas y suscripciones") },
-                        onClick = { viewModel.syncArtists(); toast("Sincronizando artistas…") },
+                        onClick = { start(W.TYPE_ARTISTS, "Sincronizando artistas…") },
                     ),
                     Material3SettingsItem(
                         icon = painterResource(R.drawable.playlist_add),
                         title = { Text("Playlists guardadas") },
-                        onClick = { viewModel.syncPlaylists(); toast("Sincronizando playlists…") },
+                        onClick = { start(W.TYPE_PLAYLISTS, "Sincronizando playlists…") },
                     ),
                     Material3SettingsItem(
                         icon = painterResource(R.drawable.cached),
                         title = { Text("Biblioteca (canciones)") },
-                        onClick = { viewModel.syncLibrarySongs(); toast("Sincronizando biblioteca…") },
+                        onClick = { start(W.TYPE_LIBRARY, "Sincronizando biblioteca…") },
                     ),
                     Material3SettingsItem(
                         icon = painterResource(R.drawable.backup),
                         title = { Text("Subidas (canciones y álbumes)") },
-                        onClick = { viewModel.syncUploads(); toast("Sincronizando subidas…") },
+                        onClick = { start(W.TYPE_UPLOADS, "Sincronizando subidas…") },
                     ),
                 ),
             )

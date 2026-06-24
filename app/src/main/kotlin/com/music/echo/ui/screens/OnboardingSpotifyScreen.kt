@@ -50,13 +50,11 @@ fun OnboardingSpotifyScreen(
                 ) { Text("Conectar Spotify y elegir qué migrar") }
                 Spacer(Modifier.height(8.dp))
                 OutlinedButton(
-                    onClick = {
-                        navController.navigate("onboarding_youtube") {
-                            popUpTo("onboarding_spotify") { inclusive = true }
-                        }
-                    },
+                    // Forward only — keep onboarding_spotify on the back stack so the user CAN go back
+                    // (system back) if they want, but the flow only moves forward by tapping here.
+                    onClick = { navController.navigate("onboarding_youtube") },
                     modifier = Modifier.fillMaxWidth().height(50.dp),
-                ) { Text("Continuar") }
+                ) { Text("Siguiente: YouTube Music") }
             }
         },
     ) { padding ->

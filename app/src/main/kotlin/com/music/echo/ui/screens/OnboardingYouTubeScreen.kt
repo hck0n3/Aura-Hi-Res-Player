@@ -48,8 +48,9 @@ fun OnboardingYouTubeScreen(
             Column(Modifier.fillMaxWidth().padding(16.dp)) {
                 Button(
                     onClick = {
+                        // Leaving onboarding → clear ALL its steps from the back stack.
                         navController.navigate("settings/ytm_sync") {
-                            popUpTo("onboarding_youtube") { inclusive = true }
+                            popUpTo("onboarding_artists") { inclusive = true }
                         }
                     },
                     modifier = Modifier.fillMaxWidth().height(50.dp),
@@ -58,11 +59,11 @@ fun OnboardingYouTubeScreen(
                 OutlinedButton(
                     onClick = {
                         navController.navigate(Screens.Home.route) {
-                            popUpTo("onboarding_youtube") { inclusive = true }
+                            popUpTo("onboarding_artists") { inclusive = true }
                         }
                     },
                     modifier = Modifier.fillMaxWidth().height(50.dp),
-                ) { Text("Omitir") }
+                ) { Text("Comenzar") }
             }
         },
     ) { padding ->
