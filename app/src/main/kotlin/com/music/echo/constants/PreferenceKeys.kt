@@ -36,6 +36,11 @@ val KeepGenreLaneKey = booleanPreferencesKey("keepGenreLane")
 // Scheduled Spotify playlist sync: how often to re-import (days; 0 = off) and which source ids (CSV).
 val SpotifyAutoSyncFreqDaysKey = intPreferencesKey("spotifyAutoSyncFreqDays")
 val SpotifyAutoSyncSourceIdsKey = stringPreferencesKey("spotifyAutoSyncSourceIds")
+// Scheduled YouTube Music sync: how often to re-sync everything (days; 0 = off).
+val YtmAutoSyncFreqDaysKey = intPreferencesKey("ytmAutoSyncFreqDays")
+// Last time a YouTube Music full sync actually completed (epoch millis; 0 = never). Surfaced in the sync
+// screen so a scheduled sync that silently no-ops (e.g. an expired session) is visible, not a placebo.
+val YtmLastSyncKey = longPreferencesKey("ytmLastSyncEpochMs")
 // Saved/pinned podcast shows (JSON array of {id,title,author,artworkUrl,feedUrl}).
 val PinnedPodcastsKey = stringPreferencesKey("pinnedPodcasts")
 // Region (2-letter) the user picked for the podcast charts (persisted across sessions).

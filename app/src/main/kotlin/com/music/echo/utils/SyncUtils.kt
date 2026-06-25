@@ -14,6 +14,7 @@ import com.music.innertube.utils.parseCookieString
 import iad1tya.echo.music.constants.InnerTubeCookieKey
 import iad1tya.echo.music.constants.LastFMUseSendLikes
 import iad1tya.echo.music.constants.LastFullSyncKey
+import iad1tya.echo.music.constants.YtmLastSyncKey
 import iad1tya.echo.music.constants.SYNC_COOLDOWN
 import iad1tya.echo.music.db.MusicDatabase
 import iad1tya.echo.music.db.entities.ArtistEntity
@@ -411,6 +412,11 @@ class SyncUtils @Inject constructor(
             executeSyncAutoSyncPlaylists()
 
             updateState { copy(overallStatus = SyncStatus.Completed, currentOperation = "") }
+            // C3: stamp the REAL completion time (single source of truth for "last synced X ago"). Reached only
+            // after a genuine full sync ran — we returned early above when not logged in — so the sync screen
+            // shows a truthful timestamp instead of a placebo. Both the manual "sync all" and the scheduled
+            // worker funnel through here.
+            runCatching { context.dataStore.edit { it[YtmLastSyncKey] = System.currentTimeMillis() } }
             Timber.d("Full sync completed successfully")
         } catch (e: CancellationException) {
             throw e

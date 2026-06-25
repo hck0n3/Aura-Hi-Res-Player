@@ -59,9 +59,9 @@ private val DISCOVERY_FEATURES = listOf(
 )
 
 private val LIBRARY_FEATURES = listOf(
-    Feature(R.drawable.library_music, "Biblioteca y sincronización", "Sincroniza tu contenido de YouTube Music cuando quieras desde Ajustes ▸ Importar: me gusta, álbumes, artistas, suscripciones, playlists y biblioteca (hub manual, tú eliges qué y cuándo)"),
+    Feature(R.drawable.library_music, "Biblioteca y sincronización", "Sincroniza tu contenido de YouTube Music desde Ajustes ▸ Importar: me gusta, álbumes, artistas, suscripciones, playlists y biblioteca — manual o automática (diaria/semanal), con la hora de la última sincronización a la vista"),
     Feature(R.drawable.download, "Importar y migrar", "Importa de YouTube, Spotify (listas, me gusta y álbumes) y Aura Hi-Res Player (.jrpl.json); migración selectiva propia (elige playlists, todos los artistas y/o todos los presets de EQ) que se importa de forma aditiva sin borrar nada; y re-sigue tus artistas de Spotify"),
-    Feature(R.drawable.sync, "Sincronización programada de Spotify", "Elige qué listas mantener al día y con qué frecuencia (diaria o semanal)"),
+    Feature(R.drawable.sync, "Sincronización programada", "Mantén al día YouTube Music (todo) y las listas de Spotify que elijas, con la frecuencia que prefieras (diaria o semanal)"),
     Feature(R.drawable.download, "Modo sin conexión", "Descarga canciones, álbumes y playlists con un gestor de descargas dedicado"),
     Feature(R.drawable.queue_music, "Podcasts", "Motor propio (Apple/iTunes + RSS) con progreso, fijado, búsqueda universal y reproducción por URL directa; en los podcasts que ofrecen video puedes elegir entre audio y video"),
     Feature(R.drawable.folder_managed, "Medios locales", "Reproduce los archivos de música guardados en el dispositivo"),

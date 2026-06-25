@@ -34,6 +34,8 @@ import com.music.innertube.utils.parseCookieString
 import iad1tya.echo.music.LocalPlayerAwareWindowInsets
 import iad1tya.echo.music.R
 import iad1tya.echo.music.constants.InnerTubeCookieKey
+import iad1tya.echo.music.constants.YtmAutoSyncFreqDaysKey
+import iad1tya.echo.music.constants.YtmLastSyncKey
 import iad1tya.echo.music.ui.component.IconButton
 import iad1tya.echo.music.ui.component.Material3SettingsGroup
 import iad1tya.echo.music.ui.component.Material3SettingsItem
@@ -173,6 +175,78 @@ fun YtmSyncScreen(
                         onClick = { start(W.TYPE_UPLOADS, "Sincronizando subidas…") },
                     ),
                 ),
+            )
+
+            Spacer(Modifier.height(20.dp))
+            Text(
+                "Sincronización automática",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(start = 6.dp, bottom = 8.dp),
+            )
+
+            val (autoFreq, setAutoFreq) = rememberPreference(YtmAutoSyncFreqDaysKey, 0)
+            val (lastSyncMs, _) = rememberPreference(YtmLastSyncKey, 0L)
+            // Tick once a minute so the "hace X" elapsed time stays current while the screen is open.
+            val nowTick by androidx.compose.runtime.produceState(initialValue = System.currentTimeMillis()) {
+                while (true) {
+                    kotlinx.coroutines.delay(60_000)
+                    value = System.currentTimeMillis()
+                }
+            }
+
+            fun applyFreq(days: Int) {
+                setAutoFreq(days)
+                iad1tya.echo.music.utils.YtmAutoSyncWorker.schedule(context, days)
+                toast(
+                    when {
+                        days <= 0 -> "Sincronización automática desactivada"
+                        days == 1 -> "Se sincronizará cada día"
+                        else -> "Se sincronizará cada $days días"
+                    },
+                )
+            }
+
+            Material3SettingsGroup(
+                items = listOf(
+                    Material3SettingsItem(
+                        icon = painterResource(R.drawable.sync),
+                        title = { Text("Desactivada") },
+                        description = { if (autoFreq <= 0) Text("Seleccionada") },
+                        onClick = { applyFreq(0) },
+                    ),
+                    Material3SettingsItem(
+                        icon = painterResource(R.drawable.sync),
+                        title = { Text("Cada día") },
+                        description = { if (autoFreq == 1) Text("Seleccionada") },
+                        onClick = { applyFreq(1) },
+                    ),
+                    Material3SettingsItem(
+                        icon = painterResource(R.drawable.sync),
+                        title = { Text("Cada semana") },
+                        description = { if (autoFreq == 7) Text("Seleccionada") },
+                        onClick = { applyFreq(7) },
+                    ),
+                ),
+            )
+
+            Spacer(Modifier.height(12.dp))
+            Text(
+                text = "Última sincronización: " + when {
+                    lastSyncMs <= 0L -> "nunca"
+                    else -> {
+                        val diff = (nowTick - lastSyncMs).coerceAtLeast(0L)
+                        when {
+                            diff < 60_000L -> "hace un momento"
+                            diff < 3_600_000L -> "hace ${diff / 60_000L} min"
+                            diff < 86_400_000L -> "hace ${diff / 3_600_000L} h"
+                            else -> "hace ${diff / 86_400_000L} días"
+                        }
+                    }
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 6.dp),
             )
 
             Spacer(Modifier.height(24.dp))
