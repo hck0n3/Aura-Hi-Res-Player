@@ -111,14 +111,16 @@ data class AlbumPage(
                 } ?: renderer.flexColumns.getOrNull(2)?.musicResponsiveListItemFlexColumnRenderer?.text?.runs?.firstOrNull()?.let {
                     Album(
                         name = it.text,
-                        id = it.navigationEndpoint?.browseEndpoint?.browseId!!
+                        // Remote JSON may omit the browseId; skip building the album rather than crash the whole
+                        // mapNotNull (one malformed row used to fail the entire album parse).
+                        id = it.navigationEndpoint?.browseEndpoint?.browseId ?: return@let null,
                     )
-                }!!,
+                },
                 duration = renderer.fixedColumns?.firstOrNull()
                     ?.musicResponsiveListItemFlexColumnRenderer?.text?.runs?.firstOrNull()
                     ?.text?.parseTime() ?: return null,
                 musicVideoType = renderer.musicVideoType,
-                thumbnail = renderer.thumbnail?.musicThumbnailRenderer?.getThumbnailUrl() ?: album?.thumbnail!!,
+                thumbnail = renderer.thumbnail?.musicThumbnailRenderer?.getThumbnailUrl() ?: album?.thumbnail ?: return null,
                 explicit = renderer.badges?.find {
                     it.musicInlineBadgeRenderer?.icon?.iconType == "MUSIC_EXPLICIT_BADGE"
                 } != null,

@@ -366,7 +366,7 @@ class HomeViewModel @Inject constructor(
 
                 // Enrich with YouTube "related to your last play" in the background and update once it
                 // returns — this no longer delays the home from appearing.
-                val recentSong = database.events().first().firstOrNull()?.song
+                val recentSong = database.lastEvent().first()?.song
                 if (recentSong != null) {
                     viewModelScope.launch(Dispatchers.IO) {
                         val endpoint = YouTube.next(WatchEndpoint(videoId = recentSong.id))
@@ -386,7 +386,7 @@ class HomeViewModel @Inject constructor(
                 }
             }
             QuickPicks.LAST_LISTEN -> {
-                val song = database.events().first().firstOrNull()?.song
+                val song = database.lastEvent().first()?.song
                 if (song != null && database.hasRelatedSongs(song.id)) {
                     quickPicks.value = database.getRelatedSongs(song.id).first().filterVideoSongs(hideVideoSongs).shuffled().take(20)
                 }

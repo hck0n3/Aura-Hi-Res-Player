@@ -449,8 +449,13 @@ fun BottomSheetPlayer(
     }
     val gradientColorsCache = remember { mutableMapOf<String, List<Color>>() }
 
-    if (!canSkipNext && automix.isNotEmpty()) {
-        playerConnection.service.addToQueueAutomix(automix[0], 0)
+    // Mutating the player queue must NOT happen in the composition body: BottomSheetPlayer recomposes ~10x/s
+    // (the position ticker), and Compose can run the body speculatively — so this enqueued duplicates / looped.
+    // Run it as an effect keyed on the real inputs instead.
+    LaunchedEffect(canSkipNext, automix) {
+        if (!canSkipNext && automix.isNotEmpty()) {
+            playerConnection.service.addToQueueAutomix(automix[0], 0)
+        }
     }
 
     val bluetoothDeviceName by produceState<String?>(initialValue = getConnectedBluetoothDeviceName(context)) {

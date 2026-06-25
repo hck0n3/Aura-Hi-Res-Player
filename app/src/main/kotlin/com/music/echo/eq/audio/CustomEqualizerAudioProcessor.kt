@@ -25,8 +25,10 @@ class CustomEqualizerAudioProcessor : AudioProcessor {
     private var outputBuffer: ByteBuffer = EMPTY_BUFFER
     private var inputEnded = false
 
-    private var filters: List<BiquadFilter> = emptyList()
-    private var preampGain: Double = 1.0  
+    // @Volatile: these are swapped under @Synchronized from a non-audio thread but read on the audio thread;
+    // the volatile reference gives the audio thread a safe, up-to-date snapshot (no stale/empty filter set).
+    @Volatile private var filters: List<BiquadFilter> = emptyList()
+    @Volatile private var preampGain: Double = 1.0
     private var pendingProfile: ParametricEQ? = null
 
     companion object {

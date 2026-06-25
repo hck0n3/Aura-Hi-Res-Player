@@ -397,6 +397,10 @@ class MusicService :
     // the SAME already-playing track (e.g. liking it kicks off an auto-download that re-saves the format)
     // doesn't recompute the gain and audibly bump the volume mid-song.
     private var lastNormalizedId: String? = null
+    // The id of the track currently playing, updated from onMediaItemTransition on the player thread. Lets the
+    // ResolvingDataSource loader thread know "is this the current track?" WITHOUT a runBlocking hop to Main
+    // (which could deadlock/stall stream resolution when Main is busy).
+    @Volatile private var currentPlayingMediaId: String? = null
     private var lastNormalizedHadLoudness: Boolean = false
 
     private var discordRpc: DiscordRPC? = null
@@ -2039,6 +2043,7 @@ class MusicService :
         mediaItem: MediaItem?,
         reason: Int,
     ) {
+        currentPlayingMediaId = mediaItem?.mediaId
         // Sticky video mode: when the track changes while video mode is on, swap the NEW current track to
         // its video (restoring the previous one to audio). Stays in video until the user turns it off.
         if (_videoMode.value && mediaItem != null && mediaItem.mediaId != videoModeMediaId) {
@@ -3130,7 +3135,7 @@ class MusicService :
             val cachedLength = androidx.media3.datasource.cache.ContentMetadata.getContentLength(downloadCache.getContentMetadata(mediaId))
             val isFullyDownloaded = cachedLength != androidx.media3.common.C.LENGTH_UNSET.toLong() && cachedLength > 0 && downloadCache.isCached(mediaId, 0, cachedLength)
 
-            val isCurrentlyPlaying = runBlocking(Dispatchers.Main) { player.currentMediaItem?.mediaId == mediaId }
+            val isCurrentlyPlaying = currentPlayingMediaId == mediaId
             val dbFormat = runBlocking(Dispatchers.IO) { database.format(mediaId).firstOrNull() }
 
             val lockedQuality = if (isCurrentlyPlaying && dbFormat != null) {
@@ -3598,6 +3603,10 @@ class MusicService :
 
         player.release()
         discordUpdateJob?.cancel()
+        // Cancel the service scope so its long-lived collectors (DataStore flows, connectivity, the periodic
+        // persist/widget while-loops) stop instead of leaking after the service is destroyed. playQueue
+        // re-creates the scope if it's no longer active, so this is safe.
+        runCatching { scope.coroutineContext[kotlinx.coroutines.Job]?.cancel() }
         super.onDestroy()
     }
 
@@ -4028,25 +4037,26 @@ class MusicService :
     private var preloadJob: kotlinx.coroutines.Job? = null
 
     private fun preloadUpcomingItems() {
-        val preloadEnabled = kotlinx.coroutines.runBlocking { dataStore.get(iad1tya.echo.music.constants.PreloadNextSongEnabledKey, true) }
-        if (!preloadEnabled) return
-
-        val preloadLimit = kotlinx.coroutines.runBlocking { dataStore.get(iad1tya.echo.music.constants.PreloadNextSongLimitKey, 1) }
-        val preloadLyrics = kotlinx.coroutines.runBlocking { dataStore.get(iad1tya.echo.music.constants.PreloadLyricsEnabledKey, true) }
-
+        // Capture player state HERE on the player/callback thread (cheap, in-memory). The DataStore reads
+        // (disk I/O via runBlocking) are moved INTO the coroutine below so onMediaItemTransition is never
+        // blocked by a blocking disk read on the callback thread (jank / contributes to mid-song stalls).
         val currentIndex = player.currentMediaItemIndex
         if (currentIndex == androidx.media3.common.C.INDEX_UNSET) return
-
-        val limit = kotlin.math.min(preloadLimit, player.mediaItemCount - currentIndex - 1)
-        if (limit <= 0) return
-
-        val upcomingMediaIds = mutableListOf<String>()
-        for (i in 1..limit) {
-            upcomingMediaIds.add(player.getMediaItemAt(currentIndex + i).mediaId)
+        // Cap at the PreloadNextSongLimit slider maximum (10) so `take(preloadLimit)` below can still honour
+        // the user's configured value; the real limit is applied inside the coroutine.
+        val lookahead = kotlin.math.min(10, player.mediaItemCount - currentIndex - 1)
+        if (lookahead <= 0) return
+        val upcomingAll = ArrayList<String>(lookahead)
+        for (i in 1..lookahead) {
+            upcomingAll.add(player.getMediaItemAt(currentIndex + i).mediaId)
         }
 
         preloadJob?.cancel()
         preloadJob = scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            if (!dataStore.get(iad1tya.echo.music.constants.PreloadNextSongEnabledKey, true)) return@launch
+            val preloadLimit = dataStore.get(iad1tya.echo.music.constants.PreloadNextSongLimitKey, 1)
+            val preloadLyrics = dataStore.get(iad1tya.echo.music.constants.PreloadLyricsEnabledKey, true)
+            val upcomingMediaIds = upcomingAll.take(preloadLimit)
             for (mediaId in upcomingMediaIds) {
 
                 if (!mediaId.isLocalMediaId() && !songUrlCache.containsKey(mediaId)) {

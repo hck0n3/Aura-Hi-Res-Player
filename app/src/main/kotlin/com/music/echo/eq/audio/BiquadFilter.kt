@@ -36,6 +36,15 @@ class BiquadFilter(
     private var y1R = 0.0
     private var y2R = 0.0
 
+    // The 5 coefficients the AUDIO thread actually reads, published as ONE immutable object behind a single
+    // @Volatile reference. calculateCoefficients() fills the scratch fields above then publishes a new Coeffs
+    // in a single atomic write, so the audio thread can never read a half-updated set (a torn read could
+    // momentarily place a pole outside the unit circle → the recursive filter self-oscillates → a loud burst).
+    private class Coeffs(val b0: Double, val b1: Double, val b2: Double, val a1: Double, val a2: Double)
+
+    @Volatile
+    private var coeffs = Coeffs(1.0, 0.0, 0.0, 0.0, 0.0)
+
     init {
         calculateCoefficients()
     }
@@ -62,6 +71,8 @@ class BiquadFilter(
             FilterType.LPQ -> calculateLowPassCoefficients()
             FilterType.HPQ -> calculateHighPassCoefficients()
         }
+        // Publish the freshly-computed set atomically for the audio thread.
+        coeffs = Coeffs(b0, b1, b2, a1, a2)
     }
 
     
@@ -199,9 +210,10 @@ class BiquadFilter(
 
 
     fun processSample(input: Double): Double {
-        val output = b0 * input + b1 * x1L + b2 * x2L - a1 * y1L - a2 * y2L
+        val c = coeffs // snapshot the consistent coefficient set once
+        val output = c.b0 * input + c.b1 * x1L + c.b2 * x2L - c.a1 * y1L - c.a2 * y2L
 
-        
+
         x2L = x1L
         x1L = input
         y2L = y1L
@@ -212,15 +224,15 @@ class BiquadFilter(
 
     
     fun processStereo(inputLeft: Double, inputRight: Double): Pair<Double, Double> {
-        
-        val outputLeft = b0 * inputLeft + b1 * x1L + b2 * x2L - a1 * y1L - a2 * y2L
+        val c = coeffs // snapshot once so L and R use the SAME consistent coefficient set
+        val outputLeft = c.b0 * inputLeft + c.b1 * x1L + c.b2 * x2L - c.a1 * y1L - c.a2 * y2L
         x2L = x1L
         x1L = inputLeft
         y2L = y1L
         y1L = outputLeft
 
-        
-        val outputRight = b0 * inputRight + b1 * x1R + b2 * x2R - a1 * y1R - a2 * y2R
+
+        val outputRight = c.b0 * inputRight + c.b1 * x1R + c.b2 * x2R - c.a1 * y1R - c.a2 * y2R
         x2R = x1R
         x1R = inputRight
         y2R = y1R

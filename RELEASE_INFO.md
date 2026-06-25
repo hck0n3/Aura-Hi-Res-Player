@@ -1,19 +1,15 @@
-# Aura Hi-Res Player 0.6.42 — Menos calor y batería + se adapta a tu teléfono (parte 6 del plan)
+# Aura Hi-Res Player 0.6.43 — Auditoría de código: estabilidad y rendimiento (parte 7 del plan)
 
-## El fondo animado ya no calienta el teléfono 🔥➡️❄️
-El **fondo animado (Canvas)** seguía decodificando video aunque tuvieras la **pantalla apagada** o la app en segundo plano — eso calentaba y gastaba batería en gama alta. **Arreglado:** ahora el Canvas **se pausa al instante** cuando no lo estás viendo (pantalla apagada, app atrás) y se reanuda al volver. La música no se interrumpe.
+Esta versión no trae funciones nuevas: aplica las correcciones **confirmadas** de una auditoría completa del código (8 subsistemas, con verificación adversarial). Se corrigieron **10 fallos de severidad alta**. No hubo ningún fallo crítico.
 
-## Se adapta a la potencia de tu teléfono 📱
-La app ahora detecta la **gama del dispositivo por sus características (RAM, núcleos)** —no por la marca— y ajusta el trabajo de los efectos:
-- **Gama alta:** todo al máximo.
-- **Gama media:** buffers más moderados.
-- **Gama baja:** Canvas en menor resolución, sin forzar el máximo bitrate, y los efectos pesados **vienen desactivados de fábrica** (los puedes activar cuando quieras).
+## Lo que mejora (invisible pero importante)
+- **Menos cuelgues/tirones al reproducir:** la resolución del stream ya no bloquea el hilo principal, y el precargado de la siguiente canción ya no hace lecturas de disco en el hilo de cambio de pista (relacionado con "el audio se traba").
+- **EQ sin estallidos:** los coeficientes del ecualizador se publican de forma atómica, así que mover bandas durante la reproducción ya no puede provocar un pico de ruido fuerte.
+- **Sincronización correcta:** las consultas de "álbumes subidos" filtraban por el campo de *favoritos* y **corrompían tus álbumes likeados** — corregido. Y "borrar lo sincronizado" ya no carga toda la biblioteca en memoria (riesgo de cierre en equipos con poca RAM).
+- **Pantallas que ya no se quedan en blanco:** los parsers de **álbum** e **historial** ya no fallan por completo si YouTube cambia un campo; saltan solo la fila problemática.
+- **Inicio más fluido con biblioteca grande:** ya no se carga toda la tabla de reproducciones para leer una sola canción.
+- **Cola sin duplicados:** el auto-mix ya no se inserta durante la composición de la UI.
+- **Sin fugas:** el servicio cancela sus corrutinas al destruirse.
 
-## Bajo el capó (revisado adversarialmente antes de subir)
-- `rememberIsAppInForeground()` pausa los dos reproductores de Canvas (carátula del reproductor y del álbum) fuera de primer plano.
-- Nuevo `DeviceCapabilities`/`DeviceTier` (RAM reportada, núcleos, media performance class) — umbrales calibrados para que un 4 GB real entre como baja y un flagship no baje de gama por núcleos en reposo.
-- Los defaults por gama **respetan tu elección**: solo se aplican en instalación nueva, nunca pisan lo que ya cambiaste; `migrateCanvasDefaultOn` ahora también respeta la gama.
-- Buffer del Canvas reducido (antes 20 MB) a 4/8/16 MB según gama.
-
-## Para probar
-- En tu gama alta: pon música con video de fondo y **apaga la pantalla** un buen rato — debería calentar mucho menos.
+## Pendiente (para revisar contigo)
+- 1 alto estructural (refactor de transacciones) + 7 medios + 18 bajos quedan documentados; los aplico según vayas decidiendo.

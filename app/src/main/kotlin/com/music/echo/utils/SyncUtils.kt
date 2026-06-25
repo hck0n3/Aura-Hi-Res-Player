@@ -1333,51 +1333,22 @@ class SyncUtils @Inject constructor(
 
         try {
             database.withTransaction {
-                
-                val likedSongs = database.likedSongsByNameAsc().first()
-                likedSongs.forEach {
-                    database.update(it.song.copy(liked = false, likedDate = null))
-                }
+                // Bulk SQL UPDATEs — no longer load the entire library into memory and update row-by-row
+                // (that was an OOM/multi-second-ANR risk on a 15-20k-song restored library).
+                database.clearAllLikedSongs()
+                database.clearAllLibrarySongs()
+                database.clearAllLikedAlbums()
+                database.clearAllBookmarkedArtists()
+                database.clearAllUploadedSongs()
+                database.clearAllUploadedAlbums()
 
-                
-                val librarySongs = database.songsByNameAsc().first()
-                librarySongs.forEach {
-                    if (it.song.inLibrary != null) {
-                        database.update(it.song.copy(inLibrary = null))
-                    }
-                }
-
-                
-                val likedAlbums = database.albumsLikedByNameAsc().first()
-                likedAlbums.forEach {
-                    database.update(it.album.copy(bookmarkedAt = null))
-                }
-
-                
-                val subscribedArtists = database.artistsBookmarkedByNameAsc().first()
-                subscribedArtists.forEach {
-                    database.update(it.artist.copy(bookmarkedAt = null))
-                }
-
-                
+                // Playlists are few; clear each synced playlist's song-map then delete the playlist row.
                 val savedPlaylists = database.playlistsByNameAsc().first()
                 savedPlaylists.forEach {
                     if (it.playlist.browseId != null) {
                         database.clearPlaylist(it.playlist.id)
                         database.delete(it.playlist)
                     }
-                }
-
-                
-                val uploadedSongs = database.uploadedSongsByNameAsc().first()
-                uploadedSongs.forEach {
-                    database.update(it.song.copy(isUploaded = false))
-                }
-
-                
-                val uploadedAlbums = database.albumsUploadedByCreateDateAsc().first()
-                uploadedAlbums.forEach {
-                    database.update(it.album.copy(isUploaded = false))
                 }
             }
 

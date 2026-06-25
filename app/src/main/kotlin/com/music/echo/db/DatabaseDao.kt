@@ -825,22 +825,22 @@ interface DatabaseDao {
 
     @Transaction
     @SuppressWarnings(RoomWarnings.QUERY_MISMATCH)
-    @Query("SELECT * FROM album WHERE bookmarkedAt IS NOT NULL ORDER BY title")
+    @Query("SELECT * FROM album WHERE isUploaded = 1 ORDER BY title")
     fun albumsUploadedByNameAsc(): Flow<List<Album>>
 
     @Transaction
     @SuppressWarnings(RoomWarnings.QUERY_MISMATCH)
-    @Query("SELECT * FROM album WHERE bookmarkedAt IS NOT NULL ORDER BY year")
+    @Query("SELECT * FROM album WHERE isUploaded = 1 ORDER BY year")
     fun albumsUploadedByYearAsc(): Flow<List<Album>>
 
     @Transaction
     @SuppressWarnings(RoomWarnings.QUERY_MISMATCH)
-    @Query("SELECT * FROM album WHERE bookmarkedAt IS NOT NULL ORDER BY songCount")
+    @Query("SELECT * FROM album WHERE isUploaded = 1 ORDER BY songCount")
     fun albumsUploadedBySongCountAsc(): Flow<List<Album>>
 
     @Transaction
     @SuppressWarnings(RoomWarnings.QUERY_MISMATCH)
-    @Query("SELECT * FROM album WHERE bookmarkedAt IS NOT NULL ORDER BY duration")
+    @Query("SELECT * FROM album WHERE isUploaded = 1 ORDER BY duration")
     fun albumsUploadedByLengthAsc(): Flow<List<Album>>
 
     @Transaction
@@ -851,7 +851,7 @@ interface DatabaseDao {
         FROM album
                  JOIN song
                       ON song.albumId = album.id
-        WHERE bookmarkedAt IS NOT NULL
+        WHERE album.isUploaded = 1
         GROUP BY album.id
         ORDER BY SUM(song.totalPlayTime)
     """
@@ -1164,6 +1164,32 @@ interface DatabaseDao {
     @Transaction
     @Query("SELECT * FROM event ORDER BY rowId ASC LIMIT 1")
     fun firstEvent(): Flow<EventWithSong?>
+
+    // Most-recent single event (mirror of firstEvent). Home only needs the latest played song; loading the
+    // whole event table (events()) just to read element 0 materialised every row + its relations.
+    @Transaction
+    @Query("SELECT * FROM event ORDER BY rowId DESC LIMIT 1")
+    fun lastEvent(): Flow<EventWithSong?>
+
+    // Bulk "unsync" statements for clearAllSyncedContent — each runs as ONE SQL UPDATE instead of materialising
+    // the whole library (song+artist relations) into memory and updating row-by-row (OOM/ANR on big libraries).
+    @Query("UPDATE song SET liked = 0, likedDate = NULL WHERE liked")
+    suspend fun clearAllLikedSongs()
+
+    @Query("UPDATE song SET inLibrary = NULL WHERE inLibrary IS NOT NULL")
+    suspend fun clearAllLibrarySongs()
+
+    @Query("UPDATE album SET bookmarkedAt = NULL WHERE bookmarkedAt IS NOT NULL")
+    suspend fun clearAllLikedAlbums()
+
+    @Query("UPDATE artist SET bookmarkedAt = NULL WHERE bookmarkedAt IS NOT NULL")
+    suspend fun clearAllBookmarkedArtists()
+
+    @Query("UPDATE song SET isUploaded = 0 WHERE isUploaded = 1")
+    suspend fun clearAllUploadedSongs()
+
+    @Query("UPDATE album SET isUploaded = 0 WHERE isUploaded = 1")
+    suspend fun clearAllUploadedAlbums()
 
     @Query("SELECT COUNT(*) FROM event")
     fun eventCount(): Flow<Int>
