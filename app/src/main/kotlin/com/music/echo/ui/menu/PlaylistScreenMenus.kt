@@ -201,7 +201,8 @@ fun AutoPlaylistMenu(
     downloadState: Int,
     onQueue: () -> Unit,
     onDownload: () -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onSync: (() -> Unit)? = null,
 ) {
     val listenTogetherManager = LocalListenTogetherManager.current
     val isGuest = listenTogetherManager?.isInRoom == true && !listenTogetherManager.isHost
@@ -253,6 +254,22 @@ fun AutoPlaylistMenu(
 
     Material3MenuGroup(
         items = listOfNotNull(
+            onSync?.let {
+                Material3MenuItemData(
+                    title = { Text(stringResource(R.string.action_sync)) },
+                    description = { Text("Traer los últimos cambios de YouTube Music") },
+                    icon = {
+                        Icon(
+                            painter = painterResource(R.drawable.sync),
+                            contentDescription = null
+                        )
+                    },
+                    onClick = {
+                        it()
+                        onDismiss()
+                    }
+                )
+            },
             if (!isGuest) {
                 Material3MenuItemData(
                     title = { Text(stringResource(R.string.add_to_queue)) },

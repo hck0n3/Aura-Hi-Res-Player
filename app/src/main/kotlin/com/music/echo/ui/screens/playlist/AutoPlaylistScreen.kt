@@ -89,6 +89,9 @@ import iad1tya.echo.music.constants.HideExplicitKey
 import iad1tya.echo.music.constants.SongSortDescendingKey
 import iad1tya.echo.music.constants.SongSortType
 import iad1tya.echo.music.constants.SongSortTypeKey
+import android.widget.Toast
+import com.music.innertube.utils.parseCookieString
+import iad1tya.echo.music.constants.InnerTubeCookieKey
 import iad1tya.echo.music.constants.YtmSyncKey
 import iad1tya.echo.music.db.entities.Song
 import iad1tya.echo.music.extensions.toMediaItem
@@ -154,6 +157,8 @@ fun AutoPlaylistScreen(
     val hideExplicit by rememberPreference(key = HideExplicitKey, defaultValue = false)
 
     val (ytmSync) = rememberPreference(YtmSyncKey, true)
+    val (innerTubeCookie) = rememberPreference(InnerTubeCookieKey, "")
+    val isLoggedIn = remember(innerTubeCookie) { "SAPISID" in parseCookieString(innerTubeCookie) }
 
     val likeLength =
         remember(songs) {
@@ -341,6 +346,23 @@ fun AutoPlaylistScreen(
                                 downloadState = downloadState,
                                 onShowRemoveDownloadDialog = { showRemoveDownloadDialog = true },
                                 menuState = menuState,
+                                // C1: only the Liked / Uploaded auto-playlists can sync from YT Music, and only
+                                // when signed in. syncLikedSongs/syncUploadedSongs are fire-and-forget on SyncUtils.
+                                onSync = if (isLoggedIn &&
+                                    (playlistType == PlaylistType.LIKE || playlistType == PlaylistType.UPLOADED)
+                                ) {
+                                    {
+                                        if (playlistType == PlaylistType.LIKE) viewModel.syncLikedSongs()
+                                        else viewModel.syncUploadedSongs()
+                                        Toast.makeText(
+                                            context,
+                                            "Sincronizando con YouTube Music…",
+                                            Toast.LENGTH_SHORT,
+                                        ).show()
+                                    }
+                                } else {
+                                    null
+                                },
                                 modifier = Modifier.animateItem()
                             )
                         }
@@ -598,6 +620,7 @@ private fun AutoPlaylistHeader(
     downloadState: Int,
     onShowRemoveDownloadDialog: () -> Unit,
     menuState: iad1tya.echo.music.ui.component.MenuState,
+    onSync: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val playerConnection = LocalPlayerConnection.current ?: return
@@ -751,6 +774,9 @@ private fun AutoPlaylistHeader(
                     menuState.show {
                         AutoPlaylistMenu(
                             downloadState = downloadState,
+                            // C1: "sync with YouTube Music" for the Liked / Uploaded auto-playlists. Computed by
+                            // the screen (which has the viewModel + login state) and passed down to the header.
+                            onSync = onSync,
                             onQueue = {
                                 playerConnection.addToQueue(
                                     songs.map { it.toMediaItem() }

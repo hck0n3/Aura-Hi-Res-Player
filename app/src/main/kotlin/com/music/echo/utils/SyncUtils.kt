@@ -486,23 +486,45 @@ class SyncUtils @Inject constructor(
                     }
 
                     
+                    // C4 — DIFFERENTIAL: only write songs that are genuinely new or whose liked/video flag
+                    // changed. The old code recomputed `likedDate = now - index` every run, so the
+                    // `likedDate != timestamp` check was ALWAYS true and it rewrote EVERY liked song on EVERY
+                    // sync (with a per-song delay) — painfully slow for 4000+ likes and not differential. We
+                    // now keep each existing song's original liked date and only throttle on real writes.
                     val now = LocalDateTime.now()
+                    var newCount = 0
+                    var updatedCount = 0
                     remoteSongs.forEachIndexed { index, song ->
                         try {
                             val dbSong = database.song(song.id).firstOrNull()
-                            val timestamp = now.minusSeconds(index.toLong())
                             val isVideoSong = song.isVideoSong
-
-                            database.transaction {
-                                if (dbSong == null) {
+                            // Decide whether a write is needed HERE, on the coroutine thread — database.transaction
+                            // runs the block asynchronously on a thread pool, so a flag set inside it can't be read
+                            // back reliably. Only new / genuinely-changed songs write (and throttle); unchanged
+                            // ones are skipped entirely (no write, no delay) → differential + fast for 4000+ likes.
+                            if (dbSong == null) {
+                                database.transaction {
+                                    // New like: stamp a date that preserves the remote order (newest first).
                                     insert(song.toMediaMetadata()) {
-                                        it.copy(liked = true, likedDate = timestamp, isVideo = isVideoSong)
+                                        it.copy(
+                                            liked = true,
+                                            likedDate = now.minusSeconds(index.toLong()),
+                                            isVideo = isVideoSong,
+                                        )
                                     }
-                                } else if (!dbSong.song.liked || dbSong.song.likedDate != timestamp || dbSong.song.isVideo != isVideoSong) {
-                                    update(dbSong.song.copy(liked = true, likedDate = timestamp, isVideo = isVideoSong))
                                 }
+                                newCount++
+                                delay(DB_OPERATION_DELAY_MS)
+                            } else if (!dbSong.song.liked || dbSong.song.isVideo != isVideoSong) {
+                                // Known song: touch it ONLY if its liked/video flag actually changed; keep its
+                                // original likedDate so the row isn't rewritten on every sync.
+                                val current = dbSong.song
+                                database.transaction {
+                                    update(current.copy(liked = true, isVideo = isVideoSong))
+                                }
+                                updatedCount++
+                                delay(DB_OPERATION_DELAY_MS)
                             }
-                            delay(DB_OPERATION_DELAY_MS)
                         } catch (e: Exception) {
                             // Never swallow coroutine cancellation: doing so let the sync loop keep
                             // running after its job was cancelled, blasting through every song and
@@ -511,6 +533,10 @@ class SyncUtils @Inject constructor(
                             Timber.e(e, "Failed to process song: ${song.id}")
                         }
                     }
+                    Timber.d(
+                        "Liked songs sync: ${remoteSongs.size} remote — $newCount new, $updatedCount updated, " +
+                            "${(remoteSongs.size - newCount - updatedCount).coerceAtLeast(0)} unchanged (skipped)",
+                    )
 
                     // Imported song artists also become followed, so "your artists" fills up like Spotify.
                     runCatching { database.followArtistsWithContent(LocalDateTime.now()) }
