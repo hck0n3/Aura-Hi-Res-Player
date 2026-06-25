@@ -275,6 +275,9 @@ fun BottomSheetPlayer(
     val cropAlbumArt by rememberPreference(CropAlbumArtKey, false)
     val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
     val videoMode by playerConnection.videoMode.collectAsState()
+    val videoUrlState by playerConnection.videoUrl.collectAsState()
+    // True only while the immersive video layout is actually up (used to hide the redundant queue bar, etc.).
+    val onImmersiveVideo = videoMode && !videoUrlState.isNullOrEmpty()
     val isLocalMedia = mediaMetadata?.id?.isLocalMediaId() == true
 
     val playerBackgroundPref by rememberEnumPreference(
@@ -1573,25 +1576,7 @@ fun BottomSheetPlayer(
                             }
                         }
 
-                        if (mediaMetadata?.isVideoSong == true || mediaMetadata?.podcastVideoUrl?.isNotEmpty() == true) {
-                            FilledIconButton(
-                                onClick = { playerConnection.toggleVideoMode() },
-                                shape = favShape,
-                                colors = IconButtonDefaults.filledIconButtonColors(
-                                    containerColor = if (videoMode) iconButtonColor else textButtonColor,
-                                    contentColor = if (videoMode) textButtonColor else iconButtonColor,
-                                ),
-                                modifier = Modifier.size(42.dp),
-                            ) {
-                                Icon(
-                                    painter = painterResource(
-                                        if (videoMode) R.drawable.music_note else R.drawable.videocam
-                                    ),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(24.dp),
-                                )
-                            }
-                        }
+                        // (Audio↔video toggle moved to the END of the song title — see the title row below.)
                         AnimatedContent(targetState = showInlineLyrics, label = "LikeButton") { showLyrics ->
                             if (showLyrics) {
                                 val currentLyrics by playerConnection.currentLyrics.collectAsState(initial = null)
@@ -1728,9 +1713,10 @@ fun BottomSheetPlayer(
                 }
             }
 
-            // Song title + artist, BELOW the action buttons, full-width and larger so it's easy to read.
+            // Song title + artist. In IMMERSIVE video this copy is hidden — there the title/artist show
+            // ABOVE the video instead (so the top of the screen isn't bare).
+            if (!immersiveVideo) {
             Spacer(Modifier.height(2.dp))
-            // Title + artist on the left, with "Me gusta" / "No me gusta" right next to it.
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
@@ -1801,7 +1787,26 @@ fun BottomSheetPlayer(
                     )
                 }
                 }
-                // Action buttons moved to the scrollable labeled row below (YouTube-Music style).
+                // Audio↔video toggle at the END of the song title (per request).
+                if (mediaMetadata.isVideoSong || !mediaMetadata.podcastVideoUrl.isNullOrEmpty()) {
+                    Spacer(Modifier.width(8.dp))
+                    FilledIconButton(
+                        onClick = { playerConnection.toggleVideoMode() },
+                        shape = RoundedCornerShape(50),
+                        colors = IconButtonDefaults.filledIconButtonColors(
+                            containerColor = if (videoMode) iconButtonColor else textButtonColor,
+                            contentColor = if (videoMode) textButtonColor else iconButtonColor,
+                        ),
+                        modifier = Modifier.size(40.dp),
+                    ) {
+                        Icon(
+                            painter = painterResource(if (videoMode) R.drawable.music_note else R.drawable.videocam),
+                            contentDescription = null,
+                            modifier = Modifier.size(22.dp),
+                        )
+                    }
+                }
+            }
             }
 
             Spacer(Modifier.height(10.dp))
@@ -2837,13 +2842,61 @@ fun BottomSheetPlayer(
                                 .matchParentSize()
                                 .background(Color.Black.copy(alpha = 0.55f)),
                         )
-                        // Edge-to-edge video band, a bit ABOVE center (PlayerVideoSurface sizes to aspect) so
-                        // the bottom controls sit over the dark ambient rather than over the video itself.
+                        // Title + artist ABOVE the video (so the top of the screen isn't bare). Always
+                        // visible; the toggle at its end returns to audio.
+                        mediaMetadata?.let { mm ->
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .align(Alignment.TopCenter)
+                                    .fillMaxWidth()
+                                    .windowInsetsPadding(WindowInsets.systemBars)
+                                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = mm.title,
+                                        style = MaterialTheme.typography.titleLarge,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.basicMarquee(iterations = 1, initialDelayMillis = 3000, velocity = 30.dp),
+                                    )
+                                    if (mm.artists.any { it.name.isNotBlank() }) {
+                                        Text(
+                                            text = mm.artists.joinToString(", ") { it.name },
+                                            style = MaterialTheme.typography.titleMedium,
+                                            color = Color.White.copy(alpha = 0.85f),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                    }
+                                }
+                                Spacer(Modifier.width(8.dp))
+                                FilledIconButton(
+                                    onClick = { playerConnection.toggleVideoMode() },
+                                    colors = IconButtonDefaults.filledIconButtonColors(
+                                        containerColor = Color.White,
+                                        contentColor = Color.Black,
+                                    ),
+                                    modifier = Modifier.size(40.dp),
+                                ) {
+                                    Icon(
+                                        painter = painterResource(R.drawable.music_note),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(22.dp),
+                                    )
+                                }
+                            }
+                        }
+                        // Edge-to-edge video band, just slightly ABOVE center (PlayerVideoSurface sizes to
+                        // aspect) so the bottom controls sit over the dark ambient, not over the video.
                         PlayerVideoSurface(
                             playerConnection = playerConnection,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .align(BiasAlignment(0f, -0.35f)),
+                                .align(BiasAlignment(0f, -0.12f)),
                         )
                         // Tap-toggled controls (title, scrubbable seekbar, transport, chips, video toggle).
                         // NO dark bar behind them — they sit over the dark ambient so the video stays fully
@@ -2935,7 +2988,9 @@ fun BottomSheetPlayer(
         }
 
         AnimatedVisibility(
-            visible = !isFullScreen,
+            // Hide the collapsed queue bar while immersive video is up — it would otherwise overlap the
+            // video's own bottom transport controls.
+            visible = !isFullScreen && !onImmersiveVideo,
             enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
             exit = shrinkVertically(shrinkTowards = Alignment.Top) + slideOutVertically(targetOffsetY = { it }) + fadeOut()
         ) {

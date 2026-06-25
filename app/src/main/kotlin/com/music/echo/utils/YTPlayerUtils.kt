@@ -871,21 +871,30 @@ object YTPlayerUtils {
         preferVideo: Boolean = false,
     ): PlayerResponse.StreamingData.Format? {
         if (preferVideo) {
-            // Video mode is INTEGRATED into the main player as a SINGLE source, so it MUST be a MUXED
-            // (video+audio) stream — a video-only stream would play the song silently. Muxed only exists at
-            // itag 22 (720p) and 18 (360p). Quality is chosen by connection: on WiFi/unmetered prefer 720p,
-            // on metered (mobile data) prefer 360p to save data + load faster on low-end devices. Falls back
-            // to the other muxed quality, then any muxed; null if none (caller keeps audio + "no disponible").
-            // NO video-only fallback. TVHTML5 (VIDEO_CLIENT) reliably exposes itag 18/22.
-            val muxed = playerResponse.streamingData?.formats
+            // Video mode resolves an ADAPTIVE VIDEO-ONLY stream (no audio) — MusicService MERGES it with the
+            // track's normal audio source, giving real HD. Muxed (streamingData.formats) only reliably offers
+            // 360p (itag 18); the 720p muxed (itag 22) is gone for most videos. Video-only adaptive, by
+            // contrast, exposes 360/480/720/1080 for virtually every video. Pick by REAL pixel height and the
+            // connection: WiFi up to 720p, mobile data up to 360p (lighter, fewer stalls). Prefer H.264/mp4
+            // (widest ExoPlayer compatibility, smooth on low-end), else any video-only. null only if a video
+            // has no video-only format at all (extremely rare) → caller keeps audio + "no disponible".
+            val metered = connectivityManager.isActiveNetworkMetered
+            val targetHeight = if (metered) 360 else 720
+            val videoOnly = playerResponse.streamingData?.adaptiveFormats
                 ?.filter { !it.url.isNullOrEmpty() || !it.signatureCipher.isNullOrEmpty() || !it.cipher.isNullOrEmpty() }
                 ?.filter { !it.isAudio && it.mimeType.startsWith("video/") }
-            val metered = connectivityManager.isActiveNetworkMetered
-            val primaryItag = if (metered) 18 else 22
-            val secondaryItag = if (metered) 22 else 18
-            return muxed?.firstOrNull { it.itag == primaryItag }
-                ?: muxed?.firstOrNull { it.itag == secondaryItag }
-                ?: muxed?.maxByOrNull { it.bitrate }
+            if (videoOnly.isNullOrEmpty()) return null
+            // H.264 ONLY = widest hardware-decode compatibility on low-end. Match the codec token (avc1/avc3),
+            // NOT the "mp4" container — AV1 is ALSO delivered as video/mp4 (codecs="av01...") and many low-end
+            // devices can't hardware-decode it (→ decode error or stuttering software decode). VP9 excluded too.
+            val avc = videoOnly.filter {
+                val mt = it.mimeType.lowercase()
+                (mt.contains("avc1") || mt.contains("avc3")) && !mt.contains("av01") && !mt.contains("vp9") && !mt.contains("vp09")
+            }
+            val pool = if (avc.isNotEmpty()) avc else videoOnly
+            // Highest quality at or below the target height; if none qualifies, the lowest available.
+            return pool.filter { (it.height ?: 0) <= targetHeight }.maxByOrNull { it.height ?: 0 }
+                ?: pool.minByOrNull { it.height ?: Int.MAX_VALUE }
         }
 
         Timber.tag(logTag).d("Finding format with audioQuality: $audioQuality, network metered: ${connectivityManager.isActiveNetworkMetered}")

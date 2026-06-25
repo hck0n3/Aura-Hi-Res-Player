@@ -930,6 +930,10 @@ private fun ThumbnailImage(
         AsyncImage(
             model = ImageRequest.Builder(LocalContext.current)
                 .data(currentUrl)
+                // Load the cover at its FULL native resolution (e.g. maxresdefault 1280×720) instead of
+                // letting Coil downscale to the view bounds, so the big player cover stays as sharp as the
+                // source allows.
+                .size(coil3.size.Size.ORIGINAL)
                 .memoryCachePolicy(CachePolicy.ENABLED)
                 .diskCachePolicy(CachePolicy.ENABLED)
                 .networkCachePolicy(CachePolicy.ENABLED)

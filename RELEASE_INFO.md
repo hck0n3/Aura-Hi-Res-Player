@@ -1,15 +1,23 @@
-# Aura Hi-Res Player 0.6.27
+# Aura Hi-Res Player 0.6.28
 
-## Modo video vertical: más pulido aún ✨
-Afinando el modo video en vertical:
-- **Transición suave:** al cambiar entre video y canción ahora hay un **crossfade** (fundido) en vez de un corte brusco.
-- **Controles solo al tocar:** se acabó el ocultado por tiempo. Ahora **tocas la pantalla del video una vez para ocultar** los controles (vista limpia) y **tocas otra vez para mostrarlos**. Tocar en los botones/barra hace su acción normal (no oculta).
-- **Video un poco más arriba:** el video se sitúa por encima del centro, así los controles de abajo quedan sobre el fondo ambiente, no encima del video.
-- **Sin capa oscura tras los botones:** se quitó la barra oscura detrás de los controles para que el **video se vea mejor**. (Solo en modo video; al pasar a canción vuelve a su apariencia normal.)
+## Video en HD de verdad (WiFi 720p) 📺✨
+El gran cambio: antes el modo video usaba un stream **muxed**, que YouTube casi solo da en **360p** — por eso en WiFi se veía mal. Ahora usa un stream de **video HD por separado** y le **fusiona el audio normal** del tema:
+- **WiFi → 720p**, **datos móviles → 360p** (automático, por tu conexión).
+- Audio = el mismo audio de calidad de siempre, **sincronizado** con el video, sin doble audio.
+- Prioriza **H.264** (compatible y fluido en gama baja); evita AV1/VP9 que la gama baja no decodifica bien.
+
+## Interfaz del modo video, más pulida 🎬
+- **Título y artista ARRIBA del video** (ya no queda vacío el espacio de arriba).
+- **Botón audio↔video al final del título** (donde lo pediste). En audio aparece junto al título; en video, arriba.
+- **Sin choque de controles:** se oculta la barra de cola mientras ves el video, así ⏮⏯⏭ ya no se montan con los botones de abajo.
+- **Video un poco más abajo** (ya no tan alto).
+- **Portada a resolución original** (más nítida).
 
 ## Calidad (revisión interna antes de publicar)
-Como toca el render del video, pasó por **revisión adversarial**. El crossfade no provoca doble video (Thumbnail ya no pinta el video; lo hace siempre la capa inmersiva) y el layout/cola quedan intactos. Único detalle corregido: tocar en huecos vacíos junto a los controles ya **no** los oculta por accidente.
+Dos revisiones adversariales. Corregido **antes** de subir: los **podcast de video** ya no intentan fusionar un 2º audio (su video ya trae audio), y el filtro de códec ya **excluye AV1** (que tartamudeaba en gama baja). La UI quedó verificada sin doble título y con el toggle siempre alcanzable.
 
 ## Técnico
-- `Player.kt`: `Crossfade(targetState = videoMode && videoUrl, tween(350), fillMaxSize)` envuelve premium/normal; auto-hide eliminado (toggle solo por tap); video con `BiasAlignment(0f,-0.35f)`; Column de controles sin `.background`, con `pointerInput { detectTapGestures { } }` para absorber taps.
-- `Thumbnail.kt`: ya no compone `PlayerVideoSurface` (evita doble TextureView en el crossfade); solo spinner mientras resuelve; portada siempre visible.
+- `YTPlayerUtils.findFormat(preferVideo)`: adaptive video-only por altura real (≤720 WiFi / ≤360 datos), pool avc1/avc3 (excluye av01/vp9).
+- `MusicService`: `MergingMediaSource(video-only, audio-original)` salvo podcast muxed (`videoModeIsMuxedPodcast`).
+- `Player.kt`: título inmersivo en `TopCenter`; toggle al final del título; `onImmersiveVideo` oculta la cola; video en `BiasAlignment(0,-0.12)`.
+- `Thumbnail.kt`: cover con `size(Size.ORIGINAL)`.

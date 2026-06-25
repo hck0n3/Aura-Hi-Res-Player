@@ -433,6 +433,10 @@ class MusicService :
     @Volatile
     private var videoModeMediaId: String? = null
     private var videoModeOriginalUri: String? = null
+    // True when the current video-mode source is a MUXED podcast enclosure (already carries its own audio)
+    // → do NOT merge a 2nd audio source. False for YouTube (a video-ONLY HD stream that needs the merge).
+    @Volatile
+    private var videoModeIsMuxedPodcast = false
     private val videoUrlCache = HashMap<String, Pair<String, Long>>()
     // Set once the user has used video this session → we then prefetch upcoming tracks' video URLs in the
     // background so toggling/switching video is instant (big win on low-end devices), without wasting work
@@ -2949,7 +2953,7 @@ class MusicService :
         // Video PODCAST episode: it already carries a direct video stream — swap to it immediately, no
         // YouTube resolution (the id here is an http audio URL, which YTPlayerUtils can't resolve anyway).
         val podcastVideo = player.currentMetadata?.podcastVideoUrl
-        if (!podcastVideo.isNullOrEmpty()) { swapToVideo(id, podcastVideo); return }
+        if (!podcastVideo.isNullOrEmpty()) { swapToVideo(id, podcastVideo, isMuxed = true); return }
         // A direct/local track with no video stream (e.g. an audio-only podcast reached while sticky video
         // is still armed) can't show video — disarm video mode and play audio quietly (no failed-resolution
         // toast, and crucially no stuck spinner: leaving _videoMode=true here would show an endless spinner
@@ -2985,12 +2989,14 @@ class MusicService :
 
     /** Swap the current item's source URI to [url] (the muxed stream) so the factory builds a video source
      * rendered on the main player. Keeps position + play state. */
-    private fun swapToVideo(id: String, url: String) {
+    private fun swapToVideo(id: String, url: String, isMuxed: Boolean = false) {
         val idx = player.currentMediaItemIndex
         val item = player.currentMediaItem ?: return
         if (item.mediaId != id) return
         videoModeOriginalUri = item.localConfiguration?.uri?.toString()
         videoModeMediaId = id
+        // Podcast video is a single muxed stream (has audio) → don't merge a 2nd audio; YouTube is video-only.
+        videoModeIsMuxedPodcast = isMuxed
         val pos = player.currentPosition
         val playing = player.playWhenReady
         player.replaceMediaItem(idx, item.buildUpon().setUri(url).build())
@@ -3006,6 +3012,7 @@ class MusicService :
         val origUri = videoModeOriginalUri
         videoModeMediaId = null
         videoModeOriginalUri = null
+        videoModeIsMuxedPodcast = false
         if (origUri == null) return
         for (i in 0 until player.mediaItemCount) {
             val it = runCatching { player.getMediaItemAt(i) }.getOrNull() ?: continue
@@ -3278,9 +3285,24 @@ class MusicService :
             override fun createMediaSource(
                 mediaItem: MediaItem
             ): androidx.media3.exoplayer.source.MediaSource {
-                // The video-mode track's item URI was swapped to the muxed stream URL (swapToVideo).
+                // Video mode: the track's item URI was swapped (swapToVideo) to an adaptive VIDEO-ONLY HD
+                // stream. MERGE it with the track's normal AUDIO source (resolved from the original URI via
+                // the default/ResolvingDataSource factory — the same path restore uses) → HD video + the
+                // app's normal audio, synced on the same video timeline, no double audio. clipDurations
+                // tolerates a tiny end-of-stream length difference between the two streams.
                 if (mediaItem.mediaId == videoModeMediaId) {
-                    return videoFactory.createMediaSource(mediaItem)
+                    val videoSource = videoFactory.createMediaSource(mediaItem)
+                    val origUri = videoModeOriginalUri
+                    // Merge a separate audio source ONLY for genuinely video-only streams (YouTube). A muxed
+                    // podcast already has audio — merging would add a redundant/conflicting 2nd audio track.
+                    if (origUri != null && !videoModeIsMuxedPodcast) {
+                        val audioItem = mediaItem.buildUpon().setUri(origUri).build()
+                        val audioSource = default.createMediaSource(audioItem)
+                        return androidx.media3.exoplayer.source.MergingMediaSource(
+                            false, true, videoSource, audioSource
+                        )
+                    }
+                    return videoSource
                 }
                 return default.createMediaSource(mediaItem)
             }
