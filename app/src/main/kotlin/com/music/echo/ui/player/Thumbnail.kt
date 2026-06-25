@@ -371,8 +371,8 @@ fun Thumbnail(
     val videoModeOn by playerConnection.videoMode.collectAsState()
     val videoUrl by playerConnection.videoUrl.collectAsState()
 
-    // Back while in video mode exits video (and resumes the music) instead of collapsing the player.
-    BackHandler(enabled = videoModeOn) { playerConnection.exitVideoMode() }
+    // NOTE: the Android back gesture must NOT exit video (the user wants it to just minimize the player,
+    // keeping video mode on) — so there is intentionally no BackHandler here.
 
     Box(
         modifier = modifier

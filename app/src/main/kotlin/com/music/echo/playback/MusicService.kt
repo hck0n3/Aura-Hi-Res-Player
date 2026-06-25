@@ -2024,9 +2024,11 @@ class MusicService :
         if (_videoMode.value && mediaItem != null && mediaItem.mediaId != videoModeMediaId) {
             applyVideoToCurrent()
         }
-        // Prefetch video URLs so toggling/switching video is instant on low-end devices: the current track
-        // (so a later toggle is a cache hit) and, in sticky video, the next track (instant auto-advance).
-        if (userHasUsedVideo && !_videoMode.value) prefetchVideoUrl(mediaItem?.mediaId)
+        // Prefetch the NEXT track's video URL only while ACTIVELY in video mode (instant auto-advance).
+        // We deliberately do NOT prefetch during normal audio playback: doing it on every track change
+        // hammered YouTube with extra stream-resolution requests and got the app rate-limited, which then
+        // stalled normal audio after a few songs (it resumed once the limit cooled). Toggling video resolves
+        // on demand instead (a brief spinner), which is fine.
         if (_videoMode.value) {
             val nextIdx = player.nextMediaItemIndex
             if (nextIdx != C.INDEX_UNSET) {

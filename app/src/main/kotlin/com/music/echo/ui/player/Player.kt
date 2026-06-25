@@ -1772,20 +1772,24 @@ fun BottomSheetPlayer(
                 }
                 // Audio↔video toggle at the END of the song title (per request).
                 if (mediaMetadata.isVideoSong || !mediaMetadata.podcastVideoUrl.isNullOrEmpty()) {
-                    Spacer(Modifier.width(8.dp))
-                    FilledIconButton(
-                        onClick = { playerConnection.toggleVideoMode() },
-                        shape = RoundedCornerShape(50),
-                        colors = IconButtonDefaults.filledIconButtonColors(
-                            containerColor = if (videoMode) iconButtonColor else textButtonColor,
-                            contentColor = if (videoMode) textButtonColor else iconButtonColor,
-                        ),
-                        modifier = Modifier.size(40.dp),
+                    Spacer(Modifier.width(4.dp))
+                    // Chip-style (matches the action chips below) and pinned to the right of the title.
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(RoundedCornerShape(50))
+                            .background(
+                                if (videoMode) textButtonColor.copy(alpha = 0.45f)
+                                else textButtonColor.copy(alpha = 0.18f)
+                            )
+                            .clickable { playerConnection.toggleVideoMode() },
+                        contentAlignment = Alignment.Center,
                     ) {
                         Icon(
                             painter = painterResource(if (videoMode) R.drawable.music_note else R.drawable.videocam),
                             contentDescription = null,
-                            modifier = Modifier.size(22.dp),
+                            tint = textButtonColor,
+                            modifier = Modifier.size(20.dp),
                         )
                     }
                 }
@@ -2630,7 +2634,9 @@ fun BottomSheetPlayer(
                     onDispose { runCatching { ctrl?.show(androidx.core.view.WindowInsetsCompat.Type.systemBars()) } }
                 }
                 var lsControls by remember { mutableStateOf(true) }
-                LaunchedEffect(lsControls, isPlaying, inPip) {
+                // Auto-hide after 3.5 s. NOT keyed on isPlaying — buffering/play-state changes would keep
+                // restarting the timer (so it never hid, e.g. while HD video rebuffers).
+                LaunchedEffect(lsControls, inPip) {
                     if (lsControls && !inPip) { delay(3500); lsControls = false }
                 }
                 Box(
@@ -2642,6 +2648,13 @@ fun BottomSheetPlayer(
                     PlayerVideoSurface(
                         playerConnection = playerConnection,
                         modifier = Modifier.fillMaxSize(),
+                    )
+                    // Transparent layer OVER the video — the fullscreen TextureView can swallow taps, so this
+                    // ensures a tap reliably shows/hides the controls in landscape fullscreen.
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .pointerInput(Unit) { detectTapGestures { if (!inPip) lsControls = !lsControls } },
                     )
                     if (inPip) {
                         mediaMetadata?.let { mm ->
@@ -2845,7 +2858,8 @@ fun BottomSheetPlayer(
                     // In Picture-in-Picture render a CLEAN view: keep the title/artist over the video, but hide
                     // the bottom controls and the toggle — playback controls come from the system PiP actions.
                     val inPip = LocalIsInPipMode.current
-                    BackHandler { playerConnection.exitVideoMode() }
+                    // NOTE: no BackHandler here — the Android back gesture must NOT exit video; it should just
+                    // minimize the player (keeping video mode on), per user request.
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
@@ -2872,13 +2886,15 @@ fun BottomSheetPlayer(
                                 .matchParentSize()
                                 .background(Color.Black.copy(alpha = 0.55f)),
                         )
+                        // Title (top) + video (centered) + controls (bottom) in a Column so the video is
+                        // truly CENTERED in the space between the top title and the bottom controls.
+                        Column(modifier = Modifier.fillMaxSize()) {
                         // Title + artist ABOVE the video (full in normal immersive, compact in PiP). No toggle
                         // here — the single audio↔video toggle sits at the video's BOTTOM-RIGHT corner.
                         mediaMetadata?.let { mm ->
                             Column(
                                 horizontalAlignment = if (inPip) Alignment.Start else Alignment.CenterHorizontally,
                                 modifier = Modifier
-                                    .align(if (inPip) Alignment.TopStart else Alignment.TopCenter)
                                     .fillMaxWidth()
                                     .then(if (inPip) Modifier.background(Color.Black.copy(alpha = 0.35f)) else Modifier)
                                     .windowInsetsPadding(WindowInsets.systemBars)
@@ -2904,35 +2920,40 @@ fun BottomSheetPlayer(
                                 }
                             }
                         }
-                        // Video band, vertically CENTERED between the top title and the bottom controls, with
-                        // the single audio↔video toggle overlaid at its BOTTOM-RIGHT corner (returns to audio).
+                        // Video band CENTERED in the remaining space (between the top title and the bottom
+                        // controls). The inner Box wraps the band so the toggle pins to the band's corner.
                         Box(
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .align(Alignment.Center),
+                                .weight(1f)
+                                .fillMaxWidth(),
                             contentAlignment = Alignment.Center,
                         ) {
-                            PlayerVideoSurface(
-                                playerConnection = playerConnection,
+                            Box(
                                 modifier = Modifier.fillMaxWidth(),
-                            )
-                            if (ptControls && !inPip) {
-                                FilledIconButton(
-                                    onClick = { playerConnection.toggleVideoMode() },
-                                    colors = IconButtonDefaults.filledIconButtonColors(
-                                        containerColor = Color.White.copy(alpha = 0.85f),
-                                        contentColor = Color.Black,
-                                    ),
-                                    modifier = Modifier
-                                        .align(Alignment.BottomEnd)
-                                        .padding(8.dp)
-                                        .size(40.dp),
-                                ) {
-                                    Icon(
-                                        painter = painterResource(R.drawable.music_note),
-                                        contentDescription = null,
-                                        modifier = Modifier.size(22.dp),
-                                    )
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                PlayerVideoSurface(
+                                    playerConnection = playerConnection,
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                                if (ptControls && !inPip) {
+                                    FilledIconButton(
+                                        onClick = { playerConnection.toggleVideoMode() },
+                                        colors = IconButtonDefaults.filledIconButtonColors(
+                                            containerColor = Color.White.copy(alpha = 0.85f),
+                                            contentColor = Color.Black,
+                                        ),
+                                        modifier = Modifier
+                                            .align(Alignment.BottomEnd)
+                                            .padding(8.dp)
+                                            .size(40.dp),
+                                    ) {
+                                        Icon(
+                                            painter = painterResource(R.drawable.music_note),
+                                            contentDescription = null,
+                                            modifier = Modifier.size(22.dp),
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -2943,9 +2964,7 @@ fun BottomSheetPlayer(
                             visible = ptControls && !inPip,
                             enter = fadeIn(),
                             exit = fadeOut(),
-                            modifier = Modifier
-                                .align(Alignment.BottomCenter)
-                                .fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth(),
                         ) {
                             Column(
                                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -2960,6 +2979,7 @@ fun BottomSheetPlayer(
                             ) {
                                 mediaMetadata?.let { controlsContent(it, true) }
                             }
+                        }
                         }
                     }
                 } else {
