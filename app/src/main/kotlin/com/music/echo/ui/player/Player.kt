@@ -1682,41 +1682,14 @@ fun BottomSheetPlayer(
                                 )
                             }
                         } else {
-                            // Video toggle only (for video songs AND video podcasts); the like/dislike
-                            // buttons moved next to the song title.
-                            if (mediaMetadata?.isVideoSong == true || mediaMetadata?.podcastVideoUrl?.isNotEmpty() == true) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(40.dp)
-                                        .clip(RoundedCornerShape(24.dp))
-                                        .background(
-                                            if (videoMode) textButtonColor.copy(alpha = 0.45f)
-                                            else textButtonColor.copy(alpha = 0.2f)
-                                        )
-                                        .clickable { playerConnection.toggleVideoMode() },
-                                ) {
-                                    Icon(
-                                        painter = painterResource(
-                                            if (videoMode) R.drawable.music_note else R.drawable.videocam
-                                        ),
-                                        contentDescription = null,
-                                        tint = textButtonColor,
-                                        modifier = Modifier
-                                            .align(Alignment.Center)
-                                            .size(24.dp),
-                                    )
-                                }
-                            } else {
-                                Spacer(Modifier.size(0.dp))
-                            }
+                            // (Audio↔video toggle moved to the END of the song title — not duplicated here.)
+                            Spacer(Modifier.size(0.dp))
                         }
                     }
                 }
             }
 
-            // Song title + artist. In IMMERSIVE video this copy is hidden — there the title/artist show
-            // ABOVE the video instead (so the top of the screen isn't bare).
-            if (!immersiveVideo) {
+            // Song title + artist, with the single audio↔video toggle at the END of the title.
             Spacer(Modifier.height(2.dp))
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -1807,7 +1780,6 @@ fun BottomSheetPlayer(
                         )
                     }
                 }
-            }
             }
 
             Spacer(Modifier.height(10.dp))
@@ -2878,51 +2850,33 @@ fun BottomSheetPlayer(
                                 .matchParentSize()
                                 .background(Color.Black.copy(alpha = 0.55f)),
                         )
-                        // Title + artist ABOVE the video (so the top of the screen isn't bare). Always
-                        // visible; the toggle at its end returns to audio.
-                        mediaMetadata?.let { mm ->
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier
-                                    .align(Alignment.TopCenter)
-                                    .fillMaxWidth()
-                                    .windowInsetsPadding(WindowInsets.systemBars)
-                                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
+                        // Title + artist over the video ONLY in Picture-in-Picture (the user likes it there);
+                        // in normal immersive video the title lives in the bottom controls — not duplicated.
+                        if (inPip) {
+                            mediaMetadata?.let { mm ->
+                                Column(
+                                    modifier = Modifier
+                                        .align(Alignment.TopStart)
+                                        .fillMaxWidth()
+                                        .background(Color.Black.copy(alpha = 0.35f))
+                                        .windowInsetsPadding(WindowInsets.systemBars)
+                                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                                ) {
                                     Text(
                                         text = mm.title,
-                                        style = MaterialTheme.typography.titleLarge,
+                                        style = MaterialTheme.typography.bodyMedium,
                                         fontWeight = FontWeight.Bold,
                                         color = Color.White,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.basicMarquee(iterations = 1, initialDelayMillis = 3000, velocity = 30.dp),
                                     )
                                     if (mm.artists.any { it.name.isNotBlank() }) {
                                         Text(
                                             text = mm.artists.joinToString(", ") { it.name },
-                                            style = MaterialTheme.typography.titleMedium,
+                                            style = MaterialTheme.typography.bodySmall,
                                             color = Color.White.copy(alpha = 0.85f),
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis,
-                                        )
-                                    }
-                                }
-                                if (!inPip) {
-                                    Spacer(Modifier.width(8.dp))
-                                    FilledIconButton(
-                                        onClick = { playerConnection.toggleVideoMode() },
-                                        colors = IconButtonDefaults.filledIconButtonColors(
-                                            containerColor = Color.White,
-                                            contentColor = Color.Black,
-                                        ),
-                                        modifier = Modifier.size(40.dp),
-                                    ) {
-                                        Icon(
-                                            painter = painterResource(R.drawable.music_note),
-                                            contentDescription = null,
-                                            modifier = Modifier.size(22.dp),
                                         )
                                     }
                                 }
