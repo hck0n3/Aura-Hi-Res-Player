@@ -49,6 +49,12 @@ class TruePeakLimiterAudioProcessor : AudioProcessor {
     private var prevHighL = 0f; private var prevHighR = 0f
     private var lowGainEnv = 1f
     private var highGainEnv = 1f
+    // Ramped makeup actually applied: glides toward the target by [mkRampStep]/frame so a mid-song loudness
+    // re-apply (or an EQ change) fades in instead of an audible jump. A freshly (re)configured instance (new
+    // track / crossfade player / seek) is PRIMED straight to the target so it doesn't swell into it.
+    private var currentMk = OUTPUT_TRIM
+    private var mkRampStep = MAKEUP_RANGE / (48_000f * MK_RAMP_SECONDS)
+    private var primed = false
 
     companion object {
         private val EMPTY_BUFFER: ByteBuffer =
@@ -66,6 +72,11 @@ class TruePeakLimiterAudioProcessor : AudioProcessor {
         // proper level. Scales every track equally, so the relative loudness between songs (consistency)
         // is unchanged.
         private const val OUTPUT_TRIM = 0.78f
+        // Full makeup span (OUTPUT_TRIM .. MAX_MAKEUP×OUTPUT_TRIM) and the worst-case ramp time for it. The
+        // per-frame step is derived from the sample rate in configure() so the ramp lasts ~the same time
+        // regardless of rate; real corrections are smaller than the full span, so they ramp faster.
+        private const val MAKEUP_RANGE = MAX_MAKEUP * OUTPUT_TRIM - OUTPUT_TRIM
+        private const val MK_RAMP_SECONDS = 0.12f
         // Crossover split frequency: bass (where boosts have the most energy and cause the worst
         // broadband ducking) vs everything else.
         private const val CROSSOVER_HZ = 250.0
@@ -90,6 +101,8 @@ class TruePeakLimiterAudioProcessor : AudioProcessor {
             throw AudioProcessor.UnhandledAudioFormatException(inputAudioFormat)
         }
         computeCrossover(inputAudioFormat.sampleRate)
+        mkRampStep = MAKEUP_RANGE / (inputAudioFormat.sampleRate.coerceAtLeast(8_000) * MK_RAMP_SECONDS)
+        primed = false
         resetState()
         isActive = true
         return inputAudioFormat
@@ -141,7 +154,12 @@ class TruePeakLimiterAudioProcessor : AudioProcessor {
         // Safe now that the limiter is multiband: the boosted band stays present, the rest stays full, no
         // broadband ducking/"waves" — just a clean, calmer level.
         val eqGain = eqMakeup
-        val mk = (loudnessMakeup * eqGain).coerceAtMost(MAX_MAKEUP) * OUTPUT_TRIM
+        val targetMk = (loudnessMakeup * eqGain).coerceAtMost(MAX_MAKEUP) * OUTPUT_TRIM
+        if (!primed) {
+            // Start a fresh instance AT the correct makeup (no swell into it).
+            currentMk = targetMk
+            primed = true
+        }
         if (!enabled) {
             outputBuffer.put(inputBuffer)
             outputBuffer.flip()
@@ -151,8 +169,16 @@ class TruePeakLimiterAudioProcessor : AudioProcessor {
         if (channelCount == 2) {
             val frames = remaining / 4
             repeat(frames) {
-                val xl = (inputBuffer.getShort() / 32768.0f) * mk
-                val xr = (inputBuffer.getShort() / 32768.0f) * mk
+                if (currentMk != targetMk) {
+                    val d = targetMk - currentMk
+                    currentMk = when {
+                        d > mkRampStep -> currentMk + mkRampStep
+                        d < -mkRampStep -> currentMk - mkRampStep
+                        else -> targetMk
+                    }
+                }
+                val xl = (inputBuffer.getShort() / 32768.0f) * currentMk
+                val xr = (inputBuffer.getShort() / 32768.0f) * currentMk
 
                 // Complementary 2-band split: low = LPF, high = signal − low (sum back to the input).
                 val lowL = lowpassL(xl.toDouble()).toFloat()
@@ -185,7 +211,15 @@ class TruePeakLimiterAudioProcessor : AudioProcessor {
         } else {
             val samples = remaining / 2
             repeat(samples) {
-                val x = (inputBuffer.getShort() / 32768.0f) * mk
+                if (currentMk != targetMk) {
+                    val d = targetMk - currentMk
+                    currentMk = when {
+                        d > mkRampStep -> currentMk + mkRampStep
+                        d < -mkRampStep -> currentMk - mkRampStep
+                        else -> targetMk
+                    }
+                }
+                val x = (inputBuffer.getShort() / 32768.0f) * currentMk
                 val low = lowpassL(x.toDouble()).toFloat()
                 val high = x - low
                 val lowPeak = max(abs(low), abs((prevLowL + low) * 0.5f))
@@ -231,6 +265,8 @@ class TruePeakLimiterAudioProcessor : AudioProcessor {
     override fun flush() {
         outputBuffer = EMPTY_BUFFER
         inputEnded = false
+        // After a seek/discontinuity, re-prime so we resume AT the target makeup (no ramp across the jump).
+        primed = false
         resetState()
     }
 

@@ -1956,12 +1956,14 @@ class MusicService :
                     val hasRealLoudness = format?.loudnessDb != null || format?.perceptualLoudnessDb != null
                     val loudnessDb = effectiveLoudnessDb(format?.loudnessDb, format?.perceptualLoudnessDb)
 
-                    // NEVER re-apply normalization for the track that's already playing — any mid-song
-                    // change is an audible volume jump (down OR up). Liking a song kicks off an auto-
-                    // download that re-stores the format, which used to re-run this and bump the volume.
-                    // We normalize each track ONCE (on its first play); a more accurate value applies the
-                    // NEXT time it plays, not mid-song.
-                    if (currentMediaId == lastNormalizedId) {
+                    // D1: don't re-apply normalization for the track that's already playing — EXCEPT the single
+                    // upgrade when the REAL loudness has just arrived (YouTube returns it a moment after
+                    // playback starts, so the first pass used the conservative default). That correction is what
+                    // makes the level right; the gain processor RAMPS the change, so it glides instead of the
+                    // sudden mid-song volume jump. We never downgrade (real→default) and never re-apply twice
+                    // (e.g. the like-triggered re-store keeps the real value), so this fires at most once.
+                    val realLoudnessJustArrived = hasRealLoudness && !lastNormalizedHadLoudness
+                    if (currentMediaId == lastNormalizedId && !realLoudnessJustArrived) {
                         return@launch
                     }
 
