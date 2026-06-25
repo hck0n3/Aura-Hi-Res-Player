@@ -1050,11 +1050,12 @@ class MusicService :
                     .setBufferDurationsMs(
                         DefaultLoadControl.DEFAULT_MIN_BUFFER_MS,
                         DefaultLoadControl.DEFAULT_MAX_BUFFER_MS,
-                        // Start playing as soon as ~0.5 s is buffered (was 1 s) so the first sound comes
-                        // sooner, especially on slower phones (e.g. Honor 90 Lite). Most of the start
-                        // delay there is YouTube stream URL resolution on the CPU, not buffering.
+                        // Start playing as soon as ~0.5 s is buffered so the first sound comes sooner.
                         500,
-                        1000,
+                        // After a STALL, rebuild ~5 s of buffer before resuming (Media3 default) instead of the
+                        // old 1 s — the 1 s value made HD video resume with almost no buffer and re-stall
+                        // immediately in a stutter loop ("el video se para a cada rato").
+                        DefaultLoadControl.DEFAULT_BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS,
                     )
                     .build(),
             )
