@@ -229,6 +229,11 @@ class App : Application(), SingletonImageLoader.Factory {
             }
             return
         }
+        // E2: a LOW-capability device (by RAM/cores/perf-class, not brand) gets the heavy visuals OFF by
+        // default on a FRESH install so it runs smooth/cool out of the box. Only affects defaults — the user
+        // can still enable everything, and existing installs (already past this seed) are untouched.
+        val lowEndDevice =
+            iad1tya.echo.music.utils.DeviceCapabilities.tier(this) == iad1tya.echo.music.utils.DeviceTier.LOW
         dataStore.edit { p ->
             // "Inspirado en Apple Music" player. The toggle is ON when UseNewPlayerDesign == false AND
             // the player background is APPLE_MUSIC — seeding LIVE_MESH before made the switch *look* on
@@ -249,13 +254,26 @@ class App : Application(), SingletonImageLoader.Factory {
             p[iad1tya.echo.music.constants.LyricsGlowEffectKey] = true
             p[iad1tya.echo.music.constants.AppleMusicLyricsBlurKey] = true
 
-            // Visuals on by default: spectrum visualizer, artist video + artist background video, and the
-            // cover "canvas" animations (player + album) — ON by default per user request.
-            p[iad1tya.echo.music.constants.SpectrumVisualizerEnabledKey] = true
-            p[iad1tya.echo.music.constants.CanvasThumbnailAnimationKey] = true
-            p[iad1tya.echo.music.constants.AlbumCanvasEnabledKey] = true
-            p[iad1tya.echo.music.constants.ShowArtistVideoKey] = true
-            p[iad1tya.echo.music.constants.ShowArtistBackgroundVideoKey] = true
+            // Visuals: spectrum visualizer, artist video + artist background video, and the cover "canvas"
+            // animations (player + album) — ON by default on MID/HIGH; OFF by default on LOW-tier devices (E2)
+            // so a fresh install on a weak phone is smooth and cool. Seeded ONLY when the key is still unset, so
+            // a later seed-version bump never overrides a choice the user has made (and existing installs keep
+            // their current values). The user can always toggle them in Settings.
+            if (p[iad1tya.echo.music.constants.SpectrumVisualizerEnabledKey] == null) {
+                p[iad1tya.echo.music.constants.SpectrumVisualizerEnabledKey] = !lowEndDevice
+            }
+            if (p[iad1tya.echo.music.constants.CanvasThumbnailAnimationKey] == null) {
+                p[iad1tya.echo.music.constants.CanvasThumbnailAnimationKey] = !lowEndDevice
+            }
+            if (p[iad1tya.echo.music.constants.AlbumCanvasEnabledKey] == null) {
+                p[iad1tya.echo.music.constants.AlbumCanvasEnabledKey] = !lowEndDevice
+            }
+            if (p[iad1tya.echo.music.constants.ShowArtistVideoKey] == null) {
+                p[iad1tya.echo.music.constants.ShowArtistVideoKey] = !lowEndDevice
+            }
+            if (p[iad1tya.echo.music.constants.ShowArtistBackgroundVideoKey] == null) {
+                p[iad1tya.echo.music.constants.ShowArtistBackgroundVideoKey] = !lowEndDevice
+            }
 
             // Hide video songs is OFF by default (show video music too); only YouTube Shorts are
             // hidden by default.
@@ -376,10 +394,15 @@ class App : Application(), SingletonImageLoader.Factory {
         // User request: ALL canvas/lienzo toggles enabled. Force them ON once (even for installs that had
         // the previous default-OFF migration), then remember it so the user's later choice is respected.
         if (settings[iad1tya.echo.music.constants.CanvasDefaultOnAppliedKey] == true) return
+        // E2: this one-time "canvas ON" push must respect device tier — on LOW-capability phones keep the
+        // heavy cover-canvas OFF by default (otherwise it re-enabled the very decoders E2 keeps off on weak
+        // devices, right after seedDefaultsIfNeeded had defaulted them off on a fresh install).
+        val lowEndDevice =
+            iad1tya.echo.music.utils.DeviceCapabilities.tier(this) == iad1tya.echo.music.utils.DeviceTier.LOW
         runCatching {
             dataStore.edit { p ->
-                p[iad1tya.echo.music.constants.CanvasThumbnailAnimationKey] = true
-                p[iad1tya.echo.music.constants.AlbumCanvasEnabledKey] = true
+                p[iad1tya.echo.music.constants.CanvasThumbnailAnimationKey] = !lowEndDevice
+                p[iad1tya.echo.music.constants.AlbumCanvasEnabledKey] = !lowEndDevice
                 p[iad1tya.echo.music.constants.CanvasDefaultOnAppliedKey] = true
             }
         }

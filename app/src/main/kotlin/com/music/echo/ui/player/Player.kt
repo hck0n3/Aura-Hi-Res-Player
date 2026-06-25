@@ -211,6 +211,9 @@ import iad1tya.echo.music.ui.component.VolumeSlider
 import iad1tya.echo.music.ui.screens.settings.DarkMode
 import iad1tya.echo.music.ui.theme.PlayerColorExtractor
 import iad1tya.echo.music.ui.theme.PlayerSliderColors
+import iad1tya.echo.music.ui.utils.rememberIsAppInForeground
+import iad1tya.echo.music.utils.DeviceCapabilities
+import iad1tya.echo.music.utils.DeviceTier
 import iad1tya.echo.music.ui.utils.ShowMediaInfo
 import iad1tya.echo.music.ui.utils.ShowOffsetDialog
 import iad1tya.echo.music.utils.makeTimeString
@@ -3289,15 +3292,25 @@ private fun BackgroundVideoView(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val appInForeground = rememberIsAppInForeground()
     var isVideoReady by remember(videoUrl) { mutableStateOf(false) }
-    
-    val trackSelector = remember {
+
+    // E2: scale the canvas decode to the device tier — weaker phones cap resolution, skip forced max-bitrate
+    // and use a smaller buffer, so the animated background doesn't push them into thermal/jank territory.
+    val deviceTier = remember { DeviceCapabilities.tier(context) }
+    val trackSelector = remember(deviceTier) {
         DefaultTrackSelector(context).apply {
+            val maxDim = if (deviceTier == DeviceTier.LOW) 1280 else 4096
             parameters = buildUponParameters()
-                .setMaxVideoSize(4096, 4096)
-                .setForceHighestSupportedBitrate(true)
+                .setMaxVideoSize(maxDim, maxDim)
+                .setForceHighestSupportedBitrate(deviceTier == DeviceTier.HIGH)
                 .build()
         }
+    }
+    val canvasBufferBytes = when (deviceTier) {
+        DeviceTier.LOW -> 4 * 1024 * 1024
+        DeviceTier.MID -> 8 * 1024 * 1024
+        DeviceTier.HIGH -> 16 * 1024 * 1024
     }
 
     val exoPlayer = remember {
@@ -3305,7 +3318,7 @@ private fun BackgroundVideoView(
             .setTrackSelector(trackSelector)
             .setLoadControl(
                 DefaultLoadControl.Builder()
-                    .setTargetBufferBytes(20 * 1024 * 1024) 
+                    .setTargetBufferBytes(canvasBufferBytes)
                     .build()
             )
             .build().apply {
@@ -3348,8 +3361,10 @@ private fun BackgroundVideoView(
         exoPlayer.prepare()
     }
 
-    LaunchedEffect(isPlaying) {
-        exoPlayer.playWhenReady = isPlaying
+    LaunchedEffect(isPlaying, appInForeground) {
+        // E1: pause the (invisible) animated background while the app isn't in the foreground — no video
+        // decoding with the screen off / app backgrounded, so it stops heating the device. Audio is unaffected.
+        exoPlayer.playWhenReady = isPlaying && appInForeground
     }
 
     DisposableEffect(Unit) {

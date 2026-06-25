@@ -40,6 +40,8 @@ fun CanvasArtworkPlayer(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    val appInForeground = iad1tya.echo.music.ui.utils.rememberIsAppInForeground()
+    val deviceTier = remember { iad1tya.echo.music.utils.DeviceCapabilities.tier(context) }
     val primary = primaryUrl?.takeIf { it.isNotBlank() }
     val fallback = fallbackUrl?.takeIf { it.isNotBlank() }
     val initial = primary ?: fallback ?: return
@@ -109,10 +111,15 @@ fun CanvasArtworkPlayer(
                 .setMediaSourceFactory(mediaSourceFactory)
                 .build()
                 .apply {
-                trackSelectionParameters = trackSelectionParameters
+                // E2: only force max bitrate on HIGH-tier devices; cap resolution on LOW so weaker phones
+                // don't overheat decoding a 4K canvas.
+                val tsBuilder = trackSelectionParameters
                     .buildUpon()
-                    .setForceHighestSupportedBitrate(true)
-                    .build()
+                    .setForceHighestSupportedBitrate(deviceTier == iad1tya.echo.music.utils.DeviceTier.HIGH)
+                if (deviceTier == iad1tya.echo.music.utils.DeviceTier.LOW) {
+                    tsBuilder.setMaxVideoSize(1280, 1280)
+                }
+                trackSelectionParameters = tsBuilder.build()
                 setAudioAttributes(
                     AudioAttributes
                         .Builder()
@@ -128,9 +135,11 @@ fun CanvasArtworkPlayer(
             }
         }
 
-    LaunchedEffect(isPlaying) {
-        if (exoPlayer.playWhenReady != isPlaying) {
-            exoPlayer.playWhenReady = isPlaying
+    LaunchedEffect(isPlaying, appInForeground) {
+        // E1: don't decode the canvas video while the app is backgrounded / screen off (saves battery/heat).
+        val shouldPlay = isPlaying && appInForeground
+        if (exoPlayer.playWhenReady != shouldPlay) {
+            exoPlayer.playWhenReady = shouldPlay
         }
     }
 
@@ -193,7 +202,7 @@ fun CanvasArtworkPlayer(
         isVideoReady = false
         exoPlayer.setMediaItem(mediaItem)
         exoPlayer.prepare()
-        exoPlayer.playWhenReady = isPlaying
+        exoPlayer.playWhenReady = isPlaying && appInForeground
     }
 
     DisposableEffect(exoPlayer) {

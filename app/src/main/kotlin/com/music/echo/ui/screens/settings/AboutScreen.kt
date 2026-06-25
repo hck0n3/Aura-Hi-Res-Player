@@ -45,6 +45,7 @@ private val PLAYBACK_FEATURES = listOf(
     Feature(R.drawable.lyrics, "Letras", "Sincronizadas (palabra por palabra), con traducción por IA y desenfoque estilo Apple Music"),
     Feature(R.drawable.queue_music, "Cola", "Cola inteligente y gestión de 'a continuación'; tocar una canción en el top de un artista o en el radar de novedades reproduce toda la lista como cola"),
     Feature(R.drawable.bluetooth, "Reproducción inteligente", "Pausa al silenciar y reanuda al reconectar Bluetooth; notificación enriquecida estilo Dynamic Island"),
+    Feature(R.drawable.speed, "Rendimiento adaptable", "Detecta la gama del dispositivo por sus características (RAM, núcleos), no por la marca, y ajusta calidad/buffers de los efectos; el fondo animado (Canvas) se pausa con la app en segundo plano o la pantalla apagada, para no calentar ni gastar batería de más"),
 )
 
 private val DISCOVERY_FEATURES = listOf(

@@ -128,6 +128,12 @@ fun WelcomeDialog(
                     )
                     WelcomeDivider()
                     WelcomeFeatureRow(
+                        iconRes = R.drawable.speed,
+                        title = "Se adapta a tu teléfono",
+                        subtitle = "Detecta la potencia del dispositivo (RAM/CPU) y ajusta los efectos; el fondo animado se pausa con la app en segundo plano o la pantalla apagada, para no calentar ni gastar batería"
+                    )
+                    WelcomeDivider()
+                    WelcomeFeatureRow(
                         iconRes = R.drawable.group,
                         title = "Listen Together",
                         subtitle = "Escucha música en tiempo real con tus amigos"
