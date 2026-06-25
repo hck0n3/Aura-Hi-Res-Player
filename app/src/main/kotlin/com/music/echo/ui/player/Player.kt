@@ -156,6 +156,7 @@ import coil3.request.allowHardware
 import coil3.toBitmap
 import iad1tya.echo.music.LocalDatabase
 import iad1tya.echo.music.LocalDownloadUtil
+import iad1tya.echo.music.LocalIsInPipMode
 import iad1tya.echo.music.LocalListenTogetherManager
 import iad1tya.echo.music.LocalPlayerConnection
 import iad1tya.echo.music.R
@@ -2630,23 +2631,55 @@ fun BottomSheetPlayer(
             Configuration.ORIENTATION_LANDSCAPE -> {
               val videoUrlLs by playerConnection.videoUrl.collectAsState()
               if (videoMode && !videoUrlLs.isNullOrEmpty()) {
-                // Rotated + video → FULLSCREEN video with auto-hiding controls (tap toggles them).
+                // Rotated + video → FULLSCREEN video with auto-hiding controls (tap toggles them). In PiP
+                // (a 16:9 video makes the floating window landscape) render a CLEAN view: only title+artist
+                // over the video, no controls (playback controls come from the system PiP actions).
+                val inPip = LocalIsInPipMode.current
                 var lsControls by remember { mutableStateOf(true) }
-                LaunchedEffect(lsControls, isPlaying) {
-                    if (lsControls) { delay(3500); lsControls = false }
+                LaunchedEffect(lsControls, isPlaying, inPip) {
+                    if (lsControls && !inPip) { delay(3500); lsControls = false }
                 }
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .background(Color.Black)
-                        .pointerInput(Unit) { detectTapGestures { lsControls = !lsControls } },
+                        .pointerInput(Unit) { detectTapGestures { if (!inPip) lsControls = !lsControls } },
                 ) {
                     PlayerVideoSurface(
                         playerConnection = playerConnection,
                         modifier = Modifier.fillMaxSize(),
                     )
+                    if (inPip) {
+                        mediaMetadata?.let { mm ->
+                            Column(
+                                modifier = Modifier
+                                    .align(Alignment.TopStart)
+                                    .fillMaxWidth()
+                                    .background(Color.Black.copy(alpha = 0.35f))
+                                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                            ) {
+                                Text(
+                                    text = mm.title,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                if (mm.artists.any { it.name.isNotBlank() }) {
+                                    Text(
+                                        text = mm.artists.joinToString(", ") { it.name },
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Color.White.copy(alpha = 0.85f),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                            }
+                        }
+                    }
                     androidx.compose.animation.AnimatedVisibility(
-                        visible = lsControls,
+                        visible = lsControls && !inPip,
                         enter = fadeIn(),
                         exit = fadeOut(),
                         modifier = Modifier
@@ -2815,6 +2848,9 @@ fun BottomSheetPlayer(
                     // Controls toggle ONLY by tapping the video (no timed auto-hide): tap once to hide them
                     // for a clean view, tap again to bring them back. Back exits video.
                     var ptControls by remember { mutableStateOf(true) }
+                    // In Picture-in-Picture render a CLEAN view: keep the title/artist over the video, but hide
+                    // the bottom controls and the toggle — playback controls come from the system PiP actions.
+                    val inPip = LocalIsInPipMode.current
                     BackHandler { playerConnection.exitVideoMode() }
                     Box(
                         modifier = Modifier
@@ -2873,20 +2909,22 @@ fun BottomSheetPlayer(
                                         )
                                     }
                                 }
-                                Spacer(Modifier.width(8.dp))
-                                FilledIconButton(
-                                    onClick = { playerConnection.toggleVideoMode() },
-                                    colors = IconButtonDefaults.filledIconButtonColors(
-                                        containerColor = Color.White,
-                                        contentColor = Color.Black,
-                                    ),
-                                    modifier = Modifier.size(40.dp),
-                                ) {
-                                    Icon(
-                                        painter = painterResource(R.drawable.music_note),
-                                        contentDescription = null,
-                                        modifier = Modifier.size(22.dp),
-                                    )
+                                if (!inPip) {
+                                    Spacer(Modifier.width(8.dp))
+                                    FilledIconButton(
+                                        onClick = { playerConnection.toggleVideoMode() },
+                                        colors = IconButtonDefaults.filledIconButtonColors(
+                                            containerColor = Color.White,
+                                            contentColor = Color.Black,
+                                        ),
+                                        modifier = Modifier.size(40.dp),
+                                    ) {
+                                        Icon(
+                                            painter = painterResource(R.drawable.music_note),
+                                            contentDescription = null,
+                                            modifier = Modifier.size(22.dp),
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -2902,7 +2940,7 @@ fun BottomSheetPlayer(
                         // NO dark bar behind them — they sit over the dark ambient so the video stays fully
                         // visible; their colors are forced white-on-dark (immersiveVideo = true).
                         androidx.compose.animation.AnimatedVisibility(
-                            visible = ptControls,
+                            visible = ptControls && !inPip,
                             enter = fadeIn(),
                             exit = fadeOut(),
                             modifier = Modifier

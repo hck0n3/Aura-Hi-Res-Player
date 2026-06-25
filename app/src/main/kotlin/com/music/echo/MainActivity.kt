@@ -14,6 +14,8 @@ import androidx.compose.runtime.getValue
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.PendingIntent
+import android.content.BroadcastReceiver
+import android.content.IntentFilter
 import android.content.ComponentName
 import android.content.Intent
 import android.content.ServiceConnection
@@ -122,6 +124,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import androidx.core.util.Consumer
@@ -240,6 +243,9 @@ class MainActivity : ComponentActivity() {
     companion object {
         private const val ACTION_SEARCH = "iad1tya.echo.music.action.SEARCH"
         private const val ACTION_LIBRARY = "iad1tya.echo.music.action.LIBRARY"
+        // Picture-in-Picture playback controls (system RemoteActions shown when the PiP window is tapped).
+        const val PIP_ACTION = "iad1tya.echo.music.action.PIP"
+        const val PIP_CONTROL = "control"
     }
 
     override fun attachBaseContext(newBase: Context) {
@@ -264,6 +270,18 @@ class MainActivity : ComponentActivity() {
     private var playerConnection by mutableStateOf<PlayerConnection?>(null)
     // True while the app is in Android Picture-in-Picture mode (video floating window).
     private var inPipMode by mutableStateOf(false)
+    private var pipPlayPauseJob: kotlinx.coroutines.Job? = null
+    // Receives the PiP RemoteAction taps (play/pause, next, prev) and drives the player.
+    private val pipReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            val pc = playerConnection ?: return
+            when (intent?.getStringExtra(PIP_CONTROL)) {
+                "playpause" -> if (pc.player.isPlaying) pc.player.pause() else pc.player.play()
+                "next" -> pc.player.seekToNext()
+                "prev" -> pc.player.seekToPrevious()
+            }
+        }
+    }
 
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
@@ -323,6 +341,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        runCatching { unregisterReceiver(pipReceiver) }
+        pipPlayPauseJob?.cancel()
         if (dataStore.get(StopMusicOnTaskClearKey, false) &&
             playerConnection?.isPlaying?.value == true &&
             isFinishing
@@ -363,6 +383,7 @@ class MainActivity : ComponentActivity() {
                 builder.setAspectRatio(android.util.Rational((ratio * 1000f).toInt(), 1000))
             }
         }
+        runCatching { builder.setActions(buildPipActions()) }
         runCatching { enterPictureInPictureMode(builder.build()) }
     }
 
@@ -372,6 +393,49 @@ class MainActivity : ComponentActivity() {
     ) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
         inPipMode = isInPictureInPictureMode
+        if (isInPictureInPictureMode) {
+            updatePipActions()
+            // Keep the play/pause action icon in sync with playback while floating.
+            pipPlayPauseJob?.cancel()
+            pipPlayPauseJob = lifecycleScope.launch {
+                playerConnection?.isPlaying?.collect { updatePipActions() }
+            }
+        } else {
+            pipPlayPauseJob?.cancel()
+            pipPlayPauseJob = null
+        }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    private fun buildPipActions(): ArrayList<android.app.RemoteAction> {
+        val playing = playerConnection?.isPlaying?.value == true
+        fun act(iconRes: Int, title: String, control: String, req: Int): android.app.RemoteAction {
+            val pi = PendingIntent.getBroadcast(
+                this, req,
+                Intent(PIP_ACTION).setPackage(packageName).putExtra(PIP_CONTROL, control),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+            return android.app.RemoteAction(
+                android.graphics.drawable.Icon.createWithResource(this, iconRes), title, title, pi,
+            )
+        }
+        return arrayListOf(
+            act(iad1tya.echo.music.R.drawable.skip_previous, "Anterior", "prev", 11),
+            act(
+                if (playing) iad1tya.echo.music.R.drawable.pause else iad1tya.echo.music.R.drawable.play,
+                "Reproducir o pausar", "playpause", 12,
+            ),
+            act(iad1tya.echo.music.R.drawable.skip_next, "Siguiente", "next", 13),
+        )
+    }
+
+    private fun updatePipActions() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || !inPipMode) return
+        runCatching {
+            setPictureInPictureParams(
+                android.app.PictureInPictureParams.Builder().setActions(buildPipActions()).build()
+            )
+        }
     }
 
     // Safety net for touch dispatch: some OEM input pipelines (notably Xiaomi's "Mirror") can drive
@@ -391,6 +455,9 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)
+        ContextCompat.registerReceiver(
+            this, pipReceiver, IntentFilter(PIP_ACTION), ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
         window.decorView.layoutDirection = View.LAYOUT_DIRECTION_LTR
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
@@ -880,6 +947,7 @@ class MainActivity : ComponentActivity() {
                     LocalShimmerTheme provides ShimmerTheme,
                     LocalSyncUtils provides syncUtils,
                     LocalListenTogetherManager provides listenTogetherManager,
+                    LocalIsInPipMode provides inPipMode,
                 ) {
 
                     Scaffold(
@@ -1438,3 +1506,6 @@ val LocalDownloadUtil = staticCompositionLocalOf<DownloadUtil> { error("No Downl
 val LocalSyncUtils = staticCompositionLocalOf<SyncUtils> { error("No SyncUtils provided") }
 val LocalListenTogetherManager = staticCompositionLocalOf<iad1tya.echo.music.listentogether.ListenTogetherManager?> { null }
 val LocalIsPlayerExpanded = compositionLocalOf { false }
+/** True while the app is in Android Picture-in-Picture mode — lets the player render a clean PiP view
+ *  (title/artist over the video, no bottom controls; playback controls come from the system PiP actions). */
+val LocalIsInPipMode = compositionLocalOf { false }
