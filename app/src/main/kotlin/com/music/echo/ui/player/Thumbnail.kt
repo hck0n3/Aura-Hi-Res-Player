@@ -918,10 +918,12 @@ private fun ThumbnailImage(
             // 404 (onError). Non-ytimg covers (googleusercontent, already hi-res) are left untouched.
             mutableStateOf(
                 artworkUri?.let {
-                    if (it.contains("i.ytimg.com")) {
+                    // Any YouTube thumbnail host (i.ytimg.com, i9.ytimg.com, img.youtube.com) and either
+                    // .jpg or .webp → upgrade the size token to maxresdefault (keep the extension).
+                    if (it.contains("ytimg.com") || it.contains("img.youtube.com")) {
                         it.replace(
-                            Regex("(default|mqdefault|hqdefault|sddefault|maxresdefault)\\.jpg"),
-                            "maxresdefault.jpg",
+                            Regex("(default|mqdefault|hqdefault|sddefault|maxresdefault)\\.(jpg|webp)"),
+                            "maxresdefault.$2",
                         )
                     } else it
                 }
@@ -943,11 +945,16 @@ private fun ThumbnailImage(
             error = painterResource(R.drawable.ic_launcher_nobg),
             fallback = painterResource(R.drawable.ic_launcher_nobg),
             onError = {
-                // maxresdefault 404s for some videos → fall back to sddefault (640×480, always exists),
-                // which is still sharper than the old hqdefault and avoids a blank cover.
+                // Fallback chain when a higher-res thumbnail 404s: maxres → sd → hq (each still better than a
+                // blank cover). Most music videos DO have maxresdefault (1280×720); this only kicks in for the
+                // few that don't.
                 val url = currentUrl
-                if (url != null && url.contains("maxresdefault.jpg")) {
-                    currentUrl = url.replace("maxresdefault.jpg", "sddefault.jpg")
+                if (url != null) {
+                    currentUrl = when {
+                        url.contains("maxresdefault") -> url.replace("maxresdefault", "sddefault")
+                        url.contains("sddefault") -> url.replace("sddefault", "hqdefault")
+                        else -> url
+                    }
                 }
             },
             modifier = Modifier.fillMaxSize()

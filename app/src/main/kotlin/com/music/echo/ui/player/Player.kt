@@ -2649,6 +2649,8 @@ fun BottomSheetPlayer(
                     PlayerVideoSurface(
                         playerConnection = playerConnection,
                         modifier = Modifier.fillMaxSize(),
+                        // Fill the whole screen (cover/crop) in landscape — no black side bars.
+                        fillCrop = true,
                     )
                     // Transparent layer OVER the video — the fullscreen TextureView can swallow taps, so this
                     // ensures a tap reliably shows/hides the controls in landscape fullscreen.
@@ -2927,8 +2929,10 @@ fun BottomSheetPlayer(
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxWidth(),
-                            // Sit the video a touch BELOW the centre of its region (it felt a bit too high).
-                            contentAlignment = BiasAlignment(0f, 0.12f),
+                            // When the controls (and title) are visible they take more room at the bottom than
+                            // the title does at the top, so the region centre sits high on screen — push the
+                            // video DOWN to look screen-centred. When everything is hidden, just centre it.
+                            contentAlignment = if (ptControls && !inPip) BiasAlignment(0f, 0.28f) else Alignment.Center,
                         ) {
                             Box(
                                 modifier = Modifier.fillMaxWidth(),

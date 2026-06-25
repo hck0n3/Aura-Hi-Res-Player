@@ -113,7 +113,8 @@ object MusicRecognitionService {
             
             _recognitionStatus.value
         } catch (e: Exception) {
-            _recognitionStatus.value = RecognitionStatus.Error(e.message ?: "Recognition failed")
+            // Surface the exception type so a systematic failure (e.g. a network/TLS error) is diagnosable.
+            _recognitionStatus.value = RecognitionStatus.Error("${e.javaClass.simpleName}: ${e.message ?: "Recognition failed"}")
             _recognitionStatus.value
         }
     }

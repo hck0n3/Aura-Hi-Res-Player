@@ -5,7 +5,7 @@ import com.music.shazamkit.models.ShazamRequestJson
 import com.music.shazamkit.models.ShazamResponseJson
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
-import io.ktor.client.engine.cio.CIO
+import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.header
 import io.ktor.client.request.parameter
@@ -66,7 +66,10 @@ object Shazam {
 
     // HTTP Client Configuration
     private val client by lazy {
-        HttpClient(CIO) {
+        // Use the OkHttp engine (the same proven HTTP stack the rest of the app uses) rather than CIO —
+        // CIO's TLS/networking was failing EVERY Shazam request on some Android devices, so recognition
+        // always errored. OkHttp is reliable on Android.
+        HttpClient(OkHttp) {
             install(ContentNegotiation) {
                 json(
                     Json {
@@ -77,9 +80,8 @@ object Shazam {
                 )
             }
             expectSuccess = false
-            
             engine {
-                requestTimeout = 30000
+                config { retryOnConnectionFailure(true) }
             }
         }
     }
