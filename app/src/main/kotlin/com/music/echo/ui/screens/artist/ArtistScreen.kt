@@ -864,10 +864,18 @@ fun ArtistScreen(
                                                 if (song.id == mediaMetadata?.id) {
                                                     playerConnection.togglePlayPause()
                                                 } else {
+                                                    // Set the WHOLE section (e.g. the artist's top songs) as the
+                                                    // queue, starting at the tapped song — like an album — instead
+                                                    // of a single-song queue, so it continues through the list.
+                                                    val sectionSongs = section.items.distinctBy { it.id }
+                                                        .filterIsInstance<SongItem>()
                                                     playerConnection.playQueue(
-                                                        YouTubeQueue(
-                                                            WatchEndpoint(videoId = song.id),
-                                                            song.toMediaMetadata()
+                                                        ListQueue(
+                                                            title = section.title,
+                                                            items = sectionSongs.map { it.toMediaItem() },
+                                                            startIndex = sectionSongs
+                                                                .indexOfFirst { it.id == song.id }
+                                                                .coerceAtLeast(0),
                                                         ),
                                                     )
                                                 }

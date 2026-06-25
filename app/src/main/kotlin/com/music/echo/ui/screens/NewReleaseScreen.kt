@@ -33,6 +33,7 @@ import iad1tya.echo.music.constants.GridItemsSizeKey
 import iad1tya.echo.music.constants.GridThumbnailHeight
 import iad1tya.echo.music.ui.component.IconButton
 import iad1tya.echo.music.ui.component.LocalMenuState
+import iad1tya.echo.music.playback.queues.YouTubeAlbumRadio
 import iad1tya.echo.music.ui.component.YouTubeGridItem
 import iad1tya.echo.music.ui.component.shimmer.GridItemPlaceHolder
 import iad1tya.echo.music.ui.component.shimmer.ShimmerHost
@@ -77,7 +78,9 @@ fun NewReleaseScreen(
                 Modifier
                     .combinedClickable(
                         onClick = {
-                            navController.navigate("album/${album.id}")
+                            // Play the new release directly (album radio: its songs + continuation) instead of
+                            // opening the album page. "Go to album / artist" stays available via long-press.
+                            playerConnection.playQueue(YouTubeAlbumRadio(album.playlistId))
                         },
                         onLongClick = {
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)

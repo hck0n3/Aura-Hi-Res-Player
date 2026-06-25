@@ -68,6 +68,13 @@ interface DatabaseDao {
     @Query("SELECT * FROM song WHERE inLibrary IS NOT NULL ORDER BY rowId")
     fun songsByRowIdAsc(): Flow<List<Song>>
 
+    // Bounded seed for the on-device taste model: newest-first with a SQL LIMIT, so a 15-20k-song imported
+    // library doesn't fully materialize (with all @Relation joins) before being capped — that would starve the
+    // playback path, the same hazard recentEventsWithSong avoids.
+    @Transaction
+    @Query("SELECT * FROM song WHERE inLibrary IS NOT NULL ORDER BY rowId DESC LIMIT :limit")
+    fun librarySongsForTaste(limit: Int): Flow<List<Song>>
+
     @Transaction
     @Query("SELECT * FROM song WHERE inLibrary IS NOT NULL ORDER BY inLibrary")
     fun songsByCreateDateAsc(): Flow<List<Song>>

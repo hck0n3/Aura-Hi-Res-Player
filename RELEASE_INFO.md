@@ -1,20 +1,24 @@
-# Aura Hi-Res Player 0.6.37 — Video y PiP (parte 1 del plan grande)
+# Aura Hi-Res Player 0.6.38 — Colas, recomendaciones e IA (parte 2 del plan)
 
-## Picture-in-Picture limpio 🪟
-La ventana flotante ahora muestra **solo el video** a pantalla completa — se acabó la **barra/título** arriba y el contenido de la playlist detrás. Se logra dibujando únicamente el video encima (sin desmontar la app, así que **no se congela** como antes).
+## La música nunca se detiene 🎶
+Cuando se acaba una **lista finita** (un álbum, el top de un artista, el radar de novedades, una lista importada o una sola canción), la app **sigue sola con música similar** (radio inteligente). Funciona **incluso recién instalada** sin historial ni inicio de sesión.
 
-## Detección de canciones con video 🎬
-Las canciones del **inicio (Home)** no mostraban el botón de cambiar a video porque ahí no se leía el tipo de video. **Corregido:** ahora las canciones con videoclip muestran el toggle también desde el inicio (las demás pantallas ya lo hacían).
+## Tocar = reproducir la lista entera
+- **Top del artista:** tocar una canción ahora pone **toda esa lista como cola** (como en los álbumes), no solo esa canción.
+- **Radar de novedades:** tocar un lanzamiento lo **reproduce directo** en vez de mandarte al álbum. *(Para abrir el álbum o ir al artista: mantén pulsado → "Ver álbum" / "Ver artista".)*
 
-## Cambio de video a audio más suave
-Si vas en modo video y la **siguiente canción no tiene video**, ahora **pasa a audio en silencio** (sin el molesto aviso "Video falló").
+## La IA usa TODA tu biblioteca importada
+El Inicio, el autoplay, la radio y el shuffle ahora aprenden también de **toda tu biblioteca importada** de Spotify + YouTube Music (no solo de lo que reproduces dentro de la app), con un peso bien calibrado para que un artista con muchísimas canciones importadas no opaque a tus favoritos reales.
 
-## Horizontal
-El video en horizontal ya llena toda la pantalla (cover, sin barras negras — desde 0.6.36) con las barras del sistema ocultas. *(Nota: si notas algún parpadeo de las barras al girar, dímelo — quité un intento de fix que rompía el fullscreen de carátula/letra, lo afino aparte.)*
+## Aleatorio sin repetir 🔀
+El modo aleatorio ahora tiene **memoria anti-repetición**: no vuelve a sonar una canción **hasta agotar la lista** (ideal con miles de "Me gusta"), y luego reinicia el ciclo.
 
-## Técnico
-- `MainActivity`: overlay top-level `if (inPipMode) Box(Black){ PlayerVideoSurface }` sobre el NavHost (sin teardown). Surfaces de la hoja gateadas `!inPip` (sin doble TextureView).
-- `Player.kt`: surfaces inmersiva/landscape gateadas `!inPip`.
-- `MusicService.applyVideoToCurrent`: disarm silencioso si `isVideoSong != true`.
-- `innertube/HomePage.kt`: SongItem ahora setea `musicVideoType`.
-- Revertido el `onConfigurationChanged` (rompía fullscreen de carátula/letra + ocultaba barras con mini-player colapsado).
+## Detección de video desde el inicio
+Las canciones del **inicio (Home)** con videoclip ya muestran el botón de cambiar a video (antes solo desde búsqueda/álbum/artista).
+
+## Bajo el capó (revisado adversarialmente antes de subir)
+- B3 radio al terminar: guard anti-doble-disparo (`radioSeedInFlight`), solo en auto-avance/primer play y reproduciendo, índice recalculado en vivo (no trunca tu cola).
+- "Mix activo" solo se enciende si de verdad se añadió radio.
+- Biblioteca para la IA: consulta acotada con `LIMIT` en SQL y fuera del hilo principal (no más carga completa de 15-20k canciones).
+- Cap por artista/género en el sembrado de biblioteca (no infla la normalización).
+- Nuevo "Ver álbum" en el menú del álbum (restaura el acceso al álbum desde el radar).

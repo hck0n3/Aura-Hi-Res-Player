@@ -524,6 +524,28 @@ fun YouTubeAlbumMenu(
             )
         }
 
+        item { Spacer(modifier = Modifier.height(12.dp)) }
+        item {
+            Material3MenuGroup(
+                items = listOf(
+                    Material3MenuItemData(
+                        title = { Text(text = stringResource(R.string.view_album)) },
+                        description = { Text(text = albumItem.title) },
+                        icon = {
+                            Icon(
+                                painter = painterResource(R.drawable.album),
+                                contentDescription = null,
+                            )
+                        },
+                        onClick = {
+                            navController.navigate("album/${albumItem.id}")
+                            onDismiss()
+                        }
+                    )
+                )
+            )
+        }
+
         albumItem.artists?.let { artists ->
             item { Spacer(modifier = Modifier.height(12.dp)) }
             item {

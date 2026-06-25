@@ -136,7 +136,7 @@ fun WelcomeDialog(
                     WelcomeFeatureRow(
                         iconRes = R.drawable.discover_tune,
                         title = "Recomendaciones con IA",
-                        subtitle = "Inicio, radio y mezclas que aprenden de tus gustos en el dispositivo; crea listas con una frase"
+                        subtitle = "Inicio, radio y mezclas que aprenden de tus gustos y de toda tu biblioteca importada (en el dispositivo); al acabar una lista la música sigue sola con temas similares, el modo aleatorio no repite hasta agotar, y crea listas con una frase"
                     )
                     WelcomeDivider()
                     WelcomeFeatureRow(

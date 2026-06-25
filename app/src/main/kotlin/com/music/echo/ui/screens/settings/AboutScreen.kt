@@ -43,13 +43,13 @@ private val PLAYBACK_FEATURES = listOf(
     Feature(R.drawable.auto_awesome, "Mejorar calidad baja", "Reduce la distorsión (declip) y regenera agudos en fuentes de bajo bitrate"),
     Feature(R.drawable.equalizer, "Visualizador y control", "Visualizador de espectro y control de tempo/tono"),
     Feature(R.drawable.lyrics, "Letras", "Sincronizadas (palabra por palabra), con traducción por IA y desenfoque estilo Apple Music"),
-    Feature(R.drawable.queue_music, "Cola", "Cola inteligente y gestión de 'a continuación'"),
+    Feature(R.drawable.queue_music, "Cola", "Cola inteligente y gestión de 'a continuación'; tocar una canción en el top de un artista o en el radar de novedades reproduce toda la lista como cola"),
     Feature(R.drawable.bluetooth, "Reproducción inteligente", "Pausa al silenciar y reanuda al reconectar Bluetooth; notificación enriquecida estilo Dynamic Island"),
 )
 
 private val DISCOVERY_FEATURES = listOf(
-    Feature(R.drawable.discover_tune, "Recomendación en el dispositivo", "Una IA local aprende de tu recencia, saltos y hora del día para ordenar Inicio, autoplay, radio y shuffle, sin subir tu perfil"),
-    Feature(R.drawable.shuffle, "Smart Shuffle", "Mezcla ponderada por lo que de verdad te gusta"),
+    Feature(R.drawable.discover_tune, "Recomendación en el dispositivo", "Una IA local aprende de tu recencia, saltos, hora del día y de toda tu biblioteca importada para ordenar Inicio, autoplay, radio y shuffle, sin subir tu perfil; al terminar una lista la música sigue sola con temas similares (incluso recién instalada)"),
+    Feature(R.drawable.shuffle, "Smart Shuffle", "Mezcla ponderada por lo que de verdad te gusta, con memoria anti-repetición (no repite hasta agotar la lista)"),
     Feature(R.drawable.auto_awesome, "Listas con IA", "Crea playlists describiéndolas con una frase"),
     Feature(R.drawable.favorite_border, "Filtros y coherencia", "El filtro 'No me gusta' aparta canciones de las recomendaciones y mantiene la coherencia de género en autoplay/radio"),
     Feature(R.drawable.music_history, "Release Radar", "Nuevos lanzamientos de los artistas que sigues"),

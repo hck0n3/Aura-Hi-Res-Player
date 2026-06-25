@@ -36,6 +36,17 @@ object AffinityEngine {
     /** Baseline weight given to each onboarding-selected genre so brand-new users still get genre affinity. */
     private const val ONBOARDING_GENRE_SEED = 2.0
 
+    /** Weight each saved/imported library song contributes to taste (below an actual play; liked counts more). */
+    private const val LIBRARY_SEED = 0.2
+    private const val LIBRARY_LIKED_SEED = 0.4
+    /** Max a single artist/name (resp. genre/lane) may gain from the library, so one big imported discography
+     *  can't dominate the max-weight normalization and bury the artists you actually play most. */
+    private const val LIBRARY_KEY_CAP = 2.0
+    private const val LIBRARY_GENRE_CAP = 4.0
+
+    /** Cap the library scan so a huge imported library (10k+) can't make profile-building pathological. */
+    const val MAX_LIBRARY = 6000
+
     suspend fun buildProfile(
         events: List<EventWithSong>,
         disliked: DislikeStore.Disliked,
@@ -46,6 +57,10 @@ object AffinityEngine {
         // The user's onboarding genre picks (already mapped to iTunes genre names) — seeded as baseline
         // affinity so the first-run "¿Qué géneros te gustan?" step actually influences recommendations.
         onboardingGenres: List<String> = emptyList(),
+        // The user's saved/imported library (Spotify + YouTube Music import, "Me gusta", etc.). These count
+        // as taste even for songs never played yet, so Home/autoplay/shuffle reflect the WHOLE library the
+        // user brought in — not only what they've happened to play inside the app.
+        librarySongs: List<Song> = emptyList(),
     ): TasteProfile {
         val byId = HashMap<String, Double>()
         val byName = HashMap<String, Double>()
@@ -90,6 +105,37 @@ object AffinityEngine {
             GenreLane.laneOf(song.song.title, song.artists.joinToString(" ") { it.name })?.let { l ->
                 lane.merge(l, w, Double::plus)
             }
+        }
+
+        // B4: seed taste from the saved/imported library. A song you saved but never played is a real
+        // (if weaker) taste signal — so the AI works from the whole imported library, even on a fresh install
+        // where there's no in-app play history yet. Liked songs weigh a bit more than plain imported ones.
+        // We accumulate the library contribution separately and CAP it per key before merging, so a huge
+        // imported discography of one artist can't inflate maxArtistWeight and crush the artists you play most.
+        if (librarySongs.isNotEmpty()) {
+            val libById = HashMap<String, Double>()
+            val libByName = HashMap<String, Double>()
+            val libGenre = HashMap<String, Double>()
+            val libLane = HashMap<String, Double>()
+            librarySongs.asSequence().take(MAX_LIBRARY).forEach { s ->
+                val w = if (s.song.liked) LIBRARY_LIKED_SEED else LIBRARY_SEED
+                s.artists.forEach { a ->
+                    libById.merge(a.id, w, Double::plus)
+                    if (a.name.isNotBlank()) {
+                        libByName.merge(a.name.lowercase(), w, Double::plus)
+                        artistGenres[a.name.lowercase()]?.takeIf { it.isNotBlank() }?.let { g ->
+                            libGenre.merge(g, w, Double::plus)
+                        }
+                    }
+                }
+                GenreLane.laneOf(s.song.title, s.artists.joinToString(" ") { it.name })?.let { l ->
+                    libLane.merge(l, w, Double::plus)
+                }
+            }
+            libById.forEach { (k, v) -> byId.merge(k, min(v, LIBRARY_KEY_CAP), Double::plus) }
+            libByName.forEach { (k, v) -> byName.merge(k, min(v, LIBRARY_KEY_CAP), Double::plus) }
+            libGenre.forEach { (k, v) -> genre.merge(k, min(v, LIBRARY_GENRE_CAP), Double::plus) }
+            libLane.forEach { (k, v) -> lane.merge(k, min(v, LIBRARY_GENRE_CAP), Double::plus) }
         }
 
         // Seed onboarding genre picks: strong signal for a new user with no history, a light nudge once

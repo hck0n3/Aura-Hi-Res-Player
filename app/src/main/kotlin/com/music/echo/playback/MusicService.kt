@@ -414,6 +414,13 @@ class MusicService :
 
     
     private var originalQueueSize: Int = 0
+    // B5 — anti-repeat shuffle memory: media IDs already played in the current shuffle session. While
+    // shuffling, not-yet-played songs are ordered ahead of these, so nothing repeats until the whole pool is
+    // exhausted (then it auto-resets for a new cycle). Reset whenever shuffle is (re)enabled.
+    private val shufflePlayedIds = LinkedHashSet<String>()
+    // B3 — guards against double-seeding a radio when a finite queue ends: true while a startRadioSeamlessly
+    // fetch is in flight, so onMediaItemTransition can't fire a second (racing) radio fetch over the same end.
+    @Volatile private var radioSeedInFlight = false
 
     private var consecutivePlaybackErr = 0
     private var retryJob: Job? = null
@@ -1462,10 +1469,8 @@ class MusicService :
         }
 
         val currentMediaMetadata = player.currentMetadata ?: return
-        _mixActive.value = true
-
-        val currentIndex = player.currentMediaItemIndex
         val currentMediaId = currentMediaMetadata.id
+        radioSeedInFlight = true
 
         scope.launch(SilentHandler) {
             
@@ -1492,13 +1497,17 @@ class MusicService :
                 }
 
                 if (radioItems.isNotEmpty()) {
+                    // Recompute the index from the LIVE player at append time (not a stale value captured before
+                    // the network fetch), so we never remove items relative to a position that has since moved.
+                    val liveIndex = player.currentMediaItemIndex
                     val itemCount = player.mediaItemCount
 
-                    if (itemCount > currentIndex + 1) {
-                        player.removeMediaItems(currentIndex + 1, itemCount)
+                    if (itemCount > liveIndex + 1) {
+                        player.removeMediaItems(liveIndex + 1, itemCount)
                     }
 
-                    player.addMediaItems(currentIndex + 1, radioItems.orderedByTaste())
+                    player.addMediaItems(liveIndex + 1, radioItems.orderedByTaste())
+                    _mixActive.value = true
                     if (player.shuffleModeEnabled) {
                         val shufflePlaylistFirst = dataStore.get(ShufflePlaylistFirstKey, false)
                         applyShuffleOrder(player.currentMediaItemIndex, player.mediaItemCount, shufflePlaylistFirst)
@@ -1524,11 +1533,13 @@ class MusicService :
                                 .filterVideoSongs(dataStore.get(HideVideoSongsKey, false))
 
                             if (radioItems.isNotEmpty()) {
+                                val liveIndex = player.currentMediaItemIndex
                                 val itemCount = player.mediaItemCount
-                                if (itemCount > currentIndex + 1) {
-                                    player.removeMediaItems(currentIndex + 1, itemCount)
+                                if (itemCount > liveIndex + 1) {
+                                    player.removeMediaItems(liveIndex + 1, itemCount)
                                 }
-                                player.addMediaItems(currentIndex + 1, radioItems.orderedByTaste())
+                                player.addMediaItems(liveIndex + 1, radioItems.orderedByTaste())
+                                _mixActive.value = true
                                 if (player.shuffleModeEnabled) {
                                     val shufflePlaylistFirst = dataStore.get(ShufflePlaylistFirstKey, false)
                                     applyShuffleOrder(player.currentMediaItemIndex, player.mediaItemCount, shufflePlaylistFirst)
@@ -1537,8 +1548,10 @@ class MusicService :
                         }
                     }
                 } catch (_: Exception) {
-                    
+
                 }
+            } finally {
+                radioSeedInFlight = false
             }
         }
     }
@@ -1547,13 +1560,18 @@ class MusicService :
         val now = System.currentTimeMillis()
         cachedTaste?.let { if (now - cachedTasteAt < 5 * 60_000L) return it }
         return runCatching {
-            val events = database.recentEventsWithSong(3000).first()
+            val events = withContext(Dispatchers.IO) { database.recentEventsWithSong(3000).first() }
+            val library = withContext(Dispatchers.IO) {
+                runCatching {
+                    database.librarySongsForTaste(iad1tya.echo.music.reco.AffinityEngine.MAX_LIBRARY).first()
+                }.getOrDefault(emptyList())
+            }
             val disliked = runCatching { dislikeStore.snapshot() }
                 .getOrDefault(iad1tya.echo.music.dislike.DislikeStore.Disliked())
             val genres = iad1tya.echo.music.reco.GenreCache.snapshot(this@MusicService)
             val onboarding = iad1tya.echo.music.reco.OnboardingGenres.itunesGenres(this@MusicService)
             withContext(Dispatchers.Default) {
-                iad1tya.echo.music.reco.AffinityEngine.buildProfile(events, disliked, artistGenres = genres, onboardingGenres = onboarding)
+                iad1tya.echo.music.reco.AffinityEngine.buildProfile(events, disliked, artistGenres = genres, onboardingGenres = onboarding, librarySongs = library)
             }.also {
                 cachedTaste = it
                 cachedTasteAt = now
@@ -2036,6 +2054,11 @@ class MusicService :
             }
         }
 
+        // B5: remember what we've played this shuffle session (consumed by applyShuffleOrder to avoid repeats).
+        if (player.shuffleModeEnabled) {
+            (mediaItem?.mediaId ?: player.currentMetadata?.id)?.let { shufflePlayedIds.add(it) }
+        }
+
         if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) {
             val repeatMode = player.repeatMode  // live value; avoids a blocking disk read on the player thread
             if (repeatMode == REPEAT_MODE_ONE &&
@@ -2128,7 +2151,26 @@ class MusicService :
             }
         }
 
-        
+        // B3 — keep the music going when a FINITE queue ends. Album / artist-top / new-release radar / imported
+        // list / single-song queues have no next page, so when we reach the LAST item we seed a radio from that
+        // song (its YouTube relations, taste-ordered if any history exists — so it works even on a fresh empty
+        // install). Gated to genuine auto-advance or first-play (not a manual SEEK around the queue), only while
+        // actually playing, only at the very last item (so the list is never truncated), and never twice for the
+        // same end (radioSeedInFlight). Skipped while the first block already handles continuation (next page).
+        if (dataStore.get(AutoLoadMoreKey, true) &&
+            (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO ||
+                reason == Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED) &&
+            player.playWhenReady &&
+            !radioSeedInFlight &&
+            !currentQueue.hasNextPage() &&
+            player.mediaItemCount > 0 &&
+            player.mediaItemCount - player.currentMediaItemIndex <= 1 &&
+            !(dataStore.get(DisableLoadMoreWhenRepeatAllKey, false) && player.repeatMode == REPEAT_MODE_ALL)
+        ) {
+            startRadioSeamlessly()
+        }
+
+
         if (dataStore.get(PersistentQueueKey, true)) {
             saveQueueToDisk()
         }
@@ -2304,8 +2346,12 @@ class MusicService :
     override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) {
         updateNotification()
         if (shuffleModeEnabled) {
-            
+
             if (player.mediaItemCount == 0) return
+
+            // B5: start a fresh anti-repeat session each time shuffle is enabled; the current song counts as played.
+            shufflePlayedIds.clear()
+            player.currentMetadata?.id?.let { shufflePlayedIds.add(it) }
 
             val shufflePlaylistFirst = dataStore.get(ShufflePlaylistFirstKey, false)
             val currentIndex = player.currentMediaItemIndex
@@ -2373,23 +2419,36 @@ class MusicService :
             player.setShuffleOrder(DefaultShuffleOrder(shuffledIndices, System.currentTimeMillis()))
         } else {
             val indices = (0 until totalCount).toMutableList()
-            val p = cachedTaste
-            if (p != null) {
-                // Smart shuffle: nudge tracks you tend to like toward the front, but keep plenty of
-                // randomness (random term dominates) so it still feels shuffled, not a fixed favourites
-                // list. Falls back to a plain shuffle when no taste profile is available yet.
-                val rnd = java.util.Random()
-                // Precompute each index's key ONCE (rnd inside the comparator would crash TimSort).
-                val keys = HashMap<Int, Double>(indices.size)
-                indices.forEach { i ->
-                    val m = runCatching { player.getMediaItemAt(i).metadata }.getOrNull()
-                    val score = if (m != null) p.scoreNames(m.artists.map { it.name }, m.title) else 0.0
-                    keys[i] = score * 0.5 + rnd.nextDouble()
+            // B5 anti-repeat: which queue items were already played this shuffle session? If EVERY item has
+            // been played the pool is exhausted -> start a fresh cycle so shuffle keeps flowing.
+            val playedSnapshot = HashSet(shufflePlayedIds)
+            if (playedSnapshot.isNotEmpty() &&
+                (0 until totalCount).all { i ->
+                    runCatching { player.getMediaItemAt(i).mediaId }.getOrNull()?.let { it in playedSnapshot } == true
                 }
-                indices.sortByDescending { keys[it] ?: 0.0 }
-            } else {
-                indices.shuffle()
+            ) {
+                shufflePlayedIds.clear()
+                player.currentMetadata?.id?.let { shufflePlayedIds.add(it) }
+                playedSnapshot.clear()
             }
+            // Smart shuffle: nudge tracks you tend to like toward the front, but keep plenty of randomness
+            // (random term dominates) so it still feels shuffled, not a fixed favourites list. With no taste
+            // profile yet this is just a plain shuffle.
+            val p = cachedTaste
+            val rnd = java.util.Random()
+            // Precompute each index's key ONCE (rnd inside the comparator would crash TimSort).
+            val keys = HashMap<Int, Double>(indices.size)
+            indices.forEach { i ->
+                val m = runCatching { player.getMediaItemAt(i).metadata }.getOrNull()
+                val tasteScore = if (p != null && m != null) p.scoreNames(m.artists.map { it.name }, m.title) else 0.0
+                var key = tasteScore * 0.5 + rnd.nextDouble()
+                // Anti-repeat: already-played songs sink BELOW all not-yet-played ones (big offset), so the
+                // whole pool is exhausted before anything repeats. Within each group the smart order applies.
+                val id = m?.id
+                if (id == null || id !in playedSnapshot) key += 1000.0
+                keys[i] = key
+            }
+            indices.sortByDescending { keys[it] ?: 0.0 }
             val shuffledIndices = indices.toIntArray()
 
             val currentItemIndexInShuffled = shuffledIndices.indexOf(currentIndex)
