@@ -38,6 +38,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
@@ -1376,7 +1377,14 @@ fun BottomSheetPlayer(
             )
         },
     ) {
-        val controlsContent: @Composable ColumnScope.(MediaMetadata) -> Unit = { mediaMetadata ->
+        val controlsContent: @Composable ColumnScope.(MediaMetadata, Boolean) -> Unit = { mediaMetadata, immersiveVideo ->
+            // immersiveVideo = rendered over the forced-dark premium video backdrop. Force light-on-dark
+            // text/buttons (the theme-derived colors can be dark for PlayerBackgroundStyle.DEFAULT + light
+            // theme → unreadable). Shadowing the vars keeps all internal usages readable without duplicating
+            // the whole controls block (the Queue keeps the original colors — only these locals are forced).
+            val TextBackgroundColor = if (immersiveVideo) Color.White else TextBackgroundColor
+            val textButtonColor = if (immersiveVideo) Color.White else textButtonColor
+            val iconButtonColor = if (immersiveVideo) Color.Black else iconButtonColor
             val playPauseRoundness by animateDpAsState(
                 targetValue = if (isPlaying) 24.dp else 36.dp,
                 animationSpec = tween(durationMillis = 90, easing = LinearEasing),
@@ -2177,7 +2185,9 @@ fun BottomSheetPlayer(
             Spacer(Modifier.height(if (useNewPlayerDesign) 12.dp else 8.dp))
 
             AnimatedVisibility(
-                visible = !isFullScreen,
+                // In immersive video the play/pause/skip transport must always show (the persisted
+                // lyrics-fullscreen flag must not hide it — there's no other transport in that overlay).
+                visible = !isFullScreen || immersiveVideo,
                 enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
                 exit = shrinkVertically(shrinkTowards = Alignment.Top) + slideOutVertically(targetOffsetY = { it }) + fadeOut()
             ) {
@@ -2771,7 +2781,7 @@ fun BottomSheetPlayer(
                         Spacer(Modifier.weight(1f))
 
                         mediaMetadata?.let {
-                            controlsContent(it)
+                            controlsContent(it, false)
                         }
 
                         Spacer(Modifier.weight(1f))
@@ -2781,6 +2791,76 @@ fun BottomSheetPlayer(
             }
 
             else -> {
+                val videoUrlPt by playerConnection.videoUrl.collectAsState()
+                if (videoMode && !videoUrlPt.isNullOrEmpty()) {
+                    // PORTRAIT + video → PREMIUM immersive video: ambient blurred-cover backdrop, the video
+                    // edge-to-edge (full width, centered, correct aspect via PlayerVideoSurface), and the
+                    // normal controls OVERLAID and AUTO-HIDING (tap toggles them). Back exits video.
+                    var ptControls by remember { mutableStateOf(true) }
+                    // Auto-hide after 3.5s, BUT never while the user is scrubbing the seekbar (sliderPosition
+                    // is non-null only during a drag) — otherwise the controls fade out from under the finger.
+                    // Each scrub move changes sliderPosition → re-arms the timer, so it hides 3.5s after the
+                    // last interaction.
+                    LaunchedEffect(ptControls, isPlaying, sliderPosition) {
+                        if (ptControls && sliderPosition == null) { delay(3500); ptControls = false }
+                    }
+                    BackHandler { playerConnection.exitVideoMode() }
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .pointerInput(Unit) { detectTapGestures { ptControls = !ptControls } },
+                    ) {
+                        // Ambient backdrop: blurred + darkened cover art (cheap → smooth on low-end; NO live
+                        // video-frame sampling). Mirrors the BLUR player-background pattern.
+                        mediaMetadata?.thumbnailUrl?.let { thumb ->
+                            AsyncImage(
+                                model = ImageRequest.Builder(context)
+                                    .data(thumb)
+                                    .size(100, 100)
+                                    .allowHardware(false)
+                                    .build(),
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier
+                                    .matchParentSize()
+                                    .blur(150.dp),
+                            )
+                        }
+                        Box(
+                            modifier = Modifier
+                                .matchParentSize()
+                                .background(Color.Black.copy(alpha = 0.55f)),
+                        )
+                        // Edge-to-edge video band, vertically centered (PlayerVideoSurface sizes to aspect).
+                        PlayerVideoSurface(
+                            playerConnection = playerConnection,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .align(Alignment.Center),
+                        )
+                        // Auto-hiding controls (full set: title, scrubbable seekbar, transport, chips, and the
+                        // video toggle to return to audio). Controls' colors already suit a dark backdrop.
+                        androidx.compose.animation.AnimatedVisibility(
+                            visible = ptControls,
+                            enter = fadeIn(),
+                            exit = fadeOut(),
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .fillMaxWidth(),
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(Color.Black.copy(alpha = 0.45f))
+                                    .windowInsetsPadding(WindowInsets.systemBars)
+                                    .padding(horizontal = 8.dp, vertical = 12.dp),
+                            ) {
+                                mediaMetadata?.let { controlsContent(it, true) }
+                            }
+                        }
+                    }
+                } else {
                 val bottomPadding by animateDpAsState(
                     targetValue = if (isFullScreen) 0.dp else queueSheetState.collapsedBound,
                     label = "bottomPadding"
@@ -2833,10 +2913,11 @@ fun BottomSheetPlayer(
                     }
 
                     mediaMetadata?.let {
-                        controlsContent(it)
+                        controlsContent(it, false)
                     }
 
                     Spacer(Modifier.height(if (useNewPlayerDesign) 30.dp else 8.dp))
+                }
                 }
             }
         }
