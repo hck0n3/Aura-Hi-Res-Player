@@ -1305,6 +1305,25 @@ class MainActivity : ComponentActivity() {
                         modifier = Modifier.align(Alignment.BottomCenter)
                     )
 
+                    // PICTURE-IN-PICTURE: cover everything with JUST the video so the floating window is a
+                    // clean fullscreen video (no title bar / Home / playlist behind it). The NavHost stays
+                    // composed underneath (no teardown → no freeze, unlike the old early-return). The sheet's
+                    // own video surface is suppressed while inPip (Player.kt), so only this one attaches.
+                    if (inPipMode) {
+                        androidx.compose.foundation.layout.Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(androidx.compose.ui.graphics.Color.Black),
+                        ) {
+                            playerConnection?.let {
+                                iad1tya.echo.music.ui.player.PlayerVideoSurface(
+                                    playerConnection = it,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                            }
+                        }
+                    }
+
 
 
                     sharedSong?.let { song ->

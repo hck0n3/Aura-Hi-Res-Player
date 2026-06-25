@@ -2646,12 +2646,16 @@ fun BottomSheetPlayer(
                         .background(Color.Black)
                         .pointerInput(Unit) { detectTapGestures { if (!inPip) lsControls = !lsControls } },
                 ) {
-                    PlayerVideoSurface(
-                        playerConnection = playerConnection,
-                        modifier = Modifier.fillMaxSize(),
-                        // Fill the whole screen (cover/crop) in landscape — no black side bars.
-                        fillCrop = true,
-                    )
+                    // In PiP the top-level overlay (MainActivity) renders the video; skip the sheet's surface
+                    // so only one TextureView attaches to the player.
+                    if (!inPip) {
+                        PlayerVideoSurface(
+                            playerConnection = playerConnection,
+                            modifier = Modifier.fillMaxSize(),
+                            // Fill the whole screen (cover/crop) in landscape — no black side bars.
+                            fillCrop = true,
+                        )
+                    }
                     // Transparent layer OVER the video — the fullscreen TextureView can swallow taps, so this
                     // ensures a tap reliably shows/hides the controls in landscape fullscreen.
                     Box(
@@ -2938,10 +2942,14 @@ fun BottomSheetPlayer(
                                 modifier = Modifier.fillMaxWidth(),
                                 contentAlignment = Alignment.Center,
                             ) {
-                                PlayerVideoSurface(
-                                    playerConnection = playerConnection,
-                                    modifier = Modifier.fillMaxWidth(),
-                                )
+                                // In PiP the video is rendered by the top-level PiP overlay (MainActivity) so
+                                // the floating window is just the video — don't attach a 2nd TextureView here.
+                                if (!inPip) {
+                                    PlayerVideoSurface(
+                                        playerConnection = playerConnection,
+                                        modifier = Modifier.fillMaxWidth(),
+                                    )
+                                }
                                 if (ptControls && !inPip) {
                                     FilledIconButton(
                                         onClick = { playerConnection.toggleVideoMode() },

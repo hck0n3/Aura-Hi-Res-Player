@@ -2966,6 +2966,14 @@ class MusicService :
             _videoUrl.value = null
             return
         }
+        // A YouTube track that is NOT a video song can't show video → disarm video mode SILENTLY (no
+        // resolution attempt, no "Video falló" toast) and keep playing audio. This is the sticky-video case
+        // where the next track has no video: we drop to audio cleanly instead of erroring.
+        if (player.currentMetadata?.isVideoSong != true) {
+            _videoMode.value = false
+            _videoUrl.value = null
+            return
+        }
 
         _videoUrl.value = null  // spinner while resolving
         val cached = videoUrlCache[id]?.takeIf { it.second > System.currentTimeMillis() }?.first

@@ -94,7 +94,10 @@ data class HomePage(
                                 ?: return null,
                             explicit = renderer.subtitleBadges?.any {
                                 it.musicInlineBadgeRenderer?.icon?.iconType == "MUSIC_EXPLICIT_BADGE"
-                            } == true
+                            } == true,
+                            // Home carousels DID drop this, so video songs from the home screen never showed
+                            // the audio↔video toggle. The renderer carries it (overlay play button / nav endpoint).
+                            musicVideoType = renderer.musicVideoType,
                         )
                     }
                     renderer.isAlbum -> {

@@ -1,17 +1,20 @@
-# Aura Hi-Res Player 0.6.36
+# Aura Hi-Res Player 0.6.37 — Video y PiP (parte 1 del plan grande)
 
-## Reconocimiento de música: posible arreglo 🎙️
-La llamada a Shazam usaba el motor de red **CIO** de Ktor, que parece fallar (TLS/red) en varios Android — por eso **siempre daba error**. Ahora usa **OkHttp** (el mismo motor fiable que usa el resto de la app). Si aún falla, el mensaje de error ahora dice **el tipo exacto** de fallo para poder arreglarlo con precisión.
+## Picture-in-Picture limpio 🪟
+La ventana flotante ahora muestra **solo el video** a pantalla completa — se acabó la **barra/título** arriba y el contenido de la playlist detrás. Se logra dibujando únicamente el video encima (sin desmontar la app, así que **no se congela** como antes).
 
-## Modo video
-- **Horizontal a pantalla completa de verdad:** el video ahora **rellena los lados** (recorta lo justo) en vez de dejar barras negras a los costados.
-- **Video más centrado:** cuando los controles están visibles, el video baja para verse centrado en pantalla (antes quedaba alto porque los botones de abajo ocupan más que el título).
+## Detección de canciones con video 🎬
+Las canciones del **inicio (Home)** no mostraban el botón de cambiar a video porque ahí no se leía el tipo de video. **Corregido:** ahora las canciones con videoclip muestran el toggle también desde el inicio (las demás pantallas ya lo hacían).
 
-## Portadas de video al máximo 🖼️
-La portada de las canciones-video ahora cubre **más formatos** de miniatura de YouTube (i.ytimg, i9.ytimg, img.youtube, jpg y webp) y tiene **cadena de respaldo** maxres → sd → hq. (Recuerda: el máximo real de YouTube es 1280×720; si una canción concreta no tiene esa versión, no se puede más nítido desde YouTube.)
+## Cambio de video a audio más suave
+Si vas en modo video y la **siguiente canción no tiene video**, ahora **pasa a audio en silencio** (sin el molesto aviso "Video falló").
+
+## Horizontal
+El video en horizontal ya llena toda la pantalla (cover, sin barras negras — desde 0.6.36) con las barras del sistema ocultas. *(Nota: si notas algún parpadeo de las barras al girar, dímelo — quité un intento de fix que rompía el fullscreen de carátula/letra, lo afino aparte.)*
 
 ## Técnico
-- `shazamkit/Shazam.kt`: `HttpClient(CIO)` → `HttpClient(OkHttp)`. `MusicRecognitionService`: el error incluye `e.javaClass.simpleName`.
-- `PlayerVideoSurface`: nuevo `fillCrop` (cover via BoxWithConstraints + clipToBounds); landscape lo usa.
-- `Player.kt`: video con `BiasAlignment(0,0.28)` cuando hay controles, `Center` cuando ocultos.
-- `Thumbnail.kt`: reescritura de miniatura amplía hosts/extensiones; `onError` encadena maxres→sd→hq.
+- `MainActivity`: overlay top-level `if (inPipMode) Box(Black){ PlayerVideoSurface }` sobre el NavHost (sin teardown). Surfaces de la hoja gateadas `!inPip` (sin doble TextureView).
+- `Player.kt`: surfaces inmersiva/landscape gateadas `!inPip`.
+- `MusicService.applyVideoToCurrent`: disarm silencioso si `isVideoSong != true`.
+- `innertube/HomePage.kt`: SongItem ahora setea `musicVideoType`.
+- Revertido el `onConfigurationChanged` (rompía fullscreen de carátula/letra + ocultaba barras con mini-player colapsado).
