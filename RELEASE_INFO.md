@@ -1,11 +1,14 @@
-# Aura Hi-Res Player 0.6.30
+# Aura Hi-Res Player 0.6.31
 
-## Botón de video: uno solo y bien puesto 🎯
-- **Se acabó el botón duplicado** audio↔video. Ahora hay **un único botón**, al **final del título** de la canción.
-- **Ya no aparece el título arriba del video** en el modo normal (no te gustaba): el título vuelve a ir con los controles. *(En Picture-in-Picture sí se mantiene el título+artista sobre el video, que ahí sí gusta.)*
+## Modo video, rediseñado 🎬
+- **Título y artista arriba** del video otra vez, y el **video centrado** entre el título (arriba) y los controles (abajo) — se ve más equilibrado.
+- **Botón audio↔video, uno solo y bien puesto:** en modo audio va al **final del título**; en video va **superpuesto en la esquina inferior derecha** del video. Se oculta junto con los demás controles cuando tocas para limpiar la vista.
+- **Horizontal = pantalla completa real:** al girar con un video, se **ocultan las barras del sistema** y el video cubre toda la pantalla (desliza para ver las barras). Los controles se ocultan solos / al tocar.
+- **La pantalla ya no se apaga** mientras el video está reproduciéndose (al pausar, sí puede apagarse, para no gastar batería).
 
-## Recordatorio: horizontal
-Al girar a horizontal con un video, ya salen **solo los controles multimedia** (anterior · play/pausa · siguiente), que **se ocultan solos** a los ~3.5 s y **aparecen/desaparecen al tocar** la pantalla.
+## Calidad (revisión interna antes de publicar)
+Revisión adversarial: todo lo encontrado fue menor y se ajustó antes de subir — el botón de la esquina ahora se oculta con los controles, el "mantener pantalla encendida" solo aplica con el video **reproduciéndose** (no en pausa), y se limpió un import sin uso.
 
 ## Técnico
-- `Player.kt`: eliminado el toggle del diseño clásico (acción duplicada) y el toggle del título superior; queda el único `FilledIconButton` al final de la fila del título. El título superior sobre el video ahora se renderiza solo cuando `inPip`.
+- `Player.kt`: rama inmersiva con título `TopCenter`, video en `Box(fillMaxWidth).align(Center)` y el toggle en `BottomEnd` gateado por `ptControls && !inPip`; título inferior re-oculto en `immersiveVideo`.
+- `keepScreenOn = videoMode && isPlaying` (DisposableEffect). Landscape: `WindowInsetsControllerCompat.hide(systemBars)` con `BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE`, restaurado en `onDispose`.

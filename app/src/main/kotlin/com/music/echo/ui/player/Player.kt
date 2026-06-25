@@ -40,7 +40,6 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.activity.compose.BackHandler
-import androidx.compose.ui.BiasAlignment
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
@@ -89,6 +88,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
@@ -312,6 +312,13 @@ fun BottomSheetPlayer(
         }
     }
     val isPlaying by playerConnection.isPlaying.collectAsState()
+    // Keep the screen awake only while a video is actively PLAYING (not paused/idle) — don't let it sleep
+    // mid-video, but don't drain battery when paused. View-level flag, cleared when video stops/leaves.
+    val keepScreenOnView = LocalView.current
+    DisposableEffect(videoMode, isPlaying) {
+        keepScreenOnView.keepScreenOn = videoMode && isPlaying
+        onDispose { keepScreenOnView.keepScreenOn = false }
+    }
     
     var currentAudioFormat by remember { mutableStateOf<androidx.media3.common.Format?>(null) }
     DisposableEffect(playerConnection) {
@@ -1689,7 +1696,9 @@ fun BottomSheetPlayer(
                 }
             }
 
-            // Song title + artist, with the single audio↔video toggle at the END of the title.
+            // Song title + artist (audio mode: the single toggle is at the END of the title). HIDDEN in
+            // immersive video — there the title is ABOVE the video and the toggle is at its bottom-right.
+            if (!immersiveVideo) {
             Spacer(Modifier.height(2.dp))
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -1780,6 +1789,7 @@ fun BottomSheetPlayer(
                         )
                     }
                 }
+            }
             }
 
             Spacer(Modifier.height(10.dp))
@@ -2607,6 +2617,18 @@ fun BottomSheetPlayer(
                 // (a 16:9 video makes the floating window landscape) render a CLEAN view: only title+artist
                 // over the video, no controls (playback controls come from the system PiP actions).
                 val inPip = LocalIsInPipMode.current
+                // True FULLSCREEN in landscape video: hide the system bars so the video covers the whole
+                // device screen (swipe to reveal them); restore them when leaving this view.
+                val lsView = LocalView.current
+                DisposableEffect(Unit) {
+                    val win = (lsView.context as? android.app.Activity)?.window
+                    val ctrl = win?.let { WindowCompat.getInsetsController(it, lsView) }
+                    runCatching {
+                        ctrl?.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+                        ctrl?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                    }
+                    onDispose { runCatching { ctrl?.show(androidx.core.view.WindowInsetsCompat.Type.systemBars()) } }
+                }
                 var lsControls by remember { mutableStateOf(true) }
                 LaunchedEffect(lsControls, isPlaying, inPip) {
                     if (lsControls && !inPip) { delay(3500); lsControls = false }
@@ -2850,46 +2872,70 @@ fun BottomSheetPlayer(
                                 .matchParentSize()
                                 .background(Color.Black.copy(alpha = 0.55f)),
                         )
-                        // Title + artist over the video ONLY in Picture-in-Picture (the user likes it there);
-                        // in normal immersive video the title lives in the bottom controls — not duplicated.
-                        if (inPip) {
-                            mediaMetadata?.let { mm ->
-                                Column(
-                                    modifier = Modifier
-                                        .align(Alignment.TopStart)
-                                        .fillMaxWidth()
-                                        .background(Color.Black.copy(alpha = 0.35f))
-                                        .windowInsetsPadding(WindowInsets.systemBars)
-                                        .padding(horizontal = 10.dp, vertical = 6.dp),
-                                ) {
+                        // Title + artist ABOVE the video (full in normal immersive, compact in PiP). No toggle
+                        // here — the single audio↔video toggle sits at the video's BOTTOM-RIGHT corner.
+                        mediaMetadata?.let { mm ->
+                            Column(
+                                horizontalAlignment = if (inPip) Alignment.Start else Alignment.CenterHorizontally,
+                                modifier = Modifier
+                                    .align(if (inPip) Alignment.TopStart else Alignment.TopCenter)
+                                    .fillMaxWidth()
+                                    .then(if (inPip) Modifier.background(Color.Black.copy(alpha = 0.35f)) else Modifier)
+                                    .windowInsetsPadding(WindowInsets.systemBars)
+                                    .padding(horizontal = if (inPip) 10.dp else 16.dp, vertical = if (inPip) 6.dp else 10.dp),
+                            ) {
+                                Text(
+                                    text = mm.title,
+                                    style = if (inPip) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = if (inPip) Modifier else Modifier.basicMarquee(iterations = 1, initialDelayMillis = 3000, velocity = 30.dp),
+                                )
+                                if (mm.artists.any { it.name.isNotBlank() }) {
                                     Text(
-                                        text = mm.title,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color.White,
+                                        text = mm.artists.joinToString(", ") { it.name },
+                                        style = if (inPip) MaterialTheme.typography.bodySmall else MaterialTheme.typography.titleMedium,
+                                        color = Color.White.copy(alpha = 0.85f),
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
                                     )
-                                    if (mm.artists.any { it.name.isNotBlank() }) {
-                                        Text(
-                                            text = mm.artists.joinToString(", ") { it.name },
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = Color.White.copy(alpha = 0.85f),
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                        )
-                                    }
                                 }
                             }
                         }
-                        // Edge-to-edge video band, just slightly ABOVE center (PlayerVideoSurface sizes to
-                        // aspect) so the bottom controls sit over the dark ambient, not over the video.
-                        PlayerVideoSurface(
-                            playerConnection = playerConnection,
+                        // Video band, vertically CENTERED between the top title and the bottom controls, with
+                        // the single audio↔video toggle overlaid at its BOTTOM-RIGHT corner (returns to audio).
+                        Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .align(BiasAlignment(0f, -0.12f)),
-                        )
+                                .align(Alignment.Center),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            PlayerVideoSurface(
+                                playerConnection = playerConnection,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                            if (ptControls && !inPip) {
+                                FilledIconButton(
+                                    onClick = { playerConnection.toggleVideoMode() },
+                                    colors = IconButtonDefaults.filledIconButtonColors(
+                                        containerColor = Color.White.copy(alpha = 0.85f),
+                                        contentColor = Color.Black,
+                                    ),
+                                    modifier = Modifier
+                                        .align(Alignment.BottomEnd)
+                                        .padding(8.dp)
+                                        .size(40.dp),
+                                ) {
+                                    Icon(
+                                        painter = painterResource(R.drawable.music_note),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(22.dp),
+                                    )
+                                }
+                            }
+                        }
                         // Tap-toggled controls (title, scrubbable seekbar, transport, chips, video toggle).
                         // NO dark bar behind them — they sit over the dark ambient so the video stays fully
                         // visible; their colors are forced white-on-dark (immersiveVideo = true).
