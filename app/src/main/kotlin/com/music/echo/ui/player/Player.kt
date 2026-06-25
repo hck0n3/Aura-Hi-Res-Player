@@ -40,6 +40,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.activity.compose.BackHandler
+import androidx.compose.ui.BiasAlignment
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
@@ -2889,9 +2890,9 @@ fun BottomSheetPlayer(
                         // Title (top) + video (centered) + controls (bottom) in a Column so the video is
                         // truly CENTERED in the space between the top title and the bottom controls.
                         Column(modifier = Modifier.fillMaxSize()) {
-                        // Title + artist ABOVE the video (full in normal immersive, compact in PiP). No toggle
-                        // here — the single audio↔video toggle sits at the video's BOTTOM-RIGHT corner.
-                        mediaMetadata?.let { mm ->
+                        // Title + artist ABOVE the video — shown only while the controls are visible (or in
+                        // PiP). Tapping to hide the controls hides the title too → clean full-screen video.
+                        if (inPip || ptControls) mediaMetadata?.let { mm ->
                             Column(
                                 horizontalAlignment = if (inPip) Alignment.Start else Alignment.CenterHorizontally,
                                 modifier = Modifier
@@ -2926,7 +2927,8 @@ fun BottomSheetPlayer(
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxWidth(),
-                            contentAlignment = Alignment.Center,
+                            // Sit the video a touch BELOW the centre of its region (it felt a bit too high).
+                            contentAlignment = BiasAlignment(0f, 0.12f),
                         ) {
                             Box(
                                 modifier = Modifier.fillMaxWidth(),

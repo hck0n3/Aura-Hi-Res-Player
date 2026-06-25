@@ -1,10 +1,10 @@
-# Aura Hi-Res Player 0.6.34
+# Aura Hi-Res Player 0.6.35
 
-## Mosaico de reconocimiento de música arreglado 🎙️
-El mosaico de **Ajustes Rápidos** "Reconocer música" no hacía nada (mandaba la señal a un receptor que no estaba registrado). Ahora **abre la app directo a la pantalla de reconocimiento**, que empieza a grabar y a identificar la canción al instante.
-- Funciona en todas las versiones de Android (no depende de un servicio de micrófono en segundo plano, que en Android 14+ es poco fiable).
-- El reconocimiento dentro de la app (botón de micrófono) seguía funcionando; esto arregla solo el acceso desde el mosaico.
+## Modo video: pantalla más limpia y video mejor centrado 🎬
+- **Al tocar para ocultar los controles, ahora también se oculta el título** — así el video queda **a pantalla completa sin nada encima**. Tocas otra vez y vuelven título + controles.
+- **El video baja un poco** (estaba un pelín alto) para que quede mejor centrado entre el título y los botones.
+
+> Nota: si tu **giro automático está activado**, al poner el teléfono de lado el video pasa a **horizontal real** (pantalla completa, sin título, barras del sistema ocultas). Si lo tienes desactivado, sigues viendo la vista vertical de lado — y ahí aplican estos cambios.
 
 ## Técnico
-- `RecognitionTileService`: ahora hace `startActivityAndCollapse` hacia `MainActivity` con `ACTION_RECOGNITION` (PendingIntent en API 34+).
-- `MainActivity.handleDeepLinkIntent`: maneja `ACTION_RECOGNITION` → navega a la ruta `recognition` (que auto-inicia el reconocimiento).
+- `Player.kt` (rama inmersiva vertical): el título superior se gatea con `inPip || ptControls` (se oculta junto con los controles). El video se alinea con `BiasAlignment(0f, 0.12f)` (un poco por debajo del centro de su región).
