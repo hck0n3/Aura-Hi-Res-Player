@@ -243,6 +243,8 @@ class MainActivity : ComponentActivity() {
     companion object {
         private const val ACTION_SEARCH = "iad1tya.echo.music.action.SEARCH"
         private const val ACTION_LIBRARY = "iad1tya.echo.music.action.LIBRARY"
+        // Quick Settings recognition tile opens the app straight to the Recognition screen.
+        const val ACTION_RECOGNITION = "iad1tya.echo.music.action.RECOGNITION"
         // Picture-in-Picture playback controls (system RemoteActions shown when the PiP window is tapped).
         const val PIP_ACTION = "iad1tya.echo.music.action.PIP"
         const val PIP_CONTROL = "control"
@@ -1385,6 +1387,13 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleDeepLinkIntent(intent: Intent, navController: NavHostController) {
+        // Quick Settings recognition tile (or a RECOGNITION deep link): open the Recognition screen, which
+        // auto-starts recording + Shazam matching. (No background mic service — reliable on every Android.)
+        if (intent.action == ACTION_RECOGNITION) {
+            intent.action = null
+            runCatching { navController.navigate("recognition") }
+            return
+        }
         val uri = intent.data ?: run {
             val sharedText = intent.extras?.getString(Intent.EXTRA_TEXT) ?: return
             // Extract first http(s) URL from shared text (message may contain extra text around the URL)
