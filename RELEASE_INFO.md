@@ -1,19 +1,15 @@
-# Aura Hi-Res Player 0.6.26
+# Aura Hi-Res Player 0.6.27
 
-## Modo video vertical, ahora premium 🎬
-Antes, en vertical, el video se veía "pegado encima de la portada" y todo básico. Ahora es un reproductor de video de verdad:
-- **Fondo ambiente:** la carátula difuminada + un velo oscuro detrás del video (en vez del fondo normal del reproductor). Se siente envolvente. Es **carátula difuminada** (barato) para que vaya **fluido también en gama baja**.
-- **Video a todo el ancho (edge-to-edge):** el video ocupa toda la anchura, centrado y con su proporción correcta. Mucho más protagonismo.
-- **Controles limpios que se autoocultan:** título, barra de progreso (con scrub), ⏮⏯⏭ y los botones se superponen y **se desvanecen a los ~3.5s**; tocas para mostrarlos/ocultarlos. Mientras arrastras la barra **no se ocultan**.
-- Se conserva todo: **atrás** sale del video, **horizontal** sigue en pantalla completa, scrub, chips, y la letra deshabilitada en video.
+## Modo video vertical: más pulido aún ✨
+Afinando el modo video en vertical:
+- **Transición suave:** al cambiar entre video y canción ahora hay un **crossfade** (fundido) en vez de un corte brusco.
+- **Controles solo al tocar:** se acabó el ocultado por tiempo. Ahora **tocas la pantalla del video una vez para ocultar** los controles (vista limpia) y **tocas otra vez para mostrarlos**. Tocar en los botones/barra hace su acción normal (no oculta).
+- **Video un poco más arriba:** el video se sitúa por encima del centro, así los controles de abajo quedan sobre el fondo ambiente, no encima del video.
+- **Sin capa oscura tras los botones:** se quitó la barra oscura detrás de los controles para que el **video se vea mejor**. (Solo en modo video; al pasar a canción vuelve a su apariencia normal.)
 
 ## Calidad (revisión interna antes de publicar)
-Como toca el render del video, pasó por **revisión adversarial** y se corrigieron 3 cosas **antes** de subir:
-- **Contraste (alto):** con el estilo de fondo "Predeterminado" en tema claro, el título/botones podían quedar oscuro-sobre-oscuro (ilegibles). Ahora se fuerzan **blancos** sobre el fondo oscuro del video.
-- **Scrub (medio):** los controles se ocultaban a media barra mientras adelantabas. Corregido: no se ocultan durante el arrastre.
-- **Transporte (medio):** en cierto estado, ⏮⏯⏭ podían no aparecer en el video. Corregido: siempre visibles en modo video.
+Como toca el render del video, pasó por **revisión adversarial**. El crossfade no provoca doble video (Thumbnail ya no pinta el video; lo hace siempre la capa inmersiva) y el layout/cola quedan intactos. Único detalle corregido: tocar en huecos vacíos junto a los controles ya **no** los oculta por accidente.
 
 ## Técnico
-- `Player.kt`: nueva rama PORTRAIT premium (`videoMode && videoUrl`): backdrop = `AsyncImage(cover 100x100).blur(150.dp)` + scrim, `PlayerVideoSurface(fillMaxWidth)` centrado, overlay autoocultable con `controlsContent`.
-- `controlsContent` parametrizado con `immersiveVideo`: sombrea `TextBackgroundColor/textButtonColor/iconButtonColor` a blanco-sobre-oscuro y fuerza el transporte aunque `isFullScreen` (la cola conserva sus colores).
-- Auto-hide keyed en `sliderPosition` (null salvo al arrastrar) → no se oculta en scrub.
+- `Player.kt`: `Crossfade(targetState = videoMode && videoUrl, tween(350), fillMaxSize)` envuelve premium/normal; auto-hide eliminado (toggle solo por tap); video con `BiasAlignment(0f,-0.35f)`; Column de controles sin `.background`, con `pointerInput { detectTapGestures { } }` para absorber taps.
+- `Thumbnail.kt`: ya no compone `PlayerVideoSurface` (evita doble TextureView en el crossfade); solo spinner mientras resuelve; portada siempre visible.

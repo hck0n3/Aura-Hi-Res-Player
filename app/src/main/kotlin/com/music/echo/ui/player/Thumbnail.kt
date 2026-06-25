@@ -370,7 +370,6 @@ fun Thumbnail(
 
     val videoModeOn by playerConnection.videoMode.collectAsState()
     val videoUrl by playerConnection.videoUrl.collectAsState()
-    val videoShowing = videoModeOn && !videoUrl.isNullOrEmpty()
 
     // Back while in video mode exits video (and resumes the music) instead of collapsing the player.
     BackHandler(enabled = videoModeOn) { playerConnection.exitVideoMode() }
@@ -378,21 +377,12 @@ fun Thumbnail(
     Box(
         modifier = modifier
     ) {
-        // Video mode: play the music video in a DEDICATED player (proven canvas pattern), on top of the
-        // pager. MusicService pauses the music engine while this is shown (the video carries its own audio).
-        if (videoShowing) {
-            // Video is INTEGRATED into the main player; this surface just renders it. fillMaxSize (NOT
-            // matchParentSize): the Thumbnail Box uses animateContentSize, so a matchParentSize child
-            // collapses to 0 once the cover card is hidden.
-            PlayerVideoSurface(
-                playerConnection = playerConnection,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .zIndex(2f),
-            )
-        } else if (videoModeOn) {
-            // Resolving the muxed stream — show a spinner OVER the still-visible cover/canvas (no black
-            // screen), then the video replaces it once ready.
+        // The video itself is rendered by the player's IMMERSIVE (portrait) / FULLSCREEN (landscape) branch,
+        // NEVER here — so this Thumbnail never attaches a second TextureView to the single player (which would
+        // fight the immersive surface during the video↔song crossfade). While the stream is still resolving
+        // (no URL yet), show a spinner over the still-visible cover; once it's ready the immersive branch
+        // takes over (and this Thumbnail isn't composed there at all).
+        if (videoModeOn && videoUrl.isNullOrEmpty()) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -431,9 +421,9 @@ fun Thumbnail(
         // is always hidden in portrait (whether or not canvas is on) — the user wants a single full-screen
         // animation, NOT a full-screen one plus a square cover in front.
         AnimatedVisibility(
-            // Keep the cover/canvas visible while the video stream resolves (the spinner overlays it) and
-            // only hide it once the video is actually showing — so there's never a black screen.
-            visible = !videoShowing && error == null && !(playerBackground == PlayerBackgroundStyle.APPLE_MUSIC && !isLandscape),
+            // The cover/canvas stays visible here (the spinner overlays it while resolving). The actual video
+            // is shown by the immersive/fullscreen branch, which crossfades in over this cover.
+            visible = error == null && !(playerBackground == PlayerBackgroundStyle.APPLE_MUSIC && !isLandscape),
             enter = fadeIn(),
             exit = fadeOut(),
             modifier = Modifier

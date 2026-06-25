@@ -24,6 +24,7 @@ import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -39,6 +40,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.activity.compose.BackHandler
+import androidx.compose.ui.BiasAlignment
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
@@ -2792,18 +2794,22 @@ fun BottomSheetPlayer(
 
             else -> {
                 val videoUrlPt by playerConnection.videoUrl.collectAsState()
-                if (videoMode && !videoUrlPt.isNullOrEmpty()) {
+                // Smooth crossfade between the immersive video layout and the normal song layout when video
+                // mode toggles. Safe re: the video surface — the video is only ever rendered here (premium)
+                // / in the landscape branch, never by Thumbnail, so no two TextureViews fight during the fade.
+                Crossfade(
+                    targetState = videoMode && !videoUrlPt.isNullOrEmpty(),
+                    animationSpec = tween(350),
+                    modifier = Modifier.fillMaxSize(),
+                    label = "videoModeTransition",
+                ) { immersive ->
+                if (immersive) {
                     // PORTRAIT + video → PREMIUM immersive video: ambient blurred-cover backdrop, the video
                     // edge-to-edge (full width, centered, correct aspect via PlayerVideoSurface), and the
                     // normal controls OVERLAID and AUTO-HIDING (tap toggles them). Back exits video.
+                    // Controls toggle ONLY by tapping the video (no timed auto-hide): tap once to hide them
+                    // for a clean view, tap again to bring them back. Back exits video.
                     var ptControls by remember { mutableStateOf(true) }
-                    // Auto-hide after 3.5s, BUT never while the user is scrubbing the seekbar (sliderPosition
-                    // is non-null only during a drag) — otherwise the controls fade out from under the finger.
-                    // Each scrub move changes sliderPosition → re-arms the timer, so it hides 3.5s after the
-                    // last interaction.
-                    LaunchedEffect(ptControls, isPlaying, sliderPosition) {
-                        if (ptControls && sliderPosition == null) { delay(3500); ptControls = false }
-                    }
                     BackHandler { playerConnection.exitVideoMode() }
                     Box(
                         modifier = Modifier
@@ -2831,15 +2837,17 @@ fun BottomSheetPlayer(
                                 .matchParentSize()
                                 .background(Color.Black.copy(alpha = 0.55f)),
                         )
-                        // Edge-to-edge video band, vertically centered (PlayerVideoSurface sizes to aspect).
+                        // Edge-to-edge video band, a bit ABOVE center (PlayerVideoSurface sizes to aspect) so
+                        // the bottom controls sit over the dark ambient rather than over the video itself.
                         PlayerVideoSurface(
                             playerConnection = playerConnection,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .align(Alignment.Center),
+                                .align(BiasAlignment(0f, -0.35f)),
                         )
-                        // Auto-hiding controls (full set: title, scrubbable seekbar, transport, chips, and the
-                        // video toggle to return to audio). Controls' colors already suit a dark backdrop.
+                        // Tap-toggled controls (title, scrubbable seekbar, transport, chips, video toggle).
+                        // NO dark bar behind them — they sit over the dark ambient so the video stays fully
+                        // visible; their colors are forced white-on-dark (immersiveVideo = true).
                         androidx.compose.animation.AnimatedVisibility(
                             visible = ptControls,
                             enter = fadeIn(),
@@ -2852,7 +2860,10 @@ fun BottomSheetPlayer(
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .background(Color.Black.copy(alpha = 0.45f))
+                                    // Absorb taps that land in the controls band (and its empty gaps) so a
+                                    // near-miss on a button doesn't fall through to the parent and hide the
+                                    // controls — only taps on the video/ambient area toggle them.
+                                    .pointerInput(Unit) { detectTapGestures { } }
                                     .windowInsetsPadding(WindowInsets.systemBars)
                                     .padding(horizontal = 8.dp, vertical = 12.dp),
                             ) {
@@ -2917,6 +2928,7 @@ fun BottomSheetPlayer(
                     }
 
                     Spacer(Modifier.height(if (useNewPlayerDesign) 30.dp else 8.dp))
+                }
                 }
                 }
             }
