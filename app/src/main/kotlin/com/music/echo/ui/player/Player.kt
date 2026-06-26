@@ -2816,7 +2816,7 @@ fun BottomSheetPlayer(
                                 InlineLyricsView(
                                     mediaMetadata = mediaMetadata,
                                     showLyrics = showLyrics,
-                                    positionProvider = { effectivePosition }
+                                    positionProvider = { sliderPosition ?: if (isCasting) castPosition else null }
                                 )
                             } else {
                                 Thumbnail(
@@ -3040,7 +3040,7 @@ fun BottomSheetPlayer(
                                 InlineLyricsView(
                                     mediaMetadata = mediaMetadata,
                                     showLyrics = showLyrics,
-                                    positionProvider = { effectivePosition }
+                                    positionProvider = { sliderPosition ?: if (isCasting) castPosition else null }
                                 )
                             } else {
                                 Thumbnail(
@@ -3131,7 +3131,11 @@ private fun PlayerActionChip(
 fun InlineLyricsView(
     mediaMetadata: MediaMetadata?,
     showLyrics: Boolean,
-    positionProvider: () -> Long
+    // Nullable on purpose: when it returns null, the Lyrics view falls through to the LIVE player position
+    // (its own 8 ms ticker) so the word-by-word highlight sweeps smoothly. The outer player position state is
+    // throttled to 500 ms (to avoid a recomposition storm); feeding that to the lyrics made them jump in
+    // 500 ms steps. We only provide a value while scrubbing (preview) or casting (the active stream).
+    positionProvider: () -> Long?
 ) {
     val playerConnection = LocalPlayerConnection.current ?: return
     val currentLyrics by playerConnection.currentLyrics.collectAsState(initial = null)

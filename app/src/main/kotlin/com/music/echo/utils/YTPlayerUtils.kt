@@ -901,9 +901,21 @@ object YTPlayerUtils {
 
         // NOTE (audit L10): we deliberately do NOT cap audio bitrate on mobile data — this is a Hi-Res player,
         // so audio always streams at full quality (only VIDEO downgrades on metered, above). The `when` below
-        // is intentionally uniform; audio quality is honoured via the original-stream filter.
-        val format = playerResponse.streamingData?.adaptiveFormats
-            ?.filter { it.isAudio && it.isOriginal }
+        // is intentionally uniform; audio quality is honoured via the original-stream preference.
+        //
+        // REGION-SAFE fallback: prefer the ORIGINAL (untagged) audio track, BUT on auto-dub regions/accounts
+        // YouTube tags EVERY adaptive audio format with an audioTrack, so `isOriginal` matches nothing and the
+        // old code returned null → the song failed to play ("works on my device, not on others"). Fall back to
+        // a non-auto-dubbed track, then to ANY audio, so playback always resolves. The dev-device path is
+        // unchanged (original still wins when it exists).
+        val audioFormats = playerResponse.streamingData?.adaptiveFormats?.filter { it.isAudio }
+        val audioPool = audioFormats?.filter { it.isOriginal }?.takeIf { it.isNotEmpty() }
+            ?: audioFormats?.filter { it.audioTrack?.isAutoDubbed == false }?.takeIf { it.isNotEmpty() }
+            ?: audioFormats
+        if (audioPool != null && audioPool.none { it.isOriginal }) {
+            Timber.tag(logTag).w("No original audio track (auto-dub region) — using non-dubbed/any fallback")
+        }
+        val format = audioPool
             ?.maxByOrNull {
                 it.bitrate * when (audioQuality) {
                     AudioQuality.OPUS, AudioQuality.SAAVN, AudioQuality.LOSSLESS -> 1

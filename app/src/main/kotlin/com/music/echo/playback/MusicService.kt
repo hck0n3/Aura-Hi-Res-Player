@@ -428,6 +428,9 @@ class MusicService :
     // B3 — guards against double-seeding a radio when a finite queue ends: true while a startRadioSeamlessly
     // fetch is in flight, so onMediaItemTransition can't fire a second (racing) radio fetch over the same end.
     @Volatile private var radioSeedInFlight = false
+    // True when a radio seed was started from the STATE_ENDED safety net (the queue truly ended): once the
+    // seed appends items, advance+play into them so predictive infinite playback resumes with no manual action.
+    @Volatile private var resumeAfterSeed = false
 
     private var consecutivePlaybackErr = 0
     private var retryJob: Job? = null
@@ -1473,13 +1476,17 @@ class MusicService :
     }
 
     fun startRadioSeamlessly() {
-        
+
         if (!playerInitialized.value) {
             Timber.tag(TAG).w("startRadioSeamlessly called before player initialization")
+            resumeAfterSeed = false // never reach the finally on this early return; don't leave it armed
             return
         }
 
-        val currentMediaMetadata = player.currentMetadata ?: return
+        val currentMediaMetadata = player.currentMetadata ?: run {
+            resumeAfterSeed = false
+            return
+        }
         val currentMediaId = currentMediaMetadata.id
         radioSeedInFlight = true
 
@@ -1523,6 +1530,13 @@ class MusicService :
                         val shufflePlaylistFirst = dataStore.get(ShufflePlaylistFirstKey, false)
                         applyShuffleOrder(player.currentMediaItemIndex, player.mediaItemCount, shufflePlaylistFirst)
                     }
+                    if (resumeAfterSeed && player.playbackState == Player.STATE_ENDED) {
+                        // The queue had truly ended; advance into the just-appended radio and resume. The
+                        // STATE_ENDED guard avoids yanking playback if the user already started something else
+                        // during the async fetch.
+                        player.seekTo(liveIndex + 1, 0)
+                        player.play()
+                    }
                 }
 
                 currentQueue = radioQueue
@@ -1555,6 +1569,10 @@ class MusicService :
                                     val shufflePlaylistFirst = dataStore.get(ShufflePlaylistFirstKey, false)
                                     applyShuffleOrder(player.currentMediaItemIndex, player.mediaItemCount, shufflePlaylistFirst)
                                 }
+                                if (resumeAfterSeed && player.playbackState == Player.STATE_ENDED) {
+                                    player.seekTo(liveIndex + 1, 0)
+                                    player.play()
+                                }
                             }
                         }
                     }
@@ -1563,6 +1581,7 @@ class MusicService :
                 }
             } finally {
                 radioSeedInFlight = false
+                resumeAfterSeed = false
             }
         }
     }
@@ -2240,6 +2259,19 @@ class MusicService :
                 player.seekTo(0, 0)
                 player.prepare()
                 player.play()
+            } else if (
+                player.mediaItemCount > 0 &&
+                !currentQueue.hasNextPage() &&
+                !radioSeedInFlight
+            ) {
+                // Predictive infinite playback — the AUTHORITATIVE net. onMediaItemTransition (B3) pre-seeds a
+                // radio as a head-start, but it does NOT fire when the LAST track actually FINISHES (the player
+                // goes straight to STATE_ENDED with no transition), and it can miss (paused / manual seek to the
+                // last track / empty seed). So when a FINITE queue (no next page) truly ends, seed a radio from
+                // the last song and resume into it. ALWAYS on — never gated by the AutoLoadMore toggle — so the
+                // music never just stops at the end of any queue (the user's explicit requirement).
+                resumeAfterSeed = true
+                startRadioSeamlessly()
             }
         }
 
