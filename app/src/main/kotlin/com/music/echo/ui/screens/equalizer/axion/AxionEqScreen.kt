@@ -4,7 +4,11 @@ import androidx.compose.animation.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.drag
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -40,6 +44,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.text.input.KeyboardType
 import iad1tya.echo.music.R
@@ -307,6 +312,7 @@ private fun ColumnScope.EqMainContent(
             onBandCommit = { viewModel.commitPeq() },
             onAddBand = { viewModel.addPeqBand() },
             onRemoveBand = { viewModel.removePeqBand(it) },
+            onReset = { viewModel.resetPeq() },
         )
     }
 
@@ -918,6 +924,7 @@ private fun PeqGraphEditor(
     onBandCommit: () -> Unit,
     onAddBand: () -> Unit,
     onRemoveBand: (index: Int) -> Unit,
+    onReset: () -> Unit,
 ) {
     // Selection survives add/remove: it's always coerced into the current 0..lastIndex below.
     var selectedIndex by remember { mutableStateOf(0) }
@@ -964,50 +971,39 @@ private fun PeqGraphEditor(
                 .then(if (enabled) Modifier else Modifier.graphicsLayer { alpha = 0.4f }),
         ) {
             // dp→px once, used by both the renderer and the hit-test/drag math.
-            val touchRadiusPx = with(density) { 24.dp.toPx() }
+            val touchRadiusPx = with(density) { 28.dp.toPx() }
             val nodeRadiusPx = with(density) { 9.dp.toPx() }
             val selectedRadiusPx = with(density) { 13.dp.toPx() }
+            // Always read the LIVE band positions in the gesture (without relaunching pointerInput), so hit-testing
+            // a node is correct even right after another node was moved.
+            val latestBands = rememberUpdatedState(bands)
 
+            // ONE unified gesture: select the grabbed node on touch-DOWN (immediate, NO touch-slop) and drag it
+            // until the finger lifts. A single pointerInput keyed on Unit (never relaunches mid-interaction) avoids
+            // the tap-vs-drag detector conflict that made nodes hard to grab and made switching to another node
+            // fail. drag() applies every move with no slop, so dragging is immediate and precise.
             val gestureModifier = if (enabled) {
-                Modifier
-                    // TAP: select the nearest node within touch radius.
-                    .pointerInput(bands.size) {
-                        detectTapGestures { pos ->
-                            val w = size.width.toFloat()
-                            val h = size.height.toFloat()
-                            val hit = nearestNode(bands, pos, w, h, touchRadiusPx)
-                            if (hit >= 0) selectedIndex = hit
+                Modifier.pointerInput(Unit) {
+                    awaitEachGesture {
+                        val w = size.width.toFloat()
+                        val h = size.height.toFloat()
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        val idx = nearestNode(latestBands.value, down.position, w, h, touchRadiusPx)
+                        if (idx < 0) return@awaitEachGesture
+                        selectedIndex = idx
+                        down.consume()
+                        var moved = false
+                        drag(down.id) { change ->
+                            moved = true
+                            val p = change.position
+                            val freq = xToFreq(p.x.coerceIn(0f, w), w)
+                            val gain = yToGain(p.y.coerceIn(0f, h), h)
+                            onBandChange(idx, freq, null, gain, null)
+                            change.consume()
                         }
+                        if (moved) onBandCommit()
                     }
-                    // DRAG: hit-test on start → select; then horizontal = freq, vertical = gain (live).
-                    .pointerInput(bands.size) {
-                        var dragIndex = -1
-                        detectDragGestures(
-                            onDragStart = { pos ->
-                                val w = size.width.toFloat()
-                                val h = size.height.toFloat()
-                                dragIndex = nearestNode(bands, pos, w, h, touchRadiusPx)
-                                if (dragIndex >= 0) selectedIndex = dragIndex
-                            },
-                            onDrag = { change, _ ->
-                                val idx = dragIndex
-                                if (idx in bands.indices) {
-                                    change.consume()
-                                    val w = size.width.toFloat()
-                                    val h = size.height.toFloat()
-                                    val p = change.position
-                                    val freq = xToFreq(p.x.coerceIn(0f, w), w)
-                                    val gain = yToGain(p.y.coerceIn(0f, h), h)
-                                    onBandChange(idx, freq, null, gain, null)
-                                }
-                            },
-                            onDragEnd = {
-                                if (dragIndex >= 0) onBandCommit()
-                                dragIndex = -1
-                            },
-                            onDragCancel = { dragIndex = -1 },
-                        )
-                    }
+                }
             } else {
                 Modifier
             }
@@ -1159,16 +1155,28 @@ private fun PeqGraphEditor(
             }
         }
 
-        // ── Add a band (capped at MAX_BANDS by the VM; disabled here too) ─────────────────────────
-        OutlinedButton(
-            onClick = onAddBand,
-            enabled = enabled && bands.size < PeqConstants.MAX_BANDS,
-            modifier = Modifier.fillMaxWidth(),
-            shape = MaterialTheme.shapes.medium,
-        ) {
-            Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(8.dp))
-            Text("Añadir banda")
+        // ── Add a band  |  reset the whole PEQ to flat defaults ──────────────────────────────────
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(
+                onClick = onAddBand,
+                enabled = enabled && bands.size < PeqConstants.MAX_BANDS,
+                modifier = Modifier.weight(1f),
+                shape = MaterialTheme.shapes.medium,
+            ) {
+                Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Añadir banda")
+            }
+            OutlinedButton(
+                onClick = onReset,
+                enabled = enabled,
+                modifier = Modifier.weight(1f),
+                shape = MaterialTheme.shapes.medium,
+            ) {
+                Icon(Icons.Rounded.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Restablecer")
+            }
         }
     }
 }

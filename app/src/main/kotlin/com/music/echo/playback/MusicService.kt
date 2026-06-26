@@ -1491,93 +1491,80 @@ class MusicService :
         radioSeedInFlight = true
 
         scope.launch(SilentHandler) {
-            
-            val radioQueue = YouTubeQueue(
-                endpoint = WatchEndpoint(
-                    videoId = currentMediaId
-                )
-            )
+            // Appends a batch after the current item, re-orders it by the user's taste, and — if we were waiting
+            // at a TRUE end-of-queue (resumeAfterSeed armed) — advances into it + resumes. Returns true if it
+            // actually appended anything. Wrapped by the callers so a failure simply falls through to the next
+            // source. The !isPlaying resume guard (NOT == STATE_ENDED): addMediaItems can move the player out of
+            // STATE_ENDED into READY-paused, which would make a STATE_ENDED check false and leave the music
+            // stopped; !isPlaying still resumes then, yet won't yank playback if the user already started
+            // something else during the async fetch.
+            suspend fun appendSeed(items: List<MediaItem>): Boolean {
+                if (items.isEmpty()) return false
+                // Recompute the index from the LIVE player at append time (not a stale value captured before the
+                // network fetch), so we never remove items relative to a position that has since moved.
+                val liveIndex = player.currentMediaItemIndex
+                val itemCount = player.mediaItemCount
+                if (itemCount > liveIndex + 1) {
+                    player.removeMediaItems(liveIndex + 1, itemCount)
+                }
+                player.addMediaItems(liveIndex + 1, items.orderedByTaste())
+                _mixActive.value = true
+                if (player.shuffleModeEnabled) {
+                    val shufflePlaylistFirst = dataStore.get(ShufflePlaylistFirstKey, false)
+                    applyShuffleOrder(player.currentMediaItemIndex, player.mediaItemCount, shufflePlaylistFirst)
+                }
+                if (resumeAfterSeed && !player.isPlaying) {
+                    resumeAfterSeed = false
+                    player.seekTo(liveIndex + 1, 0)
+                    player.play()
+                }
+                return true
+            }
 
-            try {
+            // Source 1 — a proper radio queue seeded from the last song the user heard.
+            suspend fun tryRadio(): Boolean = runCatching {
+                val radioQueue = YouTubeQueue(endpoint = WatchEndpoint(videoId = currentMediaId))
                 val initialStatus = withContext(Dispatchers.IO) {
                     radioQueue.getInitialStatus()
                         .filterExplicit(dataStore.get(HideExplicitKey, false))
                         .filterVideoSongs(dataStore.get(HideVideoSongsKey, false))
                 }
+                if (initialStatus.title != null) queueTitle = initialStatus.title
+                val items = initialStatus.items.filter { it.mediaId != currentMediaId }
+                val ok = appendSeed(items)
+                if (ok) currentQueue = radioQueue
+                ok
+            }.getOrDefault(false)
 
-                if (initialStatus.title != null) {
-                    queueTitle = initialStatus.title
+            // Source 2 — "related" songs of the last song (a different YT endpoint; recovers when radio is empty).
+            suspend fun tryRelated(): Boolean = runCatching {
+                val nextResult = withContext(Dispatchers.IO) {
+                    YouTube.next(WatchEndpoint(videoId = currentMediaId)).getOrNull()
                 }
+                val relatedEndpoint = nextResult?.relatedEndpoint ?: return@runCatching false
+                val relatedPage = withContext(Dispatchers.IO) { YouTube.related(relatedEndpoint).getOrNull() }
+                val items = relatedPage?.songs.orEmpty()
+                    .filter { it.id != currentMediaId }
+                    .map { it.toMediaItem() }
+                    .filterExplicit(dataStore.get(HideExplicitKey, false))
+                    .filterVideoSongs(dataStore.get(HideVideoSongsKey, false))
+                appendSeed(items)
+            }.getOrDefault(false)
 
-                
-                val radioItems = initialStatus.items.filter { item ->
-                    item.mediaId != currentMediaId
+            try {
+                // Radio first, then related. If a transient hiccup left us empty, wait briefly and try once more —
+                // so a momentary network blip at the exact end-of-queue moment never permanently stops the music.
+                var appended = tryRadio() || tryRelated()
+                if (!appended) {
+                    kotlinx.coroutines.delay(2500)
+                    appended = tryRadio() || tryRelated()
                 }
-
-                if (radioItems.isNotEmpty()) {
-                    // Recompute the index from the LIVE player at append time (not a stale value captured before
-                    // the network fetch), so we never remove items relative to a position that has since moved.
-                    val liveIndex = player.currentMediaItemIndex
-                    val itemCount = player.mediaItemCount
-
-                    if (itemCount > liveIndex + 1) {
-                        player.removeMediaItems(liveIndex + 1, itemCount)
-                    }
-
-                    player.addMediaItems(liveIndex + 1, radioItems.orderedByTaste())
-                    _mixActive.value = true
-                    if (player.shuffleModeEnabled) {
-                        val shufflePlaylistFirst = dataStore.get(ShufflePlaylistFirstKey, false)
-                        applyShuffleOrder(player.currentMediaItemIndex, player.mediaItemCount, shufflePlaylistFirst)
-                    }
-                    if (resumeAfterSeed && player.playbackState == Player.STATE_ENDED) {
-                        // The queue had truly ended; advance into the just-appended radio and resume. The
-                        // STATE_ENDED guard avoids yanking playback if the user already started something else
-                        // during the async fetch.
-                        player.seekTo(liveIndex + 1, 0)
-                        player.play()
-                    }
-                }
-
-                currentQueue = radioQueue
-            } catch (e: Exception) {
-                
-                try {
-                    val nextResult = withContext(Dispatchers.IO) {
-                        YouTube.next(WatchEndpoint(videoId = currentMediaId)).getOrNull()
-                    }
-                    nextResult?.relatedEndpoint?.let { relatedEndpoint ->
-                        val relatedPage = withContext(Dispatchers.IO) {
-                            YouTube.related(relatedEndpoint).getOrNull()
-                        }
-                        relatedPage?.songs?.let { songs ->
-                            val radioItems = songs
-                                .filter { it.id != currentMediaId }
-                                .map { it.toMediaItem() }
-                                .filterExplicit(dataStore.get(HideExplicitKey, false))
-                                .filterVideoSongs(dataStore.get(HideVideoSongsKey, false))
-
-                            if (radioItems.isNotEmpty()) {
-                                val liveIndex = player.currentMediaItemIndex
-                                val itemCount = player.mediaItemCount
-                                if (itemCount > liveIndex + 1) {
-                                    player.removeMediaItems(liveIndex + 1, itemCount)
-                                }
-                                player.addMediaItems(liveIndex + 1, radioItems.orderedByTaste())
-                                _mixActive.value = true
-                                if (player.shuffleModeEnabled) {
-                                    val shufflePlaylistFirst = dataStore.get(ShufflePlaylistFirstKey, false)
-                                    applyShuffleOrder(player.currentMediaItemIndex, player.mediaItemCount, shufflePlaylistFirst)
-                                }
-                                if (resumeAfterSeed && player.playbackState == Player.STATE_ENDED) {
-                                    player.seekTo(liveIndex + 1, 0)
-                                    player.play()
-                                }
-                            }
-                        }
-                    }
-                } catch (_: Exception) {
-
+                // Absolute last resort: at a TRUE end-of-queue, never leave the user in silence — replay the queue.
+                if (!appended && resumeAfterSeed && !player.isPlaying && player.mediaItemCount > 0) {
+                    Timber.tag(TAG).w("Radio seed yielded nothing; replaying current queue so playback never stops")
+                    resumeAfterSeed = false
+                    player.seekTo(0, 0)
+                    player.play()
                 }
             } finally {
                 radioSeedInFlight = false
@@ -2197,7 +2184,7 @@ class MusicService :
             !radioSeedInFlight &&
             !currentQueue.hasNextPage() &&
             player.mediaItemCount > 0 &&
-            player.mediaItemCount - player.currentMediaItemIndex <= 1 &&
+            !player.hasNextMediaItem() &&  // shuffle/repeat-aware "on the last item to PLAY" (not a raw timeline index)
             !(dataStore.get(DisableLoadMoreWhenRepeatAllKey, false) && player.repeatMode == REPEAT_MODE_ALL)
         ) {
             startRadioSeamlessly()
@@ -2261,17 +2248,21 @@ class MusicService :
                 player.play()
             } else if (
                 player.mediaItemCount > 0 &&
-                !currentQueue.hasNextPage() &&
-                !radioSeedInFlight
+                !player.hasNextMediaItem()
             ) {
                 // Predictive infinite playback — the AUTHORITATIVE net. onMediaItemTransition (B3) pre-seeds a
                 // radio as a head-start, but it does NOT fire when the LAST track actually FINISHES (the player
                 // goes straight to STATE_ENDED with no transition), and it can miss (paused / manual seek to the
-                // last track / empty seed). So when a FINITE queue (no next page) truly ends, seed a radio from
-                // the last song and resume into it. ALWAYS on — never gated by the AutoLoadMore toggle — so the
-                // music never just stops at the end of any queue (the user's explicit requirement).
+                // last track / empty seed). We trust the PLAYER via !hasNextMediaItem() — which is shuffle- AND
+                // repeat-aware (true only when there's genuinely nothing more to play), unlike a raw timeline
+                // index which is WRONG under shuffle — NOT currentQueue.hasNextPage() which can lie/go stale and
+                // dead-end the music. We ALWAYS arm resumeAfterSeed here (even if a B3 seed
+                // is already in flight): that way an in-flight head-start seed that lands AFTER the hard stop will
+                // resume instead of leaving the player stopped. Only kick a NEW seed when one isn't already
+                // running. ALWAYS on — never gated by the AutoLoadMore toggle — so the music never just stops at
+                // the end of any queue (the user's explicit requirement).
                 resumeAfterSeed = true
-                startRadioSeamlessly()
+                if (!radioSeedInFlight) startRadioSeamlessly()
             }
         }
 

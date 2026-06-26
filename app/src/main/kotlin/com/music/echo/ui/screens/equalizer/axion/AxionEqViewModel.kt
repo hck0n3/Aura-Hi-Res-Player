@@ -274,6 +274,15 @@ class AxionEqViewModel @Inject constructor(
         if (_enabled.value) applyToService()
     }
 
+    /** Reset the PEQ back to the default flat 6-band anchors (clears any custom curve). Persists + applies. */
+    fun resetPeq() {
+        setAutoEqActive(false)
+        _peqBands.value = PeqConstants.defaultBands()
+        _isDirty.value = true
+        commitPeq()
+        if (_enabled.value) applyToService()
+    }
+
     /** Persist the PEQ bands JSON — call on text-field focus loss / value settle (or via [commit]). */
     fun commitPeq() {
         persistPeqBands()
