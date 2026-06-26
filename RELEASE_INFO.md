@@ -1,17 +1,23 @@
-# Aura Hi-Res Player 0.6.50 — 3 arreglos: letras, reproducción infinita y "similar no suena"
+# Aura Hi-Res Player 0.6.51 — EQ paramétrico AHORA visual: arrastra los puntos 🎚️
 
-## Letras: animación suave de nuevo 🎤
-La animación palabra-por-palabra (estilo karaoke) se había vuelto a saltos. **Causa:** en la auditoría bajé el ritmo del contador de posición del reproductor (de 10 a 2 veces/seg para gastar menos CPU), y las letras se sincronizaban con ESE contador → saltaban cada 0,5 s. **Arreglado:** las letras ahora usan su propio reloj de alta frecuencia (la posición real, ~8 ms) → el resaltado vuelve a barrer **suave y continuo**. (El reproductor sigue gastando menos CPU; lo mejor de ambos.)
+El modo **Paramétrico (PEQ)** era para puristas (escribir Hz/Q/dB a mano) y resultaba difícil. Ahora es **visual e interactivo**, fácil para cualquiera:
 
-## Reproducción infinita predictiva — SIEMPRE activa ♾️
-Cuando una cola terminaba de verdad (último tema), la música a veces **se detenía**. **Causa:** la continuación solo se intentaba al *cambiar* de pista, pero el final real de la cola no dispara ese evento (el reproductor pasa a "terminado" sin transición). **Arreglado:** ahora hay una **red de seguridad** que, al terminar **cualquier** cola finita (álbum, lista, artista, una sola canción), arranca una **radio de temas similares y reanuda sola** — **siempre activa**, sin depender de ningún ajuste. Si justo empezaste otra cosa, no te interrumpe.
+## Arrastra puntos en la curva 👆
+- Una **gráfica de respuesta en vivo** con la curva de tu sonido.
+- Cada banda es un **punto que arrastras**:
+  - **↔ izquierda/derecha** = frecuencia,
+  - **↕ arriba/abajo** = subir/bajar (ganancia).
+- **Toca un punto** y abajo aparece su panel: **slider de "Ancho (Q)"**, tipo de filtro (pico/shelf) y un botón para **quitar** la banda.
+- Botón **"Añadir banda"** (5 a 8 bandas).
+- La curva **y el sonido** cambian **mientras arrastras** → inmediato e intuitivo.
 
-## "Contenido similar" que no sonaba en otros dispositivos 🌎
-En algunas regiones/cuentas (donde YouTube entrega audio con doblaje automático), las canciones de la radio/similares **no reproducían** ("no se encontró formato"). **Causa:** el selector de audio exigía la pista "original" sin etiqueta, que en esas regiones no existe. **Arreglado:** ahora hay un **plan B** (original → no-doblada → cualquiera) para que **siempre** encuentre audio y suene. En tu dispositivo no cambia nada (sigue eligiendo el original de máxima calidad).
+## Para el purista 🎯
+Los **valores exactos** (p. ej. "120 Hz · Q 1.4 · +3.5 dB") siguen visibles al tocar un punto, y el slider de Q deja afinar fino. Así el novato "dibuja" su sonido y el experto mantiene el control preciso.
 
-## Calidad
-Diagnóstico de causa raíz por agentes + revisión adversarial (letras y formato verificados correctos; se cazó y corrigió una fuga menor del flag de reanudación).
+## Bajo el capó
+La curva dibujada es la **magnitud real del filtro biquad** (la misma matemática RBJ que procesa el audio), así que **lo que ves es lo que oyes** — incluso para perfiles importados con filtros paso-alto/paso-bajo.
+
+> Diseño + construcción multi-agente con **revisión adversarial** (gestos, estado y matemática verificados; se añadió el dibujo correcto de los filtros paso-alto/paso-bajo de perfiles cargados).
 
 ## 👉 Para probar
-- Letras de una canción → el resaltado debe fluir suave.
-- Deja terminar un álbum/lista/una canción → debe seguir solo con similares.
+- EQ → **Paramétrico** → arrastra los puntos, toca uno y mueve el **Ancho (Q)**, añade/quita bandas.

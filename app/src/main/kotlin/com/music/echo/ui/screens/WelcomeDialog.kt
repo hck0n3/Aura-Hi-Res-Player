@@ -87,8 +87,8 @@ fun WelcomeDialog(
                     WelcomeDivider()
                     WelcomeFeatureRow(
                         iconRes = R.drawable.equalizer,
-                        title = "Ecualizador gráfico (24) + paramétrico (PEQ)",
-                        subtitle = "EQ gráfico de 24 bandas (las que dejes en 0 dB no procesan nada — señal pura) o modo paramétrico de 5-8 bandas con frecuencia/Q/ganancia exactas, limitador multibanda anti-distorsión, JR DSP y perfiles AutoEq para +5000 auriculares que bloquean el EQ manual para una corrección perfecta"
+                        title = "EQ gráfico (24) + paramétrico interactivo (PEQ)",
+                        subtitle = "EQ gráfico de 24 bandas (las que dejes en 0 dB no procesan nada — señal pura) o modo paramétrico interactivo: arrastra puntos en la curva para dar forma al sonido (5-8 bandas, con frecuencia/Q/ganancia exactas para el purista), limitador multibanda anti-distorsión, JR DSP y perfiles AutoEq para +5000 auriculares que bloquean el EQ manual para una corrección perfecta"
                     )
                     WelcomeDivider()
                     WelcomeFeatureRow(
