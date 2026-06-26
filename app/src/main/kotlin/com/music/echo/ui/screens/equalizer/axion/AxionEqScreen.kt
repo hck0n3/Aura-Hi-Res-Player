@@ -4,6 +4,7 @@ import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -40,6 +41,7 @@ import iad1tya.echo.music.eq.data.ParametricEQBand
 import iad1tya.echo.music.eq.data.SavedEQProfile
 import iad1tya.echo.music.ui.component.Material3SettingsGroup
 import iad1tya.echo.music.ui.component.Material3SettingsItem
+import iad1tya.echo.music.utils.rememberPreference
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import racra.compose.smooth_corner_rect_library.AbsoluteSmoothCornerShape
@@ -105,157 +107,363 @@ fun AxionEqScreen(
             )
         },
     ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(innerPadding)
-                .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            Material3SettingsGroup(
-                items = listOf(
-                    Material3SettingsItem(
-                        icon = painterResource(R.drawable.equalizer),
-                        title = { Text(stringResource(R.string.eq_enable_title)) },
-                        description = { Text(stringResource(R.string.eq_enable_summary)) },
-                        trailingContent = {
-                            Switch(
-                                checked = enabled,
-                                onCheckedChange = { viewModel.setEnabled(it) },
-                                thumbContent = {
-                                    Icon(
-                                        painter = painterResource(id = if (enabled) R.drawable.check else R.drawable.close),
-                                        contentDescription = null,
-                                        modifier = Modifier.size(SwitchDefaults.IconSize),
-                                    )
-                                },
-                            )
-                        },
-                        onClick = { viewModel.setEnabled(!enabled) },
-                    ),
-                ),
-            )
+        // Foldable / large-screen aware: on a WIDE display (e.g. an unfolded Galaxy Z Fold inner
+        // screen) we show the EQ controls and the DSP effect switches side-by-side in two columns so
+        // both are visible without scrolling between them. On a NARROW display (folded / phone) we keep
+        // the original single scrolling column unchanged.
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            // Material 'expanded' breakpoint — matches the Z Fold inner display.
+            val wide = maxWidth >= 840.dp
 
-            // Preamp applies to both modes (graphic + parametric) so it stays visible always.
-            PreampCard(preamp = preamp, enabled = enabled, onPreampChange = { viewModel.setPreampLive(it) }, onCommit = { viewModel.commit() })
-
-            // Curve preview + factory presets drive/show the 24-band GRAPHIC curve only — hidden in
-            // PARAMETRIC mode where they'd be inaudible and misleading.
-            if (eqMode == EqMode.GRAPHIC) {
-                // Live preview of the overall EQ curve — easier to read the shape than 24 separate sliders.
-                EqCurvePreview(bandGains = bandGains, enabled = enabled)
-
-                FactoryPresetRow(
-                    bandGains = bandGains,
-                    enabled = graphicEnabled,
-                    onPresetClick = { viewModel.applyPreset(it) },
-                )
-            }
-
-            if (autoEqActive) {
-                Text(
-                    text = "Auto-EQ activo — el ecualizador gráfico está bloqueado para preservar la corrección de tus auriculares.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 4.dp),
-                )
-                androidx.compose.material3.TextButton(
-                    onClick = { viewModel.unlockGraphic() },
-                    modifier = Modifier.padding(horizontal = 4.dp),
+            if (wide) {
+                Row(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+                    // LEFT: the existing EQ controls, scrolling independently.
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .verticalScroll(rememberScrollState())
+                            .padding(horizontal = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                    ) {
+                        EqMainContent(
+                            viewModel = viewModel,
+                            enabled = enabled,
+                            graphicEnabled = graphicEnabled,
+                            bandGains = bandGains,
+                            preamp = preamp,
+                            autoEqActive = autoEqActive,
+                            isDirty = isDirty,
+                            customProfiles = customProfiles,
+                            eqMode = eqMode,
+                            peqBands = peqBands,
+                            onSaveClick = { showSaveDialog = true },
+                            onManageClick = { showManageDialog = true },
+                            onDeviceClick = { showDeviceDialog = true },
+                        )
+                    }
+                    // RIGHT: the DSP effect switches (shared DataStore keys with SoundSettings),
+                    // scrolling independently.
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .verticalScroll(rememberScrollState())
+                            .padding(horizontal = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                    ) {
+                        DspEffectsColumn()
+                        Spacer(modifier = Modifier.height(60.dp))
+                    }
+                }
+            } else {
+                // NARROW (folded / phone): unchanged single scrolling column.
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .padding(innerPadding)
+                        .padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
-                    Text("Cambiar a manual")
+                    EqMainContent(
+                        viewModel = viewModel,
+                        enabled = enabled,
+                        graphicEnabled = graphicEnabled,
+                        bandGains = bandGains,
+                        preamp = preamp,
+                        autoEqActive = autoEqActive,
+                        isDirty = isDirty,
+                        customProfiles = customProfiles,
+                        eqMode = eqMode,
+                        peqBands = peqBands,
+                        onSaveClick = { showSaveDialog = true },
+                        onManageClick = { showManageDialog = true },
+                        onDeviceClick = { showDeviceDialog = true },
+                    )
                 }
             }
-
-            // Mode toggle: Gráfico (24-band, default) vs Paramétrico (5–8 free PEQ bands). Disabled
-            // while Auto-EQ is locked so the user can't switch curves under the lock.
-            EqModeToggle(
-                eqMode = eqMode,
-                enabled = graphicEnabled,
-                onModeChange = { viewModel.setEqMode(it) },
-            )
-
-            when (eqMode) {
-                EqMode.GRAPHIC -> BandEqCard(
-                    bandGains = bandGains,
-                    enabled = graphicEnabled,
-                    onBandChange = { i, v -> viewModel.setBandGainLive(i, v) },
-                    onBandCommit = { viewModel.commit() },
-                    onReset = { viewModel.reset() },
-                )
-                EqMode.PARAMETRIC -> PeqEditorCard(
-                    peqBands = peqBands,
-                    enabled = graphicEnabled,
-                    onBandChange = { i, freq, q, gain, type ->
-                        viewModel.setPeqBand(i, freq, q, gain, type)
-                    },
-                    onBandCommit = { viewModel.commitPeq() },
-                    onAddBand = { viewModel.addPeqBand() },
-                    onRemoveBand = { viewModel.removePeqBand(it) },
-                )
-            }
-
-            AnimatedVisibility(
-                visible = isDirty && enabled,
-                modifier = Modifier.align(Alignment.CenterHorizontally),
-                enter = expandVertically() + fadeIn(),
-                exit = shrinkVertically() + fadeOut(),
-            ) {
-                OutlinedButton(
-                    onClick = { showSaveDialog = true },
-                    shape = MaterialTheme.shapes.medium,
-                    contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
-                ) {
-                    Icon(Icons.Rounded.Check, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text(stringResource(R.string.eq_save), style = MaterialTheme.typography.labelLarge)
-                }
-            }
-
-            if (customProfiles.isNotEmpty()) {
-                CustomPresetRow(
-                    customProfiles = customProfiles,
-                    bandGains = bandGains,
-                    enabled = enabled,
-                    onApplyProfile = { viewModel.applySavedProfile(it) },
-                    onEditClick = { showManageDialog = true },
-                )
-            }
-
-            // Export / import EQ profiles (EQ curve + effects) as a JSON file.
-            val exportLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
-                androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/json")
-            ) { uri -> uri?.let { viewModel.exportProfiles(it) } }
-            val importLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
-                androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
-            ) { uri -> uri?.let { viewModel.importProfiles(it) } }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                OutlinedButton(
-                    onClick = { exportLauncher.launch("aura-eq-perfiles.json") },
-                    modifier = Modifier.weight(1f),
-                    shape = MaterialTheme.shapes.medium,
-                ) { Text("Exportar perfiles") }
-                OutlinedButton(
-                    onClick = { importLauncher.launch(arrayOf("application/json")) },
-                    modifier = Modifier.weight(1f),
-                    shape = MaterialTheme.shapes.medium,
-                ) { Text("Importar") }
-            }
-
-            // Assign EQ profiles to output devices (phone / Bluetooth), applied automatically on connect.
-            OutlinedButton(
-                onClick = { showDeviceDialog = true },
-                modifier = Modifier.fillMaxWidth(),
-                shape = MaterialTheme.shapes.medium,
-            ) { Text("EQ por dispositivo") }
-
-            Spacer(modifier = Modifier.height(60.dp))
         }
     }
+}
+
+/**
+ * The existing EQ controls — enable card, preamp, curve preview + presets, mode toggle, the graphic /
+ * parametric editor, the save / custom-preset / export / device rows. Extracted verbatim so both the
+ * narrow (single column) and wide (left column) layouts render identical content. This is laid out
+ * inside a vertically-scrolling [Column] supplied by the caller.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ColumnScope.EqMainContent(
+    viewModel: AxionEqViewModel,
+    enabled: Boolean,
+    graphicEnabled: Boolean,
+    bandGains: FloatArray,
+    preamp: Float,
+    autoEqActive: Boolean,
+    isDirty: Boolean,
+    customProfiles: List<SavedEQProfile>,
+    eqMode: EqMode,
+    peqBands: List<ParametricEQBand>,
+    onSaveClick: () -> Unit,
+    onManageClick: () -> Unit,
+    onDeviceClick: () -> Unit,
+) {
+    Material3SettingsGroup(
+        items = listOf(
+            Material3SettingsItem(
+                icon = painterResource(R.drawable.equalizer),
+                title = { Text(stringResource(R.string.eq_enable_title)) },
+                description = { Text(stringResource(R.string.eq_enable_summary)) },
+                trailingContent = {
+                    Switch(
+                        checked = enabled,
+                        onCheckedChange = { viewModel.setEnabled(it) },
+                        thumbContent = {
+                            Icon(
+                                painter = painterResource(id = if (enabled) R.drawable.check else R.drawable.close),
+                                contentDescription = null,
+                                modifier = Modifier.size(SwitchDefaults.IconSize),
+                            )
+                        },
+                    )
+                },
+                onClick = { viewModel.setEnabled(!enabled) },
+            ),
+        ),
+    )
+
+    // Preamp applies to both modes (graphic + parametric) so it stays visible always.
+    PreampCard(preamp = preamp, enabled = enabled, onPreampChange = { viewModel.setPreampLive(it) }, onCommit = { viewModel.commit() })
+
+    // Curve preview + factory presets drive/show the 24-band GRAPHIC curve only — hidden in
+    // PARAMETRIC mode where they'd be inaudible and misleading.
+    if (eqMode == EqMode.GRAPHIC) {
+        // Live preview of the overall EQ curve — easier to read the shape than 24 separate sliders.
+        EqCurvePreview(bandGains = bandGains, enabled = enabled)
+
+        FactoryPresetRow(
+            bandGains = bandGains,
+            enabled = graphicEnabled,
+            onPresetClick = { viewModel.applyPreset(it) },
+        )
+    }
+
+    if (autoEqActive) {
+        Text(
+            text = "Auto-EQ activo — el ecualizador gráfico está bloqueado para preservar la corrección de tus auriculares.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 4.dp),
+        )
+        androidx.compose.material3.TextButton(
+            onClick = { viewModel.unlockGraphic() },
+            modifier = Modifier.padding(horizontal = 4.dp),
+        ) {
+            Text("Cambiar a manual")
+        }
+    }
+
+    // Mode toggle: Gráfico (24-band, default) vs Paramétrico (5–8 free PEQ bands). Disabled
+    // while Auto-EQ is locked so the user can't switch curves under the lock.
+    EqModeToggle(
+        eqMode = eqMode,
+        enabled = graphicEnabled,
+        onModeChange = { viewModel.setEqMode(it) },
+    )
+
+    when (eqMode) {
+        EqMode.GRAPHIC -> BandEqCard(
+            bandGains = bandGains,
+            enabled = graphicEnabled,
+            onBandChange = { i, v -> viewModel.setBandGainLive(i, v) },
+            onBandCommit = { viewModel.commit() },
+            onReset = { viewModel.reset() },
+        )
+        EqMode.PARAMETRIC -> PeqEditorCard(
+            peqBands = peqBands,
+            enabled = graphicEnabled,
+            onBandChange = { i, freq, q, gain, type ->
+                viewModel.setPeqBand(i, freq, q, gain, type)
+            },
+            onBandCommit = { viewModel.commitPeq() },
+            onAddBand = { viewModel.addPeqBand() },
+            onRemoveBand = { viewModel.removePeqBand(it) },
+        )
+    }
+
+    AnimatedVisibility(
+        visible = isDirty && enabled,
+        modifier = Modifier.align(Alignment.CenterHorizontally),
+        enter = expandVertically() + fadeIn(),
+        exit = shrinkVertically() + fadeOut(),
+    ) {
+        OutlinedButton(
+            onClick = onSaveClick,
+            shape = MaterialTheme.shapes.medium,
+            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
+        ) {
+            Icon(Icons.Rounded.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text(stringResource(R.string.eq_save), style = MaterialTheme.typography.labelLarge)
+        }
+    }
+
+    if (customProfiles.isNotEmpty()) {
+        CustomPresetRow(
+            customProfiles = customProfiles,
+            bandGains = bandGains,
+            enabled = enabled,
+            onApplyProfile = { viewModel.applySavedProfile(it) },
+            onEditClick = onManageClick,
+        )
+    }
+
+    // Export / import EQ profiles (EQ curve + effects) as a JSON file.
+    val exportLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/json")
+    ) { uri -> uri?.let { viewModel.exportProfiles(it) } }
+    val importLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
+    ) { uri -> uri?.let { viewModel.importProfiles(it) } }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        OutlinedButton(
+            onClick = { exportLauncher.launch("aura-eq-perfiles.json") },
+            modifier = Modifier.weight(1f),
+            shape = MaterialTheme.shapes.medium,
+        ) { Text("Exportar perfiles") }
+        OutlinedButton(
+            onClick = { importLauncher.launch(arrayOf("application/json")) },
+            modifier = Modifier.weight(1f),
+            shape = MaterialTheme.shapes.medium,
+        ) { Text("Importar") }
+    }
+
+    // Assign EQ profiles to output devices (phone / Bluetooth), applied automatically on connect.
+    OutlinedButton(
+        onClick = onDeviceClick,
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.medium,
+    ) { Text("EQ por dispositivo") }
+
+    Spacer(modifier = Modifier.height(60.dp))
+}
+
+/**
+ * DSP effect switches surfaced into the EQ screen's wide (two-column) layout. These are the SAME
+ * switches that live in SoundSettings — backed by the SAME DataStore keys via [rememberPreference] —
+ * so toggling here reflects in SoundSettings and vice-versa. No new keys are invented and no ViewModel
+ * is touched; this is purely an additive UI surface. Laid out inside a vertically-scrolling [Column]
+ * supplied by the caller.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ColumnScope.DspEffectsColumn() {
+    val (auraSignature, onAuraSignatureChange) =
+        rememberPreference(iad1tya.echo.music.constants.AuraSignatureToneEnabledKey, defaultValue = true)
+    val (audioNormalization, onAudioNormalizationChange) =
+        rememberPreference(iad1tya.echo.music.constants.AudioNormalizationKey, defaultValue = true)
+    val (jrLoudness, onJrLoudnessChange) =
+        rememberPreference(iad1tya.echo.music.constants.JrLoudnessEnabledKey, defaultValue = false)
+    val (jrExciter, onJrExciterChange) =
+        rememberPreference(iad1tya.echo.music.constants.JrExciterEnabledKey, defaultValue = false)
+    val (jrExciterAmt, onJrExciterAmtChange) =
+        rememberPreference(iad1tya.echo.music.constants.JrExciterAmountKey, defaultValue = 0.15f)
+    val (jrStereo, onJrStereoChange) =
+        rememberPreference(iad1tya.echo.music.constants.JrStereoWidthEnabledKey, defaultValue = false)
+    val (jrStereoAmt, onJrStereoAmtChange) =
+        rememberPreference(iad1tya.echo.music.constants.JrStereoWidthKey, defaultValue = 1.0f)
+    val (jrDialogue, onJrDialogueChange) =
+        rememberPreference(iad1tya.echo.music.constants.JrDialogueEnabledKey, defaultValue = false)
+    val (jrDialogueAmt, onJrDialogueAmtChange) =
+        rememberPreference(iad1tya.echo.music.constants.JrDialogueAmountKey, defaultValue = 0.35f)
+
+    fun thumb(checked: Boolean): @Composable () -> Unit = {
+        Icon(
+            painter = painterResource(id = if (checked) R.drawable.check else R.drawable.close),
+            contentDescription = null,
+            modifier = Modifier.size(SwitchDefaults.IconSize),
+        )
+    }
+
+    Material3SettingsGroup(
+        title = "Efectos de sonido",
+        items = listOf(
+            Material3SettingsItem(
+                icon = painterResource(R.drawable.graphic_eq),
+                title = { Text("Firma Aura (cuerpo + aire)") },
+                description = { Text("Curva suave: un poco más de graves y de agudos para más cuerpo y sensación de calidad. Sin distorsionar.") },
+                trailingContent = {
+                    Switch(checked = auraSignature, onCheckedChange = onAuraSignatureChange, thumbContent = thumb(auraSignature))
+                },
+                onClick = { onAuraSignatureChange(!auraSignature) },
+            ),
+            Material3SettingsItem(
+                icon = painterResource(R.drawable.volume_up),
+                title = { Text(stringResource(R.string.audio_normalization)) },
+                description = { Text("Sonoridad pareja tipo TIDAL (−14 LUFS) con limitador true-peak; sube las flojas sin distorsionar.") },
+                trailingContent = {
+                    Switch(checked = audioNormalization, onCheckedChange = onAudioNormalizationChange, thumbContent = thumb(audioNormalization))
+                },
+                onClick = { onAudioNormalizationChange(!audioNormalization) },
+            ),
+            Material3SettingsItem(
+                icon = painterResource(R.drawable.graphic_eq),
+                title = { Text("Sonoridad") },
+                description = { Text("Realce de graves y agudos Fletcher-Munson para escuchar a bajo volumen") },
+                trailingContent = {
+                    Switch(checked = jrLoudness, onCheckedChange = onJrLoudnessChange, thumbContent = thumb(jrLoudness))
+                },
+                onClick = { onJrLoudnessChange(!jrLoudness) },
+            ),
+            Material3SettingsItem(
+                icon = painterResource(R.drawable.graphic_eq),
+                title = { Text("Excitador armónico") },
+                description = {
+                    Column {
+                        Text("Añade aire y presencia en altas frecuencias")
+                        if (jrExciter) Slider(value = jrExciterAmt, onValueChange = onJrExciterAmtChange, valueRange = 0f..1f)
+                    }
+                },
+                trailingContent = {
+                    Switch(checked = jrExciter, onCheckedChange = onJrExciterChange, thumbContent = thumb(jrExciter))
+                },
+                onClick = { onJrExciterChange(!jrExciter) },
+            ),
+            Material3SettingsItem(
+                icon = painterResource(R.drawable.graphic_eq),
+                title = { Text("Amplitud estéreo") },
+                description = {
+                    Column {
+                        Text("Imagen estéreo medio/lados (1.0 = original)")
+                        if (jrStereo) Slider(value = jrStereoAmt, onValueChange = onJrStereoAmtChange, valueRange = 0f..2f)
+                    }
+                },
+                trailingContent = {
+                    Switch(checked = jrStereo, onCheckedChange = onJrStereoChange, thumbContent = thumb(jrStereo))
+                },
+                onClick = { onJrStereoChange(!jrStereo) },
+            ),
+            Material3SettingsItem(
+                icon = painterResource(R.drawable.graphic_eq),
+                title = { Text("Realce de diálogos") },
+                description = {
+                    Column {
+                        Text("Mejora la claridad vocal (centro 300 Hz – 3 kHz)")
+                        if (jrDialogue) Slider(value = jrDialogueAmt, onValueChange = onJrDialogueAmtChange, valueRange = 0f..1f)
+                    }
+                },
+                trailingContent = {
+                    Switch(checked = jrDialogue, onCheckedChange = onJrDialogueChange, thumbContent = thumb(jrDialogue))
+                },
+                onClick = { onJrDialogueChange(!jrDialogue) },
+            ),
+        ),
+    )
 }
 
 @Composable

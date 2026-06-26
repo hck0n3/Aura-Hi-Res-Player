@@ -130,7 +130,7 @@ fun WelcomeDialog(
                     WelcomeFeatureRow(
                         iconRes = R.drawable.speed,
                         title = "Se adapta a tu teléfono",
-                        subtitle = "Detecta la potencia del dispositivo (RAM/CPU) y ajusta los efectos; el fondo animado se pausa con la app en segundo plano o la pantalla apagada, para no calentar ni gastar batería"
+                        subtitle = "Detecta la potencia del dispositivo (RAM/CPU) y ajusta los efectos; el fondo animado se pausa con la app en segundo plano o la pantalla apagada, para no calentar ni gastar batería. En plegables (Z Fold), al desplegar, el ecualizador y los efectos DSP se ven en dos columnas a la vez"
                     )
                     WelcomeDivider()
                     WelcomeFeatureRow(
