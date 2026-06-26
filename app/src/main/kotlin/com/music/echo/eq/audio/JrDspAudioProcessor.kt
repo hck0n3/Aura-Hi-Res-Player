@@ -34,6 +34,16 @@ class JrDspAudioProcessor : AudioProcessor {
     private var outputBuffer: ByteBuffer = EMPTY_BUFFER
     private var inputEnded = false
 
+    /** Per-instance override of the shared [config]. When non-null it takes precedence over the
+     *  companion default, so the main player and the crossfade secondary player can run different
+     *  DSP configs during a crossfade. Null → use the shared companion [config]. */
+    @Volatile
+    var instanceConfig: Config? = null
+
+    /** Flush denormal (subnormal) magnitudes to zero so recursive feedback state can't sit at a
+     *  denormal value (10-100x slower on ARM). Applied only to persistent one-pole/feedback state. */
+    private fun fl(v: Float): Float = if (v < 1e-15f && v > -1e-15f) 0f else v
+
     // ── Per-channel one-pole filter state ──
     private var bassLpL = 0f
     private var bassLpR = 0f
@@ -190,7 +200,7 @@ class JrDspAudioProcessor : AudioProcessor {
             outputBuffer.clear()
         }
 
-        val cfg = config
+        val cfg = instanceConfig ?: config
         if (!cfg.anyActive) {
             outputBuffer.put(inputBuffer)
             outputBuffer.flip()
@@ -226,8 +236,8 @@ class JrDspAudioProcessor : AudioProcessor {
                     val rDelRPos = (roomBufPos - roomDelayR + ROOM_DELAY_MAX) % ROOM_DELAY_MAX
                     val rawRefL = roomBufL[rDelLPos]
                     val rawRefR = roomBufR[rDelRPos]
-                    roomLpStateL = 0.5f * (rawRefL * 0.35f) + 0.5f * roomLpStateL
-                    roomLpStateR = 0.5f * (rawRefR * 0.35f) + 0.5f * roomLpStateR
+                    roomLpStateL = fl(0.5f * (rawRefL * 0.35f) + 0.5f * roomLpStateL)
+                    roomLpStateR = fl(0.5f * (rawRefR * 0.35f) + 0.5f * roomLpStateR)
                     roomBufL[roomBufPos] = l + roomLpStateL
                     roomBufR[roomBufPos] = r + roomLpStateR
 
@@ -235,8 +245,8 @@ class JrDspAudioProcessor : AudioProcessor {
                     val delPos = (hrtfBufPos - hrtfDelaySamp + HRTF_DELAY_MAX) % HRTF_DELAY_MAX
                     val delR = hrtfBufL[delPos]
                     val delL = hrtfBufR[delPos]
-                    hrtfShadLpL = hrtfShadAlpha * delL + (1.0f - hrtfShadAlpha) * hrtfShadLpL
-                    hrtfShadLpR = hrtfShadAlpha * delR + (1.0f - hrtfShadAlpha) * hrtfShadLpR
+                    hrtfShadLpL = fl(hrtfShadAlpha * delL + (1.0f - hrtfShadAlpha) * hrtfShadLpL)
+                    hrtfShadLpR = fl(hrtfShadAlpha * delR + (1.0f - hrtfShadAlpha) * hrtfShadLpR)
 
                     val refL = rawRefL * 0.20f + rawRefR * 0.15f
                     val refR = rawRefR * 0.20f + rawRefL * 0.15f
@@ -250,14 +260,14 @@ class JrDspAudioProcessor : AudioProcessor {
                 }
 
                 if (cfg.bassEnhanceEnabled) {
-                    bassLpL = bassLpAlpha * l + (1f - bassLpAlpha) * bassLpL
-                    bassLpR = bassLpAlpha * r + (1f - bassLpAlpha) * bassLpR
+                    bassLpL = fl(bassLpAlpha * l + (1f - bassLpAlpha) * bassLpL)
+                    bassLpR = fl(bassLpAlpha * r + (1f - bassLpAlpha) * bassLpR)
                     val enhL = bassLpL * abs(bassLpL) * 6f
                     val enhR = bassLpR * abs(bassLpR) * 6f
-                    bassEnhLpL = bassLp2Alpha * enhL + (1f - bassLp2Alpha) * bassEnhLpL
-                    bassEnhLpR = bassLp2Alpha * enhR + (1f - bassLp2Alpha) * bassEnhLpR
-                    bassEnhHpL = bassHpAlpha * (bassEnhHpL + bassEnhLpL - bassEnhLastL)
-                    bassEnhHpR = bassHpAlpha * (bassEnhHpR + bassEnhLpR - bassEnhLastR)
+                    bassEnhLpL = fl(bassLp2Alpha * enhL + (1f - bassLp2Alpha) * bassEnhLpL)
+                    bassEnhLpR = fl(bassLp2Alpha * enhR + (1f - bassLp2Alpha) * bassEnhLpR)
+                    bassEnhHpL = fl(bassHpAlpha * (bassEnhHpL + bassEnhLpL - bassEnhLastL))
+                    bassEnhHpR = fl(bassHpAlpha * (bassEnhHpR + bassEnhLpR - bassEnhLastR))
                     bassEnhLastL = bassEnhLpL
                     bassEnhLastR = bassEnhLpR
                     l += bassEnhHpL * cfg.bassEnhanceAmount
@@ -265,8 +275,8 @@ class JrDspAudioProcessor : AudioProcessor {
                 }
 
                 if (cfg.exciterEnabled) {
-                    exciterLpL = exciterAlpha * l + (1f - exciterAlpha) * exciterLpL
-                    exciterLpR = exciterAlpha * r + (1f - exciterAlpha) * exciterLpR
+                    exciterLpL = fl(exciterAlpha * l + (1f - exciterAlpha) * exciterLpL)
+                    exciterLpR = fl(exciterAlpha * r + (1f - exciterAlpha) * exciterLpR)
                     val hpL = l - exciterLpL
                     val hpR = r - exciterLpR
                     val satL = hpL * 0.1f + max(0f, hpL) * hpL * 3.5f
@@ -340,11 +350,11 @@ class JrDspAudioProcessor : AudioProcessor {
     /** Envelope-follow + downward compression gain for one MB band (transparent, no makeup). */
     private fun mbBandGain(band: Int, l: Double, r: Double): Float {
         val lvl = max(abs(l), abs(r)).toFloat()
-        mbEnv[band] = if (lvl > mbEnv[band]) {
+        mbEnv[band] = fl(if (lvl > mbEnv[band]) {
             mbAttCoeff * mbEnv[band] + (1f - mbAttCoeff) * lvl
         } else {
             mbRelCoeff * mbEnv[band]
-        }
+        })
         return if (mbEnv[band] > MB_THRESH[band]) {
             (MB_THRESH[band] / mbEnv[band]).toDouble().pow(1.0 - 1.0 / MB_RATIO[band]).toFloat()
         } else {

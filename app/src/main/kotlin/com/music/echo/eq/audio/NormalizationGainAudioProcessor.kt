@@ -38,6 +38,12 @@ class NormalizationGainAudioProcessor : AudioProcessor {
     // (no startup swell); subsequent target changes ramp.
     private var primed = false
 
+    /** Per-instance override of the shared [gain]. When non-null it takes precedence over the companion
+     *  default, so the main player and the crossfade secondary player can apply different normalization
+     *  gains during a crossfade. Null → use the shared companion [gain]. */
+    @Volatile
+    var instanceGain: Float? = null
+
     companion object {
         private val EMPTY_BUFFER: ByteBuffer =
             ByteBuffer.allocateDirect(0).order(ByteOrder.nativeOrder())
@@ -74,7 +80,7 @@ class NormalizationGainAudioProcessor : AudioProcessor {
             outputBuffer.clear()
         }
 
-        val target = gain
+        val target = instanceGain ?: gain
         if (!primed) {
             // Start a fresh instance AT the correct level (no swell into it).
             currentGain = target

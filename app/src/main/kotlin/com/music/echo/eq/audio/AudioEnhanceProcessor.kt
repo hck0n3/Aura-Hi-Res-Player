@@ -43,6 +43,10 @@ class AudioEnhanceProcessor : AudioProcessor {
     private var hfLpR = 0f
     private var hfAlpha = 0f
 
+    /** Flush denormal (subnormal) magnitudes to zero so the recursive one-pole low-pass state can't
+     *  sit at a denormal value (10-100x slower on ARM). Applied only to persistent state. */
+    private fun fl(v: Float): Float = if (v < 1e-15f && v > -1e-15f) 0f else v
+
     companion object {
         private val EMPTY_BUFFER: ByteBuffer =
             ByteBuffer.allocateDirect(0).order(ByteOrder.nativeOrder())
@@ -144,13 +148,13 @@ class AudioEnhanceProcessor : AudioProcessor {
     }
 
     private fun hfRegenL(x: Float): Float {
-        hfLpL = hfAlpha * x + (1f - hfAlpha) * hfLpL
+        hfLpL = fl(hfAlpha * x + (1f - hfAlpha) * hfLpL)
         val hf = x - hfLpL
         return x + tanh(hf * 2.5f) * HF_AMOUNT
     }
 
     private fun hfRegenR(x: Float): Float {
-        hfLpR = hfAlpha * x + (1f - hfAlpha) * hfLpR
+        hfLpR = fl(hfAlpha * x + (1f - hfAlpha) * hfLpR)
         val hf = x - hfLpR
         return x + tanh(hf * 2.5f) * HF_AMOUNT
     }

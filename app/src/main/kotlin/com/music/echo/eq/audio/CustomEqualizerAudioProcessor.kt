@@ -36,6 +36,15 @@ class CustomEqualizerAudioProcessor : AudioProcessor {
         private val EMPTY_BUFFER: ByteBuffer = ByteBuffer.allocateDirect(0).order(ByteOrder.nativeOrder())
     }
 
+    /** Soft clip a normalized (-1..1-ish) sample: linear below 0.95, then a tanh knee toward ~1.0 so a
+     *  high-Q transient rounds off instead of hard-clipping audibly before the downstream limiter. */
+    private fun softClip(x: Double): Double {
+        val a = kotlin.math.abs(x)
+        if (a <= 0.95) return x
+        val s = if (x < 0) -1.0 else 1.0
+        return s * (0.95 + 0.05 * kotlin.math.tanh((a - 0.95) / 0.05))
+    }
+
     
     @Synchronized
     fun applyProfile(parametricEQ: ParametricEQ) {
@@ -224,7 +233,7 @@ class CustomEqualizerAudioProcessor : AudioProcessor {
                     processed *= preampGain
 
                     
-                    val outputSample = (processed * 32768.0).coerceIn(-32768.0, 32767.0).toInt().toShort()
+                    val outputSample = (softClip(processed) * 32768.0).coerceIn(-32768.0, 32767.0).toInt().toShort()
                     output.putShort(outputSample)
                 }
                 2 -> {
@@ -247,8 +256,8 @@ class CustomEqualizerAudioProcessor : AudioProcessor {
                     processedRight *= preampGain
 
                     
-                    val outputLeft = (processedLeft * 32768.0).coerceIn(-32768.0, 32767.0).toInt().toShort()
-                    val outputRight = (processedRight * 32768.0).coerceIn(-32768.0, 32767.0).toInt().toShort()
+                    val outputLeft = (softClip(processedLeft) * 32768.0).coerceIn(-32768.0, 32767.0).toInt().toShort()
+                    val outputRight = (softClip(processedRight) * 32768.0).coerceIn(-32768.0, 32767.0).toInt().toShort()
 
                     output.putShort(outputLeft)
                     output.putShort(outputRight)

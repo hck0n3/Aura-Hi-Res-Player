@@ -1,22 +1,19 @@
-# Aura Hi-Res Player 0.6.44 — Auditoría (parte 8): pulido de rendimiento y robustez
+# Aura Hi-Res Player 0.6.45 — Pulido del motor de audio (auditoría, parte 9)
 
-Esta versión aplica **17 hallazgos** más de la auditoría (7 medios + 10 bajos). Sin funciones nuevas; todo son arreglos confirmados.
+Arreglos finos en el **motor de audio en tiempo real** (revisados adversarialmente, sin cambiar el sonido normal):
 
-## Más fluido (sobre todo en gama baja)
-- El reproductor recompone **menos** (el contador de posición pasó de 10 a 2 veces por segundo).
-- El **widget** se actualiza 1×/s en vez de 5×/s.
-- Guardar la cola ya no serializa en el hilo principal (menos tirones); el guardado al cerrar es síncrono para no perder la cola.
-- Carrusel de inicio: listas con **key** estable (sin recomposición completa al cargar más / refrescar) y el perfil de gustos se calcula en el dispatcher correcto.
-- El fondo difuminado del video usa un radio mucho más barato.
-- El slider de volumen ya no lanza una corrutina por cada movimiento.
+## Más estable en gama baja ⚙️
+- **Anti-denormales:** los estados internos de los efectos DSP (reverb/room, graves, exciter, HRTF, limitador multibanda) ya **descartan los valores subnormales** que en muchos CPU ARM son 10-100× más lentos y causaban micro-glitches y gasto de CPU en pasajes silenciosos. Inaudible, solo más eficiente.
 
-## Más robusto
-- **Inicio no crashea** aunque una canción se borre mientras se ve (se acabaron los `!!`).
-- **Reconocimiento** valida el micrófono (equipos baratos / mic ocupado) con mensajes claros, y evita dos sesiones de micrófono a la vez (app + widget).
-- Sincronización: una playlist no se **trunca** si YouTube devuelve una página parcial; respuestas de stream incompletas ya no descartan toda la info.
-- Letras: al cambiar de canción ya no se escriben letras de la canción anterior.
-- `NewPipe` inicializa de forma segura entre hilos.
-- Receptores de widget exportados ya no copian extras del broadcast (endurecimiento).
+## Ecualizador sin recortes duros 🎚️
+- Un pico muy resonante en una banda de Q alto ya **no se recorta en seco** a la salida del EQ: ahora se redondea suavemente (soft-clip) antes del limitador. El nivel normal no cambia.
 
-## Pendiente (pasada dedicada de audio)
-Quedan 5 hallazgos que tocan **matemática de audio en tiempo real / throttles sensibles** (denormales DSP, soft-clip del EQ, estáticos DSP en crossfade, ritmo de sincronización, tope por datos móviles). Los haré con cuidado y prueba de audio para no arriesgar la calidad.
+## Preparado para el crossfade
+- Los procesadores de audio ahora **pueden** llevar valores de normalización por reproductor (capacidad lista, sin efecto todavía) — base para eliminar el leve "pumping" de volumen durante el crossfade en una próxima versión.
+
+## Decisiones de la auditoría que NO apliqué (a propósito)
+- **No** capo el bitrate del audio con datos móviles: esto es un **Hi-Res Player**, el audio va siempre a máxima calidad (solo el video baja con datos, como pediste).
+- **No** quito los pequeños retardos de la sincronización: throttlean las llamadas de red y evitan el corte por rate-limit que viste en el Redmi.
+
+## Pendiente (próxima versión, con prueba de audio/sync en tu teléfono)
+- Cablear la normalización **por reproductor** en el crossfade (M3) y el refactor de transacciones de BD (#6) — son cambios estructurales con alcance en todo el audio/sync, los haré con cuidado y revisión.

@@ -56,6 +56,25 @@ class TruePeakLimiterAudioProcessor : AudioProcessor {
     private var mkRampStep = MAKEUP_RANGE / (48_000f * MK_RAMP_SECONDS)
     private var primed = false
 
+    /** Per-instance overrides of the shared [loudnessMakeup]/[eqMakeup]. When non-null they take
+     *  precedence over the companion defaults, so the main player and the crossfade secondary player
+     *  can apply different makeup during a crossfade. Null → use the shared companion value. */
+    @Volatile
+    var instanceLoudnessMakeup: Float? = null
+    @Volatile
+    var instanceEqMakeup: Float? = null
+
+    /** Set per-instance makeup values (null clears → falls back to the shared companion value). */
+    fun setInstanceMakeup(loudness: Float?, eq: Float?) {
+        instanceLoudnessMakeup = loudness
+        instanceEqMakeup = eq
+    }
+
+    /** Flush denormal (subnormal) magnitudes to zero so recursive filter/envelope state can't sit at
+     *  a denormal value (10-100x slower on ARM). Applied only to persistent state. */
+    private fun fl(v: Double): Double = if (v < 1e-15 && v > -1e-15) 0.0 else v
+    private fun fl(v: Float): Float = if (v < 1e-15f && v > -1e-15f) 0f else v
+
     companion object {
         private val EMPTY_BUFFER: ByteBuffer =
             ByteBuffer.allocateDirect(0).order(ByteOrder.nativeOrder())
@@ -124,15 +143,15 @@ class TruePeakLimiterAudioProcessor : AudioProcessor {
 
     private fun lowpassL(x: Double): Double {
         val y = lpB0 * x + lpZ1L
-        lpZ1L = lpB1 * x - lpA1 * y + lpZ2L
-        lpZ2L = lpB2 * x - lpA2 * y
+        lpZ1L = fl(lpB1 * x - lpA1 * y + lpZ2L)
+        lpZ2L = fl(lpB2 * x - lpA2 * y)
         return y
     }
 
     private fun lowpassR(x: Double): Double {
         val y = lpB0 * x + lpZ1R
-        lpZ1R = lpB1 * x - lpA1 * y + lpZ2R
-        lpZ2R = lpB2 * x - lpA2 * y
+        lpZ1R = fl(lpB1 * x - lpA1 * y + lpZ2R)
+        lpZ2R = fl(lpB2 * x - lpA2 * y)
         return y
     }
 
@@ -153,8 +172,8 @@ class TruePeakLimiterAudioProcessor : AudioProcessor {
         // peaks, so it stays clean. (Previously we only restored half, which is why boosting felt quieter.)
         // Safe now that the limiter is multiband: the boosted band stays present, the rest stays full, no
         // broadband ducking/"waves" — just a clean, calmer level.
-        val eqGain = eqMakeup
-        val targetMk = (loudnessMakeup * eqGain).coerceAtMost(MAX_MAKEUP) * OUTPUT_TRIM
+        val eqGain = instanceEqMakeup ?: eqMakeup
+        val targetMk = ((instanceLoudnessMakeup ?: loudnessMakeup) * eqGain).coerceAtMost(MAX_MAKEUP) * OUTPUT_TRIM
         if (!primed) {
             // Start a fresh instance AT the correct makeup (no swell into it).
             currentMk = targetMk
@@ -240,7 +259,7 @@ class TruePeakLimiterAudioProcessor : AudioProcessor {
     /** Instant attack (clamp gain down now → guarantees the ceiling), smooth release (transparent). */
     private fun nextEnv(current: Float, peak: Float): Float {
         val target = if (peak > CEILING) CEILING / peak else 1f
-        return if (target < current) target else current + (target - current) * RELEASE_COEFF
+        return fl(if (target < current) target else current + (target - current) * RELEASE_COEFF)
     }
 
     private fun resetState() {

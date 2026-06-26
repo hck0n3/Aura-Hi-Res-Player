@@ -899,12 +899,15 @@ object YTPlayerUtils {
 
         Timber.tag(logTag).d("Finding format with audioQuality: $audioQuality, network metered: ${connectivityManager.isActiveNetworkMetered}")
 
+        // NOTE (audit L10): we deliberately do NOT cap audio bitrate on mobile data — this is a Hi-Res player,
+        // so audio always streams at full quality (only VIDEO downgrades on metered, above). The `when` below
+        // is intentionally uniform; audio quality is honoured via the original-stream filter.
         val format = playerResponse.streamingData?.adaptiveFormats
             ?.filter { it.isAudio && it.isOriginal }
             ?.maxByOrNull {
                 it.bitrate * when (audioQuality) {
                     AudioQuality.OPUS, AudioQuality.SAAVN, AudioQuality.LOSSLESS -> 1
-                } + (if (it.mimeType.startsWith("audio/webm")) 10240 else 0) 
+                } + (if (it.mimeType.startsWith("audio/webm")) 10240 else 0)
             }
 
         if (format != null) {
