@@ -196,7 +196,7 @@ fun QueueMenu(
                         song?.let {
                             val s = it.song.toggleLike()
                             database.query {
-                                update(s)
+                                upsert(s) // insert-or-update so the like persists for not-yet-saved songs
                             }
                             syncUtils.likeSong(s)
                         }

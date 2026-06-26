@@ -324,7 +324,7 @@ fun SongMenu(
                 onClick = {
                     val s = song.song.toggleLike()
                     database.query {
-                        update(s)
+                        upsert(s) // insert-or-update: like must persist even if the song isn't in the library yet
                     }
                     syncUtils.likeSong(s)
                 },

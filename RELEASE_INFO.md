@@ -1,19 +1,19 @@
-# Aura Hi-Res Player 0.6.52 — reproducción infinita a prueba de balas + PEQ que se arrastra bien
+# Aura Hi-Res Player 0.6.53 — "Me gusta" arreglado, letras sin lag, radio infinita de verdad
 
-## ♾️ La cola ahora es DE VERDAD infinita
-Antes podía pararse al terminar la última canción. Rastreé todas las causas y las cerré:
-- **Si la radio de similares sale vacía o falla la red** justo al acabar: ahora prueba "relacionados", **espera y reintenta**, y como **último recurso re-reproduce tu cola** — nunca te deja en silencio.
-- **Modo aleatorio (shuffle):** corregido — antes podía no continuar al final de una cola mezclada.
-- **Carrera del "head-start":** si la siguiente tanda aún se descargaba cuando terminó la canción, ahora **reanuda igual**.
-- Sigue siendo **siempre activa** (no depende de ningún ajuste) y **predictiva** (radio de la última canción + re-ordenada por tu gusto).
+## ❤️ "Me gusta" por fin funciona
+Dar like a una canción que aún no estaba en tu biblioteca (búsqueda, exploración, radio) **no guardaba nada** y el corazón volvía atrás. **Dos causas:** (1) usaba una escritura que solo actualiza filas existentes → 0 filas → like perdido; ahora **inserta-o-actualiza** (upsert). (2) La descarga automática al dar like lanzaba un error en segundo plano que **abortaba el guardado del like** → ahora va protegida y nunca rompe el like.
 
-## 🎚️ EQ paramétrico: arrastrar puntos por fin va fino
-- **Arreglado el toque:** los nodos costaba moverlos y no dejaba cambiar de uno a otro. Era un conflicto entre dos detectores de gestos. Ahora es **un solo gesto**: tocas un punto y **lo agarras al instante** (sin "zona muerta"), y puedes saltar de un nodo a otro sin pelear con la pantalla. Área de toque un poco más grande.
-- **Botón "Restablecer":** vuelve el paramétrico a su curva plana (6 bandas) de un toque.
+## 🎤 Letras: el resaltado ya no va con retraso
+El relleno palabra-por-palabra pasaba por una animación de 150 ms **encima** de la posición que ya se actualiza cada ~8 ms → arrastraba ~150 ms detrás de la música. **Quitado:** ahora el resaltado sigue el audio **al instante**, suave (con borde suavizado).
 
-## Calidad
-Cambios del motor de reproducción con **revisión adversarial** (se cazó y corrigió una regresión real en modo aleatorio antes de subir). El arreglo del toque del EQ pasó revisión con **0 problemas**.
+## ♾️ Radio infinita — de verdad y basada en lo último que escuchaste
+- **Ya no tiene límite:** la vía de "relacionados" añadía un lote finito y dejaba morir la paginación; ahora reengancha una **radio que sigue cargando sola** sin fin.
+- **Se basa en la última canción:** antes re-ordenaba toda la radio por tu gusto general → se sentía desconectada. Ahora **manda la relación con la última canción** (orden de YouTube) y el gusto solo **empuja** unos puestos → la continuación suena como radio de lo que venías escuchando.
+
+## ✅ Verificado
+Los controles de **Tono (Graves/Agudos)** que se quitaron están **100% fuera** (0 referencias). Diagnóstico multi-agente + revisión adversarial; la paginación de la radio se cazó y completó antes de subir.
 
 ## 👉 Para probar
-- Deja terminar un álbum/lista/una sola canción (también en **aleatorio**) → debe seguir solo, siempre.
-- EQ → **Paramétrico** → agarra y mueve los puntos, salta entre ellos, y prueba **Restablecer**.
+- Da "Me gusta" a una canción de búsqueda/radio → debe quedar marcada y persistir.
+- Letras → resaltado suave y **sincronizado**.
+- Deja terminar la cola → sigue infinito y **relacionado** con lo último.

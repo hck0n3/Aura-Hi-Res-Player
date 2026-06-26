@@ -236,8 +236,8 @@ fun YouTubeSongMenu(
                                 insert(song.toMediaMetadata(), SongEntity::toggleLike)  
                                 s = song.toMediaMetadata().toSongEntity().let(SongEntity::toggleLike)  
                             } else {  
-                                s = librarySong.song.toggleLike()  
-                                update(s)  
+                                s = librarySong.song.toggleLike()
+                                upsert(s) // insert-or-update so the like persists for not-yet-saved songs
                             }  
                             syncUtils.likeSong(s)  
                         }  

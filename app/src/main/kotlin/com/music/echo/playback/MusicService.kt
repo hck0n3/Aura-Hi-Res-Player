@@ -1548,7 +1548,18 @@ class MusicService :
                     .map { it.toMediaItem() }
                     .filterExplicit(dataStore.get(HideExplicitKey, false))
                     .filterVideoSongs(dataStore.get(HideVideoSongsKey, false))
-                appendSeed(items)
+                val ok = appendSeed(items)
+                // CRITICAL for endlessness: the related page is FINITE. Re-point currentQueue at a radio seeded
+                // from the genuine last song AND PRIME it (getInitialStatus sets `continuation`, so hasNextPage()
+                // is true and the onMediaItemTransition pagination keeps loading forever). hasNextPage() is false
+                // on a fresh un-loaded YouTubeQueue, so without priming pagination wouldn't fire. Best-effort: if
+                // priming fails, the always-on STATE_ENDED net still re-seeds when this finite batch ends.
+                if (ok) {
+                    val rq = YouTubeQueue(endpoint = WatchEndpoint(videoId = currentMediaId))
+                    runCatching { withContext(Dispatchers.IO) { rq.getInitialStatus() } }
+                    currentQueue = rq
+                }
+                ok
             }.getOrDefault(false)
 
             try {
@@ -1596,27 +1607,34 @@ class MusicService :
         }.getOrNull()
     }
 
-    /** Order "what plays next" by taste (with jitter for variety) and drop disliked songs/artists. */
+    /**
+     * Order "what plays next" so it still FEELS like a continuation of the LAST song. The incoming list is
+     * already in YouTube's relatedness order (most-related-to-the-seed first); we KEEP that as the backbone and
+     * let taste only NUDGE a song up/down a few spots, instead of fully re-sorting by taste — which scrambled the
+     * relatedness and made the radio feel unrelated to what was just playing. Disliked songs/artists are dropped.
+     */
     private suspend fun List<MediaItem>.orderedByTaste(): List<MediaItem> {
         if (size < 2) return this
-        val p = tasteProfile() ?: return this
         val disliked = runCatching { dislikeStore.snapshot() }
             .getOrDefault(iad1tya.echo.music.dislike.DislikeStore.Disliked())
+        val filtered = this.filter { mi ->
+            val m = mi.metadata ?: return@filter true
+            m.id !in disliked.songs && m.artists.none { it.id != null && it.id in disliked.artists }
+        }
+        val p = tasteProfile() ?: return filtered // no taste yet → pure relatedness order (still dislike-filtered)
         val rnd = java.util.Random()
-        return this
-            .filter { mi ->
-                val m = mi.metadata ?: return@filter true
-                m.id !in disliked.songs && m.artists.none { it.id != null && it.id in disliked.artists }
-            }
-            // Precompute the sort key ONCE per item: calling rnd inside the comparator would make it
-            // inconsistent between comparisons and crash TimSort ("Comparison method violates contract").
-            .map { mi ->
+        // Precompute the sort key ONCE per item: calling rnd inside the comparator would make it inconsistent
+        // between comparisons and crash TimSort ("Comparison method violates contract").
+        return filtered
+            .mapIndexed { index, mi ->
                 val m = mi.metadata
-                val key = if (m == null) 0.0
-                    else p.scoreNames(m.artists.map { it.name }, m.title) + rnd.nextDouble() * 0.25
+                val taste = if (m == null) 0.0 else p.scoreNames(m.artists.map { it.name }, m.title)
+                // Lower key = earlier. `index` (relatedness rank) DOMINATES; taste shifts a song by only a few
+                // spots (~4 per taste point) and a small jitter adds variety — relatedness stays the backbone.
+                val key = index.toDouble() - taste * 4.0 + rnd.nextDouble() * 1.5
                 mi to key
             }
-            .sortedByDescending { it.second }
+            .sortedBy { it.second }
             .map { it.first }
     }
 
@@ -1869,22 +1887,30 @@ class MusicService :
                     base = getSongByIdBlocking(meta.id)?.song
                 }
                 val toggled = base?.toggleLike() ?: return@query
-                update(toggled)
+                upsert(toggled) // insert-or-update so the like always persists
                 syncUtils.likeSong(toggled)
 
                 if (dataStore.get(AutoDownloadOnLikeKey, true) && toggled.liked) {
-                    val downloadRequest =
-                        androidx.media3.exoplayer.offline.DownloadRequest
-                            .Builder(toggled.id, toggled.id.toUri())
-                            .setCustomCacheKey(toggled.id)
-                            .setData(toggled.title.toByteArray())
-                            .build()
-                    androidx.media3.exoplayer.offline.DownloadService.sendAddDownload(
-                        this@MusicService,
-                        ExoDownloadService::class.java,
-                        downloadRequest,
-                        false
-                    )
+                    // Guard the auto-download: DownloadService.sendAddDownload(foreground=false) throws
+                    // IllegalStateException on Android 8+ when started from the background, and an uncaught throw
+                    // here would abort the whole query block — rolling back the like. Never let the optional
+                    // download break the like itself.
+                    try {
+                        val downloadRequest =
+                            androidx.media3.exoplayer.offline.DownloadRequest
+                                .Builder(toggled.id, toggled.id.toUri())
+                                .setCustomCacheKey(toggled.id)
+                                .setData(toggled.title.toByteArray())
+                                .build()
+                        androidx.media3.exoplayer.offline.DownloadService.sendAddDownload(
+                            this@MusicService,
+                            ExoDownloadService::class.java,
+                            downloadRequest,
+                            false
+                        )
+                    } catch (e: Exception) {
+                        Timber.tag(TAG).e(e, "auto-download on like failed (non-fatal)")
+                    }
                 }
             }
             currentMediaMetadata.value = player.currentMetadata
@@ -1909,7 +1935,7 @@ class MusicService :
                 val song = currentSong.first()?.song
                 if (song != null && song.liked) {
                     val unliked = song.toggleLike()
-                    database.query { update(unliked); syncUtils.likeSong(unliked) }
+                    database.query { upsert(unliked); syncUtils.likeSong(unliked) }
                 }
             }
             // Purge any other copies of this track still queued ahead, then advance.

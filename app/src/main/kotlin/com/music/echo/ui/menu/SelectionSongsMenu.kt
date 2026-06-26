@@ -481,7 +481,7 @@ fun SelectionSongMenu(
                                     songSelection.forEach { song ->
                                         if ((!allLiked && !song.song.liked) || allLiked) {
                                             val s = song.song.toggleLike()
-                                            update(s)
+                                            upsert(s) // insert-or-update so the like persists for not-yet-saved songs
                                             syncUtils.likeSong(s)
                                         }
                                     }

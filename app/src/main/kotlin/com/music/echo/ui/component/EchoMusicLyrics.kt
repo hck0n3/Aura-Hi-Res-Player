@@ -217,15 +217,17 @@ fun echomusicLyricsLine(
                 val lineRelTime = (effectivePlaybackPosition - entry.time).coerceAtLeast(0L)
                 val wordDuration = (endRelative - startRelative).coerceAtLeast(1L)
                 
-                val progress by animateFloatAsState(
-                    targetValue = when {
-                        lineRelTime >= endRelative -> 1f
-                        lineRelTime < startRelative -> 0f
-                        else -> (lineRelTime - startRelative).toFloat() / wordDuration
-                    },
-                    animationSpec = tween(durationMillis = 150, easing = androidx.compose.animation.core.LinearEasing),
-                    label = "wordProgress"
-                )
+                // Direct (NOT animated): effectivePlaybackPosition already advances every ~8 ms via the live
+                // lyrics ticker, so the karaoke fill is smooth on its own. Wrapping it in a 150 ms tween layered
+                // a low-pass on top → the gradient edge chased a moving target and trailed ~150 ms behind the
+                // music. Reading the value directly makes the highlight track the audio with no lag.
+                val rawProgress = when {
+                    lineRelTime >= endRelative -> 1f
+                    lineRelTime < startRelative -> 0f
+                    else -> ((lineRelTime - startRelative).toFloat() / wordDuration).coerceIn(0f, 1f)
+                }
+                // smoothstep for a softer intra-word edge (still on the live value — no temporal lag).
+                val progress = rawProgress * rawProgress * (3f - 2f * rawProgress)
 
                 val finalFontWeight = if (isActive) FontWeight.ExtraBold else FontWeight.Bold
 
