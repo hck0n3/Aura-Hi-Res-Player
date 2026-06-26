@@ -64,7 +64,8 @@ class MusicWidgetReceiver : AppWidgetProvider() {
                 // Android allows starting FGS from widget PendingIntent clicks
                 val serviceIntent = Intent(context, MusicService::class.java).apply {
                     action = intent.action
-                    putExtras(intent)
+                    // Don't copy attacker-controllable extras from the EXPORTED broadcast into the service
+                    // intent — these control actions are command-only; the action alone is what's needed.
                 }
                 try {
                     // Widget clicks get a short FGS-launch exemption, so start the service in the

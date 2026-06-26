@@ -57,15 +57,19 @@ object GenreCache {
         if (pending.isEmpty()) return
 
         val sem = Semaphore(4)
-        coroutineScope {
+        val results = coroutineScope {
             pending.map { name ->
                 async {
                     sem.withPermit {
-                        val genre = iTunesDiscography.fetchArtistGenre(name).orEmpty()
-                        put(context, name.lowercase(), genre) // blank = cached "unknown"
+                        name.lowercase() to iTunesDiscography.fetchArtistGenre(name).orEmpty()
                     }
                 }
             }.awaitAll()
         }
+        // Persist ALL results in ONE SharedPreferences commit instead of up to 40 separate apply() fsyncs.
+        // Blank values are still cached as "unknown" so misses aren't refetched.
+        prefs(context).edit().also { e ->
+            results.forEach { (key, genre) -> e.putString(key, genre) }
+        }.apply()
     }
 }

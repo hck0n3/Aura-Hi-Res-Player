@@ -870,7 +870,7 @@ fun BottomSheetPlayer(
     LaunchedEffect(isPlaying, isCasting) {
         if (!isCasting && isPlaying) {
             while (isActive) {
-                delay(100)
+                delay(500)
                 if (sliderPosition == null) {
                     position = playerConnection.player.currentPosition
                     duration = playerConnection.player.duration
@@ -2530,11 +2530,8 @@ fun BottomSheetPlayer(
                                         if (isCasting) {
                                             castHandler?.setVolume(newVolume)
                                         } else {
-                                            
-                                            scope.launch(Dispatchers.Default) {
-                                                val newStep = (newVolume * maxSystemVolume).roundToInt()
-                                                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newStep, 0)
-                                            }
+                                            val newStep = (newVolume * maxSystemVolume).roundToInt()
+                                            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newStep, 0)
                                         }
                                     },
                                     modifier = Modifier.weight(1f),
@@ -2893,7 +2890,7 @@ fun BottomSheetPlayer(
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier
                                     .matchParentSize()
-                                    .blur(150.dp),
+                                    .blur(40.dp),
                             )
                         }
                         Box(
@@ -3146,7 +3143,7 @@ fun InlineLyricsView(
     LaunchedEffect(mediaMetadata?.id, currentLyrics) {
         if (mediaMetadata != null && currentLyrics == null) {
             delay(500)
-            coroutineScope.launch(Dispatchers.IO) {
+            withContext(Dispatchers.IO) {
                 try {
                     val entryPoint = EntryPointAccessors.fromApplication(
                         context.applicationContext,

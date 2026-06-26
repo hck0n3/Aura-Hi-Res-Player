@@ -1250,7 +1250,7 @@ fun HomeScreen(
                                         val originalSong = distinctQuickPicks[index]
                                         val song by database.song(originalSong.id)
                                             .collectAsState(initial = originalSong)
-                                        val isActive = song!!.id == mediaMetadata?.id
+                                        val isActive = (song ?: originalSong).id == mediaMetadata?.id
 
                                         Box(
                                             modifier = Modifier
@@ -1266,14 +1266,14 @@ fun HomeScreen(
                                                         if (isActive) {
                                                             playerConnection.togglePlayPause()
                                                         } else {
-                                                            playerConnection.playQueue(YouTubeQueue.radio(song!!.toMediaMetadata()))
+                                                            playerConnection.playQueue(YouTubeQueue.radio((song ?: originalSong).toMediaMetadata()))
                                                         }
                                                     },
                                                     onLongClick = {
                                                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                                         menuState.show {
                                                             SongMenu(
-                                                                originalSong = song!!,
+                                                                originalSong = song ?: originalSong,
                                                                 navController = navController,
                                                                 onDismiss = menuState::dismiss
                                                             )
@@ -1283,7 +1283,7 @@ fun HomeScreen(
                                         ) {
                                             AsyncImage(
                                                 model = coil3.request.ImageRequest.Builder(LocalContext.current)
-                                                    .data(song!!.thumbnailUrl)
+                                                    .data((song ?: originalSong).thumbnailUrl)
                                                     .crossfade(true)
                                                     .build(),
                                                 contentDescription = null,
@@ -1332,14 +1332,14 @@ fun HomeScreen(
                                                     .padding(16.dp)
                                             ) {
                                                 Text(
-                                                    text = song!!.title,
+                                                    text = (song ?: originalSong).title,
                                                     style = MaterialTheme.typography.titleMedium,
                                                     color = Color.White,
                                                     maxLines = 1,
                                                     overflow = TextOverflow.Ellipsis
                                                 )
                                                 Text(
-                                                    text = song!!.artists.joinToString { it.name },
+                                                    text = (song ?: originalSong).artists.joinToString { it.name },
                                                     style = MaterialTheme.typography.bodyMedium,
                                                     color = Color.White.copy(alpha = 0.7f),
                                                     maxLines = 1,
@@ -1366,7 +1366,7 @@ fun HomeScreen(
                                         horizontalArrangement = Arrangement.spacedBy(16.dp),
                                         modifier = Modifier.animateItem()
                                     ) {
-                                        items(playlists) { item ->
+                                        items(playlists, key = { it.playlist.id }) { item ->
                                             CommunityPlaylistCard(
                                                 item = item,
                                                 onClick = {
@@ -1644,9 +1644,9 @@ fun HomeScreen(
                                                 .collectAsState(initial = originalSong)
 
                                             SongListItem(
-                                                song = song!!,
+                                                song = (song ?: originalSong),
                                                 showInLibraryIcon = true,
-                                                isActive = song!!.id == mediaMetadata?.id,
+                                                isActive = (song ?: originalSong).id == mediaMetadata?.id,
                                                 isPlaying = isPlaying,
                                                 isSwipeable = false,
                                                 shape = listItemShape(index = index % rows, count = rows),
@@ -1656,7 +1656,7 @@ fun HomeScreen(
                                                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                                             menuState.show {
                                                                 SongMenu(
-                                                                    originalSong = song!!,
+                                                                    originalSong = (song ?: originalSong),
                                                                     navController = navController,
                                                                     onDismiss = menuState::dismiss
                                                                 )
@@ -1673,12 +1673,12 @@ fun HomeScreen(
                                                     .width(horizontalLazyGridItemWidth)
                                                     .combinedClickable(
                                                         onClick = {
-                                                            if (song!!.id == mediaMetadata?.id) {
+                                                            if ((song ?: originalSong).id == mediaMetadata?.id) {
                                                                 playerConnection.togglePlayPause()
                                                             } else {
                                                                 playerConnection.playQueue(
                                                                     YouTubeQueue.radio(
-                                                                        song!!.toMediaMetadata()
+                                                                        (song ?: originalSong).toMediaMetadata()
                                                                     )
                                                                 )
                                                             }
@@ -1687,7 +1687,7 @@ fun HomeScreen(
                                                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                                             menuState.show {
                                                                 SongMenu(
-                                                                    originalSong = song!!,
+                                                                    originalSong = (song ?: originalSong),
                                                                     navController = navController,
                                                                     onDismiss = menuState::dismiss
                                                                 )
@@ -1755,7 +1755,7 @@ fun HomeScreen(
                                             .asPaddingValues(),
                                         modifier = Modifier.animateItem()
                                     ) {
-                                        items(recommendation.items) { item ->
+                                        items(recommendation.items, key = { it.id }) { item ->
                                             ytGridItem(item, richCardHeight)
                                         }
                                     }
@@ -1895,7 +1895,7 @@ fun HomeScreen(
                                                 .asPaddingValues(),
                                             modifier = Modifier.animateItem()
                                         ) {
-                                            items(sectionData.items) { item ->
+                                            items(sectionData.items, key = { it.id }) { item ->
                                                 ytGridItem(item, richCardHeight)
                                             }
                                         }
@@ -1922,7 +1922,7 @@ fun HomeScreen(
                                             .height((MoodAndGenresButtonHeight + 12.dp) * 4 + 12.dp)
                                             .animateItem()
                                     ) {
-                                        items(moodAndGenres) {
+                                        items(moodAndGenres, key = { it.title }) {
                                             MoodAndGenresButton(
                                                 title = it.title,
                                                 onClick = {

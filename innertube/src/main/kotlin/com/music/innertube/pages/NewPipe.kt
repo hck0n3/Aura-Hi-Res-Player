@@ -144,6 +144,7 @@ object NewPipeExtractor {
     private var newPipeUtils: NewPipeUtils? = null
     private var isInitialized = false
 
+    @Synchronized
     fun init() {
         if (!isInitialized) {
             newPipeDownloader = NewPipeDownloaderImpl(

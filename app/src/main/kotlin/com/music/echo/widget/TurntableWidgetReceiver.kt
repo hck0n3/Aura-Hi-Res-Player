@@ -48,7 +48,7 @@ class TurntableWidgetReceiver : AppWidgetProvider() {
                         ACTION_TURNTABLE_PREVIOUS -> MusicWidgetReceiver.ACTION_PREVIOUS
                         else -> intent.action
                     }
-                    putExtras(intent)
+                    // Command-only control actions: don't copy extras from the exported broadcast.
                 }
                 try {
                     // Widget clicks get a short FGS-launch exemption; start in foreground so controls

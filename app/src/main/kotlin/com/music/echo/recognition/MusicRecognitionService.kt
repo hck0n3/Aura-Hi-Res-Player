@@ -35,6 +35,10 @@ object MusicRecognitionService {
     
     private val _recognitionStatus = MutableStateFlow<RecognitionStatus>(RecognitionStatus.Ready)
     val recognitionStatus: StateFlow<RecognitionStatus> = _recognitionStatus.asStateFlow()
+
+    // Prevents two concurrent mic sessions (e.g. the in-app Recognition screen + the widget service at once)
+    // fighting over the microphone and this shared status flow.
+    private val inProgress = java.util.concurrent.atomic.AtomicBoolean(false)
     
     fun hasRecordPermission(context: Context): Boolean {
         return ContextCompat.checkSelfPermission(
@@ -49,9 +53,13 @@ object MusicRecognitionService {
         if (!hasRecordPermission(context)) {
             return@withContext RecognitionStatus.Error("Microphone permission not granted")
         }
-        
+        if (!inProgress.compareAndSet(false, true)) {
+            // A recognition is already running — don't open a second mic session over the shared state.
+            return@withContext _recognitionStatus.value
+        }
+
         _recognitionStatus.value = RecognitionStatus.Listening
-        
+
         try {
             
             val audioData = recordAudio()
@@ -116,17 +124,24 @@ object MusicRecognitionService {
             // Surface the exception type so a systematic failure (e.g. a network/TLS error) is diagnosable.
             _recognitionStatus.value = RecognitionStatus.Error("${e.javaClass.simpleName}: ${e.message ?: "Recognition failed"}")
             _recognitionStatus.value
+        } finally {
+            inProgress.set(false)
         }
     }
     
     @SuppressLint("MissingPermission")
     private suspend fun recordAudio(): ByteArray = withContext(Dispatchers.IO) {
         val bufferSize = AudioRecord.getMinBufferSize(
-            RECORDING_SAMPLE_RATE, 
-            CHANNEL_CONFIG, 
+            RECORDING_SAMPLE_RATE,
+            CHANNEL_CONFIG,
             AUDIO_FORMAT
         )
-        
+        // Cheap devices can return ERROR(-1)/ERROR_BAD_VALUE(-2) for this format combo; a negative size would
+        // crash AudioRecord/ByteArray. Fail with a clear message instead of an obscure crash.
+        if (bufferSize <= 0) {
+            throw IllegalStateException("Micrófono no compatible con 44.1kHz mono 16-bit (code $bufferSize)")
+        }
+
         val audioRecord = AudioRecord(
             MediaRecorder.AudioSource.MIC,
             RECORDING_SAMPLE_RATE,
@@ -134,18 +149,25 @@ object MusicRecognitionService {
             AUDIO_FORMAT,
             bufferSize
         )
-        
+        if (audioRecord.state != AudioRecord.STATE_INITIALIZED) {
+            audioRecord.release()
+            throw IllegalStateException("No se pudo inicializar el micrófono (¿lo está usando otra app?)")
+        }
+
         val outputStream = ByteArrayOutputStream()
         val buffer = ByteArray(bufferSize)
         val startTime = System.currentTimeMillis()
-        
+
         try {
             audioRecord.startRecording()
-            
+
             while (System.currentTimeMillis() - startTime < RECORDING_DURATION_MS && isActive) {
                 val bytesRead = audioRecord.read(buffer, 0, bufferSize)
                 if (bytesRead > 0) {
                     outputStream.write(buffer, 0, bytesRead)
+                } else if (bytesRead < 0) {
+                    // AudioRecord.ERROR_* — stop instead of spinning uselessly on empty reads.
+                    break
                 }
             }
         } finally {

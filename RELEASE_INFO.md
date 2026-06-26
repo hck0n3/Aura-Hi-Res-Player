@@ -1,15 +1,22 @@
-# Aura Hi-Res Player 0.6.43 — Auditoría de código: estabilidad y rendimiento (parte 7 del plan)
+# Aura Hi-Res Player 0.6.44 — Auditoría (parte 8): pulido de rendimiento y robustez
 
-Esta versión no trae funciones nuevas: aplica las correcciones **confirmadas** de una auditoría completa del código (8 subsistemas, con verificación adversarial). Se corrigieron **10 fallos de severidad alta**. No hubo ningún fallo crítico.
+Esta versión aplica **17 hallazgos** más de la auditoría (7 medios + 10 bajos). Sin funciones nuevas; todo son arreglos confirmados.
 
-## Lo que mejora (invisible pero importante)
-- **Menos cuelgues/tirones al reproducir:** la resolución del stream ya no bloquea el hilo principal, y el precargado de la siguiente canción ya no hace lecturas de disco en el hilo de cambio de pista (relacionado con "el audio se traba").
-- **EQ sin estallidos:** los coeficientes del ecualizador se publican de forma atómica, así que mover bandas durante la reproducción ya no puede provocar un pico de ruido fuerte.
-- **Sincronización correcta:** las consultas de "álbumes subidos" filtraban por el campo de *favoritos* y **corrompían tus álbumes likeados** — corregido. Y "borrar lo sincronizado" ya no carga toda la biblioteca en memoria (riesgo de cierre en equipos con poca RAM).
-- **Pantallas que ya no se quedan en blanco:** los parsers de **álbum** e **historial** ya no fallan por completo si YouTube cambia un campo; saltan solo la fila problemática.
-- **Inicio más fluido con biblioteca grande:** ya no se carga toda la tabla de reproducciones para leer una sola canción.
-- **Cola sin duplicados:** el auto-mix ya no se inserta durante la composición de la UI.
-- **Sin fugas:** el servicio cancela sus corrutinas al destruirse.
+## Más fluido (sobre todo en gama baja)
+- El reproductor recompone **menos** (el contador de posición pasó de 10 a 2 veces por segundo).
+- El **widget** se actualiza 1×/s en vez de 5×/s.
+- Guardar la cola ya no serializa en el hilo principal (menos tirones); el guardado al cerrar es síncrono para no perder la cola.
+- Carrusel de inicio: listas con **key** estable (sin recomposición completa al cargar más / refrescar) y el perfil de gustos se calcula en el dispatcher correcto.
+- El fondo difuminado del video usa un radio mucho más barato.
+- El slider de volumen ya no lanza una corrutina por cada movimiento.
 
-## Pendiente (para revisar contigo)
-- 1 alto estructural (refactor de transacciones) + 7 medios + 18 bajos quedan documentados; los aplico según vayas decidiendo.
+## Más robusto
+- **Inicio no crashea** aunque una canción se borre mientras se ve (se acabaron los `!!`).
+- **Reconocimiento** valida el micrófono (equipos baratos / mic ocupado) con mensajes claros, y evita dos sesiones de micrófono a la vez (app + widget).
+- Sincronización: una playlist no se **trunca** si YouTube devuelve una página parcial; respuestas de stream incompletas ya no descartan toda la info.
+- Letras: al cambiar de canción ya no se escriben letras de la canción anterior.
+- `NewPipe` inicializa de forma segura entre hilos.
+- Receptores de widget exportados ya no copian extras del broadcast (endurecimiento).
+
+## Pendiente (pasada dedicada de audio)
+Quedan 5 hallazgos que tocan **matemática de audio en tiempo real / throttles sensibles** (denormales DSP, soft-clip del EQ, estáticos DSP en crossfade, ritmo de sincronización, tope por datos móviles). Los haré con cuidado y prueba de audio para no arriesgar la calidad.

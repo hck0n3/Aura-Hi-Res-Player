@@ -37,9 +37,11 @@ data class PlayerResponse(
 
     @Serializable
     data class StreamingData(
-        val formats: List<Format>?,
-        val adaptiveFormats: List<Format>,
-        val expiresInSeconds: Int,
+        val formats: List<Format>? = null,
+        // Defaults so a client response that omits these (TVHTML5/age-gated/error responses) doesn't throw a
+        // MissingFieldException and discard the WHOLE PlayerResponse — including a usable muxed `formats` list.
+        val adaptiveFormats: List<Format> = emptyList(),
+        val expiresInSeconds: Int = 0,
     ) {
         @Serializable
         data class Format(

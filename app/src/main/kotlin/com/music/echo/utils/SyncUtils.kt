@@ -462,9 +462,6 @@ class SyncUtils @Inject constructor(
                     val remoteIds = remoteSongs.map { it.id }.toSet()
                     val localSongs = database.likedSongsByNameAsc().first()
 
-                    
-                    val lastSync = context.dataStore.get(LastFullSyncKey, 0L)
-
                     localSongs.filterNot { it.id in remoteIds || it.song.isLocal }.forEach { song ->
                         try {
                             // Push local likes up to the account; NEVER un-like locally here. Removing a
@@ -1245,6 +1242,15 @@ class SyncUtils @Inject constructor(
 
                     if (remoteIds == localIds) {
                         Timber.d("syncPlaylist: Local and remote are in sync, no changes needed")
+                        return@onSuccess
+                    }
+
+                    // Guard against a truncated/partial remote page wiping the playlist: if the remote came back
+                    // MATERIALLY smaller than the local copy, treat it as a transient bad fetch and skip the
+                    // destructive clear-and-replace (same spirit as the empty-response guard above). Real
+                    // shrinks of <50% still sync on a later run when the full page returns.
+                    if (localIds.isNotEmpty() && remoteIds.size < localIds.size / 2) {
+                        Timber.w("syncPlaylist: remote (${remoteIds.size}) << local (${localIds.size}); skipping to avoid truncating the playlist")
                         return@onSuccess
                     }
 

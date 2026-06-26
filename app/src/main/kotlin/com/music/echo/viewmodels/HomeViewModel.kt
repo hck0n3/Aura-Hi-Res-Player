@@ -120,7 +120,11 @@ class HomeViewModel @Inject constructor(
         runCatching {
             val genres = iad1tya.echo.music.reco.GenreCache.snapshot(context)
             val onboarding = iad1tya.echo.music.reco.OnboardingGenres.itunesGenres(context)
-            tasteProfile = iad1tya.echo.music.reco.AffinityEngine.buildProfile(events, disliked, artistGenres = genres, onboardingGenres = onboarding, librarySongs = library)
+            // buildProfile is CPU-bound (genre/lane scans over events + library) — run it on Default (not the
+            // IO dispatcher this is called on) to free IO threads, matching MusicService.tasteProfile().
+            tasteProfile = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                iad1tya.echo.music.reco.AffinityEngine.buildProfile(events, disliked, artistGenres = genres, onboardingGenres = onboarding, librarySongs = library)
+            }
         }
         // Learn the real genres of your most-heard artists for next time — WiFi only (your choice).
         if (events.isNotEmpty()) {
