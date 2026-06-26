@@ -26,9 +26,17 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.text.input.KeyboardType
 import iad1tya.echo.music.R
 import iad1tya.echo.music.eq.data.EqConstants
+import iad1tya.echo.music.eq.data.EqMode
 import iad1tya.echo.music.eq.data.FactoryPreset
+import iad1tya.echo.music.eq.data.FilterType
+import iad1tya.echo.music.eq.data.ParametricEQBand
 import iad1tya.echo.music.eq.data.SavedEQProfile
 import iad1tya.echo.music.ui.component.Material3SettingsGroup
 import iad1tya.echo.music.ui.component.Material3SettingsItem
@@ -48,6 +56,8 @@ fun AxionEqScreen(
     val autoEqActive by viewModel.autoEqActive.collectAsState()
     val isDirty by viewModel.isDirty.collectAsState()
     val customProfiles by viewModel.customProfiles.collectAsState()
+    val eqMode by viewModel.eqMode.collectAsState()
+    val peqBands by viewModel.peqBands.collectAsState()
 
     // The graphic EQ is locked while an Auto-EQ headphone profile is active (both write the same
     // band array). Any manual edit / preset clears autoEqActive in the ViewModel.
@@ -127,16 +137,21 @@ fun AxionEqScreen(
                 ),
             )
 
+            // Preamp applies to both modes (graphic + parametric) so it stays visible always.
             PreampCard(preamp = preamp, enabled = enabled, onPreampChange = { viewModel.setPreampLive(it) }, onCommit = { viewModel.commit() })
 
-            // Live preview of the overall EQ curve — easier to read the shape than 24 separate sliders.
-            EqCurvePreview(bandGains = bandGains, enabled = enabled)
+            // Curve preview + factory presets drive/show the 24-band GRAPHIC curve only — hidden in
+            // PARAMETRIC mode where they'd be inaudible and misleading.
+            if (eqMode == EqMode.GRAPHIC) {
+                // Live preview of the overall EQ curve — easier to read the shape than 24 separate sliders.
+                EqCurvePreview(bandGains = bandGains, enabled = enabled)
 
-            FactoryPresetRow(
-                bandGains = bandGains,
-                enabled = graphicEnabled,
-                onPresetClick = { viewModel.applyPreset(it) },
-            )
+                FactoryPresetRow(
+                    bandGains = bandGains,
+                    enabled = graphicEnabled,
+                    onPresetClick = { viewModel.applyPreset(it) },
+                )
+            }
 
             if (autoEqActive) {
                 Text(
@@ -153,13 +168,33 @@ fun AxionEqScreen(
                 }
             }
 
-            BandEqCard(
-                bandGains = bandGains,
+            // Mode toggle: Gráfico (24-band, default) vs Paramétrico (5–8 free PEQ bands). Disabled
+            // while Auto-EQ is locked so the user can't switch curves under the lock.
+            EqModeToggle(
+                eqMode = eqMode,
                 enabled = graphicEnabled,
-                onBandChange = { i, v -> viewModel.setBandGainLive(i, v) },
-                onBandCommit = { viewModel.commit() },
-                onReset = { viewModel.reset() },
+                onModeChange = { viewModel.setEqMode(it) },
             )
+
+            when (eqMode) {
+                EqMode.GRAPHIC -> BandEqCard(
+                    bandGains = bandGains,
+                    enabled = graphicEnabled,
+                    onBandChange = { i, v -> viewModel.setBandGainLive(i, v) },
+                    onBandCommit = { viewModel.commit() },
+                    onReset = { viewModel.reset() },
+                )
+                EqMode.PARAMETRIC -> PeqEditorCard(
+                    peqBands = peqBands,
+                    enabled = graphicEnabled,
+                    onBandChange = { i, freq, q, gain, type ->
+                        viewModel.setPeqBand(i, freq, q, gain, type)
+                    },
+                    onBandCommit = { viewModel.commitPeq() },
+                    onAddBand = { viewModel.addPeqBand() },
+                    onRemoveBand = { viewModel.removePeqBand(it) },
+                )
+            }
 
             AnimatedVisibility(
                 visible = isDirty && enabled,
@@ -459,6 +494,247 @@ private fun BandEqCard(
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(stringResource(R.string.eq_reset))
             }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun EqModeToggle(
+    eqMode: EqMode,
+    enabled: Boolean,
+    onModeChange: (EqMode) -> Unit,
+) {
+    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+        SegmentedButton(
+            selected = eqMode == EqMode.GRAPHIC,
+            onClick = { if (enabled) onModeChange(EqMode.GRAPHIC) },
+            enabled = enabled,
+            shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+        ) { Text("Gráfico") }
+        SegmentedButton(
+            selected = eqMode == EqMode.PARAMETRIC,
+            onClick = { if (enabled) onModeChange(EqMode.PARAMETRIC) },
+            enabled = enabled,
+            shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+        ) { Text("Paramétrico") }
+    }
+}
+
+/**
+ * Parametric (PEQ) editor — 5–8 fully user-defined bands. Each band exposes free frequency / Q / gain
+ * plus a peak/shelf type selector. Values are pushed live and committed on focus loss / settle.
+ */
+@Composable
+private fun PeqEditorCard(
+    peqBands: List<ParametricEQBand>,
+    enabled: Boolean,
+    onBandChange: (index: Int, freq: Double?, q: Double?, gain: Double?, type: FilterType?) -> Unit,
+    onBandCommit: () -> Unit,
+    onAddBand: () -> Unit,
+    onRemoveBand: (Int) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.extraLarge)
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        peqBands.forEachIndexed { index, band ->
+            PeqBandRow(
+                index = index,
+                band = band,
+                enabled = enabled,
+                canRemove = enabled && peqBands.size > 5,
+                onFreqChange = { onBandChange(index, it, null, null, null) },
+                onQChange = { onBandChange(index, null, it, null, null) },
+                onGainChange = { onBandChange(index, null, null, it, null) },
+                onTypeChange = { onBandChange(index, null, null, null, it) },
+                onCommit = onBandCommit,
+                onRemove = { onRemoveBand(index) },
+            )
+            if (index < peqBands.lastIndex) {
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+            }
+        }
+        OutlinedButton(
+            onClick = onAddBand,
+            enabled = enabled && peqBands.size < 8,
+            modifier = Modifier.fillMaxWidth(),
+            shape = MaterialTheme.shapes.medium,
+        ) {
+            Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("Añadir banda")
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PeqBandRow(
+    index: Int,
+    band: ParametricEQBand,
+    enabled: Boolean,
+    canRemove: Boolean,
+    onFreqChange: (Double) -> Unit,
+    onQChange: (Double) -> Unit,
+    onGainChange: (Double) -> Unit,
+    onTypeChange: (FilterType) -> Unit,
+    onCommit: () -> Unit,
+    onRemove: () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(
+                text = "Banda ${index + 1}",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            androidx.compose.material3.IconButton(
+                onClick = onRemove,
+                enabled = canRemove,
+                modifier = Modifier.size(28.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Delete,
+                    contentDescription = "Quitar banda",
+                    tint = if (canRemove) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.outline,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            PeqNumberField(
+                label = "Frec (Hz)",
+                value = band.frequency,
+                decimals = 0,
+                enabled = enabled,
+                modifier = Modifier.weight(1f),
+                onValueChange = onFreqChange,
+                onCommit = onCommit,
+            )
+            PeqNumberField(
+                label = "Q",
+                value = band.q,
+                decimals = 2,
+                enabled = enabled,
+                modifier = Modifier.weight(1f),
+                onValueChange = onQChange,
+                onCommit = onCommit,
+            )
+            PeqNumberField(
+                label = "Gan (dB)",
+                value = band.gain,
+                decimals = 1,
+                enabled = enabled,
+                modifier = Modifier.weight(1f),
+                onValueChange = onGainChange,
+                onCommit = onCommit,
+            )
+        }
+        PeqTypeSelector(
+            selected = band.filterType,
+            enabled = enabled,
+            onTypeChange = {
+                onTypeChange(it)
+                onCommit()
+            },
+        )
+    }
+}
+
+/**
+ * A numeric [OutlinedTextField] bound to a Double, usable on any locale.
+ *
+ * - Formatting is locale-fixed ([java.util.Locale.US]) so the decimal separator is always '.', and the
+ *   parser normalizes ',' → '.' — on a Spanish locale "0,7" and "0.7" both parse, and we never emit a
+ *   comma the parser would then reject.
+ * - The buffer is a free editable string (NOT keyed on [value]) so keystrokes are never clobbered and
+ *   the live clamp can't snap the text mid-typing (you can type "900" even if intermediate "9" clamps).
+ * - While focused, edits push the parsed live value to the VM WITHOUT reformatting/clamping the text.
+ *   On focus LOSS the model (already clamped by the VM) is reformatted back into the field and committed.
+ * - Blank / "." / "-" (incomplete) input is a no-op — it neither pushes nor crashes.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PeqNumberField(
+    label: String,
+    value: Double,
+    decimals: Int,
+    enabled: Boolean,
+    modifier: Modifier = Modifier,
+    onValueChange: (Double) -> Unit,
+    onCommit: () -> Unit,
+) {
+    fun fmt(v: Double): String =
+        if (decimals == 0) v.roundToInt().toString()
+        else String.format(java.util.Locale.US, "%.${decimals}f", v)
+
+    var text by remember { mutableStateOf(fmt(value)) }
+    var focused by remember { mutableStateOf(false) }
+
+    // Resync the displayed text from the (clamped) model only while NOT focused, so external updates
+    // (load profile, reset) reflect, but typing is never overwritten.
+    LaunchedEffect(value, focused) {
+        if (!focused) text = fmt(value)
+    }
+
+    OutlinedTextField(
+        value = text,
+        onValueChange = {
+            text = it
+            // Push a LIVE value without reformatting/clamping the displayed text. Incomplete tokens
+            // (blank, lone "." or "-") are intentionally skipped.
+            it.replace(',', '.').toDoubleOrNull()?.let { parsed -> onValueChange(parsed) }
+        },
+        label = { Text(label, style = MaterialTheme.typography.labelSmall) },
+        singleLine = true,
+        enabled = enabled,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+        textStyle = MaterialTheme.typography.bodyMedium,
+        shape = MaterialTheme.shapes.small,
+        modifier = modifier.onFocusChanged { focus ->
+            if (focus.isFocused) {
+                focused = true
+            } else if (focused) {
+                focused = false
+                // Settle: parse + push final value (VM clamps), persist. The LaunchedEffect above then
+                // resyncs `text` to the freshly-clamped model now that focused == false (avoids using a
+                // stale captured `value` here).
+                text.replace(',', '.').toDoubleOrNull()?.let { parsed -> onValueChange(parsed) }
+                onCommit()
+            }
+        },
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PeqTypeSelector(
+    selected: FilterType,
+    enabled: Boolean,
+    onTypeChange: (FilterType) -> Unit,
+) {
+    val types = listOf(FilterType.PK, FilterType.LSC, FilterType.HSC)
+    val labels = mapOf(FilterType.PK to "PK", FilterType.LSC to "LSC", FilterType.HSC to "HSC")
+    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+        types.forEachIndexed { i, type ->
+            SegmentedButton(
+                selected = selected == type,
+                onClick = { if (enabled) onTypeChange(type) },
+                enabled = enabled,
+                shape = SegmentedButtonDefaults.itemShape(index = i, count = types.size),
+            ) { Text(labels[type] ?: type.name) }
         }
     }
 }
