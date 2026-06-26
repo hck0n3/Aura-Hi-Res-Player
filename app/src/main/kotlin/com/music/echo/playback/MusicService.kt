@@ -296,6 +296,7 @@ class MusicService :
             Timber.tag(TAG).e(error, "Secondary player error")
             secondaryPlayer?.stop()
             secondaryPlayer?.clearMediaItems()
+            secondaryPlayer?.let { playerNormProcessors.remove(it); playerLimiterProcessors.remove(it) }
             secondaryPlayer = null
         }
     }
@@ -386,6 +387,8 @@ class MusicService :
     val playerFlow = _playerFlow.asStateFlow()
 
     private val playerSilenceProcessors = HashMap<Player, SilenceDetectorAudioProcessor>()
+    private val playerNormProcessors = HashMap<Player, NormalizationGainAudioProcessor>()
+    private val playerLimiterProcessors = HashMap<Player, TruePeakLimiterAudioProcessor>()
 
 
     private val instantSilenceSkipEnabled = MutableStateFlow(false)
@@ -1042,6 +1045,8 @@ class MusicService :
         equalizerService.addAudioProcessor(eqProcessor)
 
         val silenceProcessor = SilenceDetectorAudioProcessor { handleLongSilenceDetected() }
+        val normProcessor = NormalizationGainAudioProcessor()
+        val limiterProcessor = TruePeakLimiterAudioProcessor()
 
         
         runBlocking {
@@ -1052,7 +1057,7 @@ class MusicService :
 
         val player = ExoPlayer.Builder(this)
             .setMediaSourceFactory(createMediaSourceFactory())
-            .setRenderersFactory(createRenderersFactory(eqProcessor, silenceProcessor))
+            .setRenderersFactory(createRenderersFactory(eqProcessor, silenceProcessor, normProcessor, limiterProcessor))
             // Start playback after buffering ~1s instead of the default 2.5s, so songs begin ~1.5s sooner
             // (the only start-latency lever we control; YouTube stream resolution is the rest). Keeps the
             // large min/max buffer for smooth playback once started.
@@ -1085,6 +1090,8 @@ class MusicService :
             .build()
 
         playerSilenceProcessors[player] = silenceProcessor
+        playerNormProcessors[player] = normProcessor
+        playerLimiterProcessors[player] = limiterProcessor
 
         player.apply {
                 runBlocking {
@@ -3388,7 +3395,9 @@ class MusicService :
 
     private fun createRenderersFactory(
         eqProcessor: CustomEqualizerAudioProcessor,
-        silenceProcessor: SilenceDetectorAudioProcessor
+        silenceProcessor: SilenceDetectorAudioProcessor,
+        normProcessor: NormalizationGainAudioProcessor,
+        limiterProcessor: TruePeakLimiterAudioProcessor
     ) =
         object : DefaultRenderersFactory(this) {
             override fun buildAudioSink(
@@ -3406,12 +3415,12 @@ class MusicService :
                             // "Improve low quality" (declip + HF regen) on the raw signal; off by default.
                             AudioEnhanceProcessor(),
                             // Attenuate loud masters → headroom for everything downstream.
-                            NormalizationGainAudioProcessor(),
+                            normProcessor,
                             eqProcessor,
                             JrDspAudioProcessor(),
                             // Loudness makeup (brings quiet tracks up, TIDAL-style) + 2× true-peak
                             // limiter → loud and full, never clipping. Must be last gain stage.
-                            TruePeakLimiterAudioProcessor(),
+                            limiterProcessor,
                             SpectrumAudioProcessor(),
                             silenceProcessor,
                         ),
@@ -3598,15 +3607,19 @@ class MusicService :
         player.removeListener(this)
         player.removeListener(sleepTimer)
         playerSilenceProcessors.remove(player)
+        playerNormProcessors.remove(player); playerLimiterProcessors.remove(player)
 
         // Release crossfade players (incl. any preloaded incoming one) so they don't leak.
         crossfadeJob?.cancel()
         crossfadeTriggerJob?.cancel()
         crossfadePreloadJob?.cancel()
+        secondaryPlayer?.let { playerNormProcessors.remove(it); playerLimiterProcessors.remove(it) }
         runCatching { secondaryPlayer?.release() }
         secondaryPlayer = null
+        fadingPlayer?.let { playerNormProcessors.remove(it); playerLimiterProcessors.remove(it) }
         runCatching { fadingPlayer?.release() }
         fadingPlayer = null
+        playerNormProcessors.clear(); playerLimiterProcessors.clear()
 
         player.release()
         discordUpdateJob?.cancel()
@@ -3768,6 +3781,7 @@ class MusicService :
                 it.stop()
                 it.clearMediaItems()
                 it.release()
+                playerNormProcessors.remove(it); playerLimiterProcessors.remove(it)
             }
             secondaryPlayer = null
         }
@@ -3874,6 +3888,29 @@ class MusicService :
         sec.playWhenReady = false // buffer ahead silently; startCrossfade flips this on at the fade
         sec.prepare()
         secondaryPlayer = sec
+
+        // Prime the incoming player to ITS OWN track's normalization so the moment the fade starts it's
+        // already at the right level (the shared companion statics still hold the OUTGOING track's values).
+        val incomingId = items.getOrNull(targetIndex)?.mediaId
+        if (incomingId != null) {
+            scope.launch {
+                val normalize = withContext(Dispatchers.IO) { dataStore.data.map { it[AudioNormalizationKey] ?: true }.first() }
+                if (!normalize) return@launch
+                val fmt = withContext(Dispatchers.IO) { database.format(incomingId).first() }
+                val loudnessDb = effectiveLoudnessDb(fmt?.loudnessDb, fmt?.perceptualLoudnessDb)
+                withContext(Dispatchers.Main) {
+                    // Apply to the incoming player whether it's still the secondary OR has already been swapped
+                    // to current (the fast/fallback crossfade path swaps synchronously before this async prime
+                    // resolves). `sec` is the same ExoPlayer object before and after the swap, so the map lookup
+                    // by `sec` still resolves. The `isCrossfading` guard prevents re-setting the override AFTER
+                    // cleanupCrossfade has cleared it (which would freeze the survivor's normalization).
+                    if (secondaryPlayer === sec || (player === sec && isCrossfading)) {
+                        playerNormProcessors[sec]?.instanceGain = normalizationMultiplier(loudnessDb, enabled = true)
+                        playerLimiterProcessors[sec]?.setInstanceMakeup(dbToLinear(loudnessMakeupDb(loudnessDb, enabled = true)), null)
+                    }
+                }
+            }
+        }
     }
 
     private fun performCrossfadeSwap() {
@@ -3882,6 +3919,11 @@ class MusicService :
         val currentPlayer = player
 
         fadingPlayer = currentPlayer
+        // Pin the OUTGOING player to its current normalization (the companion statics still hold its
+        // values right now) so when setupLoudnessEnhancer re-writes them for the incoming track, the
+        // fading player keeps its own level instead of "pumping" to the new track's gain.
+        playerNormProcessors[currentPlayer]?.instanceGain = NormalizationGainAudioProcessor.gain
+        playerLimiterProcessors[currentPlayer]?.setInstanceMakeup(TruePeakLimiterAudioProcessor.loudnessMakeup, null)
         player = nextPlayer
         _playerFlow.value = player
         secondaryPlayer = null
@@ -4001,8 +4043,16 @@ class MusicService :
     }
 
     private fun cleanupCrossfade() {
+        // The crossfade is over: clear the surviving player's per-instance normalization overrides so it
+        // resumes following the shared companion statics, and reset the de-dup guard so the next track
+        // (re)normalizes normally via setupLoudnessEnhancer.
+        playerNormProcessors[player]?.instanceGain = null
+        playerLimiterProcessors[player]?.setInstanceMakeup(null, null)
+        lastNormalizedId = null
+        lastNormalizedHadLoudness = false
         fadingPlayer?.stop()
         fadingPlayer?.clearMediaItems()
+        fadingPlayer?.let { playerNormProcessors.remove(it); playerLimiterProcessors.remove(it) }
         fadingPlayer?.release()
         fadingPlayer = null
         isCrossfading = false

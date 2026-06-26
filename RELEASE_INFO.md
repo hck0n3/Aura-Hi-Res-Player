@@ -1,19 +1,15 @@
-# Aura Hi-Res Player 0.6.45 — Pulido del motor de audio (auditoría, parte 9)
+# Aura Hi-Res Player 0.6.46 — Crossfade sin "pumping" de volumen (M3)
 
-Arreglos finos en el **motor de audio en tiempo real** (revisados adversarialmente, sin cambiar el sonido normal):
+## Qué cambia
+Durante el **crossfade**, las dos canciones (la que sale y la que entra) compartían el mismo valor de normalización de volumen, así que al mezclarse había un leve **"pumping"** (la canción saliente saltaba de nivel). Ahora **cada reproductor lleva su propia normalización**: la saliente mantiene su nivel y la entrante el suyo → la mezcla es suave.
 
-## Más estable en gama baja ⚙️
-- **Anti-denormales:** los estados internos de los efectos DSP (reverb/room, graves, exciter, HRTF, limitador multibanda) ya **descartan los valores subnormales** que en muchos CPU ARM son 10-100× más lentos y causaban micro-glitches y gasto de CPU en pasajes silenciosos. Inaudible, solo más eficiente.
+## Cómo se hizo (con mucho cuidado)
+Esto toca el motor de audio, así que fue **evaluado por 7 agentes** (mapeo del motor + 2 planes independientes + un juez que estresó el riesgo) antes de implementarlo, y luego **revisado adversarialmente** (se encontró y corrigió un caso límite en la ruta rápida del crossfade).
 
-## Ecualizador sin recortes duros 🎚️
-- Un pico muy resonante en una banda de Q alto ya **no se recorta en seco** a la salida del EQ: ahora se redondea suavemente (soft-clip) antes del limitador. El nivel normal no cambia.
+- Cambio **estrictamente additivo**: sin crossfade, el audio es **idéntico** a antes (los valores por-reproductor quedan nulos → usa el camino global de siempre).
+- La normalización por-reproductor se **limpia** al terminar/saltar/cancelar el crossfade, así que las siguientes canciones se normalizan normal.
 
-## Preparado para el crossfade
-- Los procesadores de audio ahora **pueden** llevar valores de normalización por reproductor (capacidad lista, sin efecto todavía) — base para eliminar el leve "pumping" de volumen durante el crossfade en una próxima versión.
+## 👉 Para probar (importante)
+Activa **crossfade + normalización de volumen** y encola una canción **MUY fuerte seguida de una MUY suave** (y al revés). Durante la mezcla, el volumen debe sonar **estable**, sin que la canción saliente pegue un salto. Si notas algo raro, dímelo y lo reverto al instante.
 
-## Decisiones de la auditoría que NO apliqué (a propósito)
-- **No** capo el bitrate del audio con datos móviles: esto es un **Hi-Res Player**, el audio va siempre a máxima calidad (solo el video baja con datos, como pediste).
-- **No** quito los pequeños retardos de la sincronización: throttlean las llamadas de red y evitan el corte por rate-limit que viste en el Redmi.
-
-## Pendiente (próxima versión, con prueba de audio/sync en tu teléfono)
-- Cablear la normalización **por reproductor** en el crossfade (M3) y el refactor de transacciones de BD (#6) — son cambios estructurales con alcance en todo el audio/sync, los haré con cuidado y revisión.
+*(Nota: el otro pendiente de la auditoría, #6 — refactor interno de transacciones de BD — lo dejo fuera: cero beneficio visible y riesgo en toda la sincronización. Recomiendo no tocarlo.)*
