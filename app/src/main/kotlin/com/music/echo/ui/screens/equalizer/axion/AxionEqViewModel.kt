@@ -19,15 +19,11 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
-import kotlin.math.abs
 
 /**
  * Pure mapping: per-band dB gains + band types → ParametricEQ bands.
  * Gain is stored directly in dB (matches the desktop engine; no scaling).
  */
-/** Max bass/treble tone-shelf boost/cut (dB). */
-private const val TONE_LIMIT = 12f
-
 fun buildEqBands(gainsDb: FloatArray, types: IntArray): List<ParametricEQBand> =
     EqConstants.FREQUENCIES.mapIndexed { i, freq ->
         ParametricEQBand(
@@ -61,6 +57,22 @@ class AxionEqViewModel @Inject constructor(
     private val _enabled = MutableStateFlow(prefs.getBoolean("enabled", false))
     val enabled = _enabled.asStateFlow()
 
+    // Auto-EQ vs 24-band graphic EQ are mutually exclusive (both write the SAME _bandGains array).
+    // When Auto-EQ is applied this is true and the graphic EQ is greyed/locked; any manual graphic
+    // edit clears it (last-touched-wins).
+    private val _autoEqActive = MutableStateFlow(prefs.getBoolean("autoeq_active", false))
+    val autoEqActive = _autoEqActive.asStateFlow()
+
+    /** Leave the Auto-EQ lock and return to manual editing. The bands keep the applied Auto-EQ curve as the
+     *  starting point (so the user can fine-tune from it). Wired to the "Cambiar a manual" banner button so
+     *  the unlock path never depends on the (now-greyed) sliders/presets/reset. */
+    fun unlockGraphic() = setAutoEqActive(false)
+
+    private fun setAutoEqActive(active: Boolean) {
+        _autoEqActive.value = active
+        prefs.edit().putBoolean("autoeq_active", active).apply()
+    }
+
     // Band gains in dB (new "band24_" keys; legacy 10-band "band_" keys are intentionally ignored).
     private val _bandGains = MutableStateFlow(FloatArray(n) { prefs.getFloat("band24_$it", 0f) })
     val bandGains = _bandGains.asStateFlow()
@@ -71,12 +83,6 @@ class AxionEqViewModel @Inject constructor(
 
     private val _preamp = MutableStateFlow(prefs.getFloat("preampDb", 0f))
     val preamp = _preamp.asStateFlow()
-
-    // Poweramp-style manual tone: broad, musical bass/treble shelves (dB), separate from the 24 bands.
-    private val _bassBoost = MutableStateFlow(prefs.getFloat("bassBoostDb", 0f))
-    val bassBoost = _bassBoost.asStateFlow()
-    private val _trebleBoost = MutableStateFlow(prefs.getFloat("trebleBoostDb", 0f))
-    val trebleBoost = _trebleBoost.asStateFlow()
 
     private val _isDirty = MutableStateFlow(false)
     val isDirty = _isDirty.asStateFlow()
@@ -101,6 +107,7 @@ class AxionEqViewModel @Inject constructor(
     }
 
     fun setBandGain(index: Int, gainDb: Float) {
+        setAutoEqActive(false)
         if (index !in 0 until n) return
         val v = gainDb.coerceIn(EqConstants.GAIN_MIN, EqConstants.GAIN_MAX)
         val arr = _bandGains.value.copyOf()
@@ -112,6 +119,7 @@ class AxionEqViewModel @Inject constructor(
     }
 
     fun setBandsGains(gains: FloatArray, fromUser: Boolean = false) {
+        setAutoEqActive(false)
         val arr = FloatArray(n) { i ->
             gains.getOrElse(i) { 0f }.coerceIn(EqConstants.GAIN_MIN, EqConstants.GAIN_MAX)
         }
@@ -137,7 +145,7 @@ class AxionEqViewModel @Inject constructor(
      * re-apply), which stuttered the audio every time an AutoEq profile was selected. This batches it
      * into a single apply.
      */
-    fun applyProfileBatch(gains: FloatArray, preampDb: Float) {
+    fun applyProfileBatch(gains: FloatArray, preampDb: Float, isAutoEq: Boolean = false) {
         val arr = FloatArray(n) { i ->
             gains.getOrElse(i) { 0f }.coerceIn(EqConstants.GAIN_MIN, EqConstants.GAIN_MAX)
         }
@@ -150,10 +158,15 @@ class AxionEqViewModel @Inject constructor(
             putBoolean("enabled", true)
         }.apply()
         _isDirty.value = true
+        // Only a true Auto-EQ headphone profile locks the graphic EQ (last-touched-wins). Loading a
+        // user's saved custom profile keeps it manual (isAutoEq=false → clears the lock). Set AFTER
+        // the band writes so it reflects the final intent.
+        setAutoEqActive(isAutoEq)
         applyToService()
     }
 
     fun setBandType(index: Int, type: Int) {
+        setAutoEqActive(false)
         if (index !in 0 until n) return
         val arr = _bandTypes.value.copyOf()
         arr[index] = type.coerceIn(0, 2)
@@ -164,17 +177,15 @@ class AxionEqViewModel @Inject constructor(
     }
 
     fun applyPreset(preset: FactoryPreset) {
+        setAutoEqActive(false)
         setBandsGains(preset.gains.copyOf(), fromUser = true)
     }
 
     fun reset() {
+        setAutoEqActive(false)
         _preamp.value = 0f
-        _bassBoost.value = 0f
-        _trebleBoost.value = 0f
         prefs.edit()
             .putFloat("preampDb", 0f)
-            .putFloat("bassBoostDb", 0f)
-            .putFloat("trebleBoostDb", 0f)
             .apply()
         setBandsGains(FloatArray(n) { 0f })
     }
@@ -272,6 +283,7 @@ class AxionEqViewModel @Inject constructor(
      * player re-seek) so the change is heard in real time without stutter. Persist via [commit].
      */
     fun setBandGainLive(index: Int, gainDb: Float) {
+        setAutoEqActive(false)
         if (index !in 0 until n) return
         val v = gainDb.coerceIn(EqConstants.GAIN_MIN, EqConstants.GAIN_MAX)
         val arr = _bandGains.value.copyOf()
@@ -289,39 +301,9 @@ class AxionEqViewModel @Inject constructor(
         if (_enabled.value) equalizerService.applyProfile(liveProfile())
     }
 
-    /** Live bass-shelf drag (Poweramp-style tone). Range +/- [TONE_LIMIT] dB. */
-    fun setBassBoostLive(db: Float) {
-        _bassBoost.value = db.coerceIn(-TONE_LIMIT, TONE_LIMIT)
-        _isDirty.value = true
-        if (_enabled.value) equalizerService.applyProfile(liveProfile())
-    }
-
-    /** Live treble-shelf drag (Poweramp-style tone). */
-    fun setTrebleBoostLive(db: Float) {
-        _trebleBoost.value = db.coerceIn(-TONE_LIMIT, TONE_LIMIT)
-        _isDirty.value = true
-        if (_enabled.value) equalizerService.applyProfile(liveProfile())
-    }
-
-    /** Broad, musical bass/treble shelves appended to the 24 graphic bands (the "rich" tone controls). */
-    private fun toneShelves(): List<ParametricEQBand> = buildList {
-        if (abs(_bassBoost.value) > 0.01f) add(
-            ParametricEQBand(
-                frequency = 90.0, gain = _bassBoost.value.toDouble(), q = 0.7,
-                filterType = FilterType.LSC, enabled = true,
-            ),
-        )
-        if (abs(_trebleBoost.value) > 0.01f) add(
-            ParametricEQBand(
-                frequency = 10000.0, gain = _trebleBoost.value.toDouble(), q = 0.7,
-                filterType = FilterType.HSC, enabled = true,
-            ),
-        )
-    }
-
-    /** The 24 graphic bands plus the bass/treble tone shelves — the full filter set sent to the DSP. */
+    /** The 24 graphic bands — the full filter set sent to the DSP. */
     private fun allBands(): List<ParametricEQBand> =
-        buildEqBands(_bandGains.value, _bandTypes.value) + toneShelves()
+        buildEqBands(_bandGains.value, _bandTypes.value)
 
     /** Persist the current tuning once — call on slider release (onValueChangeFinished). */
     fun commit() {
@@ -329,8 +311,6 @@ class AxionEqViewModel @Inject constructor(
         _bandGains.value.forEachIndexed { i, f -> editor.putFloat("band24_$i", f) }
         _bandTypes.value.forEachIndexed { i, t -> editor.putInt("type24_$i", t) }
         editor.putFloat("preampDb", _preamp.value)
-        editor.putFloat("bassBoostDb", _bassBoost.value)
-        editor.putFloat("trebleBoostDb", _trebleBoost.value)
         editor.apply()
         if (_enabled.value) viewModelScope.launch {
             val p = liveProfile()

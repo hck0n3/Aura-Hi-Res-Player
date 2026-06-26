@@ -45,6 +45,13 @@ class BiquadFilter(
     @Volatile
     private var coeffs = Coeffs(1.0, 0.0, 0.0, 0.0, 0.0)
 
+    // 0 dB bypass: a peaking/shelf band sitting at ~flat gain is mathematically a pass-through, so we
+    // skip the per-sample biquad entirely (CPU saving + leaves the pure signal untouched). LPQ/HPQ are
+    // NEVER bypassed — a 0 dB low/high-pass is still a real filter and ignores gain. Published per-sample
+    // via the same @Volatile pattern as coeffs so the audio thread reads a consistent value.
+    @Volatile
+    private var bypass = false
+
     init {
         calculateCoefficients()
     }
@@ -73,6 +80,10 @@ class BiquadFilter(
         }
         // Publish the freshly-computed set atomically for the audio thread.
         coeffs = Coeffs(b0, b1, b2, a1, a2)
+        // Only PK/LSC/HSC honor gain; a |gain| < 0.05 dB peaking/shelf band is effectively flat → bypass.
+        // LPQ/HPQ are excluded on purpose (they ignore gain and are real filters even at 0 dB).
+        bypass = (filterType == FilterType.PK || filterType == FilterType.LSC || filterType == FilterType.HSC) &&
+            kotlin.math.abs(gain) < 0.05
     }
 
     
@@ -210,6 +221,15 @@ class BiquadFilter(
 
 
     fun processSample(input: Double): Double {
+        // Flat PK/LSC/HSC band → pass-through. Still advance the z-state with the input so the delay line
+        // stays continuous; un-bypassing mid-playback then resumes without a pop.
+        if (bypass) {
+            x2L = x1L
+            x1L = input
+            y2L = y1L
+            y1L = input
+            return input
+        }
         val c = coeffs // snapshot the consistent coefficient set once
         val output = c.b0 * input + c.b1 * x1L + c.b2 * x2L - c.a1 * y1L - c.a2 * y2L
 
@@ -224,6 +244,21 @@ class BiquadFilter(
 
     
     fun processStereo(inputLeft: Double, inputRight: Double): Pair<Double, Double> {
+        // Flat PK/LSC/HSC band → pass-through on both channels. Advance each channel's z-state with its own
+        // input so the delay lines stay continuous (no pop when un-bypassed mid-playback).
+        if (bypass) {
+            x2L = x1L
+            x1L = inputLeft
+            y2L = y1L
+            y1L = inputLeft
+
+            x2R = x1R
+            x1R = inputRight
+            y2R = y1R
+            y1R = inputRight
+
+            return Pair(inputLeft, inputRight)
+        }
         val c = coeffs // snapshot once so L and R use the SAME consistent coefficient set
         val outputLeft = c.b0 * inputLeft + c.b1 * x1L + c.b2 * x2L - c.a1 * y1L - c.a2 * y2L
         x2L = x1L

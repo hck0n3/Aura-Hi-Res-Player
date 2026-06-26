@@ -58,6 +58,7 @@ fun AutoEqScreen(navController: NavController) {
     val repo = remember { AutoEqRepository(context) }
     val eqViewModel: AxionEqViewModel = hiltViewModel()
     val eqEnabled by eqViewModel.enabled.collectAsState()
+    val autoEqActive by eqViewModel.autoEqActive.collectAsState()
 
     var loading by remember { mutableStateOf(true) }
     var refreshing by remember { mutableStateOf(false) }
@@ -102,7 +103,15 @@ fun AutoEqScreen(navController: NavController) {
         // Enable / disable Auto-EQ (mirrors the equalizer on/off).
         ListItem(
             headlineContent = { Text("Auto-EQ activado", fontWeight = FontWeight.Medium) },
-            supportingContent = { Text(if (eqEnabled) "El ecualizador está aplicando la curva" else "Desactivado") },
+            supportingContent = {
+                Text(
+                    when {
+                        !eqEnabled -> "Desactivado"
+                        autoEqActive -> "Perfil Auto-EQ aplicado (bloquea el ecualizador gráfico)"
+                        else -> "El ecualizador está aplicando la curva"
+                    },
+                )
+            },
             trailingContent = {
                 Switch(checked = eqEnabled, onCheckedChange = { eqViewModel.setEnabled(it) })
             },
@@ -163,6 +172,7 @@ fun AutoEqScreen(navController: NavController) {
                                     eqViewModel.applyProfileBatch(
                                         gains,
                                         profile.preampDb.toFloat(),
+                                        isAutoEq = true,
                                     )
                                     Toast.makeText(context, "Auto-EQ aplicado: ${entry.name}", Toast.LENGTH_SHORT).show()
                                 }

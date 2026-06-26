@@ -1,15 +1,20 @@
-# Aura Hi-Res Player 0.6.46 — Crossfade sin "pumping" de volumen (M3)
+# Aura Hi-Res Player 0.6.47 — Ecualizador más limpio y coherente (reestructura audiófila, parte 1)
 
-## Qué cambia
-Durante el **crossfade**, las dos canciones (la que sale y la que entra) compartían el mismo valor de normalización de volumen, así que al mezclarse había un leve **"pumping"** (la canción saliente saltaba de nivel). Ahora **cada reproductor lleva su propia normalización**: la saliente mantiene su nivel y la entrante el suyo → la mezcla es suave.
+Primer paso de la reestructura del EQ que pediste (evaluada por 7 agentes + revisada antes de subir):
 
-## Cómo se hizo (con mucho cuidado)
-Esto toca el motor de audio, así que fue **evaluado por 7 agentes** (mapeo del motor + 2 planes independientes + un juez que estresó el riesgo) antes de implementarlo, y luego **revisado adversarialmente** (se encontró y corrigió un caso límite en la ruta rápida del crossfade).
+## Fuera el "Tono" (Graves/Agudos) 🧹
+Los controles de Tono eran redundantes con el ecualizador de 24 bandas. Los quité para una señal más limpia. *(Nota: la "Sonoridad" es un realce fijo, no ajustable, así que el ajuste fino de graves/agudos se hace ahora con el EQ gráfico o el nuevo modo paramétrico que viene.)*
 
-- Cambio **estrictamente additivo**: sin crossfade, el audio es **idéntico** a antes (los valores por-reproductor quedan nulos → usa el camino global de siempre).
-- La normalización por-reproductor se **limpia** al terminar/saltar/cancelar el crossfade, así que las siguientes canciones se normalizan normal.
+## Bandas en 0 dB = bypass real ⚡
+Una banda gráfica que dejes en 0 dB ya **no procesa nada**: se salta el filtro por completo (ahorra CPU y deja pasar el audio puro, sin tocarlo). Sin clicks al cruzar el 0 dB, y los filtros pasa-altos/pasa-bajos siguen funcionando aunque estén a 0 dB (esos sí filtran de verdad).
 
-## 👉 Para probar (importante)
-Activa **crossfade + normalización de volumen** y encola una canción **MUY fuerte seguida de una MUY suave** (y al revés). Durante la mezcla, el volumen debe sonar **estable**, sin que la canción saliente pegue un salto. Si notas algo raro, dímelo y lo reverto al instante.
+## Auto-EQ y EQ manual ya no se pelean 🔒
+Al aplicar un **Auto-EQ** de auriculares, el ecualizador gráfico se **bloquea** (se grisea) para no corromper la corrección perfecta. Si quieres editar a mano, pulsa **"Cambiar a manual"** en el aviso y vuelves al control total (las bandas conservan la curva del Auto-EQ como punto de partida). Cargar un perfil **guardado tuyo** no bloquea nada (es manual).
 
-*(Nota: el otro pendiente de la auditoría, #6 — refactor interno de transacciones de BD — lo dejo fuera: cero beneficio visible y riesgo en toda la sincronización. Recomiendo no tocarlo.)*
+## Lo que viene
+- Modo **Gráfico / Paramétrico (PEQ)** para ajustes quirúrgicos.
+- Layout de **dos columnas** al desplegar pantallas plegables (Z Fold).
+
+## 👉 Para probar
+- Mueve una banda lentamente por el 0 dB con música → sin clicks; con todas a 0 → audio idéntico a EQ apagado.
+- Aplica un Auto-EQ → el gráfico se bloquea; "Cambiar a manual" lo desbloquea.

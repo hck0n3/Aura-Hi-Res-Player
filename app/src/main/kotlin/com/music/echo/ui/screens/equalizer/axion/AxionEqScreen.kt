@@ -45,10 +45,13 @@ fun AxionEqScreen(
     val enabled by viewModel.enabled.collectAsState()
     val bandGains by viewModel.bandGains.collectAsState()
     val preamp by viewModel.preamp.collectAsState()
-    val bassBoost by viewModel.bassBoost.collectAsState()
-    val trebleBoost by viewModel.trebleBoost.collectAsState()
+    val autoEqActive by viewModel.autoEqActive.collectAsState()
     val isDirty by viewModel.isDirty.collectAsState()
     val customProfiles by viewModel.customProfiles.collectAsState()
+
+    // The graphic EQ is locked while an Auto-EQ headphone profile is active (both write the same
+    // band array). Any manual edit / preset clears autoEqActive in the ViewModel.
+    val graphicEnabled = enabled && !autoEqActive
 
     var showSaveDialog by remember { mutableStateOf(false) }
     var showManageDialog by remember { mutableStateOf(false) }
@@ -126,27 +129,33 @@ fun AxionEqScreen(
 
             PreampCard(preamp = preamp, enabled = enabled, onPreampChange = { viewModel.setPreampLive(it) }, onCommit = { viewModel.commit() })
 
-            ToneCard(
-                bass = bassBoost,
-                treble = trebleBoost,
-                enabled = enabled,
-                onBass = { viewModel.setBassBoostLive(it) },
-                onTreble = { viewModel.setTrebleBoostLive(it) },
-                onCommit = { viewModel.commit() },
-            )
-
             // Live preview of the overall EQ curve — easier to read the shape than 24 separate sliders.
             EqCurvePreview(bandGains = bandGains, enabled = enabled)
 
             FactoryPresetRow(
                 bandGains = bandGains,
-                enabled = enabled,
+                enabled = graphicEnabled,
                 onPresetClick = { viewModel.applyPreset(it) },
             )
 
+            if (autoEqActive) {
+                Text(
+                    text = "Auto-EQ activo — el ecualizador gráfico está bloqueado para preservar la corrección de tus auriculares.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 4.dp),
+                )
+                androidx.compose.material3.TextButton(
+                    onClick = { viewModel.unlockGraphic() },
+                    modifier = Modifier.padding(horizontal = 4.dp),
+                ) {
+                    Text("Cambiar a manual")
+                }
+            }
+
             BandEqCard(
                 bandGains = bandGains,
-                enabled = enabled,
+                enabled = graphicEnabled,
                 onBandChange = { i, v -> viewModel.setBandGainLive(i, v) },
                 onBandCommit = { viewModel.commit() },
                 onReset = { viewModel.reset() },
@@ -377,61 +386,6 @@ private fun PreampCard(preamp: Float, enabled: Boolean, onPreampChange: (Float) 
     }
 }
 
-/** Poweramp-style manual tone: broad, musical Bass + Treble shelves. */
-@Composable
-private fun ToneCard(
-    bass: Float,
-    treble: Float,
-    enabled: Boolean,
-    onBass: (Float) -> Unit,
-    onTreble: (Float) -> Unit,
-    onCommit: () -> Unit,
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(MaterialTheme.shapes.extraLarge)
-            .background(MaterialTheme.colorScheme.surfaceContainerLow)
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Text("Tono", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
-        ToneSlider("Graves", bass, enabled, onBass, onCommit)
-        ToneSlider("Agudos", treble, enabled, onTreble, onCommit)
-    }
-}
-
-@Composable
-private fun ToneSlider(
-    label: String,
-    value: Float,
-    enabled: Boolean,
-    onChange: (Float) -> Unit,
-    onCommit: () -> Unit,
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelMedium,
-                color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline,
-            )
-            Text(
-                text = "%+.0f dB".format(value),
-                style = MaterialTheme.typography.labelMedium,
-                color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline,
-            )
-        }
-        Slider(
-            value = value,
-            onValueChange = onChange,
-            onValueChangeFinished = onCommit,
-            valueRange = -12f..12f,
-            enabled = enabled,
-        )
-    }
-}
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun FactoryPresetRow(
@@ -500,7 +454,7 @@ private fun BandEqCard(
             }
         }
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-            OutlinedButton(onClick = onReset) {
+            OutlinedButton(onClick = onReset, enabled = enabled) {
                 Icon(Icons.Rounded.Replay, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(stringResource(R.string.eq_reset))
