@@ -849,7 +849,15 @@ class MusicService :
             }
 
         combine(
-            currentFormat,
+            // Only re-run normalization when the LOUDNESS actually changes — not on every format-row write.
+            // Liking a song triggers an auto-download that re-stores the FormatEntity; without this distinct
+            // that re-store re-ran setupLoudnessEnhancer mid-song and re-applied the makeup → a sudden volume
+            // jump + the limiter slamming (saturation / raspy voice). De-dup on the loudness fields kills it.
+            currentFormat.distinctUntilChanged { a, b ->
+                a?.id == b?.id &&
+                    a?.loudnessDb == b?.loudnessDb &&
+                    a?.perceptualLoudnessDb == b?.perceptualLoudnessDb
+            },
             dataStore.data
                 .map { it[AudioNormalizationKey] ?: true }
                 .distinctUntilChanged(),
@@ -1976,8 +1984,8 @@ class MusicService :
 
         scope.launch {
             try {
-                val currentMediaId = withContext(Dispatchers.Main) {
-                    player.currentMediaItem?.mediaId
+                val (currentMediaId, positionMs) = withContext(Dispatchers.Main) {
+                    Pair(player.currentMediaItem?.mediaId, player.currentPosition)
                 }
 
                 val normalizeAudio = withContext(Dispatchers.IO) {
@@ -2005,7 +2013,12 @@ class MusicService :
                     // makes the level right; the gain processor RAMPS the change, so it glides instead of the
                     // sudden mid-song volume jump. We never downgrade (real→default) and never re-apply twice
                     // (e.g. the like-triggered re-store keeps the real value), so this fires at most once.
-                    val realLoudnessJustArrived = hasRealLoudness && !lastNormalizedHadLoudness
+                    // The real-loudness upgrade may ONLY apply near the START of the track (YouTube returns
+                    // real loudness a moment after playback begins). After that, a re-store (e.g. from a
+                    // like-triggered download) must NEVER re-normalize the already-playing track — that was the
+                    // mid-song volume jump + saturation the user heard. So gate the upgrade to the first seconds.
+                    val realLoudnessJustArrived =
+                        hasRealLoudness && !lastNormalizedHadLoudness && positionMs < 15_000L
                     if (currentMediaId == lastNormalizedId && !realLoudnessJustArrived) {
                         return@launch
                     }
