@@ -63,11 +63,13 @@ class JrDspAudioProcessor : AudioProcessor {
     // ── "Aura signature" gentle tone (body + air), ON by default, built on configure ──
     private var sigLoShelf: BiquadFilter? = null
     private var sigHiShelf: BiquadFilter? = null
-    // 1.0 = no trim. In the OLD int16-everywhere chain this was -1 dB to stop the signature shelf overshoot from
-    // hitting a hard local soft-clip (raspy voice). The chain is 32-bit float now, so the overshoot is a plain
-    // float >1.0 caught transparently by the downstream true-peak limiter — the trim is no longer needed and only
-    // thinned the body, so it's removed to let the richer signature through cleanly.
-    private val SIG_TRIM = 1.0
+    // Pre-trim the signature shelves by -1 dB. Float does NOT make this unnecessary: the signature boost meets
+    // JrDsp's OWN local softLimit (end of the frame loop, knee 0.88) FIRST — that local waveshaper bakes harmonics
+    // into the PCM before the transparent downstream true-peak limiter ever sees them = raspy vocals at high
+    // volume (regression when this was set to 1.0). The trim keeps signature-only peaks under the 0.88 knee so the
+    // local soft-clip stops engaging and peak control defers to the downstream limiter. (Restores the documented
+    // headroom — see project memory "aura-signature-must-not-overshoot".)
+    private val SIG_TRIM = 0.891
 
     // ── Multiband compressor (3-band LR2 crossover) state, built on configure ──
     private var mbLpf1: BiquadFilter? = null   // LP 200 Hz  (bass)
@@ -167,9 +169,9 @@ class JrDspAudioProcessor : AudioProcessor {
         loudnessHiShelf = BiquadFilter(sampleRate, 5000.0, 2.0, 0.707, FilterType.HSC, shelfSlope = 0.707)
 
         // Aura signature: warm BODY (+2 dB low shelf @120 Hz — upper-bass/low-mids where "cuerpo" lives)
-        // + AIR (+0.8 dB high shelf @12 kHz), a richer house curve. Now that the whole chain is 32-bit float,
-        // the ~+2-3 dB of extra peak is just a float >1.0 that the downstream true-peak limiter catches
-        // transparently — no hard soft-clip, no distortion even at full volume. ON by default.
+        // + AIR (+0.8 dB high shelf @12 kHz), a richer house curve. ON by default. The ~+2-3 dB of extra peak is
+        // held in check by SIG_TRIM (-1 dB above) so it can't overshoot into JrDsp's own local soft-clip and add
+        // harmonics (raspy voice) before the transparent downstream true-peak limiter.
         sigLoShelf = BiquadFilter(sampleRate, 120.0, 2.0, 0.707, FilterType.LSC, shelfSlope = 0.707)
         sigHiShelf = BiquadFilter(sampleRate, 12000.0, 0.8, 0.707, FilterType.HSC, shelfSlope = 0.707)
 

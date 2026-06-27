@@ -1,19 +1,14 @@
-# Aura Hi-Res Player 0.6.67 — TODAS las canciones al mismo volumen, sin saltos ni "de golpe"
+# Aura Hi-Res Player 0.6.68 — adiós voz rasposa a alto volumen + salida con más aire
 
-## 🔊 El nivelado ahora es invisible (fix de raíz)
-El problema venía de dos cosas: la canción **empezaba a sonar antes** de saber su volumen y se corregía a mitad ("de golpe"), y el nivel **no quedaba fijado**, así que cualquier cosa (darle ❤️, la precarga del siguiente tema cerca del final, una descarga) lo movía.
+## 🎤 Voz rasposa / distorsión pasada la mitad del volumen — ARREGLADO
+Causa encontrada (diagnóstico multi-agente): la **firma Aura** (los realces de cuerpo+aire que vienen activos) había perdido su recorte de seguridad de -1 dB en la migración a 32-bit float. Sin ese recorte, sobrepasaba hacia un **soft-clip interno** de JrDsp **antes** del limitador transparente → metía armónicos en la señal → las voces sonaban rasposas, y se notaba justo al subir el volumen del teléfono pasada la mitad.
 
-Arreglado de raíz:
-
-- **La canción ya entra nivelada.** El volumen de cada tema se resuelve y se **precarga ANTES** de que suene el primer instante → no hay subidón al empezar ni corrección a los pocos segundos.
-- **En el crossfade, el tema entrante entra a SU nivel** desde el primer momento (antes entraba al nivel del tema saliente y luego saltaba).
-- **El nivel del tema que suena es INMUTABLE.** Una vez puesto, **nada lo cambia a mitad**: ni darle/quitar ❤️, ni la precarga cerca del final, ni una descarga, ni apagar la pantalla. La única corrección permitida es la de los primeros segundos (cuando llega el dato real de YouTube), y solo si de verdad cambia.
-
-Resultado: todas las canciones suenan al mismo volumen, las bajas se suben y las altas se bajan **sin que se note**, y darle ❤️ ya no toca el volumen.
-
-> Nota técnica: el pre-nivelado del crossfade se hace desde memoria (sin lecturas de disco en el hilo de audio), para no cortar la transición. Pasó por revisión adversarial multi-agente.
+Arreglado:
+- **Firma Aura recorta -1 dB de nuevo** → ya no sobrepasa el soft-clip interno (la causa directa de la voz rasposa). El cuerpo y el aire se mantienen, solo se quita el pico de más.
+- **Salida menos caliente.** El realce máximo de volumen bajó de +12 dB a **+9 dB** → los temas más fuertes ya no aplastan el limitador, queda **headroom** real, y subir el teléfono pasada la mitad ya **no** distorsiona. (La nivelación entre canciones no cambia — sigue todo al mismo volumen.)
+- **Limitador final más limpio** (knee 0.88→0.90, ceiling 0.92→0.95) → menos modelado de onda en programa normal, solo actúa en picos reales.
 
 ## 👉 Para probar
-- Pon canciones de volúmenes muy distintos en cola → deben entrar todas igual de fuerte, sin ajuste audible al empezar ni en el crossfade.
-- Dale ❤️ y quítalo a mitad de una canción (sobre todo una que venía baja y se subió) → el volumen **no** debe moverse.
-- Deja terminar una canción con crossfade → no debe bajar/saltar el volumen cerca del final.
+- Sube el volumen del teléfono **pasada la mitad** con la firma Aura activa y EQ plano → las voces deben sonar **limpias**, sin raspeo.
+- Un máster moderno muy fuerte + un tema con mucho bajo → sin distorsión al subir volumen.
+- Si algún tema viejo muy bajo te queda algo flojo, avísame (puedo subir el tope a +10 dB).

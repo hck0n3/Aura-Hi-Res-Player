@@ -105,8 +105,11 @@ class TruePeakLimiterAudioProcessor : AudioProcessor {
         private const val CEILING = 0.82f
         // Smooth release: gain recovers gently after a peak (slow → transparent, no pumping).
         private const val RELEASE_COEFF = 0.0006f
-        // Hard cap on the combined makeup (loudness × EQ-headroom) ≈ +12 dB.
-        private const val MAX_MAKEUP = 4.0f
+        // Hard cap on the combined makeup (loudness × EQ-headroom) ≈ +9 dB. Lowered from +12 dB: the hottest /
+        // most-boosted tracks were slamming the multiband limiter + final softLimit, leaving no digital headroom
+        // so raising the phone past ~half volume crossed into audible distortion. +9 dB keeps tracks full and loud
+        // while restoring headroom. (OUTPUT_TRIM/CEILING left alone so cross-track loudness consistency is intact.)
+        private const val MAX_MAKEUP = 2.82f
         // Master output trim (linear) ≈ -2.2 dB. Raised (with CEILING) so phone speakers play at a
         // proper level. Scales every track equally, so the relative loudness between songs (consistency)
         // is unchanged.
@@ -260,8 +263,8 @@ class TruePeakLimiterAudioProcessor : AudioProcessor {
                 lowGainEnv = nextEnv(lowGainEnv, lowPeak)
                 highGainEnv = nextEnv(highGainEnv, highPeak)
 
-                val outL = softLimit(lowL * lowGainEnv + highL * highGainEnv, ceiling = 0.92f, knee = 0.88f)
-                val outR = softLimit(lowR * lowGainEnv + highR * highGainEnv, ceiling = 0.92f, knee = 0.88f)
+                val outL = softLimit(lowL * lowGainEnv + highL * highGainEnv, ceiling = 0.95f, knee = 0.90f)
+                val outR = softLimit(lowR * lowGainEnv + highR * highGainEnv, ceiling = 0.95f, knee = 0.90f)
 
                 prevLowL = lowL; prevLowR = lowR
                 prevHighL = highL; prevHighR = highR
@@ -288,7 +291,7 @@ class TruePeakLimiterAudioProcessor : AudioProcessor {
                 val highPeak = max(abs(high), abs((prevHighL + high) * 0.5f))
                 lowGainEnv = nextEnv(lowGainEnv, lowPeak)
                 highGainEnv = nextEnv(highGainEnv, highPeak)
-                val out = softLimit(low * lowGainEnv + high * highGainEnv, ceiling = 0.92f, knee = 0.88f)
+                val out = softLimit(low * lowGainEnv + high * highGainEnv, ceiling = 0.95f, knee = 0.90f)
                 prevLowL = low
                 prevHighL = high
                 outputBuffer.putShort(toDithered16(out))
