@@ -106,20 +106,47 @@ class AxionEqViewModel @Inject constructor(
     private val _enabled = MutableStateFlow(prefs.getBoolean("enabled", false))
     val enabled = _enabled.asStateFlow()
 
-    // Auto-EQ vs 24-band graphic EQ are mutually exclusive (both write the SAME _bandGains array).
-    // When Auto-EQ is applied this is true and the graphic EQ is greyed/locked; any manual graphic
-    // edit clears it (last-touched-wins).
+    // Auto-EQ now runs as its OWN cascaded correction stage that the manual EQ STACKS on top of (it no
+    // longer replaces / locks the manual bands). This flag means "an Auto-EQ correction stage is present"
+    // — NOT a lock on the manual editor.
     private val _autoEqActive = MutableStateFlow(prefs.getBoolean("autoeq_active", false))
     val autoEqActive = _autoEqActive.asStateFlow()
 
-    /** Leave the Auto-EQ lock and return to manual editing. The bands keep the applied Auto-EQ curve as the
-     *  starting point (so the user can fine-tune from it). Wired to the "Cambiar a manual" banner button so
-     *  the unlock path never depends on the (now-greyed) sliders/presets/reset. */
-    fun unlockGraphic() = setAutoEqActive(false)
+    // The Auto-EQ correction curve, kept independently from the manual graphic/parametric bands and
+    // persisted as its own JSON (reuses the PeqBandDto serialization). Fed to the DSP as ParametricEQ.autoBands.
+    private val _autoEqBands = MutableStateFlow(loadAutoEqBands())
+    val autoEqBands = _autoEqBands.asStateFlow()
 
     private fun setAutoEqActive(active: Boolean) {
         _autoEqActive.value = active
         prefs.edit().putBoolean("autoeq_active", active).apply()
+    }
+
+    private fun loadAutoEqBands(): List<ParametricEQBand> {
+        val json = prefs.getString("autoeq_bands", null) ?: return emptyList()
+        return runCatching {
+            kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+                .decodeFromString(
+                    kotlinx.serialization.builtins.ListSerializer(PeqBandDto.serializer()),
+                    json,
+                )
+                .map { it.toBand() }
+        }.getOrNull() ?: emptyList()
+    }
+
+    private fun persistAutoEqBands() {
+        val dtos = _autoEqBands.value.map { PeqBandDto.from(it) }
+        val json = kotlinx.serialization.json.Json
+            .encodeToString(kotlinx.serialization.builtins.ListSerializer(PeqBandDto.serializer()), dtos)
+        prefs.edit().putString("autoeq_bands", json).apply()
+    }
+
+    /** Remove the Auto-EQ correction stage entirely (manual EQ is untouched). Wired to "Quitar Auto-EQ". */
+    fun clearAutoEq() {
+        _autoEqBands.value = emptyList()
+        persistAutoEqBands()
+        setAutoEqActive(false)
+        if (_enabled.value) applyToService()
     }
 
     // Band gains in dB (new "band24_" keys; legacy 10-band "band_" keys are intentionally ignored).
@@ -152,6 +179,10 @@ class AxionEqViewModel @Inject constructor(
     }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     init {
+        // Migrated users from before the stacking change have autoeq_active=true but no autoeq_bands JSON
+        // (their old Auto-EQ curve lives in the manual band24_* gains). Reconcile so they don't see a phantom
+        // "Auto-EQ activo" chip for a correction stage that doesn't exist.
+        if (_autoEqActive.value && _autoEqBands.value.isEmpty()) setAutoEqActive(false)
         if (_enabled.value) applyToService()
     }
 
@@ -167,7 +198,6 @@ class AxionEqViewModel @Inject constructor(
     }
 
     fun setBandGain(index: Int, gainDb: Float) {
-        setAutoEqActive(false)
         if (index !in 0 until n) return
         val v = gainDb.coerceIn(EqConstants.GAIN_MIN, EqConstants.GAIN_MAX)
         val arr = _bandGains.value.copyOf()
@@ -179,7 +209,6 @@ class AxionEqViewModel @Inject constructor(
     }
 
     fun setBandsGains(gains: FloatArray, fromUser: Boolean = false) {
-        setAutoEqActive(false)
         val arr = FloatArray(n) { i ->
             gains.getOrElse(i) { 0f }.coerceIn(EqConstants.GAIN_MIN, EqConstants.GAIN_MAX)
         }
@@ -234,7 +263,6 @@ class AxionEqViewModel @Inject constructor(
      * no profile save) so typing doesn't hit disk every keystroke. Persist via [commitPeq].
      */
     fun setPeqBand(index: Int, freq: Double? = null, q: Double? = null, gain: Double? = null, type: FilterType? = null) {
-        setAutoEqActive(false)
         val list = _peqBands.value
         if (index !in list.indices) return
         val cur = list[index]
@@ -251,7 +279,6 @@ class AxionEqViewModel @Inject constructor(
 
     /** Append a sensible default PEQ band (max 8). Inserts at 1 kHz, flat, peak. */
     fun addPeqBand() {
-        setAutoEqActive(false)
         val list = _peqBands.value
         if (list.size >= PeqConstants.MAX_BANDS) return
         val band = ParametricEQBand(
@@ -265,7 +292,6 @@ class AxionEqViewModel @Inject constructor(
 
     /** Remove a PEQ band (min 5). */
     fun removePeqBand(index: Int) {
-        setAutoEqActive(false)
         val list = _peqBands.value
         if (list.size <= PeqConstants.MIN_BANDS || index !in list.indices) return
         _peqBands.value = list.toMutableList().also { it.removeAt(index) }
@@ -276,7 +302,6 @@ class AxionEqViewModel @Inject constructor(
 
     /** Reset the PEQ back to the default flat 6-band anchors (clears any custom curve). Persists + applies. */
     fun resetPeq() {
-        setAutoEqActive(false)
         _peqBands.value = PeqConstants.defaultBands()
         _isDirty.value = true
         commitPeq()
@@ -303,24 +328,32 @@ class AxionEqViewModel @Inject constructor(
         val arr = FloatArray(n) { i ->
             gains.getOrElse(i) { 0f }.coerceIn(EqConstants.GAIN_MIN, EqConstants.GAIN_MAX)
         }
-        _bandGains.value = arr
         _preamp.value = preampDb.coerceIn(EqConstants.PREAMP_MIN, EqConstants.PREAMP_MAX)
         _enabled.value = true
-        prefs.edit().apply {
-            arr.forEachIndexed { i, f -> putFloat("band24_$i", f) }
-            putFloat("preampDb", _preamp.value)
-            putBoolean("enabled", true)
-        }.apply()
+        if (isAutoEq) {
+            // Auto-EQ correction stage: store the projected curve as its OWN autoBands (24 PK bands at the
+            // ISO centers). The manual graphic/parametric EQ is left UNTOUCHED so it stacks on top.
+            _autoEqBands.value = buildEqBands(arr, IntArray(n) { 0 })
+            persistAutoEqBands()
+            prefs.edit().apply {
+                putFloat("preampDb", _preamp.value)
+                putBoolean("enabled", true)
+            }.apply()
+            setAutoEqActive(true)
+        } else {
+            // Loading a saved graphic profile: write the manual 24-band curve as before.
+            _bandGains.value = arr
+            prefs.edit().apply {
+                arr.forEachIndexed { i, f -> putFloat("band24_$i", f) }
+                putFloat("preampDb", _preamp.value)
+                putBoolean("enabled", true)
+            }.apply()
+        }
         _isDirty.value = true
-        // Only a true Auto-EQ headphone profile locks the graphic EQ (last-touched-wins). Loading a
-        // user's saved custom profile keeps it manual (isAutoEq=false → clears the lock). Set AFTER
-        // the band writes so it reflects the final intent.
-        setAutoEqActive(isAutoEq)
         applyToService()
     }
 
     fun setBandType(index: Int, type: Int) {
-        setAutoEqActive(false)
         if (index !in 0 until n) return
         val arr = _bandTypes.value.copyOf()
         arr[index] = type.coerceIn(0, 2)
@@ -331,12 +364,10 @@ class AxionEqViewModel @Inject constructor(
     }
 
     fun applyPreset(preset: FactoryPreset) {
-        setAutoEqActive(false)
         setBandsGains(preset.gains.copyOf(), fromUser = true)
     }
 
     fun reset() {
-        setAutoEqActive(false)
         _preamp.value = 0f
         prefs.edit()
             .putFloat("preampDb", 0f)
@@ -372,8 +403,8 @@ class AxionEqViewModel @Inject constructor(
      */
     fun applySavedProfile(profile: SavedEQProfile) {
         if (profile.bands.size != EqConstants.BAND_COUNT) {
-            // Parametric profile: restore the 5–8 free bands, switch to PARAMETRIC, apply.
-            setAutoEqActive(false)
+            // Parametric profile: restore the 5–8 free bands, switch to PARAMETRIC, apply. The Auto-EQ
+            // correction stage (if any) is left in place — the loaded manual curve stacks on top of it.
             val bands = profile.bands
                 .map { it.copy(enabled = true) }
                 .let { list ->
@@ -447,6 +478,8 @@ class AxionEqViewModel @Inject constructor(
                 name = "JR Tuning",
                 deviceModel = "Equalizer",
                 bands = allBands(),
+                // Auto-EQ runs as a separate cascaded correction stage the manual EQ stacks on top of.
+                autoBands = if (_autoEqActive.value) _autoEqBands.value else emptyList(),
                 preamp = _preamp.value.toDouble(),
                 isCustom = false,
                 isActive = true,
@@ -463,6 +496,8 @@ class AxionEqViewModel @Inject constructor(
         name = "JR Tuning",
         deviceModel = "Equalizer",
         bands = allBands(),
+        // Auto-EQ runs as a separate cascaded correction stage the manual EQ stacks on top of.
+        autoBands = if (_autoEqActive.value) _autoEqBands.value else emptyList(),
         preamp = _preamp.value.toDouble(),
         isCustom = false,
         isActive = true,
@@ -473,7 +508,6 @@ class AxionEqViewModel @Inject constructor(
      * player re-seek) so the change is heard in real time without stutter. Persist via [commit].
      */
     fun setBandGainLive(index: Int, gainDb: Float) {
-        setAutoEqActive(false)
         if (index !in 0 until n) return
         val v = gainDb.coerceIn(EqConstants.GAIN_MIN, EqConstants.GAIN_MAX)
         val arr = _bandGains.value.copyOf()

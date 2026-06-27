@@ -131,7 +131,7 @@ fun AutoEqScreen(navController: NavController) {
                 Text(
                     when {
                         !eqEnabled -> "Desactivado"
-                        autoEqActive -> "Perfil Auto-EQ aplicado (bloquea el ecualizador gráfico)"
+                        autoEqActive -> "Perfil Auto-EQ aplicado (se suma a tu EQ, no lo reemplaza)"
                         else -> "El ecualizador está aplicando la curva"
                     },
                 )

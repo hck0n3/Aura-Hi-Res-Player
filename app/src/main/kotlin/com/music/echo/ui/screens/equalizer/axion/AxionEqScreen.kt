@@ -83,9 +83,9 @@ fun AxionEqScreen(
     val eqMode by viewModel.eqMode.collectAsState()
     val peqBands by viewModel.peqBands.collectAsState()
 
-    // The graphic EQ is locked while an Auto-EQ headphone profile is active (both write the same
-    // band array). Any manual edit / preset clears autoEqActive in the ViewModel.
-    val graphicEnabled = enabled && !autoEqActive
+    // Auto-EQ now runs as its OWN cascaded correction stage; the manual EQ stacks ON TOP and stays fully
+    // editable while Auto-EQ is active (no lock). So the graphic/parametric editor follows the EQ on/off only.
+    val graphicEnabled = enabled
 
     var showSaveDialog by remember { mutableStateOf(false) }
     var showManageDialog by remember { mutableStateOf(false) }
@@ -272,23 +272,30 @@ private fun ColumnScope.EqMainContent(
         )
     }
 
+    // Auto-EQ no longer LOCKS the manual EQ — it runs as a separate correction stage your EQ stacks on
+    // top of. Show an informational chip + a button to remove the Auto-EQ stage (the manual EQ stays).
     if (autoEqActive) {
-        Text(
-            text = "Auto-EQ activo — el ecualizador gráfico está bloqueado para preservar la corrección de tus auriculares.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 4.dp),
-        )
-        androidx.compose.material3.TextButton(
-            onClick = { viewModel.unlockGraphic() },
-            modifier = Modifier.padding(horizontal = 4.dp),
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("Cambiar a manual")
+            AssistChip(
+                onClick = { },
+                enabled = false,
+                label = { Text("Auto-EQ activo — tu EQ se suma encima") },
+                modifier = Modifier.weight(1f),
+            )
+            androidx.compose.material3.TextButton(
+                onClick = { viewModel.clearAutoEq() },
+            ) {
+                Text("Quitar Auto-EQ")
+            }
         }
     }
 
-    // Mode toggle: Gráfico (24-band, default) vs Paramétrico (5–8 free PEQ bands). Disabled
-    // while Auto-EQ is locked so the user can't switch curves under the lock.
+    // Mode toggle: Gráfico (24-band, default) vs Paramétrico (5–8 free PEQ bands). Stays enabled while
+    // Auto-EQ is active (Auto-EQ is a separate cascaded stage, not a lock).
     EqModeToggle(
         eqMode = eqMode,
         enabled = graphicEnabled,

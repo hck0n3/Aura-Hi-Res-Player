@@ -21,6 +21,10 @@ data class SavedEQProfile(
     val name: String,
     val deviceModel: String,
     val bands: List<ParametricEQBand>,
+    // Auto-EQ correction bands persisted alongside the manual [bands]. A default + ignoreUnknownKeys
+    // means OLD persisted/exported profiles (without this field) still deserialize cleanly. Applied as a
+    // separate cascaded stage that the manual EQ stacks on top of (it does NOT replace the manual EQ).
+    val autoBands: List<ParametricEQBand> = emptyList(),
     val preamp: Double = 0.0,
     val isCustom: Boolean = false,
     val isActive: Boolean = false,
