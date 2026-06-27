@@ -428,7 +428,7 @@ private fun ColumnScope.DspEffectsColumn() {
             Material3SettingsItem(
                 icon = painterResource(R.drawable.volume_up),
                 title = { Text(stringResource(R.string.audio_normalization)) },
-                description = { Text("Sonoridad pareja tipo TIDAL (−14 LUFS) con limitador true-peak; sube las flojas sin distorsionar.") },
+                description = { Text("Lleva todas las canciones al mismo volumen (−14 LUFS) con limitador true-peak; sube las flojas sin distorsionar.") },
                 trailingContent = {
                     Switch(checked = audioNormalization, onCheckedChange = onAudioNormalizationChange, thumbContent = thumb(audioNormalization))
                 },

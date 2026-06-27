@@ -1,19 +1,18 @@
-# Aura Hi-Res Player 0.6.61 — toda la cadena de audio ahora en 32-bit flotante (de verdad Hi-Res)
+# Aura Hi-Res Player 0.6.62 — Firma Aura con más cuerpo (sin distorsionar) + "Nivelar volumen"
 
-## 🎚️ El gran cambio: procesamiento interno en 32-bit flotante
-Hasta ahora, cada etapa de audio (mejora, normalización, EQ, DSP, limitador) **bajaba la señal a 16 bits entre una y otra** — hasta 5 veces seguidas, acumulando ruido de cuantización. **Eso se acabó.**
+## 🔊 Firma Aura: ahora suena más rica, sin distorsión
+La firma Aura era casi imperceptible (a propósito, porque en el motor viejo subir más distorsionaba). Como **ahora la cadena es 32-bit flotante**, el limitador absorbe los picos limpiamente, así que le subimos el cuerpo:
+- **Cuerpo** +2 dB en graves/medios-graves @120 Hz (ahí vive el "cuerpo"/calidez).
+- **Aire** +0.8 dB @12 kHz.
+- Quitado el recorte −1 dB que ya no hacía falta.
 
-Ahora la señal se convierte a **32-bit flotante una sola vez al inicio**, **toda la cadena calcula en flotante** (EQ, compresor, limitador), y **solo se vuelve a 16 bits UNA vez al final** (con dither), porque es lo que entrega la salida del teléfono/Bluetooth.
+→ Más **cuerpo y calidez**, y suena **rico incluso a todo volumen, sin distorsionar**.
 
-**Resultado:** sin las re-cuantizaciones intermedias → **menos ruido, EQ y limitador más limpios, voces más naturales**, de punta a punta. Es la base para sonar a nivel TIDAL limpio (subir el nivel viene en un paso aparte, ya con la base flotante).
+## 🏷️ "Normalización del audio" ahora se llama "Nivelar volumen"
+Nombre más honesto y claro: lleva todas las canciones al mismo volumen.
 
-## 🔒 Seguro por diseño
-- La salida al altavoz/DAC **sigue siendo igual** (16-bit con dither) → ningún dispositivo deja de sonar.
-- Si un formato no encaja (5.1, etc.), las etapas **se omiten con elegancia** (suena sin DSP, no falla).
-- Revisión adversarial multi-agente: **0 problemas** (matemática de buffers, paths verificados).
+## 🔜 Lo siguiente (el grande)
+La próxima trae el fix de raíz para que **TODAS** las canciones suenen al mismo nivel: las que no traen info de volumen (locales, etc.) se **medirán al reproducirse** y se nivelarán igual que las demás.
 
-## 👉 Para probar (importante — dime si algo suena raro)
-- Escucha varias canciones (un master fuerte, una acústica suave, una con mucho bajo) → debe sonar **igual o más limpio**, sin estática.
-- Prueba el **EQ** (sube bandas), los **efectos** (firma/JR DSP), **normalización** on/off, y **mejorar calidad** on/off → todo debe funcionar.
-- Una balada con **fundido/silencio** → cola limpia.
-- Si oyes **estática/ruido**, EQ que no hace nada, o un salto raro → **avísame y lo revierto al instante**.
+## 👉 Para probar
+- Activa la firma Aura → más cuerpo/calidez; sube el volumen al máximo → debe sonar rico, **sin distorsionar**.

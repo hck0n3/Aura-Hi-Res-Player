@@ -230,7 +230,7 @@
     <string name="persistent_queue">Cola persistente</string>
     <string name="persistent_queue_desc">Restaura tu última cola al iniciar la aplicación</string>
     <string name="skip_silence">Omitir silencios</string>
-    <string name="audio_normalization">Normalización del audio</string>
+    <string name="audio_normalization">Nivelar volumen</string>
     <string name="auto_skip_next_on_error">Saltar automáticamente a la siguiente canción cuando se produce un error</string>
     <string name="auto_skip_next_on_error_desc">Asegura una experiencia de reproducción continua</string>
     <string name="stop_music_on_task_clear">Detener la música cuando se cierre la aplicación</string>

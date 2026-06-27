@@ -235,7 +235,7 @@
     <string name="auto_load_more">Cargar automáticamente más canciones</string>
     <string name="auto_load_more_desc">Añadir automáticamente más canciones cuando se llegue al final de la cola, si es posible</string>
     <string name="skip_silence">Saltar silencio</string>
-    <string name="audio_normalization">Normalización del audio</string>
+    <string name="audio_normalization">Nivelar volumen</string>
     <string name="auto_skip_next_on_error">Saltar automáticamente a la siguiente canción cuando se produce un error</string>
     <string name="auto_skip_next_on_error_desc">Asegúrate de que la reproducción no se interrumpa</string>
     <string name="stop_music_on_task_clear">Detener la música al finalizar la tarea</string>

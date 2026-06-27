@@ -63,10 +63,11 @@ class JrDspAudioProcessor : AudioProcessor {
     // ── "Aura signature" gentle tone (body + air), ON by default, built on configure ──
     private var sigLoShelf: BiquadFilter? = null
     private var sigHiShelf: BiquadFilter? = null
-    // -1 dB. Cancels the +1 dB max signature shelf boost so the (ON-by-default) Aura signature can NEVER push
-    // peaks above the input peak — otherwise, on already-hot masters, the overshoot hit the local soft-clip and
-    // added harmonics (the raspy/saturated voice). The ~1 dB is restored by the downstream loudness makeup.
-    private val SIG_TRIM = 0.8913
+    // 1.0 = no trim. In the OLD int16-everywhere chain this was -1 dB to stop the signature shelf overshoot from
+    // hitting a hard local soft-clip (raspy voice). The chain is 32-bit float now, so the overshoot is a plain
+    // float >1.0 caught transparently by the downstream true-peak limiter — the trim is no longer needed and only
+    // thinned the body, so it's removed to let the richer signature through cleanly.
+    private val SIG_TRIM = 1.0
 
     // ── Multiband compressor (3-band LR2 crossover) state, built on configure ──
     private var mbLpf1: BiquadFilter? = null   // LP 200 Hz  (bass)
@@ -165,12 +166,12 @@ class JrDspAudioProcessor : AudioProcessor {
         loudnessLoShelf = BiquadFilter(sampleRate, 200.0, 3.0, 0.707, FilterType.LSC, shelfSlope = 0.707)
         loudnessHiShelf = BiquadFilter(sampleRate, 5000.0, 2.0, 0.707, FilterType.HSC, shelfSlope = 0.707)
 
-        // Aura signature: very gentle body (+1 dB low shelf @100 Hz) + air (+0.6 dB high shelf
-        // @12 kHz), a soft house curve. Kept low on purpose: on already-hot, high-quality masters a
-        // bigger boost pushed bass/treble peaks into the limiter (and the device amp at max volume),
-        // which audibly distorted. ON by default but near-transparent.
-        sigLoShelf = BiquadFilter(sampleRate, 100.0, 1.0, 0.707, FilterType.LSC, shelfSlope = 0.707)
-        sigHiShelf = BiquadFilter(sampleRate, 12000.0, 0.6, 0.707, FilterType.HSC, shelfSlope = 0.707)
+        // Aura signature: warm BODY (+2 dB low shelf @120 Hz — upper-bass/low-mids where "cuerpo" lives)
+        // + AIR (+0.8 dB high shelf @12 kHz), a richer house curve. Now that the whole chain is 32-bit float,
+        // the ~+2-3 dB of extra peak is just a float >1.0 that the downstream true-peak limiter catches
+        // transparently — no hard soft-clip, no distortion even at full volume. ON by default.
+        sigLoShelf = BiquadFilter(sampleRate, 120.0, 2.0, 0.707, FilterType.LSC, shelfSlope = 0.707)
+        sigHiShelf = BiquadFilter(sampleRate, 12000.0, 0.8, 0.707, FilterType.HSC, shelfSlope = 0.707)
 
         // Multiband compressor LR2 crossovers (Q 0.5) at 200 Hz and 5 kHz.
         mbLpf1 = BiquadFilter(sampleRate, 200.0, 0.0, 0.5, FilterType.LPQ)
