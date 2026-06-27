@@ -1984,8 +1984,8 @@ class MusicService :
 
         scope.launch {
             try {
-                val currentMediaId = withContext(Dispatchers.Main) {
-                    player.currentMediaItem?.mediaId
+                val (currentMediaId, positionMs) = withContext(Dispatchers.Main) {
+                    Pair(player.currentMediaItem?.mediaId, player.currentPosition)
                 }
 
                 val normalizeAudio = withContext(Dispatchers.IO) {
@@ -2007,13 +2007,15 @@ class MusicService :
                     val hasRealLoudness = format?.loudnessDb != null || format?.perceptualLoudnessDb != null
                     val loudnessDb = effectiveLoudnessDb(format?.loudnessDb, format?.perceptualLoudnessDb)
 
-                    // Apply the real-loudness upgrade the FIRST time it arrives (at ANY position), so a track
-                    // whose loudness lands late (slow network) still gets leveled to the reference instead of
-                    // being stuck at the conservative default. It fires at most once (lastNormalizedHadLoudness
-                    // flips true below), and the combine() above de-dups on the loudness fields, so a
-                    // like-triggered format re-store with UNCHANGED loudness can't re-normalize (that was the
-                    // mid-song jump). The gain processor RAMPS the change, so a late upgrade glides — no jump.
-                    val realLoudnessJustArrived = hasRealLoudness && !lastNormalizedHadLoudness
+                    // Apply the real-loudness upgrade ONLY near the START of the track (~first 8 s, where the
+                    // playback fetch returns it). After that, NEVER re-level the currently-playing track: liking
+                    // triggers an auto-download whose fetch can bring loudness for a track that started WITHOUT
+                    // it, and applying that mid-song is exactly what made the volume rise on like / fall on unlike.
+                    // DownloadUtil now also preserves existing loudness so a download can't CHANGE a
+                    // known-loudness track's row; this start-window is the safety net for tracks that genuinely
+                    // started with no loudness. combine() also de-dups on the loudness fields.
+                    val realLoudnessJustArrived =
+                        hasRealLoudness && !lastNormalizedHadLoudness && positionMs < 8_000L
                     if (currentMediaId == lastNormalizedId && !realLoudnessJustArrived) {
                         return@launch
                     }

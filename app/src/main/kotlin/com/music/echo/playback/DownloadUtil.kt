@@ -47,6 +47,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
 import java.time.LocalDateTime
@@ -119,6 +120,14 @@ constructor(
             }.getOrThrow()
             val format = playbackData.format
 
+            // PRESERVE any loudness already stored for this track. The download is a SEPARATE fetch (logged-in,
+            // different quality) that can return a DIFFERENT loudness or null; the playback fetch already stored
+            // the right value. Overwriting it changed the CURRENTLY-PLAYING track's normalization (currentFormat
+            // is a Room Flow) → the volume audibly ROSE when the user liked a song (auto-download) and fell back
+            // on unlike. Mirror the playback factory's loudness-preservation so a download never re-levels the
+            // playing track.
+            val existingFmt = runBlocking(Dispatchers.IO) { database.format(mediaId).first() }
+
             database.query {
                 upsert(
                     FormatEntity(
@@ -129,8 +138,8 @@ constructor(
                         bitrate = format.bitrate,
                         sampleRate = format.audioSampleRate,
                         contentLength = format.contentLength ?: 0L,
-                        loudnessDb = playbackData.audioConfig?.loudnessDb,
-                        perceptualLoudnessDb = playbackData.audioConfig?.perceptualLoudnessDb,
+                        loudnessDb = playbackData.audioConfig?.loudnessDb ?: existingFmt?.loudnessDb,
+                        perceptualLoudnessDb = playbackData.audioConfig?.perceptualLoudnessDb ?: existingFmt?.perceptualLoudnessDb,
                         playbackUrl = playbackData.playbackTracking?.videostatsPlaybackUrl?.baseUrl
                     ),
                 )
