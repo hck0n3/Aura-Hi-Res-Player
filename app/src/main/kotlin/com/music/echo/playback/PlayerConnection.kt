@@ -198,7 +198,10 @@ class PlayerConnection(
         
         playbackState.value = newPlayer.playbackState
         playWhenReady.value = newPlayer.playWhenReady
-        mediaMetadata.value = newPlayer.currentMetadata
+        // Re-attaching on reconnect / player swap: if the new player momentarily has no current item (null
+        // metadata), KEEP the last-known metadata instead of blanking the now-playing UI. The next real
+        // transition / onMediaMetadataChanged refreshes it.
+        mediaMetadata.value = newPlayer.currentMetadata ?: mediaMetadata.value
         queueTitle.value = service.queueTitle
         queueWindows.value = newPlayer.getQueueWindows()
         currentWindowIndex.value = newPlayer.getCurrentQueueIndex()
@@ -439,12 +442,23 @@ class PlayerConnection(
         // player UI (artwork + controls are gated on non-null metadata). Keep the last metadata, falling back
         // to the live player's current item; only update when we actually have something.
         val newMeta = mediaItem?.metadata ?: player.currentMediaItem?.metadata
-        if (newMeta != null) {
+        // Suppress a NULL transition ONLY during an active crossfade swap (the outgoing fading player's capped
+        // queue fires a spurious null-item transition we must ignore). OUTSIDE a crossfade a null is real and a
+        // non-null is a genuine new track — always update, so the artwork never freezes on the previous cover.
+        if (newMeta != null || !service.crossfadingNow) {
             mediaMetadata.value = newMeta
         }
         currentMediaItemIndex.value = player.currentMediaItemIndex
         currentWindowIndex.value = player.getCurrentQueueIndex()
         updateCanSkipPreviousAndNext()
+    }
+
+    override fun onMediaMetadataChanged(mediaMetadata: androidx.media3.common.MediaMetadata) {
+        // Media3's combined metadata changed for the current item (async title/artwork resolution, or a new
+        // item becoming current). Refresh our now-playing StateFlow from the item's tag so the cover — and
+        // anything that reads the current song, e.g. add-to-playlist — never stays stuck on the previous track.
+        // Only update when the tag is present (don't blank on a transient null).
+        player.currentMediaItem?.metadata?.let { this.mediaMetadata.value = it }
     }
 
     override fun onTimelineChanged(

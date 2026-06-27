@@ -374,6 +374,9 @@ class MusicService :
     private var secondaryPlayer: ExoPlayer? = null
     private var fadingPlayer: ExoPlayer? = null
     private var isCrossfading = false
+    /** Read-only view for PlayerConnection: a spurious null-item transition during a crossfade swap must not
+     *  blank the now-playing UI, but outside a crossfade a null transition is real and should update. */
+    val crossfadingNow: Boolean get() = isCrossfading
     private var crossfadeJob: Job? = null
 
     private lateinit var mediaSession: MediaLibrarySession
