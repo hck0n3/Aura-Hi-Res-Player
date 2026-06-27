@@ -63,6 +63,10 @@ class JrDspAudioProcessor : AudioProcessor {
     // ── "Aura signature" gentle tone (body + air), ON by default, built on configure ──
     private var sigLoShelf: BiquadFilter? = null
     private var sigHiShelf: BiquadFilter? = null
+    // -1 dB. Cancels the +1 dB max signature shelf boost so the (ON-by-default) Aura signature can NEVER push
+    // peaks above the input peak — otherwise, on already-hot masters, the overshoot hit the local soft-clip and
+    // added harmonics (the raspy/saturated voice). The ~1 dB is restored by the downstream loudness makeup.
+    private val SIG_TRIM = 0.8913
 
     // ── Multiband compressor (3-band LR2 crossover) state, built on configure ──
     private var mbLpf1: BiquadFilter? = null   // LP 200 Hz  (bass)
@@ -216,8 +220,8 @@ class JrDspAudioProcessor : AudioProcessor {
                 if (cfg.signatureEnabled) {
                     val (ll, rr) = sigLoShelf!!.processStereo(l.toDouble(), r.toDouble())
                     val (hl, hr) = sigHiShelf!!.processStereo(ll, rr)
-                    l = hl.toFloat()
-                    r = hr.toFloat()
+                    l = (hl * SIG_TRIM).toFloat()
+                    r = (hr * SIG_TRIM).toFloat()
                 }
 
                 if (cfg.loudnessEnabled) {
@@ -317,9 +321,9 @@ class JrDspAudioProcessor : AudioProcessor {
                 }
 
                 // Transparent safety only: keeps an effect's overshoot from hard-clipping at the
-                // 16-bit output (asymptote 0.99, knee 0.95). The real true-peak limiting is downstream.
-                l = softLimit(l, ceiling = 0.99f, knee = 0.95f)
-                r = softLimit(r, ceiling = 0.99f, knee = 0.95f)
+                // 16-bit output (asymptote 0.99, knee 0.88 — gentle, fewer harmonics). Real limiting is downstream.
+                l = softLimit(l, ceiling = 0.99f, knee = 0.88f)
+                r = softLimit(r, ceiling = 0.99f, knee = 0.88f)
 
                 outputBuffer.putShort((l * 32768.0f).coerceIn(-32768.0f, 32767.0f).toInt().toShort())
                 outputBuffer.putShort((r * 32768.0f).coerceIn(-32768.0f, 32767.0f).toInt().toShort())
@@ -332,13 +336,13 @@ class JrDspAudioProcessor : AudioProcessor {
                 var x = inputBuffer.getShort().toFloat() / 32768.0f
                 if (cfg.signatureEnabled) {
                     x = sigLoShelf!!.processSample(x.toDouble()).toFloat()
-                    x = sigHiShelf!!.processSample(x.toDouble()).toFloat()
+                    x = (sigHiShelf!!.processSample(x.toDouble()) * SIG_TRIM).toFloat()
                 }
                 if (cfg.loudnessEnabled) {
                     x = loudnessLoShelf!!.processSample(x.toDouble()).toFloat()
                     x = loudnessHiShelf!!.processSample(x.toDouble()).toFloat()
                 }
-                x = softLimit(x, ceiling = 0.99f, knee = 0.95f)
+                x = softLimit(x, ceiling = 0.99f, knee = 0.88f)
                 outputBuffer.putShort((x * 32768.0f).coerceIn(-32768.0f, 32767.0f).toInt().toShort())
             }
             while (inputBuffer.hasRemaining()) outputBuffer.put(inputBuffer.get())
