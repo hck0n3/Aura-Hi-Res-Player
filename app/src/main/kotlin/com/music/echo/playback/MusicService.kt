@@ -945,7 +945,7 @@ class MusicService :
             dataStore.data.map { prefs ->
                 Triple(
                     prefs[CrossfadeEnabledKey] ?: false,
-                    prefs[CrossfadeDurationKey] ?: 10f,
+                    prefs[CrossfadeDurationKey] ?: 12f,
                     prefs[CrossfadeGaplessKey] ?: true
                 )
             },
@@ -4170,7 +4170,7 @@ class MusicService :
             // Finer steps (~40 ms) so the volume ramp is smooth, not stair-stepped like the old 20 steps.
             val steps = (duration / 40L).toInt().coerceIn(24, 240)
             val stepTime = duration / steps
-            val curve = try { dataStore.get(CrossfadeCurveKey, 0) } catch (e: Exception) { 0 }
+            val curve = try { dataStore.get(CrossfadeCurveKey, 1) } catch (e: Exception) { 1 }
             val startVolume = try { fadingPlayer?.volume ?: 1f } catch(e:Exception) { 1f }
             // Equal-power curves (1 = igual potencia, 2 = curva S) keep incoming^2 + outgoing^2 = 1, so the
             // two OVERLAPPING players can sum above full-scale at the Android mixer (which does NOT limit)
@@ -4192,7 +4192,11 @@ class MusicService :
                     val (fadeIn, fadeOut) = crossfadeGains(curve, progress)
 
                     try {
-                        player.volume = startVolume * fadeIn * xfHeadroom
+                        // The INCOMING (surviving) player ramps its headroom back to full (×1.0) as it reaches
+                        // the end of the blend, so when the fade finishes it is ALREADY at full volume — no
+                        // sudden ×0.75→×1.0 snap (the "de la nada sube de golpe" jump). The outgoing keeps the
+                        // flat crossfade headroom (it's fading to silence, its end level doesn't matter).
+                        player.volume = startVolume * fadeIn * (xfHeadroom + (1f - xfHeadroom) * progress)
                         fadingPlayer?.volume = startVolume * fadeOut * xfHeadroom
                     } catch (e: Exception) { break }
 

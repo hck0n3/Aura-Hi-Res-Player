@@ -103,11 +103,11 @@ fun PlayerSettings(
     )
     val (crossfadeDuration, onCrossfadeDurationChange) = rememberPreference(
         CrossfadeDurationKey,
-        defaultValue = 10f
+        defaultValue = 12f
     )
     val (crossfadeCurve, onCrossfadeCurveChange) = rememberPreference(
         CrossfadeCurveKey,
-        defaultValue = 0
+        defaultValue = 1
     )
     val (crossfadeGapless, onCrossfadeGaplessChange) = rememberPreference(
         CrossfadeGaplessKey,
@@ -588,8 +588,12 @@ fun PlayerSettings(
                     trailingContent = {
                         Switch(
                             checked = skipSilenceInstant,
-                            onCheckedChange = { onSkipSilenceInstantChange(it) },
-                            enabled = skipSilence,
+                            // Turning instant ON auto-enables the parent "Skip silence" (instant is a no-op
+                            // without it), so the toggle is usable directly instead of greyed out.
+                            onCheckedChange = {
+                                if (it && !skipSilence) onSkipSilenceChange(true)
+                                onSkipSilenceInstantChange(it)
+                            },
                             thumbContent = {
                                 Icon(
                                     painter = painterResource(
@@ -601,7 +605,10 @@ fun PlayerSettings(
                             }
                         )
                     },
-                    onClick = { if (skipSilence) onSkipSilenceInstantChange(!skipSilenceInstant) }
+                    onClick = {
+                        if (!skipSilenceInstant && !skipSilence) onSkipSilenceChange(true)
+                        onSkipSilenceInstantChange(!skipSilenceInstant)
+                    }
                 ))
                 add(Material3SettingsItem(
                     icon = painterResource(R.drawable.graphic_eq),
