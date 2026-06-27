@@ -140,6 +140,8 @@ constructor(
                         contentLength = format.contentLength ?: 0L,
                         loudnessDb = playbackData.audioConfig?.loudnessDb ?: existingFmt?.loudnessDb,
                         perceptualLoudnessDb = playbackData.audioConfig?.perceptualLoudnessDb ?: existingFmt?.perceptualLoudnessDb,
+                        // Preserve a cached per-play measurement so a like/auto-download doesn't force a re-measure.
+                        measuredLoudnessDb = existingFmt?.measuredLoudnessDb,
                         playbackUrl = playbackData.playbackTracking?.videostatsPlaybackUrl?.baseUrl
                     ),
                 )

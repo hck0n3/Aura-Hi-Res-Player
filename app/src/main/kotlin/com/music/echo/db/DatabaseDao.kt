@@ -630,6 +630,11 @@ interface DatabaseDao {
     @Query("SELECT * FROM format WHERE id = :id")
     fun format(id: String?): Flow<FormatEntity?>
 
+    /** Synchronous single-column read: lets the local-media scanner PRESERVE a cached per-play loudness
+     *  measurement when it rebuilds a local song's FormatEntity on rescan (else the rescan wipes it to null). */
+    @Query("SELECT measuredLoudnessDb FROM format WHERE id = :id")
+    fun measuredLoudnessDbForId(id: String): Double?
+
     @Transaction
     @Query("SELECT * FROM lyrics WHERE id = :id")
     fun lyrics(id: String?): Flow<LyricsEntity?>

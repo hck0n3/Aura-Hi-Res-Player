@@ -67,6 +67,8 @@ class TruePeakLimiterAudioProcessor : AudioProcessor {
     private var currentMk = OUTPUT_TRIM
     private var mkRampStep = MAKEUP_RANGE / (48_000f * MK_RAMP_SECONDS)
     private var primed = false
+    // Sample rate from the last configure(), so useMeasureRampOnce() can recompute the ramp step.
+    private var configuredSampleRate = 48_000
 
     /** Per-instance overrides of the shared [loudnessMakeup]/[eqMakeup]. When non-null they take
      *  precedence over the companion defaults, so the main player and the crossfade secondary player
@@ -80,6 +82,12 @@ class TruePeakLimiterAudioProcessor : AudioProcessor {
     fun setInstanceMakeup(loudness: Float?, eq: Float?) {
         instanceLoudnessMakeup = loudness
         instanceEqMakeup = eq
+    }
+
+    /** Make the NEXT makeup change use the slow (~2 s) measurement ramp instead of the fast one, so the
+     *  single measurement-driven mid-song re-level glides in inaudibly. Reset to fast on the next configure(). */
+    fun useMeasureRampOnce() {
+        mkRampStep = MAKEUP_RANGE / (configuredSampleRate * MK_RAMP_SECONDS_MEASURE)
     }
 
     /** Flush denormal (subnormal) magnitudes to zero so recursive filter/envelope state can't sit at
@@ -108,6 +116,8 @@ class TruePeakLimiterAudioProcessor : AudioProcessor {
         // regardless of rate; real corrections are smaller than the full span, so they ramp faster.
         private const val MAKEUP_RANGE = MAX_MAKEUP * OUTPUT_TRIM - OUTPUT_TRIM
         private const val MK_RAMP_SECONDS = 0.12f
+        /** Slow, inaudible makeup ramp (s) used for the ONE-SHOT measurement-driven re-level mid-song. */
+        const val MK_RAMP_SECONDS_MEASURE = 2.0f
         // Crossover split frequency: bass (where boosts have the most energy and cause the worst
         // broadband ducking) vs everything else.
         private const val CROSSOVER_HZ = 250.0
@@ -135,7 +145,9 @@ class TruePeakLimiterAudioProcessor : AudioProcessor {
             return AudioProcessor.AudioFormat.NOT_SET
         }
         computeCrossover(inputAudioFormat.sampleRate)
-        mkRampStep = MAKEUP_RANGE / (inputAudioFormat.sampleRate.coerceAtLeast(8_000) * MK_RAMP_SECONDS)
+        configuredSampleRate = inputAudioFormat.sampleRate.coerceAtLeast(8_000)
+        // A (re)configure resets to the FAST makeup ramp; only an explicit useMeasureRampOnce() slows it.
+        mkRampStep = MAKEUP_RANGE / (configuredSampleRate * MK_RAMP_SECONDS)
         primed = false
         resetState()
         isActive = true

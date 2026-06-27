@@ -411,6 +411,9 @@ class MusicService :
     // "volume rises on its own when the screen is off" bug. Re-asserting (not recomputing) means no mid-song jump.
     @Volatile private var lastAppliedGain: Float = 1.0f
     @Volatile private var lastAppliedMakeup: Float = 1.0f
+    // The track id whose MEASURED loudness we've already committed to the gains + DB (so the one-shot
+    // measurement-driven re-level fires at most ONCE per song, never re-levels twice). Null = none yet.
+    @Volatile private var measuredAppliedForId: String? = null
 
     private var discordRpc: DiscordRPC? = null
     private var lastPlaybackSpeed = 1.0f
@@ -2019,14 +2022,21 @@ class MusicService :
                     }
 
                     Timber.tag(TAG).d("Audio normalization enabled: $normalizeAudio")
-                    Timber.tag(TAG).d("Format loudnessDb: ${format?.loudnessDb}, perceptualLoudnessDb: ${format?.perceptualLoudnessDb}")
+                    Timber.tag(TAG).d("Format loudnessDb: ${format?.loudnessDb}, perceptualLoudnessDb: ${format?.perceptualLoudnessDb}, measuredLoudnessDb: ${format?.measuredLoudnessDb}")
 
-                    
+
                     // Normalize EVERY track to the same reference so none plays louder than another. Use
-                    // the real loudness when present, else a conservative default (so non-YouTube tracks
-                    // without metadata don't blast at their raw level).
+                    // the real loudness when present, else a once-measured loudness (cached from a prior play),
+                    // else a conservative default (so non-YouTube tracks without metadata don't blast at their
+                    // raw level until measurement completes).
                     val hasRealLoudness = format?.loudnessDb != null || format?.perceptualLoudnessDb != null
-                    val loudnessDb = effectiveLoudnessDb(format?.loudnessDb, format?.perceptualLoudnessDb)
+                    // "Known" = we have a usable loudness right now (metadata OR a cached measurement) → apply
+                    // instantly, no measurement. Only a TRULY unknown track (no metadata, never measured) is
+                    // measured live.
+                    val hasKnownLoudness = hasRealLoudness || format?.measuredLoudnessDb != null
+                    val loudnessDb = effectiveLoudnessDb(
+                        format?.loudnessDb, format?.perceptualLoudnessDb, format?.measuredLoudnessDb,
+                    )
 
                     // Apply the real-loudness upgrade ONLY near the START of the track (~first 8 s, where the
                     // playback fetch returns it). After that, NEVER re-level the currently-playing track: liking
@@ -2062,7 +2072,24 @@ class MusicService :
                         loudnessEnhancer?.enabled = false
                         lastNormalizedId = currentMediaId
                         lastNormalizedHadLoudness = hasRealLoudness
-                        Timber.tag(TAG).i("Normalization set (loudnessDb=$loudnessDb, real=$hasRealLoudness, makeup=${TruePeakLimiterAudioProcessor.loudnessMakeup})")
+
+                        // Per-track LIVE measurement (only for TRULY unknown tracks). If we already have a
+                        // usable loudness (metadata or a cached measurement), DISARM measurement and apply
+                        // instantly. Otherwise ARM measurement on the current player's processor — it integrates
+                        // the next ~12 s and publishes measuredLoudnessDb; the periodic check applies it ONCE.
+                        val norm = playerNormProcessors[player]
+                        if (hasKnownLoudness) {
+                            norm?.measureThisTrack = false
+                            // Already known/applied → mark so the one-shot re-level never fires for this track.
+                            measuredAppliedForId = currentMediaId
+                        } else {
+                            // Provisional DEFAULT (≈7 dB) is already baked into loudnessDb above; arm a fresh
+                            // measurement (zeroes accumulators + commit flag, keyed on this track id).
+                            norm?.startMeasurement(currentMediaId)
+                            // Allow the one-shot re-level to fire for this (newly measured) track.
+                            if (measuredAppliedForId == currentMediaId) measuredAppliedForId = null
+                        }
+                        Timber.tag(TAG).i("Normalization set (loudnessDb=$loudnessDb, real=$hasRealLoudness, known=$hasKnownLoudness, makeup=${TruePeakLimiterAudioProcessor.loudnessMakeup})")
                     }
                 } else {
                     lastAppliedGain = 1.0f
@@ -2072,6 +2099,7 @@ class MusicService :
                     withContext(Dispatchers.Main) {
                         // Clear any per-player override a crossfade pinned, so "off" is truly unity/transparent.
                         playerNormProcessors[player]?.instanceGain = null
+                        playerNormProcessors[player]?.measureThisTrack = false  // don't integrate while off
                         playerLimiterProcessors[player]?.setInstanceMakeup(null, null)
                         loudnessEnhancer?.enabled = false
                         Timber.tag(TAG).d("setupLoudnessEnhancer: normalization disabled - unity gain")
@@ -2084,6 +2112,66 @@ class MusicService :
             } catch (e: Exception) {
                 reportException(e)
                 releaseLoudnessEnhancer()
+            }
+        }
+    }
+
+    /**
+     * CACHE-ONLY ReplayGain-style measurement for a track that started WITHOUT loudness metadata.
+     * The NormalizationGainAudioProcessor measures the first ~12 s passively; when it commits a measured
+     * loudness, we CACHE it to the DB (preserving any metadata loudness) so the NEXT play is leveled from the
+     * first second. We deliberately do NOT re-level the currently-playing track mid-song — the user dislikes
+     * any mid-song volume change. Fires at most ONCE per track (measuredAppliedForId guard). The next play
+     * reads the cached value via effectiveLoudnessDb and applies it at start, like a metadata track.
+     */
+    private suspend fun maybeApplyMeasuredLoudness() {
+        // Gather player-thread state atomically.
+        data class Snap(
+            val mediaId: String?,
+            val committed: Boolean,
+            val measureId: String?,
+            val measured: Double?,
+            val overridePinned: Boolean,
+        )
+        val snap = withContext(Dispatchers.Main) {
+            val norm = playerNormProcessors[player]
+            Snap(
+                mediaId = player.currentMediaItem?.mediaId,
+                committed = norm?.measurementCommitted == true,
+                measureId = norm?.measureTrackId,
+                measured = norm?.measuredLoudnessDb,
+                // A crossfade pins a per-instance gain; don't write the shared statics under it.
+                overridePinned = isCrossfading || norm?.instanceGain != null,
+            )
+        }
+        val mediaId = snap.mediaId ?: return
+        if (!snap.committed) return
+        if (snap.measureId != mediaId) return            // committed value belongs to a different track
+        if (measuredAppliedForId == mediaId) return        // already re-leveled this track once
+        if (snap.overridePinned) return                    // defer; a crossfade owns the gain right now
+        val measured = snap.measured ?: return
+
+        withContext(Dispatchers.Main) {
+            val norm = playerNormProcessors[player]
+            if (player.currentMediaItem?.mediaId != mediaId) return@withContext
+            if (norm?.measurementCommitted != true || norm.measureTrackId != mediaId) return@withContext
+            if (measuredAppliedForId == mediaId) return@withContext
+            // CACHE-ONLY: we measured this track's loudness but DO NOT re-level it mid-song — the user dislikes
+            // ANY mid-song volume change. The cached value is applied at the START of the NEXT play (via
+            // effectiveLoudnessDb), so the track is leveled from the first second next time, with zero change now.
+            norm.measureThisTrack = false
+            measuredAppliedForId = mediaId
+            Timber.tag(TAG).i("Measured loudness cached for $mediaId: ${measured}dB (applied next play)")
+        }
+
+        // Cache the measured value, PRESERVING any metadata loudness (mirror the format-store preserve
+        // pattern): only set measuredLoudnessDb, keep loudnessDb/perceptualLoudnessDb and the rest intact.
+        runCatching {
+            val existing = withContext(Dispatchers.IO) { database.format(mediaId).first() }
+            if (existing != null) {
+                database.query {
+                    upsert(existing.copy(measuredLoudnessDb = measured))
+                }
             }
         }
     }
@@ -2295,6 +2383,9 @@ class MusicService :
             while (true) {
                 kotlinx.coroutines.delay(5000)
                 tick++
+                // ONE-SHOT measurement-driven re-level: if the current track had no loudness and we've now
+                // integrated enough to commit a measured value, apply it ONCE (slow, inaudible ramp) + cache it.
+                runCatching { maybeApplyMeasuredLoudness() }
                 val podcast = withContext(Dispatchers.Main) {
                     if (!player.isPlaying) return@withContext null
                     val id = player.currentMediaItem?.mediaId
@@ -3376,8 +3467,11 @@ class MusicService :
                 // drop the volume.
                 val loudnessDb = nonNullPlayback.audioConfig?.loudnessDb ?: dbFormat?.loudnessDb
                 val perceptualLoudnessDb = nonNullPlayback.audioConfig?.perceptualLoudnessDb ?: dbFormat?.perceptualLoudnessDb
+                // Preserve a previously-measured loudness too: a re-fetch (e.g. the like/auto-download) must
+                // not wipe the cached measurement (it would force a needless re-measure on the next play).
+                val measuredLoudnessDb = dbFormat?.measuredLoudnessDb
 
-                Timber.tag(TAG).d("Storing format for $mediaId with loudnessDb: $loudnessDb, perceptualLoudnessDb: $perceptualLoudnessDb")
+                Timber.tag(TAG).d("Storing format for $mediaId with loudnessDb: $loudnessDb, perceptualLoudnessDb: $perceptualLoudnessDb, measuredLoudnessDb: $measuredLoudnessDb")
                 if (loudnessDb == null && perceptualLoudnessDb == null) {
                     Timber.tag(TAG).w("No loudness data available from YouTube for video: $mediaId")
                 }
@@ -3394,6 +3488,7 @@ class MusicService :
                             contentLength = format.contentLength ?: 0L,
                             loudnessDb = loudnessDb,
                             perceptualLoudnessDb = perceptualLoudnessDb,
+                            measuredLoudnessDb = measuredLoudnessDb,
                             playbackUrl = nonNullPlayback.playbackTracking?.videostatsPlaybackUrl?.baseUrl
                         )
                     )
@@ -3995,7 +4090,7 @@ class MusicService :
                 val normalize = withContext(Dispatchers.IO) { dataStore.data.map { it[AudioNormalizationKey] ?: true }.first() }
                 if (!normalize) return@launch
                 val fmt = withContext(Dispatchers.IO) { database.format(incomingId).first() }
-                val loudnessDb = effectiveLoudnessDb(fmt?.loudnessDb, fmt?.perceptualLoudnessDb)
+                val loudnessDb = effectiveLoudnessDb(fmt?.loudnessDb, fmt?.perceptualLoudnessDb, fmt?.measuredLoudnessDb)
                 withContext(Dispatchers.Main) {
                     // Apply to the incoming player whether it's still the secondary OR has already been swapped
                     // to current (the fast/fallback crossfade path swaps synchronously before this async prime

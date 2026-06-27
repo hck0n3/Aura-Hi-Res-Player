@@ -1,18 +1,18 @@
-# Aura Hi-Res Player 0.6.62 — Firma Aura con más cuerpo (sin distorsionar) + "Nivelar volumen"
+# Aura Hi-Res Player 0.6.63 — TODAS las canciones al mismo volumen (incluso las que no traen info)
 
-## 🔊 Firma Aura: ahora suena más rica, sin distorsión
-La firma Aura era casi imperceptible (a propósito, porque en el motor viejo subir más distorsionaba). Como **ahora la cadena es 32-bit flotante**, el limitador absorbe los picos limpiamente, así que le subimos el cuerpo:
-- **Cuerpo** +2 dB en graves/medios-graves @120 Hz (ahí vive el "cuerpo"/calidez).
-- **Aire** +0.8 dB @12 kHz.
-- Quitado el recorte −1 dB que ya no hacía falta.
+## 🎚️ Por fin: volumen parejo en toda la biblioteca
+El nivelado de volumen solo funcionaba con canciones que **traen** info de loudness (parte de YouTube). Las que NO la traen (archivos locales, Saavn, otras) usaban un valor fijo → unas sonaban más fuerte que otras.
 
-→ Más **cuerpo y calidez**, y suena **rico incluso a todo volumen, sin distorsionar**.
+**Ahora:** la app **mide el volumen real** de esas canciones mientras suenan (los primeros ~12 s), lo **guarda**, y lo aplica al **mismo nivel de referencia (−14 LUFS)** que las demás. Resultado: **toda la biblioteca a un solo volumen**, fuerte pero sin distorsionar (el limitador caza los picos).
 
-## 🏷️ "Normalización del audio" ahora se llama "Nivelar volumen"
-Nombre más honesto y claro: lleva todas las canciones al mismo volumen.
+- **Cero cambios de volumen a mitad de canción:** la medición se **guarda** y se aplica desde el **segundo 0 de la siguiente reproducción** (la primera vez se mide en silencio, sin tocar el volumen mientras suena).
+- Se **cachea por canción** → solo se mide una vez; después es instantáneo y consistente.
+- La medición usa energía por canal (estilo BS.1770) para no fallar con estéreo amplio.
 
-## 🔜 Lo siguiente (el grande)
-La próxima trae el fix de raíz para que **TODAS** las canciones suenen al mismo nivel: las que no traen info de volumen (locales, etc.) se **medirán al reproducirse** y se nivelarán igual que las demás.
+## Bajo el capó
+Diseño + implementación multi-agente con **revisión adversarial** (se cazaron y corrigieron 3 cosas antes de subir: que un re-escaneo no borre la medición de archivos locales, la calibración del nivel, y un detalle de CPU en silencios). Migración de base de datos automática (sin perder tus datos).
 
 ## 👉 Para probar
-- Activa la firma Aura → más cuerpo/calidez; sube el volumen al máximo → debe sonar rico, **sin distorsionar**.
+- Pon canciones de distinto origen seguidas (YouTube + locales) → **dales una reproducción a cada una**; a partir de la 2ª vez deben sonar **todas al mismo volumen**.
+
+> En camino: crossfade parejo (sin que baje y suba) a 12 s · más cosas de Auto-EQ · botón Compartir.

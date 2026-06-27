@@ -112,7 +112,7 @@ class MusicDatabase(
         SortedSongAlbumMap::class,
         PlaylistSongMapPreview::class,
     ],
-    version = 36,
+    version = 37,
     exportSchema = true,
     autoMigrations = [
         AutoMigration(from = 2, to = 3),
@@ -149,6 +149,8 @@ class MusicDatabase(
         AutoMigration(from = 33, to = 34),
         AutoMigration(from = 34, to = 35),
         AutoMigration(from = 35, to = 36),
+        // 36 -> 37: pure nullable-column add (format.measuredLoudnessDb REAL, default NULL).
+        AutoMigration(from = 36, to = 37),
     ],
 )
 @TypeConverters(Converters::class)

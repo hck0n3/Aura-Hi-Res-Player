@@ -72,11 +72,16 @@ const val DEFAULT_UNKNOWN_LOUDNESS_DB: Double = 7.0
 
 /**
  * The loudness value (dB vs reference) to normalize a track by: the real [loudnessDb] if present, else
- * [perceptualLoudnessDb], else [DEFAULT_UNKNOWN_LOUDNESS_DB]. Ensures EVERY track is normalized (none
- * plays at its raw, un-leveled volume).
+ * [perceptualLoudnessDb], else the once-[measuredLoudnessDb] (measured at playback for metadata-less
+ * tracks and cached), else [DEFAULT_UNKNOWN_LOUDNESS_DB]. Ensures EVERY track is normalized (none plays
+ * at its raw, un-leveled volume), and a track WE measured levels to the same reference as metadata ones.
  */
-fun effectiveLoudnessDb(loudnessDb: Double?, perceptualLoudnessDb: Double?): Double =
-    loudnessDb ?: perceptualLoudnessDb ?: DEFAULT_UNKNOWN_LOUDNESS_DB
+fun effectiveLoudnessDb(
+    loudnessDb: Double?,
+    perceptualLoudnessDb: Double?,
+    measuredLoudnessDb: Double? = null,
+): Double =
+    loudnessDb ?: perceptualLoudnessDb ?: measuredLoudnessDb ?: DEFAULT_UNKNOWN_LOUDNESS_DB
 
 /** Linear amplitude multiplier for a dB gain (e.g. -6 dB → 0.501, +6 dB → 1.995). */
 fun dbToLinear(db: Double): Float = 10.0.pow(db / 20.0).toFloat()
