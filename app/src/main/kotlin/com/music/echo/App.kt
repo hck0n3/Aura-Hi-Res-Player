@@ -280,10 +280,10 @@ class App : Application(), SingletonImageLoader.Factory {
             p[iad1tya.echo.music.constants.HideVideoSongsKey] = false
             p[iad1tya.echo.music.constants.HideYoutubeShortsKey] = true
 
-            // Playback defaults (user request): smooth transition (crossfade) ON at 12s with the EQUAL-POWER
+            // Playback defaults (user request): smooth transition (crossfade) ON at 10s with the EQUAL-POWER
             // curve (1 = constant loudness, no mid-blend volume dip), skip silence ON and instantly ON.
             p[iad1tya.echo.music.constants.CrossfadeEnabledKey] = true
-            p[iad1tya.echo.music.constants.CrossfadeDurationKey] = 12f
+            p[iad1tya.echo.music.constants.CrossfadeDurationKey] = 10f
             p[iad1tya.echo.music.constants.CrossfadeCurveKey] = 1
             p[iad1tya.echo.music.constants.SkipSilenceKey] = true
             p[iad1tya.echo.music.constants.SkipSilenceInstantKey] = true
@@ -378,6 +378,13 @@ class App : Application(), SingletonImageLoader.Factory {
                     p[iad1tya.echo.music.constants.CrossfadeDurationKey] = 12f
                     p[iad1tya.echo.music.constants.CrossfadeCurveKey] = 1
                     p[iad1tya.echo.music.constants.PlaybackDefaultsV3AppliedKey] = true
+                }
+                // V4 — user asked for 10 s transitions; keep the EQUAL-POWER curve (no mid dip, chosen over
+                // strict-linear). Re-apply ONCE for existing users (V3 had set 12 s).
+                if (settings[iad1tya.echo.music.constants.PlaybackDefaultsV4AppliedKey] != true) {
+                    p[iad1tya.echo.music.constants.CrossfadeDurationKey] = 10f
+                    p[iad1tya.echo.music.constants.CrossfadeCurveKey] = 1
+                    p[iad1tya.echo.music.constants.PlaybackDefaultsV4AppliedKey] = true
                 }
             }
         }

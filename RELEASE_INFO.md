@@ -1,11 +1,13 @@
-# Aura Hi-Res Player 0.6.69 — portada que no se queda pegada + agregar a playlist la canción correcta
+# Aura Hi-Res Player 0.6.70 — transición a 10 s + tus me gusta aparecen en la búsqueda
 
-## 🖼️ Portada / now-playing ya no se queda pegada ni en blanco
-- La **portada de lo que suena ya no se queda con la anterior** al cambiar de canción / entrar a otro álbum. Fuera de un crossfade, siempre se actualiza al tema actual.
-- Al **salir y volver a entrar a la app**, el reproductor **ya no aparece vacío**: si al reconectar no hay dato momentáneo, conserva el último en vez de borrarlo, y se refresca solo.
-- Se agregó un segundo camino (`onMediaMetadataChanged`) que refresca la portada/título aunque la resolución llegue tarde — recupera de un estado pegado.
+## 🔁 Transición (crossfade) a 10 segundos
+La duración de la transición suave ahora es **10 segundos** (la pediste así). Mantengo la curva **pareja (equal-power)** que elegiste: **volumen constante durante toda la transición, sin el bajón en el medio**. Se aplica a todos (migración automática).
 
-## ➕ Agregar a playlist agrega la canción CORRECTA
-Misma causa: cuando agregabas a una playlist desde el reproductor, agregaba la **canción anterior** porque leía un estado pegado del now-playing. Ahora el now-playing siempre está al día → agrega la que realmente está sonando.
+## ❤️ Tus me gusta ya aparecen al buscar
+La búsqueda local ahora muestra una canción si le diste **me gusta**, aunque no la hayas agregado a la biblioteca. Antes solo salían las de la biblioteca, así que un tema con corazón podía no aparecer.
 
-> Sigo con el resto de tu lista (EQ plano/calidad, transición 10s lineal, links de artistas, "ver artista" en el menú, likes, volumen, PiP) — los voy soltando por tandas, verificando cada uno para no romper el audio.
+> Nota: sigo investigando el caso de likes que se pierden de forma intermitente (cuando la canción viene de la radio y su id no coincide con el del catálogo de búsqueda) — eso lo arreglo aparte.
+
+## 👉 Para probar
+- Deja terminar una canción → la transición debe durar 10 s, pareja, sin bajón.
+- Dale ❤️ a algo y búscalo por nombre → debe aparecer.

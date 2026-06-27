@@ -1121,7 +1121,7 @@ interface DatabaseDao {
     }.map { it.reversed(descending) }
 
     @Transaction
-    @Query("SELECT * FROM song WHERE title LIKE '%' || :query || '%' AND inLibrary IS NOT NULL LIMIT :previewSize")
+    @Query("SELECT * FROM song WHERE title LIKE '%' || :query || '%' AND (inLibrary IS NOT NULL OR liked = 1) LIMIT :previewSize")
     fun searchSongs(
         query: String,
         previewSize: Int = Int.MAX_VALUE,

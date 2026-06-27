@@ -74,6 +74,8 @@ val PlaybackDefaultsV1AppliedKey = booleanPreferencesKey("playback_defaults_v1_a
 // v2: crossfade duration 11s + linear curve (user request). Re-applied once on update.
 val PlaybackDefaultsV2AppliedKey = booleanPreferencesKey("playback_defaults_v2_applied")
 val PlaybackDefaultsV3AppliedKey = booleanPreferencesKey("playback_defaults_v3_applied")
+// v4: crossfade duration 10s, keep equal-power curve (user chose constant-volume over strict linear).
+val PlaybackDefaultsV4AppliedKey = booleanPreferencesKey("playback_defaults_v4_applied")
 // Set before the YouTube Music login (which cold-restarts the app) so that, after the restart, we
 // return the user to the YouTube Music sync selection screen — like Spotify's import flow.
 val OpenYtmSyncAfterLoginKey = booleanPreferencesKey("open_ytm_sync_after_login")

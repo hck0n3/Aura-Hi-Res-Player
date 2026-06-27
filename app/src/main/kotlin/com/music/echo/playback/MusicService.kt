@@ -959,7 +959,7 @@ class MusicService :
             dataStore.data.map { prefs ->
                 Triple(
                     prefs[CrossfadeEnabledKey] ?: false,
-                    prefs[CrossfadeDurationKey] ?: 12f,
+                    prefs[CrossfadeDurationKey] ?: 10f,
                     prefs[CrossfadeGaplessKey] ?: true
                 )
             },
