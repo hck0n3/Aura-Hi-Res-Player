@@ -183,7 +183,11 @@ class AxionEqViewModel @Inject constructor(
         // (their old Auto-EQ curve lives in the manual band24_* gains). Reconcile so they don't see a phantom
         // "Auto-EQ activo" chip for a correction stage that doesn't exist.
         if (_autoEqActive.value && _autoEqBands.value.isEmpty()) setAutoEqActive(false)
-        if (_enabled.value) applyToService()
+        // Do NOT re-apply the EQ here. applyToService() persists echo_tuning as the active profile, so the
+        // service already applies it at startup (MusicService collects eqProfileRepository.activeProfile).
+        // Re-applying when the EQ screen opens just re-emits the same profile and caused an audible blip
+        // ("the sound changes as if the EQ activates" on entry). The chain is already live from startup; user
+        // edits re-apply through their own mutators.
     }
 
     fun setEnabled(enabled: Boolean) {

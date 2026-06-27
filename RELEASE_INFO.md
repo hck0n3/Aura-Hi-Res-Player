@@ -1,20 +1,11 @@
-# Aura Hi-Res Player 0.6.71 — EQ más limpio (calidad tipo Poweramp) + firma Aura mejorada
+# Aura Hi-Res Player 0.6.72 — el EQ no "se activa" al entrar + back de una sola vez
 
-## 🎚️ EQ limpio y transparente, sin distorsión a ningún volumen
-Auditoría DSP multi-agente: el sonido se "ensuciaba" porque **tres recortadores suaves (tanh)** en cadena (en el EQ, dentro de JrDsp y en el limitador final) entraban a actuar dentro del rango normal de la música → metían armónicos en la señal. Ahora los **corrí fuera del rango normal**:
-- **EQ**: transparente en todo el rango normal (solo redondea picos reales, ya no modela transitorios de bandas con Q alto).
-- **JrDsp**: su recortador interno solo actúa en sobre-picos genuinos (knee 0.88 → 0.97).
-- **Limitador final**: knee 0.90 → 0.94 (solo el último medio dB).
+## 🎚️ El sonido ya no cambia al abrir el ecualizador
+Al abrir la pantalla del EQ, el sonido cambiaba "como si el ecualizador se activara". Causa: el EQ se **re-aplicaba** al abrir la pantalla (re-emitía el mismo perfil → un pequeño blip). Tu EQ ya se aplica al **arrancar la app** (el perfil queda persistido), así que ese re-apply sobraba. **Quitado** → abrir el EQ ya no toca el sonido.
 
-Resultado: la cadena suena con la **transparencia de un EQ tipo Poweramp**, y el limitador true-peak sigue **garantizando que NO recorta a ningún volumen** (matemáticamente no puede pasar su techo).
-
-## ✨ Firma Aura mejorada (sigue activa)
-Re-afiné la firma para que sea **más limpia y correcta**, manteniendo el cuerpo:
-- Cuerpo grave intacto, **aire más fino**, y se **corrigió a la mitad el bajón de medios** que tenía de antes (sonaba un pelín hundida en el medio).
-- Ahora corre **sin armónicos sucios** (gracias a los cambios de arriba) — cuerpo rico, voz limpia.
-
-> Nada de esto toca las transiciones (crossfade) ni la nivelación de volumen entre canciones — solo la limpieza del sonido.
+## ↩️ Back del ecualizador de una sola vez
+En el EQ, al dar "atrás" volvías a la **misma pantalla** y necesitabas un segundo back para salir. Causa: el EQ se metía **dos veces** en el historial de navegación. Ahora con `launchSingleTop` entra una sola vez → **un back y salís**.
 
 ## 👉 Para probar
-- Sube el volumen del teléfono al máximo con un máster fuerte y mucho bajo → debe sonar **limpio**, sin raspeo ni distorsión.
-- Compara el EQ plano con otro reproductor (Poweramp) → debe sonar transparente; la firma Aura le agrega cuerpo sin ensuciar.
+- Reproduce algo, abre el ecualizador → el sonido NO debe cambiar al entrar.
+- En el EQ, dale atrás una vez → debe salir directo (no quedarse en la misma pantalla).

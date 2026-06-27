@@ -754,7 +754,9 @@ fun PlayerMenu(
                                     )
                                 },
                                 onClick = {
-                                    navController.navigate("settings/equalizer")
+                                    // launchSingleTop so a duplicate EQ entry can't land on the backstack
+                                    // (which made the first back press return to the same EQ screen).
+                                    navController.navigate("settings/equalizer") { launchSingleTop = true }
                                     onDismiss()
                                 }
                             )

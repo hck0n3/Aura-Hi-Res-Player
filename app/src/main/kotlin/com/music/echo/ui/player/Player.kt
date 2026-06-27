@@ -1898,7 +1898,9 @@ fun BottomSheetPlayer(
                     PlayerActionChip("Audio", textButtonColor, chipBg, {
                         // Collapse the player first so the equalizer screen is actually visible (otherwise
                         // the expanded player sheet covers it and it looks like nothing happened).
-                        navController.navigate("settings/equalizer")
+                        // launchSingleTop so a re-tap can't push a 2nd EQ entry (which made back return to the
+                        // SAME screen, needing a 2nd press to actually leave).
+                        navController.navigate("settings/equalizer") { launchSingleTop = true }
                         state.collapseSoft()
                     }) {
                         Icon(painterResource(R.drawable.graphic_eq), null, tint = textButtonColor, modifier = Modifier.size(20.dp))
