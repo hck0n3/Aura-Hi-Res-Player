@@ -63,13 +63,13 @@ class JrDspAudioProcessor : AudioProcessor {
     // ── "Aura signature" gentle tone (body + air), ON by default, built on configure ──
     private var sigLoShelf: BiquadFilter? = null
     private var sigHiShelf: BiquadFilter? = null
-    // Pre-trim the signature shelves by -1 dB. Float does NOT make this unnecessary: the signature boost meets
-    // JrDsp's OWN local softLimit (end of the frame loop, knee 0.88) FIRST — that local waveshaper bakes harmonics
-    // into the PCM before the transparent downstream true-peak limiter ever sees them = raspy vocals at high
-    // volume (regression when this was set to 1.0). The trim keeps signature-only peaks under the 0.88 knee so the
-    // local soft-clip stops engaging and peak control defers to the downstream limiter. (Restores the documented
-    // headroom — see project memory "aura-signature-must-not-overshoot".)
-    private val SIG_TRIM = 0.891
+    // Pre-trim the improved signature shelves by -0.5 dB. Float does NOT make this unnecessary: the signature
+    // boost meets JrDsp's OWN local softLimit FIRST — that local waveshaper bakes harmonics into the PCM before
+    // the transparent downstream true-peak limiter ever sees them (raspy vocals at high volume when this was 1.0).
+    // The gentler shelves (+1.5 dB body / +0.5 dB air) + this -0.5 dB trim keep the net peak under the local
+    // soft-clip knee (now raised to 0.97 for extra headroom), and HALVE the old -1 dB mid dip while keeping the
+    // deep-body lift — a cleaner, richer signature. See project memory "aura-signature-must-not-overshoot".
+    private val SIG_TRIM = 0.944
 
     // ── Multiband compressor (3-band LR2 crossover) state, built on configure ──
     private var mbLpf1: BiquadFilter? = null   // LP 200 Hz  (bass)
@@ -168,12 +168,12 @@ class JrDspAudioProcessor : AudioProcessor {
         loudnessLoShelf = BiquadFilter(sampleRate, 200.0, 3.0, 0.707, FilterType.LSC, shelfSlope = 0.707)
         loudnessHiShelf = BiquadFilter(sampleRate, 5000.0, 2.0, 0.707, FilterType.HSC, shelfSlope = 0.707)
 
-        // Aura signature: warm BODY (+2 dB low shelf @120 Hz — upper-bass/low-mids where "cuerpo" lives)
-        // + AIR (+0.8 dB high shelf @12 kHz), a richer house curve. ON by default. The ~+2-3 dB of extra peak is
-        // held in check by SIG_TRIM (-1 dB above) so it can't overshoot into JrDsp's own local soft-clip and add
-        // harmonics (raspy voice) before the transparent downstream true-peak limiter.
-        sigLoShelf = BiquadFilter(sampleRate, 120.0, 2.0, 0.707, FilterType.LSC, shelfSlope = 0.707)
-        sigHiShelf = BiquadFilter(sampleRate, 12000.0, 0.8, 0.707, FilterType.HSC, shelfSlope = 0.707)
+        // Aura signature (improved/cleaner): warm BODY (+1.5 dB low shelf @120 Hz — upper-bass/low-mids where
+        // "cuerpo" lives) + AIR (+0.5 dB high shelf @12 kHz), a refined house curve. ON by default. The extra peak
+        // is held in check by SIG_TRIM (-0.5 dB above) so it can't overshoot into JrDsp's own local soft-clip; the
+        // gentler shelves keep the deep body but halve the old mid dip and run clean (no baked harmonics).
+        sigLoShelf = BiquadFilter(sampleRate, 120.0, 1.5, 0.707, FilterType.LSC, shelfSlope = 0.707)
+        sigHiShelf = BiquadFilter(sampleRate, 12000.0, 0.5, 0.707, FilterType.HSC, shelfSlope = 0.707)
 
         // Multiband compressor LR2 crossovers (Q 0.5) at 200 Hz and 5 kHz.
         mbLpf1 = BiquadFilter(sampleRate, 200.0, 0.0, 0.5, FilterType.LPQ)
@@ -328,8 +328,8 @@ class JrDspAudioProcessor : AudioProcessor {
 
                 // Transparent safety only: keeps an effect's overshoot from hard-clipping at the
                 // 16-bit output (asymptote 0.99, knee 0.88 — gentle, fewer harmonics). Real limiting is downstream.
-                l = softLimit(l, ceiling = 0.99f, knee = 0.88f)
-                r = softLimit(r, ceiling = 0.99f, knee = 0.88f)
+                l = softLimit(l, ceiling = 0.999f, knee = 0.97f)
+                r = softLimit(r, ceiling = 0.999f, knee = 0.97f)
 
                 outputBuffer.putFloat(l)
                 outputBuffer.putFloat(r)
@@ -348,7 +348,7 @@ class JrDspAudioProcessor : AudioProcessor {
                     x = loudnessLoShelf!!.processSample(x.toDouble()).toFloat()
                     x = loudnessHiShelf!!.processSample(x.toDouble()).toFloat()
                 }
-                x = softLimit(x, ceiling = 0.99f, knee = 0.88f)
+                x = softLimit(x, ceiling = 0.999f, knee = 0.97f)
                 outputBuffer.putFloat(x)
             }
             while (inputBuffer.hasRemaining()) outputBuffer.put(inputBuffer.get())

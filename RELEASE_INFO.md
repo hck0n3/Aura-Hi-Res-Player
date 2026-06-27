@@ -1,13 +1,20 @@
-# Aura Hi-Res Player 0.6.70 — transición a 10 s + tus me gusta aparecen en la búsqueda
+# Aura Hi-Res Player 0.6.71 — EQ más limpio (calidad tipo Poweramp) + firma Aura mejorada
 
-## 🔁 Transición (crossfade) a 10 segundos
-La duración de la transición suave ahora es **10 segundos** (la pediste así). Mantengo la curva **pareja (equal-power)** que elegiste: **volumen constante durante toda la transición, sin el bajón en el medio**. Se aplica a todos (migración automática).
+## 🎚️ EQ limpio y transparente, sin distorsión a ningún volumen
+Auditoría DSP multi-agente: el sonido se "ensuciaba" porque **tres recortadores suaves (tanh)** en cadena (en el EQ, dentro de JrDsp y en el limitador final) entraban a actuar dentro del rango normal de la música → metían armónicos en la señal. Ahora los **corrí fuera del rango normal**:
+- **EQ**: transparente en todo el rango normal (solo redondea picos reales, ya no modela transitorios de bandas con Q alto).
+- **JrDsp**: su recortador interno solo actúa en sobre-picos genuinos (knee 0.88 → 0.97).
+- **Limitador final**: knee 0.90 → 0.94 (solo el último medio dB).
 
-## ❤️ Tus me gusta ya aparecen al buscar
-La búsqueda local ahora muestra una canción si le diste **me gusta**, aunque no la hayas agregado a la biblioteca. Antes solo salían las de la biblioteca, así que un tema con corazón podía no aparecer.
+Resultado: la cadena suena con la **transparencia de un EQ tipo Poweramp**, y el limitador true-peak sigue **garantizando que NO recorta a ningún volumen** (matemáticamente no puede pasar su techo).
 
-> Nota: sigo investigando el caso de likes que se pierden de forma intermitente (cuando la canción viene de la radio y su id no coincide con el del catálogo de búsqueda) — eso lo arreglo aparte.
+## ✨ Firma Aura mejorada (sigue activa)
+Re-afiné la firma para que sea **más limpia y correcta**, manteniendo el cuerpo:
+- Cuerpo grave intacto, **aire más fino**, y se **corrigió a la mitad el bajón de medios** que tenía de antes (sonaba un pelín hundida en el medio).
+- Ahora corre **sin armónicos sucios** (gracias a los cambios de arriba) — cuerpo rico, voz limpia.
+
+> Nada de esto toca las transiciones (crossfade) ni la nivelación de volumen entre canciones — solo la limpieza del sonido.
 
 ## 👉 Para probar
-- Deja terminar una canción → la transición debe durar 10 s, pareja, sin bajón.
-- Dale ❤️ a algo y búscalo por nombre → debe aparecer.
+- Sube el volumen del teléfono al máximo con un máster fuerte y mucho bajo → debe sonar **limpio**, sin raspeo ni distorsión.
+- Compara el EQ plano con otro reproductor (Poweramp) → debe sonar transparente; la firma Aura le agrega cuerpo sin ensuciar.

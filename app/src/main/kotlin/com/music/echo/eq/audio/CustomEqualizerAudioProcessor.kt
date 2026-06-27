@@ -39,13 +39,15 @@ class CustomEqualizerAudioProcessor : AudioProcessor {
         private val EMPTY_BUFFER: ByteBuffer = ByteBuffer.allocateDirect(0).order(ByteOrder.nativeOrder())
     }
 
-    /** Soft clip a normalized (-1..1-ish) sample: linear below 0.95, then a tanh knee toward ~1.0 so a
-     *  high-Q transient rounds off instead of hard-clipping audibly before the downstream limiter. */
+    /** Soft clip a normalized sample. The chain is 32-bit float here, so values >1.0 are carried losslessly
+     *  to the downstream true-peak limiter (the real brick wall). Keep this strictly transparent across the
+     *  normal range (linear below 1.2) and only round genuine runaway, so high-Q EQ transient ringing isn't
+     *  waveshaped (= cleaner, no baked harmonics); the oversampled limiter owns peak control. */
     private fun softClip(x: Double): Double {
         val a = kotlin.math.abs(x)
-        if (a <= 0.95) return x
+        if (a <= 1.2) return x
         val s = if (x < 0) -1.0 else 1.0
-        return s * (0.95 + 0.05 * kotlin.math.tanh((a - 0.95) / 0.05))
+        return s * (1.2 + 0.3 * kotlin.math.tanh((a - 1.2) / 0.3))
     }
 
     /** Per-frequency SUM of enabled gains across the cascaded Auto-EQ + manual band sets. The two stages run

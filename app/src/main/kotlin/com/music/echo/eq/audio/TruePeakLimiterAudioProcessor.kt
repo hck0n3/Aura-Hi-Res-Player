@@ -263,8 +263,8 @@ class TruePeakLimiterAudioProcessor : AudioProcessor {
                 lowGainEnv = nextEnv(lowGainEnv, lowPeak)
                 highGainEnv = nextEnv(highGainEnv, highPeak)
 
-                val outL = softLimit(lowL * lowGainEnv + highL * highGainEnv, ceiling = 0.95f, knee = 0.90f)
-                val outR = softLimit(lowR * lowGainEnv + highR * highGainEnv, ceiling = 0.95f, knee = 0.90f)
+                val outL = softLimit(lowL * lowGainEnv + highL * highGainEnv, ceiling = 0.95f, knee = 0.94f)
+                val outR = softLimit(lowR * lowGainEnv + highR * highGainEnv, ceiling = 0.95f, knee = 0.94f)
 
                 prevLowL = lowL; prevLowR = lowR
                 prevHighL = highL; prevHighR = highR
@@ -291,7 +291,7 @@ class TruePeakLimiterAudioProcessor : AudioProcessor {
                 val highPeak = max(abs(high), abs((prevHighL + high) * 0.5f))
                 lowGainEnv = nextEnv(lowGainEnv, lowPeak)
                 highGainEnv = nextEnv(highGainEnv, highPeak)
-                val out = softLimit(low * lowGainEnv + high * highGainEnv, ceiling = 0.95f, knee = 0.90f)
+                val out = softLimit(low * lowGainEnv + high * highGainEnv, ceiling = 0.95f, knee = 0.94f)
                 prevLowL = low
                 prevHighL = high
                 outputBuffer.putShort(toDithered16(out))
