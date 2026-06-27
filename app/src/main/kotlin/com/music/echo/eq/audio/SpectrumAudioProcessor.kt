@@ -84,7 +84,10 @@ class SpectrumAudioProcessor : AudioProcessor {
         encoding = inputAudioFormat.encoding
 
         if (encoding != C.ENCODING_PCM_16BIT || channelCount > 2) {
-            throw AudioProcessor.UnhandledAudioFormatException(inputAudioFormat)
+            // Self-bypass instead of crashing on >2ch / non-16-bit (e.g. a 5.1 local file): Media3 skips an
+            // inactive processor, so playback continues rather than failing fatally.
+            isActive = false
+            return AudioProcessor.AudioFormat.NOT_SET
         }
 
         ring.fill(0f)

@@ -1,15 +1,21 @@
-# Aura Hi-Res Player 0.6.58 — dar "Me gusta" YA NO sube ni baja el volumen (de raíz)
+# Aura Hi-Res Player 0.6.59 — sonido más limpio (dither), sin crashear con 5.1, y el EQ siempre suena
 
-## ❤️🔊 Por fin: el corazón no toca el volumen
-Dar "Me gusta" subía el volumen y quitarlo lo bajaba un poco. Lo intenté antes pero faltaba **un camino**: la **descarga automática** (que se dispara al dar like) tenía su **propio** código que re-guardaba el formato de la canción **sin conservar** la medida de volumen — así que traía una medida distinta y la app re-nivelaba a mitad de canción.
+Tomé un informe técnico de audio, **verifiqué cada punto contra el código** (varias afirmaciones del informe eran falsas) y apliqué solo lo confirmado y seguro:
 
-**Arreglado de raíz (doble candado):**
-1. La **descarga ahora conserva** la medida de volumen que ya tenía la canción → una descarga **nunca** cambia el nivel de un tema que ya está sonando.
-2. Para temas que empiezan sin medida, el ajuste de nivel solo ocurre **en los primeros segundos**, **nunca a mitad** por un like.
+## 🎧 Sonido más limpio en silencios y colas (dither TPDF)
+La cadena de audio termina en 16 bits. Antes, esa última conversión **truncaba** (distorsión audible en fundidos, silencios y colas de reverb). Ahora aplica **dither TPDF** en la etapa final → la distorsión de truncado se convierte en un ruido **inaudible** (~−93 dBFS). Es la parte audible de "procesar en flotante", sin el riesgo de reescribir todo el motor. **Más limpio, sobre todo en pasajes suaves.**
 
-→ Dar o quitar "Me gusta" **no mueve el volumen**. Punto.
+## 🔇 El ecualizador ya NO se queda mudo con "offload"
+El ahorro de batería por *offload* del sistema **se salta toda la cadena DSP**. Antes solo se desactivaba con crossfade/normalización; ahora se desactiva **siempre que haya cualquier efecto activo** (EQ, firma Aura, JR DSP). Así tu EQ/efectos **siempre suenan**.
 
-Revisado con auditoría adversarial (0 problemas).
+## 🔊 Archivos 5.1 / multicanal ya no rompen la reproducción
+Un FLAC 5.1 (o multicanal) hacía **fallar la reproducción** con el DSP activo. Ahora los procesadores **se omiten con elegancia** para >2 canales → la canción suena (sin DSP) en vez de fallar.
+
+## Calidad
+Verificación multi-agente del informe + **revisión adversarial** del cambio (0 problemas; stereo intacto).
+
+> Pendiente (gran premio, más adelante con cuidado): cadena de audio **end-to-end en 32-bit float** y modo **bit-perfect a DAC USB**.
 
 ## 👉 Para probar
-- A mitad de una canción, da y quita "Me gusta" varias veces → el volumen NO debe moverse.
+- Una balada con fundidos/silencios → cola más limpia.
+- EQ + (si lo tenías) offload → el EQ ahora sí se nota.

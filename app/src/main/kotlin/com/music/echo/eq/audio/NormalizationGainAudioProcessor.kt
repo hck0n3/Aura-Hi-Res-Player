@@ -59,7 +59,9 @@ class NormalizationGainAudioProcessor : AudioProcessor {
     override fun configure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
         encoding = inputAudioFormat.encoding
         if (encoding != C.ENCODING_PCM_16BIT) {
-            throw AudioProcessor.UnhandledAudioFormatException(inputAudioFormat)
+            // Self-bypass instead of crashing on a non-16-bit format: Media3 skips an inactive processor.
+            isActive = false
+            return AudioProcessor.AudioFormat.NOT_SET
         }
         channelCount = inputAudioFormat.channelCount
         rampStep = 1.0f / (inputAudioFormat.sampleRate.coerceAtLeast(8_000) * RAMP_SECONDS)

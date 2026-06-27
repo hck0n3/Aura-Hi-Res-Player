@@ -147,8 +147,10 @@ class CustomEqualizerAudioProcessor : AudioProcessor {
 
         
         if (encoding != C.ENCODING_PCM_16BIT || channelCount > 2) {
-            val exception = AudioProcessor.UnhandledAudioFormatException(inputAudioFormat)
-            throw exception 
+            // Self-bypass instead of crashing on >2ch / non-16-bit (e.g. a 5.1 local file): Media3 skips an
+            // inactive processor, so playback continues (unprocessed) rather than failing fatally.
+            isActive = false
+            return AudioProcessor.AudioFormat.NOT_SET
         }
 
         isActive = true

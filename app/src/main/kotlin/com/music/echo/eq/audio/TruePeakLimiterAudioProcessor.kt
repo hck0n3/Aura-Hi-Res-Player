@@ -9,6 +9,7 @@ import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.max
+import kotlin.math.roundToInt
 import kotlin.math.sin
 
 /**
@@ -36,6 +37,17 @@ class TruePeakLimiterAudioProcessor : AudioProcessor {
     private var isActive = false
     private var inputEnded = false
     private var outputBuffer: ByteBuffer = EMPTY_BUFFER
+
+    // TPDF dither RNG. This is the LAST stage, so its 16-bit write is the final quantization the DAC sees;
+    // dithering it replaces truncation distortion (audible in fades / quiet tails / reverb decays) with a
+    // benign, inaudible noise floor (~-93 dBFS) — the cheap, low-risk part of "processing in float".
+    private val ditherRandom = java.util.Random()
+
+    /** float sample → dithered + rounded 16-bit. TPDF dither = ±1 LSB triangular (nextFloat − nextFloat). */
+    private fun toDithered16(x: Float): Short {
+        val v = x * 32768.0f + (ditherRandom.nextFloat() - ditherRandom.nextFloat())
+        return v.roundToInt().coerceIn(-32768, 32767).toShort()
+    }
 
     // Crossover low-pass coefficients (computed per sample rate in [configure]).
     private var lpB0 = 0.0; private var lpB1 = 0.0; private var lpB2 = 0.0
@@ -117,7 +129,10 @@ class TruePeakLimiterAudioProcessor : AudioProcessor {
         channelCount = inputAudioFormat.channelCount
         encoding = inputAudioFormat.encoding
         if (encoding != C.ENCODING_PCM_16BIT || channelCount > 2) {
-            throw AudioProcessor.UnhandledAudioFormatException(inputAudioFormat)
+            // Self-bypass instead of crashing on >2ch / non-16-bit (e.g. a 5.1 local file): Media3 skips an
+            // inactive processor, so playback continues (unprocessed) rather than failing fatally.
+            isActive = false
+            return AudioProcessor.AudioFormat.NOT_SET
         }
         computeCrossover(inputAudioFormat.sampleRate)
         mkRampStep = MAKEUP_RANGE / (inputAudioFormat.sampleRate.coerceAtLeast(8_000) * MK_RAMP_SECONDS)
@@ -223,8 +238,8 @@ class TruePeakLimiterAudioProcessor : AudioProcessor {
                 prevLowL = lowL; prevLowR = lowR
                 prevHighL = highL; prevHighR = highR
 
-                outputBuffer.putShort((outL * 32768.0f).coerceIn(-32768.0f, 32767.0f).toInt().toShort())
-                outputBuffer.putShort((outR * 32768.0f).coerceIn(-32768.0f, 32767.0f).toInt().toShort())
+                outputBuffer.putShort(toDithered16(outL))
+                outputBuffer.putShort(toDithered16(outR))
             }
             while (inputBuffer.hasRemaining()) outputBuffer.put(inputBuffer.get())
         } else {
@@ -248,7 +263,7 @@ class TruePeakLimiterAudioProcessor : AudioProcessor {
                 val out = softLimit(low * lowGainEnv + high * highGainEnv, ceiling = 0.92f, knee = 0.88f)
                 prevLowL = low
                 prevHighL = high
-                outputBuffer.putShort((out * 32768.0f).coerceIn(-32768.0f, 32767.0f).toInt().toShort())
+                outputBuffer.putShort(toDithered16(out))
             }
             while (inputBuffer.hasRemaining()) outputBuffer.put(inputBuffer.get())
         }

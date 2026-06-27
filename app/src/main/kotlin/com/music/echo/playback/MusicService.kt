@@ -906,16 +906,24 @@ class MusicService :
             }
 
         combine(
-            dataStore.data.map { it[AudioOffload] ?: false },
-            dataStore.data.map { it[CrossfadeEnabledKey] ?: false },
-            dataStore.data.map { it[AudioNormalizationKey] ?: true }
-        ) { offloadPref, crossfadeEnabled, normalizationEnabled ->
-             // Audio offload streams compressed audio straight to the DSP hardware, BYPASSING the whole
-             // AudioProcessor chain — EQ, JR DSP, loudness normalization AND the true-peak limiter. With
-             // the limiter bypassed, a loud master can clip/distort. So only allow offload when BOTH
-             // crossfade and loudness normalization are off; otherwise the limiter must stay in the path.
-             // Normalization is on by default, so the default config always keeps the limiter active.
-             if (crossfadeEnabled || normalizationEnabled) false else offloadPref
+            dataStore.data.map { it[AudioOffload] ?: false }.distinctUntilChanged(),
+            // Audio offload streams compressed audio straight to the DSP hardware, BYPASSING the whole
+            // AudioProcessor chain — EQ, JR DSP / Aura signature, AudioEnhance, loudness normalization AND the
+            // true-peak limiter. With any of those active, offload would make them silently do nothing (and a
+            // loud master could clip). So offload is only allowed when the ENTIRE chain is off. The Aura
+            // signature is ON by default, so offload stays off by default (the safe direction).
+            dataStore.data.map { p ->
+                (p[CrossfadeEnabledKey] ?: false) ||
+                    (p[AudioNormalizationKey] ?: true) ||
+                    (p[iad1tya.echo.music.constants.AuraSignatureToneEnabledKey] ?: true) ||
+                    (p[AudioEnhanceEnabledKey] ?: false) ||
+                    (p[iad1tya.echo.music.constants.JrLoudnessEnabledKey] ?: false) ||
+                    (p[iad1tya.echo.music.constants.JrExciterEnabledKey] ?: false) ||
+                    (p[iad1tya.echo.music.constants.JrStereoWidthEnabledKey] ?: false) ||
+                    (p[iad1tya.echo.music.constants.JrDialogueEnabledKey] ?: false)
+            }.distinctUntilChanged(),
+        ) { offloadPref, chainActive ->
+            if (chainActive) false else offloadPref
         }.distinctUntilChanged()
         .collectLatest(scope) { useOffload ->
              player.setOffloadEnabled(useOffload)
@@ -1107,11 +1115,18 @@ class MusicService :
         player.apply {
                 runBlocking {
                     val offload = dataStore.get(AudioOffload, false)
-                    val crossfade = dataStore.get(CrossfadeEnabledKey, false)
-                    // Offload bypasses the limiter/normalization; keep it off whenever crossfade or
-                    // loudness normalization is on, so the true-peak limiter always runs (no distortion).
-                    val normalization = dataStore.get(AudioNormalizationKey, true)
-                    setOffloadEnabled(if (crossfade || normalization) false else offload)
+                    // Offload bypasses the ENTIRE AudioProcessor chain (true-peak limiter, normalization, EQ,
+                    // JR DSP / Aura signature, AudioEnhance). Keep it off whenever any of those is active so the
+                    // chain always runs (no silent EQ, no clipping). Signature is on by default → off by default.
+                    val chainActive = dataStore.get(CrossfadeEnabledKey, false) ||
+                        dataStore.get(AudioNormalizationKey, true) ||
+                        dataStore.get(iad1tya.echo.music.constants.AuraSignatureToneEnabledKey, true) ||
+                        dataStore.get(AudioEnhanceEnabledKey, false) ||
+                        dataStore.get(iad1tya.echo.music.constants.JrLoudnessEnabledKey, false) ||
+                        dataStore.get(iad1tya.echo.music.constants.JrExciterEnabledKey, false) ||
+                        dataStore.get(iad1tya.echo.music.constants.JrStereoWidthEnabledKey, false) ||
+                        dataStore.get(iad1tya.echo.music.constants.JrDialogueEnabledKey, false)
+                    setOffloadEnabled(if (chainActive) false else offload)
                     skipSilenceEnabled = dataStore.get(SkipSilenceKey, false)
                 }
                 addAnalyticsListener(PlaybackStatsListener(false, this@MusicService))

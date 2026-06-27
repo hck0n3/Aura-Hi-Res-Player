@@ -66,7 +66,10 @@ class AudioEnhanceProcessor : AudioProcessor {
         channelCount = inputAudioFormat.channelCount
         encoding = inputAudioFormat.encoding
         if (encoding != C.ENCODING_PCM_16BIT || channelCount > 2) {
-            throw AudioProcessor.UnhandledAudioFormatException(inputAudioFormat)
+            // Self-bypass instead of crashing on >2ch / non-16-bit (e.g. a 5.1 local file): Media3 skips an
+            // inactive processor, so playback continues rather than failing fatally.
+            isActive = false
+            return AudioProcessor.AudioFormat.NOT_SET
         }
         // HF-regen high-pass corner ~9 kHz (one-pole) — above the 2–5 kHz presence region so the regenerated
         // harmonics add "air", not sibilant/shrill edge.
