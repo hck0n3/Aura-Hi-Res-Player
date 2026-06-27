@@ -39,7 +39,12 @@ class AutoEqRepository(private val context: Context) {
         raw.lineSequence().mapNotNull { line ->
             val parts = line.split('\t')
             if (parts.size == 3) AutoEqEntry(parts[0], parts[1], parts[2]) else null
-        }.toList()
+        }
+            // Dedup as the LAST step before returning: a stale/old cache TSV (written before the
+            // download-time distinctBy existed, or any duplicate-bearing cache) would otherwise return
+            // two rows with the same name|source — colliding on the LazyColumn key and crashing Compose.
+            .distinctBy { it.name + "|" + it.source }
+            .toList()
     }
 
     // Cache the catalog for 30 days (it rarely changes) so it only downloads once, then loads from

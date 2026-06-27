@@ -1850,6 +1850,16 @@ fun BottomSheetPlayer(
                     PlayerActionChip("Agregar", textButtonColor, chipBg, { showChoosePlaylistDialog = true }) {
                         Icon(painterResource(R.drawable.playlist_add), null, tint = textButtonColor, modifier = Modifier.size(20.dp))
                     }
+                    PlayerActionChip("Compartir", textButtonColor, chipBg, {
+                        val intent = Intent().apply {
+                            action = Intent.ACTION_SEND
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_TEXT, iad1tya.echo.music.utils.ShareLinks.song(mediaMetadata.id))
+                        }
+                        context.startActivity(Intent.createChooser(intent, null))
+                    }) {
+                        Icon(painterResource(R.drawable.share), null, tint = textButtonColor, modifier = Modifier.size(20.dp))
+                    }
                     PlayerActionChip(
                         label = "Descargar",
                         tint = textButtonColor,
