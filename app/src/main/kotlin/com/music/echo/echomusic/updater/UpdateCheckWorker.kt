@@ -106,23 +106,25 @@ class UpdateCheckWorker(
         private const val NOTIFICATION_ID = 2003
 
         /**
-         * Schedule the weekly update check. Safe to call on every app start: KEEP preserves the
-         * existing weekly cadence instead of resetting the timer each launch. First check runs a few
-         * hours after install/update so it doesn't fire during first-run onboarding.
+         * Schedule the background update check every 6 hours so a new release is announced promptly
+         * (this app ships frequently — a weekly cadence meant updates could go unnoticed for days).
+         * UPDATE (not KEEP) so existing installs adopt the faster cadence instead of staying on the old
+         * weekly timer. First check runs 1 hour after install/update so it doesn't fire during first-run
+         * onboarding. This only changes how often we CHECK for updates — nothing about subscriptions.
          */
         fun schedule(context: Context) {
             val constraints = Constraints.Builder()
                 .setRequiredNetworkType(NetworkType.CONNECTED)
                 .build()
 
-            val request = PeriodicWorkRequestBuilder<UpdateCheckWorker>(7, TimeUnit.DAYS)
+            val request = PeriodicWorkRequestBuilder<UpdateCheckWorker>(6, TimeUnit.HOURS)
                 .setConstraints(constraints)
-                .setInitialDelay(6, TimeUnit.HOURS)
+                .setInitialDelay(1, TimeUnit.HOURS)
                 .build()
 
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(
                 WORK_NAME,
-                ExistingPeriodicWorkPolicy.KEEP,
+                ExistingPeriodicWorkPolicy.UPDATE,
                 request,
             )
         }
