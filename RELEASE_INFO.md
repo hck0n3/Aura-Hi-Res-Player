@@ -1,16 +1,23 @@
-# Aura Hi-Res Player 0.6.56 — adiós voz rasposa: arreglada la "Firma Aura"
+# Aura Hi-Res Player 0.6.57 — normalización pareja (estilo TIDAL), sin pantallas en blanco, "mejorar calidad" sin chillido
 
-## 🎙️ Sin distorsión ni voz rasposa
-Auditamos el normalizador a fondo con varios agentes. Resultado:
-- **El normalizador de volumen y el limitador true-peak están limpios** — el signo, la ganancia y el limitador multibanda (que separa los graves de la voz) trabajan bien. No eran el problema.
-- **El culpable era la "Firma Aura"** (el realce sutil de graves/aire que viene **activado por defecto**): en masters ya "calientes" empujaba los picos por encima del máximo y chocaba con un recorte interno demasiado abrupto → **armónicos = voz rasposa**, antes del limitador bueno.
+## 🔊 El interruptor de normalización vuelve a funcionar
+Activar/desactivar la normalización de volumen a mitad de canción **no hacía nada** (un fallo que metí al arreglar otra cosa). **Arreglado:** desactivar = volumen crudo, reactivar = vuelve a nivelar al instante.
 
-**Arreglado:**
-1. La Firma ahora lleva un **margen de −1 dB** para que **nunca** sobrepase el pico de entrada (el dB se recupera después en el normalizador). Conserva su "color", sin distorsión.
-2. El recorte interno de seguridad se hizo **más suave** (genera muchos menos armónicos si cualquier efecto se pasa).
+## 🎚️ Todas las canciones al MISMO nivel (incluso en transiciones)
+Algunas sonaban más fuertes o más bajas que otras. **Dos causas:**
+- Si la medida de volumen real de YouTube llegaba **tarde** (red lenta), se bloqueaba y la canción quedaba a un nivel provisional → fuera de nivel. **Arreglado:** ahora se aplica en cuanto llega, a cualquier momento (con transición suave, sin saltos).
+- Las canciones **sin metadato de volumen** (locales/otras fuentes) sonaban más altas que las de YouTube niveladas. **Arreglado:** ahora se ajustan al mismo nivel de referencia.
 
-Revisado con auditoría adversarial: el arreglo elimina el sobrepaso que causaba la distorsión, sin perder loudness ni cambiar el carácter del sonido.
+Resultado: biblioteca pareja, **fuerte pero sin distorsionar, como TIDAL**.
+
+## 🖼️ Adiós a la pantalla en blanco en las transiciones
+A veces, en una transición (crossfade), la pantalla se quedaba **totalmente en blanco** un rato y luego volvía. **Causa:** durante el cambio, la app escuchaba un instante al reproductor que terminaba y borraba la carátula/controles. **Arreglado:** la portada y los controles **ya no se vacían** durante el cambio.
+
+## ✨ "Mejorar calidad baja" sin agudos chillantes
+El realce de agudos **saturaba/chillaba**. **Arreglado:** ahora es **mucho más sutil** (esquina más alta, fuera de la zona de sibilancia; realce 3× más suave) → restaura "aire" sin punzar.
 
 ## 👉 Para probar
-- Una canción con voz fuerte / master alto → la voz debe sonar **limpia**, sin raspeo.
-- (Si quieres comparar: Ajustes de sonido → Firma Aura on/off; ahora ambos suenan limpios.)
+- Activa/desactiva la normalización a mitad de canción → debe notarse cada vez.
+- Pon canciones distintas seguidas → mismo nivel, sin saltos en las transiciones.
+- Deja que ocurra un crossfade → sin pantalla en blanco.
+- Activa "mejorar calidad" en una canción de baja calidad → más aire, sin chillido.

@@ -434,7 +434,14 @@ class PlayerConnection(
         mediaItem: MediaItem?,
         reason: Int,
     ) {
-        mediaMetadata.value = mediaItem?.metadata
+        // During a crossfade swap we're briefly still attached to the OUTGOING (fading) player, whose
+        // capped/repeat-off queue ends and fires a null-item transition. Never let that null blank the whole
+        // player UI (artwork + controls are gated on non-null metadata). Keep the last metadata, falling back
+        // to the live player's current item; only update when we actually have something.
+        val newMeta = mediaItem?.metadata ?: player.currentMediaItem?.metadata
+        if (newMeta != null) {
+            mediaMetadata.value = newMeta
+        }
         currentMediaItemIndex.value = player.currentMediaItemIndex
         currentWindowIndex.value = player.getCurrentQueueIndex()
         updateCanSkipPreviousAndNext()

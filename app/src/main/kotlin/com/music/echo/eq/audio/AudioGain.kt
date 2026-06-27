@@ -68,7 +68,7 @@ fun loudnessMakeupDb(
  * a small attenuation, never a boost) keeps them from playing noticeably LOUDER than normalized tracks,
  * so the whole library stays at a consistent volume.
  */
-const val DEFAULT_UNKNOWN_LOUDNESS_DB: Double = 4.0
+const val DEFAULT_UNKNOWN_LOUDNESS_DB: Double = 7.0
 
 /**
  * The loudness value (dB vs reference) to normalize a track by: the real [loudnessDb] if present, else

@@ -1984,8 +1984,8 @@ class MusicService :
 
         scope.launch {
             try {
-                val (currentMediaId, positionMs) = withContext(Dispatchers.Main) {
-                    Pair(player.currentMediaItem?.mediaId, player.currentPosition)
+                val currentMediaId = withContext(Dispatchers.Main) {
+                    player.currentMediaItem?.mediaId
                 }
 
                 val normalizeAudio = withContext(Dispatchers.IO) {
@@ -2007,18 +2007,13 @@ class MusicService :
                     val hasRealLoudness = format?.loudnessDb != null || format?.perceptualLoudnessDb != null
                     val loudnessDb = effectiveLoudnessDb(format?.loudnessDb, format?.perceptualLoudnessDb)
 
-                    // D1: don't re-apply normalization for the track that's already playing — EXCEPT the single
-                    // upgrade when the REAL loudness has just arrived (YouTube returns it a moment after
-                    // playback starts, so the first pass used the conservative default). That correction is what
-                    // makes the level right; the gain processor RAMPS the change, so it glides instead of the
-                    // sudden mid-song volume jump. We never downgrade (real→default) and never re-apply twice
-                    // (e.g. the like-triggered re-store keeps the real value), so this fires at most once.
-                    // The real-loudness upgrade may ONLY apply near the START of the track (YouTube returns
-                    // real loudness a moment after playback begins). After that, a re-store (e.g. from a
-                    // like-triggered download) must NEVER re-normalize the already-playing track — that was the
-                    // mid-song volume jump + saturation the user heard. So gate the upgrade to the first seconds.
-                    val realLoudnessJustArrived =
-                        hasRealLoudness && !lastNormalizedHadLoudness && positionMs < 15_000L
+                    // Apply the real-loudness upgrade the FIRST time it arrives (at ANY position), so a track
+                    // whose loudness lands late (slow network) still gets leveled to the reference instead of
+                    // being stuck at the conservative default. It fires at most once (lastNormalizedHadLoudness
+                    // flips true below), and the combine() above de-dups on the loudness fields, so a
+                    // like-triggered format re-store with UNCHANGED loudness can't re-normalize (that was the
+                    // mid-song jump). The gain processor RAMPS the change, so a late upgrade glides — no jump.
+                    val realLoudnessJustArrived = hasRealLoudness && !lastNormalizedHadLoudness
                     if (currentMediaId == lastNormalizedId && !realLoudnessJustArrived) {
                         return@launch
                     }
@@ -2041,9 +2036,16 @@ class MusicService :
                     NormalizationGainAudioProcessor.gain = 1.0f
                     TruePeakLimiterAudioProcessor.loudnessMakeup = 1.0f
                     withContext(Dispatchers.Main) {
+                        // Clear any per-player override a crossfade pinned, so "off" is truly unity/transparent.
+                        playerNormProcessors[player]?.instanceGain = null
+                        playerLimiterProcessors[player]?.setInstanceMakeup(null, null)
                         loudnessEnhancer?.enabled = false
                         Timber.tag(TAG).d("setupLoudnessEnhancer: normalization disabled - unity gain")
                     }
+                    // Reset so RE-ENABLING normalization for the SAME track re-applies. The guard above keys on
+                    // lastNormalizedId; without this reset, toggling normalization off→on mid-song was a no-op.
+                    lastNormalizedId = null
+                    lastNormalizedHadLoudness = false
                 }
             } catch (e: Exception) {
                 reportException(e)

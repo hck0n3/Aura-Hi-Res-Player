@@ -54,7 +54,7 @@ class AudioEnhanceProcessor : AudioProcessor {
         private const val CLIP_THRESHOLD = 0.985f
         private const val MIN_CLIP_RUN = 3   // 1–2 full-scale samples aren't clipping → leave them
         private const val MAX_CLIP_RUN = 32  // don't try to rebuild very long clipped runs
-        private const val HF_AMOUNT = 0.16f  // gentle harmonic regeneration (soft, avoids harsh highs)
+        private const val HF_AMOUNT = 0.05f  // subtle harmonic regeneration — low + soft so highs never get shrill
 
         /** Toggled from MusicService (AudioEnhanceEnabledKey). */
         @Volatile
@@ -68,8 +68,9 @@ class AudioEnhanceProcessor : AudioProcessor {
         if (encoding != C.ENCODING_PCM_16BIT || channelCount > 2) {
             throw AudioProcessor.UnhandledAudioFormatException(inputAudioFormat)
         }
-        // HF-regen high-pass corner ~6 kHz (one-pole).
-        hfAlpha = (1.0 - exp(-2.0 * Math.PI * 6000.0 / sampleRate)).toFloat()
+        // HF-regen high-pass corner ~9 kHz (one-pole) — above the 2–5 kHz presence region so the regenerated
+        // harmonics add "air", not sibilant/shrill edge.
+        hfAlpha = (1.0 - exp(-2.0 * Math.PI * 9000.0 / sampleRate)).toFloat()
         resetState()
         isActive = true
         return inputAudioFormat
@@ -150,13 +151,13 @@ class AudioEnhanceProcessor : AudioProcessor {
     private fun hfRegenL(x: Float): Float {
         hfLpL = fl(hfAlpha * x + (1f - hfAlpha) * hfLpL)
         val hf = x - hfLpL
-        return x + tanh(hf * 2.5f) * HF_AMOUNT
+        return x + tanh(hf * 1.2f) * HF_AMOUNT
     }
 
     private fun hfRegenR(x: Float): Float {
         hfLpR = fl(hfAlpha * x + (1f - hfAlpha) * hfLpR)
         val hf = x - hfLpR
-        return x + tanh(hf * 2.5f) * HF_AMOUNT
+        return x + tanh(hf * 1.2f) * HF_AMOUNT
     }
 
     private fun resetState() {
