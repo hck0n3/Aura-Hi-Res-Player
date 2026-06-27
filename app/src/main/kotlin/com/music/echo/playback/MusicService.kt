@@ -411,6 +411,14 @@ class MusicService :
     // "volume rises on its own when the screen is off" bug. Re-asserting (not recomputing) means no mid-song jump.
     @Volatile private var lastAppliedGain: Float = 1.0f
     @Volatile private var lastAppliedMakeup: Float = 1.0f
+    // In-memory loudness hint cache (mediaId → resolved effectiveLoudnessDb). Populated by setupLoudnessEnhancer
+    // (every track start) and the upcoming-track preload (Fix A). Lets the crossfade pre-level (Fix B) resolve
+    // the incoming track's gain SYNCHRONOUSLY without a blocking disk read on the main thread — the crossfade
+    // runs on Dispatchers.Main and a runBlocking Room/DataStore read there stutters the transition / risks ANR.
+    private val loudnessHintCache = java.util.concurrent.ConcurrentHashMap<String, Double>()
+    // AudioNormalization toggle mirrored into memory (collector in onCreate) so the crossfade pre-level needn't
+    // block on a DataStore read either.
+    @Volatile private var normalizationEnabledHint: Boolean = true
     // The track id whose MEASURED loudness we've already committed to the gains + DB (so the one-shot
     // measurement-driven re-level fires at most ONCE per song, never re-levels twice). Null = none yet.
     @Volatile private var measuredAppliedForId: String? = null
@@ -872,7 +880,10 @@ class MusicService :
                 .distinctUntilChanged(),
         ) { format, normalizeAudio ->
             format to normalizeAudio
-        }.collectLatest(scope) { (format, normalizeAudio) -> setupLoudnessEnhancer()}
+        }.collectLatest(scope) { (format, normalizeAudio) ->
+            normalizationEnabledHint = normalizeAudio // mirror to memory for the crossfade pre-level (Fix B)
+            setupLoudnessEnhancer()
+        }
 
         dataStore.data
             .map { it[AudioEnhanceEnabledKey] ?: false }
@@ -2037,6 +2048,9 @@ class MusicService :
                     val loudnessDb = effectiveLoudnessDb(
                         format?.loudnessDb, format?.perceptualLoudnessDb, format?.measuredLoudnessDb,
                     )
+                    // Mirror into the in-memory hint cache so a future crossfade can pre-level this track without
+                    // a blocking disk read on the main thread (Fix B).
+                    if (hasKnownLoudness) currentMediaId?.let { loudnessHintCache[it] = loudnessDb }
 
                     // Apply the real-loudness upgrade ONLY near the START of the track (~first 8 s, where the
                     // playback fetch returns it). After that, NEVER re-level the currently-playing track: liking
@@ -2045,13 +2059,19 @@ class MusicService :
                     // DownloadUtil now also preserves existing loudness so a download can't CHANGE a
                     // known-loudness track's row; this start-window is the safety net for tracks that genuinely
                     // started with no loudness. combine() also de-dups on the loudness fields.
+                    // The applied gain/makeup for THIS track is IMMUTABLE once set. The ONLY allowed change is
+                    // the single legitimate early upgrade when YouTube's real loudness first arrives for a track
+                    // that started without it (within ~8 s of start) AND it actually changes the value. Every
+                    // other re-trigger of this function for the same playing track — a like/auto-download, the
+                    // next-track prefetch firing near the end, a session re-open on screen-off — RE-ASSERTS the
+                    // already-applied value and never moves the volume.
+                    val targetGain = normalizationMultiplier(loudnessDb, enabled = true)
+                    val targetMakeup = dbToLinear(loudnessMakeupDb(loudnessDb, enabled = true))
                     val realLoudnessJustArrived =
                         hasRealLoudness && !lastNormalizedHadLoudness && positionMs < 8_000L
-                    if (currentMediaId == lastNormalizedId && !realLoudnessJustArrived) {
-                        // Already normalized for this track — do NOT recompute (a changed loudness here would be a
-                        // mid-song jump). But RE-ASSERT the gains we already applied, so a session re-open /
-                        // processor flush (screen off, buffering blip) can't leave the chain at a stale/unity raw
-                        // (louder) level. Idempotent: same values → no audible change.
+                    val valueChanges = kotlin.math.abs(targetGain - lastAppliedGain) > 1e-3f ||
+                        kotlin.math.abs(targetMakeup - lastAppliedMakeup) > 1e-3f
+                    if (currentMediaId == lastNormalizedId && !(realLoudnessJustArrived && valueChanges)) {
                         withContext(Dispatchers.Main) {
                             NormalizationGainAudioProcessor.gain = lastAppliedGain
                             TruePeakLimiterAudioProcessor.loudnessMakeup = lastAppliedMakeup
@@ -2065,10 +2085,10 @@ class MusicService :
                         //  • attenuate loud masters (≤ 0 dB) here, in 16-bit, clip-free;
                         //  • boost quiet tracks UP (makeup, ≥ 0 dB) in float inside the true-peak limiter,
                         //    which catches the resulting peaks → loud + full, no clip.
-                        lastAppliedGain = normalizationMultiplier(loudnessDb, enabled = true)
-                        lastAppliedMakeup = dbToLinear(loudnessMakeupDb(loudnessDb, enabled = true))
-                        NormalizationGainAudioProcessor.gain = lastAppliedGain
-                        TruePeakLimiterAudioProcessor.loudnessMakeup = lastAppliedMakeup
+                        lastAppliedGain = targetGain
+                        lastAppliedMakeup = targetMakeup
+                        NormalizationGainAudioProcessor.gain = targetGain
+                        TruePeakLimiterAudioProcessor.loudnessMakeup = targetMakeup
                         loudnessEnhancer?.enabled = false
                         lastNormalizedId = currentMediaId
                         lastNormalizedHadLoudness = hasRealLoudness
@@ -4078,19 +4098,47 @@ class MusicService :
         sec.volume = 0f
         sec.repeatMode = player.repeatMode
         sec.shuffleModeEnabled = player.shuffleModeEnabled
+
+        val incomingId = items.getOrNull(targetIndex)?.mediaId
+
+        // FIX B: pre-level the incoming track BEFORE sec.prepare() primes its first buffers. The secondary
+        // shares the NormalizationGainAudioProcessor.gain static, which still holds the OUTGOING track's
+        // value — so without this the incoming track primes at the wrong (often louder) level and then
+        // ramps when the async prime below lands ("enters loud then corrects"). After Fix A the incoming
+        // format is usually already cached, so resolve it synchronously here and set the per-instance gain
+        // up front. If it isn't cached yet, the async scope.launch below resolves it (existing fallback).
+        // Resolve the incoming gain from the IN-MEMORY hint cache (populated by setupLoudnessEnhancer on every
+        // track start + by the upcoming-track preload, Fix A) — NO disk read on this thread. prepareSecondaryPlayer
+        // runs on Dispatchers.Main, where a runBlocking Room/DataStore read stutters the transition / risks ANR
+        // (the comment in startCrossfade documents that exact regression). Cache miss → the async fallback below
+        // resolves it off-main before the fade.
+        var primedSyncGain = false
+        if (incomingId != null && !incomingId.isLocalMediaId() && normalizationEnabledHint) {
+            loudnessHintCache[incomingId]?.let { loudnessDb ->
+                playerNormProcessors[sec]?.instanceGain = normalizationMultiplier(loudnessDb, enabled = true)
+                playerLimiterProcessors[sec]?.setInstanceMakeup(dbToLinear(loudnessMakeupDb(loudnessDb, enabled = true)), null)
+                primedSyncGain = true
+                Timber.tag(TAG).d("Crossfade: pre-leveled incoming $incomingId from cache (loudnessDb=$loudnessDb)")
+            }
+        }
+
         sec.playWhenReady = false // buffer ahead silently; startCrossfade flips this on at the fade
         sec.prepare()
         secondaryPlayer = sec
 
         // Prime the incoming player to ITS OWN track's normalization so the moment the fade starts it's
         // already at the right level (the shared companion statics still hold the OUTGOING track's values).
-        val incomingId = items.getOrNull(targetIndex)?.mediaId
-        if (incomingId != null) {
+        // Fallback for the not-yet-cached case: only runs if the synchronous pre-level above didn't set the
+        // gain (so it never overwrites an already-set instanceGain with a default).
+        if (incomingId != null && !primedSyncGain) {
             scope.launch {
                 val normalize = withContext(Dispatchers.IO) { dataStore.data.map { it[AudioNormalizationKey] ?: true }.first() }
                 if (!normalize) return@launch
                 val fmt = withContext(Dispatchers.IO) { database.format(incomingId).first() }
                 val loudnessDb = effectiveLoudnessDb(fmt?.loudnessDb, fmt?.perceptualLoudnessDb, fmt?.measuredLoudnessDb)
+                if (fmt?.loudnessDb != null || fmt?.perceptualLoudnessDb != null || fmt?.measuredLoudnessDb != null) {
+                    loudnessHintCache[incomingId] = loudnessDb // warm the cache for the next crossfade into this track
+                }
                 withContext(Dispatchers.Main) {
                     // Apply to the incoming player whether it's still the secondary OR has already been swapped
                     // to current (the fast/fallback crossfade path swaps synchronously before this async prime
@@ -4329,9 +4377,50 @@ class MusicService :
                             knownDurationMs = dbSong?.song?.duration?.let { if (it > 0) it * 1000L else null }
                         )
 
-                        playbackData.getOrNull()?.streamUrl?.let { streamUrl ->
-                            songUrlCache[mediaId] = Pair(streamUrl, System.currentTimeMillis() + 1000 * 60 * 60)
+                        playbackData.getOrNull()?.let { data ->
+                            songUrlCache[mediaId] = Pair(data.streamUrl, System.currentTimeMillis() + 1000 * 60 * 60)
                             Timber.tag(TAG).d("Preloaded stream for $mediaId")
+
+                            // FIX A: cache the loudness (FormatEntity) for the UPCOMING track NOW, so when it
+                            // transitions to playing, setupLoudnessEnhancer finds a non-null format and primes the
+                            // correct gain at second 0 — no audible volume swell. Mirrors the resolver's
+                            // FormatEntity construction exactly. Preserve any existing row's loudness: only fill
+                            // when missing, never overwrite a known loudness with null.
+                            kotlin.runCatching {
+                                val existing = database.format(mediaId).firstOrNull()
+                                val loudnessDb = data.audioConfig?.loudnessDb ?: existing?.loudnessDb
+                                val perceptualLoudnessDb = data.audioConfig?.perceptualLoudnessDb ?: existing?.perceptualLoudnessDb
+                                val measuredLoudnessDb = existing?.measuredLoudnessDb
+                                // Mirror into the in-memory hint cache so a crossfade INTO this track can pre-level it
+                                // synchronously (Fix B) with no main-thread disk read.
+                                if (loudnessDb != null || perceptualLoudnessDb != null || measuredLoudnessDb != null) {
+                                    loudnessHintCache[mediaId] = effectiveLoudnessDb(loudnessDb, perceptualLoudnessDb, measuredLoudnessDb)
+                                }
+                                // Persist the row only when we don't already have loudness cached (nothing to gain otherwise).
+                                if (existing?.loudnessDb == null && existing?.perceptualLoudnessDb == null) {
+                                    val format = data.format
+                                    database.query {
+                                        upsert(
+                                            iad1tya.echo.music.db.entities.FormatEntity(
+                                                id = mediaId,
+                                                itag = format.itag,
+                                                mimeType = format.mimeType.split(";")[0],
+                                                codecs = format.mimeType.split("codecs=")[1].removeSurrounding("\""),
+                                                bitrate = format.bitrate,
+                                                sampleRate = format.audioSampleRate,
+                                                contentLength = format.contentLength ?: 0L,
+                                                loudnessDb = loudnessDb,
+                                                perceptualLoudnessDb = perceptualLoudnessDb,
+                                                measuredLoudnessDb = measuredLoudnessDb,
+                                                playbackUrl = data.playbackTracking?.videostatsPlaybackUrl?.baseUrl
+                                            )
+                                        )
+                                    }
+                                    Timber.tag(TAG).d("Preloaded format/loudness for $mediaId (loudnessDb=$loudnessDb, perceptualLoudnessDb=$perceptualLoudnessDb)")
+                                }
+                            }.onFailure { e ->
+                                Timber.tag(TAG).w(e, "Preload: failed to cache format/loudness for $mediaId")
+                            }
                         }
                     }
                 }
