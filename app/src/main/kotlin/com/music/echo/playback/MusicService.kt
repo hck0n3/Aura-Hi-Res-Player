@@ -1564,6 +1564,10 @@ class MusicService :
                     player.seekTo(liveIndex + 1, 0)
                     player.play()
                 }
+                // A successful append created/changed the "next item" — re-arm the crossfade so the infinite-queue
+                // continuation transitions smoothly (especially when we seeded EARLY because this was the last
+                // item with no next). scheduleCrossfade() is idempotent (cancel + reset).
+                scheduleCrossfade()
                 return true
             }
 
@@ -4007,7 +4011,18 @@ class MusicService :
         // entirely while video mode is on.
         if (_videoMode.value) return
         if (crossfadeGapless && isNextItemGapless()) return
-        if (!player.hasNextMediaItem() && player.repeatMode != REPEAT_MODE_ONE) return
+        if (!player.hasNextMediaItem() && player.repeatMode != REPEAT_MODE_ONE) {
+            // Last item with NO next: if auto-radio (infinite queue) is on, seed it NOW — early, while this song
+            // still has time left — so a real crossfade INTO the first radio song is possible. A bare return here
+            // is why the infinite queue used to continue with a hard cut. appendSeed() re-arms scheduleCrossfade()
+            // once the items land, so the fade then targets the freshly-appended next song.
+            if (!radioSeedInFlight && dataStore.get(AutoLoadMoreKey, true) &&
+                player.currentMediaItem?.mediaId != null
+            ) {
+                startRadioSeamlessly()
+            }
+            return
+        }
 
         val triggerTime = player.duration - crossfadeDuration.toLong()
         val delayMs = triggerTime - player.currentPosition
