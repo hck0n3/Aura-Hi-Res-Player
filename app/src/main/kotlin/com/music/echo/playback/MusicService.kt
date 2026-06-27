@@ -2199,6 +2199,22 @@ class MusicService :
                 database.query {
                     upsert(existing.copy(measuredLoudnessDb = measured))
                 }
+            } else {
+                // For local files or files without metadata, cache the measurement in a dummy format row.
+                database.query {
+                    upsert(iad1tya.echo.music.db.entities.FormatEntity(
+                        id = mediaId,
+                        itag = 0,
+                        mimeType = "audio/local",
+                        codecs = "",
+                        bitrate = 0,
+                        sampleRate = null,
+                        contentLength = 0L,
+                        loudnessDb = null,
+                        measuredLoudnessDb = measured,
+                        playbackUrl = null
+                    ))
+                }
             }
         }
     }
@@ -4131,7 +4147,7 @@ class MusicService :
         // (the comment in startCrossfade documents that exact regression). Cache miss → the async fallback below
         // resolves it off-main before the fade.
         var primedSyncGain = false
-        if (incomingId != null && !incomingId.isLocalMediaId() && normalizationEnabledHint) {
+        if (incomingId != null && normalizationEnabledHint) {
             loudnessHintCache[incomingId]?.let { loudnessDb ->
                 playerNormProcessors[sec]?.instanceGain = normalizationMultiplier(loudnessDb, enabled = true)
                 playerLimiterProcessors[sec]?.setInstanceMakeup(dbToLinear(loudnessMakeupDb(loudnessDb, enabled = true)), null)

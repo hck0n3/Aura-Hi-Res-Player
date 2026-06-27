@@ -1,11 +1,10 @@
-# Aura Hi-Res Player 0.6.73 — Radio infinita con transición suave (crossfade)
+# Aura Hi-Res Player 0.6.74 — Volumen normalizado en canciones locales/descargadas
 
-## 📻 Transición fluida en la cola infinita (radio)
-Antes, cuando llegabas a la última canción y la radio automática agregaba más canciones, el reproductor hacía un "corte duro" sin crossfade. Ahora, la radio se siembra **temprano** (mientras la última canción todavía está sonando) y el crossfade se **re-arma automáticamente**. Resultado: la música nunca se corta y la mezcla fluye suavemente hacia la nueva canción generada por la radio.
+## 🔊 Volumen parejo para TODA tu música
+El ecualizador de Aura ya normalizaba el volumen de las canciones online, pero las canciones locales o descargadas se quedaban sin normalizar porque no traían los datos de volumen de YouTube. 
 
-## 🛠️ Mejoras internas
-- Se corrigió un posible problema de concurrencia (condición de carrera) al calcular el crossfade de la radio para asegurar que nunca se "siembre dos veces" la cola de reproducción accidentalmente.
+Ahora Aura **mide y guarda automáticamente** el volumen de tus canciones locales/descargadas la primera vez que las escuchas. En tus siguientes reproducciones, esas canciones sonarán al mismo nivel que el resto, solucionando el problema de los saltos de volumen disparejo.
 
 ## 👉 Para probar
-- Reproduce una canción con el interruptor de "Cargar más automáticamente" (radio infinita) encendido, y sin más canciones en la cola.
-- Escucha el final de la canción: la nueva canción debe aparecer antes de que termine y debe mezclarse (crossfade) sin interrupciones.
+- Reproduce una canción local o descargada que suene muy bajo o muy alto (la primera vez la medirá).
+- Vuelve a reproducirla: ahora debe aplicar el volumen nivelado y sonar parejo junto a las canciones online.
