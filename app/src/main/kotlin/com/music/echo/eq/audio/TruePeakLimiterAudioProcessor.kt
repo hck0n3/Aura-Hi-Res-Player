@@ -128,8 +128,8 @@ class TruePeakLimiterAudioProcessor : AudioProcessor {
     override fun configure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
         channelCount = inputAudioFormat.channelCount
         encoding = inputAudioFormat.encoding
-        if (encoding != C.ENCODING_PCM_16BIT || channelCount > 2) {
-            // Self-bypass instead of crashing on >2ch / non-16-bit (e.g. a 5.1 local file): Media3 skips an
+        if (encoding != C.ENCODING_PCM_FLOAT || channelCount > 2) {
+            // Self-bypass instead of crashing on >2ch / non-float (e.g. a 5.1 local file): Media3 skips an
             // inactive processor, so playback continues (unprocessed) rather than failing fatally.
             isActive = false
             return AudioProcessor.AudioFormat.NOT_SET
@@ -139,7 +139,10 @@ class TruePeakLimiterAudioProcessor : AudioProcessor {
         primed = false
         resetState()
         isActive = true
-        return inputAudioFormat
+        // FLOAT IN → 16-bit OUT: the single float→int16+dither boundary lives in this stage (toDithered16).
+        return AudioProcessor.AudioFormat(
+            inputAudioFormat.sampleRate, inputAudioFormat.channelCount, C.ENCODING_PCM_16BIT,
+        )
     }
 
     /** RBJ low-pass biquad for the crossover, normalized (a0 = 1), Q = 1/√2 (Butterworth). */
@@ -195,13 +198,26 @@ class TruePeakLimiterAudioProcessor : AudioProcessor {
             primed = true
         }
         if (!enabled) {
-            outputBuffer.put(inputBuffer)
+            // Input is FLOAT, output is 16-bit. A raw byte-copy would feed float bytes into a 16-bit-read
+            // buffer = full-scale white noise. Convert float → dithered int16 (no makeup/limiting).
+            if (channelCount == 2) {
+                val frames = remaining / 8
+                repeat(frames) {
+                    outputBuffer.putShort(toDithered16(inputBuffer.getFloat()))
+                    outputBuffer.putShort(toDithered16(inputBuffer.getFloat()))
+                }
+            } else {
+                val samples = remaining / 4
+                repeat(samples) {
+                    outputBuffer.putShort(toDithered16(inputBuffer.getFloat()))
+                }
+            }
             outputBuffer.flip()
             return
         }
 
         if (channelCount == 2) {
-            val frames = remaining / 4
+            val frames = remaining / 8
             repeat(frames) {
                 if (currentMk != targetMk) {
                     val d = targetMk - currentMk
@@ -211,8 +227,8 @@ class TruePeakLimiterAudioProcessor : AudioProcessor {
                         else -> targetMk
                     }
                 }
-                val xl = (inputBuffer.getShort() / 32768.0f) * currentMk
-                val xr = (inputBuffer.getShort() / 32768.0f) * currentMk
+                val xl = inputBuffer.getFloat() * currentMk
+                val xr = inputBuffer.getFloat() * currentMk
 
                 // Complementary 2-band split: low = LPF, high = signal − low (sum back to the input).
                 val lowL = lowpassL(xl.toDouble()).toFloat()
@@ -241,9 +257,9 @@ class TruePeakLimiterAudioProcessor : AudioProcessor {
                 outputBuffer.putShort(toDithered16(outL))
                 outputBuffer.putShort(toDithered16(outR))
             }
-            while (inputBuffer.hasRemaining()) outputBuffer.put(inputBuffer.get())
+            // FLOAT in (4 B) → 16-bit out (2 B): no byte-copy tail (it would dump float remnants into 16-bit).
         } else {
-            val samples = remaining / 2
+            val samples = remaining / 4
             repeat(samples) {
                 if (currentMk != targetMk) {
                     val d = targetMk - currentMk
@@ -253,7 +269,7 @@ class TruePeakLimiterAudioProcessor : AudioProcessor {
                         else -> targetMk
                     }
                 }
-                val x = (inputBuffer.getShort() / 32768.0f) * currentMk
+                val x = inputBuffer.getFloat() * currentMk
                 val low = lowpassL(x.toDouble()).toFloat()
                 val high = x - low
                 val lowPeak = max(abs(low), abs((prevLowL + low) * 0.5f))
@@ -265,7 +281,7 @@ class TruePeakLimiterAudioProcessor : AudioProcessor {
                 prevHighL = high
                 outputBuffer.putShort(toDithered16(out))
             }
-            while (inputBuffer.hasRemaining()) outputBuffer.put(inputBuffer.get())
+            // FLOAT in (4 B) → 16-bit out (2 B): no byte-copy tail (it would dump float remnants into 16-bit).
         }
 
         outputBuffer.flip()

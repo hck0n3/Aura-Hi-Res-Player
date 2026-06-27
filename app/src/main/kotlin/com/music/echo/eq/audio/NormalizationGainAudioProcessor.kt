@@ -5,7 +5,6 @@ import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.util.UnstableApi
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import kotlin.math.roundToInt
 
 /**
  * First stage of the player chain: applies an attenuate-only loudness-normalization gain
@@ -58,8 +57,8 @@ class NormalizationGainAudioProcessor : AudioProcessor {
 
     override fun configure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
         encoding = inputAudioFormat.encoding
-        if (encoding != C.ENCODING_PCM_16BIT) {
-            // Self-bypass instead of crashing on a non-16-bit format: Media3 skips an inactive processor.
+        if (encoding != C.ENCODING_PCM_FLOAT) {
+            // Self-bypass instead of crashing on a non-float format: Media3 skips an inactive processor.
             isActive = false
             return AudioProcessor.AudioFormat.NOT_SET
         }
@@ -100,7 +99,7 @@ class NormalizationGainAudioProcessor : AudioProcessor {
         // channel of a frame, so there is no inter-channel imbalance). coerceIn is a safety net; gain ≤ 1
         // can't exceed the input magnitude, so no clipping is introduced.
         val ch = if (channelCount in 1..8) channelCount else 1
-        val frames = remaining / (2 * ch)
+        val frames = remaining / (4 * ch)
         var g = currentGain
         repeat(frames) {
             if (g != target) {
@@ -112,8 +111,7 @@ class NormalizationGainAudioProcessor : AudioProcessor {
                 }
             }
             repeat(ch) {
-                val scaled = (inputBuffer.getShort() * g).roundToInt().coerceIn(-32768, 32767)
-                outputBuffer.putShort(scaled.toShort())
+                outputBuffer.putFloat(inputBuffer.getFloat() * g)
             }
         }
         currentGain = g

@@ -148,8 +148,8 @@ class JrDspAudioProcessor : AudioProcessor {
         channelCount = inputAudioFormat.channelCount
         encoding = inputAudioFormat.encoding
 
-        if (encoding != C.ENCODING_PCM_16BIT || channelCount > 2) {
-            // Self-bypass instead of crashing on >2ch / non-16-bit (e.g. a 5.1 local file): Media3 skips an
+        if (encoding != C.ENCODING_PCM_FLOAT || channelCount > 2) {
+            // Self-bypass instead of crashing on >2ch / non-float (e.g. a 5.1 local file): Media3 skips an
             // inactive processor, so playback continues (unprocessed) rather than failing fatally.
             isActive = false
             return AudioProcessor.AudioFormat.NOT_SET
@@ -215,10 +215,10 @@ class JrDspAudioProcessor : AudioProcessor {
         }
 
         if (channelCount == 2) {
-            val frames = remaining / 4 // 2 ch * 2 bytes
+            val frames = remaining / 8 // 2 ch * 4 bytes (float)
             repeat(frames) {
-                var l = inputBuffer.getShort().toFloat() / 32768.0f
-                var r = inputBuffer.getShort().toFloat() / 32768.0f
+                var l = inputBuffer.getFloat()
+                var r = inputBuffer.getFloat()
 
                 if (cfg.signatureEnabled) {
                     val (ll, rr) = sigLoShelf!!.processStereo(l.toDouble(), r.toDouble())
@@ -328,15 +328,15 @@ class JrDspAudioProcessor : AudioProcessor {
                 l = softLimit(l, ceiling = 0.99f, knee = 0.88f)
                 r = softLimit(r, ceiling = 0.99f, knee = 0.88f)
 
-                outputBuffer.putShort((l * 32768.0f).coerceIn(-32768.0f, 32767.0f).toInt().toShort())
-                outputBuffer.putShort((r * 32768.0f).coerceIn(-32768.0f, 32767.0f).toInt().toShort())
+                outputBuffer.putFloat(l)
+                outputBuffer.putFloat(r)
             }
             while (inputBuffer.hasRemaining()) outputBuffer.put(inputBuffer.get())
         } else {
             // Mono: only loudness shelves apply (stereo effects pass through).
-            val samples = remaining / 2
+            val samples = remaining / 4
             repeat(samples) {
-                var x = inputBuffer.getShort().toFloat() / 32768.0f
+                var x = inputBuffer.getFloat()
                 if (cfg.signatureEnabled) {
                     x = sigLoShelf!!.processSample(x.toDouble()).toFloat()
                     x = (sigHiShelf!!.processSample(x.toDouble()) * SIG_TRIM).toFloat()
@@ -346,7 +346,7 @@ class JrDspAudioProcessor : AudioProcessor {
                     x = loudnessHiShelf!!.processSample(x.toDouble()).toFloat()
                 }
                 x = softLimit(x, ceiling = 0.99f, knee = 0.88f)
-                outputBuffer.putShort((x * 32768.0f).coerceIn(-32768.0f, 32767.0f).toInt().toShort())
+                outputBuffer.putFloat(x)
             }
             while (inputBuffer.hasRemaining()) outputBuffer.put(inputBuffer.get())
         }

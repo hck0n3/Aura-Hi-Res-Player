@@ -76,7 +76,9 @@ class AudioEnhanceProcessor : AudioProcessor {
         hfAlpha = (1.0 - exp(-2.0 * Math.PI * 9000.0 / sampleRate)).toFloat()
         resetState()
         isActive = true
-        return inputAudioFormat
+        return AudioProcessor.AudioFormat(
+            inputAudioFormat.sampleRate, inputAudioFormat.channelCount, C.ENCODING_PCM_FLOAT,
+        )
     }
 
     override fun isActive(): Boolean = isActive
@@ -85,14 +87,28 @@ class AudioEnhanceProcessor : AudioProcessor {
         val remaining = inputBuffer.remaining()
         if (remaining == 0) return
 
-        if (outputBuffer === EMPTY_BUFFER || outputBuffer.capacity() < remaining) {
-            outputBuffer = ByteBuffer.allocateDirect(remaining).order(ByteOrder.nativeOrder())
+        // 16-bit IN (2 B/sample) → FLOAT OUT (4 B/sample): output must be DOUBLE the input byte length.
+        if (outputBuffer === EMPTY_BUFFER || outputBuffer.capacity() < remaining * 2) {
+            outputBuffer = ByteBuffer.allocateDirect(remaining * 2).order(ByteOrder.nativeOrder())
         } else {
             outputBuffer.clear()
         }
 
         if (!enabled) {
-            outputBuffer.put(inputBuffer)
+            // UNCONDITIONAL head conversion: emit FLOAT even when the effect is off (the default). A raw
+            // byte-copy would dump 16-bit bytes into a FLOAT stream — must convert int16 → float here.
+            if (channelCount == 2) {
+                val frames = remaining / 4
+                repeat(frames) {
+                    outputBuffer.putFloat(inputBuffer.getShort() / 32768.0f)
+                    outputBuffer.putFloat(inputBuffer.getShort() / 32768.0f)
+                }
+            } else {
+                val samples = remaining / 2
+                repeat(samples) {
+                    outputBuffer.putFloat(inputBuffer.getShort() / 32768.0f)
+                }
+            }
             outputBuffer.flip()
             return
         }
@@ -104,18 +120,16 @@ class AudioEnhanceProcessor : AudioProcessor {
                 var r = inputBuffer.getShort() / 32768.0f
                 l = hfRegenL(declipL(l))
                 r = hfRegenR(declipR(r))
-                outputBuffer.putShort((l * 32768.0f).coerceIn(-32768.0f, 32767.0f).toInt().toShort())
-                outputBuffer.putShort((r * 32768.0f).coerceIn(-32768.0f, 32767.0f).toInt().toShort())
+                outputBuffer.putFloat(l)
+                outputBuffer.putFloat(r)
             }
-            while (inputBuffer.hasRemaining()) outputBuffer.put(inputBuffer.get())
         } else {
             val samples = remaining / 2
             repeat(samples) {
                 var x = inputBuffer.getShort() / 32768.0f
                 x = hfRegenL(declipL(x))
-                outputBuffer.putShort((x * 32768.0f).coerceIn(-32768.0f, 32767.0f).toInt().toShort())
+                outputBuffer.putFloat(x)
             }
-            while (inputBuffer.hasRemaining()) outputBuffer.put(inputBuffer.get())
         }
 
         outputBuffer.flip()

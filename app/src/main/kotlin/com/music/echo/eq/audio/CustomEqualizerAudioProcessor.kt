@@ -146,8 +146,8 @@ class CustomEqualizerAudioProcessor : AudioProcessor {
         }
 
         
-        if (encoding != C.ENCODING_PCM_16BIT || channelCount > 2) {
-            // Self-bypass instead of crashing on >2ch / non-16-bit (e.g. a 5.1 local file): Media3 skips an
+        if (encoding != C.ENCODING_PCM_FLOAT || channelCount > 2) {
+            // Self-bypass instead of crashing on >2ch / non-float (e.g. a 5.1 local file): Media3 skips an
             // inactive processor, so playback continues (unprocessed) rather than failing fatally.
             isActive = false
             return AudioProcessor.AudioFormat.NOT_SET
@@ -196,13 +196,13 @@ class CustomEqualizerAudioProcessor : AudioProcessor {
 
         
         when (encoding) {
-            C.ENCODING_PCM_16BIT -> {
-                
-                
-                processAudioBuffer16Bit(inputBuffer, outputBuffer)
+            C.ENCODING_PCM_FLOAT -> {
+
+
+                processAudioBufferFloat(inputBuffer, outputBuffer)
             }
             else -> {
-                
+
                 outputBuffer.put(inputBuffer)
             }
         }
@@ -265,9 +265,57 @@ class CustomEqualizerAudioProcessor : AudioProcessor {
                     output.putShort(outputRight)
                 }
                 else -> {
-                    
+
                     repeat(channelCount) {
                         output.putShort(input.getShort())
+                    }
+                }
+            }
+        }
+    }
+
+    /** FLOAT-in/FLOAT-out clone of [processAudioBuffer16Bit]. Identical preamp + biquad math; only the
+     *  I/O boundary differs: 4 B/sample, reads getFloat(), writes putFloat(softClip(...)). softClip is
+     *  load-bearing now (no 16-bit coerce safety net). */
+    private fun processAudioBufferFloat(input: ByteBuffer, output: ByteBuffer) {
+        val sampleCount = input.remaining() / 4
+
+        repeat(sampleCount / channelCount) {
+            when (channelCount) {
+                1 -> {
+                    val sample = input.getFloat().toDouble()
+                    var processed = sample
+
+                    for (filter in filters) {
+                        processed = filter.processSample(processed)
+                    }
+
+                    processed *= preampGain
+
+                    output.putFloat(softClip(processed).toFloat())
+                }
+                2 -> {
+                    val leftSample = input.getFloat().toDouble()
+                    val rightSample = input.getFloat().toDouble()
+
+                    var processedLeft = leftSample
+                    var processedRight = rightSample
+
+                    for (filter in filters) {
+                        val (left, right) = filter.processStereo(processedLeft, processedRight)
+                        processedLeft = left
+                        processedRight = right
+                    }
+
+                    processedLeft *= preampGain
+                    processedRight *= preampGain
+
+                    output.putFloat(softClip(processedLeft).toFloat())
+                    output.putFloat(softClip(processedRight).toFloat())
+                }
+                else -> {
+                    repeat(channelCount) {
+                        output.putFloat(input.getFloat())
                     }
                 }
             }

@@ -21,6 +21,7 @@ class SilenceDetectorAudioProcessor(
     private var sampleRate = 0
     private var channelCount = 0
     private var encoding = C.ENCODING_INVALID
+    private var isActive = false
 
     private var outputBuffer: ByteBuffer = EMPTY_BUFFER
     private var inputEnded = false
@@ -42,13 +43,17 @@ class SilenceDetectorAudioProcessor(
         encoding = inputAudioFormat.encoding
 
         if (encoding != C.ENCODING_PCM_16BIT) {
-            throw AudioProcessor.UnhandledAudioFormatException(inputAudioFormat)
+            // Self-bypass instead of crashing on a non-16-bit format (defensive): Media3 skips an inactive
+            // processor, matching the other processors in the chain.
+            isActive = false
+            return AudioProcessor.AudioFormat.NOT_SET
         }
 
+        isActive = true
         return inputAudioFormat
     }
 
-    override fun isActive(): Boolean = true
+    override fun isActive(): Boolean = isActive
 
     override fun queueInput(inputBuffer: ByteBuffer) {
         if (!inputBuffer.hasRemaining()) {
@@ -138,6 +143,7 @@ class SilenceDetectorAudioProcessor(
         sampleRate = 0
         channelCount = 0
         encoding = C.ENCODING_INVALID
+        isActive = false
     }
 
     private fun replaceOutputBuffer(size: Int): ByteBuffer {
