@@ -405,6 +405,12 @@ class MusicService :
     // (which could deadlock/stall stream resolution when Main is busy).
     @Volatile private var currentPlayingMediaId: String? = null
     private var lastNormalizedHadLoudness: Boolean = false
+    // The gain/makeup actually applied for the current track. Re-asserted whenever setupLoudnessEnhancer is
+    // re-invoked for the SAME track (e.g. an audio-effect-session re-open / processor flush when the screen
+    // turns off or playback blips), so the chain can never be left at a stale/unity (raw, LOUDER) level — the
+    // "volume rises on its own when the screen is off" bug. Re-asserting (not recomputing) means no mid-song jump.
+    @Volatile private var lastAppliedGain: Float = 1.0f
+    @Volatile private var lastAppliedMakeup: Float = 1.0f
 
     private var discordRpc: DiscordRPC? = null
     private var lastPlaybackSpeed = 1.0f
@@ -2032,6 +2038,15 @@ class MusicService :
                     val realLoudnessJustArrived =
                         hasRealLoudness && !lastNormalizedHadLoudness && positionMs < 8_000L
                     if (currentMediaId == lastNormalizedId && !realLoudnessJustArrived) {
+                        // Already normalized for this track — do NOT recompute (a changed loudness here would be a
+                        // mid-song jump). But RE-ASSERT the gains we already applied, so a session re-open /
+                        // processor flush (screen off, buffering blip) can't leave the chain at a stale/unity raw
+                        // (louder) level. Idempotent: same values → no audible change.
+                        withContext(Dispatchers.Main) {
+                            NormalizationGainAudioProcessor.gain = lastAppliedGain
+                            TruePeakLimiterAudioProcessor.loudnessMakeup = lastAppliedMakeup
+                            loudnessEnhancer?.enabled = false
+                        }
                         return@launch
                     }
 
@@ -2040,16 +2055,18 @@ class MusicService :
                         //  • attenuate loud masters (≤ 0 dB) here, in 16-bit, clip-free;
                         //  • boost quiet tracks UP (makeup, ≥ 0 dB) in float inside the true-peak limiter,
                         //    which catches the resulting peaks → loud + full, no clip.
-                        NormalizationGainAudioProcessor.gain =
-                            normalizationMultiplier(loudnessDb, enabled = true)
-                        TruePeakLimiterAudioProcessor.loudnessMakeup =
-                            dbToLinear(loudnessMakeupDb(loudnessDb, enabled = true))
+                        lastAppliedGain = normalizationMultiplier(loudnessDb, enabled = true)
+                        lastAppliedMakeup = dbToLinear(loudnessMakeupDb(loudnessDb, enabled = true))
+                        NormalizationGainAudioProcessor.gain = lastAppliedGain
+                        TruePeakLimiterAudioProcessor.loudnessMakeup = lastAppliedMakeup
                         loudnessEnhancer?.enabled = false
                         lastNormalizedId = currentMediaId
                         lastNormalizedHadLoudness = hasRealLoudness
                         Timber.tag(TAG).i("Normalization set (loudnessDb=$loudnessDb, real=$hasRealLoudness, makeup=${TruePeakLimiterAudioProcessor.loudnessMakeup})")
                     }
                 } else {
+                    lastAppliedGain = 1.0f
+                    lastAppliedMakeup = 1.0f
                     NormalizationGainAudioProcessor.gain = 1.0f
                     TruePeakLimiterAudioProcessor.loudnessMakeup = 1.0f
                     withContext(Dispatchers.Main) {
