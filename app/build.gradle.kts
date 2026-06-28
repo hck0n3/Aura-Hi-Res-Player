@@ -28,6 +28,13 @@ android {
     compileSdk = 36
     ndkVersion = "27.0.12077973"
 
+    externalNativeBuild {
+        cmake {
+            path("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1+"
+        }
+    }
+
 
     // Private test build with the subscription gate OFF. Build with `-Pnosub=true` (debug recommended,
     // e.g. `assembleUniversalFossDebug -Pnosub=true`). Gets a distinct applicationId so it installs
@@ -68,6 +75,13 @@ android {
 //add nightly build label support
         val isNightly = project.hasProperty("nightly") && project.property("nightly") == "true"
         buildConfigField("Boolean", "IS_NIGHTLY", isNightly.toString())
+        
+        externalNativeBuild {
+            cmake {
+                cppFlags("-std=c++17", "-fexceptions", "-frtti")
+                arguments("-DANDROID_STL=c++_shared")
+            }
+        }
     }
     
 
