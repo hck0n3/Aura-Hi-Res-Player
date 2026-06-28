@@ -23,7 +23,7 @@ class CustomEqualizerAudioProcessor(private val licenseKey: String = "akloSTZUT1
 
     private external fun initSuperpowered(licenseKey: String, sampleRate: Int)
     private external fun setEqBand(index: Int, frequency: Float, gainDb: Float, q: Float)
-    private external fun processAudio(inputBuffer: ByteBuffer, outputBuffer: ByteBuffer, numFrames: Int)
+    private external fun processAudio(inputBuffer: ByteBuffer, outputBuffer: ByteBuffer, numFrames: Int, encoding: Int, channels: Int)
     private external fun releaseSuperpowered()
 
     fun isEnabled(): Boolean = enabled
@@ -47,7 +47,7 @@ class CustomEqualizerAudioProcessor(private val licenseKey: String = "akloSTZUT1
     }
 
     override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
-        if (inputAudioFormat.encoding != C.ENCODING_PCM_16BIT) {
+        if (inputAudioFormat.encoding != C.ENCODING_PCM_16BIT && inputAudioFormat.encoding != C.ENCODING_PCM_FLOAT) {
             throw UnhandledAudioFormatException(inputAudioFormat)
         }
         initSuperpowered(licenseKey, inputAudioFormat.sampleRate)
@@ -59,11 +59,12 @@ class CustomEqualizerAudioProcessor(private val licenseKey: String = "akloSTZUT1
         val remaining = inputBuffer.remaining()
         if (remaining == 0) return
 
-        val numFrames = remaining / (2 * inputAudioFormat.channelCount)
+        val bytesPerSample = if (inputAudioFormat.encoding == C.ENCODING_PCM_FLOAT) 4 else 2
+        val numFrames = remaining / (bytesPerSample * inputAudioFormat.channelCount)
         val buffer = replaceOutputBuffer(remaining)
         
         if (enabled && isInitialized) {
-            processAudio(inputBuffer, buffer, numFrames)
+            processAudio(inputBuffer, buffer, numFrames, inputAudioFormat.encoding, inputAudioFormat.channelCount)
         } else {
             buffer.put(inputBuffer)
         }

@@ -34,13 +34,11 @@ Java_iad1tya_echo_music_eq_audio_CustomEqualizerAudioProcessor_initSuperpowered(
     std::lock_guard<std::mutex> lock(eqMutex);
     currentSamplerate = samplerate;
 
-    // Clear old filters if re-initialized
     for (auto* filter : filters) {
         delete filter;
     }
     filters.clear();
 
-    // Default 10 band parametric EQ setup
     for (int i = 0; i < 10; ++i) {
         auto* filter = new Superpowered::Filter(Superpowered::Filter::Parametric, currentSamplerate);
         filter->enabled = true;
@@ -65,33 +63,53 @@ Java_iad1tya_echo_music_eq_audio_CustomEqualizerAudioProcessor_setEqBand(JNIEnv 
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_iad1tya_echo_music_eq_audio_CustomEqualizerAudioProcessor_processAudio(JNIEnv *env, jobject thiz, jobject input_buffer, jobject output_buffer, jint num_frames) {
+Java_iad1tya_echo_music_eq_audio_CustomEqualizerAudioProcessor_processAudio(JNIEnv *env, jobject thiz, jobject input_buffer, jobject output_buffer, jint num_frames, jint encoding, jint channels) {
 #if HAS_SUPERPOWERED
-    short* input = (short*)env->GetDirectBufferAddress(input_buffer);
-    short* output = (short*)env->GetDirectBufferAddress(output_buffer);
+    void* input = env->GetDirectBufferAddress(input_buffer);
+    void* output = env->GetDirectBufferAddress(output_buffer);
 
     if (!input || !output || num_frames <= 0) return;
 
-    // We process num_frames * 2 samples (since stereo)
-    // Convert 16-bit short to 32-bit float
-    float* floatBuffer = (float*)malloc(num_frames * 2 * sizeof(float));
-    Superpowered::ShortIntToFloat(input, floatBuffer, num_frames);
+    if (encoding == 4) { // C.ENCODING_PCM_FLOAT
+        float* inFloat = (float*)input;
+        float* outFloat = (float*)output;
+        
+        memcpy(outFloat, inFloat, num_frames * channels * sizeof(float));
+        
+        std::lock_guard<std::mutex> lock(eqMutex);
+        for (auto* filter : filters) {
+            if (channels == 1) {
+                filter->processMono(outFloat, outFloat, num_frames);
+            } else {
+                filter->process(outFloat, outFloat, num_frames);
+            }
+        }
+    } else { // C.ENCODING_PCM_16BIT
+        short* inShort = (short*)input;
+        short* outShort = (short*)output;
 
-    // Apply EQ sequentially
-    std::lock_guard<std::mutex> lock(eqMutex);
-    for (auto* filter : filters) {
-        filter->process(floatBuffer, floatBuffer, num_frames);
+        float* floatBuffer = (float*)malloc(num_frames * channels * sizeof(float));
+        
+        Superpowered::ShortIntToFloat(inShort, floatBuffer, num_frames, channels);
+
+        std::lock_guard<std::mutex> lock(eqMutex);
+        for (auto* filter : filters) {
+            if (channels == 1) {
+                filter->processMono(floatBuffer, floatBuffer, num_frames);
+            } else {
+                filter->process(floatBuffer, floatBuffer, num_frames);
+            }
+        }
+
+        Superpowered::FloatToShortInt(floatBuffer, outShort, num_frames, channels);
+        free(floatBuffer);
     }
-
-    // Convert back to 16-bit short
-    Superpowered::FloatToShortInt(floatBuffer, output, num_frames);
-    free(floatBuffer);
 #else
-    // Stub implementation: just copy input to output
-    short* input = (short*)env->GetDirectBufferAddress(input_buffer);
-    short* output = (short*)env->GetDirectBufferAddress(output_buffer);
+    void* input = env->GetDirectBufferAddress(input_buffer);
+    void* output = env->GetDirectBufferAddress(output_buffer);
     if (input && output && num_frames > 0) {
-        memcpy(output, input, num_frames * 2 * sizeof(short)); // assuming stereo
+        int bytesPerSample = (encoding == 4) ? 4 : 2;
+        memcpy(output, input, num_frames * channels * bytesPerSample);
     }
 #endif
 }
