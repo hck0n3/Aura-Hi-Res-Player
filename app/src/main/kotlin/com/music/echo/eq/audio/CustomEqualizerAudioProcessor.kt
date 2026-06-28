@@ -8,7 +8,7 @@ import iad1tya.echo.music.eq.data.ParametricEQ
 import java.nio.ByteBuffer
 
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
-class CustomEqualizerAudioProcessor(private val licenseKey: String = "ExampleLicenseKey-B3D9") : BaseAudioProcessor() {
+class CustomEqualizerAudioProcessor(private val licenseKey: String = "akloSTZUT1k4N2ZGeGE5N2RhOGU3OWYyOGU4M2RkMGQxOGNmNjA4MDA5MjcwMjNlM2NjNzJoT0R4OGtwem1OamRtSGpFaHFG") : BaseAudioProcessor() {
 
     init {
         try {
