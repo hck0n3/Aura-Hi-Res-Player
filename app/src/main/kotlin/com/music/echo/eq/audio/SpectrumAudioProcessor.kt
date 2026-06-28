@@ -16,6 +16,10 @@ object SpectrumBus {
 
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 class SpectrumAudioProcessor : BaseAudioProcessor() {
+    override fun onConfigure(inputAudioFormat: androidx.media3.common.audio.AudioProcessor.AudioFormat): androidx.media3.common.audio.AudioProcessor.AudioFormat {
+        return androidx.media3.common.audio.AudioProcessor.AudioFormat.NOT_SET
+    }
+
     override fun queueInput(inputBuffer: ByteBuffer) {
         val remaining = inputBuffer.remaining()
         val buffer = replaceOutputBuffer(remaining)

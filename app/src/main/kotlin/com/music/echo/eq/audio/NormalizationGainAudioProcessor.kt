@@ -14,6 +14,10 @@ class NormalizationGainAudioProcessor : BaseAudioProcessor() {
 
     fun startMeasurement(id: String) {}
 
+    override fun onConfigure(inputAudioFormat: androidx.media3.common.audio.AudioProcessor.AudioFormat): androidx.media3.common.audio.AudioProcessor.AudioFormat {
+        return androidx.media3.common.audio.AudioProcessor.AudioFormat.NOT_SET
+    }
+
     override fun queueInput(inputBuffer: ByteBuffer) {
         val remaining = inputBuffer.remaining()
         val buffer = replaceOutputBuffer(remaining)
