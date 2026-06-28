@@ -96,7 +96,7 @@ fun QueueMenu(
     val coroutineScope = rememberCoroutineScope()
     val syncUtils = LocalSyncUtils.current
 
-    val librarySong by database.song(mediaMetadata.id).collectAsState(initial = null)
+    val librarySong by database.songWithEquivalent(mediaMetadata.id, mediaMetadata.title, mediaMetadata.artists.firstOrNull()?.name).collectAsState(initial = null)
     val download by LocalDownloadUtil.current.getDownload(mediaMetadata.id)
         .collectAsState(initial = null)
 
@@ -107,9 +107,13 @@ fun QueueMenu(
         label = "",
     )
 
-    val artists = remember(mediaMetadata.artists) {
-        mediaMetadata.artists.filter { it.id != null }
-    }
+    val artists =
+        remember(mediaMetadata.artists, librarySong) {
+            mediaMetadata.artists.map { metadataArtist ->
+                val resolvedId = metadataArtist.id ?: librarySong?.artists?.firstOrNull { it.name.equals(metadataArtist.name, ignoreCase = true) }?.id
+                metadataArtist.copy(id = resolvedId)
+            }
+        }
 
     var showChoosePlaylistDialog by rememberSaveable {
         mutableStateOf(false)
@@ -145,7 +149,11 @@ fun QueueMenu(
                     modifier = Modifier
                         .height(ListItemHeight)
                         .clickable {
-                            navController.navigate("artist/${artist.id}")
+                            if (artist.id != null) {
+                                navController.navigate("artist/${artist.id}")
+                            } else {
+                                navController.navigate("search/${java.net.URLEncoder.encode(artist.name, "UTF-8")}")
+                            }
                             showSelectArtistDialog = false
                             playerBottomSheetState.collapseSoft()
                             onDismiss()
@@ -447,7 +455,12 @@ fun QueueMenu(
                                 },
                                 onClick = {
                                     if (mediaMetadata.artists.size == 1) {
-                                        navController.navigate("artist/${mediaMetadata.artists[0].id}")
+                                        val resolvedArtistId = artists[0].id
+                                        if (resolvedArtistId != null) {
+                                            navController.navigate("artist/${resolvedArtistId}")
+                                        } else {
+                                            navController.navigate("search/${java.net.URLEncoder.encode(artists[0].name, "UTF-8")}")
+                                        }
                                         playerBottomSheetState.collapseSoft()
                                         onDismiss()
                                     } else {

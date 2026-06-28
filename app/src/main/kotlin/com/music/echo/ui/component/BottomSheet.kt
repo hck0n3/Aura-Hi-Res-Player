@@ -160,11 +160,11 @@ class BottomSheetState(
     }
 
     val isCollapsed by derivedStateOf {
-        value == collapsedBound
+        value <= collapsedBound + 1.dp
     }
 
     val isExpanded by derivedStateOf {
-        value == animatable.upperBound
+        animatable.upperBound?.let { value >= it - 1.dp } ?: false
     }
 
     val progress by derivedStateOf {

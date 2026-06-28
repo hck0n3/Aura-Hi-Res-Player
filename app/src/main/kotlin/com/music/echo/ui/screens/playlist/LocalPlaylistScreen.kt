@@ -440,9 +440,9 @@ fun LocalPlaylistScreen(
             dragInfo?.let { (from, to) ->
                 database.transaction {
                     move(viewModel.playlistId, from, to)
+                    playlist?.playlist?.let { update(it.copy(lastUpdateTime = LocalDateTime.now())) }
                 }
 
-                
                 if (viewModel.playlist.value?.playlist?.browseId != null) {
                     viewModel.viewModelScope.launch(Dispatchers.IO) {
                         val playlistSongMap = database.playlistSongMaps(viewModel.playlistId, 0)
@@ -586,6 +586,7 @@ fun LocalPlaylistScreen(
                                 Int.MAX_VALUE
                             )
                             delete(currentItem.map.copy(position = Int.MAX_VALUE))
+                            playlist?.playlist?.let { update(it.copy(lastUpdateTime = java.time.LocalDateTime.now())) }
                         }
                     }
 

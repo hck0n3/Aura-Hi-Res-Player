@@ -111,12 +111,12 @@ fun OldPlayerMenu(
     val isListenTogetherGuest = listenTogetherRoleState?.value == RoomRole.GUEST
 
     val currentSong by playerConnection.currentSong.collectAsState(initial = null)
-    val librarySong by database.song(mediaMetadata.id).collectAsState(initial = null)
+    val librarySong by database.songWithEquivalent(mediaMetadata.id, mediaMetadata.title, mediaMetadata.artists.firstOrNull()?.name).collectAsState(initial = null)
     val repeatMode by playerConnection.repeatMode.collectAsState()
     val shuffleModeEnabled by playerConnection.shuffleModeEnabled.collectAsState()
 
     val artists = remember(mediaMetadata.artists) {
-        mediaMetadata.artists.filter { it.id != null }
+        mediaMetadata.artists
     }
 
     val (enableExportAsMp3) = rememberPreference(key = EnableExportAsMp3Key, defaultValue = false)
@@ -160,7 +160,11 @@ fun OldPlayerMenu(
                         .fillParentMaxWidth()
                         .height(ListItemHeight)
                         .clickable {
-                            navController.navigate("artist/${artist.id}")
+                            if (artist.id != null) {
+                                navController.navigate("artist/${artist.id}")
+                            } else {
+                                navController.navigate("search/${java.net.URLEncoder.encode(artist.name, "UTF-8")}")
+                            }
                             showSelectArtistDialog = false
                             playerBottomSheetState.collapseSoft()
                             onDismiss()
@@ -508,7 +512,11 @@ fun OldPlayerMenu(
                                 },
                                 onClick = {
                                     if (mediaMetadata.artists.size == 1) {
-                                        navController.navigate("artist/${mediaMetadata.artists[0].id}")
+                                        if (mediaMetadata.artists[0].id != null) {
+                                            navController.navigate("artist/${mediaMetadata.artists[0].id}")
+                                        } else {
+                                            navController.navigate("search/${java.net.URLEncoder.encode(mediaMetadata.artists[0].name, "UTF-8")}")
+                                        }
                                         playerBottomSheetState.collapseSoft()
                                         onDismiss()
                                     } else {

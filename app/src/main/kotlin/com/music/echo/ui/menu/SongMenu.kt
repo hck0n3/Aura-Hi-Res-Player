@@ -281,7 +281,11 @@ fun SongMenu(
                     modifier = Modifier
                         .height(ListItemHeight)
                         .clickable {
-                            navController.navigate("artist/${artist.id}")
+                            if (artist.id != null) {
+                                navController.navigate("artist/${artist.id}")
+                            } else {
+                                navController.navigate("search/${java.net.URLEncoder.encode(artist.name, "UTF-8")}")
+                            }
                             showSelectArtistDialog = false
                             onDismiss()
                         }
@@ -824,7 +828,11 @@ fun SongMenu(
                             },
                             onClick = {
                                 if (song.artists.size == 1) {
-                                    navController.navigate("artist/${song.artists[0].id}")
+                                    if (song.artists[0].id != null) {
+                                        navController.navigate("artist/${song.artists[0].id}")
+                                    } else {
+                                        navController.navigate("search/${java.net.URLEncoder.encode(song.artists[0].name, "UTF-8")}")
+                                    }
                                     onDismiss()
                                 } else {
                                     showSelectArtistDialog = true

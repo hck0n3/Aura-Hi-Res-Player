@@ -208,7 +208,11 @@ fun YouTubeAlbumMenu(
                     modifier = Modifier
                         .height(ListItemHeight)
                         .clickable {
-                            navController.navigate("artist/${artist.id}")
+                            if (artist.id != null) {
+                                navController.navigate("artist/${artist.id}")
+                            } else {
+                                navController.navigate("search/${java.net.URLEncoder.encode(artist.name, "UTF-8")}")
+                            }
                             showSelectArtistDialog = false
                             onDismiss()
                         }
@@ -222,7 +226,11 @@ fun YouTubeAlbumMenu(
                             .clickable {
                                 showSelectArtistDialog = false
                                 onDismiss()
-                                navController.navigate("artist/${artist.id}")
+                                if (artist.id != null) {
+                                    navController.navigate("artist/${artist.id}")
+                                } else {
+                                    navController.navigate("search/${java.net.URLEncoder.encode(artist.name, "UTF-8")}")
+                                }
                             }
                             .padding(horizontal = 24.dp),
                     ) {
@@ -562,7 +570,11 @@ fun YouTubeAlbumMenu(
                             },
                             onClick = {
                                 if (artists.size == 1) {
-                                    navController.navigate("artist/${artists[0].id}")
+                                    if (artists[0].id != null) {
+                                        navController.navigate("artist/${artists[0].id}")
+                                    } else {
+                                        navController.navigate("search/${java.net.URLEncoder.encode(artists[0].name, "UTF-8")}")
+                                    }
                                     onDismiss()
                                 } else {
                                     showSelectArtistDialog = true

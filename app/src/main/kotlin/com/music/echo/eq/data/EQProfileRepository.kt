@@ -56,9 +56,13 @@ class EQProfileRepository @Inject constructor(
     private val _activeProfile = MutableStateFlow<SavedEQProfile?>(null)
     val activeProfile: StateFlow<SavedEQProfile?> = _activeProfile.asStateFlow()
 
+    private val _unsavedProfile = MutableStateFlow<SavedEQProfile?>(null)
+    val unsavedProfile: StateFlow<SavedEQProfile?> = _unsavedProfile.asStateFlow()
+
     companion object {
         private const val KEY_PROFILES = "eq_profiles"
         private const val KEY_ACTIVE_PROFILE_ID = "active_profile_id"
+        private const val KEY_UNSAVED_PROFILE = "unsaved_profile"
     }
 
     init {
@@ -77,10 +81,16 @@ class EQProfileRepository @Inject constructor(
                 val activeId = prefs.getString(KEY_ACTIVE_PROFILE_ID, null)
                 _activeProfile.value = loadedProfiles.find { it.id == activeId }
             }
+            
+            val unsavedJson = prefs.getString(KEY_UNSAVED_PROFILE, null)
+            if (unsavedJson != null) {
+                _unsavedProfile.value = json.decodeFromString<SavedEQProfile>(unsavedJson)
+            }
         } catch (e: Exception) {
             println("Error loading EQ profiles: ${e.message}")
             _profiles.value = emptyList()
             _activeProfile.value = null
+            _unsavedProfile.value = null
         }
     }
 
@@ -146,6 +156,16 @@ class EQProfileRepository @Inject constructor(
     
     fun getActiveProfile(): SavedEQProfile? {
         return _activeProfile.value
+    }
+    
+    fun setUnsavedProfile(profile: SavedEQProfile?) {
+        val jsonString = profile?.let { json.encodeToString(it) }
+        if (jsonString != null) {
+            prefs.edit { putString(KEY_UNSAVED_PROFILE, jsonString) }
+        } else {
+            prefs.edit { remove(KEY_UNSAVED_PROFILE) }
+        }
+        _unsavedProfile.value = profile
     }
 
     

@@ -365,6 +365,7 @@ private fun NewMiniPlayer(
                     mediaMetadata = mediaMetadata,
                     primaryColor = primaryColor,
                     outlineColor = outlineColor,
+                    playerConnection = playerConnection,
                 )
 
                 Spacer(modifier = Modifier.width(16.dp))
@@ -428,6 +429,7 @@ private fun NewMiniPlayerThumbnail(
     mediaMetadata: MediaMetadata?,
     primaryColor: Color,
     outlineColor: Color,
+    playerConnection: iad1tya.echo.music.playback.PlayerConnection? = null,
 ) {
     val trackColor = outlineColor.copy(alpha = 0.2f)
     val strokeWidth = 3.dp
@@ -476,13 +478,23 @@ private fun NewMiniPlayerThumbnail(
                 .clip(CircleShape)
                 .border(1.dp, outlineColor.copy(alpha = 0.3f), CircleShape)
         ) {
+            val videoMode by (playerConnection?.videoMode ?: kotlinx.coroutines.flow.MutableStateFlow(false)).collectAsState()
+            val videoUrl by (playerConnection?.videoUrl ?: kotlinx.coroutines.flow.MutableStateFlow(null)).collectAsState()
+            
             mediaMetadata?.let { metadata ->
-                AsyncImage(
-                    model = metadata.thumbnailUrl,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize().clip(CircleShape)
-                )
+                if (videoMode && !videoUrl.isNullOrEmpty() && playerConnection != null) {
+                    iad1tya.echo.music.ui.player.PlayerVideoSurface(
+                        playerConnection = playerConnection,
+                        modifier = Modifier.fillMaxSize().clip(CircleShape)
+                    )
+                } else {
+                    AsyncImage(
+                        model = metadata.thumbnailUrl,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize().clip(CircleShape)
+                    )
+                }
             }
         }
     }
@@ -693,6 +705,7 @@ private fun LegacyMiniPlayer(
                         mediaMetadata = it,
                         pureBlack = pureBlack,
                         modifier = Modifier.padding(horizontal = 6.dp),
+                        playerConnection = playerConnection,
                     )
                 }
             }
@@ -787,6 +800,7 @@ private fun LegacyMiniMediaInfo(
     mediaMetadata: MediaMetadata,
     pureBlack: Boolean,
     modifier: Modifier = Modifier,
+    playerConnection: iad1tya.echo.music.playback.PlayerConnection? = null,
 ) {
     val error by LocalPlayerConnection.current?.error?.collectAsState() ?: remember { mutableStateOf(null) }
     val cropAlbumArt by rememberPreference(CropAlbumArtKey, false)
@@ -807,14 +821,24 @@ private fun LegacyMiniMediaInfo(
                     .background(MaterialTheme.colorScheme.surfaceVariant)
             )
 
-            AsyncImage(
-                model = mediaMetadata.thumbnailUrl,
-                contentDescription = null,
-                contentScale = if (cropAlbumArt) ContentScale.Crop else ContentScale.Fit,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .clip(RoundedCornerShape(ThumbnailCornerRadius)),
-            )
+            val videoMode by (playerConnection?.videoMode ?: kotlinx.coroutines.flow.MutableStateFlow(false)).collectAsState()
+            val videoUrl by (playerConnection?.videoUrl ?: kotlinx.coroutines.flow.MutableStateFlow(null)).collectAsState()
+
+            if (videoMode && !videoUrl.isNullOrEmpty() && playerConnection != null) {
+                iad1tya.echo.music.ui.player.PlayerVideoSurface(
+                    playerConnection = playerConnection,
+                    modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(ThumbnailCornerRadius))
+                )
+            } else {
+                AsyncImage(
+                    model = mediaMetadata.thumbnailUrl,
+                    contentDescription = null,
+                    contentScale = if (cropAlbumArt) ContentScale.Crop else ContentScale.Fit,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(RoundedCornerShape(ThumbnailCornerRadius)),
+                )
+            }
 
             androidx.compose.animation.AnimatedVisibility(visible = error != null, enter = fadeIn(), exit = fadeOut()) {
                 Box(

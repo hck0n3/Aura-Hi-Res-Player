@@ -569,6 +569,19 @@ interface DatabaseDao {
     fun song(songId: String?): Flow<Song?>
 
     @Transaction
+    @Query("""
+        SELECT song.* FROM song 
+        LEFT JOIN song_artist_map ON song.id = song_artist_map.songId 
+        LEFT JOIN artist ON song_artist_map.artistId = artist.id 
+        WHERE song.id = :id 
+           OR (song.title = :title AND (:artistName IS NULL OR artist.name = :artistName))
+        ORDER BY CASE WHEN song.id = :id THEN 0 ELSE 1 END
+        LIMIT 1
+    """)
+    fun songWithEquivalent(id: String, title: String, artistName: String?): Flow<Song?>
+
+
+    @Transaction
     @Query("SELECT * FROM song WHERE id = :songId LIMIT 1")
     suspend fun getSongById(songId: String): Song?
 
@@ -1031,6 +1044,7 @@ interface DatabaseDao {
                 )
             )
         }
+        update(playlist.playlist.copy(lastUpdateTime = java.time.LocalDateTime.now()))
     }
 
     fun downloadedSongs(

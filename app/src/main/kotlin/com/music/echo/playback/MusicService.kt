@@ -700,7 +700,9 @@ class MusicService :
 
 
         scope.launch {
-            eqProfileRepository.activeProfile.collect { profile ->
+            combine(eqProfileRepository.activeProfile, eqProfileRepository.unsavedProfile) { active, unsaved ->
+                active ?: unsaved
+            }.collect { profile ->
                 if (profile != null) {
                     val result = equalizerService.applyProfile(profile)
                     if (result.isSuccess && player.playbackState == Player.STATE_READY && player.isPlaying) {
@@ -2183,12 +2185,18 @@ class MusicService :
             if (player.currentMediaItem?.mediaId != mediaId) return@withContext
             if (norm?.measurementCommitted != true || norm.measureTrackId != mediaId) return@withContext
             if (measuredAppliedForId == mediaId) return@withContext
-            // CACHE-ONLY: we measured this track's loudness but DO NOT re-level it mid-song — the user dislikes
-            // ANY mid-song volume change. The cached value is applied at the START of the NEXT play (via
-            // effectiveLoudnessDb), so the track is leveled from the first second next time, with zero change now.
+            
+            val targetGain = normalizationMultiplier(measured, enabled = true)
+            val targetMakeup = dbToLinear(loudnessMakeupDb(measured, enabled = true))
+            
+            lastAppliedGain = targetGain
+            lastAppliedMakeup = targetMakeup
+            NormalizationGainAudioProcessor.gain = targetGain
+            TruePeakLimiterAudioProcessor.loudnessMakeup = targetMakeup
+            
             norm.measureThisTrack = false
             measuredAppliedForId = mediaId
-            Timber.tag(TAG).i("Measured loudness cached for $mediaId: ${measured}dB (applied next play)")
+            Timber.tag(TAG).i("Measured loudness applied for $mediaId: ${measured}dB")
         }
 
         // Cache the measured value, PRESERVING any metadata loudness (mirror the format-store preserve
@@ -4358,7 +4366,7 @@ class MusicService :
         const val MAX_CONSECUTIVE_ERR = 5
         const val MAX_RETRY_COUNT = 10
         // How early (ms before the fade) to build + buffer the incoming player so the crossfade has no gap.
-        private const val CROSSFADE_PRELOAD_LEAD_MS = 6000L
+        private const val CROSSFADE_PRELOAD_LEAD_MS = 12000L
         
         private const val MAX_GAIN_MB = 300 
         private const val MIN_GAIN_MB = -1500 

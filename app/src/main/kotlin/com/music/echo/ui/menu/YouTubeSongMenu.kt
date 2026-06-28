@@ -103,18 +103,16 @@ fun YouTubeSongMenu(
     val context = LocalContext.current
     val database = LocalDatabase.current
     val playerConnection = LocalPlayerConnection.current ?: return
-    val librarySong by database.song(song.id).collectAsState(initial = null)
+    val librarySong by database.songWithEquivalent(song.id, song.title, song.artists.firstOrNull()?.name).collectAsState(initial = null)
     val download by LocalDownloadUtil.current.getDownload(song.id).collectAsState(initial = null)
     val coroutineScope = rememberCoroutineScope()
     val syncUtils = LocalSyncUtils.current
     val listenTogetherManager = LocalListenTogetherManager.current
     val ringtoneViewModel = iad1tya.echo.music.LocalRingtoneViewModel.current
     val isPinned by database.speedDialDao.isPinned(song.id).collectAsState(initial = false)
-    val artists = remember {
-        song.artists.mapNotNull {
-            it.id?.let { artistId ->
-                MediaMetadata.Artist(id = artistId, name = it.name)
-            }
+    val artists = remember(song.artists) {
+        song.artists.map { artist ->
+            MediaMetadata.Artist(id = artist.id, name = artist.name)
         }
     }
 
@@ -161,7 +159,11 @@ fun YouTubeSongMenu(
                     Modifier  
                         .height(ListItemHeight)  
                         .clickable {  
-                            navController.navigate("artist/${artist.id}")  
+                            if (artist.id != null) {
+                                navController.navigate("artist/${artist.id}")  
+                            } else {
+                                navController.navigate("search/${java.net.URLEncoder.encode(artist.name, "UTF-8")}")
+                            }
                             showSelectArtistDialog = false  
                             onDismiss()  
                         }  
@@ -174,7 +176,11 @@ fun YouTubeSongMenu(
                             .fillParentMaxWidth()  
                             .height(ListItemHeight)  
                             .clickable {  
-                                navController.navigate("artist/${artist.id}")  
+                                if (artist.id != null) {
+                                    navController.navigate("artist/${artist.id}")  
+                                } else {
+                                    navController.navigate("search/${java.net.URLEncoder.encode(artist.name, "UTF-8")}")
+                                }
                                 showSelectArtistDialog = false  
                                 onDismiss()  
                             }  
@@ -672,7 +678,11 @@ fun YouTubeSongMenu(
                                 },
                                 onClick = {
                                     if (artists.size == 1) {
-                                        navController.navigate("artist/${artists[0].id}")
+                                        if (artists[0].id != null) {
+                                            navController.navigate("artist/${artists[0].id}")
+                                        } else {
+                                            navController.navigate("search/${java.net.URLEncoder.encode(artists[0].name, "UTF-8")}")
+                                        }
                                         onDismiss()
                                     } else {
                                         showSelectArtistDialog = true

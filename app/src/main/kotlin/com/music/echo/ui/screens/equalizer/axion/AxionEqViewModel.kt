@@ -488,8 +488,7 @@ class AxionEqViewModel @Inject constructor(
                 isCustom = false,
                 isActive = true,
             )
-            eqProfileRepository.saveProfile(profile)
-            eqProfileRepository.setActiveProfile(profile.id)
+            eqProfileRepository.setUnsavedProfile(profile)
             equalizerService.applyProfile(profile)
         }
     }

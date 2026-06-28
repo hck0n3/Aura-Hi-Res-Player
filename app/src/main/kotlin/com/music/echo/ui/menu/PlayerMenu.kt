@@ -129,7 +129,7 @@ fun PlayerMenu(
     val castVolume by castHandler?.castVolume?.collectAsState() ?: remember { mutableFloatStateOf(1f) }
     val castDeviceName by castHandler?.castDeviceName?.collectAsState() ?: remember { mutableStateOf<String?>(null) }
     
-    val librarySong by database.song(mediaMetadata.id).collectAsState(initial = null)
+    val librarySong by database.songWithEquivalent(mediaMetadata.id, mediaMetadata.title, mediaMetadata.artists.firstOrNull()?.name).collectAsState(initial = null)
     val coroutineScope = rememberCoroutineScope()
 
     val download by LocalDownloadUtil.current.getDownload(mediaMetadata.id)
@@ -138,8 +138,11 @@ fun PlayerMenu(
 
 
     val artists =
-        remember(mediaMetadata.artists) {
-            mediaMetadata.artists.filter { it.id != null }
+        remember(mediaMetadata.artists, librarySong) {
+            mediaMetadata.artists.map { metadataArtist ->
+                val resolvedId = metadataArtist.id ?: librarySong?.artists?.firstOrNull { it.name.equals(metadataArtist.name, ignoreCase = true) }?.id
+                metadataArtist.copy(id = resolvedId)
+            }
         }
 
     var showChoosePlaylistDialog by rememberSaveable {
@@ -202,7 +205,11 @@ fun PlayerMenu(
                         .fillParentMaxWidth()
                         .height(ListItemHeight)
                         .clickable {
-                            navController.navigate("artist/${artist.id}")
+                            if (artist.id != null) {
+                                navController.navigate("artist/${artist.id}")
+                            } else {
+                                navController.navigate("search/${java.net.URLEncoder.encode(artist.name, "UTF-8")}")
+                            }
                             showSelectArtistDialog = false
                             playerBottomSheetState.collapseSoft()
                             onDismiss()
@@ -380,7 +387,12 @@ fun PlayerMenu(
                                 },
                                 onClick = {
                                     if (mediaMetadata.artists.size == 1) {
-                                        navController.navigate("artist/${mediaMetadata.artists[0].id}")
+                                        val resolvedArtistId = artists[0].id
+                                        if (resolvedArtistId != null) {
+                                            navController.navigate("artist/${resolvedArtistId}")
+                                        } else {
+                                            navController.navigate("search/${java.net.URLEncoder.encode(artists[0].name, "UTF-8")}")
+                                        }
                                         playerBottomSheetState.collapseSoft()
                                         onDismiss()
                                     } else {
@@ -756,6 +768,7 @@ fun PlayerMenu(
                                 onClick = {
                                     // launchSingleTop so a duplicate EQ entry can't land on the backstack
                                     // (which made the first back press return to the same EQ screen).
+                                    playerBottomSheetState.collapseSoft()
                                     navController.navigate("settings/equalizer") { launchSingleTop = true }
                                     onDismiss()
                                 }
