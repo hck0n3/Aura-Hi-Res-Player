@@ -23,7 +23,7 @@ class CustomEqualizerAudioProcessor(private val licenseKey: String = "akloSTZUT1
 
     private external fun initSuperpowered(licenseKey: String, sampleRate: Int)
     private external fun setEqBand(index: Int, frequency: Float, gainDb: Float, q: Float)
-    private external fun processAudio(inputBuffer: ByteBuffer, outputBuffer: ByteBuffer, numFrames: Int, encoding: Int, channels: Int)
+    private external fun processAudio(inputBuffer: ByteBuffer, outputBuffer: ByteBuffer, numFrames: Int, encoding: Int, channels: Int, enabled: Boolean)
     private external fun releaseSuperpowered()
 
     fun isEnabled(): Boolean = enabled
@@ -52,7 +52,13 @@ class CustomEqualizerAudioProcessor(private val licenseKey: String = "akloSTZUT1
         }
         initSuperpowered(licenseKey, inputAudioFormat.sampleRate)
         isInitialized = true
-        return inputAudioFormat
+        
+        // ALWAYS output 16-bit to prevent downstream sink processors (like SilenceSkippingAudioProcessor) from crashing on float
+        return AudioProcessor.AudioFormat(
+            inputAudioFormat.sampleRate,
+            inputAudioFormat.channelCount,
+            C.ENCODING_PCM_16BIT
+        )
     }
 
     override fun queueInput(inputBuffer: ByteBuffer) {
@@ -61,12 +67,17 @@ class CustomEqualizerAudioProcessor(private val licenseKey: String = "akloSTZUT1
 
         val bytesPerSample = if (inputAudioFormat.encoding == C.ENCODING_PCM_FLOAT) 4 else 2
         val numFrames = remaining / (bytesPerSample * inputAudioFormat.channelCount)
-        val buffer = replaceOutputBuffer(remaining)
         
-        if (enabled && isInitialized) {
-            processAudio(inputBuffer, buffer, numFrames, inputAudioFormat.encoding, inputAudioFormat.channelCount)
+        // Output is always 16-bit (2 bytes per sample)
+        val outRemaining = numFrames * 2 * inputAudioFormat.channelCount
+        val buffer = replaceOutputBuffer(outRemaining)
+        
+        if (isInitialized) {
+            processAudio(inputBuffer, buffer, numFrames, inputAudioFormat.encoding, inputAudioFormat.channelCount, enabled)
         } else {
-            buffer.put(inputBuffer)
+            if (inputAudioFormat.encoding == C.ENCODING_PCM_16BIT) {
+                buffer.put(inputBuffer)
+            }
         }
         
         inputBuffer.position(inputBuffer.position() + remaining)
