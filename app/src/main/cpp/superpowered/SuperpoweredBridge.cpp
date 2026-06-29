@@ -3,6 +3,8 @@
 #include <string>
 #include <vector>
 #include <mutex>
+#include <cmath>
+#include <cstdlib>
 
 #if __has_include("Superpowered.h")
 #define HAS_SUPERPOWERED 1
@@ -24,6 +26,10 @@ static std::mutex eqMutex;
 static std::vector<Superpowered::Filter*> filters;
 static Superpowered::Limiter* limiter = nullptr;
 static Superpowered::Filter* deEsser = nullptr;
+static Superpowered::Filter* deEsserDetector = nullptr;
+static float* deEsserTempBuffer = nullptr;
+static int deEsserTempBufferSize = 0;
+static float currentDeEsserDb = 0.0f;
 static unsigned int currentSamplerate = 44100;
 static float currentPreampMultiplier = 1.0f;
 static bool isSuperpoweredInitialized = false;
@@ -66,8 +72,16 @@ Java_iad1tya_echo_music_eq_audio_CustomEqualizerAudioProcessor_initSuperpowered(
     deEsser = new Superpowered::Filter(Superpowered::Filter::Parametric, samplerate);
     deEsser->frequency = 6500.0f;
     deEsser->octave = 0.5f;
-    deEsser->decibel = -4.0f;
+    deEsser->decibel = 0.0f; // Starts flat
     deEsser->enabled = true;
+
+    if (deEsserDetector) delete deEsserDetector;
+    deEsserDetector = new Superpowered::Filter(Superpowered::Filter::Bandlimited_Bandpass, samplerate);
+    deEsserDetector->frequency = 6500.0f;
+    deEsserDetector->octave = 1.0f;
+    deEsserDetector->enabled = true;
+    
+    currentDeEsserDb = 0.0f;
 
     LOGI("Superpowered sample rate updated to %d Hz", samplerate);
 #else
@@ -114,83 +128,95 @@ Java_iad1tya_echo_music_eq_audio_CustomEqualizerAudioProcessor_processAudio(JNIE
 
     if (!input || !output || num_frames <= 0) return;
 
+    float* workBuffer = nullptr;
+    bool needsFree = false;
+
     if (encoding == 4) { // C.ENCODING_PCM_FLOAT -> FLOAT
         float* inFloat = (float*)input;
         float* outFloat = (float*)output;
-
         memcpy(outFloat, inFloat, num_frames * channels * sizeof(float));
-
-        if (enabled) {
-            std::lock_guard<std::mutex> lock(eqMutex);
-            
-            // Apply De-Esser Notch Filter to tame OPUS harshness
-            if (deEsser && deEsser->enabled) {
-                if (channels == 1) deEsser->processMono(outFloat, outFloat, num_frames);
-                else deEsser->process(outFloat, outFloat, num_frames);
-            }
-
-            // Apply preamp
-            if (currentPreampMultiplier != 1.0f) {
-                for (int i = 0; i < num_frames * channels; ++i) {
-                    outFloat[i] *= currentPreampMultiplier;
-                }
-            }
-
-            for (auto* filter : filters) {
-                if (filter->enabled) {
-                    if (channels == 1) {
-                        filter->processMono(outFloat, outFloat, num_frames);
-                    } else {
-                        filter->process(outFloat, outFloat, num_frames);
-                    }
-                }
-            }
-            
-            // Apply Limiter at the end (strictly stereo)
-            if (limiter && limiter->enabled && channels == 2) {
-                limiter->process(outFloat, outFloat, num_frames);
-            }
-
-            // Hard clip protection to prevent AudioTrack digital distortion wrap-around for mono edge-cases
-            for (int i = 0; i < num_frames * channels; ++i) {
-                if (outFloat[i] > 1.0f) outFloat[i] = 1.0f;
-                else if (outFloat[i] < -1.0f) outFloat[i] = -1.0f;
-            }
-        }
+        workBuffer = outFloat;
     } else { // C.ENCODING_PCM_16BIT -> 16BIT
         short* inShort = (short*)input;
-        short* outShort = (short*)output;
+        workBuffer = (float*)malloc(num_frames * channels * sizeof(float));
+        Superpowered::ShortIntToFloat(inShort, workBuffer, num_frames, channels);
+        needsFree = true;
+    }
 
-        float* floatBuffer = (float*)malloc(num_frames * channels * sizeof(float));
-        Superpowered::ShortIntToFloat(inShort, floatBuffer, num_frames, channels);
-
-        if (enabled) {
-            std::lock_guard<std::mutex> lock(eqMutex);
-            
-            // Apply De-Esser
-            if (deEsser && deEsser->enabled) {
-                if (channels == 1) deEsser->processMono(floatBuffer, floatBuffer, num_frames);
-                else deEsser->process(floatBuffer, floatBuffer, num_frames);
+    if (enabled && workBuffer) {
+        std::lock_guard<std::mutex> lock(eqMutex);
+        
+        // Dynamic De-Esser
+        if (deEsser && deEsserDetector) {
+            int requiredSize = num_frames * channels;
+            if (requiredSize > deEsserTempBufferSize) {
+                if (deEsserTempBuffer) free(deEsserTempBuffer);
+                deEsserTempBuffer = (float*)malloc(requiredSize * sizeof(float));
+                deEsserTempBufferSize = requiredSize;
             }
-
-            for (auto* filter : filters) {
-                if (filter->enabled) {
-                    if (channels == 1) {
-                        filter->processMono(floatBuffer, floatBuffer, num_frames);
-                    } else {
-                        filter->process(floatBuffer, floatBuffer, num_frames);
-                    }
+            if (deEsserTempBuffer) {
+                // Isolate the 6500Hz band
+                memcpy(deEsserTempBuffer, workBuffer, requiredSize * sizeof(float));
+                if (channels == 1) deEsserDetector->processMono(deEsserTempBuffer, deEsserTempBuffer, num_frames);
+                else deEsserDetector->process(deEsserTempBuffer, deEsserTempBuffer, num_frames);
+                
+                // Measure peak energy
+                float peak = 0.0f;
+                for (int i = 0; i < requiredSize; ++i) {
+                    float absVal = std::abs(deEsserTempBuffer[i]);
+                    if (absVal > peak) peak = absVal;
                 }
-            }
-            
-            // Apply Limiter
-            if (limiter && limiter->enabled && channels == 2) {
-                limiter->process(floatBuffer, floatBuffer, num_frames);
+                
+                // Dynamic threshold calculation
+                float targetDb = (peak > 0.15f) ? -4.0f : 0.0f;
+                
+                // Smooth the gain changes (Envelope follower)
+                float diff = targetDb - currentDeEsserDb;
+                if (diff < 0) currentDeEsserDb += diff * 0.5f; // Fast attack
+                else currentDeEsserDb += diff * 0.05f;         // Slow release
+                
+                deEsser->decibel = currentDeEsserDb;
+                
+                // Apply the De-Esser to the main signal
+                if (channels == 1) deEsser->processMono(workBuffer, workBuffer, num_frames);
+                else deEsser->process(workBuffer, workBuffer, num_frames);
             }
         }
 
-        Superpowered::FloatToShortInt(floatBuffer, outShort, num_frames, channels);
-        free(floatBuffer);
+        // Apply preamp
+        if (currentPreampMultiplier != 1.0f) {
+            for (int i = 0; i < num_frames * channels; ++i) {
+                workBuffer[i] *= currentPreampMultiplier;
+            }
+        }
+
+        // Apply EQ
+        for (auto* filter : filters) {
+            if (filter->enabled) {
+                if (channels == 1) filter->processMono(workBuffer, workBuffer, num_frames);
+                else filter->process(workBuffer, workBuffer, num_frames);
+            }
+        }
+        
+        // Apply Limiter (strictly stereo)
+        if (limiter && limiter->enabled && channels == 2) {
+            limiter->process(workBuffer, workBuffer, num_frames);
+        }
+
+        // Hard clip mono fallback
+        for (int i = 0; i < num_frames * channels; ++i) {
+            if (workBuffer[i] > 1.0f) workBuffer[i] = 1.0f;
+            else if (workBuffer[i] < -1.0f) workBuffer[i] = -1.0f;
+        }
+    }
+
+    if (encoding != 4 && workBuffer) {
+        short* outShort = (short*)output;
+        Superpowered::FloatToShortInt(workBuffer, outShort, num_frames, channels);
+    }
+
+    if (needsFree && workBuffer) {
+        free(workBuffer);
     }
 #else
     void* input = env->GetDirectBufferAddress(input_buffer);
@@ -213,5 +239,7 @@ Java_iad1tya_echo_music_eq_audio_CustomEqualizerAudioProcessor_releaseSuperpower
     
     if (limiter) { delete limiter; limiter = nullptr; }
     if (deEsser) { delete deEsser; deEsser = nullptr; }
+    if (deEsserDetector) { delete deEsserDetector; deEsserDetector = nullptr; }
+    if (deEsserTempBuffer) { free(deEsserTempBuffer); deEsserTempBuffer = nullptr; deEsserTempBufferSize = 0; }
 #endif
 }
