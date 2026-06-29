@@ -70,13 +70,14 @@ class CustomEqualizerAudioProcessor(private val licenseKey: String = "akloSTZUT1
         
         if (isInitialized) {
             processAudio(inputBuffer, buffer, numFrames, inputAudioFormat.encoding, inputAudioFormat.channelCount, enabled)
+            // JNI writes directly to memory, so we must advance the ByteBuffer's position manually
+            buffer.position(buffer.position() + outRemaining)
+            inputBuffer.position(inputBuffer.position() + remaining)
         } else {
-            if (inputAudioFormat.encoding == C.ENCODING_PCM_16BIT) {
-                buffer.put(inputBuffer)
-            }
+            // Uninitialized fallback: copy all bytes manually, which automatically advances positions for both
+            buffer.put(inputBuffer)
         }
         
-        inputBuffer.position(inputBuffer.position() + remaining)
         buffer.flip()
     }
 
