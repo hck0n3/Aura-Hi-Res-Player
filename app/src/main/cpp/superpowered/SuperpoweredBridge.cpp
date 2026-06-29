@@ -160,7 +160,22 @@ Java_iad1tya_echo_music_eq_audio_CustomEqualizerAudioProcessor_processAudio(JNIE
     if (enabled && workBuffer) {
         std::lock_guard<std::mutex> lock(eqMutex);
         
-        // Dynamic De-Esser
+        // Apply preamp
+        if (currentPreampMultiplier != 1.0f) {
+            for (int i = 0; i < num_frames * channels; ++i) {
+                workBuffer[i] *= currentPreampMultiplier;
+            }
+        }
+
+        // Apply EQ first
+        for (auto* filter : filters) {
+            if (filter->enabled) {
+                if (channels == 1) filter->processMono(workBuffer, workBuffer, num_frames);
+                else filter->process(workBuffer, workBuffer, num_frames);
+            }
+        }
+        
+        // Dynamic De-Esser (Applied AFTER EQ to catch sibilance introduced by treble boosts)
         if (deEsser && deEsserDetector) {
             // Isolate the 6500Hz band
             memcpy(staticDeEsserBuffer, workBuffer, requiredSize * sizeof(float));
@@ -188,31 +203,21 @@ Java_iad1tya_echo_music_eq_audio_CustomEqualizerAudioProcessor_processAudio(JNIE
             if (channels == 1) deEsser->processMono(workBuffer, workBuffer, num_frames);
             else deEsser->process(workBuffer, workBuffer, num_frames);
         }
-
-        // Apply preamp
-        if (currentPreampMultiplier != 1.0f) {
-            for (int i = 0; i < num_frames * channels; ++i) {
-                workBuffer[i] *= currentPreampMultiplier;
-            }
-        }
-
-        // Apply EQ
-        for (auto* filter : filters) {
-            if (filter->enabled) {
-                if (channels == 1) filter->processMono(workBuffer, workBuffer, num_frames);
-                else filter->process(workBuffer, workBuffer, num_frames);
-            }
-        }
         
         // Apply Limiter (strictly stereo)
         if (limiter && limiter->enabled && channels == 2) {
             limiter->process(workBuffer, workBuffer, num_frames);
         }
 
-        // Hard clip mono fallback
+        // Soft clip fallback (prevents harsh digital clipping)
         for (int i = 0; i < num_frames * channels; ++i) {
-            if (workBuffer[i] > 1.0f) workBuffer[i] = 1.0f;
-            else if (workBuffer[i] < -1.0f) workBuffer[i] = -1.0f;
+            float x = workBuffer[i];
+            float absX = std::abs(x);
+            if (absX > 0.95f) {
+                // Soft knee above 0.95 to safely round off peaks instead of hard-chopping
+                float out = 0.95f + std::tanh(absX - 0.95f) * 0.05f;
+                workBuffer[i] = (x > 0) ? out : -out;
+            }
         }
     }
 

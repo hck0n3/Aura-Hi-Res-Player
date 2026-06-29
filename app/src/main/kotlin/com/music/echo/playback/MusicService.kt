@@ -1127,9 +1127,9 @@ class MusicService :
             .build()
 
         playerEqProcessors[player] = eqProcessor
-        // playerSilenceProcessors[player] = silenceProcessor
-        // playerNormProcessors[player] = normProcessor
-        // playerLimiterProcessors[player] = limiterProcessor
+        playerSilenceProcessors[player] = silenceProcessor
+        playerNormProcessors[player] = normProcessor
+        playerLimiterProcessors[player] = limiterProcessor
 
         player.apply {
                 runBlocking {
@@ -3667,7 +3667,10 @@ class MusicService :
                 .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
                 .setAudioProcessorChain(
                     DefaultAudioSink.DefaultAudioProcessorChain(
-                        eqProcessor
+                        silenceProcessor,
+                        eqProcessor,
+                        normProcessor,
+                        limiterProcessor
                     )
                 ).build()
         }
