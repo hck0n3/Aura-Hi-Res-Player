@@ -1102,12 +1102,11 @@ class MusicService :
                 DefaultLoadControl.Builder()
                     .setBufferDurationsMs(
                         DefaultLoadControl.DEFAULT_MIN_BUFFER_MS,
-                        DefaultLoadControl.DEFAULT_MAX_BUFFER_MS,
-                        // Start playing as soon as ~0.5 s is buffered so the first sound comes sooner.
+                        // Expand max buffer from 50s to 10 minutes (600,000ms) to allow the app
+                        // to fully pre-download Hi-Res audio tracks to RAM/Cache, preventing
+                        // stutters when entering low-connectivity areas (subways, tunnels).
+                        600_000,
                         500,
-                        // After a STALL, rebuild ~5 s of buffer before resuming (Media3 default) instead of the
-                        // old 1 s — the 1 s value made HD video resume with almost no buffer and re-stall
-                        // immediately in a stutter loop ("el video se para a cada rato").
                         DefaultLoadControl.DEFAULT_BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS,
                     )
                     .build(),

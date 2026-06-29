@@ -917,9 +917,14 @@ object YTPlayerUtils {
         }
         val format = audioPool
             ?.maxByOrNull {
-                it.bitrate * when (audioQuality) {
-                    AudioQuality.OPUS, AudioQuality.SAAVN, AudioQuality.LOSSLESS -> 1
-                } + (if (it.mimeType.startsWith("audio/webm")) 10240 else 0)
+                var score = it.bitrate.toFloat()
+                // If Opus is requested, Opus (audio/webm) is vastly superior in codec efficiency.
+                // We multiply its bitrate by 2.0 to ensure 160kbps Opus (itag 251) definitively
+                // beats 256kbps AAC (itag 141), preserving the true Hi-Res Opus stream.
+                if (audioQuality == AudioQuality.OPUS && it.mimeType.startsWith("audio/webm")) {
+                    score *= 2.0f
+                }
+                score
             }
 
         if (format != null) {
