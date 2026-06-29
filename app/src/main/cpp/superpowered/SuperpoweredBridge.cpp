@@ -70,27 +70,23 @@ Java_iad1tya_echo_music_eq_audio_CustomEqualizerAudioProcessor_processAudio(JNIE
 
     if (!input || !output || num_frames <= 0) return;
 
-    if (encoding == 4) { // C.ENCODING_PCM_FLOAT
+    if (encoding == 4) { // C.ENCODING_PCM_FLOAT -> FLOAT
         float* inFloat = (float*)input;
-        short* outShort = (short*)output;
+        float* outFloat = (float*)output;
 
-        float* floatBuffer = (float*)malloc(num_frames * channels * sizeof(float));
-        memcpy(floatBuffer, inFloat, num_frames * channels * sizeof(float));
+        memcpy(outFloat, inFloat, num_frames * channels * sizeof(float));
 
         if (enabled) {
             std::lock_guard<std::mutex> lock(eqMutex);
             for (auto* filter : filters) {
                 if (channels == 1) {
-                    filter->processMono(floatBuffer, floatBuffer, num_frames);
+                    filter->processMono(outFloat, outFloat, num_frames);
                 } else {
-                    filter->process(floatBuffer, floatBuffer, num_frames);
+                    filter->process(outFloat, outFloat, num_frames);
                 }
             }
         }
-        
-        Superpowered::FloatToShortInt(floatBuffer, outShort, num_frames, channels);
-        free(floatBuffer);
-    } else { // C.ENCODING_PCM_16BIT
+    } else { // C.ENCODING_PCM_16BIT -> 16BIT
         short* inShort = (short*)input;
         short* outShort = (short*)output;
 
@@ -115,18 +111,8 @@ Java_iad1tya_echo_music_eq_audio_CustomEqualizerAudioProcessor_processAudio(JNIE
     void* input = env->GetDirectBufferAddress(input_buffer);
     void* output = env->GetDirectBufferAddress(output_buffer);
     if (input && output && num_frames > 0) {
-        if (encoding == 4) {
-            float* inF = (float*)input;
-            short* outS = (short*)output;
-            for (int i = 0; i < num_frames * channels; i++) {
-                float v = inF[i];
-                if (v > 1.0f) v = 1.0f;
-                if (v < -1.0f) v = -1.0f;
-                outS[i] = (short)(v * 32767.0f);
-            }
-        } else {
-            memcpy(output, input, num_frames * channels * 2);
-        }
+        int bytesPerSample = (encoding == 4) ? 4 : 2;
+        memcpy(output, input, num_frames * channels * bytesPerSample);
     }
 #endif
 }

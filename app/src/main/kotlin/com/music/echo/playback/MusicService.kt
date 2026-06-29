@@ -1088,20 +1088,9 @@ class MusicService :
         val eqProcessor = CustomEqualizerAudioProcessor()
         equalizerService.addAudioProcessor(eqProcessor)
 
-        val silenceProcessor = SilenceDetectorAudioProcessor { handleLongSilenceDetected() }
-        val normProcessor = NormalizationGainAudioProcessor()
-        val limiterProcessor = TruePeakLimiterAudioProcessor()
-
-        
-        runBlocking {
-            val skipSilence = dataStore.get(SkipSilenceKey, false)
-            val instantSkip = dataStore.get(SkipSilenceInstantKey, false)
-            silenceProcessor.instantModeEnabled = skipSilence && instantSkip
-        }
-
         val player = ExoPlayer.Builder(this)
             .setMediaSourceFactory(createMediaSourceFactory())
-            .setRenderersFactory(createRenderersFactory(eqProcessor, silenceProcessor, normProcessor, limiterProcessor))
+            .setRenderersFactory(createRenderersFactory(eqProcessor))
             // Start playback after buffering ~1s instead of the default 2.5s, so songs begin ~1.5s sooner
             // (the only start-latency lever we control; YouTube stream resolution is the rest). Keeps the
             // large min/max buffer for smooth playback once started.
@@ -3638,10 +3627,7 @@ class MusicService :
     }
 
     private fun createRenderersFactory(
-        eqProcessor: CustomEqualizerAudioProcessor,
-        silenceProcessor: SilenceDetectorAudioProcessor,
-        normProcessor: NormalizationGainAudioProcessor,
-        limiterProcessor: TruePeakLimiterAudioProcessor
+        eqProcessor: CustomEqualizerAudioProcessor
     ) =
         object : DefaultRenderersFactory(this) {
             override fun buildAudioSink(
@@ -3650,27 +3636,12 @@ class MusicService :
                 enableAudioTrackPlaybackParams: Boolean,
             ) = DefaultAudioSink
                 .Builder(this@MusicService)
-                .setEnableFloatOutput(enableFloatOutput)
+                .setEnableFloatOutput(true) // ALWAYS output Float for 32-bit pure path
                 .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
                 .setAudioProcessorChain(
                     DefaultAudioSink.DefaultAudioProcessorChain(
-
-                        arrayOf(
-                            // "Improve low quality" (declip + HF regen) on the raw signal; off by default.
-                            AudioEnhanceProcessor(),
-                            // Attenuate loud masters → headroom for everything downstream.
-                            normProcessor,
-                            eqProcessor,
-                            JrDspAudioProcessor(),
-                            // Loudness makeup (brings quiet tracks up, TIDAL-style) + 2× true-peak
-                            // limiter → loud and full, never clipping. Must be last gain stage.
-                            limiterProcessor,
-                            SpectrumAudioProcessor(),
-                            silenceProcessor,
-                        ),
-                        SilenceSkippingAudioProcessor(2_000_000, 20_000, 256),
-                        SonicAudioProcessor(),
-                    ),
+                        arrayOf(eqProcessor)
+                    )
                 ).build()
         }
 

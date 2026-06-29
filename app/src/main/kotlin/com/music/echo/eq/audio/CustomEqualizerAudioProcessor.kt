@@ -53,12 +53,8 @@ class CustomEqualizerAudioProcessor(private val licenseKey: String = "akloSTZUT1
         initSuperpowered(licenseKey, inputAudioFormat.sampleRate)
         isInitialized = true
         
-        // ALWAYS output 16-bit to prevent downstream sink processors (like SilenceSkippingAudioProcessor) from crashing on float
-        return AudioProcessor.AudioFormat(
-            inputAudioFormat.sampleRate,
-            inputAudioFormat.channelCount,
-            C.ENCODING_PCM_16BIT
-        )
+        // Output format is exactly the same as the input format (pure 32-bit float supported natively)
+        return inputAudioFormat
     }
 
     override fun queueInput(inputBuffer: ByteBuffer) {
@@ -68,8 +64,8 @@ class CustomEqualizerAudioProcessor(private val licenseKey: String = "akloSTZUT1
         val bytesPerSample = if (inputAudioFormat.encoding == C.ENCODING_PCM_FLOAT) 4 else 2
         val numFrames = remaining / (bytesPerSample * inputAudioFormat.channelCount)
         
-        // Output is always 16-bit (2 bytes per sample)
-        val outRemaining = numFrames * 2 * inputAudioFormat.channelCount
+        // Output size is identical to input size
+        val outRemaining = remaining
         val buffer = replaceOutputBuffer(outRemaining)
         
         if (isInitialized) {
