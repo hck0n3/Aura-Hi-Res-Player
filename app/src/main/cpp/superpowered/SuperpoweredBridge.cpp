@@ -9,6 +9,7 @@
 #include "Superpowered.h"
 #include "SuperpoweredFilter.h"
 #include "SuperpoweredSimple.h"
+#include "SuperpoweredLimiter.h"
 #else
 #define HAS_SUPERPOWERED 0
 #endif
@@ -21,6 +22,8 @@ static std::mutex eqMutex;
 
 #if HAS_SUPERPOWERED
 static std::vector<Superpowered::Filter*> filters;
+static Superpowered::Limiter* limiter = nullptr;
+static Superpowered::Filter* deEsser = nullptr;
 static unsigned int currentSamplerate = 44100;
 static float currentPreampMultiplier = 1.0f;
 static bool isSuperpoweredInitialized = false;
@@ -51,6 +54,21 @@ Java_iad1tya_echo_music_eq_audio_CustomEqualizerAudioProcessor_initSuperpowered(
         filter->enabled = false; // Disabled until configured
         filters.push_back(filter);
     }
+    
+    if (limiter) delete limiter;
+    limiter = new Superpowered::Limiter(samplerate);
+    limiter->ceilingDb = -1.0f;
+    limiter->thresholdDb = 0.0f;
+    limiter->releaseSec = 0.05f;
+    limiter->enabled = true;
+
+    if (deEsser) delete deEsser;
+    deEsser = new Superpowered::Filter(Superpowered::Filter::Parametric, samplerate);
+    deEsser->frequency = 6500.0f;
+    deEsser->octave = 0.5f;
+    deEsser->decibel = -4.0f;
+    deEsser->enabled = true;
+
     LOGI("Superpowered sample rate updated to %d Hz", samplerate);
 #else
     LOGE("Superpowered SDK headers not found! Please add them to cpp/superpowered_sdk");
@@ -105,6 +123,12 @@ Java_iad1tya_echo_music_eq_audio_CustomEqualizerAudioProcessor_processAudio(JNIE
         if (enabled) {
             std::lock_guard<std::mutex> lock(eqMutex);
             
+            // Apply De-Esser Notch Filter to tame OPUS harshness
+            if (deEsser && deEsser->enabled) {
+                if (channels == 1) deEsser->processMono(outFloat, outFloat, num_frames);
+                else deEsser->process(outFloat, outFloat, num_frames);
+            }
+
             // Apply preamp
             if (currentPreampMultiplier != 1.0f) {
                 for (int i = 0; i < num_frames * channels; ++i) {
@@ -122,7 +146,12 @@ Java_iad1tya_echo_music_eq_audio_CustomEqualizerAudioProcessor_processAudio(JNIE
                 }
             }
             
-            // Hard clip protection to prevent AudioTrack digital distortion wrap-around
+            // Apply Limiter at the end (strictly stereo)
+            if (limiter && limiter->enabled && channels == 2) {
+                limiter->process(outFloat, outFloat, num_frames);
+            }
+
+            // Hard clip protection to prevent AudioTrack digital distortion wrap-around for mono edge-cases
             for (int i = 0; i < num_frames * channels; ++i) {
                 if (outFloat[i] > 1.0f) outFloat[i] = 1.0f;
                 else if (outFloat[i] < -1.0f) outFloat[i] = -1.0f;
@@ -137,12 +166,26 @@ Java_iad1tya_echo_music_eq_audio_CustomEqualizerAudioProcessor_processAudio(JNIE
 
         if (enabled) {
             std::lock_guard<std::mutex> lock(eqMutex);
+            
+            // Apply De-Esser
+            if (deEsser && deEsser->enabled) {
+                if (channels == 1) deEsser->processMono(floatBuffer, floatBuffer, num_frames);
+                else deEsser->process(floatBuffer, floatBuffer, num_frames);
+            }
+
             for (auto* filter : filters) {
-                if (channels == 1) {
-                    filter->processMono(floatBuffer, floatBuffer, num_frames);
-                } else {
-                    filter->process(floatBuffer, floatBuffer, num_frames);
+                if (filter->enabled) {
+                    if (channels == 1) {
+                        filter->processMono(floatBuffer, floatBuffer, num_frames);
+                    } else {
+                        filter->process(floatBuffer, floatBuffer, num_frames);
+                    }
                 }
+            }
+            
+            // Apply Limiter
+            if (limiter && limiter->enabled && channels == 2) {
+                limiter->process(floatBuffer, floatBuffer, num_frames);
             }
         }
 
@@ -167,5 +210,8 @@ Java_iad1tya_echo_music_eq_audio_CustomEqualizerAudioProcessor_releaseSuperpower
         delete filter;
     }
     filters.clear();
+    
+    if (limiter) { delete limiter; limiter = nullptr; }
+    if (deEsser) { delete deEsser; deEsser = nullptr; }
 #endif
 }
