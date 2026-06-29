@@ -7,7 +7,7 @@ import com.music.paxsenix.models.SearchResult
 import iad1tya.echo.music.betterlyrics.TTMLParser
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
-import io.ktor.client.engine.cio.CIO
+import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.plugins.defaultRequest
@@ -46,7 +46,7 @@ object Paxsenix {
 
             Timber.d("Initializing Paxsenix with version: $appVersion")
 
-            client = HttpClient(CIO) {
+            client = HttpClient(OkHttp) {
                 install(HttpTimeout) {
                     requestTimeoutMillis = 5_000
                     connectTimeoutMillis = 4_000

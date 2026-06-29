@@ -69,7 +69,8 @@ class CustomEqualizerAudioProcessor(private val licenseKey: String = "akloSTZUT1
         val buffer = replaceOutputBuffer(outRemaining)
         
         if (isInitialized) {
-            processAudio(inputBuffer, buffer, numFrames, inputAudioFormat.encoding, inputAudioFormat.channelCount, enabled)
+            val inputSlice = inputBuffer.slice()
+            processAudio(inputSlice, buffer, numFrames, inputAudioFormat.encoding, inputAudioFormat.channelCount, enabled)
             // JNI writes directly to memory, so we must advance the ByteBuffer's position manually
             buffer.position(buffer.position() + outRemaining)
             inputBuffer.position(inputBuffer.position() + remaining)
