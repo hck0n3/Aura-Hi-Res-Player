@@ -20,36 +20,37 @@ class CustomEqualizerAudioProcessor(private val licenseKey: String = "akloSTZUT1
 
     private var isInitialized = false
     private var enabled = false
+    private var nativePtr: Long = 0L
 
-    private external fun initSuperpowered(licenseKey: String, sampleRate: Int)
-    private external fun setPreamp(preampDb: Float)
-    private external fun disableAllBands()
-    private external fun setEqBand(index: Int, frequency: Float, gainDb: Float, q: Float)
-    private external fun processAudio(inputBuffer: ByteBuffer, outputBuffer: ByteBuffer, numFrames: Int, encoding: Int, channels: Int, enabled: Boolean)
-    private external fun releaseSuperpowered()
+    private external fun initSuperpowered(licenseKey: String, sampleRate: Int): Long
+    private external fun setPreamp(ptr: Long, preampDb: Float)
+    private external fun disableAllBands(ptr: Long)
+    private external fun setEqBand(ptr: Long, index: Int, frequency: Float, gainDb: Float, q: Float)
+    private external fun processAudio(ptr: Long, inputBuffer: ByteBuffer, outputBuffer: ByteBuffer, numFrames: Int, encoding: Int, channels: Int, enabled: Boolean)
+    private external fun releaseSuperpowered(ptr: Long)
 
     fun isEnabled(): Boolean = enabled
 
     fun disable() {
         enabled = false
-        if (isInitialized) {
-            setPreamp(0f)
-            disableAllBands()
+        if (isInitialized && nativePtr != 0L) {
+            setPreamp(nativePtr, 0f)
+            disableAllBands(nativePtr)
         }
     }
 
     fun applyProfile(profile: ParametricEQ) {
         enabled = true
         currentProfile = profile
-        if (isInitialized) {
-            disableAllBands()
-            setPreamp(profile.preamp.toFloat())
+        if (isInitialized && nativePtr != 0L) {
+            disableAllBands(nativePtr)
+            setPreamp(nativePtr, profile.preamp.toFloat())
             
             // Combine manual bands and auto-correction bands
             val allBands = profile.autoBands + profile.bands
             allBands.forEachIndexed { index, band ->
                 if (band.enabled) {
-                    setEqBand(index, band.frequency.toFloat(), band.gain.toFloat(), band.q.toFloat())
+                    setEqBand(nativePtr, index, band.frequency.toFloat(), band.gain.toFloat(), band.q.toFloat())
                 }
             }
         }
@@ -61,8 +62,12 @@ class CustomEqualizerAudioProcessor(private val licenseKey: String = "akloSTZUT1
         if (inputAudioFormat.encoding != C.ENCODING_PCM_16BIT && inputAudioFormat.encoding != C.ENCODING_PCM_FLOAT) {
             throw UnhandledAudioFormatException(inputAudioFormat)
         }
-        initSuperpowered(licenseKey, inputAudioFormat.sampleRate)
-        isInitialized = true
+        
+        // Re-initialize if pointer was lost or not created
+        if (nativePtr == 0L) {
+            nativePtr = initSuperpowered(licenseKey, inputAudioFormat.sampleRate)
+        }
+        isInitialized = nativePtr != 0L
         
         // Restore profile if one was applied
         currentProfile?.let { applyProfile(it) }
@@ -82,9 +87,9 @@ class CustomEqualizerAudioProcessor(private val licenseKey: String = "akloSTZUT1
         val outRemaining = remaining
         val buffer = replaceOutputBuffer(outRemaining)
         
-        if (isInitialized) {
+        if (isInitialized && nativePtr != 0L) {
             val inputSlice = inputBuffer.slice()
-            processAudio(inputSlice, buffer, numFrames, inputAudioFormat.encoding, inputAudioFormat.channelCount, enabled)
+            processAudio(nativePtr, inputSlice, buffer, numFrames, inputAudioFormat.encoding, inputAudioFormat.channelCount, enabled)
             // JNI writes directly to memory, so we must advance the ByteBuffer's position manually
             buffer.position(buffer.position() + outRemaining)
             inputBuffer.position(inputBuffer.position() + remaining)
@@ -97,8 +102,9 @@ class CustomEqualizerAudioProcessor(private val licenseKey: String = "akloSTZUT1
     }
 
     override fun onReset() {
-        if (isInitialized) {
-            releaseSuperpowered()
+        if (isInitialized && nativePtr != 0L) {
+            releaseSuperpowered(nativePtr)
+            nativePtr = 0L
             isInitialized = false
         }
         super.onReset()

@@ -63,6 +63,7 @@ import java.time.ZoneOffset
 import java.util.Locale
 
 @Dao
+@RewriteQueriesToDropUnusedColumns
 interface DatabaseDao {
     @Transaction
     @Query("SELECT * FROM song WHERE inLibrary IS NOT NULL ORDER BY rowId")

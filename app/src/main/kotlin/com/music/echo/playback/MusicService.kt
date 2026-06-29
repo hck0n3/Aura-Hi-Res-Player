@@ -423,6 +423,7 @@ class MusicService :
     // AudioNormalization toggle mirrored into memory (collector in onCreate) so the crossfade pre-level needn't
     // block on a DataStore read either.
     @Volatile private var normalizationEnabledHint: Boolean = true
+    @Volatile private var audioOffloadHint: Boolean = false
     // The track id whose MEASURED loudness we've already committed to the gains + DB (so the one-shot
     // measurement-driven re-level fires at most ONCE per song, never re-levels twice). Null = none yet.
     @Volatile private var measuredAppliedForId: String? = null
@@ -468,27 +469,34 @@ class MusicService :
     // videoUrl = resolved muxed URL of the current video track (null while resolving → UI spinner).
     // videoModeMediaId = the track whose source is currently the video stream; videoModeOriginalUri
     // restores that track to its normal audio source.
-    @Volatile
-    private var videoModeMediaId: String? = null
-    private var videoModeOriginalUri: String? = null
-    // True when the current video-mode source is a MUXED podcast enclosure (already carries its own audio)
-    // → do NOT merge a 2nd audio source. False for YouTube (a video-ONLY HD stream that needs the merge).
-    @Volatile
-    private var videoModeIsMuxedPodcast = false
+    val playbackState = PlaybackStateManager()
+
+    private var videoModeMediaId: String?
+        get() = playbackState.videoModeMediaId
+        set(value) { playbackState.videoModeMediaId = value }
+
+    private var videoModeOriginalUri: String?
+        get() = playbackState.videoModeOriginalUri
+        set(value) { playbackState.videoModeOriginalUri = value }
+
+    private var videoModeIsMuxedPodcast: Boolean
+        get() = playbackState.videoModeIsMuxedPodcast
+        set(value) { playbackState.videoModeIsMuxedPodcast = value }
+
     private val videoUrlCache = HashMap<String, Pair<String, Long>>()
-    // Set once the user has used video this session → we then prefetch upcoming tracks' video URLs in the
-    // background so toggling/switching video is instant (big win on low-end devices), without wasting work
-    // for users who never open video.
-    @Volatile
-    private var userHasUsedVideo = false
-    // Mix/Radio active = the user started a radio from the current song (so the UI can highlight "Mix").
-    // Reset when they play a fresh queue.
-    private val _mixActive = MutableStateFlow(false)
-    val mixActive: kotlinx.coroutines.flow.StateFlow<Boolean> = _mixActive
-    private val _videoMode = MutableStateFlow(false)
-    val videoMode: kotlinx.coroutines.flow.StateFlow<Boolean> = _videoMode
-    private val _videoUrl = MutableStateFlow<String?>(null)
-    val videoUrl: kotlinx.coroutines.flow.StateFlow<String?> = _videoUrl.asStateFlow()
+
+    private var userHasUsedVideo: Boolean
+        get() = playbackState.userHasUsedVideo
+        set(value) { playbackState.userHasUsedVideo = value }
+
+    private val _mixActive get() = playbackState.mixActive
+    val mixActive: kotlinx.coroutines.flow.StateFlow<Boolean> get() = playbackState.mixActive
+
+    private val _videoMode get() = playbackState.videoMode
+    val videoMode: kotlinx.coroutines.flow.StateFlow<Boolean> get() = playbackState.videoMode
+
+    private val _videoUrl get() = playbackState.videoUrl
+    val videoUrl: kotlinx.coroutines.flow.StateFlow<String?> get() = playbackState.videoUrl.asStateFlow()
 
     private val preloadedVideoOriginalUris = mutableMapOf<String, String>()
 
@@ -955,6 +963,7 @@ class MusicService :
             if (chainActive) false else offloadPref
         }.distinctUntilChanged()
         .collectLatest(scope) { useOffload ->
+             audioOffloadHint = useOffload
              player.setOffloadEnabled(useOffload)
              secondaryPlayer?.setOffloadEnabled(useOffload)
         }
@@ -1101,9 +1110,6 @@ class MusicService :
         val player = ExoPlayer.Builder(this)
             .setMediaSourceFactory(createMediaSourceFactory())
             .setRenderersFactory(createRenderersFactory(silenceProcessor, eqProcessor, normProcessor, limiterProcessor))
-            // Start playback after buffering ~1s instead of the default 2.5s, so songs begin ~1.5s sooner
-            // (the only start-latency lever we control; YouTube stream resolution is the rest). Keeps the
-            // large min/max buffer for smooth playback once started.
             .setLoadControl(
                 DefaultLoadControl.Builder()
                     .setBufferDurationsMs(
@@ -1115,6 +1121,10 @@ class MusicService :
                         500,
                         DefaultLoadControl.DEFAULT_BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS,
                     )
+                    // Enforce a hard 32MB limit per player so that Hi-Res FLAC streams (which could easily
+                    // take 300MB+ for 10 minutes) don't trigger OutOfMemory crashes.
+                    .setTargetBufferBytes(32 * 1024 * 1024)
+                    .setPrioritizeTimeOverSizeThresholds(false)
                     .build(),
             )
             .setHandleAudioBecomingNoisy(true)
@@ -1137,16 +1147,10 @@ class MusicService :
         playerLimiterProcessors[player] = limiterProcessor
 
         player.apply {
-                runBlocking {
-                    val offload = dataStore.get(AudioOffload, false)
-                    // Audiophile Roadmap Phase 3 & 2: Re-enable Audio Offload support. 
-                    // This acts as a true Bit-Perfect bypass (hardware rendering) when enabled.
-                    setOffloadEnabled(offload)
-                    skipSilenceEnabled = false
-                }
+                setOffloadEnabled(audioOffloadHint)
+                skipSilenceEnabled = false
+                addListener(this@MusicService)
                 addAnalyticsListener(PlaybackStatsListener(false, this@MusicService))
-
-                
             }
         _playerFlow.value = player
         return player
@@ -1510,6 +1514,8 @@ class MusicService :
                 val shufflePlaylistFirst = dataStore.get(ShufflePlaylistFirstKey, false)
                 applyShuffleOrder(player.currentMediaItemIndex, player.mediaItemCount, shufflePlaylistFirst)
             }
+            
+            preloadUpcomingItems()
         }
     }
 
@@ -1863,6 +1869,8 @@ class MusicService :
                 player.setShuffleOrder(DefaultShuffleOrder(finalOrder, System.currentTimeMillis()))
             }
         }
+        
+        preloadUpcomingItems()
     }
 
     fun addToQueue(items: List<MediaItem>) {
@@ -1890,6 +1898,8 @@ class MusicService :
             applyShuffleOrder(player.currentMediaItemIndex, player.mediaItemCount, shufflePlaylistFirst)
         }
         player.prepare()
+        
+        preloadUpcomingItems()
     }
 
     fun toggleLibrary() {
@@ -4335,17 +4345,9 @@ class MusicService :
      *  3 = Exponential (quick): each track dominates its half, snappier handover.
      */
     private fun crossfadeGains(curve: Int, p: Float): Pair<Float, Float> {
-        val half = (Math.PI / 2.0).toFloat()
-        return when (curve) {
-            1 -> kotlin.math.sin(p * half) to kotlin.math.cos(p * half)
-            2 -> {
-                val s = p * p * (3f - 2f * p) // smoothstep
-                kotlin.math.sin(s * half) to kotlin.math.cos(s * half)
-            }
-            3 -> (p * p) to ((1f - p) * (1f - p))
-            else -> p to (1f - p)
-        }
+        return CrossfadeMath.getGains(curve, p)
     }
+
 
     private fun cleanupCrossfade() {
         // The crossfade is over: clear the surviving player's per-instance normalization overrides so it

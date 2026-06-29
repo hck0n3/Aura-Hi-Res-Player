@@ -40,6 +40,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.rounded.Add
@@ -387,16 +388,22 @@ private fun ColumnScope.EqMainContent(
 private fun EqCurvePreview(bandGains: FloatArray, enabled: Boolean) {
     val base = MaterialTheme.colorScheme.primary
     val curveColor = if (enabled) base else base.copy(alpha = 0.35f)
-    val fillColor = curveColor.copy(alpha = 0.15f)
     val gridColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
     val maxGain = iad1tya.echo.music.eq.data.EqConstants.GAIN_MAX
+    
+    // Animate color based on enablement
+    val animatedCurveColor by androidx.compose.animation.animateColorAsState(
+        targetValue = curveColor,
+        animationSpec = androidx.compose.animation.core.tween(durationMillis = 500)
+    )
+
     androidx.compose.foundation.Canvas(
         modifier = Modifier
             .fillMaxWidth()
-            .height(110.dp)
-            .clip(MaterialTheme.shapes.large)
-            .background(MaterialTheme.colorScheme.surfaceContainerLow)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .height(130.dp)
+            .clip(racra.compose.smooth_corner_rect_library.AbsoluteSmoothCornerShape(24.dp, 60))
+            .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.4f))
+            .padding(horizontal = 12.dp, vertical = 12.dp),
     ) {
         val w = size.width
         val h = size.height
@@ -407,9 +414,10 @@ private fun EqCurvePreview(bandGains: FloatArray, enabled: Boolean) {
             androidx.compose.ui.geometry.Offset(w, h * yFrac),
             1.dp.toPx(),
         )
-        line(0.5f, 0.6f)
-        line(0.12f, 0.25f)
-        line(0.88f, 0.25f)
+        // Background Grid
+        line(0.5f, 0.4f)
+        line(0.2f, 0.15f)
+        line(0.8f, 0.15f)
 
         val n = bandGains.size
         if (n < 2) return@Canvas
@@ -419,7 +427,7 @@ private fun EqCurvePreview(bandGains: FloatArray, enabled: Boolean) {
         val curve = androidx.compose.ui.graphics.Path()
         val fill = androidx.compose.ui.graphics.Path()
         curve.moveTo(px(0), py(bandGains[0]))
-        fill.moveTo(px(0), mid)
+        fill.moveTo(px(0), h)
         fill.lineTo(px(0), py(bandGains[0]))
         for (i in 1 until n) {
             val prevX = px(i - 1)
@@ -430,13 +438,36 @@ private fun EqCurvePreview(bandGains: FloatArray, enabled: Boolean) {
             curve.cubicTo(midX, prevY, midX, curY, curX, curY)
             fill.cubicTo(midX, prevY, midX, curY, curX, curY)
         }
-        fill.lineTo(px(n - 1), mid)
+        fill.lineTo(px(n - 1), h)
         fill.close()
-        drawPath(fill, fillColor)
+
+        // Gradient Fill
+        val fillBrush = androidx.compose.ui.graphics.Brush.verticalGradient(
+            colors = listOf(animatedCurveColor.copy(alpha = 0.35f), animatedCurveColor.copy(alpha = 0.0f)),
+            startY = 0f,
+            endY = h
+        )
+        drawPath(fill, fillBrush)
+
+        // Neon Glow (3 passes of blur)
+        if (enabled) {
+            drawPath(
+                curve,
+                animatedCurveColor.copy(alpha = 0.15f),
+                style = androidx.compose.ui.graphics.drawscope.Stroke(width = 16.dp.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round)
+            )
+            drawPath(
+                curve,
+                animatedCurveColor.copy(alpha = 0.3f),
+                style = androidx.compose.ui.graphics.drawscope.Stroke(width = 8.dp.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round)
+            )
+        }
+        
+        // Main Line
         drawPath(
             curve,
-            curveColor,
-            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.5.dp.toPx()),
+            animatedCurveColor,
+            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 3.dp.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round),
         )
     }
 }
@@ -520,21 +551,39 @@ private fun DeviceEqDialog(
 
 @Composable
 private fun PreampCard(preamp: Float, enabled: Boolean, onPreampChange: (Float) -> Unit, onCommit: () -> Unit) {
+    val cardColor = if (enabled) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceContainerLow
+    
+    val animatedBg by androidx.compose.animation.animateColorAsState(targetValue = cardColor)
+    
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(MaterialTheme.shapes.extraLarge)
-            .background(MaterialTheme.colorScheme.surfaceContainerLow)
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+            .clip(racra.compose.smooth_corner_rect_library.AbsoluteSmoothCornerShape(20.dp, 60))
+            .background(animatedBg)
+            .padding(horizontal = 20.dp, vertical = 18.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("Preamplificador", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text(
-                text = "%+.1f dB".format(preamp),
-                style = MaterialTheme.typography.labelMedium,
-                color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline,
+                text = "Preamplificador", 
+                style = MaterialTheme.typography.titleMedium, 
+                fontWeight = FontWeight.SemiBold,
+                color = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
             )
+            
+            // Premium Badge for dB
+            Box(
+                modifier = Modifier
+                    .clip(androidx.compose.foundation.shape.CircleShape)
+                    .background(if (enabled) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
+                    .padding(horizontal = 10.dp, vertical = 4.dp)
+            ) {
+                Text(
+                    text = "%+.1f dB".format(preamp),
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                    color = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
         Slider(
             value = preamp,
@@ -542,6 +591,11 @@ private fun PreampCard(preamp: Float, enabled: Boolean, onPreampChange: (Float) 
             onValueChangeFinished = onCommit,
             valueRange = EqConstants.PREAMP_MIN..EqConstants.PREAMP_MAX,
             enabled = enabled,
+            colors = SliderDefaults.colors(
+                thumbColor = MaterialTheme.colorScheme.primary,
+                activeTrackColor = MaterialTheme.colorScheme.primary,
+                inactiveTrackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
+            )
         )
     }
 }
@@ -558,12 +612,12 @@ private fun FactoryPresetRow(
         bandGains.indices.all { kotlin.math.abs(bandGains[it] - preset.gains[it]) < 0.5f }
     }
 
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text(
-            text = "Presets",
-            style = MaterialTheme.typography.titleSmall,
+            text = "PREAJUSTES AUDIÓFILOS",
+            style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.5.sp, fontWeight = FontWeight.Bold),
             color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.padding(start = 4.dp),
+            modifier = Modifier.padding(start = 4.dp, top = 8.dp),
         )
         Row(
             modifier = Modifier
@@ -573,22 +627,51 @@ private fun FactoryPresetRow(
         ) {
             FactoryPreset.entries.forEach { preset ->
                 val isSelected = selectedPreset == preset
+                val animatedScale by androidx.compose.animation.core.animateFloatAsState(targetValue = if (isSelected) 1.05f else 1f)
+                
                 FilterChip(
                     selected = isSelected,
                     onClick = { if (enabled) onPresetClick(preset) },
                     enabled = enabled,
-                    label = { Text(preset.displayName) },
+                    label = { 
+                        Text(
+                            text = preset.displayName, 
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                        ) 
+                    },
+                    modifier = Modifier.graphicsLayer {
+                        scaleX = animatedScale
+                        scaleY = animatedScale
+                    },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = MaterialTheme.colorScheme.primary,
+                        selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                    ),
+                    shape = androidx.compose.foundation.shape.CircleShape,
+                    border = if (isSelected) null else FilterChipDefaults.filterChipBorder(enabled, false)
                 )
             }
         }
         
-        AnimatedVisibility(visible = selectedPreset != null) {
-            Text(
-                text = selectedPreset?.description ?: "",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 4.dp, end = 4.dp, bottom = 4.dp)
-            )
+        AnimatedVisibility(
+            visible = selectedPreset != null,
+            enter = expandVertically() + fadeIn(),
+            exit = shrinkVertically() + fadeOut()
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 4.dp, vertical = 2.dp)
+                    .clip(racra.compose.smooth_corner_rect_library.AbsoluteSmoothCornerShape(12.dp, 60))
+                    .background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f))
+                    .padding(12.dp)
+            ) {
+                Text(
+                    text = selectedPreset?.description ?: "",
+                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                )
+            }
         }
     }
 }

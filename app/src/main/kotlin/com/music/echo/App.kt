@@ -535,12 +535,12 @@ class App : Application(), SingletonImageLoader.Factory {
             dataStore.data.map { it[MaxImageCacheSizeKey] ?: 2048 }.first()
         }
         return ImageLoader.Builder(this).apply {
-            crossfade(true)
-            allowHardware(Build.VERSION.SDK_INT >= Build.VERSION_CODES.P)
+            crossfade(250)
+            allowHardware(true)
 
             memoryCache {
                 MemoryCache.Builder()
-                    .maxSizePercent(context, 0.5)
+                    .maxSizePercent(context, 0.4)
                     .build()
             }
             if (cacheSize == 0) {

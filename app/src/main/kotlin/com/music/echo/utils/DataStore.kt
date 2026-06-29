@@ -25,7 +25,7 @@ import kotlin.properties.ReadOnlyProperty
 val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
 operator fun <T> DataStore<Preferences>.get(key: Preferences.Key<T>): T? =
-    runBlocking(Dispatchers.IO) {
+    runBlocking {
         data.first()[key]
     }
 
@@ -33,7 +33,7 @@ fun <T> DataStore<Preferences>.get(
     key: Preferences.Key<T>,
     defaultValue: T,
 ): T =
-    runBlocking(Dispatchers.IO) {
+    runBlocking {
         data.first()[key] ?: defaultValue
     }
 
