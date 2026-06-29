@@ -1130,11 +1130,9 @@ class MusicService :
         player.apply {
                 runBlocking {
                     val offload = dataStore.get(AudioOffload, false)
-                    // Audio Offload must be strictly disabled. When enabled, it bypasses the entire 32-bit
-                    // Superpowered AudioProcessor chain, breaks the progress bar and lyrics sync (because hardware
-                    // buffers seconds of audio without precise position reporting), and crashes/lags video PiP
-                    // mode transitions.
-                    setOffloadEnabled(false)
+                    // Audiophile Roadmap Phase 3 & 2: Re-enable Audio Offload support. 
+                    // This acts as a true Bit-Perfect bypass (hardware rendering) when enabled.
+                    setOffloadEnabled(offload)
                     skipSilenceEnabled = false
                 }
                 addAnalyticsListener(PlaybackStatsListener(false, this@MusicService))
