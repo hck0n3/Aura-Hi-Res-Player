@@ -587,7 +587,7 @@ private fun FactoryPresetRow(
                 text = selectedPreset?.description ?: "",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 4.dp, bottom = 4.dp)
+                modifier = Modifier.padding(start = 4.dp, end = 4.dp, bottom = 4.dp)
             )
         }
     }

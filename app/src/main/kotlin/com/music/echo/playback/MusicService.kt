@@ -488,7 +488,7 @@ class MusicService :
     private val _videoMode = MutableStateFlow(false)
     val videoMode: kotlinx.coroutines.flow.StateFlow<Boolean> = _videoMode
     private val _videoUrl = MutableStateFlow<String?>(null)
-    val videoUrl: StateFlow<String?> = _videoUrl.asStateFlow()
+    val videoUrl: kotlinx.coroutines.flow.StateFlow<String?> = _videoUrl.asStateFlow()
 
     private val preloadedVideoOriginalUris = mutableMapOf<String, String>()
 
@@ -1092,9 +1092,15 @@ class MusicService :
         val eqProcessor = CustomEqualizerAudioProcessor()
         equalizerService.addAudioProcessor(eqProcessor)
 
+        val silenceProcessor = iad1tya.echo.music.playback.audio.SilenceDetectorAudioProcessor {
+            Timber.tag(TAG).d("Silence skipped")
+        }
+        val normProcessor = iad1tya.echo.music.eq.audio.NormalizationGainAudioProcessor()
+        val limiterProcessor = iad1tya.echo.music.eq.audio.TruePeakLimiterAudioProcessor()
+
         val player = ExoPlayer.Builder(this)
             .setMediaSourceFactory(createMediaSourceFactory())
-            .setRenderersFactory(createRenderersFactory(eqProcessor))
+            .setRenderersFactory(createRenderersFactory(silenceProcessor, eqProcessor, normProcessor, limiterProcessor))
             // Start playback after buffering ~1s instead of the default 2.5s, so songs begin ~1.5s sooner
             // (the only start-latency lever we control; YouTube stream resolution is the rest). Keeps the
             // large min/max buffer for smooth playback once started.
@@ -3653,7 +3659,10 @@ class MusicService :
     }
 
     private fun createRenderersFactory(
-        eqProcessor: CustomEqualizerAudioProcessor
+        silenceProcessor: iad1tya.echo.music.playback.audio.SilenceDetectorAudioProcessor,
+        eqProcessor: CustomEqualizerAudioProcessor,
+        normProcessor: iad1tya.echo.music.eq.audio.NormalizationGainAudioProcessor,
+        limiterProcessor: iad1tya.echo.music.eq.audio.TruePeakLimiterAudioProcessor
     ) =
         object : DefaultRenderersFactory(this) {
             override fun buildAudioSink(
