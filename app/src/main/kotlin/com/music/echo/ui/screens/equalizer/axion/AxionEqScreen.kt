@@ -174,7 +174,6 @@ fun AxionEqScreen(
                             .padding(horizontal = 16.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
-                        DspEffectsColumn()
                         Spacer(modifier = Modifier.height(60.dp))
                     }
                 }
@@ -383,118 +382,6 @@ private fun ColumnScope.EqMainContent(
     Spacer(modifier = Modifier.height(60.dp))
 }
 
-/**
- * DSP effect switches surfaced into the EQ screen's wide (two-column) layout. These are the SAME
- * switches that live in SoundSettings — backed by the SAME DataStore keys via [rememberPreference] —
- * so toggling here reflects in SoundSettings and vice-versa. No new keys are invented and no ViewModel
- * is touched; this is purely an additive UI surface. Laid out inside a vertically-scrolling [Column]
- * supplied by the caller.
- */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun ColumnScope.DspEffectsColumn() {
-    val (auraSignature, onAuraSignatureChange) =
-        rememberPreference(iad1tya.echo.music.constants.AuraSignatureToneEnabledKey, defaultValue = true)
-    val (audioNormalization, onAudioNormalizationChange) =
-        rememberPreference(iad1tya.echo.music.constants.AudioNormalizationKey, defaultValue = true)
-    val (jrLoudness, onJrLoudnessChange) =
-        rememberPreference(iad1tya.echo.music.constants.JrLoudnessEnabledKey, defaultValue = false)
-    val (jrExciter, onJrExciterChange) =
-        rememberPreference(iad1tya.echo.music.constants.JrExciterEnabledKey, defaultValue = false)
-    val (jrExciterAmt, onJrExciterAmtChange) =
-        rememberPreference(iad1tya.echo.music.constants.JrExciterAmountKey, defaultValue = 0.15f)
-    val (jrStereo, onJrStereoChange) =
-        rememberPreference(iad1tya.echo.music.constants.JrStereoWidthEnabledKey, defaultValue = false)
-    val (jrStereoAmt, onJrStereoAmtChange) =
-        rememberPreference(iad1tya.echo.music.constants.JrStereoWidthKey, defaultValue = 1.0f)
-    val (jrDialogue, onJrDialogueChange) =
-        rememberPreference(iad1tya.echo.music.constants.JrDialogueEnabledKey, defaultValue = false)
-    val (jrDialogueAmt, onJrDialogueAmtChange) =
-        rememberPreference(iad1tya.echo.music.constants.JrDialogueAmountKey, defaultValue = 0.35f)
-
-    fun thumb(checked: Boolean): @Composable () -> Unit = {
-        Icon(
-            painter = painterResource(id = if (checked) R.drawable.check else R.drawable.close),
-            contentDescription = null,
-            modifier = Modifier.size(SwitchDefaults.IconSize),
-        )
-    }
-
-    Material3SettingsGroup(
-        title = "Efectos de sonido",
-        items = listOf(
-            Material3SettingsItem(
-                icon = painterResource(R.drawable.graphic_eq),
-                title = { Text("Firma Aura (cuerpo + aire)") },
-                description = { Text("Curva suave: un poco más de graves y de agudos para más cuerpo y sensación de calidad. Sin distorsionar.") },
-                trailingContent = {
-                    Switch(checked = auraSignature, onCheckedChange = onAuraSignatureChange, thumbContent = thumb(auraSignature))
-                },
-                onClick = { onAuraSignatureChange(!auraSignature) },
-            ),
-            Material3SettingsItem(
-                icon = painterResource(R.drawable.volume_up),
-                title = { Text(stringResource(R.string.audio_normalization)) },
-                description = { Text("Lleva todas las canciones al mismo volumen (−14 LUFS) con limitador true-peak; sube las flojas sin distorsionar.") },
-                trailingContent = {
-                    Switch(checked = audioNormalization, onCheckedChange = onAudioNormalizationChange, thumbContent = thumb(audioNormalization))
-                },
-                onClick = { onAudioNormalizationChange(!audioNormalization) },
-            ),
-            Material3SettingsItem(
-                icon = painterResource(R.drawable.graphic_eq),
-                title = { Text("Sonoridad") },
-                description = { Text("Realce de graves y agudos Fletcher-Munson para escuchar a bajo volumen") },
-                trailingContent = {
-                    Switch(checked = jrLoudness, onCheckedChange = onJrLoudnessChange, thumbContent = thumb(jrLoudness))
-                },
-                onClick = { onJrLoudnessChange(!jrLoudness) },
-            ),
-            Material3SettingsItem(
-                icon = painterResource(R.drawable.graphic_eq),
-                title = { Text("Excitador armónico") },
-                description = {
-                    Column {
-                        Text("Añade aire y presencia en altas frecuencias")
-                        if (jrExciter) Slider(value = jrExciterAmt, onValueChange = onJrExciterAmtChange, valueRange = 0f..1f)
-                    }
-                },
-                trailingContent = {
-                    Switch(checked = jrExciter, onCheckedChange = onJrExciterChange, thumbContent = thumb(jrExciter))
-                },
-                onClick = { onJrExciterChange(!jrExciter) },
-            ),
-            Material3SettingsItem(
-                icon = painterResource(R.drawable.graphic_eq),
-                title = { Text("Amplitud estéreo") },
-                description = {
-                    Column {
-                        Text("Imagen estéreo medio/lados (1.0 = original)")
-                        if (jrStereo) Slider(value = jrStereoAmt, onValueChange = onJrStereoAmtChange, valueRange = 0f..2f)
-                    }
-                },
-                trailingContent = {
-                    Switch(checked = jrStereo, onCheckedChange = onJrStereoChange, thumbContent = thumb(jrStereo))
-                },
-                onClick = { onJrStereoChange(!jrStereo) },
-            ),
-            Material3SettingsItem(
-                icon = painterResource(R.drawable.graphic_eq),
-                title = { Text("Realce de diálogos") },
-                description = {
-                    Column {
-                        Text("Mejora la claridad vocal (centro 300 Hz – 3 kHz)")
-                        if (jrDialogue) Slider(value = jrDialogueAmt, onValueChange = onJrDialogueAmtChange, valueRange = 0f..1f)
-                    }
-                },
-                trailingContent = {
-                    Switch(checked = jrDialogue, onCheckedChange = onJrDialogueChange, thumbContent = thumb(jrDialogue))
-                },
-                onClick = { onJrDialogueChange(!jrDialogue) },
-            ),
-        ),
-    )
-}
 
 @Composable
 private fun EqCurvePreview(bandGains: FloatArray, enabled: Boolean) {

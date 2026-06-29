@@ -1132,14 +1132,7 @@ class MusicService :
                     // Offload bypasses the ENTIRE AudioProcessor chain (true-peak limiter, normalization, EQ,
                     // JR DSP / Aura signature, AudioEnhance). Keep it off whenever any of those is active so the
                     // chain always runs (no silent EQ, no clipping). Signature is on by default → off by default.
-                    val chainActive = dataStore.get(CrossfadeEnabledKey, false) ||
-                        dataStore.get(AudioNormalizationKey, true) ||
-                        dataStore.get(iad1tya.echo.music.constants.AuraSignatureToneEnabledKey, true) ||
-                        dataStore.get(AudioEnhanceEnabledKey, false) ||
-                        dataStore.get(iad1tya.echo.music.constants.JrLoudnessEnabledKey, false) ||
-                        dataStore.get(iad1tya.echo.music.constants.JrExciterEnabledKey, false) ||
-                        dataStore.get(iad1tya.echo.music.constants.JrStereoWidthEnabledKey, false) ||
-                        dataStore.get(iad1tya.echo.music.constants.JrDialogueEnabledKey, false)
+                    val chainActive = dataStore.get(CrossfadeEnabledKey, false)
                     setOffloadEnabled(if (chainActive) false else offload)
                     skipSilenceEnabled = dataStore.get(SkipSilenceKey, false)
                 }
