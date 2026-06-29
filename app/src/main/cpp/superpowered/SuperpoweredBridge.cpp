@@ -22,14 +22,20 @@ static std::mutex eqMutex;
 #if HAS_SUPERPOWERED
 static std::vector<Superpowered::Filter*> filters;
 static unsigned int currentSamplerate = 44100;
+static float currentPreampMultiplier = 1.0f;
+static bool isSuperpoweredInitialized = false;
 #endif
 
 extern "C" JNIEXPORT void JNICALL
 Java_iad1tya_echo_music_eq_audio_CustomEqualizerAudioProcessor_initSuperpowered(JNIEnv *env, jobject thiz, jstring license_key, jint samplerate) {
 #if HAS_SUPERPOWERED
-    const char *key = env->GetStringUTFChars(license_key, 0);
-    Superpowered::Initialize(key);
-    env->ReleaseStringUTFChars(license_key, key);
+    if (!isSuperpoweredInitialized) {
+        const char *key = env->GetStringUTFChars(license_key, 0);
+        Superpowered::Initialize(key);
+        env->ReleaseStringUTFChars(license_key, key);
+        isSuperpoweredInitialized = true;
+        LOGI("Superpowered initialized globally.");
+    }
 
     std::lock_guard<std::mutex> lock(eqMutex);
     currentSamplerate = samplerate;
@@ -39,12 +45,13 @@ Java_iad1tya_echo_music_eq_audio_CustomEqualizerAudioProcessor_initSuperpowered(
     }
     filters.clear();
 
-    for (int i = 0; i < 10; ++i) {
+    // Allocate 64 filters to support 24-band EQ + AutoEQ bands
+    for (int i = 0; i < 64; ++i) {
         auto* filter = new Superpowered::Filter(Superpowered::Filter::Parametric, currentSamplerate);
-        filter->enabled = true;
+        filter->enabled = false; // Disabled until configured
         filters.push_back(filter);
     }
-    LOGI("Superpowered initialized successfully at %d Hz", samplerate);
+    LOGI("Superpowered sample rate updated to %d Hz", samplerate);
 #else
     LOGE("Superpowered SDK headers not found! Please add them to cpp/superpowered_sdk");
 #endif
@@ -58,6 +65,25 @@ Java_iad1tya_echo_music_eq_audio_CustomEqualizerAudioProcessor_setEqBand(JNIEnv 
         filters[index]->frequency = frequency;
         filters[index]->octave = Q;
         filters[index]->decibel = gainDb;
+        filters[index]->enabled = true;
+    }
+#endif
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_iad1tya_echo_music_eq_audio_CustomEqualizerAudioProcessor_setPreamp(JNIEnv *env, jobject thiz, jfloat preampDb) {
+#if HAS_SUPERPOWERED
+    std::lock_guard<std::mutex> lock(eqMutex);
+    currentPreampMultiplier = powf(10.0f, preampDb / 20.0f);
+#endif
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_iad1tya_echo_music_eq_audio_CustomEqualizerAudioProcessor_disableAllBands(JNIEnv *env, jobject thiz) {
+#if HAS_SUPERPOWERED
+    std::lock_guard<std::mutex> lock(eqMutex);
+    for (auto* filter : filters) {
+        filter->enabled = false;
     }
 #endif
 }
@@ -78,12 +104,28 @@ Java_iad1tya_echo_music_eq_audio_CustomEqualizerAudioProcessor_processAudio(JNIE
 
         if (enabled) {
             std::lock_guard<std::mutex> lock(eqMutex);
-            for (auto* filter : filters) {
-                if (channels == 1) {
-                    filter->processMono(outFloat, outFloat, num_frames);
-                } else {
-                    filter->process(outFloat, outFloat, num_frames);
+            
+            // Apply preamp
+            if (currentPreampMultiplier != 1.0f) {
+                for (int i = 0; i < num_frames * channels; ++i) {
+                    outFloat[i] *= currentPreampMultiplier;
                 }
+            }
+
+            for (auto* filter : filters) {
+                if (filter->enabled) {
+                    if (channels == 1) {
+                        filter->processMono(outFloat, outFloat, num_frames);
+                    } else {
+                        filter->process(outFloat, outFloat, num_frames);
+                    }
+                }
+            }
+            
+            // Hard clip protection to prevent AudioTrack digital distortion wrap-around
+            for (int i = 0; i < num_frames * channels; ++i) {
+                if (outFloat[i] > 1.0f) outFloat[i] = 1.0f;
+                else if (outFloat[i] < -1.0f) outFloat[i] = -1.0f;
             }
         }
     } else { // C.ENCODING_PCM_16BIT -> 16BIT

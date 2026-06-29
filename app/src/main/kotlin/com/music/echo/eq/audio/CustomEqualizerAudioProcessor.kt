@@ -22,6 +22,8 @@ class CustomEqualizerAudioProcessor(private val licenseKey: String = "akloSTZUT1
     private var enabled = false
 
     private external fun initSuperpowered(licenseKey: String, sampleRate: Int)
+    private external fun setPreamp(preampDb: Float)
+    private external fun disableAllBands()
     private external fun setEqBand(index: Int, frequency: Float, gainDb: Float, q: Float)
     private external fun processAudio(inputBuffer: ByteBuffer, outputBuffer: ByteBuffer, numFrames: Int, encoding: Int, channels: Int, enabled: Boolean)
     private external fun releaseSuperpowered()
@@ -31,20 +33,29 @@ class CustomEqualizerAudioProcessor(private val licenseKey: String = "akloSTZUT1
     fun disable() {
         enabled = false
         if (isInitialized) {
-            for (i in 0 until 10) {
-                setEqBand(i, 1000f, 0f, 1f)
-            }
+            setPreamp(0f)
+            disableAllBands()
         }
     }
 
     fun applyProfile(profile: ParametricEQ) {
         enabled = true
+        currentProfile = profile
         if (isInitialized) {
-            profile.bands.forEachIndexed { index, band ->
-                setEqBand(index, band.frequency.toFloat(), band.gain.toFloat(), band.q.toFloat())
+            disableAllBands()
+            setPreamp(profile.preamp.toFloat())
+            
+            // Combine manual bands and auto-correction bands
+            val allBands = profile.autoBands + profile.bands
+            allBands.forEachIndexed { index, band ->
+                if (band.enabled) {
+                    setEqBand(index, band.frequency.toFloat(), band.gain.toFloat(), band.q.toFloat())
+                }
             }
         }
     }
+
+    private var currentProfile: ParametricEQ? = null
 
     override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
         if (inputAudioFormat.encoding != C.ENCODING_PCM_16BIT && inputAudioFormat.encoding != C.ENCODING_PCM_FLOAT) {
@@ -52,6 +63,9 @@ class CustomEqualizerAudioProcessor(private val licenseKey: String = "akloSTZUT1
         }
         initSuperpowered(licenseKey, inputAudioFormat.sampleRate)
         isInitialized = true
+        
+        // Restore profile if one was applied
+        currentProfile?.let { applyProfile(it) }
         
         // Output format is exactly the same as the input format (pure 32-bit float supported natively)
         return inputAudioFormat
