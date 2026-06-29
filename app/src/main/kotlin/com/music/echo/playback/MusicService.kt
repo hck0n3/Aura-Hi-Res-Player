@@ -851,12 +851,13 @@ class MusicService :
         dataStore.data
             .map { (it[SkipSilenceKey] ?: false) to (it[SkipSilenceInstantKey] ?: false) }
             .distinctUntilChanged()
-            .collectLatest(scope) { (skipSilence, instantSkip) ->
-                player.skipSilenceEnabled = skipSilence
-                secondaryPlayer?.skipSilenceEnabled = skipSilence
+            .collectLatest(scope) { (_, _) ->
+                // Forced false: skipSilence interferes with Hi-Res playback and breaks video A/V sync.
+                player.skipSilenceEnabled = false
+                secondaryPlayer?.skipSilenceEnabled = false
 
-                val enableInstant = skipSilence && instantSkip
-                instantSilenceSkipEnabled.value = enableInstant
+                val enableInstant = false
+                instantSilenceSkipEnabled.value = false
 
                 playerSilenceProcessors.values.forEach { processor ->
                     processor.instantModeEnabled = enableInstant
@@ -1129,12 +1130,12 @@ class MusicService :
         player.apply {
                 runBlocking {
                     val offload = dataStore.get(AudioOffload, false)
-                    // Offload bypasses the ENTIRE AudioProcessor chain (true-peak limiter, normalization, EQ,
-                    // JR DSP / Aura signature, AudioEnhance). Keep it off whenever any of those is active so the
-                    // chain always runs (no silent EQ, no clipping). Signature is on by default → off by default.
-                    val chainActive = dataStore.get(CrossfadeEnabledKey, false)
-                    setOffloadEnabled(if (chainActive) false else offload)
-                    skipSilenceEnabled = dataStore.get(SkipSilenceKey, false)
+                    // Audio Offload must be strictly disabled. When enabled, it bypasses the entire 32-bit
+                    // Superpowered AudioProcessor chain, breaks the progress bar and lyrics sync (because hardware
+                    // buffers seconds of audio without precise position reporting), and crashes/lags video PiP
+                    // mode transitions.
+                    setOffloadEnabled(false)
+                    skipSilenceEnabled = false
                 }
                 addAnalyticsListener(PlaybackStatsListener(false, this@MusicService))
 

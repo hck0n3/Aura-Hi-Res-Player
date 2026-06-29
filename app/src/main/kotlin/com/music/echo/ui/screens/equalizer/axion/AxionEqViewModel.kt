@@ -31,9 +31,9 @@ fun buildEqBands(gainsDb: FloatArray, types: IntArray): List<ParametricEQBand> =
             frequency = freq,
             gain = gainsDb.getOrElse(i) { 0f }.toDouble(),
             q = EqConstants.Q,
-            filterType = when (types.getOrElse(i) { 0 }) {
-                1 -> FilterType.LSC
-                2 -> FilterType.HSC
+            filterType = when (i) {
+                0 -> FilterType.LSC
+                EqConstants.BAND_COUNT - 1 -> FilterType.HSC
                 else -> FilterType.PK
             },
             enabled = true,
@@ -46,20 +46,30 @@ fun buildEqBands(gainsDb: FloatArray, types: IntArray): List<ParametricEQBand> =
  */
 object PeqConstants {
     const val MIN_BANDS = 5
-    const val MAX_BANDS = 8
+    const val MAX_BANDS = 10
     const val FREQ_MIN = 20.0
     const val FREQ_MAX = 20000.0
     const val Q_MIN = 0.3
     const val Q_MAX = 10.0
     const val GAIN_MIN = -18.0
     const val GAIN_MAX = 18.0
-    const val Q_DEFAULT = 1.0
+    const val Q_DEFAULT = 1.414
 
-    /** Default 6-band PEQ — sensible full-range anchors, flat (0 dB), peak filters. */
-    val DEFAULT_FREQS = doubleArrayOf(60.0, 200.0, 600.0, 2000.0, 6000.0, 12000.0)
+    /** Default 10-band PEQ — perfectly matches graphic EQ anchors. */
+    val DEFAULT_FREQS = doubleArrayOf(31.5, 62.5, 125.0, 250.0, 500.0, 1000.0, 2000.0, 4000.0, 8000.0, 16000.0)
 
-    fun defaultBands(): List<ParametricEQBand> = DEFAULT_FREQS.map { f ->
-        ParametricEQBand(frequency = f, gain = 0.0, q = Q_DEFAULT, filterType = FilterType.PK, enabled = true)
+    fun defaultBands(): List<ParametricEQBand> = DEFAULT_FREQS.mapIndexed { i, f ->
+        ParametricEQBand(
+            frequency = f,
+            gain = 0.0,
+            q = Q_DEFAULT,
+            filterType = when (i) {
+                0 -> FilterType.LSC
+                EqConstants.BAND_COUNT - 1 -> FilterType.HSC
+                else -> FilterType.PK
+            },
+            enabled = true
+        )
     }
 }
 
