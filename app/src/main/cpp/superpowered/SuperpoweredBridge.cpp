@@ -39,6 +39,7 @@ static float currentDeEsserDb = 0.0f;
 static unsigned int currentSamplerate = 44100;
 static float currentPreampMultiplier = 1.0f;
 static bool isSuperpoweredInitialized = false;
+static int superpoweredInstanceCount = 0;
 #endif
 
 extern "C" JNIEXPORT void JNICALL
@@ -55,39 +56,42 @@ Java_iad1tya_echo_music_eq_audio_CustomEqualizerAudioProcessor_initSuperpowered(
     std::lock_guard<std::mutex> lock(eqMutex);
     currentSamplerate = samplerate;
 
-    for (auto* filter : filters) {
-        delete filter;
+    superpoweredInstanceCount++;
+    if (superpoweredInstanceCount == 1) {
+        for (auto* filter : filters) {
+            delete filter;
+        }
+        filters.clear();
+
+        // Allocate 64 filters to support 24-band EQ + AutoEQ bands
+        for (int i = 0; i < 64; ++i) {
+            auto* filter = new Superpowered::Filter(Superpowered::Filter::Parametric, currentSamplerate);
+            filter->enabled = false; // Disabled until configured
+            filters.push_back(filter);
+        }
+        
+        if (limiter) delete limiter;
+        limiter = new Superpowered::Limiter(samplerate);
+        limiter->ceilingDb = -1.0f;
+        limiter->thresholdDb = 0.0f;
+        limiter->releaseSec = 0.05f;
+        limiter->enabled = true;
+
+        if (deEsser) delete deEsser;
+        deEsser = new Superpowered::Filter(Superpowered::Filter::Parametric, samplerate);
+        deEsser->frequency = 6500.0f;
+        deEsser->octave = 0.5f;
+        deEsser->decibel = 0.0f; // Starts flat
+        deEsser->enabled = true;
+
+        if (deEsserDetector) delete deEsserDetector;
+        deEsserDetector = new Superpowered::Filter(Superpowered::Filter::Bandlimited_Bandpass, samplerate);
+        deEsserDetector->frequency = 6500.0f;
+        deEsserDetector->octave = 1.0f;
+        deEsserDetector->enabled = true;
+        
+        currentDeEsserDb = 0.0f;
     }
-    filters.clear();
-
-    // Allocate 64 filters to support 24-band EQ + AutoEQ bands
-    for (int i = 0; i < 64; ++i) {
-        auto* filter = new Superpowered::Filter(Superpowered::Filter::Parametric, currentSamplerate);
-        filter->enabled = false; // Disabled until configured
-        filters.push_back(filter);
-    }
-    
-    if (limiter) delete limiter;
-    limiter = new Superpowered::Limiter(samplerate);
-    limiter->ceilingDb = -1.0f;
-    limiter->thresholdDb = 0.0f;
-    limiter->releaseSec = 0.05f;
-    limiter->enabled = true;
-
-    if (deEsser) delete deEsser;
-    deEsser = new Superpowered::Filter(Superpowered::Filter::Parametric, samplerate);
-    deEsser->frequency = 6500.0f;
-    deEsser->octave = 0.5f;
-    deEsser->decibel = 0.0f; // Starts flat
-    deEsser->enabled = true;
-
-    if (deEsserDetector) delete deEsserDetector;
-    deEsserDetector = new Superpowered::Filter(Superpowered::Filter::Bandlimited_Bandpass, samplerate);
-    deEsserDetector->frequency = 6500.0f;
-    deEsserDetector->octave = 1.0f;
-    deEsserDetector->enabled = true;
-    
-    currentDeEsserDb = 0.0f;
 
     LOGI("Superpowered sample rate updated to %d Hz", samplerate);
 #else
@@ -230,13 +234,19 @@ extern "C" JNIEXPORT void JNICALL
 Java_iad1tya_echo_music_eq_audio_CustomEqualizerAudioProcessor_releaseSuperpowered(JNIEnv *env, jobject thiz) {
 #if HAS_SUPERPOWERED
     std::lock_guard<std::mutex> lock(eqMutex);
-    for (auto* filter : filters) {
-        delete filter;
+    if (superpoweredInstanceCount > 0) {
+        superpoweredInstanceCount--;
     }
-    filters.clear();
     
-    if (limiter) { delete limiter; limiter = nullptr; }
-    if (deEsser) { delete deEsser; deEsser = nullptr; }
-    if (deEsserDetector) { delete deEsserDetector; deEsserDetector = nullptr; }
+    if (superpoweredInstanceCount == 0) {
+        for (auto* filter : filters) {
+            delete filter;
+        }
+        filters.clear();
+        
+        if (limiter) { delete limiter; limiter = nullptr; }
+        if (deEsser) { delete deEsser; deEsser = nullptr; }
+        if (deEsserDetector) { delete deEsserDetector; deEsserDetector = nullptr; }
+    }
 #endif
 }

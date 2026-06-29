@@ -392,6 +392,7 @@ class MusicService :
     private val playerSilenceProcessors = HashMap<Player, SilenceDetectorAudioProcessor>()
     private val playerNormProcessors = HashMap<Player, NormalizationGainAudioProcessor>()
     private val playerLimiterProcessors = HashMap<Player, TruePeakLimiterAudioProcessor>()
+    private val playerEqProcessors = mutableMapOf<ExoPlayer, CustomEqualizerAudioProcessor>()
 
 
     private val instantSilenceSkipEnabled = MutableStateFlow(false)
@@ -487,7 +488,9 @@ class MusicService :
     private val _videoMode = MutableStateFlow(false)
     val videoMode: kotlinx.coroutines.flow.StateFlow<Boolean> = _videoMode
     private val _videoUrl = MutableStateFlow<String?>(null)
-    val videoUrl: kotlinx.coroutines.flow.StateFlow<String?> = _videoUrl
+    val videoUrl: StateFlow<String?> = _videoUrl.asStateFlow()
+
+    private val preloadedVideoOriginalUris = mutableMapOf<String, String>()
 
     
     private var currentMediaIdRetryCount = mutableMapOf<String, Int>()
@@ -701,7 +704,7 @@ class MusicService :
 
         scope.launch {
             combine(eqProfileRepository.activeProfile, eqProfileRepository.unsavedProfile) { active, unsaved ->
-                active ?: unsaved
+                unsaved ?: active
             }.collect { profile ->
                 if (profile != null) {
                     val result = equalizerService.applyProfile(profile)
@@ -1123,6 +1126,7 @@ class MusicService :
             .setDeviceVolumeControlEnabled(true)
             .build()
 
+        playerEqProcessors[player] = eqProcessor
         // playerSilenceProcessors[player] = silenceProcessor
         // playerNormProcessors[player] = normProcessor
         // playerLimiterProcessors[player] = limiterProcessor
@@ -3231,13 +3235,38 @@ class MusicService :
     /** Background-resolve a track's muxed video URL into the cache so a later toggle/switch is instant. */
     private fun prefetchVideoUrl(id: String?) {
         if (id.isNullOrEmpty() || id.isLocalMediaId() || id.startsWith("http", ignoreCase = true)) return
-        if (videoUrlCache[id]?.takeIf { it.second > System.currentTimeMillis() } != null) return
+        val cached = videoUrlCache[id]?.takeIf { it.second > System.currentTimeMillis() }?.first
+        if (cached != null) {
+            applyVideoUrlToNextItem(id, cached)
+            return
+        }
         scope.launch(Dispatchers.IO) {
             val url = runCatching { YTPlayerUtils.videoStreamUrl(id, connectivityManager) }.getOrNull()
             if (!url.isNullOrEmpty()) {
                 videoUrlCache[id] = url to (System.currentTimeMillis() + 5 * 60 * 1000L)
+                withContext(Dispatchers.Main) {
+                    applyVideoUrlToNextItem(id, url)
+                }
             }
         }
+    }
+
+    private fun applyVideoUrlToNextItem(id: String, url: String) {
+        if (!_videoMode.value) return
+        val idx = player.nextMediaItemIndex
+        if (idx == C.INDEX_UNSET) return
+        val item = runCatching { player.getMediaItemAt(idx) }.getOrNull() ?: return
+        if (item.mediaId != id) return
+        
+        val currentUri = item.localConfiguration?.uri?.toString()
+        if (currentUri == url) return
+        
+        if (currentUri != null && !preloadedVideoOriginalUris.containsKey(id)) {
+            preloadedVideoOriginalUris[id] = currentUri
+        }
+
+        player.replaceMediaItem(idx, item.buildUpon().setUri(url).build())
+        Timber.tag(TAG).d("Pre-applied video URL to next track: $id")
     }
 
     /** Resolve the current track's muxed video URL and swap its source in-place (audio is never stopped). */
@@ -3298,10 +3327,16 @@ class MusicService :
         val idx = player.currentMediaItemIndex
         val item = player.currentMediaItem ?: return
         if (item.mediaId != id) return
-        videoModeOriginalUri = item.localConfiguration?.uri?.toString()
+        videoModeOriginalUri = preloadedVideoOriginalUris.remove(id) ?: item.localConfiguration?.uri?.toString()
         videoModeMediaId = id
         // Podcast video is a single muxed stream (has audio) → don't merge a 2nd audio; YouTube is video-only.
         videoModeIsMuxedPodcast = isMuxed
+        
+        if (item.localConfiguration?.uri?.toString() == url) {
+            _videoUrl.value = url
+            return
+        }
+
         val pos = player.currentPosition
         val playing = player.playWhenReady
         player.replaceMediaItem(idx, item.buildUpon().setUri(url).build())
@@ -3815,18 +3850,30 @@ class MusicService :
         player.removeListener(sleepTimer)
         playerSilenceProcessors.remove(player)
         playerNormProcessors.remove(player); playerLimiterProcessors.remove(player)
+        playerEqProcessors.remove(player)?.let { eq -> equalizerService.removeAudioProcessor(eq) }
 
         // Release crossfade players (incl. any preloaded incoming one) so they don't leak.
         crossfadeJob?.cancel()
         crossfadeTriggerJob?.cancel()
         crossfadePreloadJob?.cancel()
-        secondaryPlayer?.let { playerNormProcessors.remove(it); playerLimiterProcessors.remove(it) }
+        secondaryPlayer?.let { 
+            playerNormProcessors.remove(it)
+            playerLimiterProcessors.remove(it)
+            playerEqProcessors.remove(it)?.let { eq -> equalizerService.removeAudioProcessor(eq) }
+        }
         runCatching { secondaryPlayer?.release() }
         secondaryPlayer = null
-        fadingPlayer?.let { playerNormProcessors.remove(it); playerLimiterProcessors.remove(it) }
+        fadingPlayer?.let { 
+            playerNormProcessors.remove(it)
+            playerLimiterProcessors.remove(it)
+            playerEqProcessors.remove(it)?.let { eq -> equalizerService.removeAudioProcessor(eq) }
+        }
         runCatching { fadingPlayer?.release() }
         fadingPlayer = null
-        playerNormProcessors.clear(); playerLimiterProcessors.clear()
+        playerNormProcessors.clear()
+        playerLimiterProcessors.clear()
+        playerEqProcessors.values.forEach { eq -> equalizerService.removeAudioProcessor(eq) }
+        playerEqProcessors.clear()
 
         player.release()
         discordUpdateJob?.cancel()
@@ -3985,10 +4032,12 @@ class MusicService :
         // skipped, seeked, queue changed) so we never leak a second ExoPlayer.
         if (!isCrossfading) {
             secondaryPlayer?.let {
+                playerNormProcessors.remove(it)
+                playerLimiterProcessors.remove(it)
+                playerEqProcessors.remove(it)?.let { eq -> equalizerService.removeAudioProcessor(eq) }
                 it.stop()
                 it.clearMediaItems()
                 it.release()
-                playerNormProcessors.remove(it); playerLimiterProcessors.remove(it)
             }
             secondaryPlayer = null
         }
@@ -4248,9 +4297,10 @@ class MusicService :
                         // The INCOMING (surviving) player ramps its headroom back to full (×1.0) as it reaches
                         // the end of the blend, so when the fade finishes it is ALREADY at full volume — no
                         // sudden ×0.75→×1.0 snap (the "de la nada sube de golpe" jump). The outgoing keeps the
-                        // flat crossfade headroom (it's fading to silence, its end level doesn't matter).
+                        // flat crossfade headroom (it's fading to silence, its end level doesn't matter), but smoothly
+                        // ramps down to it so there is no sudden 2.5dB drop at the start.
                         player.volume = startVolume * fadeIn * (xfHeadroom + (1f - xfHeadroom) * progress)
-                        fadingPlayer?.volume = startVolume * fadeOut * xfHeadroom
+                        fadingPlayer?.volume = startVolume * fadeOut * (1f - (1f - xfHeadroom) * progress)
                     } catch (e: Exception) { break }
 
                     delay(stepTime)
@@ -4302,7 +4352,11 @@ class MusicService :
         lastNormalizedHadLoudness = false
         fadingPlayer?.stop()
         fadingPlayer?.clearMediaItems()
-        fadingPlayer?.let { playerNormProcessors.remove(it); playerLimiterProcessors.remove(it) }
+        fadingPlayer?.let { 
+            playerNormProcessors.remove(it)
+            playerLimiterProcessors.remove(it)
+            playerEqProcessors.remove(it)?.let { eq -> equalizerService.removeAudioProcessor(eq) }
+        }
         fadingPlayer?.release()
         fadingPlayer = null
         isCrossfading = false

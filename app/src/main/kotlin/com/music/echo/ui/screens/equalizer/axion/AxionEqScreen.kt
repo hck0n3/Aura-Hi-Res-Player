@@ -553,6 +553,11 @@ private fun FactoryPresetRow(
     enabled: Boolean,
     onPresetClick: (FactoryPreset) -> Unit,
 ) {
+    val selectedPreset = FactoryPreset.entries.firstOrNull { preset ->
+        bandGains.size == preset.gains.size &&
+        bandGains.indices.all { kotlin.math.abs(bandGains[it] - preset.gains[it]) < 0.5f }
+    }
+
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
             text = "Presets",
@@ -567,15 +572,23 @@ private fun FactoryPresetRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             FactoryPreset.entries.forEach { preset ->
-                val selected = bandGains.size == preset.gains.size &&
-                    bandGains.indices.all { abs(bandGains[it] - preset.gains[it]) < 0.5f }
+                val isSelected = selectedPreset == preset
                 FilterChip(
-                    selected = selected,
+                    selected = isSelected,
                     onClick = { if (enabled) onPresetClick(preset) },
                     enabled = enabled,
                     label = { Text(preset.displayName) },
                 )
             }
+        }
+        
+        AnimatedVisibility(visible = selectedPreset != null) {
+            Text(
+                text = selectedPreset?.description ?: "",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 4.dp, bottom = 4.dp)
+            )
         }
     }
 }

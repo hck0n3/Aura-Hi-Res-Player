@@ -31,13 +31,29 @@ enum class EqBandType(val code: Int) {
     }
 }
 
-/** Factory EQ presets — gain curves copied verbatim from desktop native_dsp_ui.js. */
-enum class FactoryPreset(val displayName: String, val gains: FloatArray) {
-    FLAT("Flat", FloatArray(10) { 0f }),
-    BASS_BOOST("Bass Boost", floatArrayOf(6f, 4f, 2f, 0f, 0f, 0f, 0f, 0f, 0f, 0f)),
-    TREBLE_BOOST("Treble+", floatArrayOf(0f, 0f, 0f, 0f, 0f, 0f, 1f, 2f, 3f, 4f)),
-    V_SHAPE("V-Shape", floatArrayOf(5f, 3f, 1f, -1f, -2f, -1f, 1f, 2f, 3f, 4f)),
-    VOCAL("Vocal", floatArrayOf(-1f, 0f, 1f, 2f, 3f, 4f, 3f, 2f, 1f, 0f)),
-    CLASSICAL("Classical", floatArrayOf(3f, 2f, 1f, 0f, 0f, 0f, 1f, 1f, 2f, 2f)),
-    JAZZ("Jazz", floatArrayOf(2f, 1f, 0f, -1f, -1f, 0f, 1f, 2f, 1f, 0f)),
+/** Factory EQ presets — optimized for Audiophile/Superpowered sound signatures. */
+enum class FactoryPreset(val displayName: String, val description: String, val gains: FloatArray) {
+    FLAT("Bypass", "Sonido original sin alteraciones.", FloatArray(10) { 0f }),
+    
+    HARMAN_TARGET("Harman Target", "La curva perfecta de estudio. Sub-bajos presentes y agudos naturales.", floatArrayOf(4.5f, 3.5f, 1.0f, -0.5f, 0f, 0f, 1.5f, 2.5f, 1.0f, 0.5f)),
+    
+    AUDIOPHILE("Audiophile", "Referencia de monitor. Domestica frecuencias sucias, añade calidez y aire.", floatArrayOf(2.0f, 1.5f, -0.5f, -1.0f, 0f, 0f, 0.5f, 1.0f, 1.5f, 2.0f)),
+    
+    SPATIAL_AIR("Spatial & Air", "Maximiza la imagen estéreo y la separación de instrumentos.", floatArrayOf(1.0f, 0.5f, -1.5f, -2.0f, -1.0f, 0.5f, 1.0f, 1.5f, 2.5f, 4.0f)),
+    
+    SPARKLE_DETAIL("Sparkle & Detail", "Realza los micro-detalles sutiles sin generar fatiga auditiva.", floatArrayOf(0f, 0f, -0.5f, -1.0f, 0f, 0.5f, 1.5f, 2.5f, 3.5f, 4.5f)),
+    
+    DEEP_PUNCH("Deep Punch", "Bajos profundos y rápidos que no ahogan a los cantantes.", floatArrayOf(6.0f, 4.5f, 1.0f, -1.5f, -0.5f, 0f, 0.5f, 1.0f, 1.5f, 1.0f)),
+    
+    SUB_BASS_RUMBLE("Sub-Bass Rumble", "Solo levanta las frecuencias más profundas (31Hz). Ideal para cine y electrónica.", floatArrayOf(7.0f, 3.0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f)),
+    
+    VOCAL_PRESENCE("Vocal Presence", "Limpia el lodo musical y resalta específicamente la voz humana.", floatArrayOf(-1.0f, -0.5f, -1.5f, -0.5f, 1.0f, 3.0f, 3.5f, 2.0f, 0.5f, 0f)),
+    
+    ACOUSTIC_LIVE("Acoustic / Live", "Preserva el timbre orgánico de instrumentos como si fuera un concierto en vivo.", floatArrayOf(1.0f, 1.5f, 0.5f, -1.0f, 0f, 1.5f, 2.5f, 1.5f, 1.0f, 1.5f)),
+    
+    TUBE_AMP_WARMTH("Tube Amp", "Simula el sonido cálido y envolvente de un amplificador de tubos clásico.", floatArrayOf(-0.5f, 0.5f, 1.5f, 2.0f, 2.5f, 2.0f, 1.0f, 0.5f, -1.0f, -2.0f)),
+    
+    CINEMATIC_WARMTH("Cinematic Warmth", "Sonido denso y rico con agudos suaves. Para inmersión total.", floatArrayOf(3.0f, 2.5f, 2.0f, 1.0f, 0f, -0.5f, -1.0f, -1.0f, -1.5f, -2.0f)),
+    
+    LOW_VOLUME_LOUDNESS("Low Vol. Enhancer", "Compensa la pérdida de audición en bajos y agudos a volúmenes bajos.", floatArrayOf(5.0f, 4.0f, 2.0f, 0f, -1.0f, 0f, 1.0f, 2.5f, 3.5f, 4.0f))
 }
