@@ -42,12 +42,8 @@ jobs:
       - name: Create local.properties
         run: echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
 
-      - name: Create google-services.json (only if secret configured)
-        if: env.HAS_GOOGLE_SERVICES == 'true'
-        env:
-          HAS_GOOGLE_SERVICES: ${{ secrets.GOOGLE_SERVICES_JSON != '' }}
-          GOOGLE_SERVICES_CONTENT: ${{ secrets.GOOGLE_SERVICES_JSON }}
-        run: printf "%s" "$GOOGLE_SERVICES_CONTENT" > app/google-services.json
+      # No google-services.json step: the GMS debug variant builds fine without it (verified), and
+      # there is no GOOGLE_SERVICES_JSON secret — the step was dead and only produced an editor lint hint.
 
       - name: Ensure Android debug keystore (CI runner has none)
         run: |
