@@ -144,6 +144,11 @@ class EchoNotificationProvider(
     override fun handleCustomCommand(session: MediaSession, action: String, extras: Bundle): Boolean =
         defaultProvider.handleCustomCommand(session, action, extras)
 
+    // media3 1.10.x added this to MediaNotification.Provider. Delegate to the wrapped
+    // DefaultMediaNotificationProvider, which already holds the channel id + name.
+    override fun getNotificationChannelInfo(): MediaNotification.Provider.NotificationChannelInfo =
+        defaultProvider.getNotificationChannelInfo()
+
     private fun setShortCriticalTextSafely(builder: Notification.Builder, text: String) {
         try {
             val method = Notification.Builder::class.java.getMethod("setShortCriticalText", CharSequence::class.java)

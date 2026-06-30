@@ -20,6 +20,15 @@ class CrashHandler private constructor(
         Thread.getDefaultUncaughtExceptionHandler()
 
     override fun uncaughtException(thread: Thread, throwable: Throwable) {
+        // Backstop for the media3 ForegroundServiceStartNotAllowedException (e.g. thrown off the main
+        // looper, which MainThreadCrashGuard can't reach). It's non-fatal for a media app — the
+        // notification just couldn't go foreground — so report and survive instead of killing the process.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            throwable is android.app.ForegroundServiceStartNotAllowedException) {
+            reportException(throwable)
+            Timber.w(throwable, "Swallowed FGS-start-not-allowed in uncaught handler")
+            return
+        }
         try {
             val crashLog = buildCrashLog(throwable)
             Timber.e(throwable, "App crashed")

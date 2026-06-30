@@ -74,7 +74,13 @@ class App : Application(), SingletonImageLoader.Factory {
 
         CrashHandler.install(this)
 
-        
+        // Deterministic safety net for the media3 ForegroundServiceStartNotAllowedException crash (async
+        // notification-bitmap startForeground on the main looper, which the MediaSessionService.Listener
+        // doesn't catch). Installed right after CrashHandler so it's the inner guard for that one exception
+        // family, while everything else still reaches CrashHandler.
+        iad1tya.echo.music.utils.MainThreadCrashGuard.install()
+
+
         CipherDeobfuscator.initialize(this)
 
         if (iad1tya.echo.music.BuildConfig.DEBUG) {
