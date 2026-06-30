@@ -49,6 +49,17 @@ jobs:
           GOOGLE_SERVICES_CONTENT: ${{ secrets.GOOGLE_SERVICES_JSON }}
         run: printf "%s" "$GOOGLE_SERVICES_CONTENT" > app/google-services.json
 
+      - name: Ensure Android debug keystore (CI runner has none)
+        run: |
+          mkdir -p ~/.android
+          if [ ! -f ~/.android/debug.keystore ]; then
+            keytool -genkeypair -v -keystore ~/.android/debug.keystore \
+              -storepass android -keypass android -alias androiddebugkey \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+            echo "Generated standard Android debug keystore."
+          fi
+
       - name: Build arm64 GMS debug APK
         run: ./gradlew assembleArm64GmsDebug --console=plain
 
