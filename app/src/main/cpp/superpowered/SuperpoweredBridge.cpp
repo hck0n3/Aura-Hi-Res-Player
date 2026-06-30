@@ -181,9 +181,17 @@ Java_iad1tya_echo_music_eq_audio_CustomEqualizerAudioProcessor_processAudio(JNIE
     if (enabled && workBuffer && processor) {
         std::lock_guard<std::mutex> lock(processor->eqMutex);
         
-        // NOTE: the user preamp is applied at the OUTPUT stage (post-limiter, pre-soft-clip) further down —
-        // NOT here at the front. A front-of-chain preamp was cancelled by the -1 dBFS limiter + soft-clip on
-        // loud material, so a positive preamp had no audible effect (Bug F). See the output-makeup block below.
+        // Apply preamp at the FRONT of the chain. This is the correct, safe place: the limiter below uses
+        // thresholdDb = 0 dBFS (see SuperpoweredLimiter.h — it only limits signal that EXCEEDS the threshold),
+        // so a positive preamp raises the whole track's body (e.g. -14 LUFS -> -8 LUFS) and ONLY true peaks
+        // above 0 dBFS get caught — the boost stays audible while peaks stay safe under the -1 dBFS ceiling.
+        // (Applying preamp AFTER the limiter instead multiplied an already -1 dBFS-capped signal past full
+        // scale and slammed the soft-clip = over-volume/saturation. Never do that.)
+        if (processor->currentPreampMultiplier != 1.0f) {
+            for (int i = 0; i < num_frames * channels; ++i) {
+                workBuffer[i] *= processor->currentPreampMultiplier;
+            }
+        }
 
         // Apply EQ first
         for (auto* filter : processor->filters) {
@@ -225,16 +233,6 @@ Java_iad1tya_echo_music_eq_audio_CustomEqualizerAudioProcessor_processAudio(JNIE
         // Apply Limiter (strictly stereo)
         if (processor->limiter && processor->limiter->enabled && channels == 2) {
             processor->limiter->process(workBuffer, workBuffer, num_frames);
-        }
-
-        // User preamp as OUTPUT makeup gain (post-limiter) so a positive preamp is genuinely audible (Bug F).
-        // The limiter above still does its real job — protecting the EQ stage from band-boost clipping — while
-        // the soft-clip below stays as the final safety net, rounding any peaks this makeup pushes past 0.95
-        // instead of hard-clipping. Negative preamp simply attenuates cleanly (soft-clip never triggers).
-        if (processor->currentPreampMultiplier != 1.0f) {
-            for (int i = 0; i < num_frames * channels; ++i) {
-                workBuffer[i] *= processor->currentPreampMultiplier;
-            }
         }
 
         // Soft clip fallback (prevents harsh digital clipping)
