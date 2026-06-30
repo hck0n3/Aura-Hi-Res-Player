@@ -583,6 +583,10 @@ class MusicService :
                 putFloat("preampDb", profile.preamp.toFloat())
                 putBoolean("enabled", true)
             }.apply()
+            // Sync unsavedProfile too: the combine(activeProfile, unsavedProfile){ unsaved ?: active }
+            // observer prefers unsaved, so a stale unsaved (from a prior manual edit) would otherwise
+            // override this device profile the instant setActiveProfile fires.
+            eqProfileRepository.setUnsavedProfile(profile)
             eqProfileRepository.setActiveProfile(profile.id)
             equalizerService.applyProfile(profile)
             runCatching {

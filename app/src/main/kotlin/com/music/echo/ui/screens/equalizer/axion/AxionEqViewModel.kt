@@ -206,7 +206,12 @@ class AxionEqViewModel @Inject constructor(
         if (enabled) {
             applyToService()
         } else {
-            viewModelScope.launch { eqProfileRepository.setActiveProfile(null) }
+            // Clear BOTH profiles. Leaving a stale unsavedProfile would make the MusicService combine
+            // resolve unsaved ?: null = stale and re-apply it, so the EQ would not actually turn off.
+            viewModelScope.launch {
+                eqProfileRepository.setUnsavedProfile(null)
+                eqProfileRepository.setActiveProfile(null)
+            }
             equalizerService.disable()
         }
     }
@@ -328,6 +333,11 @@ class AxionEqViewModel @Inject constructor(
         if (_enabled.value) viewModelScope.launch {
             val p = liveProfile()
             eqProfileRepository.saveProfile(p)
+            // Keep unsavedProfile in sync with the committed edit. MusicService observes
+            // combine(activeProfile, unsavedProfile){ unsaved ?: active }; setActiveProfile below fires it,
+            // and a STALE unsaved (live drag bypasses setUnsavedProfile) would otherwise win and revert the
+            // edit. Syncing it means the combine re-applies the SAME coefficients (sonic no-op).
+            eqProfileRepository.setUnsavedProfile(p)
             eqProfileRepository.setActiveProfile(p.id)
         }
     }
@@ -559,6 +569,11 @@ class AxionEqViewModel @Inject constructor(
         if (_enabled.value) viewModelScope.launch {
             val p = liveProfile()
             eqProfileRepository.saveProfile(p)
+            // Keep unsavedProfile in sync with the committed edit. MusicService observes
+            // combine(activeProfile, unsavedProfile){ unsaved ?: active }; setActiveProfile below fires it,
+            // and a STALE unsaved (live drag bypasses setUnsavedProfile) would otherwise win and revert the
+            // edit. Syncing it means the combine re-applies the SAME coefficients (sonic no-op).
+            eqProfileRepository.setUnsavedProfile(p)
             eqProfileRepository.setActiveProfile(p.id)
         }
     }
