@@ -4440,6 +4440,13 @@ class MusicService :
         preloadJob?.cancel()
         preloadJob = scope.launch(kotlinx.coroutines.Dispatchers.IO) {
             if (!dataStore.get(iad1tya.echo.music.constants.PreloadNextSongEnabledKey, true)) return@launch
+            // Battery saver: skip the upcoming-track network preload (up to N parallel stream-URL + loudness +
+            // lyrics fetches per transition) when the user has Battery Saver on. Playback is unaffected — the
+            // next track just resolves on demand instead of ahead of time. Respects the OS power-save intent.
+            if ((getSystemService(POWER_SERVICE) as? android.os.PowerManager)?.isPowerSaveMode == true) {
+                Timber.tag(TAG).d("Preload skipped: battery saver (power save mode) is on")
+                return@launch
+            }
             val preloadLimit = dataStore.get(iad1tya.echo.music.constants.PreloadNextSongLimitKey, 1)
             val preloadLyrics = dataStore.get(iad1tya.echo.music.constants.PreloadLyricsEnabledKey, true)
             val upcomingMediaIds = upcomingAll.take(preloadLimit)
