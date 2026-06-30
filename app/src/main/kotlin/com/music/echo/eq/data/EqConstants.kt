@@ -55,5 +55,17 @@ enum class FactoryPreset(val displayName: String, val description: String, val g
     
     CINEMATIC_WARMTH("Cinematic Warmth", "Sonido denso y rico con agudos suaves. Para inmersión total.", floatArrayOf(3.0f, 2.5f, 2.0f, 1.0f, 0f, -0.5f, -1.0f, -1.0f, -1.5f, -2.0f)),
     
-    LOW_VOLUME_LOUDNESS("Low Vol. Enhancer", "Compensa la pérdida de audición en bajos y agudos a volúmenes bajos.", floatArrayOf(5.0f, 4.0f, 2.0f, 0f, -1.0f, 0f, 1.0f, 2.5f, 3.5f, 4.0f))
+    LOW_VOLUME_LOUDNESS("Low Vol. Enhancer", "Compensa la pérdida de audición en bajos y agudos a volúmenes bajos.", floatArrayOf(5.0f, 4.0f, 2.0f, 0f, -1.0f, 0f, 1.0f, 2.5f, 3.5f, 4.0f)),
+
+    REFERENCE_NEUTRAL("Reference Neutral", "Monitoreo de estudio plano. Mínima coloración, máxima fidelidad a la mezcla original.", floatArrayOf(0.5f, 0f, -0.5f, 0f, 0f, 0f, 0f, 0.5f, 0.5f, 1.0f)),
+
+    ANALOG_TAPE("Analog Tape", "Calidez de cinta magnética: graves redondos y agudos suavizados, sin fatiga.", floatArrayOf(2.0f, 2.5f, 1.5f, 0.5f, 0f, -0.5f, -0.5f, -1.0f, -1.5f, -2.0f)),
+
+    VINYL("Vinyl", "El cuerpo cálido y orgánico del vinilo, con agudos dulces y medios presentes.", floatArrayOf(1.5f, 2.0f, 1.0f, 0f, -0.5f, 0f, 0.5f, 0f, -1.0f, -1.5f)),
+
+    STUDIO_MIX("Studio Mix", "Balance de consola de mezcla: voces e instrumentos claros, graves controlados.", floatArrayOf(1.0f, 1.0f, 0f, -0.5f, 0f, 0.5f, 1.5f, 2.0f, 1.0f, 0.5f)),
+
+    CRYSTAL_CLEAR("Crystal Clear", "Transparencia total: máximo detalle y aire en los agudos, medios limpios.", floatArrayOf(0f, -0.5f, -1.0f, -1.0f, 0f, 1.0f, 2.0f, 3.0f, 3.5f, 4.0f)),
+
+    BASS_HEAD("Bass Head", "Graves masivos para amantes del bajo, sin enturbiar la voz.", floatArrayOf(7.0f, 6.0f, 4.0f, 1.5f, 0f, -0.5f, 0f, 0.5f, 1.0f, 1.0f))
 }
