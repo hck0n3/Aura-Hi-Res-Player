@@ -1669,8 +1669,26 @@ interface DatabaseDao {
     @Upsert
     suspend fun upsertReleases(items: List<ReleaseRadarItem>)
 
+    /**
+     * Insert only releases not already present (PK = artist|title dedupeKey). IGNORE means an
+     * already-known release keeps its ORIGINAL [ReleaseRadarItem.fetchedAt] — i.e. fetchedAt marks
+     * when a release was FIRST seen and is immutable across weekly re-fetches. This is what lets the
+     * weekly window ([releasesSince]) and prune ([pruneReleasesBefore]) behave like Spotify's
+     * Release Radar (only this week's drop is shown; older drops fall off).
+     */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertNewReleasesIgnore(items: List<ReleaseRadarItem>)
+
     @Query("SELECT * FROM release_radar ORDER BY releaseDate DESC")
     fun releasesByDateDesc(): Flow<List<ReleaseRadarItem>>
+
+    /** Releases first seen on/after [since] (the current Friday weekly-window start), newest first. */
+    @Query("SELECT * FROM release_radar WHERE fetchedAt >= :since ORDER BY releaseDate DESC")
+    fun releasesSince(since: LocalDateTime): Flow<List<ReleaseRadarItem>>
+
+    /** Drop releases first seen before [threshold] so previous weeks' drops disappear (Friday refresh). */
+    @Query("DELETE FROM release_radar WHERE fetchedAt < :threshold")
+    suspend fun pruneReleasesBefore(threshold: LocalDateTime)
 
     @Query("UPDATE release_radar SET seen = 1 WHERE seen = 0")
     suspend fun markAllReleasesSeen()

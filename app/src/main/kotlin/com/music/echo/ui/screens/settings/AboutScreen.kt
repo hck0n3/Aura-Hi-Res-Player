@@ -53,7 +53,7 @@ private val DISCOVERY_FEATURES = listOf(
     Feature(R.drawable.shuffle, "Smart Shuffle", "Mezcla ponderada por lo que de verdad te gusta, con memoria anti-repetición (no repite hasta agotar la lista)"),
     Feature(R.drawable.auto_awesome, "Listas con IA", "Crea playlists describiéndolas con una frase"),
     Feature(R.drawable.favorite_border, "Filtros y coherencia", "El filtro 'No me gusta' aparta canciones de las recomendaciones y mantiene la coherencia de género en autoplay/radio"),
-    Feature(R.drawable.music_history, "Release Radar", "Nuevos lanzamientos de los artistas que sigues"),
+    Feature(R.drawable.music_history, "Release Radar", "Estrenos de los artistas que sigues, renovados cada viernes al estilo Spotify: solo la tanda de la semana; las anteriores desaparecen"),
     Feature(R.drawable.library_music, "Discografía completa", "Catálogos de artista autocompletados, con secciones 'Aparece en' y 'Videos oficiales' (reproducibles)"),
     Feature(R.drawable.mic, "Reconocer canción", "Identifica la música que suena a tu alrededor, desde la app, el widget o un mosaico de Ajustes Rápidos"),
     Feature(R.drawable.ic_search_mic, "Búsqueda por voz", "Busca hablando, además de explorar Charts, Estados de ánimo y Géneros"),

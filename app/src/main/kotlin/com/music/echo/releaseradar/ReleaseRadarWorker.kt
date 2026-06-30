@@ -101,10 +101,14 @@ class ReleaseRadarWorker(
             val recent = ReleaseRadarMatching.dedupe(candidates).filter { it.date.year >= minYear }
             if (recent.isEmpty()) return@withContext Result.success()
 
-            // 4. Persist. Detect which ids are genuinely new so we only notify on fresh content.
+            // 4. Persist with FIRST-SEEN semantics. insertNewReleasesIgnore inserts only genuinely new
+            //    releases (IGNORE keeps an already-known release's original fetchedAt), so fetchedAt marks
+            //    when a release was FIRST seen. Then prune everything first seen before this week's window
+            //    so previous Fridays' drops fall off — Spotify Release-Radar behavior (only this week's drop).
             val items = recent.map { it.toEntity(artistIdFor(it, artists)) }
             val newCount = items.count { it.id !in existingIds }
-            database.upsertReleases(items)
+            database.insertNewReleasesIgnore(items)
+            database.pruneReleasesBefore(currentWindowStart())
 
             // 5. Notify on new (previously-unseen) items.
             if (newCount > 0) postNotification(newCount)
@@ -237,6 +241,17 @@ class ReleaseRadarWorker(
                 ExistingWorkPolicy.KEEP,
                 request,
             )
+        }
+
+        /**
+         * Start of the current weekly window: the most recent Friday at 00:00 local time. Releases first
+         * seen on/after this instant are "this week's drop"; anything older is pruned/hidden. The screen
+         * ([ReleaseRadarViewModel]) and the worker's prune step both key off this so they stay in sync.
+         */
+        fun currentWindowStart(): LocalDateTime {
+            return LocalDate.now()
+                .with(TemporalAdjusters.previousOrSame(java.time.DayOfWeek.FRIDAY))
+                .atStartOfDay()
         }
 
         /** Milliseconds from now until the next Friday at 08:00 local time. */

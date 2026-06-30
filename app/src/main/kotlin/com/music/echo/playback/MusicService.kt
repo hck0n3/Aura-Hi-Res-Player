@@ -1097,7 +1097,7 @@ class MusicService :
         }
     }
 
-    private fun createExoPlayer(): ExoPlayer {
+    private fun createExoPlayer(isSecondary: Boolean = false): ExoPlayer {
         val eqProcessor = CustomEqualizerAudioProcessor()
         equalizerService.addAudioProcessor(eqProcessor)
 
@@ -1114,17 +1114,22 @@ class MusicService :
                 DefaultLoadControl.Builder()
                     .setBufferDurationsMs(
                         DefaultLoadControl.DEFAULT_MIN_BUFFER_MS,
-                        // Expand max buffer from 50s to 10 minutes (600,000ms) to allow the app
-                        // to fully pre-download Hi-Res audio tracks to RAM/Cache, preventing
-                        // stutters when entering low-connectivity areas (subways, tunnels).
-                        600_000,
+                        // 120s max buffer: enough lead to ride out short connectivity drops without
+                        // the runaway RAM of the old 600s (10-min) value. The previous 600s combined with
+                        // a hard 32MB byte cap + prioritizeTimeOverSizeThresholds(false) starved the TIME
+                        // buffer for hi-res/FLAC (32MB << 50s of FLAC), so ExoPlayer reported "buffer full"
+                        // with an empty time buffer -> repeated STATE_BUFFERING micro-stalls (the audible
+                        // "trabones"/cuts on playback and at the crossfade swap, which the secondary player
+                        // inherited). Reconciled below.
+                        120_000,
                         500,
                         DefaultLoadControl.DEFAULT_BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS,
                     )
-                    // Enforce a hard 32MB limit per player so that Hi-Res FLAC streams (which could easily
-                    // take 300MB+ for 10 minutes) don't trigger OutOfMemory crashes.
-                    .setTargetBufferBytes(32 * 1024 * 1024)
-                    .setPrioritizeTimeOverSizeThresholds(false)
+                    // 64MB byte ceiling guards against OOM with multiple pre-loaded/crossfade players,
+                    // but prioritizeTimeOverSizeThresholds(true) lets the TIME buffer win so the min/max
+                    // duration is actually honored for hi-res streams instead of being clipped to the byte cap.
+                    .setTargetBufferBytes(64 * 1024 * 1024)
+                    .setPrioritizeTimeOverSizeThresholds(true)
                     .build(),
             )
             .setHandleAudioBecomingNoisy(true)
@@ -1149,10 +1154,19 @@ class MusicService :
         player.apply {
                 setOffloadEnabled(audioOffloadHint)
                 skipSilenceEnabled = false
-                addListener(this@MusicService)
+                // The crossfade secondary player must NOT register the service listener here: it gets its
+                // own secondaryPlayerListener in prepareSecondaryPlayer, and performCrossfadeSwap re-adds the
+                // service listener at swap time (nextPlayer.addListener(this)). Registering it here too
+                // double-registered the listener AND — via the _playerFlow publish below — pointed
+                // PlayerConnection at the empty, playWhenReady=false secondary mid-transition, flipping the
+                // play/pause button to "paused" until the swap landed. (Bug A-1)
+                if (!isSecondary) addListener(this@MusicService)
                 addAnalyticsListener(PlaybackStatsListener(false, this@MusicService))
             }
-        _playerFlow.value = player
+        // Only the ACTIVE player is published. Publishing the secondary (item-less, paused) made
+        // PlayerConnection.updateAttachedPlayer re-read playbackState/playWhenReady from an empty player.
+        // performCrossfadeSwap publishes the new active player itself once the swap completes.
+        if (!isSecondary) _playerFlow.value = player
         return player
     }
 
@@ -4161,7 +4175,7 @@ class MusicService :
         if (secondaryPlayer != null || isCrossfading) return
         if (targetIndex == C.INDEX_UNSET) return
 
-        val sec = createExoPlayer()
+        val sec = createExoPlayer(isSecondary = true)
         sec.addListener(secondaryPlayerListener)
 
         val items = mutableListOf<MediaItem>()
