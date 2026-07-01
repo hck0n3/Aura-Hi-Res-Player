@@ -45,6 +45,7 @@ private val PLAYBACK_FEATURES = listOf(
     Feature(R.drawable.lyrics, "Letras", "Sincronizadas (palabra por palabra), con traducción por IA y desenfoque estilo Apple Music"),
     Feature(R.drawable.queue_music, "Cola", "Cola inteligente y gestión de 'a continuación'; tocar una canción en el top de un artista o en el radar de novedades reproduce toda la lista como cola"),
     Feature(R.drawable.bluetooth, "Reproducción inteligente", "Pausa al silenciar y reanuda al reconectar Bluetooth; notificación enriquecida estilo Dynamic Island"),
+    Feature(R.drawable.skip_next, "Saltar partes sin música (SponsorBlock)", "Actívalo en Ajustes ▸ Reproductor y la app salta sola patrocinios, autopromo e interrupciones no musicales usando la base comunitaria SponsorBlock; nunca corta el audio real de la canción (no toca intros/outros)"),
     Feature(R.drawable.speed, "Rendimiento adaptable", "Detecta la gama del dispositivo por sus características (RAM, núcleos), no por la marca, y ajusta calidad/buffers de los efectos; el fondo animado (Canvas) se pausa con la app en segundo plano o la pantalla apagada, para no calentar ni gastar batería de más; en plegables, el ecualizador adopta un layout de dos columnas (EQ + efectos DSP) al desplegar"),
 )
 
@@ -61,7 +62,7 @@ private val DISCOVERY_FEATURES = listOf(
 
 private val LIBRARY_FEATURES = listOf(
     Feature(R.drawable.library_music, "Biblioteca y sincronización", "Sincroniza tu contenido de YouTube Music desde Ajustes ▸ Importar: me gusta, álbumes, artistas, suscripciones, playlists y biblioteca — manual o automática (diaria/semanal), con la hora de la última sincronización a la vista"),
-    Feature(R.drawable.download, "Importar y migrar", "Importa de YouTube, Spotify (listas, me gusta y álbumes) y Aura Hi-Res Player (.jrpl.json); migración selectiva propia (elige playlists, todos los artistas y/o todos los presets de EQ) que se importa de forma aditiva sin borrar nada; y re-sigue tus artistas de Spotify"),
+    Feature(R.drawable.download, "Importar y migrar", "Importa de YouTube, Spotify (listas, me gusta y álbumes — o pega el link de cualquier lista pública de Spotify, aunque no sea tuya) y Aura Hi-Res Player (.jrpl.json); migración selectiva propia (elige playlists, todos los artistas y/o todos los presets de EQ) que se importa de forma aditiva sin borrar nada; y re-sigue tus artistas de Spotify"),
     Feature(R.drawable.sync, "Sincronización programada", "Mantén al día YouTube Music (todo) y las listas de Spotify que elijas, con la frecuencia que prefieras (diaria o semanal)"),
     Feature(R.drawable.download, "Modo sin conexión", "Descarga canciones, álbumes y playlists con un gestor de descargas dedicado"),
     Feature(R.drawable.queue_music, "Podcasts", "Motor propio (Apple/iTunes + RSS) con progreso, fijado, búsqueda universal y reproducción por URL directa; en los podcasts que ofrecen video puedes elegir entre audio y video"),

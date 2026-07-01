@@ -82,7 +82,7 @@ fun WelcomeDialog(
                     WelcomeFeatureRow(
                         iconRes = R.drawable.login,
                         title = "Tu biblioteca: YouTube Music y Spotify",
-                        subtitle = "Sincroniza tu contenido de YouTube Music (me gusta, álbumes, artistas, suscripciones y playlists) desde Ajustes ▸ Importar —manual o programada (diaria/semanal), con la hora de la última sincronización a la vista— e importa tus listas, me gusta y álbumes de Spotify"
+                        subtitle = "Sincroniza tu contenido de YouTube Music (me gusta, álbumes, artistas, suscripciones y playlists) desde Ajustes ▸ Importar —manual o programada (diaria/semanal), con la hora de la última sincronización a la vista— e importa tus listas, me gusta y álbumes de Spotify, o pega el link de cualquier lista pública de Spotify para importarla"
                     )
                     WelcomeDivider()
                     WelcomeFeatureRow(
@@ -95,6 +95,12 @@ fun WelcomeDialog(
                         iconRes = R.drawable.tune,
                         title = "Audio de alta calidad",
                         subtitle = "Sonido sin pérdida (Qobuz/Saavn), normalización de volumen, visualizador de espectro y control de tempo/tono"
+                    )
+                    WelcomeDivider()
+                    WelcomeFeatureRow(
+                        iconRes = R.drawable.skip_next,
+                        title = "Saltar partes sin música (SponsorBlock)",
+                        subtitle = "Activa SponsorBlock en Ajustes ▸ Reproductor y la app salta sola patrocinios, autopromo y las partes sin música de los videos —usando la base comunitaria SponsorBlock—; nunca corta el audio real de la canción"
                     )
                     WelcomeDivider()
                     WelcomeFeatureRow(
