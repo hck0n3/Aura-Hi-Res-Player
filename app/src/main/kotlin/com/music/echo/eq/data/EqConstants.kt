@@ -43,9 +43,9 @@ enum class FactoryPreset(val displayName: String, val description: String, val g
 
     SPARKLE_DETAIL("Sparkle & Detail", "Realza los micro-detalles sutiles sin generar fatiga auditiva.", floatArrayOf(0f, 0f, -0.5f, -1.0f, 0f, 0.5f, 1.0f, 1.5f, 2.0f, 2.5f)),
     
-    DEEP_PUNCH("Deep Punch", "Bajos profundos y rápidos que no ahogan a los cantantes.", floatArrayOf(6.0f, 4.5f, 1.0f, -1.5f, -0.5f, 0f, 0.5f, 1.0f, 1.5f, 1.0f)),
-    
-    SUB_BASS_RUMBLE("Sub-Bass Rumble", "Solo levanta las frecuencias más profundas (31Hz). Ideal para cine y electrónica.", floatArrayOf(7.0f, 3.0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f)),
+    DEEP_PUNCH("Deep Punch", "Bajos profundos y rápidos que no ahogan a los cantantes.", floatArrayOf(5.0f, 4.0f, 1.0f, -1.5f, -0.5f, 0f, 0.5f, 1.0f, 1.5f, 1.0f)),
+
+    SUB_BASS_RUMBLE("Sub-Bass Rumble", "Solo levanta las frecuencias más profundas (31Hz). Ideal para cine y electrónica.", floatArrayOf(6.0f, 3.0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f)),
     
     VOCAL_PRESENCE("Vocal Presence", "Limpia el lodo musical y resalta específicamente la voz humana.", floatArrayOf(-1.0f, -0.5f, -1.5f, -0.5f, 1.0f, 3.0f, 3.5f, 2.0f, 0.5f, 0f)),
     
@@ -67,5 +67,5 @@ enum class FactoryPreset(val displayName: String, val description: String, val g
 
     CRYSTAL_CLEAR("Crystal Clear", "Transparencia total: máximo detalle y aire en los agudos, medios limpios.", floatArrayOf(0f, -0.5f, -1.0f, -1.0f, 0f, 1.0f, 1.5f, 2.5f, 2.5f, 3.0f)),
 
-    BASS_HEAD("Bass Head", "Graves masivos para amantes del bajo, sin enturbiar la voz.", floatArrayOf(7.0f, 6.0f, 4.0f, 1.5f, 0f, -0.5f, 0f, 0.5f, 1.0f, 1.0f))
+    BASS_HEAD("Bass Head", "Graves masivos para amantes del bajo, sin enturbiar la voz.", floatArrayOf(6.0f, 5.0f, 3.0f, 1.0f, 0f, -0.5f, 0f, 0.5f, 1.0f, 1.0f))
 }

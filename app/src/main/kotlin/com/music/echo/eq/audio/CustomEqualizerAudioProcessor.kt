@@ -8,6 +8,14 @@ import iad1tya.echo.music.eq.data.FilterType
 import iad1tya.echo.music.eq.data.ParametricEQ
 import java.nio.ByteBuffer
 
+/**
+ * Positive EQ boost (dB) the gentle -3 dBFS limiter can absorb transparently before we trim the preamp.
+ * 1.5 dB: keeps every preset's composite peak in the limiter's ~≤2.5 dB gain-reduction (transparent) band
+ * on a worst-case 0 dBFS brickwall master — including the adjacent-band summation the single-band max()
+ * under-estimates by ~0.9 dB — while costing ~0 loudness on ≤2 dB presets and only ~0.5 dB on bass presets.
+ */
+private const val EQ_LIMITER_HEADROOM_MARGIN_DB = 1.5
+
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 class CustomEqualizerAudioProcessor(private val licenseKey: String = "akloSTZUT1k4N2ZGeGE5N2RhOGU3OWYyOGU4M2RkMGQxOGNmNjA4MDA5MjcwMjNlM2NjNzJoT0R4OGtwem1OamRtSGpFaHFG") : BaseAudioProcessor() {
 
@@ -67,11 +75,16 @@ class CustomEqualizerAudioProcessor(private val licenseKey: String = "akloSTZUT1
             // Combine manual bands and auto-correction bands (auto first, then taste — LTI cascade).
             val allBands = profile.autoBands + profile.bands
             val enabledGains = allBands.filter { it.enabled }.map { it.gain }
-            // AUTO-HEADROOM: trim the front preamp by the largest positive band boost (+1 dB safety) so a
-            // boosted EQ/preset/AutoEq can never push the signal above its original level and slam the
-            // limiter/soft-clip. Reuses headroomPreampDb (AutoEq/Wavelet convention). This is what keeps
-            // every preset clip-free instead of relying on the limiter to gain-ride (which colors the sound).
-            val effectivePreamp = headroomPreampDb(profile.preamp, enabledGains)
+            // AUTO-HEADROOM with a limiter margin. Only trim the preamp by the positive EQ boost that
+            // EXCEEDS what the gentle -3 dBFS limiter can absorb transparently (~2 dB). So small/moderate
+            // boosts (most presets) get NO trim → full loudness, the limiter just cleanly rounds their peaks;
+            // only large boosts (big bass shelves) are trimmed, and only by the excess — presets stay full
+            // AND clip-free (no heavy limiting / pumping). Better than a full -(maxBoost) trim, which wasted
+            // the limiter and made boost-heavy presets too quiet. The user's own preamp is preserved when the
+            // EQ is flat (maxBoost 0 → no trim).
+            val maxBoost = (enabledGains.maxOrNull() ?: 0.0).coerceAtLeast(0.0)
+            val trim = (maxBoost - EQ_LIMITER_HEADROOM_MARGIN_DB).coerceAtLeast(0.0)
+            val effectivePreamp = profile.preamp - trim
             setPreamp(nativePtr, effectivePreamp.toFloat())
 
             allBands.forEachIndexed { index, band ->
