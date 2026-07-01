@@ -47,6 +47,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filter
@@ -861,6 +863,24 @@ class HomeViewModel @Inject constructor(
                 .drop(1) // ignore the current value; only react to onboarding completing this session
                 .filter { it }
                 .collect {
+                    snapshot = null
+                    runCatching { load() }.onFailure { reportException(it) }
+                }
+        }
+
+        // Rebuild Home in REAL TIME when the user's followed/subscribed artists change (e.g. they subscribe
+        // to artists after skipping onboarding). Previously following an artist only wrote bookmarkedAt and
+        // nothing re-read it, so Home stayed empty/stale until a pull-to-refresh or cold restart. React to
+        // the followed-artist id SET (distinctUntilChanged = only real follow/unfollow, not row re-emits);
+        // drop(1) skips the current value (the cold-start load already ran); collectLatest + delay debounces
+        // a burst of subscriptions into a single rebuild.
+        viewModelScope.launch(Dispatchers.IO) {
+            database.artistsBookmarkedByCreateDateAsc()
+                .map { artists -> artists.map { it.id }.toSet() }
+                .distinctUntilChanged()
+                .drop(1)
+                .collectLatest {
+                    delay(600)
                     snapshot = null
                     runCatching { load() }.onFailure { reportException(it) }
                 }
