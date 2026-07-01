@@ -121,7 +121,7 @@ class App : Application(), SingletonImageLoader.Factory {
         migrateThemeSystemDefault(settings)
         migrateThemeSystemOnlyV2(settings)
         migratePlaybackDefaults(settings)
-        migrateEqAudiophileDefault(settings)
+        migrateAudioDefaultsV2(settings)
         migrateLegacyIcon(settings)
         val locale = Locale.getDefault()
         val languageTag = locale.language
@@ -409,15 +409,26 @@ class App : Application(), SingletonImageLoader.Factory {
     }
 
     /**
-     * One-time: seed the EQ to ON + "Audiophile" preset + preamp 0.0 dB for EVERYONE on this update (a
-     * fidelity default the user requested). Writes BOTH the DSP source of truth — the injected
-     * [eqProfileRepository] @Singleton the MusicService observer collects — AND the EQ screen's own prefs
-     * mirror (echo_eq_prefs) so the equalizer UI shows it active on Audiophile with 0.0 dB preamp. Gated by
-     * its own flag; afterwards the user's own EQ choices win. Matches exactly the profile the EQ ViewModel
-     * builds when a user applies a preset (id "echo_tuning", GRAPHIC bands via buildEqBands).
+     * One-time (V2): force the requested AUDIO DEFAULTS for EVERYONE on this update — EQ ON + "Audiophile"
+     * preset + preamp 0.0 dB, crossfade 13 s equal-power ("transición suave"), and Safe Volume OFF. Gated by
+     * a FRESH key ([AudioDefaultsV2AppliedKey]) so it re-applies even for users whose per-feature flags were
+     * already set by the brief 0.6.75/0.6.76 builds (a single EqAudiophileDefault boolean could only ever
+     * apply ONCE per install, so bumping the version alone did NOT re-apply it — this new-key block fixes that).
+     * Afterwards the user's own choices win. The EQ write hits BOTH the DSP source of truth (the injected
+     * [eqProfileRepository] @Singleton the MusicService observer collects) AND the EQ screen's own prefs mirror
+     * (echo_eq_prefs), matching exactly the profile the EQ ViewModel builds (id "echo_tuning", GRAPHIC bands).
      */
-    private suspend fun migrateEqAudiophileDefault(settings: androidx.datastore.preferences.core.Preferences) {
-        if (settings[iad1tya.echo.music.constants.EqAudiophileDefaultAppliedKey] == true) return
+    private suspend fun migrateAudioDefaultsV2(settings: androidx.datastore.preferences.core.Preferences) {
+        if (settings[iad1tya.echo.music.constants.AudioDefaultsV2AppliedKey] == true) return
+        // Playback prefs (best-effort): crossfade 13 s equal-power ON, Safe Volume OFF.
+        runCatching {
+            dataStore.edit { p ->
+                p[iad1tya.echo.music.constants.CrossfadeEnabledKey] = true
+                p[iad1tya.echo.music.constants.CrossfadeDurationKey] = 13f
+                p[iad1tya.echo.music.constants.CrossfadeCurveKey] = 1
+                p[iad1tya.echo.music.constants.SafeVolumeEnabledKey] = false
+            }
+        }.onFailure { reportException(it) }
         val seeded = runCatching {
             val gains = iad1tya.echo.music.eq.data.FactoryPreset.AUDIOPHILE.gains
             val bands = iad1tya.echo.music.ui.screens.equalizer.axion.buildEqBands(gains, IntArray(gains.size))
@@ -447,7 +458,7 @@ class App : Application(), SingletonImageLoader.Factory {
         // (IO error / disk full / serialization) retries on the next launch instead of being silently
         // marked complete and leaving the EQ partially seeded forever.
         if (seeded) {
-            dataStore.edit { it[iad1tya.echo.music.constants.EqAudiophileDefaultAppliedKey] = true }
+            dataStore.edit { it[iad1tya.echo.music.constants.AudioDefaultsV2AppliedKey] = true }
         }
     }
 

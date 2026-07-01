@@ -80,6 +80,10 @@ val PlaybackDefaultsV4AppliedKey = booleanPreferencesKey("playback_defaults_v4_a
 val PlaybackDefaultsV5AppliedKey = booleanPreferencesKey("playback_defaults_v5_applied")
 // One-time: seed EQ ON + Audiophile preset + preamp 0.0 dB for everyone on this update.
 val EqAudiophileDefaultAppliedKey = booleanPreferencesKey("eq_audiophile_default_applied")
+// One-time (V2, FRESH key): re-apply ALL audio defaults — EQ Audiophile + preamp 0.0, crossfade 13s
+// equal-power, Safe Volume OFF — for EVERYONE, including users whose per-feature flags were already set by
+// the brief 0.6.75/0.6.76 builds (so the settings actually land on this update).
+val AudioDefaultsV2AppliedKey = booleanPreferencesKey("audio_defaults_v2_applied")
 // Set before the YouTube Music login (which cold-restarts the app) so that, after the restart, we
 // return the user to the YouTube Music sync selection screen — like Spotify's import flow.
 val OpenYtmSyncAfterLoginKey = booleanPreferencesKey("open_ytm_sync_after_login")

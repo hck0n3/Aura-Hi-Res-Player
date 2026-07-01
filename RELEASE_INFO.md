@@ -1,4 +1,4 @@
-# Aura Hi-Res Player 0.6.76 — Sonido a tu gusto por defecto, mejor descubrimiento y video más estable
+# Aura Hi-Res Player 0.6.77 — Sonido a tu gusto por defecto, mejor descubrimiento y video más estable
 
 ## 🎚️ Sonido listo desde el primer play
 - El ecualizador ahora viene **activo por defecto** en el preset **Audiophile** (preamp 0.0 dB): sonido de referencia, cálido y con aire, sin distorsión.
