@@ -30,4 +30,4 @@
 ## 👉 Para probar
 - Abrí Inicio y hacé "deslizar para actualizar": verás tus estantes de recomendación.
 - Reproducí un video y girá el teléfono; pasá a la siguiente canción con video.
-- Revisá Ajustes ▸ Sonido: el ecualizador en Audiophile, Volumen Seguro activo y la transición en 13 s.
+- Revisá Ajustes ▸ Sonido: el ecualizador en Audiophile y la transición suave en 13 s.
