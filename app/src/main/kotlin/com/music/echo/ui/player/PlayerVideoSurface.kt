@@ -79,6 +79,16 @@ fun PlayerVideoSurface(
             runCatching { playerConnection.player.setVideoTextureView(tv) }
         }
     }
+    // Re-assert the surface binding on every recomposition/attach. This is the fix for the "video freezes,
+    // audio keeps playing after rotating" bug: rotation swaps the player sheet between its landscape and
+    // portrait branches, which DESTROYS this TextureView and creates a NEW one whose SurfaceTexture isn't
+    // available yet at factory() time. With only the factory bind, the new surface was never re-pointed at
+    // the player once it became available. setVideoTextureView(sameTv) is a no-op in media3 when tv is already
+    // the current one (re-installs media3's own SurfaceTextureListener), so re-asserting here is cheap and safe.
+    val update = { tv: android.view.View ->
+        runCatching { playerConnection.player.setVideoTextureView(tv as TextureView) }
+        Unit
+    }
     val onRelease = { tv: android.view.View ->
         runCatching { playerConnection.player.clearVideoTextureView(tv as TextureView) }
         Unit
@@ -102,7 +112,7 @@ fun PlayerVideoSurface(
             } else {
                 Modifier.fillMaxHeight().aspectRatio(videoAspectRatio)
             }
-            AndroidView(modifier = surfaceMod, factory = factory, onRelease = onRelease)
+            AndroidView(modifier = surfaceMod, factory = factory, update = update, onRelease = onRelease)
         }
     } else {
         // FIT: the whole video is visible, letterboxed if the area's aspect differs.
@@ -110,6 +120,7 @@ fun PlayerVideoSurface(
             AndroidView(
                 modifier = Modifier.aspectRatio(videoAspectRatio),
                 factory = factory,
+                update = update,
                 onRelease = onRelease,
             )
         }

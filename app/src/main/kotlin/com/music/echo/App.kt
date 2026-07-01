@@ -61,6 +61,10 @@ class App : Application(), SingletonImageLoader.Factory {
     @ApplicationScope
     lateinit var applicationScope: CoroutineScope
 
+    // Same @Singleton the MusicService DSP observes — used once at startup to seed the default EQ tuning.
+    @Inject
+    lateinit var eqProfileRepository: iad1tya.echo.music.eq.data.EQProfileRepository
+
     override fun onCreate() {
         super.onCreate()
 
@@ -117,6 +121,7 @@ class App : Application(), SingletonImageLoader.Factory {
         migrateThemeSystemDefault(settings)
         migrateThemeSystemOnlyV2(settings)
         migratePlaybackDefaults(settings)
+        migrateEqAudiophileDefault(settings)
         migrateLegacyIcon(settings)
         val locale = Locale.getDefault()
         val languageTag = locale.language
@@ -286,13 +291,15 @@ class App : Application(), SingletonImageLoader.Factory {
             p[iad1tya.echo.music.constants.HideVideoSongsKey] = false
             p[iad1tya.echo.music.constants.HideYoutubeShortsKey] = true
 
-            // Playback defaults (user request): smooth transition (crossfade) ON at 10s with the EQUAL-POWER
+            // Playback defaults (user request): smooth transition (crossfade) ON at 13s with the EQUAL-POWER
             // curve (1 = constant loudness, no mid-blend volume dip), skip silence ON and instantly ON.
             p[iad1tya.echo.music.constants.CrossfadeEnabledKey] = true
-            p[iad1tya.echo.music.constants.CrossfadeDurationKey] = 10f
+            p[iad1tya.echo.music.constants.CrossfadeDurationKey] = 13f
             p[iad1tya.echo.music.constants.CrossfadeCurveKey] = 1
             p[iad1tya.echo.music.constants.SkipSilenceKey] = true
             p[iad1tya.echo.music.constants.SkipSilenceInstantKey] = true
+            // Safe Volume ON by default (tames loud masters; the user can turn it off in Sound settings).
+            p[iad1tya.echo.music.constants.SafeVolumeEnabledKey] = true
 
             // Appearance follows the SYSTEM theme by default (user request): light/dark AUTO and the
             // system dynamic (Material You) colour theme ON — so a fresh install has ONLY the automatic
@@ -392,7 +399,62 @@ class App : Application(), SingletonImageLoader.Factory {
                     p[iad1tya.echo.music.constants.CrossfadeCurveKey] = 1
                     p[iad1tya.echo.music.constants.PlaybackDefaultsV4AppliedKey] = true
                 }
+                // V5 — user request: 13 s "transición suave" (EQUAL-POWER curve). Re-apply ONCE for everyone.
+                if (settings[iad1tya.echo.music.constants.PlaybackDefaultsV5AppliedKey] != true) {
+                    p[iad1tya.echo.music.constants.CrossfadeEnabledKey] = true
+                    p[iad1tya.echo.music.constants.CrossfadeDurationKey] = 13f
+                    p[iad1tya.echo.music.constants.CrossfadeCurveKey] = 1
+                    p[iad1tya.echo.music.constants.PlaybackDefaultsV5AppliedKey] = true
+                }
+                // One-time: force Safe Volume ON for everyone on this update (afterwards their choice is respected).
+                if (settings[iad1tya.echo.music.constants.SafeVolumeDefaultAppliedKey] != true) {
+                    p[iad1tya.echo.music.constants.SafeVolumeEnabledKey] = true
+                    p[iad1tya.echo.music.constants.SafeVolumeDefaultAppliedKey] = true
+                }
             }
+        }
+    }
+
+    /**
+     * One-time: seed the EQ to ON + "Audiophile" preset + preamp 0.0 dB for EVERYONE on this update (a
+     * fidelity default the user requested). Writes BOTH the DSP source of truth — the injected
+     * [eqProfileRepository] @Singleton the MusicService observer collects — AND the EQ screen's own prefs
+     * mirror (echo_eq_prefs) so the equalizer UI shows it active on Audiophile with 0.0 dB preamp. Gated by
+     * its own flag; afterwards the user's own EQ choices win. Matches exactly the profile the EQ ViewModel
+     * builds when a user applies a preset (id "echo_tuning", GRAPHIC bands via buildEqBands).
+     */
+    private suspend fun migrateEqAudiophileDefault(settings: androidx.datastore.preferences.core.Preferences) {
+        if (settings[iad1tya.echo.music.constants.EqAudiophileDefaultAppliedKey] == true) return
+        val seeded = runCatching {
+            val gains = iad1tya.echo.music.eq.data.FactoryPreset.AUDIOPHILE.gains
+            val bands = iad1tya.echo.music.ui.screens.equalizer.axion.buildEqBands(gains, IntArray(gains.size))
+            val profile = iad1tya.echo.music.eq.data.SavedEQProfile(
+                id = "echo_tuning",
+                name = "JR Tuning",
+                deviceModel = "Equalizer",
+                bands = bands,
+                autoBands = emptyList(),
+                preamp = 0.0,
+                isCustom = false,
+                isActive = true,
+            )
+            // DSP source of truth: MusicService collects combine(activeProfile, unsavedProfile){ unsaved ?: active }.
+            eqProfileRepository.saveProfile(profile)
+            eqProfileRepository.setUnsavedProfile(profile)
+            eqProfileRepository.setActiveProfile(profile.id)
+            // EQ-screen UI mirror so the enabled toggle / sliders / preamp reflect the seeded Audiophile tuning.
+            val eqPrefs = applicationContext.getSharedPreferences("echo_eq_prefs", Context.MODE_PRIVATE)
+            val ed = eqPrefs.edit()
+            ed.putBoolean("enabled", true)
+            ed.putFloat("preampDb", 0.0f)
+            gains.forEachIndexed { i, g -> ed.putFloat("band24_$i", g) }
+            ed.apply()
+        }.onFailure { reportException(it) }.isSuccess
+        // Only mark the one-time migration done when the seed actually succeeded, so a transient failure
+        // (IO error / disk full / serialization) retries on the next launch instead of being silently
+        // marked complete and leaving the EQ partially seeded forever.
+        if (seeded) {
+            dataStore.edit { it[iad1tya.echo.music.constants.EqAudiophileDefaultAppliedKey] = true }
         }
     }
 

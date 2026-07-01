@@ -3380,38 +3380,21 @@ class MusicService :
     /** Background-resolve a track's muxed video URL into the cache so a later toggle/switch is instant. */
     private fun prefetchVideoUrl(id: String?) {
         if (id.isNullOrEmpty() || id.isLocalMediaId() || id.startsWith("http", ignoreCase = true)) return
-        val cached = videoUrlCache[id]?.takeIf { it.second > System.currentTimeMillis() }?.first
-        if (cached != null) {
-            applyVideoUrlToNextItem(id, cached)
-            return
-        }
+        // Already warm? Nothing to do.
+        if (videoUrlCache[id]?.takeIf { it.second > System.currentTimeMillis() }?.first != null) return
         scope.launch(Dispatchers.IO) {
             val url = runCatching { YTPlayerUtils.videoStreamUrl(id, connectivityManager) }.getOrNull()
             if (!url.isNullOrEmpty()) {
                 videoUrlCache[id] = url to (System.currentTimeMillis() + 5 * 60 * 1000L)
-                withContext(Dispatchers.Main) {
-                    applyVideoUrlToNextItem(id, url)
-                }
             }
         }
-    }
-
-    private fun applyVideoUrlToNextItem(id: String, url: String) {
-        if (!_videoMode.value) return
-        val idx = player.nextMediaItemIndex
-        if (idx == C.INDEX_UNSET) return
-        val item = runCatching { player.getMediaItemAt(idx) }.getOrNull() ?: return
-        if (item.mediaId != id) return
-        
-        val currentUri = item.localConfiguration?.uri?.toString()
-        if (currentUri == url) return
-        
-        if (currentUri != null && !preloadedVideoOriginalUris.containsKey(id)) {
-            preloadedVideoOriginalUris[id] = currentUri
-        }
-
-        player.replaceMediaItem(idx, item.buildUpon().setUri(url).build())
-        Timber.tag(TAG).d("Pre-applied video URL to next track: $id")
+        // We deliberately DON'T pre-swap the next item's URI to the video stream. Doing so desynced the
+        // source: while videoModeMediaId still pointed at the CURRENT track, the audio ResolvingDataSource
+        // (keyed on the media id) overrode the pre-swapped video URI back to the cached AUDIO stream, so the
+        // next item's source was built audio-only. swapToVideo then saw uri == url and returned WITHOUT a
+        // prepare() → blank/frozen video with audio playing on the next song. We now only WARM videoUrlCache;
+        // the real swap (replaceMediaItem + prepare → video source) happens in swapToVideo at the transition,
+        // which is fast and adds NO extra network request because the URL is already cached.
     }
 
     /** Resolve the current track's muxed video URL and swap its source in-place (audio is never stopped). */

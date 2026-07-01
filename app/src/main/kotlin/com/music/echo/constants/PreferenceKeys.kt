@@ -76,6 +76,12 @@ val PlaybackDefaultsV2AppliedKey = booleanPreferencesKey("playback_defaults_v2_a
 val PlaybackDefaultsV3AppliedKey = booleanPreferencesKey("playback_defaults_v3_applied")
 // v4: crossfade duration 10s, keep equal-power curve (user chose constant-volume over strict linear).
 val PlaybackDefaultsV4AppliedKey = booleanPreferencesKey("playback_defaults_v4_applied")
+// v5: crossfade duration 13s, equal-power ("transición suave") curve. Re-applied once on this update.
+val PlaybackDefaultsV5AppliedKey = booleanPreferencesKey("playback_defaults_v5_applied")
+// One-time: force Safe Volume ON for everyone on this update (afterwards the user's choice is respected).
+val SafeVolumeDefaultAppliedKey = booleanPreferencesKey("safe_volume_default_applied")
+// One-time: seed EQ ON + Audiophile preset + preamp 0.0 dB for everyone on this update.
+val EqAudiophileDefaultAppliedKey = booleanPreferencesKey("eq_audiophile_default_applied")
 // Set before the YouTube Music login (which cold-restarts the app) so that, after the restart, we
 // return the user to the YouTube Music sync selection screen — like Spotify's import flow.
 val OpenYtmSyncAfterLoginKey = booleanPreferencesKey("open_ytm_sync_after_login")
@@ -207,8 +213,8 @@ val PreventDuplicateTracksInQueueKey = booleanPreferencesKey("preventDuplicateTr
 val CrossfadeEnabledKey = booleanPreferencesKey("crossfadeEnabled")
 val CrossfadeDurationKey = floatPreferencesKey("crossfadeDuration")
 val CrossfadeGaplessKey = booleanPreferencesKey("crossfadeGapless")
-// Transition curve: 0 = Smooth/equal-power (default, no volume dip), 1 = Linear, 2 = Long S-curve,
-// 3 = Exponential (quick).
+// Transition curve: 0 = Linear, 1 = Smooth/equal-power (default, no volume dip), 2 = Long S-curve,
+// 3 = Exponential (quick). (Matches CrossfadeMath.getGains + the PlayerSettings labels.)
 val CrossfadeCurveKey = intPreferencesKey("crossfadeCurve")
 
 
