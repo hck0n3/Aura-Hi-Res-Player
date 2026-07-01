@@ -192,6 +192,10 @@ val ShuffleModeKey = booleanPreferencesKey("shuffleMode")
 val SkipSilenceKey = booleanPreferencesKey("skipSilence")
 val SkipSilenceInstantKey = booleanPreferencesKey("skipSilenceInstant")
 val AudioNormalizationKey = booleanPreferencesKey("audioNormalization")
+// Opt-in "Safe Volume" (default OFF so bit-perfect playback stays the default): brings loud masters
+// DOWN toward a reference (attenuate-only) + a gentle limiter, applied in the live float Superpowered
+// EQ processor, so loud tracks don't blast at full native level. Does not break Hi-Res output.
+val SafeVolumeEnabledKey = booleanPreferencesKey("safeVolume")
 val AutoLoadMoreKey = booleanPreferencesKey("autoLoadMore")
 val DisableLoadMoreWhenRepeatAllKey = booleanPreferencesKey("disableLoadMoreWhenRepeatAll")
 val AutoDownloadOnLikeKey = booleanPreferencesKey("autoDownloadOnLike")

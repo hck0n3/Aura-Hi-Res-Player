@@ -28,6 +28,7 @@ import iad1tya.echo.music.R
 import iad1tya.echo.music.constants.AudioEnhanceEnabledKey
 import iad1tya.echo.music.constants.AudioNormalizationKey
 import iad1tya.echo.music.constants.AuraSignatureToneEnabledKey
+import iad1tya.echo.music.constants.SafeVolumeEnabledKey
 import iad1tya.echo.music.constants.SpectrumVisualizerEnabledKey
 import iad1tya.echo.music.ui.component.Material3SettingsGroup
 import iad1tya.echo.music.ui.component.Material3SettingsItem
@@ -82,6 +83,32 @@ fun SoundSettings(
         )
 
         Spacer(Modifier.height(20.dp))
+
+        // ── Volumen ──
+        val (safeVolume, onSafeVolumeChange) = rememberPreference(SafeVolumeEnabledKey, defaultValue = false)
+        Material3SettingsGroup(
+            title = "Volumen",
+            items = listOf(
+                Material3SettingsItem(
+                    icon = painterResource(R.drawable.volume_up),
+                    title = { Text("Volumen seguro") },
+                    description = {
+                        Text(
+                            "Baja los temas muy fuertes a un nivel parejo y agrega un limitador suave, " +
+                                "para que no distorsionen a todo volumen. Apagado = reproducción bit-perfect Hi-Res (por defecto)."
+                        )
+                    },
+                    trailingContent = {
+                        Switch(
+                            checked = safeVolume,
+                            onCheckedChange = onSafeVolumeChange,
+                            thumbContent = thumb(safeVolume),
+                        )
+                    },
+                    onClick = { onSafeVolumeChange(!safeVolume) },
+                ),
+            ),
+        )
 
         Spacer(Modifier.height(27.dp))
     }

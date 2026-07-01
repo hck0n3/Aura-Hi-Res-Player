@@ -80,6 +80,7 @@ import iad1tya.echo.music.MainActivity
 import iad1tya.echo.music.R
 import iad1tya.echo.music.constants.AudioEnhanceEnabledKey
 import iad1tya.echo.music.constants.AudioNormalizationKey
+import iad1tya.echo.music.constants.SafeVolumeEnabledKey
 import iad1tya.echo.music.constants.AudioOffload
 import iad1tya.echo.music.constants.AudioQualityKey
 import iad1tya.echo.music.constants.AutoDownloadOnLikeKey
@@ -904,6 +905,14 @@ class MusicService :
         }.collectLatest(scope) { (format, normalizeAudio) ->
             normalizationEnabledHint = normalizeAudio // mirror to memory for the crossfade pre-level (Fix B)
             setupLoudnessEnhancer()
+        }
+
+        // Re-apply when the Safe Volume toggle changes so it takes effect live (mid-song), not just next track.
+        scope.launch {
+            dataStore.data
+                .map { it[SafeVolumeEnabledKey] ?: false }
+                .distinctUntilChanged()
+                .collect { setupLoudnessEnhancer() }
         }
 
         dataStore.data
@@ -2053,8 +2062,12 @@ class MusicService :
                 val normalizeAudio = withContext(Dispatchers.IO) {
                     dataStore.data.map { it[AudioNormalizationKey] ?: true }.first()
                 }
+                // Safe Volume (opt-in, default off): drives the live EQ processor's attenuate-only gain.
+                val safeVol = withContext(Dispatchers.IO) {
+                    dataStore.data.map { it[SafeVolumeEnabledKey] ?: false }.first()
+                }
 
-                if (normalizeAudio && currentMediaId != null) {
+                if ((normalizeAudio || safeVol) && currentMediaId != null) {
                     val format = withContext(Dispatchers.IO) {
                         database.format(currentMediaId).first()
                     }
@@ -2103,6 +2116,8 @@ class MusicService :
                             NormalizationGainAudioProcessor.gain = lastAppliedGain
                             TruePeakLimiterAudioProcessor.loudnessMakeup = lastAppliedMakeup
                             loudnessEnhancer?.enabled = false
+                            // Safe Volume (opt-in): re-assert the attenuate-only gain on the live EQ processor.
+                            playerEqProcessors[player]?.applySafeVolume(safeVol, if (safeVol) lastAppliedGain else 1f)
                         }
                         return@launch
                     }
@@ -2117,6 +2132,9 @@ class MusicService :
                         NormalizationGainAudioProcessor.gain = targetGain
                         TruePeakLimiterAudioProcessor.loudnessMakeup = targetMakeup
                         loudnessEnhancer?.enabled = false
+                        // Safe Volume (opt-in): apply the attenuate-only normalization gain to the live EQ
+                        // processor (the only real DSP). Off → unity, keeping bit-perfect playback.
+                        playerEqProcessors[player]?.applySafeVolume(safeVol, if (safeVol) targetGain else 1f)
                         lastNormalizedId = currentMediaId
                         lastNormalizedHadLoudness = hasRealLoudness
 
@@ -2149,6 +2167,8 @@ class MusicService :
                         playerNormProcessors[player]?.measureThisTrack = false  // don't integrate while off
                         playerLimiterProcessors[player]?.setInstanceMakeup(null, null)
                         loudnessEnhancer?.enabled = false
+                        // Safe Volume off (both normalization and safe-volume off) → unity, bit-perfect.
+                        playerEqProcessors[player]?.applySafeVolume(false, 1f)
                         Timber.tag(TAG).d("setupLoudnessEnhancer: normalization disabled - unity gain")
                     }
                     // Reset so RE-ENABLING normalization for the SAME track re-applies. The guard above keys on

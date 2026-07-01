@@ -41,6 +41,14 @@ public:
     float currentDeEsserDb = 0.0f;
     unsigned int currentSamplerate = 44100;
     float currentPreampMultiplier = 1.0f;
+    // Optional "Safe Volume" stage (user opt-in, default off): a per-track loudness-normalization
+    // gain (attenuate-only, in (0,1]) + the limiter/soft-clip below, run even when the EQ is off so
+    // loud masters are brought toward a reference instead of blasting at full native level.
+    bool safeVolumeEnabled = false;
+    float safeVolumeGain = 1.0f;
+    // De-esser detector envelope (RMS follower over the sibilance band), for smoother, level-relative
+    // detection than the old block-peak binary gate.
+    float deEsserEnv = 0.0f;
     std::mutex eqMutex;
 
     SuperpoweredProcessor(unsigned int samplerate) : currentSamplerate(samplerate) {
@@ -53,8 +61,11 @@ public:
         
         limiter = new Superpowered::Limiter(samplerate);
         limiter->ceilingDb = -1.0f;
-        limiter->thresholdDb = 0.0f;
-        limiter->releaseSec = 0.05f;
+        // Threshold below the ceiling so the limiter gain-rides EARLIER and rounds peaks smoothly,
+        // instead of the old thresholdDb=0 all-or-nothing catch right at full scale (which forced the
+        // tanh soft-clip to mop up = harshness). -3 dB gives gentler, more transparent limiting.
+        limiter->thresholdDb = -3.0f;
+        limiter->releaseSec = 0.1f; // slightly longer release avoids pumping at the lower threshold
         limiter->enabled = true;
 
         deEsser = new Superpowered::Filter(Superpowered::Filter::Parametric, samplerate);
@@ -133,6 +144,19 @@ Java_iad1tya_echo_music_eq_audio_CustomEqualizerAudioProcessor_setPreamp(JNIEnv 
 }
 
 extern "C" JNIEXPORT void JNICALL
+Java_iad1tya_echo_music_eq_audio_CustomEqualizerAudioProcessor_setSafeVolume(JNIEnv *env, jobject thiz, jlong ptr, jboolean enabled, jfloat gainLinear) {
+#if HAS_SUPERPOWERED
+    auto* processor = reinterpret_cast<SuperpoweredProcessor*>(ptr);
+    if (!processor) return;
+
+    std::lock_guard<std::mutex> lock(processor->eqMutex);
+    processor->safeVolumeEnabled = (enabled == JNI_TRUE);
+    // Attenuate-only guard: never let Safe Volume ADD gain (it only tames loud tracks).
+    processor->safeVolumeGain = (gainLinear > 0.0f && gainLinear < 1.0f) ? gainLinear : 1.0f;
+#endif
+}
+
+extern "C" JNIEXPORT void JNICALL
 Java_iad1tya_echo_music_eq_audio_CustomEqualizerAudioProcessor_disableAllBands(JNIEnv *env, jobject thiz, jlong ptr) {
 #if HAS_SUPERPOWERED
     auto* processor = reinterpret_cast<SuperpoweredProcessor*>(ptr);
@@ -178,69 +202,75 @@ Java_iad1tya_echo_music_eq_audio_CustomEqualizerAudioProcessor_processAudio(JNIE
         }
     }
 
-    if (enabled && workBuffer && processor) {
+    // Run the DSP block if the EQ is on OR the optional Safe Volume stage is on. When BOTH are off the
+    // block is skipped entirely (pure float pass-through) so default playback stays bit-perfect.
+    bool runEq = (enabled == JNI_TRUE);
+    bool runChain = runEq || (processor && processor->safeVolumeEnabled);
+    if (runChain && workBuffer && processor) {
         std::lock_guard<std::mutex> lock(processor->eqMutex);
-        
-        // Apply preamp at the FRONT of the chain. This is the correct, safe place: the limiter below uses
-        // thresholdDb = 0 dBFS (see SuperpoweredLimiter.h — it only limits signal that EXCEEDS the threshold),
-        // so a positive preamp raises the whole track's body (e.g. -14 LUFS -> -8 LUFS) and ONLY true peaks
-        // above 0 dBFS get caught — the boost stays audible while peaks stay safe under the -1 dBFS ceiling.
-        // (Applying preamp AFTER the limiter instead multiplied an already -1 dBFS-capped signal past full
-        // scale and slammed the soft-clip = over-volume/saturation. Never do that.)
-        if (processor->currentPreampMultiplier != 1.0f) {
+
+        // FRONT gain = EQ preamp (when EQ on) * Safe-Volume normalization gain (when Safe Volume on).
+        // Both default to 1.0. Preamp at the front is correct — the limiter below (thresholdDb -3) catches
+        // peaks; a positive preamp raises the body audibly. Safe Volume's gain is attenuate-only (<= 1.0),
+        // bringing loud masters down toward a reference so they don't blast at full native level.
+        float frontGain = processor->currentPreampMultiplier;
+        if (processor->safeVolumeEnabled) frontGain *= processor->safeVolumeGain;
+        if (frontGain != 1.0f) {
             for (int i = 0; i < num_frames * channels; ++i) {
-                workBuffer[i] *= processor->currentPreampMultiplier;
+                workBuffer[i] *= frontGain;
             }
         }
 
-        // Apply EQ first
-        for (auto* filter : processor->filters) {
-            if (filter->enabled) {
-                if (channels == 1) filter->processMono(workBuffer, workBuffer, num_frames);
-                else filter->process(workBuffer, workBuffer, num_frames);
+        if (runEq) {
+            // Apply EQ bands
+            for (auto* filter : processor->filters) {
+                if (filter->enabled) {
+                    if (channels == 1) filter->processMono(workBuffer, workBuffer, num_frames);
+                    else filter->process(workBuffer, workBuffer, num_frames);
+                }
+            }
+
+            // Dynamic De-Esser (only with EQ on — it exists to tame EQ-boosted sibilance). Improved
+            // detection: RMS energy of the 6.5 kHz band through a one-pole envelope (fast attack / slow
+            // release), with a PROPORTIONAL cut (up to -5 dB) instead of the old binary -4/0 peak gate —
+            // less twitchy, less likely to audibly dull the top on loud bright material.
+            if (processor->deEsser && processor->deEsserDetector) {
+                memcpy(processor->deEsserBuffer, workBuffer, requiredSize * sizeof(float));
+                if (channels == 1) processor->deEsserDetector->processMono(processor->deEsserBuffer, processor->deEsserBuffer, num_frames);
+                else processor->deEsserDetector->process(processor->deEsserBuffer, processor->deEsserBuffer, num_frames);
+
+                double sumSq = 0.0;
+                for (int i = 0; i < requiredSize; ++i) {
+                    float v = processor->deEsserBuffer[i];
+                    sumSq += (double)v * v;
+                }
+                float rms = (requiredSize > 0) ? sqrtf((float)(sumSq / (double)requiredSize)) : 0.0f;
+                if (rms > processor->deEsserEnv) processor->deEsserEnv += (rms - processor->deEsserEnv) * 0.5f;
+                else processor->deEsserEnv += (rms - processor->deEsserEnv) * 0.1f;
+
+                float t = (processor->deEsserEnv - 0.05f) / 0.15f; // 0 at ~-26 dBFS RMS, 1 at ~-14 dBFS
+                if (t < 0.0f) t = 0.0f; else if (t > 1.0f) t = 1.0f;
+                float targetDb = -5.0f * t;
+                float diff = targetDb - processor->currentDeEsserDb;
+                if (diff < 0) processor->currentDeEsserDb += diff * 0.5f; // fast attack
+                else processor->currentDeEsserDb += diff * 0.1f;         // slow release
+                processor->deEsser->decibel = processor->currentDeEsserDb;
+
+                if (channels == 1) processor->deEsser->processMono(workBuffer, workBuffer, num_frames);
+                else processor->deEsser->process(workBuffer, workBuffer, num_frames);
             }
         }
-        
-        // Dynamic De-Esser (Applied AFTER EQ to catch sibilance introduced by treble boosts)
-        if (processor->deEsser && processor->deEsserDetector) {
-            // Isolate the 6500Hz band
-            memcpy(processor->deEsserBuffer, workBuffer, requiredSize * sizeof(float));
-            if (channels == 1) processor->deEsserDetector->processMono(processor->deEsserBuffer, processor->deEsserBuffer, num_frames);
-            else processor->deEsserDetector->process(processor->deEsserBuffer, processor->deEsserBuffer, num_frames);
-            
-            // Measure peak energy
-            float peak = 0.0f;
-            for (int i = 0; i < requiredSize; ++i) {
-                float absVal = std::abs(processor->deEsserBuffer[i]);
-                if (absVal > peak) peak = absVal;
-            }
-            
-            // Dynamic threshold calculation
-            float targetDb = (peak > 0.15f) ? -4.0f : 0.0f;
-            
-            // Smooth the gain changes (Envelope follower)
-            float diff = targetDb - processor->currentDeEsserDb;
-            if (diff < 0) processor->currentDeEsserDb += diff * 0.5f; // Fast attack
-            else processor->currentDeEsserDb += diff * 0.05f;         // Slow release
-            
-            processor->deEsser->decibel = processor->currentDeEsserDb;
-            
-            // Apply the De-Esser to the main signal
-            if (channels == 1) processor->deEsser->processMono(workBuffer, workBuffer, num_frames);
-            else processor->deEsser->process(workBuffer, workBuffer, num_frames);
-        }
-        
-        // Apply Limiter (strictly stereo)
+
+        // Limiter (peak safety) — runs for EQ OR Safe Volume. Stereo only (Superpowered Limiter is stereo).
         if (processor->limiter && processor->limiter->enabled && channels == 2) {
             processor->limiter->process(workBuffer, workBuffer, num_frames);
         }
 
-        // Soft clip fallback (prevents harsh digital clipping)
+        // Soft-clip final safety net (rarely fires now that the limiter threshold is -3 dB).
         for (int i = 0; i < num_frames * channels; ++i) {
             float x = workBuffer[i];
             float absX = std::abs(x);
             if (absX > 0.95f) {
-                // Soft knee above 0.95 to safely round off peaks instead of hard-chopping
                 float out = 0.95f + std::tanh(absX - 0.95f) * 0.05f;
                 workBuffer[i] = (x > 0) ? out : -out;
             }

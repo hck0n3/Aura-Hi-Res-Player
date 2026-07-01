@@ -24,10 +24,28 @@ class CustomEqualizerAudioProcessor(private val licenseKey: String = "akloSTZUT1
 
     private external fun initSuperpowered(licenseKey: String, sampleRate: Int): Long
     private external fun setPreamp(ptr: Long, preampDb: Float)
+    private external fun setSafeVolume(ptr: Long, enabled: Boolean, gainLinear: Float)
     private external fun disableAllBands(ptr: Long)
     private external fun setEqBand(ptr: Long, index: Int, frequency: Float, gainDb: Float, q: Float)
     private external fun processAudio(ptr: Long, inputBuffer: ByteBuffer, outputBuffer: ByteBuffer, numFrames: Int, encoding: Int, channels: Int, enabled: Boolean)
     private external fun releaseSuperpowered(ptr: Long)
+
+    // Optional "Safe Volume" stage (opt-in). Kept so it can be re-applied if the native processor is
+    // re-created on format change (onConfigure). gainLinear is attenuate-only (<= 1.0); 1.0 = no change.
+    private var safeVolumeEnabled = false
+    private var safeVolumeGain = 1f
+
+    /**
+     * Enable/disable the Safe Volume stage (per-track loudness normalization + limiter that runs even when
+     * the EQ is off). [gainLinear] is the attenuate-only normalization multiplier for the current track.
+     */
+    fun applySafeVolume(enabled: Boolean, gainLinear: Float) {
+        safeVolumeEnabled = enabled
+        safeVolumeGain = gainLinear
+        if (isInitialized && nativePtr != 0L) {
+            setSafeVolume(nativePtr, enabled, gainLinear)
+        }
+    }
 
     fun isEnabled(): Boolean = enabled
 
@@ -68,9 +86,13 @@ class CustomEqualizerAudioProcessor(private val licenseKey: String = "akloSTZUT1
             nativePtr = initSuperpowered(licenseKey, inputAudioFormat.sampleRate)
         }
         isInitialized = nativePtr != 0L
-        
+
         // Restore profile if one was applied
         currentProfile?.let { applyProfile(it) }
+        // Restore Safe Volume state (native processor may have just been re-created).
+        if (isInitialized && nativePtr != 0L && safeVolumeEnabled) {
+            setSafeVolume(nativePtr, safeVolumeEnabled, safeVolumeGain)
+        }
         
         // Output format is exactly the same as the input format (pure 32-bit float supported natively)
         return inputAudioFormat
