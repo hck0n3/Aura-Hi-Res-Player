@@ -78,8 +78,6 @@ val PlaybackDefaultsV3AppliedKey = booleanPreferencesKey("playback_defaults_v3_a
 val PlaybackDefaultsV4AppliedKey = booleanPreferencesKey("playback_defaults_v4_applied")
 // v5: crossfade duration 13s, equal-power ("transición suave") curve. Re-applied once on this update.
 val PlaybackDefaultsV5AppliedKey = booleanPreferencesKey("playback_defaults_v5_applied")
-// One-time: force Safe Volume ON for everyone on this update (afterwards the user's choice is respected).
-val SafeVolumeDefaultAppliedKey = booleanPreferencesKey("safe_volume_default_applied")
 // One-time: seed EQ ON + Audiophile preset + preamp 0.0 dB for everyone on this update.
 val EqAudiophileDefaultAppliedKey = booleanPreferencesKey("eq_audiophile_default_applied")
 // Set before the YouTube Music login (which cold-restarts the app) so that, after the restart, we

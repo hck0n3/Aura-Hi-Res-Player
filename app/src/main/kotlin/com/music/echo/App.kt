@@ -298,8 +298,6 @@ class App : Application(), SingletonImageLoader.Factory {
             p[iad1tya.echo.music.constants.CrossfadeCurveKey] = 1
             p[iad1tya.echo.music.constants.SkipSilenceKey] = true
             p[iad1tya.echo.music.constants.SkipSilenceInstantKey] = true
-            // Safe Volume ON by default (tames loud masters; the user can turn it off in Sound settings).
-            p[iad1tya.echo.music.constants.SafeVolumeEnabledKey] = true
 
             // Appearance follows the SYSTEM theme by default (user request): light/dark AUTO and the
             // system dynamic (Material You) colour theme ON — so a fresh install has ONLY the automatic
@@ -405,11 +403,6 @@ class App : Application(), SingletonImageLoader.Factory {
                     p[iad1tya.echo.music.constants.CrossfadeDurationKey] = 13f
                     p[iad1tya.echo.music.constants.CrossfadeCurveKey] = 1
                     p[iad1tya.echo.music.constants.PlaybackDefaultsV5AppliedKey] = true
-                }
-                // One-time: force Safe Volume ON for everyone on this update (afterwards their choice is respected).
-                if (settings[iad1tya.echo.music.constants.SafeVolumeDefaultAppliedKey] != true) {
-                    p[iad1tya.echo.music.constants.SafeVolumeEnabledKey] = true
-                    p[iad1tya.echo.music.constants.SafeVolumeDefaultAppliedKey] = true
                 }
             }
         }

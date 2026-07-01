@@ -2,7 +2,6 @@
 
 ## 🎚️ Sonido listo desde el primer play
 - El ecualizador ahora viene **activo por defecto** en el preset **Audiophile** (preamp 0.0 dB): sonido de referencia, cálido y con aire, sin distorsión.
-- **Volumen Seguro siempre activo**: domestica los masters muy fuertes sin romper los agudos.
 - **Transición suave (crossfade) de 13 segundos** con curva de igual potencia (sin el bajón de volumen entre canciones).
 - Pasada de fidelidad del EQ: Q por octava, shelves en los extremos, headroom automático anti-clip y presets audiophile más limpios (+6 firmas nuevas). El preamp y tus ediciones manuales del EQ ya no se revierten.
 
