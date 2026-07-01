@@ -2,6 +2,8 @@
 
 package iad1tya.echo.music.ui.screens.settings
 
+import android.content.ActivityNotFoundException
+import android.widget.Toast
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -105,11 +107,24 @@ fun StorageSettings(
                 onExportDirectoryUriChange(uri.toString())
             }
         }
+    // Some devices (no Storage Access Framework / DocumentsUI, e.g. stripped ROMs, Android Go, certain TVs)
+    // have no activity to handle ACTION_OPEN_DOCUMENT_TREE and crash with ActivityNotFoundException. Guard it.
+    val openExportPicker: () -> Unit = {
+        try {
+            exportDirectoryLauncher.launch(null)
+        } catch (e: ActivityNotFoundException) {
+            Toast.makeText(
+                context,
+                context.getString(R.string.export_directory_picker_unavailable),
+                Toast.LENGTH_LONG,
+            ).show()
+        }
+    }
     var exportPickerAutoOpened by remember { mutableStateOf(false) }
     LaunchedEffect(autoOpenExportPicker) {
         if (autoOpenExportPicker && !exportPickerAutoOpened) {
             exportPickerAutoOpened = true
-            exportDirectoryLauncher.launch(null)
+            openExportPicker()
         }
     }
 
@@ -340,7 +355,7 @@ fun StorageSettings(
                                 }
                         )
                     },
-                    onClick = { exportDirectoryLauncher.launch(null) }
+                    onClick = { openExportPicker() }
                 )
             )
         )

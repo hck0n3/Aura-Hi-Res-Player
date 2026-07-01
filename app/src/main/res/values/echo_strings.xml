@@ -355,6 +355,9 @@
     <string name="release_radar_empty">No new releases yet</string>
     <string name="home_new_from_artists">New from your artists</string>
     <string name="home_genre_mix">Your %1$s mix</string>
+    <string name="export_directory_picker_unavailable">This device has no folder picker available</string>
+    <string name="sponsorblock_title">Skip non-music segments</string>
+    <string name="sponsorblock_description">Auto-skip sponsors, self-promo and non-music parts using the community SponsorBlock database. Never cuts real song audio.</string>
 
     <!-- Offload -->
     <string name="audio_offload">Enable offload</string>

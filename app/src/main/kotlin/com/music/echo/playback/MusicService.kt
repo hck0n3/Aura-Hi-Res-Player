@@ -428,6 +428,12 @@ class MusicService :
     // Safe Volume from the first fade-in sample, not only after the swap settles).
     @Volatile private var safeVolumeEnabledHint: Boolean = false
     @Volatile private var audioOffloadHint: Boolean = false
+
+    // SponsorBlock: skip non-music segments (opt-in). Manager holds the current track's segments; the watcher
+    // job polls position once a second while enabled and seeks past any segment the playhead enters.
+    private val sponsorBlock = iad1tya.echo.music.playback.sponsorblock.SponsorBlockManager()
+    @Volatile private var sponsorBlockEnabled: Boolean = false
+    private var sponsorBlockJob: kotlinx.coroutines.Job? = null
     // The track id whose MEASURED loudness we've already committed to the gains + DB (so the one-shot
     // measurement-driven re-level fires at most ONCE per song, never re-levels twice). Null = none yet.
     @Volatile private var measuredAppliedForId: String? = null
@@ -838,6 +844,33 @@ class MusicService :
                     player.prepare()
                     if (wasPlaying) {
                         player.play()
+                    }
+                }
+        }
+
+        // SponsorBlock enable toggle: start/stop the position watcher and (when turned on mid-playback)
+        // immediately fetch segments for the current track.
+        scope.launch {
+            dataStore.data
+                .map { it[iad1tya.echo.music.constants.SponsorBlockEnabledKey] ?: false }
+                .distinctUntilChanged()
+                .collect { enabled ->
+                    sponsorBlockEnabled = enabled
+                    if (enabled) {
+                        if (sponsorBlockJob?.isActive != true) sponsorBlockJob = startSponsorBlockWatcher()
+                        val vid = sponsorBlock.begin(player.currentMediaItem?.mediaId)
+                        if (vid != null) {
+                            scope.launch(Dispatchers.IO) {
+                                sponsorBlock.accept(
+                                    vid,
+                                    iad1tya.echo.music.playback.sponsorblock.SponsorBlockService.fetchSegments(vid),
+                                )
+                            }
+                        }
+                    } else {
+                        sponsorBlockJob?.cancel()
+                        sponsorBlockJob = null
+                        sponsorBlock.clear()
                     }
                 }
         }
@@ -2339,6 +2372,21 @@ class MusicService :
     ) {
         currentPlayingMediaId = mediaItem?.mediaId
         rememberRecentRadioId(mediaItem?.mediaId ?: player.currentMetadata?.id)
+        // SponsorBlock: fetch skippable non-music segments for the NEW track (YouTube ids only; local songs
+        // have long content:// ids and are skipped). Stale responses are ignored inside the manager.
+        if (sponsorBlockEnabled) {
+            val sbVideoId = sponsorBlock.begin(mediaItem?.mediaId)
+            if (sbVideoId != null) {
+                scope.launch(Dispatchers.IO) {
+                    sponsorBlock.accept(
+                        sbVideoId,
+                        iad1tya.echo.music.playback.sponsorblock.SponsorBlockService.fetchSegments(sbVideoId),
+                    )
+                }
+            }
+        } else {
+            sponsorBlock.clear()
+        }
         // Sticky video mode: when the track changes while video mode is on, swap the NEW current track to
         // its video (restoring the previous one to audio). Stays in video until the user turns it off.
         if (_videoMode.value && mediaItem != null && mediaItem.mediaId != videoModeMediaId) {
@@ -2495,6 +2543,20 @@ class MusicService :
      * Periodic podcast-progress + playback-position persistence, but ONLY while actually playing.
      * Replaces two always-on while(true) loops that woke the CPU every 5s/8s even when paused/idle.
      */
+    /** Poll the playhead once a second and seek past any SponsorBlock segment it enters. Runs on the player
+     *  (main) thread so player access is safe; only started while SponsorBlock is enabled. */
+    private fun startSponsorBlockWatcher(): kotlinx.coroutines.Job = scope.launch(Dispatchers.Main) {
+        while (isActive) {
+            kotlinx.coroutines.delay(1000)
+            if (!player.isPlaying) continue
+            val pos = player.currentPosition
+            val target = sponsorBlock.skipTargetFor(pos) ?: continue
+            val duration = player.duration
+            val safeTarget = if (duration > 0) minOf(target, duration) else target
+            if (safeTarget > pos) player.seekTo(safeTarget)
+        }
+    }
+
     private fun startPeriodicPersist() {
         if (periodicPersistJob?.isActive == true) return
         periodicPersistJob = scope.launch {

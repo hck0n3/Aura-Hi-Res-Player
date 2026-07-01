@@ -844,3 +844,9 @@ val JrStereoWidthEnabledKey = booleanPreferencesKey("jr_dsp_stereo_width_enabled
 val JrStereoWidthKey = floatPreferencesKey("jr_dsp_stereo_width")
 val JrDialogueEnabledKey = booleanPreferencesKey("jr_dsp_dialogue_enabled")
 val JrDialogueAmountKey = floatPreferencesKey("jr_dsp_dialogue_amount")
+
+// ── SponsorBlock ──
+// Opt-in (default OFF). When ON, non-music segments (sponsor / self-promo / interaction reminders and the
+// "non-music" parts of music videos) are auto-skipped during playback via the community SponsorBlock API.
+// Deliberately does NOT skip intro/outro/preview so real song intros/outros are never cut.
+val SponsorBlockEnabledKey = booleanPreferencesKey("sponsorblock_enabled")

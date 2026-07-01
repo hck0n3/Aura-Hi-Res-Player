@@ -64,6 +64,7 @@ import iad1tya.echo.music.constants.SimilarContent
 import iad1tya.echo.music.constants.ShowAudioFallbackToastKey
 import iad1tya.echo.music.constants.SkipSilenceInstantKey
 import iad1tya.echo.music.constants.SkipSilenceKey
+import iad1tya.echo.music.constants.SponsorBlockEnabledKey
 import iad1tya.echo.music.constants.StopMusicOnTaskClearKey
 import iad1tya.echo.music.constants.EnableExportAsMp3Key
 
@@ -146,6 +147,11 @@ fun PlayerSettings(
     val (preloadLyricsEnabled, onPreloadLyricsEnabledChange) = rememberPreference(
         key = PreloadLyricsEnabledKey,
         defaultValue = true
+    )
+
+    val (sponsorBlockEnabled, onSponsorBlockEnabledChange) = rememberPreference(
+        key = SponsorBlockEnabledKey,
+        defaultValue = false
     )
 
     val (enableExportAsMp3, onEnableExportAsMp3Change) = rememberPreference(
@@ -659,6 +665,28 @@ fun PlayerSettings(
                         )
                     },
                     onClick = { onPreloadNextSongEnabledChange(!preloadNextSongEnabled) }
+                ))
+
+                add(Material3SettingsItem(
+                    icon = painterResource(R.drawable.skip_next),
+                    title = { Text(stringResource(R.string.sponsorblock_title)) },
+                    description = { Text(stringResource(R.string.sponsorblock_description)) },
+                    trailingContent = {
+                        Switch(
+                            checked = sponsorBlockEnabled,
+                            onCheckedChange = onSponsorBlockEnabledChange,
+                            thumbContent = {
+                                Icon(
+                                    painter = painterResource(
+                                        id = if (sponsorBlockEnabled) R.drawable.check else R.drawable.close
+                                    ),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(SwitchDefaults.IconSize)
+                                )
+                            }
+                        )
+                    },
+                    onClick = { onSponsorBlockEnabledChange(!sponsorBlockEnabled) }
                 ))
 
                 if (preloadNextSongEnabled) {

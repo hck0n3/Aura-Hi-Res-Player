@@ -137,6 +137,45 @@ class SpotifyImportViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Resolve a pasted Spotify playlist link / URI / id (including PUBLIC playlists the user doesn't own) and
+     * add it to the source list, auto-selected, so the user can import it with the normal flow. [invalidLinkMessage]
+     * is shown when the input isn't a recognizable playlist reference (passed in so it can be localized).
+     */
+    fun addPlaylistByLink(rawLink: String, invalidLinkMessage: String) {
+        val link = rawLink.trim()
+        if (link.isEmpty() || importManager.isRunning || uiState.value.progress != null) return
+        viewModelScope.launch(Dispatchers.IO) {
+            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+            runCatching { repository.fetchPlaylistByLink(link) }
+                .onSuccess { source ->
+                    if (source == null) {
+                        _uiState.update { it.copy(isLoading = false, errorMessage = invalidLinkMessage) }
+                        return@onSuccess
+                    }
+                    if (sources.none { it.id == source.id }) {
+                        sources = sources + source
+                    }
+                    _uiState.update { state ->
+                        state.copy(
+                            isAuthenticated = true,
+                            sources = sources.map(SpotifyImportSource::toUi),
+                            selectedSourceIds = state.selectedSourceIds + source.id,
+                            isLoading = false,
+                            errorMessage = null,
+                        )
+                    }
+                }
+                .onFailure { error ->
+                    if (error is CancellationException) throw error
+                    reportException(error)
+                    _uiState.update {
+                        it.copy(isLoading = false, errorMessage = error.message ?: invalidLinkMessage)
+                    }
+                }
+        }
+    }
+
     fun toggleSource(sourceId: String) {
         _uiState.update { state ->
             val selected =

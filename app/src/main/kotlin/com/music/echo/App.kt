@@ -544,6 +544,13 @@ class App : Application(), SingletonImageLoader.Factory {
             crossfade(250)
             allowHardware(true)
 
+            components {
+                // Render embedded cover art for local audio files (content://media/.../audio/media/{id}).
+                // Higher priority than Coil's default ContentUriFetcher; returns null for non-audio URIs so
+                // remote/http and other content URIs fall through to the built-in fetchers unchanged.
+                add(iad1tya.echo.music.utils.coil.LocalAudioArtFetcher.Factory())
+            }
+
             memoryCache {
                 MemoryCache.Builder()
                     .maxSizePercent(context, 0.4)

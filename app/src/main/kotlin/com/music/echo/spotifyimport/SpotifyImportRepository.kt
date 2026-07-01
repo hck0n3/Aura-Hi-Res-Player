@@ -189,6 +189,19 @@ class SpotifyImportRepository @Inject constructor(
             }
         }
 
+    /**
+     * Resolve a pasted Spotify playlist link / URI / raw id into an importable source — including PUBLIC
+     * playlists the user does NOT own (loadSources only returns the user's own library). Returns null if the
+     * input isn't a recognizable Spotify playlist reference; throws on auth / network failure.
+     */
+    suspend fun fetchPlaylistByLink(link: String): SpotifyImportSource.Playlist? =
+        withContext(Dispatchers.IO) {
+            val playlistId = parseSpotifyPlaylistId(link) ?: return@withContext null
+            ensureAuthenticated()
+            val playlist = spotifyCallWithTokenRetry { Spotify.playlist(playlistId).getOrThrow() }
+            if (playlist.id.isBlank()) null else SpotifyImportSource.Playlist(playlist)
+        }
+
     suspend fun importSources(
         sources: List<SpotifyImportSource>,
         onProgress: (SpotifyImportProgressUi) -> Unit,
@@ -966,6 +979,21 @@ data class SpotifyImportSession(
     val accountName: String = "",
     val accountAvatarUrl: String? = null,
 )
+
+/**
+ * Extract a Spotify playlist id (22 base62 chars) from a share link, URI, or bare id. Handles:
+ *   spotify:playlist:ID · https://open.spotify.com/playlist/ID?si=… · .../intl-es/playlist/ID · bare ID
+ * Returns null when the input isn't a recognizable playlist reference.
+ */
+private val SPOTIFY_BARE_ID = Regex("[A-Za-z0-9]{22}")
+private val SPOTIFY_PLAYLIST_REF = Regex("playlist[:/]([A-Za-z0-9]{22})")
+private fun parseSpotifyPlaylistId(input: String): String? {
+    val s = input.trim()
+    if (s.isEmpty()) return null
+    SPOTIFY_PLAYLIST_REF.find(s)?.let { return it.groupValues[1] }
+    if (s.matches(SPOTIFY_BARE_ID)) return s
+    return null
+}
 
 sealed interface SpotifyImportSource {
     val id: String

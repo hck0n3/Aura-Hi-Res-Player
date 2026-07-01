@@ -353,9 +353,11 @@ constructor(
                         ?.let { LocalDateTime.ofInstant(Instant.ofEpochSecond(it), ZoneId.systemDefault()) },
                     sizeBytes = cursor.getLong(sizeIndex).coerceAtLeast(0L),
                     mimeType = mimeType,
-                    thumbnailUrl = mediaStoreAlbumId
-                        ?.takeIf { it > 0L }
-                        ?.let { ContentUris.withAppendedId(AlbumArtUri, it).toString() },
+                    // Wrap the song's OWN media URI in the private localaudioart: scheme so LocalAudioArtFetcher
+                    // (and only it) pulls the embedded cover. The old content://…/audio/albumart/{albumId} scheme
+                    // is unreliable on Android 10+ (null/blank art) and only per-album; the per-song embedded
+                    // picture is stable across versions and shows songs with distinct covers correctly.
+                    thumbnailUrl = iad1tya.echo.music.utils.coil.LocalAudioArtFetcher.uriFor(contentUri.toString()),
                 )
             }
         }

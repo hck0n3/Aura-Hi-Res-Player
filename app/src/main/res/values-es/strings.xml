@@ -342,6 +342,11 @@
     <string name="listen_together_smart_resync_desc">Ponte al día automáticamente con el anfitrión tras una caída de la conexión</string>
     <string name="spotify_import_title">Importar desde Spotify</string>
     <string name="spotify_import_desc">Conecta Spotify, elige listas y refléjalas en listas locales de ArchiveTune.</string>
+    <string name="spotify_add_by_link">Importar lista por link</string>
+    <string name="spotify_add_by_link_desc">Pega un link, URI o ID de lista de Spotify — incluso listas públicas que no son tuyas</string>
+    <string name="spotify_add_by_link_hint">Pega un link, URI (spotify:playlist:…) o ID de una lista de Spotify.</string>
+    <string name="spotify_add_by_link_action">Agregar</string>
+    <string name="spotify_invalid_playlist_link">Eso no parece un link de lista de Spotify</string>
     <string name="spotify_connect">Conectar Spotify</string>
     <string name="spotify_refresh">Actualizar biblioteca de Spotify</string>
     <string name="spotify_select_sources">Seleccionar listas de Spotify</string>

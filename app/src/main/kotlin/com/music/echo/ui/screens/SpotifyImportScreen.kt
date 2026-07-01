@@ -66,6 +66,9 @@ fun SpotifyImportScreen(
 
     var showSpotifyLogin by remember { mutableStateOf(false) }
     var showSpotifySources by remember { mutableStateOf(false) }
+    var showAddByLinkDialog by remember { mutableStateOf(false) }
+    var linkInput by remember { mutableStateOf("") }
+    val invalidLinkMessage = stringResource(R.string.spotify_invalid_playlist_link)
     var showScheduleFreqDialog by remember { mutableStateOf(false) }
     var showScheduleSourcesSheet by remember { mutableStateOf(false) }
     val (autoSyncFreq, setAutoSyncFreq) = rememberPreference(SpotifyAutoSyncFreqDaysKey, 0)
@@ -162,6 +165,13 @@ fun SpotifyImportScreen(
                             onClick = { showSpotifySources = true }
                         ),
                         Material3SettingsItem(
+                            title = { Text(stringResource(R.string.spotify_add_by_link)) },
+                            description = { Text(stringResource(R.string.spotify_add_by_link_desc)) },
+                            icon = painterResource(R.drawable.link),
+                            enabled = !state.isLoading && state.progress == null,
+                            onClick = { linkInput = ""; showAddByLinkDialog = true }
+                        ),
+                        Material3SettingsItem(
                             title = { Text(stringResource(R.string.spotify_import_selected)) },
                             description = { Text(stringResource(R.string.spotify_selected_count, state.selectedSourceIds.size)) },
                             icon = painterResource(R.drawable.playlist_add),
@@ -227,6 +237,40 @@ fun SpotifyImportScreen(
             onCookiesCaptured = { spDc, spKey ->
                 showSpotifyLogin = false
                 spotifyImportViewModel.connectWithCookies(spDc = spDc, spKey = spKey)
+            },
+        )
+    }
+
+    if (showAddByLinkDialog) {
+        AlertDialog(
+            onDismissRequest = { showAddByLinkDialog = false },
+            title = { Text(stringResource(R.string.spotify_add_by_link)) },
+            text = {
+                Column {
+                    Text(stringResource(R.string.spotify_add_by_link_hint))
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = linkInput,
+                        onValueChange = { linkInput = it },
+                        singleLine = true,
+                        placeholder = { Text("https://open.spotify.com/playlist/…") },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = linkInput.isNotBlank(),
+                    onClick = {
+                        spotifyImportViewModel.addPlaylistByLink(linkInput, invalidLinkMessage)
+                        showAddByLinkDialog = false
+                    },
+                ) { Text(stringResource(R.string.spotify_add_by_link_action)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAddByLinkDialog = false }) {
+                    Text(stringResource(android.R.string.cancel))
+                }
             },
         )
     }

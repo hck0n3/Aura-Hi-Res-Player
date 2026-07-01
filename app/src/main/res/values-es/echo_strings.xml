@@ -223,6 +223,9 @@
     <string name="release_radar_empty">Aún no hay novedades</string>
     <string name="home_new_from_artists">Novedades de tus artistas</string>
     <string name="home_genre_mix">Tu mix de %1$s</string>
+    <string name="export_directory_picker_unavailable">Este dispositivo no tiene selector de carpetas</string>
+    <string name="sponsorblock_title">Saltar segmentos sin música</string>
+    <string name="sponsorblock_description">Salta patrocinios, autopromoción y partes sin música usando la base comunitaria SponsorBlock. Nunca corta el audio real de la canción.</string>
     <string name="integrations">Integraciones</string>
     <string name="username">Nombre de usuario</string>
     <string name="password">Contraseña</string>
