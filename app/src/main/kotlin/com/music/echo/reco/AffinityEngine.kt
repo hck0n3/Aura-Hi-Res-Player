@@ -1,5 +1,6 @@
 package iad1tya.echo.music.reco
 
+import iad1tya.echo.music.db.entities.ArtistEntity
 import iad1tya.echo.music.db.entities.EventWithSong
 import iad1tya.echo.music.db.entities.Song
 import iad1tya.echo.music.dislike.DislikeStore
@@ -47,6 +48,11 @@ object AffinityEngine {
     /** Cap the library scan so a huge imported library (10k+) can't make profile-building pathological. */
     const val MAX_LIBRARY = 6000
 
+    /** Weight each FOLLOWED/subscribed artist contributes to taste even with zero plays. Sits above a plain
+     *  library import (0.2/0.4) and below a real recent play, so subscribing to an artist immediately shapes
+     *  Home/radio/quick-picks — the "recommendations from artists you follow" the engine previously ignored. */
+    private const val FOLLOWED_ARTIST_SEED = 0.6
+
     suspend fun buildProfile(
         events: List<EventWithSong>,
         disliked: DislikeStore.Disliked,
@@ -61,6 +67,9 @@ object AffinityEngine {
         // as taste even for songs never played yet, so Home/autoplay/shuffle reflect the WHOLE library the
         // user brought in — not only what they've happened to play inside the app.
         librarySongs: List<Song> = emptyList(),
+        // The user's followed/subscribed artists (bookmarkedAt != null). Seeded as a real taste signal even
+        // for artists with no plays and no saved songs, so following an artist actually drives recommendations.
+        followedArtists: List<ArtistEntity> = emptyList(),
     ): TasteProfile {
         val byId = HashMap<String, Double>()
         val byName = HashMap<String, Double>()
@@ -141,6 +150,18 @@ object AffinityEngine {
         // Seed onboarding genre picks: strong signal for a new user with no history, a light nudge once
         // real listening history accumulates (history weights grow past the seed over time).
         onboardingGenres.forEach { g -> if (g.isNotBlank()) genre.merge(g, ONBOARDING_GENRE_SEED, Double::plus) }
+
+        // Seed followed/subscribed artists: a real taste signal even with zero plays, so subscribing to an
+        // artist immediately shapes Home/radio/quick-picks (and its genre affinity when known via GenreCache).
+        followedArtists.forEach { a ->
+            byId.merge(a.id, FOLLOWED_ARTIST_SEED, Double::plus)
+            if (a.name.isNotBlank()) {
+                byName.merge(a.name.lowercase(), FOLLOWED_ARTIST_SEED, Double::plus)
+                artistGenres[a.name.lowercase()]?.takeIf { it.isNotBlank() }?.let { g ->
+                    genre.merge(g, FOLLOWED_ARTIST_SEED, Double::plus)
+                }
+            }
+        }
 
         val maxW = byId.values.maxOrNull()?.takeIf { it > 0 } ?: 1.0
         val maxG = genre.values.maxOrNull()?.takeIf { it > 0 } ?: 1.0

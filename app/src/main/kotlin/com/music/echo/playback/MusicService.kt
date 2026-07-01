@@ -1675,12 +1675,15 @@ class MusicService :
                     database.librarySongsForTaste(iad1tya.echo.music.reco.AffinityEngine.MAX_LIBRARY).first()
                 }.getOrDefault(emptyList())
             }
+            val followed = withContext(Dispatchers.IO) {
+                runCatching { database.artistsBookmarkedByCreateDateAsc().first().map { it.artist } }.getOrDefault(emptyList())
+            }
             val disliked = runCatching { dislikeStore.snapshot() }
                 .getOrDefault(iad1tya.echo.music.dislike.DislikeStore.Disliked())
             val genres = iad1tya.echo.music.reco.GenreCache.snapshot(this@MusicService)
             val onboarding = iad1tya.echo.music.reco.OnboardingGenres.itunesGenres(this@MusicService)
             withContext(Dispatchers.Default) {
-                iad1tya.echo.music.reco.AffinityEngine.buildProfile(events, disliked, artistGenres = genres, onboardingGenres = onboarding, librarySongs = library)
+                iad1tya.echo.music.reco.AffinityEngine.buildProfile(events, disliked, artistGenres = genres, onboardingGenres = onboarding, librarySongs = library, followedArtists = followed)
             }.also {
                 cachedTaste = it
                 cachedTasteAt = now

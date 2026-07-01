@@ -106,15 +106,16 @@ fun AiSettings(
             "gpt-4-turbo"
         ),
         "Gemini" to listOf(
-            "gemini-2.5-flash-lite",
-            "gemini-2.5-flash",
-            "gemini-2.5-pro",
-            "gemini-2.0-flash",
-            "gemini-1.5-flash",
+            // Current Gemini API model IDs (verified against ai.google.dev/gemini-api/docs/models, 2026-06).
+            // Removed gemini-2.0-flash (deprecated / shutting down) and gemini-1.5-flash (gone); fixed the
+            // preview suffixes on gemini-3-flash-preview and gemini-3.1-pro-preview (the un-suffixed IDs 404).
             "gemini-3.5-flash",
-            "gemini-3-flash",
             "gemini-3.1-flash-lite",
-            "gemini-3.1-pro"
+            "gemini-3-flash-preview",
+            "gemini-3.1-pro-preview",
+            "gemini-2.5-flash",
+            "gemini-2.5-flash-lite",
+            "gemini-2.5-pro"
         ),
         "Perplexity" to listOf(
             "sonar",

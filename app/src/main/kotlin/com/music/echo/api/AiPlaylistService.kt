@@ -68,8 +68,11 @@ object AiPlaylistService {
         val requestJson = JSONObject().apply {
             if (model.isNotBlank()) put("model", model)
             put("messages", messages)
-            put("temperature", 0.8)
-            put("max_tokens", 2048)
+            // 0.7: enough variety for song picks, but tighter than 0.8 so the strict-JSON output drifts less.
+            put("temperature", 0.7)
+            // Scale the token budget with the requested count (~80 tok/track + overhead) so a 50-song
+            // request isn't truncated mid-JSON (the old fixed 2048 cut off large playlists → fewer songs).
+            put("max_tokens", (count * 80 + 512).coerceIn(1024, 8192))
         }
 
         var attempt = 0

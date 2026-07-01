@@ -117,6 +117,9 @@ class HomeViewModel @Inject constructor(
         val library = runCatching {
             database.librarySongsForTaste(iad1tya.echo.music.reco.AffinityEngine.MAX_LIBRARY).first()
         }.getOrDefault(emptyList())
+        val followed = runCatching {
+            database.artistsBookmarkedByCreateDateAsc().first().map { it.artist }
+        }.getOrDefault(emptyList())
         val disliked = runCatching { dislikeStore.snapshot() }
             .getOrDefault(iad1tya.echo.music.dislike.DislikeStore.Disliked())
         runCatching {
@@ -125,7 +128,16 @@ class HomeViewModel @Inject constructor(
             // buildProfile is CPU-bound (genre/lane scans over events + library) — run it on Default (not the
             // IO dispatcher this is called on) to free IO threads, matching MusicService.tasteProfile().
             tasteProfile = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
-                iad1tya.echo.music.reco.AffinityEngine.buildProfile(events, disliked, artistGenres = genres, onboardingGenres = onboarding, librarySongs = library)
+                iad1tya.echo.music.reco.AffinityEngine.buildProfile(events, disliked, artistGenres = genres, onboardingGenres = onboarding, librarySongs = library, followedArtists = followed)
+            }
+        }
+        // Learn the real genres of your FOLLOWED artists too (not just played ones), so a followed artist's
+        // genre affinity works even before you play them — WiFi only, same as the events enrichment below.
+        if (followed.isNotEmpty()) {
+            viewModelScope.launch(Dispatchers.IO) {
+                runCatching {
+                    iad1tya.echo.music.reco.GenreCache.enrich(context, followed.map { it.name }, onlyWifi = true)
+                }
             }
         }
         // Learn the real genres of your most-heard artists for next time — WiFi only (your choice).
@@ -146,9 +158,31 @@ class HomeViewModel @Inject constructor(
         val rnd = java.util.Random()
         // Precompute the key ONCE per item — rnd inside the comparator would be inconsistent between
         // comparisons and crash TimSort ("Comparison method violates its general contract").
-        return map { it to (p.score(it) + rnd.nextDouble() * 0.2) }
-            .sortedByDescending { it.second }
-            .map { it.first }
+        val scored = map { it to (p.score(it) + rnd.nextDouble() * 0.2) }.sortedByDescending { it.second }
+        // Diversity re-rank (MMR-lite): keep taste order but greedily spread artists so a shelf doesn't tunnel
+        // into a single artist/genre (filter-bubble). Each already-placed artist adds a penalty to its next
+        // song. O(n^2) — only worth it for shelf-sized lists; large lists keep the plain taste sort.
+        if (scored.size !in 2..120) return scored.map { it.first }
+        val diversityPenalty = 0.4
+        val artistSeen = HashMap<String, Int>()
+        val remaining = scored.toMutableList()
+        val out = ArrayList<Song>(scored.size)
+        while (remaining.isNotEmpty()) {
+            var bestIdx = 0
+            var bestAdj = Double.NEGATIVE_INFINITY
+            for (i in remaining.indices) {
+                val (song, base) = remaining[i]
+                val key = song.artists.firstOrNull()?.id ?: ""
+                // Don't penalize artist-less songs (empty id) against each other — they aren't the same artist.
+                val adj = if (key.isEmpty()) base else base - (artistSeen[key] ?: 0) * diversityPenalty
+                if (adj > bestAdj) { bestAdj = adj; bestIdx = i }
+            }
+            val chosen = remaining.removeAt(bestIdx)
+            out.add(chosen.first)
+            val k = chosen.first.artists.firstOrNull()?.id ?: ""
+            if (k.isNotEmpty()) artistSeen[k] = (artistSeen[k] ?: 0) + 1
+        }
+        return out
     }
 
     private fun tasteScoreYt(item: com.music.innertube.models.YTItem): Double {
@@ -306,9 +340,14 @@ class HomeViewModel @Inject constructor(
     private suspend fun getDailyDiscover() {
         val hideVideoSongs = context.dataStore.get(HideVideoSongsKey, false)
         val likedSongs = database.likedSongsByCreateDateAsc().first()
-        if (likedSongs.isEmpty()) return
+        // Cold-start: a heavy listener who never taps "like" would otherwise get an EMPTY Daily Discover.
+        // Fall back to their most-played songs (all-time) as seeds so discovery still works from real habits.
+        val seedPool = likedSongs.ifEmpty {
+            runCatching { database.mostPlayedSongs(0L, limit = 20).first() }.getOrDefault(emptyList())
+        }
+        if (seedPool.isEmpty()) return
 
-        val seeds = likedSongs.distinctBy { it.id }.rankedByTaste().take(5)
+        val seeds = seedPool.distinctBy { it.id }.rankedByTaste().take(5)
 
         
         val items = java.util.Collections.synchronizedList(mutableListOf<DailyDiscoverItem>())
