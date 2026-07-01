@@ -300,7 +300,7 @@ fun YouTubeAlbumMenu(
                                 onDismiss()
                                 album?.songs?.let { songs ->
                                     if (songs.isNotEmpty()) {
-                                        playerConnection.playQueue(YouTubeAlbumRadio(albumItem.playlistId))
+                                        playerConnection.playQueue(YouTubeAlbumRadio(albumItem.playlistId.ifBlank { album?.album?.playlistId.orEmpty() }))
                                     }
                                 }
                             }
@@ -319,7 +319,7 @@ fun YouTubeAlbumMenu(
                                 onDismiss()
                                 album?.songs?.let { songs ->
                                     if (songs.isNotEmpty()) {
-                                        playerConnection.playQueue(YouTubeAlbumRadio(albumItem.playlistId))
+                                        playerConnection.playQueue(YouTubeAlbumRadio(albumItem.playlistId.ifBlank { album?.album?.playlistId.orEmpty() }))
                                     }
                                 }
                             }
@@ -337,10 +337,15 @@ fun YouTubeAlbumMenu(
                         text = stringResource(R.string.share),
                         onClick = {
                             onDismiss()
+                            // Prefer the resolved album's playlistId (from the DB fetch) when the passed-in
+                            // AlbumItem has none (e.g. the Release Radar shelf), so the share URL isn't broken.
+                            val pid = albumItem.playlistId.ifBlank { album?.album?.playlistId.orEmpty() }
+                            val shareText = if (pid.isNotBlank())
+                                "https://music.youtube.com/playlist?list=$pid" else albumItem.shareLink
                             val intent = Intent().apply {
                                 action = Intent.ACTION_SEND
                                 type = "text/plain"
-                            putExtra(Intent.EXTRA_TEXT, albumItem.shareLink)
+                            putExtra(Intent.EXTRA_TEXT, shareText)
                             }
                             context.startActivity(Intent.createChooser(intent, null))
                         }

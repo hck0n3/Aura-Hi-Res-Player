@@ -221,6 +221,8 @@
     <string name="release_radar_channel_name">Novedades</string>
     <string name="release_radar_refreshing">Actualizando…</string>
     <string name="release_radar_empty">Aún no hay novedades</string>
+    <string name="home_new_from_artists">Novedades de tus artistas</string>
+    <string name="home_genre_mix">Tu mix de %1$s</string>
     <string name="integrations">Integraciones</string>
     <string name="username">Nombre de usuario</string>
     <string name="password">Contraseña</string>

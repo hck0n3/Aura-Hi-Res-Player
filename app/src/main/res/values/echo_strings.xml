@@ -353,6 +353,8 @@
     <string name="release_radar_channel_name">Release radar</string>
     <string name="release_radar_refreshing">Refreshing…</string>
     <string name="release_radar_empty">No new releases yet</string>
+    <string name="home_new_from_artists">New from your artists</string>
+    <string name="home_genre_mix">Your %1$s mix</string>
 
     <!-- Offload -->
     <string name="audio_offload">Enable offload</string>

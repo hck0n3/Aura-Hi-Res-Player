@@ -35,6 +35,7 @@ import iad1tya.echo.music.db.entities.Song
 import iad1tya.echo.music.db.entities.SpeedDialItem
 import iad1tya.echo.music.extensions.filterVideoSongs
 import iad1tya.echo.music.extensions.toEnum
+import iad1tya.echo.music.models.GenreMix
 import iad1tya.echo.music.models.SimilarRecommendation
 import iad1tya.echo.music.utils.SyncUtils
 import iad1tya.echo.music.utils.dataStore
@@ -103,6 +104,11 @@ class HomeViewModel @Inject constructor(
     val homePage = MutableStateFlow<HomePage?>(null)
     val explorePage = MutableStateFlow<ExplorePage?>(null)
     val communityPlaylists = MutableStateFlow<List<CommunityPlaylistItem>?>(null)
+    // "Novedades de tus artistas": new releases from followed/most-played artists, surfaced from the
+    // already-built weekly Release Radar store (windowed + deduped), rendered as an album shelf on Home.
+    val newFromArtists = MutableStateFlow<List<AlbumItem>?>(null)
+    // "Tu mix de [Género]": your own songs from your top genre (via on-device GenreCache), ranked by taste.
+    val genreMix = MutableStateFlow<GenreMix?>(null)
     val selectedChip = MutableStateFlow<HomePage.Chip?>(null)
     private val previousHomePage = MutableStateFlow<HomePage?>(null)
 
@@ -192,6 +198,16 @@ class HomeViewModel @Inject constructor(
             is com.music.innertube.models.AlbumItem -> p.scoreNames(item.artists?.map { it.name } ?: emptyList(), item.title)
             else -> 0.0
         }
+    }
+
+    /** Order a YouTube item list by taste (songs/albums scored; artists/playlists neutral) with a little
+     *  jitter — replaces the old plain .shuffled() so the best-fit songs/albums surface first in each row. */
+    private fun List<com.music.innertube.models.YTItem>.rankedByTasteYt(): List<com.music.innertube.models.YTItem> {
+        if (tasteProfile == null) return shuffled()
+        val rnd = java.util.Random()
+        return map { it to (tasteScoreYt(it) + rnd.nextDouble() * 0.2) }
+            .sortedByDescending { it.second }
+            .map { it.first }
     }
 
     val allLocalItems = MutableStateFlow<List<LocalItem>>(emptyList())
@@ -547,6 +563,75 @@ class HomeViewModel @Inject constructor(
 
         allLocalItems.value = (quickPicks.value.orEmpty() + forgottenFavorites.value.orEmpty() + keepListening.value.orEmpty())
             .filter { it is Song || it is Album }
+
+        getNewFromArtists()
+        getGenreMix()
+    }
+
+    /**
+     * "Tu mix de [Género]" — build a shelf of the user's OWN songs (history + library) from their single
+     * top genre, derived on-device via [GenreCache] (artist → genre) and ranked by the taste model. Fully
+     * local, no network. Hidden until enough of the user's songs share a known genre (a real cluster).
+     */
+    private suspend fun getGenreMix() {
+        val genres = runCatching { iad1tya.echo.music.reco.GenreCache.snapshot(context) }.getOrDefault(emptyMap())
+        if (genres.isEmpty()) return // genres not learned yet (enriched over WiFi) → shelf stays hidden this pass
+        val fromTimeStamp = System.currentTimeMillis() - 86400000L * 30
+        val played = runCatching { database.mostPlayedSongs(fromTimeStamp, limit = 100).first() }.getOrDefault(emptyList())
+        val library = runCatching { database.librarySongsForTaste(400).first() }.getOrDefault(emptyList())
+        val hideVideoSongs = context.dataStore.get(HideVideoSongsKey, false)
+        val candidates = (played + library).distinctBy { it.id }.filterVideoSongs(hideVideoSongs)
+        if (candidates.isEmpty()) return
+        // Group each song under the genre of its first artist we know a genre for.
+        val byGenre = HashMap<String, MutableList<Song>>()
+        candidates.forEach { s ->
+            val g = s.artists.firstNotNullOfOrNull { a -> genres[a.name.lowercase()]?.takeIf { it.isNotBlank() } }
+                ?: return@forEach
+            byGenre.getOrPut(g) { mutableListOf() }.add(s)
+        }
+        // Pick the top genre by summed TASTE WEIGHT, not raw song count — otherwise a big imported discography
+        // wins on bulk over what the user actually plays/likes (a fresh reggaeton import would beat the jazz you
+        // actually listen to). This mirrors AffinityEngine's LIBRARY_*_CAP anti-domination intent. Clamp per-song
+        // scores at 0 so disliked/neutral songs never pull a genre negative. Keep the >= 4 cluster gate so the mix
+        // is substantial. Fall back to count if the taste model isn't built yet. Never null out an existing mix on
+        // a transient empty read — only overwrite with a good one.
+        val p = tasteProfile
+        val top = byGenre.entries
+            .filter { it.value.size >= 4 }
+            .maxByOrNull { e ->
+                if (p == null) e.value.size.toDouble()
+                else e.value.sumOf { p.score(it).coerceAtLeast(0.0) }
+            } ?: return
+        val songs = top.value.rankedByTaste().distinctBy { it.id }.take(12)
+        if (songs.size >= 4) genreMix.value = GenreMix(top.key, songs)
+    }
+
+    /**
+     * "Novedades de tus artistas" — surface this week's Release Radar (new releases from artists you follow /
+     * play most) as an album shelf on Home. Reads the already-built, windowed, deduped Release Radar store
+     * (no extra network); each [ReleaseRadarItem] becomes an [AlbumItem] whose tap opens the album page.
+     */
+    private suspend fun getNewFromArtists() {
+        val releases = runCatching {
+            database.releasesSince(iad1tya.echo.music.releaseradar.ReleaseRadarWorker.currentWindowStart()).first()
+        }.getOrDefault(emptyList())
+        val albums = releases
+            .sortedByDescending { it.releaseDate }
+            .distinctBy { it.playId.ifBlank { it.id } }
+            .mapNotNull { r ->
+                val browse = r.playId.ifBlank { return@mapNotNull null }
+                AlbumItem(
+                    browseId = browse,
+                    playlistId = "",
+                    title = r.title,
+                    artists = listOf(Artist(name = r.artist, id = r.artistId.ifEmpty { null })),
+                    year = runCatching { r.releaseDate.year }.getOrNull(),
+                    thumbnail = r.artworkUri ?: "",
+                )
+            }
+            .take(20)
+        // Same empty-guard as every other shelf: a transient empty read must not wipe a populated shelf.
+        if (albums.isNotEmpty() || newFromArtists.value == null) newFromArtists.value = albums
     }
 
     
@@ -578,7 +663,7 @@ class HomeViewModel @Inject constructor(
                                 .distinctBy { item -> item.id }
                                 .filterExplicit(hideExplicit)
                                 .filterVideoSongs(hideVideoSongs)
-                                .shuffled()
+                                .rankedByTasteYt()
                                 .take(12)
                                 .ifEmpty { return@async null }
                         )
@@ -607,7 +692,7 @@ class HomeViewModel @Inject constructor(
                                 .distinctBy { it.id }
                                 .filterExplicit(hideExplicit)
                                 .filterVideoSongs(hideVideoSongs)
-                                .shuffled()
+                                .rankedByTasteYt()
                                 .ifEmpty { return@async null }
                         )
                     }
@@ -752,6 +837,8 @@ class HomeViewModel @Inject constructor(
             homePage = homePage.value,
             explorePage = explorePage.value,
             communityPlaylists = communityPlaylists.value,
+            newFromArtists = newFromArtists.value,
+            genreMix = genreMix.value,
             allLocalItems = allLocalItems.value,
             allYtItems = allYtItems.value,
         )
@@ -775,6 +862,8 @@ class HomeViewModel @Inject constructor(
             val homePage: HomePage?,
             val explorePage: ExplorePage?,
             val communityPlaylists: List<CommunityPlaylistItem>?,
+            val newFromArtists: List<AlbumItem>?,
+            val genreMix: GenreMix?,
             val allLocalItems: List<LocalItem>,
             val allYtItems: List<YTItem>,
         )
@@ -876,6 +965,8 @@ class HomeViewModel @Inject constructor(
             homePage.value = restored.homePage
             explorePage.value = restored.explorePage
             communityPlaylists.value = restored.communityPlaylists
+            newFromArtists.value = restored.newFromArtists
+            genreMix.value = restored.genreMix
             allLocalItems.value = restored.allLocalItems
             allYtItems.value = restored.allYtItems
         } else {

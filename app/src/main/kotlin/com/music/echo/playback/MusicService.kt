@@ -451,6 +451,20 @@ class MusicService :
     // shuffling, not-yet-played songs are ordered ahead of these, so nothing repeats until the whole pool is
     // exhausted (then it auto-resets for a new cycle). Reset whenever shuffle is (re)enabled.
     private val shufflePlayedIds = LinkedHashSet<String>()
+    /** Recently-played media ids (bounded, most-recent last) so autoplay/radio don't resurface a song you
+     *  JUST heard. A soft demotion (not a hard drop) — see [orderedByTaste] — so it can never dead-end the queue. */
+    private val recentRadioIds = LinkedHashSet<String>()
+    private fun rememberRecentRadioId(id: String?) {
+        if (id.isNullOrBlank()) return
+        synchronized(recentRadioIds) {
+            recentRadioIds.remove(id) // move-to-most-recent
+            recentRadioIds.add(id)
+            while (recentRadioIds.size > 60) {
+                val it = recentRadioIds.iterator()
+                if (it.hasNext()) { it.next(); it.remove() } else break
+            }
+        }
+    }
     // B3 — guards against double-seeding a radio when a finite queue ends: true while a startRadioSeamlessly
     // fetch is in flight, so onMediaItemTransition can't fire a second (racing) radio fetch over the same end.
     @Volatile private var radioSeedInFlight = false
@@ -1705,17 +1719,23 @@ class MusicService :
             val m = mi.metadata ?: return@filter true
             m.id !in disliked.songs && m.artists.none { it.id != null && it.id in disliked.artists }
         }
-        val p = tasteProfile() ?: return filtered // no taste yet → pure relatedness order (still dislike-filtered)
+        val p = tasteProfile() // may be null (no taste yet) → pure relatedness order, still recency/dislike-filtered
+        // Songs heard in the last ~60 transitions get pushed to the BOTTOM (soft demotion, not dropped) so the
+        // radio stops replaying what just played, yet can still fall back to them rather than dead-ending.
+        val recentSnapshot = synchronized(recentRadioIds) { HashSet(recentRadioIds) }
         val rnd = java.util.Random()
         // Precompute the sort key ONCE per item: calling rnd inside the comparator would make it inconsistent
         // between comparisons and crash TimSort ("Comparison method violates contract").
         return filtered
             .mapIndexed { index, mi ->
                 val m = mi.metadata
-                val taste = if (m == null) 0.0 else p.scoreNames(m.artists.map { it.name }, m.title)
+                val taste = if (m == null || p == null) 0.0 else p.scoreNames(m.artists.map { it.name }, m.title)
                 // Lower key = earlier. `index` (relatedness rank) DOMINATES; taste shifts a song by only a few
                 // spots (~4 per taste point) and a small jitter adds variety — relatedness stays the backbone.
-                val key = index.toDouble() - taste * 4.0 + rnd.nextDouble() * 1.5
+                // A big +1000 recency penalty sinks just-played songs beneath every fresh one without removing them.
+                val jitter = if (p == null) 0.0 else rnd.nextDouble() * 1.5
+                val recencyPenalty = if (m != null && m.id in recentSnapshot) 1000.0 else 0.0
+                val key = index.toDouble() - taste * 4.0 + jitter + recencyPenalty
                 mi to key
             }
             .sortedBy { it.second }
@@ -2318,6 +2338,7 @@ class MusicService :
         reason: Int,
     ) {
         currentPlayingMediaId = mediaItem?.mediaId
+        rememberRecentRadioId(mediaItem?.mediaId ?: player.currentMetadata?.id)
         // Sticky video mode: when the track changes while video mode is on, swap the NEW current track to
         // its video (restoring the previous one to audio). Stays in video until the user turns it off.
         if (_videoMode.value && mediaItem != null && mediaItem.mediaId != videoModeMediaId) {

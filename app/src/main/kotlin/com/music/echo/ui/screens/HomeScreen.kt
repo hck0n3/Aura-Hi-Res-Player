@@ -178,6 +178,8 @@ sealed class HomeSection(val id: String, val baseWeight: Int) {
     data object SpeedDial : HomeSection("speed_dial", 100)
     data object QuickPicks : HomeSection("quick_picks", 90)
     data object DailyDiscover : HomeSection("daily_discover", 80)
+    data object NewFromArtists : HomeSection("new_from_artists", 65)
+    data object GenreMix : HomeSection("genre_mix", 45)
     data object KeepListening : HomeSection("keep_listening", 50)
     data object AccountPlaylists : HomeSection("account_playlists", 40)
     data object ForgottenFavorites : HomeSection("forgotten_favorites", 30)
@@ -577,6 +579,8 @@ fun HomeScreen(
     val explorePage by viewModel.explorePage.collectAsState()
     val dailyDiscover by viewModel.dailyDiscover.collectAsState()
     val communityPlaylists by viewModel.communityPlaylists.collectAsState()
+    val newFromArtists by viewModel.newFromArtists.collectAsState()
+    val genreMix by viewModel.genreMix.collectAsState()
     val pinnedPodcasts by viewModel.pinnedPodcasts.collectAsState(initial = emptyList())
 
     val allLocalItems by viewModel.allLocalItems.collectAsState()
@@ -814,6 +818,8 @@ fun HomeScreen(
         accountPlaylists,
         forgottenFavorites,
         communityPlaylists,
+        newFromArtists,
+        genreMix,
         similarRecommendations,
         homePage?.sections,
         explorePage?.moodAndGenres
@@ -825,9 +831,15 @@ fun HomeScreen(
         // "From the community" is generic (not the user's taste) — hidden in taste-only mode.
         if (!tasteOnlyHome && communityPlaylists?.isNotEmpty() == true) list.add(HomeSection.FromTheCommunity)
         if (dailyDiscover?.isNotEmpty() == true) list.add(HomeSection.DailyDiscover)
+        // "Novedades de tus artistas" IS the user's taste (releases from artists they follow/play) — shown
+        // even in taste-only mode (no tasteOnlyHome guard).
+        if (newFromArtists?.isNotEmpty() == true) list.add(HomeSection.NewFromArtists)
         if (keepListening?.isNotEmpty() == true) list.add(HomeSection.KeepListening)
         if (accountPlaylists?.isNotEmpty() == true) list.add(HomeSection.AccountPlaylists)
         if (forgottenFavorites?.isNotEmpty() == true) list.add(HomeSection.ForgottenFavorites)
+        // "Tu mix de [Género]" IS the user's taste (their own songs from their top genre) — shown even in
+        // taste-only mode (no tasteOnlyHome guard).
+        if (genreMix?.songs?.isNotEmpty() == true) list.add(HomeSection.GenreMix)
 
         // Cap the "Similar a…" shelves: more than a few near-identical rows just makes a long,
         // monotonous tail at the bottom of the home.
@@ -861,12 +873,14 @@ fun HomeScreen(
                 val base = when (section) {
                     HomeSection.QuickPicks -> 10000
                     HomeSection.SpeedDial,
-                    HomeSection.DailyDiscover -> 500 
+                    HomeSection.NewFromArtists,
+                    HomeSection.DailyDiscover -> 500
 
                     HomeSection.KeepListening,
                     HomeSection.AccountPlaylists,
                     HomeSection.ForgottenFavorites,
-                    HomeSection.FromTheCommunity -> 300 
+                    HomeSection.GenreMix,
+                    HomeSection.FromTheCommunity -> 300
 
                     else -> 100 
                 }
@@ -876,6 +890,7 @@ fun HomeScreen(
                     
                     HomeSection.QuickPicks -> 0
                     HomeSection.SpeedDial,
+                    HomeSection.NewFromArtists,
                     HomeSection.DailyDiscover -> sectionRandom.nextInt(-200, 400)
 
                     
@@ -884,6 +899,7 @@ fun HomeScreen(
                     HomeSection.KeepListening,
                     HomeSection.AccountPlaylists,
                     HomeSection.ForgottenFavorites,
+                    HomeSection.GenreMix,
                     HomeSection.FromTheCommunity -> sectionRandom.nextInt(-100, 400)
 
                     
@@ -900,8 +916,10 @@ fun HomeScreen(
                 HomeSection.QuickPicks to 900,
                 HomeSection.KeepListening to 800,
                 HomeSection.DailyDiscover to 700,
+                HomeSection.NewFromArtists to 650,
                 HomeSection.AccountPlaylists to 600,
                 HomeSection.ForgottenFavorites to 500,
+                HomeSection.GenreMix to 480,
                 HomeSection.FromTheCommunity to 450,
                 HomeSection.MoodAndGenres to 10
             )
@@ -1597,6 +1615,67 @@ fun HomeScreen(
                                             key = { it.id },
                                         ) { item ->
                                             ytGridItem(item, richCardHeight)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        HomeSection.NewFromArtists -> {
+                            newFromArtists?.takeIf { it.isNotEmpty() }?.let { albums ->
+                                item(key = "new_from_artists_title") {
+                                    NavigationTitle(
+                                        title = stringResource(R.string.home_new_from_artists),
+                                        modifier = Modifier.animateItem()
+                                    )
+                                }
+                                item(key = "new_from_artists_list") {
+                                    LazyRow(
+                                        contentPadding = WindowInsets.systemBars
+                                            .only(WindowInsetsSides.Horizontal)
+                                            .asPaddingValues(),
+                                        modifier = Modifier.animateItem()
+                                    ) {
+                                        items(
+                                            items = albums.distinctBy { it.id },
+                                            key = { it.id },
+                                        ) { item ->
+                                            ytGridItem(item, richCardHeight)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        HomeSection.GenreMix -> {
+                            genreMix?.takeIf { it.songs.isNotEmpty() }?.let { mix ->
+                                item(key = "genre_mix_title") {
+                                    val mixTitle = stringResource(R.string.home_genre_mix, mix.genre)
+                                    NavigationTitle(
+                                        title = mixTitle,
+                                        modifier = Modifier.animateItem(),
+                                        onPlayAllClick = {
+                                            val items = mix.songs.distinctBy { it.id }.map { it.toMediaItem() }
+                                            if (items.isNotEmpty()) {
+                                                playerConnection.playQueue(
+                                                    ListQueue(title = mixTitle, items = items)
+                                                )
+                                            }
+                                        }
+                                    )
+                                }
+                                item(key = "genre_mix_list") {
+                                    LazyRow(
+                                        contentPadding = WindowInsets.systemBars
+                                            .only(WindowInsetsSides.Horizontal)
+                                            .asPaddingValues(),
+                                        modifier = Modifier.animateItem()
+                                    ) {
+                                        items(
+                                            items = mix.songs.distinctBy { it.id },
+                                            key = { it.id },
+                                        ) { song ->
+                                            Box(modifier = Modifier.width(GridThumbnailHeight)) {
+                                                localGridItem(song)
+                                            }
                                         }
                                     }
                                 }
