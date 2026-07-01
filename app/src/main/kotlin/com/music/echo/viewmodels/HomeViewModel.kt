@@ -563,9 +563,9 @@ class HomeViewModel @Inject constructor(
 
         allLocalItems.value = (quickPicks.value.orEmpty() + forgottenFavorites.value.orEmpty() + keepListening.value.orEmpty())
             .filter { it is Song || it is Album }
-
-        getNewFromArtists()
-        getGenreMix()
+        // NOTE: the new taste shelves (getNewFromArtists / getGenreMix) are intentionally NOT called here.
+        // They run isolated + guarded in load() so a failure in them can never abort this phase and, worse,
+        // skip the network phase that loads the "Similar/Community/Daily Discover/YouTube" carousels.
     }
 
     /**
@@ -579,7 +579,7 @@ class HomeViewModel @Inject constructor(
         val fromTimeStamp = System.currentTimeMillis() - 86400000L * 30
         val played = runCatching { database.mostPlayedSongs(fromTimeStamp, limit = 100).first() }.getOrDefault(emptyList())
         val library = runCatching { database.librarySongsForTaste(400).first() }.getOrDefault(emptyList())
-        val hideVideoSongs = context.dataStore.get(HideVideoSongsKey, false)
+        val hideVideoSongs = runCatching { context.dataStore.get(HideVideoSongsKey, false) }.getOrDefault(false)
         val candidates = (played + library).distinctBy { it.id }.filterVideoSongs(hideVideoSongs)
         if (candidates.isEmpty()) return
         // Group each song under the genre of its first artist we know a genre for.
@@ -818,10 +818,18 @@ class HomeViewModel @Inject constructor(
     private suspend fun load() {
         isLoading.value = true
 
-        loadLocalDataPhase()
+        // Guard EACH phase independently: a throw in the local phase must never skip the network phase (that
+        // would drop the Similar/Community/Daily Discover/YouTube carousels — a regression). reportException
+        // surfaces the failure without killing the load.
+        runCatching { loadLocalDataPhase() }.onFailure { reportException(it) }
         isLoading.value = false
 
-        loadNetworkDataPhase()
+        runCatching { loadNetworkDataPhase() }.onFailure { reportException(it) }
+
+        // The new taste shelves run LAST and fully isolated, so they can never delay or break the core load.
+        runCatching { getNewFromArtists() }.onFailure { reportException(it) }
+        runCatching { getGenreMix() }.onFailure { reportException(it) }
+
         saveSnapshot()
     }
 
@@ -938,7 +946,8 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 isRefreshing.value = true
-                load()
+                // Guard like the init-block load: a throw here must not kill the manual refresh silently.
+                runCatching { load() }.onFailure { reportException(it) }
             } finally {
                 isRefreshing.value = false
             }
