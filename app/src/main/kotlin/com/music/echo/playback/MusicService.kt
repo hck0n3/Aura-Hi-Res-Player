@@ -424,6 +424,9 @@ class MusicService :
     // AudioNormalization toggle mirrored into memory (collector in onCreate) so the crossfade pre-level needn't
     // block on a DataStore read either.
     @Volatile private var normalizationEnabledHint: Boolean = true
+    // Mirror of SafeVolumeEnabledKey for the crossfade pre-level (so the incoming secondary player gets
+    // Safe Volume from the first fade-in sample, not only after the swap settles).
+    @Volatile private var safeVolumeEnabledHint: Boolean = false
     @Volatile private var audioOffloadHint: Boolean = false
     // The track id whose MEASURED loudness we've already committed to the gains + DB (so the one-shot
     // measurement-driven re-level fires at most ONCE per song, never re-levels twice). Null = none yet.
@@ -912,7 +915,10 @@ class MusicService :
             dataStore.data
                 .map { it[SafeVolumeEnabledKey] ?: false }
                 .distinctUntilChanged()
-                .collect { setupLoudnessEnhancer() }
+                .collect {
+                    safeVolumeEnabledHint = it // mirror for the crossfade pre-level
+                    setupLoudnessEnhancer()
+                }
         }
 
         dataStore.data
@@ -4226,10 +4232,14 @@ class MusicService :
         // (the comment in startCrossfade documents that exact regression). Cache miss → the async fallback below
         // resolves it off-main before the fade.
         var primedSyncGain = false
-        if (incomingId != null && normalizationEnabledHint) {
+        if (incomingId != null && (normalizationEnabledHint || safeVolumeEnabledHint)) {
             loudnessHintCache[incomingId]?.let { loudnessDb ->
-                playerNormProcessors[sec]?.instanceGain = normalizationMultiplier(loudnessDb, enabled = true)
+                val mult = normalizationMultiplier(loudnessDb, enabled = true)
+                playerNormProcessors[sec]?.instanceGain = mult
                 playerLimiterProcessors[sec]?.setInstanceMakeup(dbToLinear(loudnessMakeupDb(loudnessDb, enabled = true)), null)
+                // Prime Safe Volume on the incoming player's live EQ processor so a loud track is attenuated
+                // from the FIRST fade-in sample (else it swells in at full native level, then drops at swap).
+                if (safeVolumeEnabledHint) playerEqProcessors[sec]?.applySafeVolume(true, mult)
                 primedSyncGain = true
                 Timber.tag(TAG).d("Crossfade: pre-leveled incoming $incomingId from cache (loudnessDb=$loudnessDb)")
             }
@@ -4246,7 +4256,7 @@ class MusicService :
         if (incomingId != null && !primedSyncGain) {
             scope.launch {
                 val normalize = withContext(Dispatchers.IO) { dataStore.data.map { it[AudioNormalizationKey] ?: true }.first() }
-                if (!normalize) return@launch
+                if (!normalize && !safeVolumeEnabledHint) return@launch
                 val fmt = withContext(Dispatchers.IO) { database.format(incomingId).first() }
                 val loudnessDb = effectiveLoudnessDb(fmt?.loudnessDb, fmt?.perceptualLoudnessDb, fmt?.measuredLoudnessDb)
                 if (fmt?.loudnessDb != null || fmt?.perceptualLoudnessDb != null || fmt?.measuredLoudnessDb != null) {
@@ -4259,8 +4269,10 @@ class MusicService :
                     // by `sec` still resolves. The `isCrossfading` guard prevents re-setting the override AFTER
                     // cleanupCrossfade has cleared it (which would freeze the survivor's normalization).
                     if (secondaryPlayer === sec || (player === sec && isCrossfading)) {
-                        playerNormProcessors[sec]?.instanceGain = normalizationMultiplier(loudnessDb, enabled = true)
+                        val mult = normalizationMultiplier(loudnessDb, enabled = true)
+                        playerNormProcessors[sec]?.instanceGain = mult
                         playerLimiterProcessors[sec]?.setInstanceMakeup(dbToLinear(loudnessMakeupDb(loudnessDb, enabled = true)), null)
+                        if (safeVolumeEnabledHint) playerEqProcessors[sec]?.applySafeVolume(true, mult)
                     }
                 }
             }

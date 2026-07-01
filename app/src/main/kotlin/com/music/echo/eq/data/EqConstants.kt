@@ -39,9 +39,9 @@ enum class FactoryPreset(val displayName: String, val description: String, val g
     
     AUDIOPHILE("Audiophile", "Referencia de monitor. Domestica frecuencias sucias, añade calidez y aire.", floatArrayOf(2.0f, 1.5f, -0.5f, -1.0f, 0f, 0f, 0.5f, 1.0f, 1.5f, 2.0f)),
     
-    SPATIAL_AIR("Spatial & Air", "Maximiza la imagen estéreo y la separación de instrumentos.", floatArrayOf(1.0f, 0.5f, -1.5f, -2.0f, -1.0f, 0.5f, 1.0f, 1.5f, 2.5f, 4.0f)),
-    
-    SPARKLE_DETAIL("Sparkle & Detail", "Realza los micro-detalles sutiles sin generar fatiga auditiva.", floatArrayOf(0f, 0f, -0.5f, -1.0f, 0f, 0.5f, 1.5f, 2.5f, 3.5f, 4.5f)),
+    SPATIAL_AIR("Spatial & Air", "Maximiza la imagen estéreo y la separación de instrumentos.", floatArrayOf(1.0f, 0.5f, -1.5f, -2.0f, -1.0f, 0.5f, 1.0f, 1.5f, 2.0f, 3.0f)),
+
+    SPARKLE_DETAIL("Sparkle & Detail", "Realza los micro-detalles sutiles sin generar fatiga auditiva.", floatArrayOf(0f, 0f, -0.5f, -1.0f, 0f, 0.5f, 1.0f, 1.5f, 2.0f, 2.5f)),
     
     DEEP_PUNCH("Deep Punch", "Bajos profundos y rápidos que no ahogan a los cantantes.", floatArrayOf(6.0f, 4.5f, 1.0f, -1.5f, -0.5f, 0f, 0.5f, 1.0f, 1.5f, 1.0f)),
     
@@ -65,7 +65,7 @@ enum class FactoryPreset(val displayName: String, val description: String, val g
 
     STUDIO_MIX("Studio Mix", "Balance de consola de mezcla: voces e instrumentos claros, graves controlados.", floatArrayOf(1.0f, 1.0f, 0f, -0.5f, 0f, 0.5f, 1.5f, 2.0f, 1.0f, 0.5f)),
 
-    CRYSTAL_CLEAR("Crystal Clear", "Transparencia total: máximo detalle y aire en los agudos, medios limpios.", floatArrayOf(0f, -0.5f, -1.0f, -1.0f, 0f, 1.0f, 2.0f, 3.0f, 3.5f, 4.0f)),
+    CRYSTAL_CLEAR("Crystal Clear", "Transparencia total: máximo detalle y aire en los agudos, medios limpios.", floatArrayOf(0f, -0.5f, -1.0f, -1.0f, 0f, 1.0f, 1.5f, 2.5f, 2.5f, 3.0f)),
 
     BASS_HEAD("Bass Head", "Graves masivos para amantes del bajo, sin enturbiar la voz.", floatArrayOf(7.0f, 6.0f, 4.0f, 1.5f, 0f, -0.5f, 0f, 0.5f, 1.0f, 1.0f))
 }

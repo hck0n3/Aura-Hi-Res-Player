@@ -117,17 +117,38 @@ Java_iad1tya_echo_music_eq_audio_CustomEqualizerAudioProcessor_initSuperpowered(
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_iad1tya_echo_music_eq_audio_CustomEqualizerAudioProcessor_setEqBand(JNIEnv *env, jobject thiz, jlong ptr, jint index, jfloat frequency, jfloat gainDb, jfloat Q) {
+Java_iad1tya_echo_music_eq_audio_CustomEqualizerAudioProcessor_setEqBand(JNIEnv *env, jobject thiz, jlong ptr, jint index, jfloat frequency, jfloat gainDb, jfloat Q, jint filterType) {
 #if HAS_SUPERPOWERED
     auto* processor = reinterpret_cast<SuperpoweredProcessor*>(ptr);
     if (!processor) return;
-    
+
     std::lock_guard<std::mutex> lock(processor->eqMutex);
-    if (index >= 0 && index < processor->filters.size()) {
-        processor->filters[index]->frequency = frequency;
-        processor->filters[index]->octave = Q;
-        processor->filters[index]->decibel = gainDb;
-        processor->filters[index]->enabled = true;
+    if (index >= 0 && index < (int)processor->filters.size()) {
+        Superpowered::Filter* f = processor->filters[index];
+        f->frequency = frequency;
+        f->decibel = gainDb;
+        // filterType matches the Kotlin FilterType mapping: 1 = low shelf, 2 = high shelf, else parametric.
+        // Shelves (SDK LowShelf/HighShelf) hold their gain out to DC / Nyquist instead of rolling off like a
+        // peak — the correct choice for the lowest/highest graphic-EQ bands (fixes the "edges roll off oddly"
+        // and makes the audio match the shelf curve drawn in the UI).
+        if (filterType == 1) {
+            f->type = Superpowered::Filter::LowShelf;
+            f->slope = 0.6f;
+        } else if (filterType == 2) {
+            f->type = Superpowered::Filter::HighShelf;
+            f->slope = 0.6f;
+        } else {
+            f->type = Superpowered::Filter::Parametric;
+            // Convert Q -> octave BANDWIDTH (the SDK's Parametric width unit). Q and octave are different
+            // physical quantities; passing Q raw as `octave` made every band wider/more overlapping than
+            // designed, and made a high-Q parametric notch (Q=10) turn into the WIDEST filter (octave clamped
+            // to 5). BW_oct = (2/ln2)*asinh(1/(2Q)); clamp to the SDK's [0.05, 5].
+            float oct = 2.0f;
+            if (Q > 0.0001f) oct = (2.0f / logf(2.0f)) * asinhf(1.0f / (2.0f * Q));
+            if (oct < 0.05f) oct = 0.05f; else if (oct > 5.0f) oct = 5.0f;
+            f->octave = oct;
+        }
+        f->enabled = true;
     }
 #endif
 }

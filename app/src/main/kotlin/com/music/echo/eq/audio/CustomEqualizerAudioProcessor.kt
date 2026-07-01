@@ -4,6 +4,7 @@ import androidx.media3.common.C
 import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.audio.AudioProcessor.UnhandledAudioFormatException
 import androidx.media3.common.audio.BaseAudioProcessor
+import iad1tya.echo.music.eq.data.FilterType
 import iad1tya.echo.music.eq.data.ParametricEQ
 import java.nio.ByteBuffer
 
@@ -26,7 +27,7 @@ class CustomEqualizerAudioProcessor(private val licenseKey: String = "akloSTZUT1
     private external fun setPreamp(ptr: Long, preampDb: Float)
     private external fun setSafeVolume(ptr: Long, enabled: Boolean, gainLinear: Float)
     private external fun disableAllBands(ptr: Long)
-    private external fun setEqBand(ptr: Long, index: Int, frequency: Float, gainDb: Float, q: Float)
+    private external fun setEqBand(ptr: Long, index: Int, frequency: Float, gainDb: Float, q: Float, filterType: Int)
     private external fun processAudio(ptr: Long, inputBuffer: ByteBuffer, outputBuffer: ByteBuffer, numFrames: Int, encoding: Int, channels: Int, enabled: Boolean)
     private external fun releaseSuperpowered(ptr: Long)
 
@@ -62,13 +63,25 @@ class CustomEqualizerAudioProcessor(private val licenseKey: String = "akloSTZUT1
         currentProfile = profile
         if (isInitialized && nativePtr != 0L) {
             disableAllBands(nativePtr)
-            setPreamp(nativePtr, profile.preamp.toFloat())
-            
-            // Combine manual bands and auto-correction bands
+
+            // Combine manual bands and auto-correction bands (auto first, then taste — LTI cascade).
             val allBands = profile.autoBands + profile.bands
+            val enabledGains = allBands.filter { it.enabled }.map { it.gain }
+            // AUTO-HEADROOM: trim the front preamp by the largest positive band boost (+1 dB safety) so a
+            // boosted EQ/preset/AutoEq can never push the signal above its original level and slam the
+            // limiter/soft-clip. Reuses headroomPreampDb (AutoEq/Wavelet convention). This is what keeps
+            // every preset clip-free instead of relying on the limiter to gain-ride (which colors the sound).
+            val effectivePreamp = headroomPreampDb(profile.preamp, enabledGains)
+            setPreamp(nativePtr, effectivePreamp.toFloat())
+
             allBands.forEachIndexed { index, band ->
                 if (band.enabled) {
-                    setEqBand(nativePtr, index, band.frequency.toFloat(), band.gain.toFloat(), band.q.toFloat())
+                    val typeCode = when (band.filterType) {
+                        FilterType.LSC -> 1  // low shelf
+                        FilterType.HSC -> 2  // high shelf
+                        else -> 0            // peak / parametric
+                    }
+                    setEqBand(nativePtr, index, band.frequency.toFloat(), band.gain.toFloat(), band.q.toFloat(), typeCode)
                 }
             }
         }
