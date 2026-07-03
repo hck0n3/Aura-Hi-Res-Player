@@ -288,9 +288,11 @@ fun BottomSheetPlayer(
     // TV / car: enable visible D-pad focus on the transport controls + auto-focus play/pause when the player opens.
     val isTvOrCar = iad1tya.echo.music.ui.utils.rememberIsTvOrCar()
     val playFocusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
-    // True once any transport button holds focus — the initial-focus retry stops when this flips, so it lands
-    // focus after the enter animation attaches the node WITHOUT ever stealing focus back from the user.
-    var transportHasFocus by remember { mutableStateOf(false) }
+    // LATCH: set true (and never back to false) the first time any transport button gains focus after the
+    // player expands. The initial-focus retry stops the instant this latches, so it lands focus once the enter
+    // animation attaches the node and then NEVER re-grabs it — even if the user D-pads away during the retry's
+    // 50ms tick (a transient hasFocus=false must not re-arm the retry). Reset per expansion inside the effect.
+    var transportFocusLanded by remember { mutableStateOf(false) }
     // Big screen (TV / tablet / car / unfolded foldable): show the Spotify-style split player (queue | now-playing).
     val isWideScreen = rememberIsWideScreen()
     val spectrumVisualizerEnabled by iad1tya.echo.music.utils.rememberPerfGatedBoolean(iad1tya.echo.music.constants.SpectrumVisualizerEnabledKey, false)
@@ -368,11 +370,12 @@ fun BottomSheetPlayer(
             // The transport composes behind a ~300ms AnimatedVisibility slide-in, so on the first tick the
             // FocusRequester node isn't attached yet. The no-arg requestFocus() returns Unit and does NOT throw
             // when unattached (it just no-ops), so we can't detect success from its return — instead we retry
-            // until the transport container reports hasFocus (set via onFocusChanged), then stop so we never
-            // steal focus back from a user who already moved the D-pad.
-            transportHasFocus = false
+            // until the transport reports it has been focused (the transportFocusLanded LATCH), then stop. Using
+            // a latch (not live hasFocus) closes the sub-50ms edge where the user D-pads away mid-tick and a
+            // transient hasFocus=false would otherwise re-arm the retry and yank focus back to play/pause.
+            transportFocusLanded = false
             repeat(40) {
-                if (transportHasFocus) return@LaunchedEffect
+                if (transportFocusLanded) return@LaunchedEffect
                 playFocusRequester.requestFocus()
                 kotlinx.coroutines.delay(50)
             }
@@ -2243,8 +2246,9 @@ fun BottomSheetPlayer(
                 enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
                 exit = shrinkVertically(shrinkTowards = Alignment.Top) + slideOutVertically(targetOffsetY = { it }) + fadeOut()
             ) {
-                // TV/car: report when any transport button holds focus so the initial-focus retry can stop.
-                Column(modifier = Modifier.onFocusChanged { transportHasFocus = it.hasFocus }) {
+                // TV/car: latch the moment any transport button first gains focus so the initial-focus retry
+                // stops for good (only ever sets true; the retry resets it to false per expansion).
+                Column(modifier = Modifier.onFocusChanged { if (it.hasFocus) transportFocusLanded = true }) {
                     if (useNewPlayerDesign) {
                         Row(
                             horizontalArrangement = Arrangement.Center,
