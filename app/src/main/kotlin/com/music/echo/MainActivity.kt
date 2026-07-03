@@ -54,6 +54,7 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -198,6 +199,7 @@ import iad1tya.echo.music.ui.component.rememberBottomSheetState
 import iad1tya.echo.music.ui.component.shimmer.ShimmerTheme
 import iad1tya.echo.music.ui.menu.YouTubeSongMenu
 import iad1tya.echo.music.ui.player.BottomSheetPlayer
+import iad1tya.echo.music.ui.player.NowPlayingSidePanel
 import iad1tya.echo.music.ui.screens.Screens
 import iad1tya.echo.music.ui.screens.SettingDialoge
 import iad1tya.echo.music.license.LicenseGate
@@ -1295,6 +1297,23 @@ class MainActivity : ComponentActivity() {
                                         snackbarHostState = snackbarHostState
                                     )
                                 }
+                            }
+                            // Spotify-desktop-style persistent now-playing panel on genuinely-wide screens: while
+                            // the user browses on the left, the current song's cover + transport stay on the RIGHT
+                            // (tap the cover to open the full split player). Only when there's real width (>=800dp
+                            // content, landscape rail shown, not searching, player not already expanded) so phones/
+                            // portrait/narrow are never squeezed. Renders nothing when no song is active.
+                            if (showRail &&
+                                configuration.containerDpSize.width >= 800.dp &&
+                                currentRoute != "update" &&
+                                !playerBottomSheetState.isExpanded
+                            ) {
+                                NowPlayingSidePanel(
+                                    onExpand = { playerBottomSheetState.expandSoft() },
+                                    modifier = Modifier
+                                        .fillMaxHeight()
+                                        .width(340.dp),
+                                )
                             }
                         }
                     }
