@@ -620,7 +620,7 @@ private fun ThumbnailItem(
     playerBackground: PlayerBackgroundStyle = PlayerBackgroundStyle.DEFAULT,
     modifier: Modifier = Modifier,
 ) {
-    val rotatingThumbnail by rememberPreference(RotatingThumbnailKey, defaultValue = false)
+    val rotatingThumbnail by iad1tya.echo.music.utils.rememberPerfGatedBoolean(RotatingThumbnailKey, defaultValue = false)
     val isPlaying by playerConnection.isPlaying.collectAsState()
     val isCurrentItem = item.mediaId == currentMediaId
     

@@ -80,6 +80,43 @@ object JrPlaylistImporter {
         return Result(playlistName = playlistName, total = file.tracks.size, resolved = ordered.size)
     }
 
+    /**
+     * DIRECT import for an app-to-app selective migration: the exported [JrTrack.youtubeVideoId] IS a real
+     * YouTube video id from THIS app, so we do NOT re-resolve tracks over the network (which failed offline /
+     * on flaky networks and left playlists empty). We insert each track's song row by its embedded id and map
+     * it into a new playlist. `insert(MediaMetadata)` is IGNORE-on-conflict, so a song already in the library
+     * keeps its full row (thumbnail/album/liked/inLibrary) untouched; only unknown tracks get a minimal row
+     * (title + artist), which fills in its artwork/metadata the first time it's played. No network, works offline.
+     */
+    suspend fun importDirect(database: MusicDatabase, file: JrPlaylistFile): Result {
+        val tracks = file.tracks.filter { !it.youtubeVideoId.isNullOrBlank() }
+        val playlistName = file.name.ifBlank { "JR Playlist" }
+        val playlist = PlaylistEntity(name = playlistName)
+        val seen = HashSet<String>()
+        database.transaction {
+            insert(playlist)
+            var position = 0
+            tracks.forEach { track ->
+                val id = track.youtubeVideoId!!
+                if (!seen.add(id)) return@forEach
+                val artists = track.artist.split(",")
+                    .map { it.trim() }
+                    .filter { it.isNotEmpty() }
+                    .map { MediaMetadata.Artist(id = null, name = it) }
+                insert(
+                    MediaMetadata(
+                        id = id,
+                        title = track.title,
+                        artists = artists,
+                        duration = 0,
+                    ),
+                )
+                insert(PlaylistSongMap(playlistId = playlist.id, songId = id, position = position++))
+            }
+        }
+        return Result(playlistName = playlistName, total = file.tracks.size, resolved = seen.size)
+    }
+
     // Resolution is shared with the AI playlist generator via SongResolver (same package).
     private suspend fun resolveTrack(
         database: MusicDatabase,

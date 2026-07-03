@@ -105,6 +105,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithCache
@@ -212,6 +213,7 @@ import iad1tya.echo.music.ui.screens.settings.DarkMode
 import iad1tya.echo.music.ui.theme.PlayerColorExtractor
 import iad1tya.echo.music.ui.theme.PlayerSliderColors
 import iad1tya.echo.music.ui.utils.rememberIsAppInForeground
+import iad1tya.echo.music.ui.utils.tvFocusable
 import iad1tya.echo.music.utils.DeviceCapabilities
 import iad1tya.echo.music.utils.DeviceTier
 import iad1tya.echo.music.ui.utils.ShowMediaInfo
@@ -277,6 +279,9 @@ fun BottomSheetPlayer(
     val hidePlayerSlider by rememberPreference(iad1tya.echo.music.constants.HidePlayerSliderKey, false)
     // High-Performance Mode hides these heavy visuals without touching the user's stored toggles (reversible).
     val highPerfMode by rememberPreference(iad1tya.echo.music.constants.HighPerformanceModeKey, false)
+    // TV / car: enable visible D-pad focus on the transport controls + auto-focus play/pause when the player opens.
+    val isTvOrCar = iad1tya.echo.music.ui.utils.rememberIsTvOrCar()
+    val playFocusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
     val spectrumVisualizerEnabled by iad1tya.echo.music.utils.rememberPerfGatedBoolean(iad1tya.echo.music.constants.SpectrumVisualizerEnabledKey, false)
     val (hidePlayerThumbnail, onHidePlayerThumbnailChange) = rememberPreference(HidePlayerThumbnailKey, false)
     val cropAlbumArt by rememberPreference(CropAlbumArtKey, false)
@@ -344,6 +349,14 @@ fun BottomSheetPlayer(
     val enableLyricsThumbnailPlayPause by rememberPreference(EnableLyricsThumbnailPlayPauseKey, false)
     val isKeepScreenOn by rememberPreference(KeepScreenOn, false)
     val keepScreenOn = isPlaying && isKeepScreenOn
+
+    // TV / car: when the player opens, land the D-pad on the play/pause button so the user sees where they are
+    // and can control playback immediately (Material3 gives no initial focus on a remote). No-op off-TV.
+    LaunchedEffect(state.isExpanded, isTvOrCar) {
+        if (isTvOrCar && state.isExpanded) {
+            runCatching { playFocusRequester.requestFocus() }
+        }
+    }
 
     DisposableEffect(playerBackground, state.isExpanded, useDarkTheme, keepScreenOn, mediaMetadata?.id) {
         val window = (context as? android.app.Activity)?.window
@@ -2265,6 +2278,7 @@ fun BottomSheetPlayer(
                                 modifier = Modifier
                                     .height(68.dp)
                                     .weight(backButtonWeight)
+                                    .tvFocusable(isTvOrCar)
                             ) {
                                 Icon(
                                     painter = painterResource(R.drawable.skip_previous),
@@ -2303,6 +2317,8 @@ fun BottomSheetPlayer(
                                 modifier = Modifier
                                     .height(68.dp)
                                     .weight(playPauseWeight)
+                                    .focusRequester(playFocusRequester)
+                                    .tvFocusable(isTvOrCar)
                             ) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
@@ -2339,8 +2355,8 @@ fun BottomSheetPlayer(
                                 ),
                                 modifier = Modifier
                                     .height(68.dp)
-                                    .weight(nextButtonWeight
-                                    )
+                                    .weight(nextButtonWeight)
+                                    .tvFocusable(isTvOrCar)
                             ) {
                                 Icon(
                                     painter = painterResource(R.drawable.skip_next),

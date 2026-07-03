@@ -63,6 +63,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.toMutableStateList
 import androidx.compose.runtime.derivedStateOf
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -608,17 +609,20 @@ private fun OnlinePlaylistHeader(
             Spacer(Modifier.height(20.dp)) 
 
             
+            val isTvOrCarCover = iad1tya.echo.music.ui.utils.rememberIsTvOrCar()
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 48.dp)
+                    .padding(horizontal = 48.dp),
+                contentAlignment = Alignment.Center
             ) {
                 AsyncImage(
                     model = ImageRequest.Builder(LocalContext.current).data(playlist.thumbnail)
                         .build(),
                     contentDescription = null,
                     modifier = Modifier
-                        .fillMaxWidth()
+                        // TV / car: a full-width cover is a giant wall of art; cap it so the screen stays usable.
+                        .then(if (isTvOrCarCover) Modifier.widthIn(max = 320.dp) else Modifier.fillMaxWidth())
                         .aspectRatio(1f)
                         .clip(RoundedCornerShape(8.dp)),
                     contentScale = ContentScale.Crop

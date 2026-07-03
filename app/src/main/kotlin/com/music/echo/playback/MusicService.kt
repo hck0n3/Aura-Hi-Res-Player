@@ -1039,14 +1039,16 @@ class MusicService :
         combine(
             dataStore.data.map { prefs ->
                 Triple(
-                    prefs[CrossfadeEnabledKey] ?: false,
+                    // High-Performance Mode disables crossfade: it runs a SECOND ExoPlayer (double decode) per
+                    // transition — the biggest CPU/RAM cost left on weak/TV/car devices. Transitions become hard cuts.
+                    (prefs[CrossfadeEnabledKey] ?: false) && !(prefs[iad1tya.echo.music.constants.HighPerformanceModeKey] ?: false),
                     prefs[CrossfadeDurationKey] ?: 10f,
                     prefs[CrossfadeGaplessKey] ?: true
                 )
             },
             listenTogetherManager.roomState
         ) { (enabled, duration, gapless), roomState ->
-            
+
             Triple(enabled && roomState == null, duration, gapless)
         }
             .distinctUntilChanged()

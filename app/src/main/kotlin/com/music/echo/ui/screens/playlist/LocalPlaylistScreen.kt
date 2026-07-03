@@ -17,6 +17,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -1036,11 +1037,16 @@ fun LocalPlaylistHeader(
             }
         }
         
+        val isTvOrCarCover = iad1tya.echo.music.ui.utils.rememberIsTvOrCar()
         Box(
             modifier = Modifier
                 .padding(horizontal = 48.dp)
                 .padding(bottom = 24.dp)
-                .fillMaxWidth()
+                // On TV / car the full-width square cover fills the whole screen — cap it and center it.
+                .then(
+                    if (isTvOrCarCover) Modifier.widthIn(max = 320.dp).align(Alignment.CenterHorizontally)
+                    else Modifier.fillMaxWidth(),
+                )
                 .aspectRatio(1f)
                 .clip(RoundedCornerShape(8.dp))
         ) {

@@ -286,26 +286,32 @@ class BackupRestoreViewModel @Inject constructor(
                 val bundle = Json { ignoreUnknownKeys = true }.decodeFromString(
                     iad1tya.echo.music.playlistimport.SelectiveBackup.serializer(), text,
                 )
+                // Playlists: DIRECT import (no network re-resolution) so tracks actually land, offline too.
                 bundle.playlists.forEach {
-                    iad1tya.echo.music.playlistimport.JrPlaylistImporter.import(database, it)
+                    iad1tya.echo.music.playlistimport.JrPlaylistImporter.importDirect(database, it)
                 }
                 bundle.artists.forEach { a ->
+                    val entity = ArtistEntity(
+                        id = a.id,
+                        name = a.name,
+                        thumbnailUrl = a.thumbnailUrl,
+                        channelId = a.channelId,
+                        bookmarkedAt = java.time.LocalDateTime.now(),
+                    )
                     database.query {
-                        insert(
-                            ArtistEntity(
-                                id = a.id,
-                                name = a.name,
-                                thumbnailUrl = a.thumbnailUrl,
-                                channelId = a.channelId,
-                                bookmarkedAt = java.time.LocalDateTime.now(),
-                            ),
-                        )
+                        // insert() is IGNORE-on-conflict, so an artist row that ALREADY exists (e.g. you've
+                        // played their songs, bookmarkedAt = null) would be skipped and never followed. update()
+                        // after it sets bookmarkedAt on that existing row → the artist is actually re-followed.
+                        insert(entity)
+                        update(entity)
                     }
                 }
-                bundle.eqPresets.forEach { p ->
+                bundle.eqPresets.forEachIndexed { index, p ->
                     eqProfileRepository.saveProfile(
                         p.copy(
-                            id = "custom_${System.currentTimeMillis()}_${p.name.hashCode()}",
+                            // Unique id per preset (index avoids same-millisecond collisions in this tight loop
+                            // that would otherwise make one preset silently overwrite another).
+                            id = "custom_${System.currentTimeMillis()}_${index}_${p.name.hashCode()}",
                             isActive = false,
                             isCustom = true,
                         ),

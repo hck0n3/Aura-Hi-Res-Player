@@ -17,20 +17,16 @@ class DensityScaler : BaseLifecycleContentProvider() {
         private const val PREFS_NAME = "echomusic_settings"
         private const val KEY_DENSITY_SCALE = "density_scale_factor"
         private const val DEFAULT_SCALE_FACTOR = 1.0f
-        // TVs report a low DPI, so the phone-tuned UI renders microscopic. Bump the default a bit on TV ONLY
-        // when the user hasn't chosen a density themselves (phones/tablets are unaffected).
-        private const val TV_DEFAULT_SCALE_FACTOR = 1.10f
 
+        // IMPORTANT: do NOT scale density on TV here. TV density is already handled (once, via
+        // createConfigurationContext) in Utils.localeAwareContext. A non-1.0 factor here goes through
+        // DensityConfiguration.updateConfiguration() on the shared Resources, which — because the manifest
+        // doesn't list density/uiMode in configChanges — recreates the Activity, re-applies, and loops
+        // (the flicker/relaunch storm on TV). Keep the phone-proven path: honor a user override, else 1.0.
         private fun getScaleFactorFromPreferences(context: Context): Float {
             return try {
                 val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-                if (prefs.contains(KEY_DENSITY_SCALE)) {
-                    prefs.getFloat(KEY_DENSITY_SCALE, DEFAULT_SCALE_FACTOR)
-                } else if (iad1tya.echo.music.utils.DeviceForm.isTelevision(context)) {
-                    TV_DEFAULT_SCALE_FACTOR
-                } else {
-                    DEFAULT_SCALE_FACTOR
-                }
+                prefs.getFloat(KEY_DENSITY_SCALE, DEFAULT_SCALE_FACTOR)
             } catch (e: Exception) {
                 Timber.tag("DensityScaler").w(e, "Failed to read scale factor from preferences")
                 DEFAULT_SCALE_FACTOR

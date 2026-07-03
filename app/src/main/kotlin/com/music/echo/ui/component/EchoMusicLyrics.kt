@@ -70,7 +70,7 @@ fun echomusicLyricsLine(
     expressiveAccent: Color,
     modifier: Modifier = Modifier
 ) {
-    val (appleMusicLyricsBlur) = rememberPreference(AppleMusicLyricsBlurKey, true)
+    val appleMusicLyricsBlur by iad1tya.echo.music.utils.rememberPerfGatedBoolean(AppleMusicLyricsBlurKey, true)
 
     val targetBlur = if (!appleMusicLyricsBlur || !isAutoScrollActive || isActive || !isSynced || isSelectionModeActive) {
         0f

@@ -53,6 +53,7 @@ import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.toMutableStateList
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -635,16 +636,19 @@ private fun AutoPlaylistHeader(
         Spacer(Modifier.height(50.dp))
 
         
+        val isTvOrCarCover = iad1tya.echo.music.ui.utils.rememberIsTvOrCar()
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 48.dp)
+                .padding(horizontal = 48.dp),
+            contentAlignment = Alignment.Center
         ) {
             AsyncImage(
                 model = songs[0].song.thumbnailUrl,
                 contentDescription = null,
                 modifier = Modifier
-                    .fillMaxWidth()
+                    // TV / car: cap the cover so it doesn't fill the whole screen.
+                    .then(if (isTvOrCarCover) Modifier.widthIn(max = 320.dp) else Modifier.fillMaxWidth())
                     .aspectRatio(1f)
                     .clip(RoundedCornerShape(8.dp)),
                 contentScale = androidx.compose.ui.layout.ContentScale.Crop
