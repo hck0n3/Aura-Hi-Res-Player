@@ -123,6 +123,7 @@ class App : Application(), SingletonImageLoader.Factory {
         migrateThemeSystemOnlyV2(settings)
         migratePlaybackDefaults(settings)
         migrateAudioDefaultsV2(settings)
+        migrateInfinitePlaybackOn(settings)
         migrateLegacyIcon(settings)
         val locale = Locale.getDefault()
         val languageTag = locale.language
@@ -468,6 +469,23 @@ class App : Application(), SingletonImageLoader.Factory {
         // marked complete and leaving the EQ partially seeded forever.
         if (seeded) {
             dataStore.edit { it[iad1tya.echo.music.constants.AudioDefaultsV2AppliedKey] = true }
+        }
+    }
+
+    /**
+     * Force infinite playback (auto-radio at the end of an album/playlist/queue, and endless continuation when
+     * you open an artist's top songs) ON for everyone — the owner wants endless playback always active. Fresh
+     * key so it re-applies once even for users who had turned [AutoLoadMoreKey] off.
+     */
+    private suspend fun migrateInfinitePlaybackOn(settings: androidx.datastore.preferences.core.Preferences) {
+        if (settings[iad1tya.echo.music.constants.InfinitePlaybackForcedOnKey] == true) return
+        // Only mark the one-time migration done when the write actually succeeded, so a transient DataStore
+        // failure retries on the next launch instead of silently leaving a user's infinite playback off forever.
+        val applied = runCatching {
+            dataStore.edit { it[iad1tya.echo.music.constants.AutoLoadMoreKey] = true }
+        }.onFailure { reportException(it) }.isSuccess
+        if (applied) {
+            dataStore.edit { it[iad1tya.echo.music.constants.InfinitePlaybackForcedOnKey] = true }
         }
     }
 

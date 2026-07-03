@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import iad1tya.echo.music.LocalPlayerAwareWindowInsets
 import iad1tya.echo.music.R
+import iad1tya.echo.music.constants.ForceSplitViewKey
 import iad1tya.echo.music.constants.HighPerformanceModeKey
 import iad1tya.echo.music.ui.component.IconButton
 import iad1tya.echo.music.ui.component.Material3SettingsGroup
@@ -45,6 +46,7 @@ fun PerformanceSettings(
 ) {
     val context = LocalContext.current
     val (highPerfMode, onHighPerfModeChange) = rememberPreference(HighPerformanceModeKey, defaultValue = false)
+    val (forceSplit, onForceSplitChange) = rememberPreference(ForceSplitViewKey, defaultValue = false)
 
     // Read-only diagnostic: why the mode auto-enabled (LOW hardware / TV / car).
     val detected = remember {
@@ -123,6 +125,40 @@ fun PerformanceSettings(
                     )
                 )
             }
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Material3SettingsGroup(
+            title = "Pantalla grande",
+            items = listOf(
+                Material3SettingsItem(
+                    icon = painterResource(R.drawable.speed),
+                    title = { Text("Vista dividida estilo Spotify") },
+                    description = {
+                        Text(
+                            "Fuerza el diseño de pantalla ancha (cola/lista a un lado, reproductor y controles al otro) " +
+                                "en cualquier dispositivo. Se activa solo en TV, autos, tablets y plegables abiertos; " +
+                                "actívalo aquí si lo querés también en tu teléfono u otra pantalla."
+                        )
+                    },
+                    trailingContent = {
+                        Switch(
+                            checked = forceSplit,
+                            onCheckedChange = onForceSplitChange,
+                            thumbContent = {
+                                Icon(
+                                    painter = painterResource(
+                                        id = if (forceSplit) R.drawable.check else R.drawable.close
+                                    ),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(SwitchDefaults.IconSize)
+                                )
+                            }
+                        )
+                    },
+                    onClick = { onForceSplitChange(!forceSplit) }
+                )
+            )
         )
         Spacer(modifier = Modifier.height(16.dp))
     }

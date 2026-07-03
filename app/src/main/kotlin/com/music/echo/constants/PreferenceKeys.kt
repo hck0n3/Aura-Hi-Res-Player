@@ -86,6 +86,12 @@ val EqAudiophileDefaultAppliedKey = booleanPreferencesKey("eq_audiophile_default
 // equal-power, Safe Volume OFF — for EVERYONE, including users whose per-feature flags were already set by
 // the brief 0.6.75/0.6.76 builds (so the settings actually land on this update).
 val AudioDefaultsV2AppliedKey = booleanPreferencesKey("audio_defaults_v2_applied")
+// One-time: force infinite playback (auto-radio at end of album/playlist/queue) ON for EVERYONE — the owner
+// wants endless playback always active. Fresh key so it re-applies even for users who had it toggled off.
+val InfinitePlaybackForcedOnKey = booleanPreferencesKey("infinite_playback_forced_on_v1")
+// Manual override: force the wide "Spotify split" layout ON even on a device the app wouldn't auto-detect as
+// big (e.g. a phone/tablet the user WANTS the split on). ORed into rememberIsWideScreen().
+val ForceSplitViewKey = booleanPreferencesKey("force_split_view")
 // Set before the YouTube Music login (which cold-restarts the app) so that, after the restart, we
 // return the user to the YouTube Music sync selection screen — like Spotify's import flow.
 val OpenYtmSyncAfterLoginKey = booleanPreferencesKey("open_ytm_sync_after_login")

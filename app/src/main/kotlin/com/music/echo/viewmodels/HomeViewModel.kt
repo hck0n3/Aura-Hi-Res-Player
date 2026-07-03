@@ -1026,11 +1026,31 @@ class HomeViewModel @Inject constructor(
         }
 
 
+        // On a FRESH install the home is empty until there's listening history — and the first playback seeds
+        // that history, but nothing re-read it, so the home stayed blank until a cold restart. Reload ONCE, in
+        // real time, when the first play event lands while the home is still empty (guarded on quickPicks being
+        // empty so it does NOT reload on every subsequent song, and skipping the initial value so a returning
+        // user with existing history is unaffected). No account/subscription needed.
+        viewModelScope.launch(Dispatchers.IO) {
+            database.lastEvent()
+                .map { it != null }
+                .distinctUntilChanged()
+                .drop(1)
+                .filter { it }
+                .collect {
+                    if (quickPicks.value.isNullOrEmpty()) {
+                        delay(600)
+                        snapshot = null
+                        runCatching { load() }.onFailure { reportException(it) }
+                    }
+                }
+        }
+
         viewModelScope.launch(Dispatchers.IO) {
             syncUtils.tryAutoSync()
         }
 
-        
+
         viewModelScope.launch(Dispatchers.IO) {
             context.dataStore.data
                 .map { it[InnerTubeCookieKey] }

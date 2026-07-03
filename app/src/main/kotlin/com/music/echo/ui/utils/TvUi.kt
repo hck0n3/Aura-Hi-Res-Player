@@ -40,7 +40,11 @@ fun rememberIsTvOrCar(): Boolean {
 fun rememberIsWideScreen(): Boolean {
     val configuration = LocalConfiguration.current
     val isTvOrCar = rememberIsTvOrCar()
-    return isTvOrCar || configuration.smallestScreenWidthDp >= 600
+    // Manual override: the user can force the wide "Spotify split" layout on any device (tablet/phone) they want.
+    val forceSplit by iad1tya.echo.music.utils.rememberPreference(
+        iad1tya.echo.music.constants.ForceSplitViewKey, false,
+    )
+    return isTvOrCar || forceSplit || configuration.smallestScreenWidthDp >= 600
 }
 
 /**
