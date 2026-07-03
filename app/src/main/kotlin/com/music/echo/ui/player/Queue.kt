@@ -134,6 +134,7 @@ import iad1tya.echo.music.ui.menu.QueueMenu
 import iad1tya.echo.music.ui.menu.SelectionMediaMetadataMenu
 import iad1tya.echo.music.ui.screens.CommentSheet
 import iad1tya.echo.music.ui.utils.ShowMediaInfo
+import iad1tya.echo.music.ui.utils.tvFocusable
 import iad1tya.echo.music.utils.listItemShape
 import iad1tya.echo.music.utils.makeTimeString
 import iad1tya.echo.music.utils.rememberPreference
@@ -1436,8 +1437,11 @@ private fun PlayerQueueButton(
     textBackgroundColor: Color,
     playerBackground: PlayerBackgroundStyle
 ) {
+    // TV/car: visible focus ring observing the .clickable (queue / lyrics / sleep-timer / cast buttons).
+    val isTvQueueBtn = iad1tya.echo.music.ui.utils.rememberIsTvOrCar()
     val buttonModifier = Modifier
         .clip(shape)
+        .tvFocusable(isTvQueueBtn, shape)
         .clickable(enabled = enabled, onClick = onClick)
 
     val alphaFactor = if (enabled) 1f else 0.35f

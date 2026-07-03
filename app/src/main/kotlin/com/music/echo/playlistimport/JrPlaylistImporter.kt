@@ -59,7 +59,10 @@ object JrPlaylistImporter {
         }
 
         val playlistName = file.name.ifBlank { "JR Playlist" }
-        val playlist = PlaylistEntity(name = playlistName)
+        // bookmarkedAt MUST be set: every library playlist query filters `WHERE bookmarkedAt IS NOT NULL`, so a
+        // null (the entity default) makes the imported playlist real-but-INVISIBLE in the library ("restored
+        // nothing"). Mirror the normal create-playlist flow (bookmarkedAt = now).
+        val playlist = PlaylistEntity(name = playlistName, bookmarkedAt = java.time.LocalDateTime.now())
         val ordered = resolved.distinctBy { it.id }
         // Single transaction: create the playlist, persist songs, map them in order.
         // Done atomically so there is no read-back race on the freshly-inserted row.
@@ -91,7 +94,9 @@ object JrPlaylistImporter {
     suspend fun importDirect(database: MusicDatabase, file: JrPlaylistFile): Result {
         val tracks = file.tracks.filter { !it.youtubeVideoId.isNullOrBlank() }
         val playlistName = file.name.ifBlank { "JR Playlist" }
-        val playlist = PlaylistEntity(name = playlistName)
+        // bookmarkedAt MUST be set or the playlist is invisible in the library (every playlist query filters
+        // `WHERE bookmarkedAt IS NOT NULL`) — this was the "selective restore does nothing" bug.
+        val playlist = PlaylistEntity(name = playlistName, bookmarkedAt = java.time.LocalDateTime.now())
         val seen = HashSet<String>()
         database.transaction {
             insert(playlist)

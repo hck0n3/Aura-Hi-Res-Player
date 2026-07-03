@@ -43,6 +43,7 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import iad1tya.echo.music.ui.utils.tvFocusable
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -1269,6 +1270,7 @@ fun HomeScreen(
                                         val song by database.song(originalSong.id)
                                             .collectAsState(initial = originalSong)
                                         val isActive = (song ?: originalSong).id == mediaMetadata?.id
+                                        val isTvHomeCard = iad1tya.echo.music.ui.utils.rememberIsTvOrCar()
 
                                         Box(
                                             modifier = Modifier
@@ -1278,6 +1280,9 @@ fun HomeScreen(
                                                     BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                                                     MaterialTheme.shapes.extraLarge
                                                 )
+                                                // TV/car: visible focus ring on the hero card (no scale — the carousel
+                                                // mask would clip a scaled item). Observes the .focusable() below.
+                                                .tvFocusable(isTvHomeCard, RoundedCornerShape(24.dp), scaleFocused = 1f)
                                                 .focusable()
                                                 .combinedClickable(
                                                     onClick = {
@@ -1520,6 +1525,8 @@ fun HomeScreen(
                                                 color = MaterialTheme.colorScheme.surfaceContainerHighest,
                                                 modifier = Modifier
                                                     .width(250.dp)
+                                                    // TV/car: visible focus ring observing the .clickable below.
+                                                    .tvFocusable(iad1tya.echo.music.ui.utils.rememberIsTvOrCar(), RoundedCornerShape(14.dp), scaleFocused = 1f)
                                                     .clickable {
                                                         when (item) {
                                                             is Song -> if (item.id == mediaMetadata?.id) playerConnection.togglePlayPause()

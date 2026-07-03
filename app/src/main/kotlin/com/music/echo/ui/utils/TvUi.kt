@@ -14,6 +14,7 @@ import androidx.compose.ui.composed
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import iad1tya.echo.music.utils.DeviceForm
@@ -23,6 +24,23 @@ import iad1tya.echo.music.utils.DeviceForm
 fun rememberIsTvOrCar(): Boolean {
     val context = LocalContext.current
     return remember { DeviceForm.isTvOrCar(context) }
+}
+
+/**
+ * True on a BIG screen where a wide "Spotify-style" layout fits: TV / car head unit / tablet / car box /
+ * unfolded foldable / any large-landscape display. REACTIVE — reads LocalConfiguration.smallestScreenWidthDp
+ * each composition, so folding/unfolding a foldable (a runtime config change the manifest keeps the Activity
+ * alive through) flips this live and the layout re-flows without a restart. Phones (and folded foldables,
+ * sw < 600dp) stay false in every orientation -> they keep the normal portrait UI.
+ *
+ * Distinct from [rememberIsTvOrCar], which gates the D-pad focus RING (only remote-driven TV/car need it — a
+ * touch tablet gets the wide layout but never shows a ring since touch raises no focus events).
+ */
+@Composable
+fun rememberIsWideScreen(): Boolean {
+    val configuration = LocalConfiguration.current
+    val isTvOrCar = rememberIsTvOrCar()
+    return isTvOrCar || configuration.smallestScreenWidthDp >= 600
 }
 
 /**
@@ -43,6 +61,7 @@ fun Modifier.tvFocusable(
     enabled: Boolean,
     shape: RoundedCornerShape = RoundedCornerShape(50),
     addFocusable: Boolean = false,
+    scaleFocused: Float = 1.12f,
 ): Modifier =
     if (!enabled) this
     else composed {
@@ -50,11 +69,24 @@ fun Modifier.tvFocusable(
         this
             .onFocusChanged { focused = it.isFocused }
             .then(
-                if (focused) Modifier
-                    .scale(1.12f)
-                    .border(3.dp, Color.White, shape)
-                    .padding(2.dp)
-                else Modifier,
+                if (focused) {
+                    val ring = Modifier.border(3.dp, Color.White, shape).padding(2.dp)
+                    if (scaleFocused != 1f) Modifier.scale(scaleFocused).then(ring) else ring
+                } else Modifier,
             )
             .then(if (addFocusable) Modifier.focusable() else Modifier)
     }
+
+/**
+ * Item-level D-pad focus for list rows / grid cards. Meant to be the OUTERMOST modifier of a SHARED item
+ * composable, wrapping the caller's own `.clickable`/`.combinedClickable` (which is the real focus target):
+ *   Row(modifier = Modifier.tvFocusableItem(isTvOrCar).then(callerModifier) ...)
+ * Because `onFocusChanged` sits ABOVE the caller's clickable, it observes that one focus stop — no extra
+ * focusable, D-pad center still fires the row/card's real onClick. Rows use no scale (a scaled full-width row
+ * clips its neighbours); cards keep the scale pop. No-op off-TV.
+ */
+fun Modifier.tvFocusableItem(
+    enabled: Boolean,
+    shape: RoundedCornerShape = RoundedCornerShape(8.dp),
+    scaleFocused: Float = 1f,
+): Modifier = tvFocusable(enabled = enabled, shape = shape, addFocusable = false, scaleFocused = scaleFocused)

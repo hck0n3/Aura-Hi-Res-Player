@@ -110,6 +110,8 @@ import iad1tya.echo.music.extensions.toMediaItem
 import iad1tya.echo.music.models.MediaMetadata
 import iad1tya.echo.music.playback.queues.LocalAlbumRadio
 import iad1tya.echo.music.ui.utils.resize
+import iad1tya.echo.music.ui.utils.tvFocusable
+import iad1tya.echo.music.ui.utils.tvFocusableItem
 import iad1tya.echo.music.utils.isLocalMediaId
 import iad1tya.echo.music.utils.joinByBullet
 import iad1tya.echo.music.utils.makeTimeString
@@ -149,7 +151,11 @@ inline fun ListItem(
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = modifier
+        // TV/car: a white focus ring wraps the caller's own clickable (placed outermost so onFocusChanged
+        // observes it) so the D-pad user can see which row is selected. No-op + zero overhead off-TV.
+        modifier = Modifier
+            .tvFocusableItem(iad1tya.echo.music.ui.utils.rememberIsTvOrCar())
+            .then(modifier)
             .padding(vertical = 2.dp)
             .height(ListItemHeight)
             .padding(horizontal = horizontalPadding)
@@ -301,16 +307,23 @@ fun GridItem(
     thumbnailHeightOverride: Dp? = null,
 ) {
     val gridHeight = thumbnailHeightOverride ?: currentGridThumbnailHeight()
+    // TV/car: a focus ring + scale pop wraps the caller's own clickable (placed outermost so onFocusChanged
+    // observes it) so the D-pad user sees which card is selected. No-op + zero overhead off-TV.
+    val isTvOrCarCard = iad1tya.echo.music.ui.utils.rememberIsTvOrCar()
     Column(
-        modifier = if (fillMaxWidth) {
-            modifier
-                .padding(12.dp)
-                .fillMaxWidth()
-        } else {
-            modifier
-                .padding(12.dp)
-                .width(gridHeight * thumbnailRatio)
-        }
+        modifier = Modifier
+            .tvFocusable(isTvOrCarCard, RoundedCornerShape(12.dp), scaleFocused = 1.12f)
+            .then(
+                if (fillMaxWidth) {
+                    modifier
+                        .padding(12.dp)
+                        .fillMaxWidth()
+                } else {
+                    modifier
+                        .padding(12.dp)
+                        .width(gridHeight * thumbnailRatio)
+                }
+            )
     ) {
         BoxWithConstraints(
             contentAlignment = Alignment.Center,

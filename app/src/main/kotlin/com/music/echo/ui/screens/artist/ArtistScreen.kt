@@ -303,12 +303,14 @@ fun ArtistScreen(
                     }
 
                     Box {
-                        
+                        // TV/car (wide landscape): cap the full-width square header to a short banner so it isn't a
+                        // giant wall of art; phones/tablets keep the square.
+                        val isTvHero = iad1tya.echo.music.ui.utils.rememberIsWideScreen()
                         if (thumbnail != null || backgroundVideoUrl != null) {
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .aspectRatio(1f)
+                                    .then(if (isTvHero) Modifier.height(320.dp) else Modifier.aspectRatio(1f))
                                     .offset {
                                         IntOffset(x = 0, y = headerOffset)
                                     }

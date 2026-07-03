@@ -45,6 +45,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import iad1tya.echo.music.ui.component.MediaMetadataListItem
+import iad1tya.echo.music.ui.utils.rememberIsWideScreen
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
@@ -106,6 +111,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithCache
@@ -282,6 +288,11 @@ fun BottomSheetPlayer(
     // TV / car: enable visible D-pad focus on the transport controls + auto-focus play/pause when the player opens.
     val isTvOrCar = iad1tya.echo.music.ui.utils.rememberIsTvOrCar()
     val playFocusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
+    // True once any transport button holds focus — the initial-focus retry stops when this flips, so it lands
+    // focus after the enter animation attaches the node WITHOUT ever stealing focus back from the user.
+    var transportHasFocus by remember { mutableStateOf(false) }
+    // Big screen (TV / tablet / car / unfolded foldable): show the Spotify-style split player (queue | now-playing).
+    val isWideScreen = rememberIsWideScreen()
     val spectrumVisualizerEnabled by iad1tya.echo.music.utils.rememberPerfGatedBoolean(iad1tya.echo.music.constants.SpectrumVisualizerEnabledKey, false)
     val (hidePlayerThumbnail, onHidePlayerThumbnailChange) = rememberPreference(HidePlayerThumbnailKey, false)
     val cropAlbumArt by rememberPreference(CropAlbumArtKey, false)
@@ -354,7 +365,17 @@ fun BottomSheetPlayer(
     // and can control playback immediately (Material3 gives no initial focus on a remote). No-op off-TV.
     LaunchedEffect(state.isExpanded, isTvOrCar) {
         if (isTvOrCar && state.isExpanded) {
-            runCatching { playFocusRequester.requestFocus() }
+            // The transport composes behind a ~300ms AnimatedVisibility slide-in, so on the first tick the
+            // FocusRequester node isn't attached yet. The no-arg requestFocus() returns Unit and does NOT throw
+            // when unattached (it just no-ops), so we can't detect success from its return — instead we retry
+            // until the transport container reports hasFocus (set via onFocusChanged), then stop so we never
+            // steal focus back from a user who already moved the D-pad.
+            transportHasFocus = false
+            repeat(40) {
+                if (transportHasFocus) return@LaunchedEffect
+                playFocusRequester.requestFocus()
+                kotlinx.coroutines.delay(50)
+            }
         }
     }
 
@@ -2222,7 +2243,8 @@ fun BottomSheetPlayer(
                 enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
                 exit = shrinkVertically(shrinkTowards = Alignment.Top) + slideOutVertically(targetOffsetY = { it }) + fadeOut()
             ) {
-                Column {
+                // TV/car: report when any transport button holds focus so the initial-focus retry can stop.
+                Column(modifier = Modifier.onFocusChanged { transportHasFocus = it.hasFocus }) {
                     if (useNewPlayerDesign) {
                         Row(
                             horizontalArrangement = Arrangement.Center,
@@ -2402,7 +2424,8 @@ fun BottomSheetPlayer(
                                 Modifier
                                     .size(48.dp)
                                     .align(Alignment.Center)
-                                    .alpha(if (isListenTogetherGuest) 0.5f else 1f),
+                                    .alpha(if (isListenTogetherGuest) 0.5f else 1f)
+                                    .tvFocusable(isTvOrCar),
                                     onClick = playerConnection::seekToPrevious,
                                 )
                             }
@@ -2412,8 +2435,10 @@ fun BottomSheetPlayer(
                             Box(
                                 modifier =
                                 Modifier
-                                    .size(100.dp) 
+                                    .size(100.dp)
                                     .clip(RoundedCornerShape(playPauseRoundness))
+                                    .focusRequester(playFocusRequester)
+                                    .tvFocusable(isTvOrCar, RoundedCornerShape(playPauseRoundness))
                                     .clickable(
                                         interactionSource = remember { MutableInteractionSource() },
                                         indication = null
@@ -2471,7 +2496,8 @@ fun BottomSheetPlayer(
                                 Modifier
                                     .size(48.dp)
                                     .align(Alignment.Center)
-                                    .alpha(if (isListenTogetherGuest) 0.5f else 1f),
+                                    .alpha(if (isListenTogetherGuest) 0.5f else 1f)
+                                    .tvFocusable(isTvOrCar),
                                     onClick = playerConnection::seekToNext,
                                 )
                             }
@@ -2822,6 +2848,17 @@ fun BottomSheetPlayer(
                         .padding(bottom = 24.dp)
                         .fillMaxSize()
                 ) {
+                    // Spotify-style split on big screens: the LEFT pane is the live queue (the album/single/list
+                    // playing), the existing artwork + controls form the now-playing pane on the RIGHT. Hidden when
+                    // inline lyrics are shown (lyrics take the left) and on phones (isWideScreen == false).
+                    if (isWideScreen && !showInlineLyrics) {
+                        LandscapeQueuePane(
+                            modifier = Modifier
+                                .weight(0.9f)
+                                .fillMaxHeight()
+                                .padding(end = 8.dp)
+                        )
+                    }
                     Box(
                         contentAlignment = Alignment.Center,
                         modifier = Modifier
@@ -3142,6 +3179,8 @@ private fun PlayerActionChip(
         modifier = Modifier
             .clip(RoundedCornerShape(50))
             .background(container)
+            // TV/car: visible focus ring observing the .clickable below (Me gusta / No me gusta / Agregar / Compartir).
+            .tvFocusable(iad1tya.echo.music.ui.utils.rememberIsTvOrCar())
             .clickable(onClick = onClick)
             .padding(start = 12.dp, end = 16.dp, top = 9.dp, bottom = 9.dp),
     ) {
@@ -3154,6 +3193,56 @@ private fun PlayerActionChip(
             fontWeight = FontWeight.Medium,
             maxLines = 1,
         )
+    }
+}
+
+/**
+ * Spotify-style queue pane for the LEFT side of the wide (TV / tablet / car / unfolded-foldable) player split.
+ * Renders the live play queue as a focusable list: the current song is highlighted, tapping/clicking (or D-pad
+ * center) a row jumps to it, and the list auto-scrolls to the current song. Rows reuse MediaMetadataListItem
+ * (which already carries the TV focus ring), so D-pad navigation works out of the box.
+ */
+@Composable
+private fun LandscapeQueuePane(
+    modifier: Modifier = Modifier,
+) {
+    val playerConnection = LocalPlayerConnection.current ?: return
+    val windows by playerConnection.queueWindows.collectAsState()
+    val currentWindowIndex by playerConnection.currentWindowIndex.collectAsState()
+    val isPlaying by playerConnection.isPlaying.collectAsState()
+    val lazyState = rememberLazyListState()
+
+    LaunchedEffect(currentWindowIndex, windows.size) {
+        if (currentWindowIndex in windows.indices) {
+            runCatching { lazyState.animateScrollToItem(currentWindowIndex) }
+        }
+    }
+
+    LazyColumn(
+        state = lazyState,
+        modifier = modifier,
+    ) {
+        itemsIndexed(
+            items = windows,
+            key = { _, window -> window.uid.hashCode() },
+        ) { index, window ->
+            val isActive = index == currentWindowIndex
+            window.mediaItem.metadata?.let { meta ->
+                MediaMetadataListItem(
+                    mediaMetadata = meta,
+                    isActive = isActive,
+                    isPlaying = isPlaying && isActive,
+                    modifier = Modifier.clickable {
+                        if (isActive) {
+                            playerConnection.togglePlayPause()
+                        } else {
+                            playerConnection.player.seekToDefaultPosition(window.firstPeriodIndex)
+                            playerConnection.player.playWhenReady = true
+                        }
+                    },
+                )
+            }
+        }
     }
 }
 

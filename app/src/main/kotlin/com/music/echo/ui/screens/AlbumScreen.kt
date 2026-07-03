@@ -254,11 +254,13 @@ fun AlbumScreen(
                 Box(
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    
+                    // TV/car (wide landscape): a full-width aspectRatio(1f) header becomes a giant square wall of
+                    // art. Cap it to a short banner so the screen stays usable; phones/tablets keep the square.
+                    val isTvHero = iad1tya.echo.music.ui.utils.rememberIsWideScreen()
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .aspectRatio(1f)
+                            .then(if (isTvHero) Modifier.height(320.dp) else Modifier.aspectRatio(1f))
                             .offset {
                                 IntOffset(x = 0, y = headerOffset)
                             }
