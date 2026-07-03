@@ -1818,9 +1818,10 @@ fun BottomSheetPlayer(
                     )
                 }
                 }
-                // Audio↔video toggle at the END of the song title (per request). Hidden in High-Performance
-                // Mode (audio only — video decoding is disabled to keep weak/TV/car devices smooth).
-                if (!highPerfMode && (mediaMetadata.isVideoSong || !mediaMetadata.podcastVideoUrl.isNullOrEmpty())) {
+                // Audio↔video toggle at the END of the song title (per request). Hidden in High-Performance Mode
+                // on phones (audio only), BUT shown on TV/car even in perf mode — the user asked to be able to
+                // switch to video on the big screen on demand (the video track is resolution-capped by device tier).
+                if ((!highPerfMode || isTvOrCar) && (mediaMetadata.isVideoSong || !mediaMetadata.podcastVideoUrl.isNullOrEmpty())) {
                     Spacer(Modifier.width(4.dp))
                     // Chip-style (matches the action chips below) and pinned to the right of the title.
                     Box(
@@ -2852,45 +2853,41 @@ fun BottomSheetPlayer(
                         .padding(bottom = 24.dp)
                         .fillMaxSize()
                 ) {
-                    // Spotify-style split on big screens: the LEFT pane is the live queue (the album/single/list
-                    // playing), the existing artwork + controls form the now-playing pane on the RIGHT. Hidden when
-                    // inline lyrics are shown (lyrics take the left) and on phones (isWideScreen == false).
+                    val currentSliderPosition by rememberUpdatedState(sliderPosition)
+                    val sliderPositionProvider = remember { { currentSliderPosition } }
+                    val isExpandedProvider = remember(state) { { state.isExpanded } }
+
                     if (isWideScreen && !showInlineLyrics) {
+                        // Spotify-style WIDE player: live queue on the LEFT, and a BALANCED now-playing pane on the
+                        // RIGHT — cover on top, controls centered below it — instead of a huge cover beside a thin
+                        // controls column jammed against the screen edge. Only on wide screens; lyrics/phones fall
+                        // through to the side-by-side layout below.
                         LandscapeQueuePane(
                             modifier = Modifier
-                                .weight(0.9f)
+                                .weight(1f)
                                 .fillMaxHeight()
-                                .padding(end = 8.dp)
+                                .padding(end = 16.dp)
                         )
-                    }
-                    Box(
-                        contentAlignment = Alignment.Center,
-                        modifier = Modifier
-                            .weight(1f)
-                            .nestedScroll(state.preUpPostDownNestedScrollConnection)
-                            // Swipe the artwork left/right to change song (landscape).
-                            .SwipeGesture(
-                                enabled = isFullScreen,
-                                onSwipeRight = { playerConnection.seekToPrevious() },
-                                onSwipeLeft = { playerConnection.seekToNext() },
-                            )
-                    ) {
-
-                        val currentSliderPosition by rememberUpdatedState(sliderPosition)
-                        val sliderPositionProvider = remember { { currentSliderPosition } }
-                        val isExpandedProvider = remember(state) { { state.isExpanded } }
-                        AnimatedContent(
-                            targetState = showInlineLyrics,
-                            label = "Lyrics",
-                            transitionSpec = { fadeIn() togetherWith fadeOut() }
-                        ) { showLyrics ->
-                            if (showLyrics) {
-                                InlineLyricsView(
-                                    mediaMetadata = mediaMetadata,
-                                    showLyrics = showLyrics,
-                                    positionProvider = { sliderPosition ?: if (isCasting) castPosition else null }
-                                )
-                            } else {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center,
+                            modifier = Modifier
+                                .weight(1.7f)
+                                .fillMaxHeight()
+                                .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Top))
+                        ) {
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier
+                                    .weight(1f, fill = false)
+                                    .fillMaxWidth()
+                                    .nestedScroll(state.preUpPostDownNestedScrollConnection)
+                                    .SwipeGesture(
+                                        enabled = isFullScreen,
+                                        onSwipeRight = { playerConnection.seekToPrevious() },
+                                        onSwipeLeft = { playerConnection.seekToNext() },
+                                    )
+                            ) {
                                 Thumbnail(
                                     sliderPositionProvider = sliderPositionProvider,
                                     modifier = Modifier.animateContentSize(),
@@ -2899,23 +2896,62 @@ fun BottomSheetPlayer(
                                     isListenTogetherGuest = isListenTogetherGuest
                                 )
                             }
+                            Spacer(Modifier.height(16.dp))
+                            mediaMetadata?.let {
+                                controlsContent(it, false)
+                            }
                         }
-                    }
-
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier
-                            .weight(if (showInlineLyrics) 0.65f else 1f, false)
-                            .animateContentSize()
-                            .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Top))
-                    ) {
-                        Spacer(Modifier.weight(1f))
-
-                        mediaMetadata?.let {
-                            controlsContent(it, false)
+                    } else {
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier
+                                .weight(1f)
+                                .nestedScroll(state.preUpPostDownNestedScrollConnection)
+                                // Swipe the artwork left/right to change song (landscape).
+                                .SwipeGesture(
+                                    enabled = isFullScreen,
+                                    onSwipeRight = { playerConnection.seekToPrevious() },
+                                    onSwipeLeft = { playerConnection.seekToNext() },
+                                )
+                        ) {
+                            AnimatedContent(
+                                targetState = showInlineLyrics,
+                                label = "Lyrics",
+                                transitionSpec = { fadeIn() togetherWith fadeOut() }
+                            ) { showLyrics ->
+                                if (showLyrics) {
+                                    InlineLyricsView(
+                                        mediaMetadata = mediaMetadata,
+                                        showLyrics = showLyrics,
+                                        positionProvider = { sliderPosition ?: if (isCasting) castPosition else null }
+                                    )
+                                } else {
+                                    Thumbnail(
+                                        sliderPositionProvider = sliderPositionProvider,
+                                        modifier = Modifier.animateContentSize(),
+                                        isPlayerExpanded = isExpandedProvider,
+                                        isLandscape = true,
+                                        isListenTogetherGuest = isListenTogetherGuest
+                                    )
+                                }
+                            }
                         }
 
-                        Spacer(Modifier.weight(1f))
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier
+                                .weight(if (showInlineLyrics) 0.65f else 1f, false)
+                                .animateContentSize()
+                                .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Top))
+                        ) {
+                            Spacer(Modifier.weight(1f))
+
+                            mediaMetadata?.let {
+                                controlsContent(it, false)
+                            }
+
+                            Spacer(Modifier.weight(1f))
+                        }
                     }
                 }
               }

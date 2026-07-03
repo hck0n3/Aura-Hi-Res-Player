@@ -311,8 +311,10 @@ fun ArtistScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .then(if (isTvHero) Modifier.height(320.dp) else Modifier.aspectRatio(1f))
+                                    // Wide: skip the negative parallax tuck so the short 320dp banner shows fully
+                                    // (the tuck would clip it to a sliver at the top).
                                     .offset {
-                                        IntOffset(x = 0, y = headerOffset)
+                                        IntOffset(x = 0, y = if (isTvHero) 0 else headerOffset)
                                     }
                             ) {
                                 Box(

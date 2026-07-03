@@ -1181,8 +1181,20 @@ class MusicService :
         val perfMode = iad1tya.echo.music.utils.PerformanceMode.isOn(this)
         val maxBufferMs = if (perfMode) 60_000 else 120_000
         val targetBufferBytes = if (perfMode) 32 * 1024 * 1024 else 64 * 1024 * 1024
+        // Music-VIDEO quality adapts to the device so switching to video never overwhelms a weak TV box / low-end
+        // phone. This caps ONLY the video track the ABR selects (audio is untouched, and it's a no-op for
+        // audio-only playback), so it keeps gama-baja/TV optimized without harming Hi-Res audio.
+        val maxVideoDim = when (iad1tya.echo.music.utils.PerformanceMode.effectiveTier(this)) {
+            iad1tya.echo.music.utils.DeviceTier.LOW -> 1280
+            iad1tya.echo.music.utils.DeviceTier.MID -> 1920
+            iad1tya.echo.music.utils.DeviceTier.HIGH -> Int.MAX_VALUE
+        }
+        val videoTrackSelector = androidx.media3.exoplayer.trackselection.DefaultTrackSelector(this).apply {
+            parameters = buildUponParameters().setMaxVideoSize(maxVideoDim, maxVideoDim).build()
+        }
         val player = ExoPlayer.Builder(this)
             .setMediaSourceFactory(createMediaSourceFactory())
+            .setTrackSelector(videoTrackSelector)
             .setRenderersFactory(createRenderersFactory(silenceProcessor, eqProcessor, normProcessor, limiterProcessor))
             .setLoadControl(
                 DefaultLoadControl.Builder()
@@ -3377,9 +3389,12 @@ class MusicService :
      * (see onMediaItemTransition). The music is NEVER paused; only the current track's source changes.
      */
     fun toggleVideoMode() {
-        // High-Performance Mode = audio only: never enter video mode (decoding video is the heaviest thing on
-        // low-end/TV/car devices). The UI hides the toggle too, but guard here as the single source of truth.
-        if (iad1tya.echo.music.utils.PerformanceMode.isOn(this)) {
+        // High-Performance Mode defaults to audio-only. EXCEPTION: on TV/car the user explicitly asked to be able
+        // to switch to video on demand — a big screen is where video matters most. So we allow the opt-in there
+        // even in perf mode (the video track is resolution-capped by device tier in createExoPlayer, so it stays
+        // gama-baja friendly). On non-TV low-end devices in perf mode, video stays blocked (heaviest decode path).
+        if (iad1tya.echo.music.utils.PerformanceMode.isOn(this) &&
+            !iad1tya.echo.music.utils.DeviceForm.isTvOrCar(this)) {
             if (_videoMode.value) exitVideoMode()
             return
         }

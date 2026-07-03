@@ -261,8 +261,11 @@ fun AlbumScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .then(if (isTvHero) Modifier.height(320.dp) else Modifier.aspectRatio(1f))
+                            // On wide screens the header is a short 320dp banner; the negative parallax tuck
+                            // (headerOffset ≈ -112px) would eat a third of it and leave only a sliver when
+                            // scrolled to the top, so skip the tuck there and show the full banner.
                             .offset {
-                                IntOffset(x = 0, y = headerOffset)
+                                IntOffset(x = 0, y = if (isTvHero) 0 else headerOffset)
                             }
                     ) {
                         Box(

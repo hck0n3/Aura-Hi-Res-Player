@@ -600,7 +600,8 @@ private fun OnlinePlaylistHeader(
             modifier = Modifier
                 .fillMaxWidth()
                 .then(if (isTvHeader) Modifier.height(320.dp) else Modifier.aspectRatio(1f))
-                .offset { IntOffset(0, headerOffset) }
+                // Wide: skip the negative parallax tuck so the banner isn't clipped to a sliver on scroll-up.
+                .offset { IntOffset(0, if (isTvHeader) 0 else headerOffset) }
         )
 
         Column(

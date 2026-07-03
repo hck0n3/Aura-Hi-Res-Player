@@ -1275,14 +1275,15 @@ fun HomeScreen(
                                         Box(
                                             modifier = Modifier
                                                 .fillMaxSize()
+                                                // TV/car: focus ring placed BEFORE the carousel maskClip so it draws
+                                                // OUTSIDE the clip and is fully visible (inside the clip it was cut to
+                                                // a faint sliver — "no se nota"). Observes the .focusable() descendant.
+                                                .tvFocusable(isTvHomeCard, RoundedCornerShape(28.dp), scaleFocused = 1f)
                                                 .maskClip(MaterialTheme.shapes.extraLarge)
                                                 .maskBorder(
                                                     BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                                                     MaterialTheme.shapes.extraLarge
                                                 )
-                                                // TV/car: visible focus ring on the hero card (no scale — the carousel
-                                                // mask would clip a scaled item). Observes the .focusable() below.
-                                                .tvFocusable(isTvHomeCard, RoundedCornerShape(24.dp), scaleFocused = 1f)
                                                 .focusable()
                                                 .combinedClickable(
                                                     onClick = {
@@ -1307,7 +1308,10 @@ fun HomeScreen(
                                             AsyncImage(
                                                 model = coil3.request.ImageRequest.Builder(LocalContext.current)
                                                     .data((song ?: originalSong).thumbnailUrl)
-                                                    .crossfade(true)
+                                                    // TV/car only: drop the crossfade on the full-bleed hero — the fade
+                                                    // re-ran on every D-pad focus change and read as a "loading" flash
+                                                    // while navigating. Phones keep the normal fade-in (no D-pad, no flash).
+                                                    .crossfade(!isTvHomeCard)
                                                     .build(),
                                                 contentDescription = null,
                                                 contentScale = ContentScale.Crop,
