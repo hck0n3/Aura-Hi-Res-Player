@@ -65,6 +65,7 @@ fun SettingsScreen(
     val appearanceText = stringResource(R.string.appearance)
     val playerText = "Ajustes del reproductor"
     val soundText = "Sonido y ecualización"
+    val performanceText = "Rendimiento"
     val listenTogetherText = stringResource(R.string.listen_together)
     val contentText = stringResource(R.string.content)
     val aiLyricsText = stringResource(R.string.ai_lyrics_translation)
@@ -163,6 +164,15 @@ fun SettingsScreen(
                         icon = painterResource(R.drawable.echoequlizer),
                         title = { Text(soundText) },
                         onClick = { navController.navigate("settings/sound") }
+                    )
+                )
+            }
+            if (performanceText.lowercase().contains(searchLower)) {
+                add(
+                    Material3SettingsItem(
+                        icon = painterResource(R.drawable.speed),
+                        title = { Text(performanceText) },
+                        onClick = { navController.navigate("settings/performance") }
                     )
                 )
             }

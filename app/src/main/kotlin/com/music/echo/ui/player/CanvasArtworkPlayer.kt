@@ -41,7 +41,8 @@ fun CanvasArtworkPlayer(
 ) {
     val context = LocalContext.current
     val appInForeground = iad1tya.echo.music.ui.utils.rememberIsAppInForeground()
-    val deviceTier = remember { iad1tya.echo.music.utils.DeviceCapabilities.tier(context) }
+    // High-Performance Mode forces the LOW decode path (1280px, no forced bitrate) even on capable hardware.
+    val deviceTier = remember { iad1tya.echo.music.utils.PerformanceMode.effectiveTier(context) }
     val primary = primaryUrl?.takeIf { it.isNotBlank() }
     val fallback = fallbackUrl?.takeIf { it.isNotBlank() }
     val initial = primary ?: fallback ?: return

@@ -145,8 +145,7 @@ Aura Hi-Res Player delivers a premium, ad-free listening experience on top of a 
 Download the latest signed APK from the **[Releases page](https://github.com/hck0n3/Aura-Hi-Res-Player/releases/latest)**.
 *Descarga el APK firmado más reciente desde la **[página de Releases](https://github.com/hck0n3/Aura-Hi-Res-Player/releases/latest)**.*
 
-- **`Aura-Hi-Res-Player-<version>.apk`** — arm64 build, the small default download for modern phones.
-- **`Aura-Hi-Res-Player-<version>-universal.apk`** — all ABIs (armeabi-v7a/arm64/x86), for Android TV and older 32-bit devices.
+- **`Aura-Hi-Res-Player-<version>.apk`** — universal build (all ABIs: arm64/armeabi-v7a/x86/x86_64). One download for every device: phones, Android TV, car head units and older 32-bit boxes.
 
 > If you see an "App not installed" error when updating, uninstall the previous version first.
 > Si al actualizar ves el error "Aplicación no instalada", desinstala primero la versión anterior.

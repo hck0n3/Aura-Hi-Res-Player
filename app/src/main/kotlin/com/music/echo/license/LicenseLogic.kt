@@ -3,15 +3,17 @@ package iad1tya.echo.music.license
 /**
  * Pure licensing rules for Aura Hi-Res Player. No Android dependencies so the whole state machine is
  * unit-testable. The app boots in a keyless 3-day demo; the subscription is re-verified online via
- * the backend Worker on each open, with a 1-day offline grace window.
+ * the backend Worker on each open, with a 3-day offline grace window.
  */
 object LicenseLogic {
 
     /** Demo lasts 3 days from the moment the user taps "Probar gratis". */
     const val DEMO_DURATION_MS = 3L * 24 * 60 * 60 * 1000
 
-    /** How long the app keeps working without a fresh successful online verification. */
-    const val OFFLINE_GRACE_MS = 1L * 24 * 60 * 60 * 1000
+    /** How long the app keeps working (incl. playing DOWNLOADED songs) without a fresh successful online
+     *  verification. 3 days: a subscriber can go fully offline for 3 days; after that a single reconnect is
+     *  required. Bounded + self-expiring so it stays paywall-safe (no indefinite offline use). */
+    const val OFFLINE_GRACE_MS = 3L * 24 * 60 * 60 * 1000
 
     /** Small tolerance so timezone hops don't lock a legit user; day-scale rollbacks do. */
     private const val CLOCK_ROLLBACK_TOLERANCE_MS = 5L * 60 * 1000

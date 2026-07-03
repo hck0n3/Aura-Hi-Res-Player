@@ -639,7 +639,7 @@ private fun ThumbnailItem(
     var skipMultiplier by remember { mutableIntStateOf(1) }
     var lastTapTime by remember { mutableLongStateOf(0L) }
 
-    val canvasThumbnailAnimation by rememberPreference(CanvasThumbnailAnimationKey, defaultValue = false)
+    val canvasThumbnailAnimation by iad1tya.echo.music.utils.rememberPerfGatedBoolean(CanvasThumbnailAnimationKey, defaultValue = false)
 
     Box(
         modifier = modifier

@@ -1,33 +1,20 @@
-# Aura Hi-Res Player 0.6.77 — Sonido a tu gusto por defecto, mejor descubrimiento y video más estable
+# Aura Hi-Res Player 0.6.78 — Modo alto rendimiento, 3 días offline y un solo APK para todos
 
-## 🎚️ Sonido listo desde el primer play
-- El ecualizador ahora viene **activo por defecto** en el preset **Audiophile** (preamp 0.0 dB): sonido de referencia, cálido y con aire, sin distorsión.
-- **Transición suave (crossfade) de 13 segundos** con curva de igual potencia (sin el bajón de volumen entre canciones).
-- Pasada de fidelidad del EQ: Q por octava, shelves en los extremos, headroom automático anti-clip y presets audiophile más limpios (+6 firmas nuevas). El preamp y tus ediciones manuales del EQ ya no se revierten.
+## ⚡ Modo alto rendimiento (gama baja)
+- Nuevo **Modo alto rendimiento** para dispositivos de gama baja: **pantallas de auto Android**, **tablets económicas**, equipos con **4 GB de RAM o menos** y **Android TV**.
+- **Se activa solo** en el primer inicio cuando detecta un equipo de gama baja / TV / pantalla de auto, y también podés activarlo/desactivarlo a mano en **Ajustes ▸ Rendimiento**.
+- Cuando está activo: apaga fondos animados y visualizador, **desactiva el video musical** (solo audio), baja resolución/buffers de decodificación y la precarga — todo para que vaya **fluido y sin calentar**.
+- **El sonido no se toca**: ecualizador, Volumen Seguro y normalización siguen igual. Es solo rendimiento visual.
 
-## 🧠 Descubrimiento e IA repotenciados
-- Recomendación **en el dispositivo** más inteligente: Inicio, radio y mezclas aprenden de tus géneros, gustos, reproducciones y artistas seguidos (todo local, nada sale del teléfono).
-- Nuevos estantes en Inicio: **"Novedades de tus artistas"** y **"Tu mix de [Género]"**.
-- Las filas "Similar / De la comunidad" se ordenan por tu gusto, y la radio ya no repite lo que acabás de escuchar.
-- El Inicio se arma en tiempo real desde tu primera suscripción a un artista.
+## 📥 3 días sin internet (usá tus descargas offline)
+- Ahora podés usar la app y **reproducir tus descargas hasta 3 días sin conexión** (antes se bloqueaba al día). Pasados los 3 días, reconectás una vez y listo.
 
-## ✨ Novedades
-- **SponsorBlock** (opcional): salta patrocinios, autopromoción y partes sin música usando la base comunitaria, sin cortar nunca el audio real de la canción (Ajustes ▸ Reproductor).
-- **Importar listas de Spotify por link**: pegá el link, URI o ID de cualquier lista pública (aunque no sea tuya) y se importa.
-- Ahora se ven las **carátulas de tus canciones locales** (arte embebido) en la lista, el reproductor y la notificación.
+## 📦 Un solo APK universal para todos
+- De ahora en más publicamos **un único APK universal** (todas las arquitecturas: arm64/armeabi-v7a/x86/x86_64) para evitar problemas de compatibilidad — el mismo archivo anda en teléfonos, Android TV, pantallas de auto y equipos viejos de 32 bits.
 
-## 🎬 Video más estable
-- Al **girar el teléfono** en un video, la imagen ya **no se congela** (antes seguía el audio pero se frizaba la imagen).
-- En **modo video**, al pasar a la siguiente canción con video, ahora **sí continúa reproduciendo en video**.
-
-## 🛠️ Estabilidad y arreglos
-- Arreglado un crash de la notificación (ForegroundServiceStartNotAllowedException) y actualizado el motor de reproducción (media3).
-- Batería: no se precargan canciones con el Ahorro de batería activado.
-- Arreglado el selector de carpeta al exportar en dispositivos sin soporte.
-- Arreglados los carruseles de Inicio (Similar, De la comunidad, Daily Discover) que en algunos casos no aparecían.
-- Arreglos de transición, crossfade, preamp y Release Radar semanal.
+## 📺 Mejor en Android TV y pantallas de auto
+- En Android TV la interfaz ya **no se ve microscópica** (densidad ajustada), y el modo alto rendimiento se activa solo en TV y pantallas de auto para que vaya suave. Sigue apareciendo en el launcher de TV y con Android Auto.
 
 ## 👉 Para probar
-- Abrí Inicio y hacé "deslizar para actualizar": verás tus estantes de recomendación.
-- Reproducí un video y girá el teléfono; pasá a la siguiente canción con video.
-- Revisá Ajustes ▸ Sonido: el ecualizador en Audiophile y la transición suave en 13 s.
+- En un equipo de gama baja / TV / pantalla de auto: al abrir, revisá **Ajustes ▸ Rendimiento** — debería estar activado. Probá prender/apagar y ver cómo cambian los fondos animados / video.
+- Descargá canciones, poné el equipo en modo avión y comprobá que suenan hasta 3 días.

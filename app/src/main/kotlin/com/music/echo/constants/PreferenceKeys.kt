@@ -60,6 +60,8 @@ val SpanishDefaultAppliedKey = booleanPreferencesKey("spanish_default_applied")
 val CanvasDefaultOffAppliedKey = booleanPreferencesKey("canvas_default_off_applied")
 // One-time migration to force the canvas toggles ON (user request: all canvas/lienzo toggles enabled).
 val CanvasDefaultOnAppliedKey = booleanPreferencesKey("canvas_default_on_applied")
+// One-time (fresh key): auto-enable High-Performance Mode for existing users on LOW-tier / TV / car devices.
+val HighPerfModeSeedAppliedKey = booleanPreferencesKey("high_perf_mode_seed_applied_v1")
 // One-time migration: mini-player background back to DEFAULT so its text stays readable (gray onSurface)
 // in light mode. The seeded APPLE_MUSIC mini background forced white text, illegible on a light bar.
 val MiniPlayerDefaultBgAppliedKey = booleanPreferencesKey("miniplayer_default_bg_applied")
@@ -831,6 +833,11 @@ val SuggestionRegionSlugToName =
     )
 
 val SpectrumVisualizerEnabledKey = booleanPreferencesKey("spectrum_visualizer_enabled")
+// High-Performance Mode: master toggle for low-end devices (Android car head units, cheap tablets, <=4GB RAM,
+// Android TV). When ON, all heavy VISUALS + video decode + memory are cut (canvas/visualizer/artist-video off,
+// video decode capped to 1280p, next-song preload off, video mode disabled, smaller buffers/image cache) while
+// AUDIO fidelity (EQ/Safe Volume/normalization) is untouched. Auto-enabled on first launch on LOW-tier / TV / car.
+val HighPerformanceModeKey = booleanPreferencesKey("high_performance_mode")
 // One-tap "Improve low quality": declipper + HF regeneration for low-bitrate/distorted tracks. Off by default.
 val AudioEnhanceEnabledKey = booleanPreferencesKey("audio_enhance_low_quality")
 val PreloadNextSongEnabledKey = booleanPreferencesKey("preload_next_song_enabled")

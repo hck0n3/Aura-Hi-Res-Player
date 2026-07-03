@@ -1,0 +1,144 @@
+package iad1tya.echo.music.ui.screens.settings
+
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarScrollBehavior
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.dp
+import androidx.navigation.NavController
+import iad1tya.echo.music.LocalPlayerAwareWindowInsets
+import iad1tya.echo.music.R
+import iad1tya.echo.music.constants.HighPerformanceModeKey
+import iad1tya.echo.music.ui.component.IconButton
+import iad1tya.echo.music.ui.component.Material3SettingsGroup
+import iad1tya.echo.music.ui.component.Material3SettingsItem
+import iad1tya.echo.music.ui.utils.backToMain
+import iad1tya.echo.music.utils.DeviceCapabilities
+import iad1tya.echo.music.utils.DeviceForm
+import iad1tya.echo.music.utils.DeviceTier
+import iad1tya.echo.music.utils.rememberPreference
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PerformanceSettings(
+    navController: NavController,
+    scrollBehavior: TopAppBarScrollBehavior,
+) {
+    val context = LocalContext.current
+    val (highPerfMode, onHighPerfModeChange) = rememberPreference(HighPerformanceModeKey, defaultValue = false)
+
+    // Read-only diagnostic: why the mode auto-enabled (LOW hardware / TV / car).
+    val detected = remember {
+        val tier = DeviceCapabilities.tier(context)
+        val form = when {
+            DeviceForm.isTelevision(context) -> "Android TV"
+            DeviceForm.isCar(context) -> "pantalla de auto"
+            else -> null
+        }
+        val tierLabel = when (tier) {
+            DeviceTier.LOW -> "gama baja"
+            DeviceTier.MID -> "gama media"
+            DeviceTier.HIGH -> "gama alta"
+        }
+        if (form != null) "Dispositivo detectado: $form ($tierLabel)" else "Dispositivo detectado: $tierLabel"
+    }
+
+    Column(
+        Modifier
+            .windowInsetsPadding(
+                LocalPlayerAwareWindowInsets.current.only(
+                    WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom
+                )
+            )
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp)
+    ) {
+        Spacer(
+            Modifier.windowInsetsPadding(
+                LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Top)
+            )
+        )
+
+        Material3SettingsGroup(
+            title = "Rendimiento",
+            items = buildList {
+                add(
+                    Material3SettingsItem(
+                        icon = painterResource(R.drawable.speed),
+                        title = { Text("Modo alto rendimiento") },
+                        description = {
+                            Text(
+                                "Para dispositivos de gama baja (pantallas de auto, tablets económicas, ≤4 GB de RAM, " +
+                                    "Android TV). Apaga los fondos animados, el visualizador y el video musical, baja la " +
+                                    "resolución/buffers y desactiva la precarga — solo audio, fluido y fresco. El sonido " +
+                                    "(ecualizador, volumen seguro, normalización) NO se ve afectado. Algunos cambios " +
+                                    "aplican al reiniciar la app."
+                            )
+                        },
+                        trailingContent = {
+                            Switch(
+                                checked = highPerfMode,
+                                onCheckedChange = onHighPerfModeChange,
+                                thumbContent = {
+                                    Icon(
+                                        painter = painterResource(
+                                            id = if (highPerfMode) R.drawable.check else R.drawable.close
+                                        ),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(SwitchDefaults.IconSize)
+                                    )
+                                }
+                            )
+                        },
+                        onClick = { onHighPerfModeChange(!highPerfMode) }
+                    )
+                )
+                add(
+                    Material3SettingsItem(
+                        icon = painterResource(R.drawable.speed),
+                        title = { Text(detected) },
+                        description = {
+                            Text("Se activa solo en el primer inicio en dispositivos de gama baja, Android TV o pantallas de auto. Podés activarlo o desactivarlo manualmente cuando quieras.")
+                        },
+                        onClick = {}
+                    )
+                )
+            }
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+    }
+
+    TopAppBar(
+        title = { Text("Rendimiento") },
+        navigationIcon = {
+            IconButton(
+                onClick = navController::navigateUp,
+                onLongClick = navController::backToMain
+            ) {
+                Icon(
+                    painterResource(R.drawable.arrow_back),
+                    contentDescription = null
+                )
+            }
+        }
+    )
+}

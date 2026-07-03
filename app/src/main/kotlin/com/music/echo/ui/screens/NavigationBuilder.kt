@@ -373,6 +373,10 @@ fun NavGraphBuilder.navigationBuilder(
         iad1tya.echo.music.ui.screens.settings.SoundSettings(navController, scrollBehavior)
     }
 
+    composable("settings/performance") {
+        iad1tya.echo.music.ui.screens.settings.PerformanceSettings(navController, scrollBehavior)
+    }
+
     composable("settings/sound/autoeq") {
         iad1tya.echo.music.ui.screens.equalizer.autoeq.AutoEqScreen(navController)
     }

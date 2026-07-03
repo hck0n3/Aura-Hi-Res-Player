@@ -275,7 +275,9 @@ fun BottomSheetPlayer(
     )
     val showCodecOnPlayer by rememberPreference(iad1tya.echo.music.constants.ShowCodecOnPlayerKey, false)
     val hidePlayerSlider by rememberPreference(iad1tya.echo.music.constants.HidePlayerSliderKey, false)
-    val spectrumVisualizerEnabled by rememberPreference(iad1tya.echo.music.constants.SpectrumVisualizerEnabledKey, false)
+    // High-Performance Mode hides these heavy visuals without touching the user's stored toggles (reversible).
+    val highPerfMode by rememberPreference(iad1tya.echo.music.constants.HighPerformanceModeKey, false)
+    val spectrumVisualizerEnabled by iad1tya.echo.music.utils.rememberPerfGatedBoolean(iad1tya.echo.music.constants.SpectrumVisualizerEnabledKey, false)
     val (hidePlayerThumbnail, onHidePlayerThumbnailChange) = rememberPreference(HidePlayerThumbnailKey, false)
     val cropAlbumArt by rememberPreference(CropAlbumArtKey, false)
     val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
@@ -304,8 +306,8 @@ fun BottomSheetPlayer(
         if (darkTheme == DarkMode.AUTO) isSystemInDarkTheme else darkTheme == DarkMode.ON
     }
 
-    val enableCanvas by rememberPreference(CanvasThumbnailAnimationKey, true)
-    val showArtistBackgroundVideo by rememberPreference(
+    val enableCanvas by iad1tya.echo.music.utils.rememberPerfGatedBoolean(CanvasThumbnailAnimationKey, true)
+    val showArtistBackgroundVideo by iad1tya.echo.music.utils.rememberPerfGatedBoolean(
         iad1tya.echo.music.constants.ShowArtistBackgroundVideoKey, true
     )
 
@@ -1779,8 +1781,9 @@ fun BottomSheetPlayer(
                     )
                 }
                 }
-                // Audio↔video toggle at the END of the song title (per request).
-                if (mediaMetadata.isVideoSong || !mediaMetadata.podcastVideoUrl.isNullOrEmpty()) {
+                // Audio↔video toggle at the END of the song title (per request). Hidden in High-Performance
+                // Mode (audio only — video decoding is disabled to keep weak/TV/car devices smooth).
+                if (!highPerfMode && (mediaMetadata.isVideoSong || !mediaMetadata.podcastVideoUrl.isNullOrEmpty())) {
                     Spacer(Modifier.width(4.dp))
                     // Chip-style (matches the action chips below) and pinned to the right of the title.
                     Box(
@@ -3315,7 +3318,8 @@ private fun BackgroundVideoView(
 
     // E2: scale the canvas decode to the device tier — weaker phones cap resolution, skip forced max-bitrate
     // and use a smaller buffer, so the animated background doesn't push them into thermal/jank territory.
-    val deviceTier = remember { DeviceCapabilities.tier(context) }
+    // High-Performance Mode forces the LOW path even on MID/HIGH hardware (effectiveTier).
+    val deviceTier = remember { iad1tya.echo.music.utils.PerformanceMode.effectiveTier(context) }
     val trackSelector = remember(deviceTier) {
         DefaultTrackSelector(context).apply {
             val maxDim = if (deviceTier == DeviceTier.LOW) 1280 else 4096

@@ -1173,6 +1173,12 @@ class MusicService :
         val normProcessor = iad1tya.echo.music.eq.audio.NormalizationGainAudioProcessor()
         val limiterProcessor = iad1tya.echo.music.eq.audio.TruePeakLimiterAudioProcessor()
 
+        // High-Performance Mode trims ONLY the max-buffer + byte ceiling (less RAM on weak/TV/car devices).
+        // Min-buffer, rebuffer and prioritizeTimeOverSizeThresholds are left untouched so hi-res/FLAC never
+        // regresses into the "buffer full / empty time buffer" micro-stall described below.
+        val perfMode = iad1tya.echo.music.utils.PerformanceMode.isOn(this)
+        val maxBufferMs = if (perfMode) 60_000 else 120_000
+        val targetBufferBytes = if (perfMode) 32 * 1024 * 1024 else 64 * 1024 * 1024
         val player = ExoPlayer.Builder(this)
             .setMediaSourceFactory(createMediaSourceFactory())
             .setRenderersFactory(createRenderersFactory(silenceProcessor, eqProcessor, normProcessor, limiterProcessor))
@@ -1186,15 +1192,16 @@ class MusicService :
                         // buffer for hi-res/FLAC (32MB << 50s of FLAC), so ExoPlayer reported "buffer full"
                         // with an empty time buffer -> repeated STATE_BUFFERING micro-stalls (the audible
                         // "trabones"/cuts on playback and at the crossfade swap, which the secondary player
-                        // inherited). Reconciled below.
-                        120_000,
+                        // inherited). Reconciled below. (High-Performance Mode uses 60s.)
+                        maxBufferMs,
                         500,
                         DefaultLoadControl.DEFAULT_BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS,
                     )
                     // 64MB byte ceiling guards against OOM with multiple pre-loaded/crossfade players,
                     // but prioritizeTimeOverSizeThresholds(true) lets the TIME buffer win so the min/max
                     // duration is actually honored for hi-res streams instead of being clipped to the byte cap.
-                    .setTargetBufferBytes(64 * 1024 * 1024)
+                    // (High-Performance Mode uses 32MB.)
+                    .setTargetBufferBytes(targetBufferBytes)
                     .setPrioritizeTimeOverSizeThresholds(true)
                     .build(),
             )
@@ -3368,6 +3375,12 @@ class MusicService :
      * (see onMediaItemTransition). The music is NEVER paused; only the current track's source changes.
      */
     fun toggleVideoMode() {
+        // High-Performance Mode = audio only: never enter video mode (decoding video is the heaviest thing on
+        // low-end/TV/car devices). The UI hides the toggle too, but guard here as the single source of truth.
+        if (iad1tya.echo.music.utils.PerformanceMode.isOn(this)) {
+            if (_videoMode.value) exitVideoMode()
+            return
+        }
         if (_videoMode.value) {
             exitVideoMode()
         } else {
@@ -4546,6 +4559,11 @@ class MusicService :
             // next track just resolves on demand instead of ahead of time. Respects the OS power-save intent.
             if ((getSystemService(POWER_SERVICE) as? android.os.PowerManager)?.isPowerSaveMode == true) {
                 Timber.tag(TAG).d("Preload skipped: battery saver (power save mode) is on")
+                return@launch
+            }
+            // High-Performance Mode: skip the upcoming-track network preload too (low-end/TV/car devices).
+            if (iad1tya.echo.music.utils.PerformanceMode.isOn(this@MusicService)) {
+                Timber.tag(TAG).d("Preload skipped: high-performance mode is on")
                 return@launch
             }
             val preloadLimit = dataStore.get(iad1tya.echo.music.constants.PreloadNextSongLimitKey, 1)

@@ -75,21 +75,18 @@ jobs:
           KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD || 'jrmusicpro' }}
           LASTFM_API_KEY: ${{ secrets.LASTFM_API_KEY }}
           LASTFM_SECRET: ${{ secrets.LASTFM_SECRET }}
-        run: ./gradlew assembleArm64GmsRelease assembleUniversalGmsRelease
+        run: ./gradlew assembleUniversalGmsRelease
 
       - name: Rename and Organize APKs
         run: |
           VERSION_NAME=$(grep "versionName =" app/build.gradle.kts | head -n 1 | awk -F '"' '{print $2}')
           echo "App Version: $VERSION_NAME"
           mkdir -p app/build/outputs/apk/release-artifacts
-          # arm64 APK = the small, default download (phones).
-          ARM64_APK=$(find app/build/outputs/apk/arm64Gms/release -name "*.apk" | head -n 1)
-          cp "$ARM64_APK" "app/build/outputs/apk/release-artifacts/Aura-Hi-Res-Player-${VERSION_NAME}.apk"
-          echo "arm64 -> Aura-Hi-Res-Player-${VERSION_NAME}.apk"
-          # universal APK = all ABIs (armeabi-v7a/arm64/x86), for Android TV and older 32-bit devices.
+          # ONE universal APK for EVERY device (arm64/armeabi-v7a/x86/x86_64) — phones, Android TV, car head
+          # units, 32-bit boxes — to avoid ABI-compatibility problems. It's the single default download.
           UNIVERSAL_APK=$(find app/build/outputs/apk/universalGms/release -name "*.apk" | head -n 1)
-          cp "$UNIVERSAL_APK" "app/build/outputs/apk/release-artifacts/Aura-Hi-Res-Player-${VERSION_NAME}-universal.apk"
-          echo "universal -> Aura-Hi-Res-Player-${VERSION_NAME}-universal.apk"
+          cp "$UNIVERSAL_APK" "app/build/outputs/apk/release-artifacts/Aura-Hi-Res-Player-${VERSION_NAME}.apk"
+          echo "universal -> Aura-Hi-Res-Player-${VERSION_NAME}.apk"
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4

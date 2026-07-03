@@ -171,8 +171,9 @@ fun ArtistScreen(
     val showArtistDescription by rememberPreference(key = ShowArtistDescriptionKey, defaultValue = true)
     val showArtistSubscriberCount by rememberPreference(key = ShowArtistSubscriberCountKey, defaultValue = true)
     val showMonthlyListeners by rememberPreference(key = ShowMonthlyListenersKey, defaultValue = true)
-    val showArtistVideo by rememberPreference(key = ShowArtistVideoKey, defaultValue = true)
-    val showArtistBackgroundVideo by rememberPreference(key = ShowArtistBackgroundVideoKey, defaultValue = true)
+    // High-Performance Mode hides artist videos (audio-only, keeps weak/TV/car devices smooth).
+    val showArtistVideo by iad1tya.echo.music.utils.rememberPerfGatedBoolean(key = ShowArtistVideoKey, defaultValue = true)
+    val showArtistBackgroundVideo by iad1tya.echo.music.utils.rememberPerfGatedBoolean(key = ShowArtistBackgroundVideoKey, defaultValue = true)
 
     val lazyListState = rememberLazyListState()
     val snackbarHostState = remember { SnackbarHostState() }

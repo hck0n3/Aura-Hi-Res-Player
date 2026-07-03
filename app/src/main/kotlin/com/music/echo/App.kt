@@ -117,6 +117,7 @@ class App : Application(), SingletonImageLoader.Factory {
         val settings = dataStore.data.first()
         seedDefaultsIfNeeded(settings)
         migrateCanvasDefaultOn(settings)
+        migrateHighPerformanceModeSeed(settings)
         migrateMiniPlayerDefaultBg(settings)
         migrateThemeSystemDefault(settings)
         migrateThemeSystemOnlyV2(settings)
@@ -284,6 +285,14 @@ class App : Application(), SingletonImageLoader.Factory {
             }
             if (p[iad1tya.echo.music.constants.ShowArtistBackgroundVideoKey] == null) {
                 p[iad1tya.echo.music.constants.ShowArtistBackgroundVideoKey] = !lowEndDevice
+            }
+
+            // High-Performance Mode: auto-ON on LOW-tier devices AND on Android TV / car head units (both are
+            // typically low-power). Seeded only when unset, so a manual choice is never clobbered. When on it
+            // routes every visual/decode/memory gate through the LOW path and disables video mode (audio only).
+            if (p[iad1tya.echo.music.constants.HighPerformanceModeKey] == null) {
+                p[iad1tya.echo.music.constants.HighPerformanceModeKey] =
+                    lowEndDevice || iad1tya.echo.music.utils.DeviceForm.isTvOrCar(this@App)
             }
 
             // Hide video songs is OFF by default (show video music too); only YouTube Shorts are
@@ -495,6 +504,27 @@ class App : Application(), SingletonImageLoader.Factory {
     }
 
     /**
+     * One-time (fresh key): auto-enable High-Performance Mode for EXISTING users on LOW-tier phones AND on
+     * Android TV / car head units, so a weak device that predates the toggle gets the lean path on this update.
+     * Only sets it when still unset (a capable phone that never had the key is left OFF — matches the seed's
+     * "respect the device" stance); afterwards the user's manual choice in the Rendimiento screen wins.
+     */
+    private suspend fun migrateHighPerformanceModeSeed(settings: androidx.datastore.preferences.core.Preferences) {
+        if (settings[iad1tya.echo.music.constants.HighPerfModeSeedAppliedKey] == true) return
+        val forcePerf =
+            iad1tya.echo.music.utils.DeviceCapabilities.tier(this) == iad1tya.echo.music.utils.DeviceTier.LOW ||
+                iad1tya.echo.music.utils.DeviceForm.isTvOrCar(this)
+        runCatching {
+            dataStore.edit { p ->
+                if (p[iad1tya.echo.music.constants.HighPerformanceModeKey] == null) {
+                    p[iad1tya.echo.music.constants.HighPerformanceModeKey] = forcePerf
+                }
+                p[iad1tya.echo.music.constants.HighPerfModeSeedAppliedKey] = true
+            }
+        }.onFailure { reportException(it) }
+    }
+
+    /**
      * The "Legacy Icon" option was removed. Users who had it enabled only have the now-deleted
      * `MainActivityLegacy` launcher alias active, so re-enable the default `MainActivityAlias`
      * (and disable the static one) to keep their home-screen icon working. Runs once.
@@ -606,6 +636,10 @@ class App : Application(), SingletonImageLoader.Factory {
         val cacheSize = runBlocking {
             dataStore.data.map { it[MaxImageCacheSizeKey] ?: 2048 }.first()
         }
+        // High-Performance Mode: smaller in-RAM image cache (20% vs 40%) on weak/TV/car devices. Takes effect
+        // on the NEXT launch (the ImageLoader is built once at process start).
+        val memCachePercent =
+            if (iad1tya.echo.music.utils.PerformanceMode.isOn(this)) 0.20 else 0.40
         return ImageLoader.Builder(this).apply {
             crossfade(250)
             allowHardware(true)
@@ -619,7 +653,7 @@ class App : Application(), SingletonImageLoader.Factory {
 
             memoryCache {
                 MemoryCache.Builder()
-                    .maxSizePercent(context, 0.4)
+                    .maxSizePercent(context, memCachePercent)
                     .build()
             }
             if (cacheSize == 0) {

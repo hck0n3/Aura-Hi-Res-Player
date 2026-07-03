@@ -506,7 +506,11 @@ class MainActivity : ComponentActivity() {
         syncUtils: SyncUtils,
     ) {
         val enableDynamicTheme by rememberPreference(DynamicThemeKey, defaultValue = true)
-        val enableHighRefreshRate by rememberPreference(EnableHighRefreshRateKey, defaultValue = true)
+        val enableHighRefreshRateRaw by rememberPreference(EnableHighRefreshRateKey, defaultValue = true)
+        // High-Performance Mode keeps weak/TV/car panels at 60 Hz (skip forcing the highest refresh mode).
+        // Read reactively (NOT the blocking PerformanceMode.isOn) so it never blocks the main thread on recompose.
+        val highPerfMode by rememberPreference(iad1tya.echo.music.constants.HighPerformanceModeKey, defaultValue = false)
+        val enableHighRefreshRate = enableHighRefreshRateRaw && !highPerfMode
         val context = LocalContext.current
         // NOTE: do NOT tear down / early-return the whole app UI when entering PiP — rebuilding the entire
         // NavHost on every app-switch froze the app for seconds (and could pause playback). PiP simply shows

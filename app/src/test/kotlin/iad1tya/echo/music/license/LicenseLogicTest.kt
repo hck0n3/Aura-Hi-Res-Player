@@ -88,17 +88,27 @@ class LicenseLogicTest {
         )
     }
 
-    @Test fun offlineAtGraceLimitStillEnters() {
+    @Test fun offlineAtTwoDaysStillEnters() {
+        // Within the 3-day offline grace: a subscriber offline for 2 days still plays (incl. downloads).
         assertEquals(
             AppState.SUBSCRIPTION_ACTIVE,
-            LicenseLogic.resolve(subState(now), VerifyOutcome.UNVERIFIED, now + day),
+            LicenseLogic.resolve(subState(now), VerifyOutcome.UNVERIFIED, now + 2 * day),
+        )
+    }
+
+    @Test fun offlineAtGraceLimitStillEnters() {
+        // At exactly the 3-day grace limit still enters.
+        assertEquals(
+            AppState.SUBSCRIPTION_ACTIVE,
+            LicenseLogic.resolve(subState(now), VerifyOutcome.UNVERIFIED, now + 3 * day),
         )
     }
 
     @Test fun offlineBeyondGraceNeedsConnection() {
+        // Past 3 days offline → a single reconnect is required (paywall-safe).
         assertEquals(
             AppState.NEEDS_CONNECTION,
-            LicenseLogic.resolve(subState(now), VerifyOutcome.UNVERIFIED, now + day + 1),
+            LicenseLogic.resolve(subState(now), VerifyOutcome.UNVERIFIED, now + 3 * day + 1),
         )
     }
 
