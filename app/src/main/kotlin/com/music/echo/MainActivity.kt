@@ -218,6 +218,7 @@ import iad1tya.echo.music.utils.SyncUtils
 import iad1tya.echo.music.utils.dataStore
 import iad1tya.echo.music.utils.get
 import iad1tya.echo.music.utils.rememberEnumPreference
+import iad1tya.echo.music.constants.ForceSplitViewKey
 import iad1tya.echo.music.utils.rememberPreference
 import iad1tya.echo.music.utils.reportException
 import android.content.Context
@@ -718,6 +719,14 @@ class MainActivity : ComponentActivity() {
 
                 val showRail = isLandscape && !inSearchScreen
 
+                // Manual override for the Spotify split: the user can force the wide layout on. Combined with the
+                // real width so the persistent browse now-playing panel shows either on a genuinely wide screen
+                // (>=800dp) OR whenever the user forced it — but always requires landscape (a side panel needs
+                // horizontal room; forcing it in portrait would crush the content).
+                val forceSplitView by rememberPreference(ForceSplitViewKey, false)
+                val showSideNowPlaying = showRail &&
+                    (forceSplitView || configuration.containerDpSize.width >= 800.dp)
+
                 val navPadding = if (shouldShowNavigationBar && !showRail) {
                     NavigationBarHeight + FloatingToolbarBottomPadding
                 } else {
@@ -1162,9 +1171,8 @@ class MainActivity : ComponentActivity() {
                                     // it's collapsed — alpha follows the sheet progress (0 = invisible when collapsed,
                                     // fades in as it expands to the full player). No dismiss, so the panel's cover tap
                                     // still opens the full player with no animation race. Phones/narrow: alpha 1.
-                                    val hideMiniForWidePanel = showRail && configuration.containerDpSize.width >= 800.dp
                                     Box(
-                                        modifier = if (hideMiniForWidePanel) {
+                                        modifier = if (showSideNowPlaying) {
                                             Modifier.graphicsLayer {
                                                 alpha = playerBottomSheetState.progress.coerceIn(0f, 1f)
                                             }
@@ -1317,8 +1325,7 @@ class MainActivity : ComponentActivity() {
                             // (tap the cover to open the full split player). Only when there's real width (>=800dp
                             // content, landscape rail shown, not searching, player not already expanded) so phones/
                             // portrait/narrow are never squeezed. Renders nothing when no song is active.
-                            if (showRail &&
-                                configuration.containerDpSize.width >= 800.dp &&
+                            if (showSideNowPlaying &&
                                 currentRoute != "update" &&
                                 !playerBottomSheetState.isExpanded
                             ) {
