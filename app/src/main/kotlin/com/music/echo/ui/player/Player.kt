@@ -310,6 +310,11 @@ fun BottomSheetPlayer(
         defaultValue = PlayerBackgroundStyle.GRADIENT
     )
     val playerBackground = when {
+        // High-Performance Mode: force the SOLID background. This single switch kills the heaviest per-frame
+        // GPU work in the whole app — the full-bleed BLUR, the 6-brush GLOW_ANIMATED mesh, the triple-rotating
+        // LIVE_MESH, the Apple-Music full-res image + palette extraction all only run for their non-DEFAULT
+        // styles, so DEFAULT skips every one of them.
+        highPerfMode -> PlayerBackgroundStyle.DEFAULT
         isLocalMedia -> PlayerBackgroundStyle.DEFAULT
         else -> playerBackgroundPref
     }
@@ -434,7 +439,9 @@ fun BottomSheetPlayer(
         defaultValue = AudioQuality.OPUS
     )
     val sliderStyle by rememberEnumPreference(SliderStyleKey, SliderStyle.DEFAULT)
-    val squigglySlider by rememberPreference(SquigglySliderKey, defaultValue = false)
+    // Perf mode: the squiggly/wavy slider draws a complex animated Path every frame — fall back to the plain
+    // linear slider (rememberPerfGatedBoolean = raw && !perfOn).
+    val squigglySlider by iad1tya.echo.music.utils.rememberPerfGatedBoolean(SquigglySliderKey, false)
     
     
     val listenTogetherManager = LocalListenTogetherManager.current
@@ -909,7 +916,8 @@ fun BottomSheetPlayer(
     LaunchedEffect(isPlaying, isCasting) {
         if (!isCasting && isPlaying) {
             while (isActive) {
-                delay(500)
+                // Perf mode: poll position half as often (1s vs 500ms) — one fewer recomposition/sec.
+                delay(if (highPerfMode) 1000L else 500L)
                 if (sliderPosition == null) {
                     position = playerConnection.player.currentPosition
                     duration = playerConnection.player.duration

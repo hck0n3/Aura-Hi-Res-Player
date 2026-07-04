@@ -1483,7 +1483,8 @@ fun HomeScreen(
                             }
                         }
                         HomeSection.KeepListening -> {
-                            keepListening?.takeIf { it.isNotEmpty() }?.let { keepListening ->
+                            // Perf mode: skip this carousel (max fluidity on low-end/TV/car).
+                            if (!perfOn) keepListening?.takeIf { it.isNotEmpty() }?.let { keepListening ->
                                 item(key = "keep_listening_title") {
                                     val klTitle = stringResource(R.string.keep_listening)
                                     NavigationTitle(
@@ -1638,7 +1639,7 @@ fun HomeScreen(
                             }
                         }
                         HomeSection.NewFromArtists -> {
-                            newFromArtists?.takeIf { it.isNotEmpty() }?.let { albums ->
+                            if (!perfOn) newFromArtists?.takeIf { it.isNotEmpty() }?.let { albums ->
                                 item(key = "new_from_artists_title") {
                                     NavigationTitle(
                                         title = stringResource(R.string.home_new_from_artists),
@@ -1663,7 +1664,7 @@ fun HomeScreen(
                             }
                         }
                         HomeSection.GenreMix -> {
-                            genreMix?.takeIf { it.songs.isNotEmpty() }?.let { mix ->
+                            if (!perfOn) genreMix?.takeIf { it.songs.isNotEmpty() }?.let { mix ->
                                 item(key = "genre_mix_title") {
                                     val mixTitle = stringResource(R.string.home_genre_mix, mix.genre)
                                     NavigationTitle(
@@ -1699,7 +1700,7 @@ fun HomeScreen(
                             }
                         }
                         HomeSection.ForgottenFavorites -> {
-                            forgottenFavorites?.takeIf { it.isNotEmpty() }?.let { forgottenFavorites ->
+                            if (!perfOn) forgottenFavorites?.takeIf { it.isNotEmpty() }?.let { forgottenFavorites ->
                                 item(key = "forgotten_favorites_title") {
                                     val forgottenFavoritesTitle = stringResource(R.string.forgotten_favorites)
                                     NavigationTitle(
@@ -1798,7 +1799,7 @@ fun HomeScreen(
                         }
                         is HomeSection.SimilarRecommendation -> {
                             val recommendation = similarRecommendations?.getOrNull(section.index)
-                            recommendation?.let {
+                            if (!perfOn) recommendation?.let {
                                 item(key = "similar_to_title_${section.index}") {
                                     // Only expose a destination that actually exists, so the header
                                     // never shows the tap arrow nor implies an album a song doesn't
@@ -2000,7 +2001,7 @@ fun HomeScreen(
                             }
                         }
                         HomeSection.MoodAndGenres -> {
-                            explorePage?.moodAndGenres?.let { moodAndGenres ->
+                            if (!perfOn) explorePage?.moodAndGenres?.let { moodAndGenres ->
                                 item(key = "mood_and_genres_title") {
                                     NavigationTitle(
                                         title = stringResource(R.string.mood_and_genres),
