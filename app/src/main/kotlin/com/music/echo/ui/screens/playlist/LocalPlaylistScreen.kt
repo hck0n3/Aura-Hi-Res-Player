@@ -152,6 +152,8 @@ import iad1tya.echo.music.ui.menu.SelectionSongMenu
 import iad1tya.echo.music.ui.menu.SongMenu
 import iad1tya.echo.music.ui.screens.settings.DarkMode
 import iad1tya.echo.music.ui.utils.backToMain
+import iad1tya.echo.music.ui.utils.rememberIsTvOrCar
+import iad1tya.echo.music.ui.utils.tvFocusable
 import iad1tya.echo.music.utils.listItemShape
 import iad1tya.echo.music.utils.makeTimeString
 import iad1tya.echo.music.utils.rememberEnumPreference
@@ -869,6 +871,7 @@ fun LocalPlaylistHeader(
     val menuState = LocalMenuState.current
     val syncUtils = LocalSyncUtils.current
     val scope = rememberCoroutineScope()
+    val isTvOrCar = rememberIsTvOrCar()
 
     val playlistLength =
         remember(songs) {
@@ -1240,7 +1243,8 @@ fun LocalPlaylistHeader(
                 },
                 modifier = Modifier
                     .weight(1f)
-                    .height(48.dp),
+                    .height(48.dp)
+                    .tvFocusable(isTvOrCar, scaleFocused = 1f),
                 shape = CircleShape,
                 colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
                     containerColor = MaterialTheme.colorScheme.primary,
@@ -1272,7 +1276,8 @@ fun LocalPlaylistHeader(
                 },
                 modifier = Modifier
                     .weight(1f)
-                    .height(48.dp),
+                    .height(48.dp)
+                    .tvFocusable(isTvOrCar, scaleFocused = 1f),
                 shape = CircleShape,
                 colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
                     containerColor = MaterialTheme.colorScheme.surfaceVariant,
@@ -1371,7 +1376,7 @@ fun LocalPlaylistHeader(
                 },
                 shape = CircleShape,
                 color = MaterialTheme.colorScheme.surfaceVariant,
-                modifier = Modifier.size(48.dp)
+                modifier = Modifier.size(48.dp).tvFocusable(isTvOrCar, scaleFocused = 1f)
             ) {
                 Box(
                     modifier = Modifier.fillMaxSize(),

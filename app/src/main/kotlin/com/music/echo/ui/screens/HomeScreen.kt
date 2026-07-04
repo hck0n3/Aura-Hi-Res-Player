@@ -591,6 +591,10 @@ fun HomeScreen(
 
     val isLoading: Boolean by viewModel.isLoading.collectAsState()
     val isMoodAndGenresLoading = isLoading && explorePage?.moodAndGenres == null
+    // High-Performance Mode: on low-end / TV / car-box GPUs the heavy animated carousels (masked hero + the
+    // experimental multi-browse carousel with big images) + the never-ending bottom shimmer are what freeze the
+    // UI. When perf mode is on we drop those; the light content rows stay.
+    val perfOn by rememberPreference(iad1tya.echo.music.constants.HighPerformanceModeKey, false)
     val isRefreshing by viewModel.isRefreshing.collectAsState()
     val isRandomizing by viewModel.isRandomizing.collectAsState()
     val pullRefreshState = rememberPullToRefreshState()
@@ -1237,7 +1241,8 @@ fun HomeScreen(
                             }
                         }
                         HomeSection.QuickPicks -> {
-                            quickPicks?.takeIf { it.isNotEmpty() }?.let { quickPicks ->
+                            // Perf mode: skip the masked hero carousel (heaviest home visual).
+                            if (!perfOn) quickPicks?.takeIf { it.isNotEmpty() }?.let { quickPicks ->
 
                                 item(key = "quick_picks_title") {
                                     NavigationTitle(
@@ -1414,7 +1419,8 @@ fun HomeScreen(
                             }
                         }
                         HomeSection.DailyDiscover -> {
-                            dailyDiscover?.takeIf { it.isNotEmpty() }?.let { discoverList ->
+                            // Perf mode: skip the experimental multi-browse carousel + its 1200px images.
+                            if (!perfOn) dailyDiscover?.takeIf { it.isNotEmpty() }?.let { discoverList ->
                                 
                                 item(key = "daily_discover_title") {
                                     val title = stringResource(R.string.your_daily_discover)
@@ -2034,7 +2040,7 @@ fun HomeScreen(
                 // In taste-only mode the YouTube home feed isn't rendered, so don't show the
                 // "loading more" shimmer for its continuation — otherwise the bottom of the home
                 // spins forever trying to load content that is intentionally hidden.
-                if (isLoading || (!tasteOnlyHome && homePage?.continuation != null && homePage?.sections?.isNotEmpty() == true)) {
+                if (!perfOn && (isLoading || (!tasteOnlyHome && homePage?.continuation != null && homePage?.sections?.isNotEmpty() == true))) {
                     item(key = "loading_shimmer") {
                         ShimmerHost(
                             modifier = Modifier.animateItem()

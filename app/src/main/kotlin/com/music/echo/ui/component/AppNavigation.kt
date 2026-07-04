@@ -26,6 +26,8 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import iad1tya.echo.music.ui.screens.Screens
+import iad1tya.echo.music.ui.utils.rememberIsTvOrCar
+import iad1tya.echo.music.ui.utils.tvFocusable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 
@@ -55,7 +57,8 @@ fun AppNavigationRail(
     val containerColor = if (pureBlack) Color.Black else MaterialTheme.colorScheme.surfaceContainer
     val haptics = LocalHapticFeedback.current
     val viewConfiguration = LocalViewConfiguration.current
-    
+    val isTvOrCar = rememberIsTvOrCar()
+
     NavigationRail(
         modifier = modifier,
         containerColor = containerColor
@@ -100,12 +103,13 @@ fun AppNavigationRail(
             }
             
             NavigationRailItem(
+                modifier = Modifier.tvFocusable(isTvOrCar, scaleFocused = 1f),
                 selected = isSelected,
-                onClick = { 
+                onClick = {
                     if (!isSearchItem) {
                         onItemClick(screen, isSelected)
                     }
-                    
+
                 },
                 interactionSource = interactionSource,
                 icon = {

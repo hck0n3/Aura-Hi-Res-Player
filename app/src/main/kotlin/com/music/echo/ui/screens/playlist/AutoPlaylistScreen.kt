@@ -110,6 +110,8 @@ import iad1tya.echo.music.ui.menu.AutoPlaylistMenu
 import iad1tya.echo.music.ui.menu.SelectionSongMenu
 import iad1tya.echo.music.ui.menu.SongMenu
 import iad1tya.echo.music.ui.utils.backToMain
+import iad1tya.echo.music.ui.utils.rememberIsTvOrCar
+import iad1tya.echo.music.ui.utils.tvFocusable
 import iad1tya.echo.music.utils.listItemShape
 import iad1tya.echo.music.utils.makeTimeString
 import iad1tya.echo.music.utils.rememberEnumPreference
@@ -626,7 +628,8 @@ private fun AutoPlaylistHeader(
 ) {
     val playerConnection = LocalPlayerConnection.current ?: return
     val context = LocalContext.current
-    
+    val isTvOrCar = rememberIsTvOrCar()
+
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -712,7 +715,7 @@ private fun AutoPlaylistHeader(
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(
                     vertical = 12.dp
                 ),
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(1f).tvFocusable(isTvOrCar, scaleFocused = 1f)
             ) {
                 Row(
                     horizontalArrangement = Arrangement.Center,
@@ -752,7 +755,7 @@ private fun AutoPlaylistHeader(
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(
                     vertical = 12.dp
                 ),
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(1f).tvFocusable(isTvOrCar, scaleFocused = 1f)
             ) {
                 Row(
                     horizontalArrangement = Arrangement.Center,
@@ -822,7 +825,7 @@ private fun AutoPlaylistHeader(
                 },
                 shape = androidx.compose.foundation.shape.CircleShape,
                 color = MaterialTheme.colorScheme.surfaceVariant,
-                modifier = Modifier.size(48.dp)
+                modifier = Modifier.size(48.dp).tvFocusable(isTvOrCar, scaleFocused = 1f)
             ) {
                 Box(
                     modifier = Modifier.fillMaxSize(),

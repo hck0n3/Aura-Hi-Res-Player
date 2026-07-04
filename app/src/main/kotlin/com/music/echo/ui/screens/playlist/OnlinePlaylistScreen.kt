@@ -126,6 +126,8 @@ import iad1tya.echo.music.ui.menu.YouTubePlaylistMenu
 import iad1tya.echo.music.ui.menu.YouTubeSelectionSongMenu
 import iad1tya.echo.music.ui.menu.YouTubeSongMenu
 import iad1tya.echo.music.ui.utils.backToMain
+import iad1tya.echo.music.ui.utils.rememberIsTvOrCar
+import iad1tya.echo.music.ui.utils.tvFocusable
 import iad1tya.echo.music.utils.listItemShape
 import iad1tya.echo.music.utils.makeTimeString
 import iad1tya.echo.music.utils.rememberPreference
@@ -577,6 +579,7 @@ private fun OnlinePlaylistHeader(
     val menuState = LocalMenuState.current
     val isPlaying by playerConnection.isEffectivelyPlaying.collectAsState()
     val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
+    val isTvOrCar = rememberIsTvOrCar()
 
     val hasExplicitContent = remember(songs) {
         songs.any { it.explicit }
@@ -706,7 +709,7 @@ private fun OnlinePlaylistHeader(
                         contentColor = MaterialTheme.colorScheme.onSurfaceVariant
                     ),
                     contentPadding = PaddingValues(vertical = 12.dp),
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f).tvFocusable(isTvOrCar, scaleFocused = 1f)
                 ) {
                     Row(
                         horizontalArrangement = Arrangement.Center,
@@ -750,7 +753,7 @@ private fun OnlinePlaylistHeader(
                         contentColor = MaterialTheme.colorScheme.onPrimary
                     ),
                     contentPadding = PaddingValues(vertical = 12.dp),
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f).tvFocusable(isTvOrCar, scaleFocused = 1f)
                 ) {
                     Row(
                         horizontalArrangement = Arrangement.Center,
@@ -786,7 +789,7 @@ private fun OnlinePlaylistHeader(
                     },
                     shape = CircleShape,
                     color = MaterialTheme.colorScheme.surfaceVariant,
-                    modifier = Modifier.size(48.dp)
+                    modifier = Modifier.size(48.dp).tvFocusable(isTvOrCar, scaleFocused = 1f)
                 ) {
                     Box(
                         contentAlignment = Alignment.Center,
@@ -915,7 +918,7 @@ private fun OnlinePlaylistHeader(
                             }
                         }
                     },
-                    modifier = Modifier.weight(1f).semantics { role = Role.Button },
+                    modifier = Modifier.weight(1f).semantics { role = Role.Button }.tvFocusable(isTvOrCar, scaleFocused = 1f),
                     shapes = ButtonGroupDefaults.connectedLeadingButtonShapes(),
                 ) {
                     when (downloadState) {
@@ -969,7 +972,7 @@ private fun OnlinePlaylistHeader(
                             )
                         }
                     },
-                    modifier = Modifier.weight(1f).semantics { role = Role.Button },
+                    modifier = Modifier.weight(1f).semantics { role = Role.Button }.tvFocusable(isTvOrCar, scaleFocused = 1f),
                     shapes = ButtonGroupDefaults.connectedMiddleButtonShapes(),
                 ) {
                     Icon(
@@ -999,7 +1002,7 @@ private fun OnlinePlaylistHeader(
                             )
                         }
                     },
-                    modifier = Modifier.weight(1f).semantics { role = Role.Button },
+                    modifier = Modifier.weight(1f).semantics { role = Role.Button }.tvFocusable(isTvOrCar, scaleFocused = 1f),
                     shapes = ButtonGroupDefaults.connectedTrailingButtonShapes(),
                 ) {
                     Icon(

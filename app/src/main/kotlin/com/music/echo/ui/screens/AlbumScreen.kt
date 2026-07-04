@@ -127,6 +127,8 @@ import iad1tya.echo.music.ui.menu.SongMenu
 import iad1tya.echo.music.ui.menu.YouTubeAlbumMenu
 import iad1tya.echo.music.ui.utils.backToMain
 import iad1tya.echo.music.ui.utils.fadingEdge
+import iad1tya.echo.music.ui.utils.rememberIsTvOrCar
+import iad1tya.echo.music.ui.utils.tvFocusable
 import iad1tya.echo.music.ui.player.CanvasArtworkPlayer
 import iad1tya.echo.music.utils.listItemShape
 import iad1tya.echo.music.utils.rememberPreference
@@ -147,6 +149,8 @@ fun AlbumScreen(
     val playerConnection = LocalPlayerConnection.current ?: return
 
     val scope = rememberCoroutineScope()
+
+    val isTvOrCar = rememberIsTvOrCar()
 
     val isPlaying by playerConnection.isEffectivelyPlaying.collectAsState()
     val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
@@ -502,7 +506,7 @@ fun AlbumScreen(
                             },
                             shape = CircleShape,
                             color = MaterialTheme.colorScheme.surfaceVariant,
-                            modifier = Modifier.size(48.dp)
+                            modifier = Modifier.size(48.dp).tvFocusable(isTvOrCar, scaleFocused = 1f)
                         ) {
                             Box(
                                 contentAlignment = Alignment.Center,
@@ -553,6 +557,7 @@ fun AlbumScreen(
                             modifier = Modifier
                                 .height(48.dp)
                                 .weight(1.5f)
+                                .tvFocusable(isTvOrCar, scaleFocused = 1f)
                         ) {
                             Row(
                                 horizontalArrangement = Arrangement.Center,
@@ -591,7 +596,7 @@ fun AlbumScreen(
                             },
                             shape = CircleShape,
                             color = MaterialTheme.colorScheme.surfaceVariant,
-                            modifier = Modifier.size(48.dp)
+                            modifier = Modifier.size(48.dp).tvFocusable(isTvOrCar, scaleFocused = 1f)
                         ) {
                             Box(
                                 contentAlignment = Alignment.Center,

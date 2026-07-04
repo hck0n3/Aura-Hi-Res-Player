@@ -117,6 +117,8 @@ import iad1tya.echo.music.ui.component.YouTubeGridItem
 import iad1tya.echo.music.ui.component.YouTubeListItem
 import iad1tya.echo.music.ui.component.shimmer.ButtonPlaceholder
 import iad1tya.echo.music.ui.component.shimmer.ListItemPlaceHolder
+import iad1tya.echo.music.ui.utils.rememberIsTvOrCar
+import iad1tya.echo.music.ui.utils.tvFocusable
 import iad1tya.echo.music.ui.component.shimmer.ShimmerHost
 import iad1tya.echo.music.ui.component.shimmer.TextPlaceholder
 import iad1tya.echo.music.ui.menu.AlbumMenu
@@ -157,6 +159,7 @@ fun ArtistScreen(
     val haptic = LocalHapticFeedback.current
     val coroutineScope = rememberCoroutineScope()
     val playerConnection = LocalPlayerConnection.current ?: return
+    val isTvOrCar = rememberIsTvOrCar()
     val listenTogetherManager = LocalListenTogetherManager.current
     val isGuest = listenTogetherManager?.isInRoom == true && !listenTogetherManager.isHost
     val isPlaying by playerConnection.isEffectivelyPlaying.collectAsState()
@@ -538,7 +541,8 @@ fun ArtistScreen(
                                         modifier = Modifier
                                             .weight(1f)
                                             .height(52.dp)
-                                            .semantics { role = Role.Button },
+                                            .semantics { role = Role.Button }
+                                            .tvFocusable(isTvOrCar, scaleFocused = 1f),
                                         shapes = ButtonGroupDefaults.connectedLeadingButtonShapes()
                                     ) {
                                         Icon(
@@ -583,7 +587,8 @@ fun ArtistScreen(
                                                 modifier = Modifier
                                                     .weight(1f)
                                                     .height(52.dp)
-                                                    .semantics { role = Role.Button },
+                                                    .semantics { role = Role.Button }
+                                                    .tvFocusable(isTvOrCar, scaleFocused = 1f),
                                                 shapes = ButtonGroupDefaults.connectedMiddleButtonShapes()
                                             ) {
                                                 Icon(
@@ -613,7 +618,8 @@ fun ArtistScreen(
                                                 modifier = Modifier
                                                     .weight(1f)
                                                     .height(52.dp)
-                                                    .semantics { role = Role.Button },
+                                                    .semantics { role = Role.Button }
+                                                    .tvFocusable(isTvOrCar, scaleFocused = 1f),
                                                 shapes = if (artistPage?.artist?.radioEndpoint != null) {
                                                     ButtonGroupDefaults.connectedTrailingButtonShapes()
                                                 } else {
@@ -651,7 +657,8 @@ fun ArtistScreen(
                                             modifier = Modifier
                                                 .weight(1f)
                                                 .height(52.dp)
-                                                .semantics { role = Role.Button },
+                                                .semantics { role = Role.Button }
+                                                .tvFocusable(isTvOrCar, scaleFocused = 1f),
                                             shapes = ButtonGroupDefaults.connectedTrailingButtonShapes()
                                         ) {
                                             Icon(
