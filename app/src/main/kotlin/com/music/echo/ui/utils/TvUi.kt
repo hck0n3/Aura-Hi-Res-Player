@@ -21,11 +21,23 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import iad1tya.echo.music.utils.DeviceForm
 
-/** True on Android TV or a car head unit (form-factor, cached). Used to switch layouts + D-pad focus on. */
+/**
+ * True on a D-pad / remote context where the TV affordances (focus ring, initial focus, TV layouts) should
+ * show. That is: a real Android TV / car head unit, OR the user forced the split, OR any genuinely wide screen
+ * (>=600dp). The wide/forced fallbacks are CRUCIAL: cheap Android-TV BOXES and Chinese car head units run
+ * PLAIN Android and do NOT report as TV (no FEATURE_LEANBACK / UI_MODE_TYPE_TELEVISION), so form-factor
+ * detection alone left every TV feature dark on them. Harmless on touch tablets — touch raises no focus events,
+ * so the ring never actually draws there.
+ */
 @Composable
 fun rememberIsTvOrCar(): Boolean {
     val context = LocalContext.current
-    return remember { DeviceForm.isTvOrCar(context) }
+    val configuration = LocalConfiguration.current
+    val deviceTvCar = remember { DeviceForm.isTvOrCar(context) }
+    val forceSplit by iad1tya.echo.music.utils.rememberPreference(
+        iad1tya.echo.music.constants.ForceSplitViewKey, false,
+    )
+    return deviceTvCar || forceSplit || configuration.smallestScreenWidthDp >= 600
 }
 
 /**

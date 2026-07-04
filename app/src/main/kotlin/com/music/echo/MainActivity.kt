@@ -726,8 +726,11 @@ class MainActivity : ComponentActivity() {
                 // horizontal room; forcing it in portrait would crush the content).
                 val forceSplitView by rememberPreference(ForceSplitViewKey, false)
                 val sidePanelOnLeft by rememberPreference(SidePanelOnLeftKey, false)
+                // Show the persistent split panel on any WIDE context (real TV/car, forced split, or a >=600dp
+                // screen) in landscape — NOT a strict window-width >= 800dp, which left the panel dark on Android
+                // TV BOXES / car screens that report a narrower or letterboxed window. Matches the ring gate.
                 val showSideNowPlaying = showRail &&
-                    (forceSplitView || configuration.containerDpSize.width >= 800.dp)
+                    (forceSplitView || iad1tya.echo.music.ui.utils.rememberIsWideScreen())
 
                 val navPadding = if (shouldShowNavigationBar && !showRail) {
                     NavigationBarHeight + FloatingToolbarBottomPadding
