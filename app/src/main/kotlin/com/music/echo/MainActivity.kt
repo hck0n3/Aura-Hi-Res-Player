@@ -1157,11 +1157,25 @@ class MainActivity : ComponentActivity() {
                                 }
                             } else {
                                 if (currentRoute != "update" && currentRoute != "listen_together/chat") {
-                                    BottomSheetPlayer(
-                                        state = playerBottomSheetState,
-                                        navController = navController,
-                                        pureBlack = pureBlack
-                                    )
+                                    // Two-pane: on a genuinely wide screen the persistent right NowPlayingSidePanel
+                                    // is the now-playing surface, so fade the redundant bottom mini-player out while
+                                    // it's collapsed — alpha follows the sheet progress (0 = invisible when collapsed,
+                                    // fades in as it expands to the full player). No dismiss, so the panel's cover tap
+                                    // still opens the full player with no animation race. Phones/narrow: alpha 1.
+                                    val hideMiniForWidePanel = showRail && configuration.containerDpSize.width >= 800.dp
+                                    Box(
+                                        modifier = if (hideMiniForWidePanel) {
+                                            Modifier.graphicsLayer {
+                                                alpha = playerBottomSheetState.progress.coerceIn(0f, 1f)
+                                            }
+                                        } else Modifier
+                                    ) {
+                                        BottomSheetPlayer(
+                                            state = playerBottomSheetState,
+                                            navController = navController,
+                                            pureBlack = pureBlack
+                                        )
+                                    }
                                 }
 
                                 Box(
