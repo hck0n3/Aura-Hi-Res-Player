@@ -264,6 +264,89 @@ fun SearchScreen(
         }
     }
 
+    // Direct (no-UI) SpeechRecognizer fallback for Android TV / devices where the RecognizerIntent pop-up
+    // Activity is absent (there launching the Intent throws ActivityNotFoundException). Uses our own
+    // "listening" dialog and needs RECORD_AUDIO, requested on demand.
+    var voiceListening by remember { mutableStateOf(false) }
+    val speechRecognizer = remember {
+        if (android.speech.SpeechRecognizer.isRecognitionAvailable(context))
+            android.speech.SpeechRecognizer.createSpeechRecognizer(context)
+        else null
+    }
+    DisposableEffect(speechRecognizer) { onDispose { speechRecognizer?.destroy() } }
+    fun startDirectVoice() {
+        val sr = speechRecognizer ?: run {
+            Toast.makeText(context, R.string.voice_search_unavailable, Toast.LENGTH_SHORT).show()
+            return
+        }
+        sr.setRecognitionListener(object : android.speech.RecognitionListener {
+            override fun onReadyForSpeech(params: android.os.Bundle?) {}
+            override fun onBeginningOfSpeech() {}
+            override fun onRmsChanged(rmsdB: Float) {}
+            override fun onBufferReceived(buffer: ByteArray?) {}
+            override fun onEndOfSpeech() {}
+            override fun onError(error: Int) {
+                voiceListening = false
+                Toast.makeText(context, R.string.voice_search_unavailable, Toast.LENGTH_SHORT).show()
+            }
+            override fun onResults(results: android.os.Bundle) {
+                voiceListening = false
+                val spoken = results
+                    .getStringArrayList(android.speech.SpeechRecognizer.RESULTS_RECOGNITION)
+                    ?.firstOrNull()?.trim()
+                if (!spoken.isNullOrEmpty()) {
+                    query = TextFieldValue(spoken, TextRange(spoken.length))
+                    searchActive = true
+                    onSearch(spoken)
+                }
+            }
+            override fun onPartialResults(partialResults: android.os.Bundle?) {}
+            override fun onEvent(eventType: Int, params: android.os.Bundle?) {}
+        })
+        voiceListening = true
+        sr.startListening(
+            Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
+            }
+        )
+    }
+    val recordAudioPermLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) startDirectVoice()
+        else Toast.makeText(context, R.string.voice_search_unavailable, Toast.LENGTH_SHORT).show()
+    }
+    fun requestDirectVoice() {
+        if (androidx.core.content.ContextCompat.checkSelfPermission(
+                context, android.Manifest.permission.RECORD_AUDIO,
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            startDirectVoice()
+        } else {
+            recordAudioPermLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+        }
+    }
+
+    if (voiceListening) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { voiceListening = false; speechRecognizer?.cancel() },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    voiceListening = false; speechRecognizer?.cancel()
+                }) { Text(stringResource(android.R.string.cancel)) }
+            },
+            title = { Text(stringResource(R.string.voice_search)) },
+            text = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularWavyProgressIndicator()
+                    Spacer(Modifier.width(16.dp))
+                    Text(stringResource(R.string.voice_search))
+                }
+            },
+        )
+    }
+
     Scaffold(
         topBar = {
             Column(
@@ -330,7 +413,9 @@ fun SearchScreen(
                                         }
                                         voiceLauncher.launch(intent)
                                     } catch (e: ActivityNotFoundException) {
-                                        Toast.makeText(context, R.string.voice_search_unavailable, Toast.LENGTH_SHORT).show()
+                                        // No system voice pop-up (common on Android TV) — fall back to the
+                                        // direct no-UI SpeechRecognizer with our own listening dialog.
+                                        requestDirectVoice()
                                     }
                                 }
                             ) {
