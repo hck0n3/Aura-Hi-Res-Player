@@ -353,13 +353,14 @@ fun ArtistScreen(
                                 .fillMaxWidth()
                                 .padding(
                                     top = if (thumbnail != null) {
-                                        
-                                        
-                                        LocalResources.current.displayMetrics.widthPixels.let { screenWidth ->
-                                            with(density) {
-                                                ((screenWidth / 1.2f) - 144).toDp()
+                                        // TV caps the header to a 320dp banner; the phone formula (~screenWidth/1.2,
+                                        // for a square cover) would push all content + the track list off-screen.
+                                        if (isTvHero) 240.dp else
+                                            LocalResources.current.displayMetrics.widthPixels.let { screenWidth ->
+                                                with(density) {
+                                                    ((screenWidth / 1.2f) - 144).toDp()
+                                                }
                                             }
-                                        }
                                     } else {
                                         16.dp
                                     }

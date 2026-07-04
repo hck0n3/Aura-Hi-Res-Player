@@ -313,11 +313,15 @@ fun AlbumScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(
-                                top = LocalContext.current.resources.displayMetrics.widthPixels.let { screenWidth ->
-                                    with(density) {
-                                        ((screenWidth / 1.2f) - 144).toDp()
+                                // The phone formula (~screenWidth/1.2) assumes a SQUARE full-width cover; with the
+                                // TV cap of a 320dp banner it pushed the whole content + track list off-screen
+                                // ("no content below the cover"). On TV clear just the banner instead.
+                                top = if (isTvHero) 240.dp else
+                                    LocalContext.current.resources.displayMetrics.widthPixels.let { screenWidth ->
+                                        with(density) {
+                                            ((screenWidth / 1.2f) - 144).toDp()
+                                        }
                                     }
-                                }
                             )
                             .padding(bottom = 24.dp),
                         horizontalAlignment = Alignment.CenterHorizontally

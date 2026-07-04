@@ -29,6 +29,7 @@ import iad1tya.echo.music.LocalPlayerAwareWindowInsets
 import iad1tya.echo.music.R
 import iad1tya.echo.music.constants.ForceSplitViewKey
 import iad1tya.echo.music.constants.HighPerformanceModeKey
+import iad1tya.echo.music.constants.SidePanelOnLeftKey
 import iad1tya.echo.music.ui.component.IconButton
 import iad1tya.echo.music.ui.component.Material3SettingsGroup
 import iad1tya.echo.music.ui.component.Material3SettingsItem
@@ -47,6 +48,7 @@ fun PerformanceSettings(
     val context = LocalContext.current
     val (highPerfMode, onHighPerfModeChange) = rememberPreference(HighPerformanceModeKey, defaultValue = false)
     val (forceSplit, onForceSplitChange) = rememberPreference(ForceSplitViewKey, defaultValue = false)
+    val (sidePanelLeft, onSidePanelLeftChange) = rememberPreference(SidePanelOnLeftKey, defaultValue = false)
 
     // Read-only diagnostic: why the mode auto-enabled (LOW hardware / TV / car).
     val detected = remember {
@@ -157,6 +159,32 @@ fun PerformanceSettings(
                         )
                     },
                     onClick = { onForceSplitChange(!forceSplit) }
+                ),
+                Material3SettingsItem(
+                    icon = painterResource(R.drawable.speed),
+                    title = { Text("Panel del reproductor a la izquierda") },
+                    description = {
+                        Text(
+                            "En la vista dividida, mueve la cola/reproductor al lado IZQUIERDO (por defecto va a la " +
+                                "derecha). Útil en pantallas de auto donde se prefiere de un lado."
+                        )
+                    },
+                    trailingContent = {
+                        Switch(
+                            checked = sidePanelLeft,
+                            onCheckedChange = onSidePanelLeftChange,
+                            thumbContent = {
+                                Icon(
+                                    painter = painterResource(
+                                        id = if (sidePanelLeft) R.drawable.check else R.drawable.close
+                                    ),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(SwitchDefaults.IconSize)
+                                )
+                            }
+                        )
+                    },
+                    onClick = { onSidePanelLeftChange(!sidePanelLeft) }
                 )
             )
         )

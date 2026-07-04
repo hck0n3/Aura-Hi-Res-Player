@@ -92,6 +92,9 @@ val InfinitePlaybackForcedOnKey = booleanPreferencesKey("infinite_playback_force
 // Manual override: force the wide "Spotify split" layout ON even on a device the app wouldn't auto-detect as
 // big (e.g. a phone/tablet the user WANTS the split on). ORed into rememberIsWideScreen().
 val ForceSplitViewKey = booleanPreferencesKey("force_split_view")
+// Which side the persistent now-playing panel sits on in the wide split (some Android-auto users prefer it
+// on the left). false = right (default), true = left.
+val SidePanelOnLeftKey = booleanPreferencesKey("side_panel_on_left")
 // Set before the YouTube Music login (which cold-restarts the app) so that, after the restart, we
 // return the user to the YouTube Music sync selection screen — like Spotify's import flow.
 val OpenYtmSyncAfterLoginKey = booleanPreferencesKey("open_ytm_sync_after_login")

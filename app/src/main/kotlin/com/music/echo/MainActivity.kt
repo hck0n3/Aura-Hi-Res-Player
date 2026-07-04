@@ -219,6 +219,7 @@ import iad1tya.echo.music.utils.dataStore
 import iad1tya.echo.music.utils.get
 import iad1tya.echo.music.utils.rememberEnumPreference
 import iad1tya.echo.music.constants.ForceSplitViewKey
+import iad1tya.echo.music.constants.SidePanelOnLeftKey
 import iad1tya.echo.music.utils.rememberPreference
 import iad1tya.echo.music.utils.reportException
 import android.content.Context
@@ -724,6 +725,7 @@ class MainActivity : ComponentActivity() {
                 // (>=800dp) OR whenever the user forced it — but always requires landscape (a side panel needs
                 // horizontal room; forcing it in portrait would crush the content).
                 val forceSplitView by rememberPreference(ForceSplitViewKey, false)
+                val sidePanelOnLeft by rememberPreference(SidePanelOnLeftKey, false)
                 val showSideNowPlaying = showRail &&
                     (forceSplitView || configuration.containerDpSize.width >= 800.dp)
 
@@ -1245,8 +1247,22 @@ class MainActivity : ComponentActivity() {
                                     onSearchLongClick = onRailSearchLongClick
                                 )
                             }
+                            // LEFT-side variant of the persistent now-playing panel (some Android-auto users
+                            // prefer it on the left). Same gate as the right one; only the position differs.
+                            if (showSideNowPlaying &&
+                                sidePanelOnLeft &&
+                                currentRoute != "update" &&
+                                !playerBottomSheetState.isExpanded
+                            ) {
+                                NowPlayingSidePanel(
+                                    onExpand = { playerBottomSheetState.expandSoft() },
+                                    modifier = Modifier
+                                        .fillMaxHeight()
+                                        .width(340.dp),
+                                )
+                            }
                             Box(Modifier.weight(1f)) {
-                                
+
                                 NavHost(
                                     navController = navController,
                                     startDestination = when (tabOpenedFromShortcut ?: defaultOpenTab) {
@@ -1326,6 +1342,7 @@ class MainActivity : ComponentActivity() {
                             // content, landscape rail shown, not searching, player not already expanded) so phones/
                             // portrait/narrow are never squeezed. Renders nothing when no song is active.
                             if (showSideNowPlaying &&
+                                !sidePanelOnLeft &&
                                 currentRoute != "update" &&
                                 !playerBottomSheetState.isExpanded
                             ) {

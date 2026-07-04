@@ -270,7 +270,10 @@ fun LibraryArtistsScreen(
                     state = lazyGridState,
                     columns =
                     GridCells.Adaptive(
-                        minSize = GridThumbnailHeight + if (gridItemSize == GridItemSize.BIG) 24.dp else (-24).dp,
+                        // TV/wide: a smaller min cell = MORE columns = smaller artist circles (they were huge
+                        // because the adaptive cell fills the wide column width). Phones keep the normal size.
+                        minSize = if (iad1tya.echo.music.ui.utils.rememberIsWideScreen()) 110.dp
+                        else GridThumbnailHeight + if (gridItemSize == GridItemSize.BIG) 24.dp else (-24).dp,
                     ),
                     contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
                 ) {
