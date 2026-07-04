@@ -1242,7 +1242,7 @@ fun HomeScreen(
                         }
                         HomeSection.QuickPicks -> {
                             // Perf mode: skip the masked hero carousel (heaviest home visual).
-                            if (!perfOn) quickPicks?.takeIf { it.isNotEmpty() }?.let { quickPicks ->
+                            quickPicks?.takeIf { it.isNotEmpty() }?.let { quickPicks ->
 
                                 item(key = "quick_picks_title") {
                                     NavigationTitle(
@@ -1259,7 +1259,37 @@ fun HomeScreen(
                                     )
                                 }
 
-                                item(key = "quick_picks_list") {
+                                if (perfOn) item(key = "quick_picks_list_light") {
+                                    // Perf mode: same "Para ti" recommendations, but a plain LazyRow of cover
+                                    // cards — no masked hero carousel / gradient / snapping. Still tappable to play.
+                                    val distinctQuickPicks = quickPicks.distinctBy { it.id }
+                                    val isTvLight = iad1tya.echo.music.ui.utils.rememberIsTvOrCar()
+                                    LazyRow(
+                                        contentPadding = PaddingValues(horizontal = 16.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                        modifier = Modifier.animateItem(),
+                                    ) {
+                                        items(distinctQuickPicks, key = { it.id }) { song ->
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(120.dp)
+                                                    .clip(RoundedCornerShape(10.dp))
+                                                    .tvFocusable(isTvLight, RoundedCornerShape(10.dp))
+                                                    .clickable {
+                                                        if (song.id == mediaMetadata?.id) playerConnection.togglePlayPause()
+                                                        else playerConnection.playQueue(YouTubeQueue.radio(song.toMediaMetadata()))
+                                                    },
+                                            ) {
+                                                AsyncImage(
+                                                    model = song.song.thumbnailUrl,
+                                                    contentDescription = null,
+                                                    contentScale = ContentScale.Crop,
+                                                    modifier = Modifier.fillMaxSize(),
+                                                )
+                                            }
+                                        }
+                                    }
+                                } else item(key = "quick_picks_list") {
                                     val distinctQuickPicks = quickPicks.distinctBy { it.id }
                                     HorizontalCenteredHeroCarousel(
                                         state = rememberCarouselState { distinctQuickPicks.size },
@@ -1420,7 +1450,7 @@ fun HomeScreen(
                         }
                         HomeSection.DailyDiscover -> {
                             // Perf mode: skip the experimental multi-browse carousel + its 1200px images.
-                            if (!perfOn) dailyDiscover?.takeIf { it.isNotEmpty() }?.let { discoverList ->
+                            dailyDiscover?.takeIf { it.isNotEmpty() }?.let { discoverList ->
                                 
                                 item(key = "daily_discover_title") {
                                     val title = stringResource(R.string.your_daily_discover)
@@ -1442,7 +1472,38 @@ fun HomeScreen(
                                         }
                                     )
                                 }
-                                item(key = "daily_discover_content") {
+                                if (perfOn) item(key = "daily_discover_content_light") {
+                                    // Perf mode: same daily-mix recommendations as a plain LazyRow of cover cards.
+                                    val isTvLight = iad1tya.echo.music.ui.utils.rememberIsTvOrCar()
+                                    LazyRow(
+                                        contentPadding = PaddingValues(horizontal = 16.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                        modifier = Modifier.animateItem(),
+                                    ) {
+                                        items(discoverList, key = { it.recommendation.id }) { item ->
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(120.dp)
+                                                    .clip(RoundedCornerShape(10.dp))
+                                                    .tvFocusable(isTvLight, RoundedCornerShape(10.dp))
+                                                    .clickable {
+                                                        val song = item.recommendation as? SongItem
+                                                        val mm = song?.toMediaMetadata()
+                                                        if (mm != null) playerConnection.playQueue(
+                                                            YouTubeQueue(song.endpoint ?: WatchEndpoint(videoId = song.id), mm)
+                                                        )
+                                                    },
+                                            ) {
+                                                AsyncImage(
+                                                    model = item.recommendation.thumbnail,
+                                                    contentDescription = null,
+                                                    contentScale = ContentScale.Crop,
+                                                    modifier = Modifier.fillMaxSize(),
+                                                )
+                                            }
+                                        }
+                                    }
+                                } else item(key = "daily_discover_content") {
                                     Box(
                                         modifier = Modifier
                                             .fillMaxWidth()
@@ -1483,8 +1544,7 @@ fun HomeScreen(
                             }
                         }
                         HomeSection.KeepListening -> {
-                            // Perf mode: skip this carousel (max fluidity on low-end/TV/car).
-                            if (!perfOn) keepListening?.takeIf { it.isNotEmpty() }?.let { keepListening ->
+                            keepListening?.takeIf { it.isNotEmpty() }?.let { keepListening ->
                                 item(key = "keep_listening_title") {
                                     val klTitle = stringResource(R.string.keep_listening)
                                     NavigationTitle(
@@ -1639,7 +1699,7 @@ fun HomeScreen(
                             }
                         }
                         HomeSection.NewFromArtists -> {
-                            if (!perfOn) newFromArtists?.takeIf { it.isNotEmpty() }?.let { albums ->
+                            newFromArtists?.takeIf { it.isNotEmpty() }?.let { albums ->
                                 item(key = "new_from_artists_title") {
                                     NavigationTitle(
                                         title = stringResource(R.string.home_new_from_artists),
@@ -1664,7 +1724,7 @@ fun HomeScreen(
                             }
                         }
                         HomeSection.GenreMix -> {
-                            if (!perfOn) genreMix?.takeIf { it.songs.isNotEmpty() }?.let { mix ->
+                            genreMix?.takeIf { it.songs.isNotEmpty() }?.let { mix ->
                                 item(key = "genre_mix_title") {
                                     val mixTitle = stringResource(R.string.home_genre_mix, mix.genre)
                                     NavigationTitle(
@@ -1700,7 +1760,7 @@ fun HomeScreen(
                             }
                         }
                         HomeSection.ForgottenFavorites -> {
-                            if (!perfOn) forgottenFavorites?.takeIf { it.isNotEmpty() }?.let { forgottenFavorites ->
+                            forgottenFavorites?.takeIf { it.isNotEmpty() }?.let { forgottenFavorites ->
                                 item(key = "forgotten_favorites_title") {
                                     val forgottenFavoritesTitle = stringResource(R.string.forgotten_favorites)
                                     NavigationTitle(
@@ -1799,7 +1859,7 @@ fun HomeScreen(
                         }
                         is HomeSection.SimilarRecommendation -> {
                             val recommendation = similarRecommendations?.getOrNull(section.index)
-                            if (!perfOn) recommendation?.let {
+                            recommendation?.let {
                                 item(key = "similar_to_title_${section.index}") {
                                     // Only expose a destination that actually exists, so the header
                                     // never shows the tap arrow nor implies an album a song doesn't
@@ -2001,7 +2061,7 @@ fun HomeScreen(
                             }
                         }
                         HomeSection.MoodAndGenres -> {
-                            if (!perfOn) explorePage?.moodAndGenres?.let { moodAndGenres ->
+                            explorePage?.moodAndGenres?.let { moodAndGenres ->
                                 item(key = "mood_and_genres_title") {
                                     NavigationTitle(
                                         title = stringResource(R.string.mood_and_genres),

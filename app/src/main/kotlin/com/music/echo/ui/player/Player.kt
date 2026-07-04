@@ -310,11 +310,6 @@ fun BottomSheetPlayer(
         defaultValue = PlayerBackgroundStyle.GRADIENT
     )
     val playerBackground = when {
-        // High-Performance Mode: force the SOLID background. This single switch kills the heaviest per-frame
-        // GPU work in the whole app — the full-bleed BLUR, the 6-brush GLOW_ANIMATED mesh, the triple-rotating
-        // LIVE_MESH, the Apple-Music full-res image + palette extraction all only run for their non-DEFAULT
-        // styles, so DEFAULT skips every one of them.
-        highPerfMode -> PlayerBackgroundStyle.DEFAULT
         isLocalMedia -> PlayerBackgroundStyle.DEFAULT
         else -> playerBackgroundPref
     }
@@ -978,7 +973,32 @@ fun BottomSheetPlayer(
                     .fillMaxSize()
                     .background(bottomSheetBackgroundColor)
             ) {
-                when (playerBackground) {
+                if (highPerfMode) {
+                    // Perf mode: show the cover as a PLAIN, opaque, STATIC background — a single downsized image
+                    // draw, NO blur/glow/mesh shader, NO palette extraction, NO per-frame animation. So the
+                    // artwork is still there (the user wants to see it) but the heavy backgrounds cost nothing.
+                    // A fixed dark scrim keeps the title/controls readable.
+                    val perfThumb = mediaMetadata?.thumbnailUrl
+                    if (perfThumb != null) {
+                        AsyncImage(
+                            model = ImageRequest.Builder(context)
+                                .data(perfThumb)
+                                .size(400, 400)
+                                .build(),
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .alpha(backgroundAlpha),
+                        )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .alpha(backgroundAlpha)
+                                .background(Color.Black.copy(alpha = 0.45f)),
+                        )
+                    }
+                } else when (playerBackground) {
                     PlayerBackgroundStyle.BLUR -> {
                         AnimatedContent(
                             targetState = mediaMetadata?.thumbnailUrl,
