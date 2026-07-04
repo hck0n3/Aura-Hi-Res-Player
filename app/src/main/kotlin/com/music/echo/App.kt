@@ -19,6 +19,7 @@ import coil3.disk.directory
 import coil3.memory.MemoryCache
 import coil3.request.CachePolicy
 import coil3.request.allowHardware
+import coil3.request.allowRgb565
 import coil3.request.crossfade
 import com.music.innertube.YouTube
 import com.music.innertube.models.IpVersion
@@ -656,10 +657,17 @@ class App : Application(), SingletonImageLoader.Factory {
         }
         // High-Performance Mode: smaller in-RAM image cache (20% vs 40%) on weak/TV/car devices. Takes effect
         // on the NEXT launch (the ImageLoader is built once at process start).
-        val memCachePercent =
-            if (iad1tya.echo.music.utils.PerformanceMode.isOn(this)) 0.20 else 0.40
+        val perfMode = iad1tya.echo.music.utils.PerformanceMode.isOn(this)
+        val memCachePercent = if (perfMode) 0.20 else 0.40
         return ImageLoader.Builder(this).apply {
-            crossfade(250)
+            // Perf mode: no fade animation on image load + RGB_565 (16-bit) bitmaps = HALF the memory per image
+            // (a touch of gradient banding, invisible on album art) — a real win on low-RAM boxes.
+            if (perfMode) {
+                crossfade(false)
+                allowRgb565(true)
+            } else {
+                crossfade(250)
+            }
             allowHardware(true)
 
             components {
