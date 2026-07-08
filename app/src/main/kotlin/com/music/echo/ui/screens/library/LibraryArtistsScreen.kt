@@ -5,11 +5,13 @@ package iad1tya.echo.music.ui.screens.library
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -27,7 +29,9 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.ToggleButton
 import androidx.compose.runtime.Composable
@@ -97,31 +101,55 @@ fun LibraryArtistsScreen(
     val gridItemSize by rememberEnumPreference(GridItemsSizeKey, GridItemSize.BIG)
     val (ytmSync) = rememberPreference(YtmSyncKey, true)
 
+    val searchQuery by viewModel.searchQuery.collectAsState()
+
     val filterContent = @Composable {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Spacer(Modifier.width(12.dp))
-            FilterChip(
-                label = { Text(stringResource(R.string.artists)) },
-                selected = true,
-                colors = FilterChipDefaults.filterChipColors(containerColor = MaterialTheme.colorScheme.surface),
-                onClick = onDeselect,
-                shape = RoundedCornerShape(16.dp),
+        Column {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Spacer(Modifier.width(12.dp))
+                FilterChip(
+                    label = { Text(stringResource(R.string.artists)) },
+                    selected = true,
+                    colors = FilterChipDefaults.filterChipColors(containerColor = MaterialTheme.colorScheme.surface),
+                    onClick = onDeselect,
+                    shape = RoundedCornerShape(16.dp),
+                    leadingIcon = {
+                        Icon(painter = painterResource(R.drawable.close), contentDescription = "")
+                    },
+                    modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+                )
+                ChipsRow(
+                    chips =
+                    listOf(
+                        ArtistFilter.LIKED to stringResource(R.string.filter_liked),
+                        ArtistFilter.LIBRARY to stringResource(R.string.filter_library)
+                    ),
+                    currentValue = filter,
+                    onValueUpdate = {
+                        filter = it
+                    },
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { viewModel.searchQuery.value = it },
+                singleLine = true,
                 leadingIcon = {
-                    Icon(painter = painterResource(R.drawable.close), contentDescription = "")
+                    Icon(painter = painterResource(R.drawable.search), contentDescription = null)
                 },
-                modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
-            )
-            ChipsRow(
-                chips =
-                listOf(
-                    ArtistFilter.LIKED to stringResource(R.string.filter_liked),
-                    ArtistFilter.LIBRARY to stringResource(R.string.filter_library)
-                ),
-                currentValue = filter,
-                onValueUpdate = {
-                    filter = it
+                trailingIcon = {
+                    if (searchQuery.isNotEmpty()) {
+                        IconButton(onClick = { viewModel.searchQuery.value = "" }) {
+                            Icon(painter = painterResource(R.drawable.close), contentDescription = null)
+                        }
+                    }
                 },
-                modifier = Modifier.weight(1f),
+                placeholder = { Text(stringResource(R.string.search_library)) },
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
             )
         }
     }
@@ -134,7 +162,7 @@ fun LibraryArtistsScreen(
         }
     }
 
-    val artists by viewModel.allArtists.collectAsState()
+    val artists by viewModel.filteredArtists.collectAsState()
 
     val lazyListState = rememberLazyListState()
     val lazyGridState = rememberLazyGridState()
@@ -243,7 +271,8 @@ fun LibraryArtistsScreen(
                             item(key = "empty_placeholder") {
                                 EmptyPlaceholder(
                                     icon = R.drawable.artist,
-                                    text = stringResource(R.string.library_artist_empty),
+                                    text = if (searchQuery.isNotBlank()) stringResource(R.string.no_results_found)
+                                    else stringResource(R.string.library_artist_empty),
                                     modifier = Modifier.animateItem()
                                 )
                             }
@@ -298,7 +327,8 @@ fun LibraryArtistsScreen(
                             item(span = { GridItemSpan(maxLineSpan) }) {
                                 EmptyPlaceholder(
                                     icon = R.drawable.artist,
-                                    text = stringResource(R.string.library_artist_empty),
+                                    text = if (searchQuery.isNotBlank()) stringResource(R.string.no_results_found)
+                                    else stringResource(R.string.library_artist_empty),
                                     modifier = Modifier.animateItem()
                                 )
                             }

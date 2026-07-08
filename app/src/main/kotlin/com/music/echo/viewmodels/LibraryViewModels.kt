@@ -55,6 +55,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
@@ -137,6 +138,15 @@ constructor(
                     ArtistFilter.LIBRARY -> database.artists(sortType, descending)
                 }
             }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
+    // In-memory search over the currently emitted artists (followed/LIKED by default).
+    val searchQuery = MutableStateFlow("")
+
+    val filteredArtists =
+        combine(allArtists, searchQuery) { list, query ->
+            if (query.isBlank()) list
+            else list.filter { it.artist.name.contains(query, ignoreCase = true) }
+        }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     fun sync() {
         viewModelScope.launch(Dispatchers.IO) { syncUtils.syncArtistsSubscriptions() }
