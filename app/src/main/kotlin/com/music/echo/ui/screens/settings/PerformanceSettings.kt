@@ -59,6 +59,7 @@ fun PerformanceSettings(
             else -> null
         }
         val tierLabel = when (tier) {
+            DeviceTier.ULTRA -> "gama ultra-baja"
             DeviceTier.LOW -> "gama baja"
             DeviceTier.MID -> "gama media"
             DeviceTier.HIGH -> "gama alta"
@@ -91,11 +92,12 @@ fun PerformanceSettings(
                         title = { Text("Modo alto rendimiento") },
                         description = {
                             Text(
-                                "Para dispositivos de gama baja (pantallas de auto, tablets económicas, ≤4 GB de RAM, " +
-                                    "Android TV). Apaga los fondos animados, el visualizador y el video musical, baja la " +
-                                    "resolución/buffers y desactiva la precarga — solo audio, fluido y fresco. El sonido " +
-                                    "(ecualizador, volumen seguro, normalización) NO se ve afectado. Algunos cambios " +
-                                    "aplican al reiniciar la app."
+                                "Un único modo que recorta la app al máximo en CUALQUIER dispositivo. Apaga los fondos " +
+                                    "animados, el visualizador y el video musical, usa carátulas más pequeñas, muestra menos " +
+                                    "carruseles en el inicio, baja la resolución/buffers y desactiva la precarga — solo audio, " +
+                                    "fluido y fresco. Se enciende solo en gama baja, Android TV o pantallas de auto, pero podés " +
+                                    "activarlo en cualquier equipo. El sonido (ecualizador, volumen seguro, normalización) NO se " +
+                                    "ve afectado. Algunos cambios aplican al reiniciar la app."
                             )
                         },
                         trailingContent = {

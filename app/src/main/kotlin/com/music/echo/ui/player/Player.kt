@@ -3507,7 +3507,7 @@ private fun BackgroundVideoView(
     val deviceTier = remember { iad1tya.echo.music.utils.PerformanceMode.effectiveTier(context) }
     val trackSelector = remember(deviceTier) {
         DefaultTrackSelector(context).apply {
-            val maxDim = if (deviceTier == DeviceTier.LOW) 1280 else 4096
+            val maxDim = if (deviceTier == DeviceTier.LOW || deviceTier == DeviceTier.ULTRA) 1280 else 4096
             parameters = buildUponParameters()
                 .setMaxVideoSize(maxDim, maxDim)
                 .setForceHighestSupportedBitrate(deviceTier == DeviceTier.HIGH)
@@ -3515,6 +3515,7 @@ private fun BackgroundVideoView(
         }
     }
     val canvasBufferBytes = when (deviceTier) {
+        DeviceTier.ULTRA -> 2 * 1024 * 1024
         DeviceTier.LOW -> 4 * 1024 * 1024
         DeviceTier.MID -> 8 * 1024 * 1024
         DeviceTier.HIGH -> 16 * 1024 * 1024

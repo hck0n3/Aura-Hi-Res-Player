@@ -9,7 +9,10 @@ import android.os.Build
  * the low-RAM flag) — never from brand/model. Used to scale heavy work down on weaker phones (smaller decode
  * buffers, no forced max-bitrate, canvas/visualizer off by default) while leaving capable phones at full.
  */
-enum class DeviceTier { LOW, MID, HIGH }
+// Order: weakest -> strongest. ULTRA is a BEHAVIOR-ONLY tier below LOW: compute() never returns it;
+// it is surfaced only via PerformanceMode.effectiveTier() when the performance mode is ON. Nothing
+// compares DeviceTier by .ordinal, so putting ULTRA first is safe.
+enum class DeviceTier { ULTRA, LOW, MID, HIGH }
 
 object DeviceCapabilities {
 

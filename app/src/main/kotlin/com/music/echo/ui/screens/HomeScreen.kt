@@ -827,7 +827,8 @@ fun HomeScreen(
         genreMix,
         similarRecommendations,
         homePage?.sections,
-        explorePage?.moodAndGenres
+        explorePage?.moodAndGenres,
+        perfOn
     ) {
         val list = mutableListOf<HomeSection>()
 
@@ -866,11 +867,11 @@ fun HomeScreen(
         // Generic genre/mood browse grid — hidden in taste-only mode.
         if (!tasteOnlyHome && explorePage?.moodAndGenres != null) list.add(HomeSection.MoodAndGenres)
 
-        if (randomizeHomeOrder) {
+        val ordered: List<HomeSection> = if (randomizeHomeOrder) {
             list.sortedByDescending { section ->
-                
-                
-                
+
+
+
                 val sectionRandom = Random(randomSeed + section.id.hashCode())
 
                 
@@ -936,6 +937,19 @@ fun HomeScreen(
                     else -> defaultOrder[section] ?: 0
                 }
             }
+        }
+
+        // Perf mode (ULTRA): cap the home to a few light shelves so a weak / TV / car GPU doesn't choke
+        // scrolling a long tail of carousels. Keep the two taste carousels that already have dedicated
+        // light LazyRow paths (QuickPicks + DailyDiscover) plus the cheap SpeedDial tiles; drop the rest.
+        if (perfOn) {
+            listOfNotNull(
+                ordered.firstOrNull { it == HomeSection.SpeedDial },
+                ordered.firstOrNull { it == HomeSection.QuickPicks },
+                ordered.firstOrNull { it == HomeSection.DailyDiscover },
+            )
+        } else {
+            ordered
         }
     }
 
@@ -1272,7 +1286,8 @@ fun HomeScreen(
                                         items(distinctQuickPicks, key = { it.id }) { song ->
                                             Box(
                                                 modifier = Modifier
-                                                    .size(120.dp)
+                                                    // ULTRA: smaller cover tiles than the normal light row.
+                                                    .size(96.dp)
                                                     .clip(RoundedCornerShape(10.dp))
                                                     .tvFocusable(isTvLight, RoundedCornerShape(10.dp))
                                                     .clickable {
@@ -1281,7 +1296,8 @@ fun HomeScreen(
                                                     },
                                             ) {
                                                 AsyncImage(
-                                                    model = song.song.thumbnailUrl,
+                                                    // ULTRA: decode a small thumbnail, not the full-res cover.
+                                                    model = song.song.thumbnailUrl?.resize(256, 256),
                                                     contentDescription = null,
                                                     contentScale = ContentScale.Crop,
                                                     modifier = Modifier.fillMaxSize(),
@@ -1483,7 +1499,8 @@ fun HomeScreen(
                                         items(discoverList, key = { it.recommendation.id }) { item ->
                                             Box(
                                                 modifier = Modifier
-                                                    .size(120.dp)
+                                                    // ULTRA: smaller cover tiles than the normal light row.
+                                                    .size(96.dp)
                                                     .clip(RoundedCornerShape(10.dp))
                                                     .tvFocusable(isTvLight, RoundedCornerShape(10.dp))
                                                     .clickable {
@@ -1495,7 +1512,8 @@ fun HomeScreen(
                                                     },
                                             ) {
                                                 AsyncImage(
-                                                    model = item.recommendation.thumbnail,
+                                                    // ULTRA: decode a small thumbnail, not the full-res cover.
+                                                    model = item.recommendation.thumbnail?.resize(256, 256),
                                                     contentDescription = null,
                                                     contentScale = ContentScale.Crop,
                                                     modifier = Modifier.fillMaxSize(),

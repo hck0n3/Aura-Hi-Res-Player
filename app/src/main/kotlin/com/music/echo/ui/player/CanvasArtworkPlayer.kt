@@ -117,7 +117,9 @@ fun CanvasArtworkPlayer(
                 val tsBuilder = trackSelectionParameters
                     .buildUpon()
                     .setForceHighestSupportedBitrate(deviceTier == iad1tya.echo.music.utils.DeviceTier.HIGH)
-                if (deviceTier == iad1tya.echo.music.utils.DeviceTier.LOW) {
+                if (deviceTier == iad1tya.echo.music.utils.DeviceTier.LOW ||
+                    deviceTier == iad1tya.echo.music.utils.DeviceTier.ULTRA
+                ) {
                     tsBuilder.setMaxVideoSize(1280, 1280)
                 }
                 trackSelectionParameters = tsBuilder.build()
