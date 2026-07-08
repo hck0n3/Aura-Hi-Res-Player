@@ -1397,6 +1397,67 @@ interface DatabaseDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     fun insert(playCountEntity: PlayCountEntity): Long
 
+    // ---- Batch insert primitives (sync path). Writing a whole block of rows through these inside a
+    // single transaction makes Room's invalidation tracker emit ONCE per block instead of once per row
+    // — that (plus dropping the old per-row throttle) is what removes the Library "flicker" during a
+    // sync while still filling the list in near real time. IGNORE-on-conflict matches the single-row
+    // inserts these replace. ----
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    fun insertSongs(songs: List<SongEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    fun insertArtists(artists: List<ArtistEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    fun insertSongArtistMaps(maps: List<SongArtistMap>)
+
+    /**
+     * Batch equivalent of [insert] (MediaMetadata): inserts a block of brand-new songs together with
+     * their artist rows and song↔artist maps in a single transaction. [songs] and [mediaList] are
+     * parallel / index-aligned — [songs] carries the fully-built SongEntity (liked/likedDate/isVideo/
+     * library flags already applied by the caller) and [mediaList] carries the matching MediaMetadata
+     * used to derive the artists. Mirrors the row-by-row semantics of [insert] (IGNORE-on-conflict,
+     * artist id resolution) but emits a single Room invalidation for the whole block.
+     */
+    @Transaction
+    fun insertSongsWithArtists(
+        songs: List<SongEntity>,
+        mediaList: List<MediaMetadata>,
+    ) {
+        if (songs.isEmpty()) return
+        insertSongs(songs)
+        val artistEntities = ArrayList<ArtistEntity>()
+        val songArtistMaps = ArrayList<SongArtistMap>()
+        // Cache generated ids for id-less artists so two songs in the SAME block that share an artist
+        // without a channel id map to one artist row (the row-by-row path relied on the previous insert
+        // being committed & findable by name; here we dedup in memory instead).
+        val generatedIdByName = HashMap<String, String>()
+        mediaList.forEach { mediaMetadata ->
+            mediaMetadata.artists.forEachIndexed { index, artist ->
+                val artistId = artist.id
+                    ?: generatedIdByName[artist.name]
+                    ?: artistByName(artist.name)?.id
+                    ?: ArtistEntity.generateArtistId().also { generatedIdByName[artist.name] = it }
+                artistEntities.add(
+                    ArtistEntity(
+                        id = artistId,
+                        name = artist.name,
+                        channelId = artist.id,
+                    )
+                )
+                songArtistMaps.add(
+                    SongArtistMap(
+                        songId = mediaMetadata.id,
+                        artistId = artistId,
+                        position = index,
+                    )
+                )
+            }
+        }
+        insertArtists(artistEntities)
+        insertSongArtistMaps(songArtistMaps)
+    }
+
     @Transaction
     fun insert(
         mediaMetadata: MediaMetadata,
@@ -1514,6 +1575,13 @@ interface DatabaseDao {
 
     @Update
     fun update(song: SongEntity)
+
+    // Batch updates (sync path): one Room invalidation per block instead of per row.
+    @Update
+    fun updateSongs(songs: List<SongEntity>)
+
+    @Update
+    fun updateArtists(artists: List<ArtistEntity>)
 
     @Update
     fun update(artist: ArtistEntity)

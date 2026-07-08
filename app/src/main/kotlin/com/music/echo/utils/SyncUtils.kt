@@ -24,6 +24,7 @@ import iad1tya.echo.music.db.entities.SongEntity
 import iad1tya.echo.music.extensions.collectLatest
 import iad1tya.echo.music.extensions.isInternetConnected
 import iad1tya.echo.music.extensions.isSyncEnabled
+import iad1tya.echo.music.models.MediaMetadata
 import iad1tya.echo.music.models.toMediaMetadata
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
@@ -110,7 +111,15 @@ class SyncUtils @Inject constructor(
     companion object {
         private const val MAX_RETRIES = 3
         private const val INITIAL_RETRY_DELAY_MS = 1000L
-        private const val DB_OPERATION_DELAY_MS = 50L
+        // How many rows we write per DB transaction during a sync. Whole blocks are written inside a
+        // single withTransaction {} so Room's invalidation tracker emits ONCE per block (not once per
+        // row) — this is what kills the Library "flicker" during a sync while still updating in near
+        // real time (the list grows a block at a time). It also lets us drop the old per-row throttle
+        // (the former DB_OPERATION_DELAY_MS) that made syncing 4000+ likes crawl.
+        private const val SYNC_BATCH_SIZE = 300
+        // SQLite caps the number of bound host parameters (historically 999). Chunk `id IN (...)`
+        // lookups so a 4000+ liked-songs library never blows past that limit.
+        private const val SQL_IN_CHUNK = 900
         // Max artist cover photos to fetch per sync run (bounded so it never hammers the network/API).
         private const val MAX_ARTIST_IMAGE_FETCH = 250
     }
@@ -210,7 +219,59 @@ class SyncUtils @Inject constructor(
         _syncState.value = _syncState.value.update()
     }
 
-    
+    // ---- Batched DB helpers (speed + real-time-without-flicker) ------------------------------------
+    // The sync loops used to read each row back with `database.song(id).firstOrNull()` (N+1), then write
+    // each row in its OWN `database.transaction {}` with a per-row `delay(50ms)`. That made Room re-emit
+    // the FULL list per row (flicker) and dragged a 4000+ liked library out for minutes. Instead we now
+    // load the existing rows once, decide in memory, and write in blocks — one transaction per block.
+
+    /**
+     * Load the existing [SongEntity] rows for [ids] in ONE (chunked) query instead of N+1
+     * `database.song(id).firstOrNull()` reads. Chunked to stay under SQLite's bound-parameter cap.
+     */
+    private suspend fun loadExistingSongs(ids: List<String>): HashMap<String, SongEntity> {
+        val map = HashMap<String, SongEntity>(ids.size.coerceAtLeast(0))
+        if (ids.isEmpty()) return map
+        ids.distinct().chunked(SQL_IN_CHUNK).forEach { chunk ->
+            database.getSongsByIds(chunk).forEach { map[it.id] = it.song }
+        }
+        return map
+    }
+
+    /** Same as [loadExistingSongs] but for followed/synced artists. */
+    private suspend fun loadExistingArtists(ids: List<String>): HashMap<String, ArtistEntity> {
+        val map = HashMap<String, ArtistEntity>(ids.size.coerceAtLeast(0))
+        if (ids.isEmpty()) return map
+        ids.distinct().chunked(SQL_IN_CHUNK).forEach { chunk ->
+            database.getArtistEntitiesByIds(chunk).forEach { map[it.id] = it }
+        }
+        return map
+    }
+
+    /**
+     * Insert brand-new synced songs (+ their artists/maps) in blocks of [SYNC_BATCH_SIZE], each block in
+     * its own transaction so Room emits once per block. [entities] and [mediaList] are index-aligned.
+     */
+    private suspend fun batchInsertSongs(entities: List<SongEntity>, mediaList: List<MediaMetadata>) {
+        if (entities.isEmpty()) return
+        entities.indices.chunked(SYNC_BATCH_SIZE).forEach { block ->
+            val songBlock = block.map { entities[it] }
+            val metaBlock = block.map { mediaList[it] }
+            database.withTransaction {
+                insertSongsWithArtists(songBlock, metaBlock)
+            }
+        }
+    }
+
+    /** Update existing songs in blocks of [SYNC_BATCH_SIZE], one transaction per block. */
+    private suspend fun batchUpdateSongs(entities: List<SongEntity>) {
+        if (entities.isEmpty()) return
+        entities.chunked(SYNC_BATCH_SIZE).forEach { block ->
+            database.withTransaction {
+                updateSongs(block)
+            }
+        }
+    }
 
     fun performFullSync() {
         syncScope.launch {
@@ -389,25 +450,18 @@ class SyncUtils @Inject constructor(
         try {
             
             executeSyncLikedSongs()
-            delay(DB_OPERATION_DELAY_MS)
 
             executeSyncLibrarySongs()
-            delay(DB_OPERATION_DELAY_MS)
 
             executeSyncUploadedSongs()
-            delay(DB_OPERATION_DELAY_MS)
 
             executeSyncLikedAlbums()
-            delay(DB_OPERATION_DELAY_MS)
 
             executeSyncUploadedAlbums()
-            delay(DB_OPERATION_DELAY_MS)
 
             executeSyncArtistsSubscriptions()
-            delay(DB_OPERATION_DELAY_MS)
 
             executeSyncSavedPlaylists()
-            delay(DB_OPERATION_DELAY_MS)
 
             executeSyncAutoSyncPlaylists()
 
@@ -472,7 +526,6 @@ class SyncUtils @Inject constructor(
                             }.onFailure { e ->
                                 Timber.e(e, "Failed to like song on YouTube: ${song.id}")
                             }
-                            delay(DB_OPERATION_DELAY_MS)
                         } catch (e: Exception) {
                             // Never swallow coroutine cancellation: doing so let the sync loop keep
                             // running after its job was cancelled, blasting through every song and
@@ -482,45 +535,34 @@ class SyncUtils @Inject constructor(
                         }
                     }
 
-                    
-                    // C4 — DIFFERENTIAL: only write songs that are genuinely new or whose liked/video flag
-                    // changed. The old code recomputed `likedDate = now - index` every run, so the
-                    // `likedDate != timestamp` check was ALWAYS true and it rewrote EVERY liked song on EVERY
-                    // sync (with a per-song delay) — painfully slow for 4000+ likes and not differential. We
-                    // now keep each existing song's original liked date and only throttle on real writes.
+                    // C4 — DIFFERENTIAL + BATCHED: decide new/changed songs in memory against a single
+                    // pre-loaded snapshot (no N+1 `song(id)` reads), then write in blocks of one
+                    // transaction each (Room emits per block, not per row — no Library flicker, no per-row
+                    // throttle). New likes are stamped to preserve the remote order (newest first); KNOWN
+                    // songs keep their ORIGINAL likedDate (never rewritten on every sync → preserves local
+                    // order and avoids accidental re-uploads).
                     val now = LocalDateTime.now()
-                    var newCount = 0
-                    var updatedCount = 0
+                    val existing = loadExistingSongs(remoteSongs.map { it.id })
+                    val insertEntities = ArrayList<SongEntity>()
+                    val insertMeta = ArrayList<MediaMetadata>()
+                    val updateEntities = ArrayList<SongEntity>()
                     remoteSongs.forEachIndexed { index, song ->
                         try {
-                            val dbSong = database.song(song.id).firstOrNull()
+                            val dbSong = existing[song.id]
                             val isVideoSong = song.isVideoSong
-                            // Decide whether a write is needed HERE, on the coroutine thread — database.transaction
-                            // runs the block asynchronously on a thread pool, so a flag set inside it can't be read
-                            // back reliably. Only new / genuinely-changed songs write (and throttle); unchanged
-                            // ones are skipped entirely (no write, no delay) → differential + fast for 4000+ likes.
                             if (dbSong == null) {
-                                database.transaction {
-                                    // New like: stamp a date that preserves the remote order (newest first).
-                                    insert(song.toMediaMetadata()) {
-                                        it.copy(
-                                            liked = true,
-                                            likedDate = now.minusSeconds(index.toLong()),
-                                            isVideo = isVideoSong,
-                                        )
-                                    }
-                                }
-                                newCount++
-                                delay(DB_OPERATION_DELAY_MS)
-                            } else if (!dbSong.song.liked || dbSong.song.isVideo != isVideoSong) {
-                                // Known song: touch it ONLY if its liked/video flag actually changed; keep its
-                                // original likedDate so the row isn't rewritten on every sync.
-                                val current = dbSong.song
-                                database.transaction {
-                                    update(current.copy(liked = true, isVideo = isVideoSong))
-                                }
-                                updatedCount++
-                                delay(DB_OPERATION_DELAY_MS)
+                                val meta = song.toMediaMetadata()
+                                insertMeta.add(meta)
+                                insertEntities.add(
+                                    meta.toSongEntity().copy(
+                                        liked = true,
+                                        likedDate = now.minusSeconds(index.toLong()),
+                                        isVideo = isVideoSong,
+                                    )
+                                )
+                            } else if (!dbSong.liked || dbSong.isVideo != isVideoSong) {
+                                // Keep the original likedDate — never overwrite it with the sync timestamp.
+                                updateEntities.add(dbSong.copy(liked = true, isVideo = isVideoSong))
                             }
                         } catch (e: Exception) {
                             // Never swallow coroutine cancellation: doing so let the sync loop keep
@@ -530,6 +572,10 @@ class SyncUtils @Inject constructor(
                             Timber.e(e, "Failed to process song: ${song.id}")
                         }
                     }
+                    val newCount = insertEntities.size
+                    val updatedCount = updateEntities.size
+                    batchInsertSongs(insertEntities, insertMeta)
+                    batchUpdateSongs(updateEntities)
                     Timber.d(
                         "Liked songs sync: ${remoteSongs.size} remote — $newCount new, $updatedCount updated, " +
                             "${(remoteSongs.size - newCount - updatedCount).coerceAtLeast(0)} unchanged (skipped)",
@@ -583,23 +629,27 @@ class SyncUtils @Inject constructor(
                         return@onSuccess
                     }
 
-                    // 1) Additive: make sure everything on the account is liked locally.
+                    // 1) Additive: make sure everything on the account is liked locally. Decided in memory
+                    // against one pre-loaded snapshot (no N+1) and written in batched transactions.
                     val now = LocalDateTime.now()
+                    val existing = loadExistingSongs(remoteSongs.map { it.id })
+                    val insertEntities = ArrayList<SongEntity>()
+                    val insertMeta = ArrayList<MediaMetadata>()
+                    val updateEntities = ArrayList<SongEntity>()
                     remoteSongs.forEachIndexed { index, song ->
                         try {
-                            val dbSong = database.song(song.id).firstOrNull()
+                            val dbSong = existing[song.id]
                             val timestamp = now.minusSeconds(index.toLong())
                             val isVideoSong = song.isVideoSong
-                            database.transaction {
-                                if (dbSong == null) {
-                                    insert(song.toMediaMetadata()) {
-                                        it.copy(liked = true, likedDate = timestamp, isVideo = isVideoSong)
-                                    }
-                                } else if (!dbSong.song.liked) {
-                                    update(dbSong.song.copy(liked = true, likedDate = timestamp, isVideo = isVideoSong))
-                                }
+                            if (dbSong == null) {
+                                val meta = song.toMediaMetadata()
+                                insertMeta.add(meta)
+                                insertEntities.add(
+                                    meta.toSongEntity().copy(liked = true, likedDate = timestamp, isVideo = isVideoSong)
+                                )
+                            } else if (!dbSong.liked) {
+                                updateEntities.add(dbSong.copy(liked = true, likedDate = timestamp, isVideo = isVideoSong))
                             }
-                            delay(DB_OPERATION_DELAY_MS)
                         } catch (e: Exception) {
                             // Never swallow coroutine cancellation: doing so let the sync loop keep
                             // running after its job was cancelled, blasting through every song and
@@ -608,23 +658,17 @@ class SyncUtils @Inject constructor(
                             Timber.e(e, "mirrorLikedSongs: failed to add song ${song.id}")
                         }
                     }
+                    batchInsertSongs(insertEntities, insertMeta)
+                    batchUpdateSongs(updateEntities)
 
                     // 2) Mirror: remove local likes that are no longer on the account. Local files are left
                     // alone. Done locally only — the account is the source of truth, so there's nothing to
                     // push up (the song is already not liked on the account).
                     val localLiked = database.likedSongsByNameAsc().first()
-                    localLiked.filterNot { it.id in remoteIds || it.song.isLocal }.forEach { song ->
-                        try {
-                            database.update(song.song.copy(liked = false, likedDate = null))
-                            delay(DB_OPERATION_DELAY_MS)
-                        } catch (e: Exception) {
-                            // Never swallow coroutine cancellation: doing so let the sync loop keep
-                            // running after its job was cancelled, blasting through every song and
-                            // flooding logs / pegging the CPU (made playback fail right after a restore).
-                            if (e is CancellationException) throw e
-                            Timber.e(e, "mirrorLikedSongs: failed to unlike song ${song.id}")
-                        }
-                    }
+                    val toUnlike = localLiked
+                        .filterNot { it.id in remoteIds || it.song.isLocal }
+                        .map { it.song.copy(liked = false, likedDate = null) }
+                    batchUpdateSongs(toUnlike)
 
                     updateState { copy(likedSongs = SyncStatus.Completed) }
                     Timber.d("mirrorLikedSongs: mirrored ${remoteSongs.size} liked songs from account")
@@ -678,7 +722,6 @@ class SyncUtils @Inject constructor(
                                     Timber.e(e, "Failed to add song to YouTube library: ${song.id}")
                                 }
                             }
-                            delay(DB_OPERATION_DELAY_MS)
                         } catch (e: Exception) {
                             // Never swallow coroutine cancellation: doing so let the sync loop keep
                             // running after its job was cancelled, blasting through every song and
@@ -688,17 +731,23 @@ class SyncUtils @Inject constructor(
                         }
                     }
 
+                    // Decide new/changed in memory (no N+1) and write in batched transactions. toggleLibrary()
+                    // keeps its existing behaviour: new songs get inLibrary set (and are pushed to the account),
+                    // known songs are only touched when they aren't in the library yet.
+                    val existing = loadExistingSongs(remoteSongs.map { it.id })
+                    val insertEntities = ArrayList<SongEntity>()
+                    val insertMeta = ArrayList<MediaMetadata>()
+                    val updateEntities = ArrayList<SongEntity>()
                     remoteSongs.forEach { song ->
                         try {
-                            val dbSong = database.song(song.id).firstOrNull()
-                            database.transaction {
-                                if (dbSong == null) {
-                                    insert(song.toMediaMetadata()) { it.toggleLibrary() }
-                                } else if (dbSong.song.inLibrary == null) {
-                                    update(dbSong.song.toggleLibrary())
-                                }
+                            val dbSong = existing[song.id]
+                            if (dbSong == null) {
+                                val meta = song.toMediaMetadata()
+                                insertMeta.add(meta)
+                                insertEntities.add(meta.toSongEntity().toggleLibrary())
+                            } else if (dbSong.inLibrary == null) {
+                                updateEntities.add(dbSong.toggleLibrary())
                             }
-                            delay(DB_OPERATION_DELAY_MS)
                         } catch (e: Exception) {
                             // Never swallow coroutine cancellation: doing so let the sync loop keep
                             // running after its job was cancelled, blasting through every song and
@@ -707,6 +756,8 @@ class SyncUtils @Inject constructor(
                             Timber.e(e, "Failed to process song: ${song.id}")
                         }
                     }
+                    batchInsertSongs(insertEntities, insertMeta)
+                    batchUpdateSongs(updateEntities)
 
                     updateState { copy(librarySongs = SyncStatus.Completed) }
                     Timber.d("Synced ${remoteSongs.size} library songs")
@@ -761,36 +812,23 @@ class SyncUtils @Inject constructor(
 
                     val songsToRemove = localSongs.filterNot { it.id in remoteIds }
                     Timber.d("[UPLOAD_DEBUG] Songs to remove from uploaded: ${songsToRemove.size}")
-                    songsToRemove.forEach { song ->
-                        try {
-                            Timber.d("[UPLOAD_DEBUG] Removing uploaded flag from: ${song.id}")
-                            database.update(song.song.toggleUploaded())
-                            delay(DB_OPERATION_DELAY_MS)
-                        } catch (e: Exception) {
-                            // Never swallow coroutine cancellation: doing so let the sync loop keep
-                            // running after its job was cancelled, blasting through every song and
-                            // flooding logs / pegging the CPU (made playback fail right after a restore).
-                            if (e is CancellationException) throw e
-                            Timber.e(e, "[UPLOAD_DEBUG] Failed to update song: ${song.id}")
-                        }
-                    }
+                    batchUpdateSongs(songsToRemove.map { it.song.toggleUploaded() })
 
+                    // Decide new/changed in memory (no N+1) and write in batched transactions.
+                    val existing = loadExistingSongs(remoteSongs.map { it.id })
+                    val insertEntities = ArrayList<SongEntity>()
+                    val insertMeta = ArrayList<MediaMetadata>()
+                    val updateEntities = ArrayList<SongEntity>()
                     remoteSongs.forEach { song ->
                         try {
-                            val dbSong = database.song(song.id).firstOrNull()
-                            Timber.d("[UPLOAD_DEBUG] Processing remote song ${song.id}: exists in db=${dbSong != null}, isUploaded=${dbSong?.song?.isUploaded}")
-                            database.transaction {
-                                if (dbSong == null) {
-                                    Timber.d("[UPLOAD_DEBUG] Inserting new song: ${song.id}")
-                                    insert(song.toMediaMetadata()) { it.toggleUploaded() }
-                                } else if (!dbSong.song.isUploaded) {
-                                    Timber.d("[UPLOAD_DEBUG] Updating existing song to uploaded: ${song.id}")
-                                    update(dbSong.song.toggleUploaded())
-                                } else {
-                                    Timber.d("[UPLOAD_DEBUG] Song already marked as uploaded: ${song.id}")
-                                }
+                            val dbSong = existing[song.id]
+                            if (dbSong == null) {
+                                val meta = song.toMediaMetadata()
+                                insertMeta.add(meta)
+                                insertEntities.add(meta.toSongEntity().toggleUploaded())
+                            } else if (!dbSong.isUploaded) {
+                                updateEntities.add(dbSong.toggleUploaded())
                             }
-                            delay(DB_OPERATION_DELAY_MS)
                         } catch (e: Exception) {
                             // Never swallow coroutine cancellation: doing so let the sync loop keep
                             // running after its job was cancelled, blasting through every song and
@@ -799,9 +837,11 @@ class SyncUtils @Inject constructor(
                             Timber.e(e, "[UPLOAD_DEBUG] Failed to process song: ${song.id}")
                         }
                     }
+                    batchInsertSongs(insertEntities, insertMeta)
+                    batchUpdateSongs(updateEntities)
 
                     updateState { copy(uploadedSongs = SyncStatus.Completed) }
-                    Timber.d("[UPLOAD_DEBUG] Synced ${remoteSongs.size} uploaded songs successfully")
+                    Timber.d("[UPLOAD_DEBUG] Synced ${remoteSongs.size} uploaded songs successfully (${insertEntities.size} new, ${updateEntities.size} updated)")
                 } catch (e: Exception) {
                             // Never swallow coroutine cancellation: doing so let the sync loop keep
                             // running after its job was cancelled, blasting through every song and
@@ -854,7 +894,6 @@ class SyncUtils @Inject constructor(
                                     database.update(dbAlbum.album.localToggleLike())
                                 }
                             }
-                            delay(DB_OPERATION_DELAY_MS)
                         } catch (e: Exception) {
                             // Never swallow coroutine cancellation: doing so let the sync loop keep
                             // running after its job was cancelled, blasting through every song and
@@ -906,7 +945,6 @@ class SyncUtils @Inject constructor(
                     localAlbums.filterNot { it.id in remoteIds }.forEach { album ->
                         try {
                             database.update(album.album.toggleUploaded())
-                            delay(DB_OPERATION_DELAY_MS)
                         } catch (e: Exception) {
                             // Never swallow coroutine cancellation: doing so let the sync loop keep
                             // running after its job was cancelled, blasting through every song and
@@ -929,7 +967,6 @@ class SyncUtils @Inject constructor(
                                     database.update(dbAlbum.album.toggleUploaded())
                                 }
                             }.onFailure { reportException(it) }
-                            delay(DB_OPERATION_DELAY_MS)
                         } catch (e: Exception) {
                             // Never swallow coroutine cancellation: doing so let the sync loop keep
                             // running after its job was cancelled, blasting through every song and
@@ -989,7 +1026,6 @@ class SyncUtils @Inject constructor(
                             if (!channelId.isNullOrEmpty()) {
                                 runCatching { YouTube.subscribeChannel(channelId, true) }
                             }
-                            delay(DB_OPERATION_DELAY_MS)
                         } catch (e: Exception) {
                             // Never swallow coroutine cancellation: doing so let the sync loop keep
                             // running after its job was cancelled, blasting through every song and
@@ -999,9 +1035,17 @@ class SyncUtils @Inject constructor(
                         }
                     }
 
+                    // Decide new/changed in memory against one pre-loaded snapshot (no N+1 `artist(id)`
+                    // reads), then write in batched transactions so "your artists" fills a block at a time
+                    // instead of flickering per row. The per-artist getChannelId() network call is kept
+                    // (only fires for UC-prefixed artists that lack a channelId).
+                    val now = LocalDateTime.now()
+                    val existingArtists = loadExistingArtists(remoteArtists.map { it.id })
+                    val artistsToInsert = ArrayList<ArtistEntity>()
+                    val artistsToUpdate = ArrayList<ArtistEntity>()
                     remoteArtists.forEach { artist ->
                         try {
-                            val dbArtist = database.artist(artist.id).firstOrNull()
+                            val dbArtist = existingArtists[artist.id]
                             val channelId = artist.channelId ?: if (artist.id.startsWith("UC")) {
                                 try {
                                     YouTube.getChannelId(artist.id).takeIf { it.isNotEmpty() }
@@ -1014,35 +1058,31 @@ class SyncUtils @Inject constructor(
                                 }
                             } else null
 
-                            database.transaction {
-                                if (dbArtist == null) {
-                                    insert(
-                                        ArtistEntity(
-                                            id = artist.id,
+                            if (dbArtist == null) {
+                                artistsToInsert.add(
+                                    ArtistEntity(
+                                        id = artist.id,
+                                        name = artist.title,
+                                        thumbnailUrl = artist.thumbnail,
+                                        channelId = channelId,
+                                        bookmarkedAt = now
+                                    )
+                                )
+                            } else {
+                                val needsChannelIdUpdate = dbArtist.channelId == null && channelId != null
+                                if (dbArtist.bookmarkedAt == null || needsChannelIdUpdate ||
+                                    dbArtist.name != artist.title || dbArtist.thumbnailUrl != artist.thumbnail) {
+                                    artistsToUpdate.add(
+                                        dbArtist.copy(
                                             name = artist.title,
                                             thumbnailUrl = artist.thumbnail,
-                                            channelId = channelId,
-                                            bookmarkedAt = LocalDateTime.now()
+                                            channelId = channelId ?: dbArtist.channelId,
+                                            bookmarkedAt = dbArtist.bookmarkedAt ?: now,
+                                            lastUpdateTime = now
                                         )
                                     )
-                                } else {
-                                    val existing = dbArtist.artist
-                                    val needsChannelIdUpdate = existing.channelId == null && channelId != null
-                                    if (existing.bookmarkedAt == null || needsChannelIdUpdate ||
-                                        existing.name != artist.title || existing.thumbnailUrl != artist.thumbnail) {
-                                        update(
-                                            existing.copy(
-                                                name = artist.title,
-                                                thumbnailUrl = artist.thumbnail,
-                                                channelId = channelId ?: existing.channelId,
-                                                bookmarkedAt = existing.bookmarkedAt ?: LocalDateTime.now(),
-                                                lastUpdateTime = LocalDateTime.now()
-                                            )
-                                        )
-                                    }
                                 }
                             }
-                            delay(DB_OPERATION_DELAY_MS)
                         } catch (e: Exception) {
                             // Never swallow coroutine cancellation: doing so let the sync loop keep
                             // running after its job was cancelled, blasting through every song and
@@ -1050,6 +1090,12 @@ class SyncUtils @Inject constructor(
                             if (e is CancellationException) throw e
                             Timber.e(e, "Failed to process artist: ${artist.id}")
                         }
+                    }
+                    artistsToInsert.chunked(SYNC_BATCH_SIZE).forEach { block ->
+                        database.withTransaction { insertArtists(block) }
+                    }
+                    artistsToUpdate.chunked(SYNC_BATCH_SIZE).forEach { block ->
+                        database.withTransaction { updateArtists(block) }
                     }
 
                     // Follow EVERY imported artist (also those from liked/library content, not just
@@ -1153,7 +1199,6 @@ class SyncUtils @Inject constructor(
                             }
 
                             executeSyncPlaylist(playlist.id, playlistEntity.id)
-                            delay(DB_OPERATION_DELAY_MS)
                         } catch (e: Exception) {
                             // Never swallow coroutine cancellation: doing so let the sync loop keep
                             // running after its job was cancelled, blasting through every song and
@@ -1198,7 +1243,6 @@ class SyncUtils @Inject constructor(
             autoSyncPlaylists.forEach { playlist ->
                 try {
                     executeSyncPlaylist(playlist.playlist.browseId!!, playlist.playlist.id)
-                    delay(DB_OPERATION_DELAY_MS)
                 } catch (e: Exception) {
                             // Never swallow coroutine cancellation: doing so let the sync loop keep
                             // running after its job was cancelled, blasting through every song and
@@ -1257,17 +1301,21 @@ class SyncUtils @Inject constructor(
                     Timber.d("syncPlaylist: Updating local playlist (remote: ${remoteIds.size}, local: ${localIds.size})")
 
                     val libraryNow = LocalDateTime.now()
+                    // Load the songs that already exist ONCE (no per-row `song(id)` + `getSongByIdBlocking`
+                    // reads inside the transaction). This whole playlist rebuild is already one transaction,
+                    // so Room still emits a single time — the win here is dropping the N+1 reads.
+                    val existing = loadExistingSongs(remoteIds)
                     database.withTransaction {
                         database.clearPlaylist(playlistId)
                         songs.forEachIndexed { idx, song ->
-                            if (database.song(song.id).firstOrNull() == null) {
-                                database.insert(song)
-                            }
-                            // Set inLibrary on songs that don't have it yet so they
-                            // surface in Library → Songs (WHERE inLibrary IS NOT NULL).
-                            val existing = database.getSongByIdBlocking(song.id)?.song
-                            if (existing != null && existing.inLibrary == null) {
-                                database.update(existing.copy(inLibrary = libraryNow))
+                            val dbSong = existing[song.id]
+                            if (dbSong == null) {
+                                // New song → insert and drop it into the library so it surfaces in
+                                // Library → Songs (WHERE inLibrary IS NOT NULL).
+                                database.insert(song) { it.copy(inLibrary = libraryNow) }
+                            } else if (dbSong.inLibrary == null) {
+                                // Set inLibrary on existing songs that don't have it yet.
+                                database.update(dbSong.copy(inLibrary = libraryNow))
                             }
                             database.insert(
                                 PlaylistSongMap(
@@ -1312,7 +1360,6 @@ class SyncUtils @Inject constructor(
                             Timber.d("Removing duplicate playlist: ${duplicate.playlist.name} (${duplicate.id})")
                             database.clearPlaylist(duplicate.id)
                             database.delete(duplicate.playlist)
-                            delay(DB_OPERATION_DELAY_MS)
                         } catch (e: Exception) {
                             // Never swallow coroutine cancellation: doing so let the sync loop keep
                             // running after its job was cancelled, blasting through every song and

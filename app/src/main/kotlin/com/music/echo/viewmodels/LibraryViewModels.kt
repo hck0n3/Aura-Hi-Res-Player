@@ -56,6 +56,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
@@ -100,7 +101,13 @@ constructor(
                         database.getSongsByIdsFlow(ids).map { it.filterExplicit(hideExplicit).filterVideoSongs(hideVideoSongs) }
                     }
                 }
-            }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+            }
+            // Collapse the burst of emissions Room fires while a sync writes block after block: conflate
+            // keeps only the latest list when Compose is still recomposing the previous one, so we don't
+            // re-run the whole list build for every intermediate batch. On the idle (non-sync) path
+            // emissions are infrequent, so conflate is a no-op and the latest value always arrives.
+            .conflate()
+            .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     fun syncLikedSongs() {
         viewModelScope.launch(Dispatchers.IO) { syncUtils.syncLikedSongs() }
@@ -137,7 +144,9 @@ constructor(
                     ArtistFilter.LIKED -> database.artistsBookmarked(sortType, descending)
                     ArtistFilter.LIBRARY -> database.artists(sortType, descending)
                 }
-            }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+            }
+            .conflate() // collapse mid-sync emission bursts (see LibrarySongsViewModel)
+            .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     // In-memory search over the currently emitted artists (followed/LIKED by default).
     val searchQuery = MutableStateFlow("")
@@ -201,7 +210,9 @@ constructor(
                     AlbumFilter.LIBRARY -> database.albums(sortType, descending).map { it.filterExplicitAlbums(hideExplicit) }
                     AlbumFilter.UPLOADED -> database.albumsUploaded(sortType, descending).map { it.filterExplicitAlbums(hideExplicit) }
                 }
-            }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+            }
+            .conflate() // collapse mid-sync emission bursts (see LibrarySongsViewModel)
+            .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     fun sync() {
         viewModelScope.launch(Dispatchers.IO) { syncUtils.syncLikedAlbums() }
@@ -253,7 +264,9 @@ constructor(
             }.distinctUntilChanged()
             .flatMapLatest { (sortType, descending, hideYoutubeShorts) ->
                 database.playlists(sortType, descending).map { it.filterYoutubeShorts(hideYoutubeShorts) }
-            }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+            }
+            .conflate() // collapse mid-sync emission bursts (see LibrarySongsViewModel)
+            .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     fun sync() {
         viewModelScope.launch(Dispatchers.IO) { syncUtils.syncSavedPlaylists() }

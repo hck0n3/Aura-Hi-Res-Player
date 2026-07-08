@@ -62,6 +62,9 @@ data class PlaylistPage(
                     it.musicInlineBadgeRenderer?.icon?.iconType == "MUSIC_EXPLICIT_BADGE"
                 } != null,
                 endpoint = renderer.overlay?.musicItemThumbnailOverlayRenderer?.content?.musicPlayButtonRenderer?.playNavigationEndpoint?.watchEndpoint,
+                // Do NOT `?: return null` when there's no playlistSetVideoId: songs liked directly on
+                // YouTube Music have no playlist video id, and discarding them here dropped them from the
+                // liked-songs sync entirely. setVideoId is nullable, so just leave it null.
                 setVideoId = renderer.playlistItemData?.playlistSetVideoId ?: renderer.navigationEndpoint?.watchEndpoint?.playlistSetVideoId
                 ?: renderer.overlay?.musicItemThumbnailOverlayRenderer
                     ?.content?.musicPlayButtonRenderer
@@ -69,8 +72,7 @@ data class PlaylistPage(
                 ?: renderer.flexColumns.firstOrNull()
                     ?.musicResponsiveListItemFlexColumnRenderer
                     ?.text?.runs?.firstOrNull()
-                    ?.navigationEndpoint?.watchEndpoint?.playlistSetVideoId
-                ?: return null,
+                    ?.navigationEndpoint?.watchEndpoint?.playlistSetVideoId,
                 libraryAddToken = libraryTokens.addToken,
                 libraryRemoveToken = libraryTokens.removeToken
             )
