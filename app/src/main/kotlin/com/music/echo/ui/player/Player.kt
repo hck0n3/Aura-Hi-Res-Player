@@ -329,10 +329,15 @@ fun BottomSheetPlayer(
         iad1tya.echo.music.constants.ShowArtistBackgroundVideoKey, true
     )
 
-    val shouldUseDarkButtonColors = remember(playerBackground, useDarkTheme) {
-        when (playerBackground) {
-            PlayerBackgroundStyle.BLUR, PlayerBackgroundStyle.GRADIENT, PlayerBackgroundStyle.GLOW_ANIMATED, PlayerBackgroundStyle.APPLE_MUSIC, PlayerBackgroundStyle.LIVE_MESH -> true
-            PlayerBackgroundStyle.DEFAULT -> useDarkTheme
+    val shouldUseDarkButtonColors = remember(playerBackground, useDarkTheme, highPerfMode) {
+        when {
+            // Perf mode paints a dark-scrimmed cover as the background, so use the same over-a-dark-background
+            // button colors as BLUR/GRADIENT (otherwise a DEFAULT pref on a light theme gives black buttons).
+            highPerfMode -> true
+            playerBackground == PlayerBackgroundStyle.BLUR || playerBackground == PlayerBackgroundStyle.GRADIENT ||
+                playerBackground == PlayerBackgroundStyle.GLOW_ANIMATED || playerBackground == PlayerBackgroundStyle.APPLE_MUSIC ||
+                playerBackground == PlayerBackgroundStyle.LIVE_MESH -> true
+            else -> useDarkTheme
         }
     }
     val isPlaying by playerConnection.isPlaying.collectAsState()
@@ -560,8 +565,10 @@ fun BottomSheetPlayer(
     val defaultGradientColors = listOf(MaterialTheme.colorScheme.surface, MaterialTheme.colorScheme.surfaceVariant)
     val fallbackColor = MaterialTheme.colorScheme.surface.toArgb()
 
-    LaunchedEffect(mediaMetadata?.id, playerBackground) {
-        if (playerBackground == PlayerBackgroundStyle.GRADIENT || playerBackground == PlayerBackgroundStyle.GLOW_ANIMATED) {
+    LaunchedEffect(mediaMetadata?.id, playerBackground, highPerfMode) {
+        // Perf mode draws only the plain cover (no gradient/glow), so skip the palette extraction entirely —
+        // its per-song image fetch + Palette.generate() would be wasted CPU/IO for colors never rendered.
+        if (!highPerfMode && (playerBackground == PlayerBackgroundStyle.GRADIENT || playerBackground == PlayerBackgroundStyle.GLOW_ANIMATED)) {
             val currentMetadata = mediaMetadata
             if (currentMetadata != null && currentMetadata.thumbnailUrl != null) {
                 val cachedColors = gradientColorsCache[currentMetadata.id]
@@ -616,6 +623,9 @@ fun BottomSheetPlayer(
     val TextBackgroundColor by animateColorAsState(
         targetValue = when {
             isLocalMedia -> Color.White
+            // Perf mode paints a dark-scrimmed cover as the background, so white text is always readable —
+            // otherwise a DEFAULT pref on a light theme gives near-black text over the dark cover.
+            highPerfMode -> Color.White
             playerBackground == PlayerBackgroundStyle.DEFAULT -> MaterialTheme.colorScheme.onBackground
             else -> Color.White
         },
@@ -708,8 +718,10 @@ fun BottomSheetPlayer(
     }
 
     val (textButtonColor, iconButtonColor) = when {
+        // Perf mode paints a dark-scrimmed cover background -> use the light (over-dark) button colors.
+        highPerfMode ||
         isLocalMedia ||
-        playerBackground == PlayerBackgroundStyle.BLUR || 
+        playerBackground == PlayerBackgroundStyle.BLUR ||
         playerBackground == PlayerBackgroundStyle.GRADIENT ||
         playerBackground == PlayerBackgroundStyle.GLOW_ANIMATED ||
         playerBackground == PlayerBackgroundStyle.APPLE_MUSIC ||
