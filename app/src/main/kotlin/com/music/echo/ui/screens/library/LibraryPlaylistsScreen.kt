@@ -34,10 +34,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -55,7 +53,6 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import com.music.innertube.utils.parseCookieString
 import iad1tya.echo.music.LocalPlayerAwareWindowInsets
 import iad1tya.echo.music.R
-import iad1tya.echo.music.constants.AiPlaylistEnabledKey
 import iad1tya.echo.music.constants.CONTENT_TYPE_HEADER
 import iad1tya.echo.music.constants.CONTENT_TYPE_PLAYLIST
 import iad1tya.echo.music.constants.GridItemSize
@@ -76,9 +73,6 @@ import iad1tya.echo.music.constants.ShowUploadedPlaylistKey
 import iad1tya.echo.music.constants.YtmSyncKey
 import iad1tya.echo.music.db.entities.Playlist
 import iad1tya.echo.music.db.entities.PlaylistEntity
-import iad1tya.echo.music.ui.component.AiPlaylistDialog
-import iad1tya.echo.music.ui.component.CreatePlaylistDialog
-import iad1tya.echo.music.ui.component.HideOnScrollFAB
 import iad1tya.echo.music.ui.component.LibraryPlaylistGridItem
 import iad1tya.echo.music.ui.component.LibraryPlaylistListItem
 import iad1tya.echo.music.ui.component.LocalMenuState
@@ -214,35 +208,8 @@ fun LibraryPlaylistsScreen(
         }
     }
 
-    val (aiPlaylistEnabled) = rememberPreference(AiPlaylistEnabledKey, true)
-    var showCreatePlaylistDialog by rememberSaveable { mutableStateOf(false) }
-    var showAiPlaylistDialog by rememberSaveable { mutableStateOf(false) }
-
-    if (showCreatePlaylistDialog) {
-        CreatePlaylistDialog(
-            onDismiss = { showCreatePlaylistDialog = false },
-            initialTextFieldValue = initialTextFieldValue,
-            allowSyncing = allowSyncing,
-            onPlaylistCreated = { playlistId ->
-                showCreatePlaylistDialog = false
-                navController.navigate("local_playlist/$playlistId")
-            }
-        )
-    }
-
-    if (showAiPlaylistDialog) {
-        AiPlaylistDialog(
-            onDismiss = { showAiPlaylistDialog = false },
-            onPlaylistCreated = { playlistId ->
-                showAiPlaylistDialog = false
-                navController.navigate("local_playlist/$playlistId")
-            },
-            onOpenAiSettings = {
-                showAiPlaylistDialog = false
-                navController.navigate("settings/ai")
-            },
-        )
-    }
+    // Playlist create / AI-generate / import actions now live on the Library screen's floating
+    // action buttons (see LibraryScreen), so they are shared across the library, not just here.
 
     val headerContent = @Composable {
         Row(
@@ -408,19 +375,6 @@ fun LibraryPlaylistsScreen(
                         }
                     }
                 }
-
-                HideOnScrollFAB(
-                    lazyListState = lazyListState,
-                    icon = R.drawable.add,
-                    onClick = {
-                        showCreatePlaylistDialog = true
-                    },
-                    onAiPlaylistClick = if (aiPlaylistEnabled) {
-                        { showAiPlaylistDialog = true }
-                    } else {
-                        null
-                    },
-                )
             }
 
             LibraryViewType.GRID -> {
@@ -555,19 +509,6 @@ fun LibraryPlaylistsScreen(
                         }
                     }
                 }
-
-                HideOnScrollFAB(
-                    lazyListState = lazyGridState,
-                    icon = R.drawable.add,
-                    onClick = {
-                        showCreatePlaylistDialog = true
-                    },
-                    onAiPlaylistClick = if (aiPlaylistEnabled) {
-                        { showAiPlaylistDialog = true }
-                    } else {
-                        null
-                    },
-                )
             }
         }
     }

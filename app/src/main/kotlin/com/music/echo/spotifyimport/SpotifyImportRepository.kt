@@ -15,10 +15,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import iad1tya.echo.music.R
@@ -50,6 +49,7 @@ import iad1tya.echo.music.spotify.models.SpotifyTrack
 import iad1tya.echo.music.utils.clearWebAuthSession
 import iad1tya.echo.music.utils.dataStore
 import iad1tya.echo.music.utils.reportException
+import io.ktor.client.plugins.ResponseException
 import java.time.LocalDateTime
 import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
@@ -62,8 +62,6 @@ class SpotifyImportRepository @Inject constructor(
     private val database: MusicDatabase,
     private val syncUtils: iad1tya.echo.music.utils.SyncUtils,
 ) {
-    private val mapperMutex = Mutex()
-
     suspend fun restoreSession(): SpotifyImportSession =
         withContext(Dispatchers.IO) {
             val prefs = context.dataStore.data.first()
@@ -478,6 +476,29 @@ class SpotifyImportRepository @Inject constructor(
                 block()
             }
 
+    /**
+     * Runs a YouTube API call, retrying with exponential backoff when the shared IP rate-limiter
+     * returns HTTP 429. This lets us raise match concurrency (see MAX_CONCURRENT_MATCHES) without a
+     * burst of 429s permanently failing tracks — or bleeding into live-playback stream resolution.
+     * Non-429 failures return immediately; cancellation always propagates.
+     */
+    private suspend fun <T> searchWithRateLimitBackoff(block: suspend () -> Result<T>): Result<T> {
+        var backoffMs = INITIAL_BACKOFF_MS
+        repeat(MAX_RATE_LIMIT_RETRIES) {
+            val result = block()
+            val error = result.exceptionOrNull() ?: return result
+            if (error is CancellationException) throw error
+            if (!error.isRateLimited()) return result
+            delay(backoffMs)
+            backoffMs = (backoffMs * 2).coerceAtMost(MAX_BACKOFF_MS)
+        }
+        return block()
+    }
+
+    private fun Throwable.isRateLimited(): Boolean =
+        (this as? ResponseException)?.response?.status?.value == 429 ||
+            message?.contains("429") == true
+
     private suspend fun matchTracks(
         sourceIndex: Int,
         sourceCount: Int,
@@ -524,10 +545,12 @@ class SpotifyImportRepository @Inject constructor(
         track: SpotifyTrack,
         index: Int,
     ): MatchedTrack? {
-        val searchResult = YouTube.search(
-            query = SpotifyMapper.buildSearchQuery(track),
-            filter = YouTube.SearchFilter.FILTER_SONG,
-        ).getOrElse { error ->
+        val searchResult = searchWithRateLimitBackoff {
+            YouTube.search(
+                query = SpotifyMapper.buildSearchQuery(track),
+                filter = YouTube.SearchFilter.FILTER_SONG,
+            )
+        }.getOrElse { error ->
             if (error is CancellationException) {
                 throw error
             }
@@ -537,20 +560,22 @@ class SpotifyImportRepository @Inject constructor(
             .filterIsInstance<SongItem>()
             .distinctBy { it.id }
 
-        val best = mapperMutex.withLock {
-            candidates
-                .map { candidate ->
-                    candidate to SpotifyMapper.matchScore(
-                        spotifyTitle = track.name,
-                        spotifyArtist = track.artists.joinToString(" ") { it.name },
-                        spotifyDurationMs = track.durationMs,
-                        candidateTitle = candidate.title,
-                        candidateArtist = candidate.artists.joinToString(" ") { it.name },
-                        candidateDurationSec = candidate.duration,
-                    )
-                }
-                .maxByOrNull { it.second }
-        } ?: return null
+        // Pure-CPU scoring — safe to run in parallel across tracks, so no mutex. maxByOrNull
+        // returns the best (highest-scoring) candidate; the MIN_MATCH_SCORE floor below rejects
+        // the "least-bad wrong song".
+        val best = candidates
+            .map { candidate ->
+                candidate to SpotifyMapper.matchScore(
+                    spotifyTitle = track.name,
+                    spotifyArtist = track.artists.joinToString(" ") { it.name },
+                    spotifyDurationMs = track.durationMs,
+                    candidateTitle = candidate.title,
+                    candidateArtist = candidate.artists.joinToString(" ") { it.name },
+                    candidateDurationSec = candidate.duration,
+                )
+            }
+            .maxByOrNull { it.second }
+            ?: return null
 
         // Quality gate: maxByOrNull always returns the "least-bad" candidate, so without a floor
         // a completely wrong song was still counted as imported. Below the floor we treat the
@@ -674,10 +699,12 @@ class SpotifyImportRepository @Inject constructor(
      * and bookmarked locally (the YouTube subscribe is best-effort).
      */
     private suspend fun matchAndFollowArtist(spotifyArtist: SpotifyArtist): Boolean {
-        val searchResult = YouTube.search(
-            query = spotifyArtist.name,
-            filter = YouTube.SearchFilter.FILTER_ARTIST,
-        ).getOrElse { error ->
+        val searchResult = searchWithRateLimitBackoff {
+            YouTube.search(
+                query = spotifyArtist.name,
+                filter = YouTube.SearchFilter.FILTER_ARTIST,
+            )
+        }.getOrElse { error ->
             if (error is CancellationException) throw error
             return false
         }
@@ -840,10 +867,12 @@ class SpotifyImportRepository @Inject constructor(
         val query = listOf(spotifyAlbum.name, artistName).filter { it.isNotBlank() }.joinToString(" ")
         if (query.isBlank()) return false
 
-        val searchResult = YouTube.search(
-            query = query,
-            filter = YouTube.SearchFilter.FILTER_ALBUM,
-        ).getOrElse { error ->
+        val searchResult = searchWithRateLimitBackoff {
+            YouTube.search(
+                query = query,
+                filter = YouTube.SearchFilter.FILTER_ALBUM,
+            )
+        }.getOrElse { error ->
             if (error is CancellationException) throw error
             return false
         }
@@ -991,12 +1020,20 @@ class SpotifyImportRepository @Inject constructor(
     )
 
     companion object {
-        // Keep YouTube matching gentle: a big library (4000+ liked songs = 4000 searches) at high
-        // concurrency trips YouTube's IP rate-limiter, which then also throttles live playback's
-        // stream resolution — the song-change "hangs for minutes" bug. 2 is a safe, polite ceiling.
-        private const val MAX_CONCURRENT_MATCHES = 2
+        // YouTube matching runs one search per track. A big library (4000+ liked songs) at high
+        // concurrency trips YouTube's IP rate-limiter, which also throttles live-playback stream
+        // resolution (the song-change "hangs for minutes" bug). We keep a moderate ceiling AND back
+        // off exponentially on HTTP 429 (searchWithRateLimitBackoff), so bursts self-throttle instead
+        // of hard-failing tracks — 5 balances speed vs. politeness (was a hard cap of 2).
+        private const val MAX_CONCURRENT_MATCHES = 5
         private const val MAX_CONCURRENT_SPOTIFY_COUNT_REQUESTS = 4
         private const val TOKEN_EXPIRY_GRACE_MS = 60_000L
+
+        // Exponential backoff for HTTP 429 (rate-limit) on YouTube searches: 1s → 2s → 4s → 8s,
+        // capped at MAX_BACKOFF_MS, up to MAX_RATE_LIMIT_RETRIES retries before a final attempt.
+        private const val INITIAL_BACKOFF_MS = 1_000L
+        private const val MAX_BACKOFF_MS = 16_000L
+        private const val MAX_RATE_LIMIT_RETRIES = 4
 
         // Minimum SpotifyMapper.matchScore for a YouTube candidate to count as a real match.
         // matchScore is in [0.0, 1.0] = title*0.45 + artist*0.35 + duration*0.20 (each sub-score
