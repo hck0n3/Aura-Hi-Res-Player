@@ -57,6 +57,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -231,6 +235,14 @@ fun PlayerMenu(
     var showPitchTempoDialog by rememberSaveable {
         mutableStateOf(false)
     }
+
+    // Refetch icon rotation: each tap subtracts 360°, spinning the icon one full turn as the reload fires.
+    var refetchIconDegree by remember { mutableFloatStateOf(0f) }
+    val rotationAnimation by animateFloatAsState(
+        targetValue = refetchIconDegree,
+        animationSpec = tween(durationMillis = 800, easing = LinearEasing),
+        label = "refetchRotation"
+    )
 
     if (showPitchTempoDialog) {
         TempoPitchDialog(
@@ -488,6 +500,27 @@ fun PlayerMenu(
                             onClick = {
                                 playerConnection.toggleLibrary()
                                 onDismiss()
+                            }
+                        )
+                    )
+
+                    // Refetch: reload the currently playing track's stream in Opus (via PlayerConnection).
+                    add(
+                        Material3MenuItemData(
+                            title = { Text(text = stringResource(R.string.refetch)) },
+                            description = { Text(text = stringResource(R.string.refetch_desc)) },
+                            icon = {
+                                Icon(
+                                    painter = painterResource(R.drawable.sync),
+                                    contentDescription = null,
+                                    modifier = Modifier
+                                        .size(24.dp)
+                                        .graphicsLayer(rotationZ = rotationAnimation)
+                                )
+                            },
+                            onClick = {
+                                refetchIconDegree -= 360
+                                playerConnection.refetchCurrentInOpus()
                             }
                         )
                     )

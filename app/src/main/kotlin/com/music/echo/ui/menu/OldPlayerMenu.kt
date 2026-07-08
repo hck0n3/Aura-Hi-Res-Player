@@ -37,6 +37,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -107,6 +111,7 @@ fun OldPlayerMenu(
     val download by LocalDownloadUtil.current.getDownload(mediaMetadata.id).collectAsState(initial = null)
 
     val listenTogetherManager = LocalListenTogetherManager.current
+    val ringtoneViewModel = iad1tya.echo.music.LocalRingtoneViewModel.current
     val listenTogetherRoleState = listenTogetherManager?.role?.collectAsState(initial = RoomRole.NONE)
     val isListenTogetherGuest = listenTogetherRoleState?.value == RoomRole.GUEST
 
@@ -131,6 +136,13 @@ fun OldPlayerMenu(
     var showListenTogetherDialog by rememberSaveable { mutableStateOf(false) }
     var showSelectArtistDialog by rememberSaveable { mutableStateOf(false) }
     var showPitchTempoDialog by rememberSaveable { mutableStateOf(false) }
+    // Refetch icon rotation: each tap subtracts 360°, spinning the icon one full turn as the reload fires.
+    var refetchIconDegree by remember { mutableFloatStateOf(0f) }
+    val rotationAnimation by animateFloatAsState(
+        targetValue = refetchIconDegree,
+        animationSpec = tween(durationMillis = 800, easing = LinearEasing),
+        label = "refetchRotation"
+    )
 
     AddToPlaylistDialog(
         isVisible = showChoosePlaylistDialog,
@@ -617,13 +629,68 @@ fun OldPlayerMenu(
                             }
                         )
                     )
+
+                    // Refetch: reload the currently playing track's stream in Opus (via PlayerConnection).
+                    add(
+                        Material3MenuItemData(
+                            title = { Text(text = stringResource(R.string.refetch)) },
+                            description = { Text(text = stringResource(R.string.refetch_desc)) },
+                            icon = {
+                                Icon(
+                                    painter = painterResource(R.drawable.sync),
+                                    contentDescription = null,
+                                    modifier = Modifier
+                                        .size(24.dp)
+                                        .graphicsLayer(rotationZ = rotationAnimation)
+                                )
+                            },
+                            onClick = {
+                                refetchIconDegree -= 360
+                                playerConnection.refetchCurrentInOpus()
+                            }
+                        )
+                    )
                 }
             )
         }
 
         item { Spacer(modifier = Modifier.height(12.dp)) }
 
-        
+        // Set as Ringtone: requests WRITE_SETTINGS if needed, else opens the trimmer (RingtoneViewModel/Helper
+        // downloads the stream for online tracks, so it works without a pre-downloaded local file).
+        item {
+            Material3MenuGroup(
+                items = listOf(
+                    Material3MenuItemData(
+                        title = { Text(text = stringResource(R.string.set_as_ringtone)) },
+                        icon = {
+                            Icon(
+                                painter = painterResource(R.drawable.notification),
+                                contentDescription = null,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        },
+                        onClick = {
+                            if (ringtoneViewModel.hasSettingsPermission(context)) {
+                                ringtoneViewModel.showTrimmer(
+                                    mediaMetadata.id,
+                                    mediaMetadata.title,
+                                    mediaMetadata.artists.joinToString { it.name },
+                                    mediaMetadata.duration
+                                )
+                            } else {
+                                ringtoneViewModel.requestSettingsPermission(context)
+                            }
+                            onDismiss()
+                        }
+                    )
+                )
+            )
+        }
+
+        item { Spacer(modifier = Modifier.height(12.dp)) }
+
+
         item {
             Material3MenuGroup(
                 items = buildList {

@@ -341,6 +341,8 @@ fun BottomSheetPlayer(
         }
     }
     val isPlaying by playerConnection.isPlaying.collectAsState()
+    // True while MusicService is crossfading between two tracks (drives the codec/timer box's shining indicator).
+    val isCrossfading by playerConnection.isCrossfading.collectAsState()
     // Keep the screen awake only while a video is actively PLAYING (not paused/idle) — don't let it sleep
     // mid-video, but don't drain battery when paused. View-level flag, cleared when video stops/leaves.
     val keepScreenOnView = LocalView.current
@@ -350,17 +352,20 @@ fun BottomSheetPlayer(
     }
     
     var currentAudioFormat by remember { mutableStateOf<androidx.media3.common.Format?>(null) }
-    DisposableEffect(playerConnection) {
+    // Re-key on isCrossfading: a crossfade swaps the underlying ExoPlayer instance, so re-attach the codec
+    // listener to whatever playerConnection.player points at once the swap settles (keeps the codec box accurate).
+    DisposableEffect(playerConnection, isCrossfading) {
+        val playerToListen = playerConnection.player
         val listener = object : Player.Listener {
             override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
                 val audioTrack = tracks.groups.firstOrNull { it.type == C.TRACK_TYPE_AUDIO }
                 currentAudioFormat = audioTrack?.getTrackFormat(0)
             }
         }
-        playerConnection.player.addListener(listener)
-        currentAudioFormat = playerConnection.player.currentTracks.groups.firstOrNull { it.type == C.TRACK_TYPE_AUDIO }?.getTrackFormat(0)
+        playerToListen.addListener(listener)
+        currentAudioFormat = playerToListen.currentTracks.groups.firstOrNull { it.type == C.TRACK_TYPE_AUDIO }?.getTrackFormat(0)
         onDispose {
-            playerConnection.player.removeListener(listener)
+            playerToListen.removeListener(listener)
         }
     }
     val swipeLyrics by rememberPreference(SwipeLyricsKey, false)
@@ -2189,6 +2194,56 @@ fun BottomSheetPlayer(
                     horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
                     modifier = Modifier.weight(1f)
                 ) {
+                    // Crossfade indicator: while MusicService is crossfading, show a subtle "shining" chip
+                    // (icon + label pulsing alpha) in the codec/timer info area. Transient, so it's left on in
+                    // perf mode too — it only animates during the brief crossfade window. Handles the
+                    // crossfading state alongside the existing sleep-timer / codec displays in this same row.
+                    if (isCrossfading) {
+                        val crossfadeTransition = rememberInfiniteTransition(label = "ShiningCrossfade")
+                        val crossfadeAlpha by crossfadeTransition.animateFloat(
+                            initialValue = 0.3f,
+                            targetValue = 1f,
+                            animationSpec = infiniteRepeatable(
+                                animation = tween(800, easing = LinearEasing),
+                                repeatMode = RepeatMode.Reverse
+                            ),
+                            label = "CrossfadeAlpha"
+                        )
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(TextBackgroundColor.copy(alpha = 0.08f))
+                                .border(
+                                    width = 0.5.dp,
+                                    color = TextBackgroundColor.copy(alpha = 0.12f),
+                                    shape = RoundedCornerShape(4.dp)
+                                )
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.sync),
+                                    contentDescription = stringResource(R.string.crossfading),
+                                    tint = TextBackgroundColor.copy(alpha = crossfadeAlpha),
+                                    modifier = Modifier.size(12.dp)
+                                )
+                                Text(
+                                    text = stringResource(R.string.crossfading),
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        letterSpacing = 1.sp
+                                    ),
+                                    color = TextBackgroundColor.copy(alpha = crossfadeAlpha),
+                                    maxLines = 1,
+                                )
+                            }
+                        }
+                    }
                     if (!useNewPlayerDesign && sleepTimerEnabled) {
                         Box(
                             contentAlignment = Alignment.Center,

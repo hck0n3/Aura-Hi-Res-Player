@@ -127,6 +127,7 @@
     <string name="view_artist">View artist</string>
     <string name="view_album">View album</string>
     <string name="refetch">Refetch</string>
+    <string name="crossfading">Crossfading</string>
     <string name="share">Share</string>
     <string name="more_options">More options</string>
     <string name="more_label">More</string>
