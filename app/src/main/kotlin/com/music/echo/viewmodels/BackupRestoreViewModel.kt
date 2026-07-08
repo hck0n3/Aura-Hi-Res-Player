@@ -235,6 +235,7 @@ class BackupRestoreViewModel @Inject constructor(
                                 title = ps.song.song.title,
                                 artist = ps.song.artists.joinToString(", ") { it.name },
                                 youtubeVideoId = ps.song.song.id,
+                                thumbnailUrl = ps.song.song.thumbnailUrl,
                             )
                         },
                     )

@@ -35,6 +35,9 @@ object JrPlaylistImporter {
         val album: String = "",
         val duration: String = "",
         val youtubeVideoId: String? = null,
+        // Carried through the migration so imported songs keep their artwork (default null: old backups
+        // without this field still deserialize). Only used for NEW song rows in importDirect.
+        val thumbnailUrl: String? = null,
     )
 
     data class Result(val playlistName: String, val total: Int, val resolved: Int)
@@ -114,6 +117,7 @@ object JrPlaylistImporter {
                         title = track.title,
                         artists = artists,
                         duration = 0,
+                        thumbnailUrl = track.thumbnailUrl,
                     ),
                 )
                 insert(PlaylistSongMap(playlistId = playlist.id, songId = id, position = position++))
