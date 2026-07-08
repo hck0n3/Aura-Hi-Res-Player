@@ -43,6 +43,12 @@ data class SpotifyImportSourceSummaryUi(
     val totalTracks: Int,
     val importedTracks: Int,
     val failedTracks: Int,
+    // The real count Spotify reports for this source (playlist tracks / liked songs /
+    // followed artists / saved albums), captured in loadSources. [totalTracks] is what we
+    // actually fetched and attempted to match; comparing the two surfaces any shortfall
+    // (e.g. local-file/podcast tracks that can't be matched). Nullable: a playlist opened
+    // by link may not carry a track total. Default keeps existing call sites source-compatible.
+    val accountTotalTracks: Int? = null,
 )
 
 @Immutable
@@ -60,6 +66,14 @@ data class SpotifyImportSummaryUi(
 
     val failedTracks: Int
         get() = sources.sumOf { it.failedTracks }
+
+    /**
+     * The real Spotify account total across all sources (falling back to the fetched
+     * count when a source didn't report one). Lets the UI show "imported X of Y" against
+     * the true library size and flag a shortfall, instead of only the fetched count.
+     */
+    val accountTotalTracks: Int
+        get() = sources.sumOf { it.accountTotalTracks ?: it.totalTracks }
 }
 
 @Immutable

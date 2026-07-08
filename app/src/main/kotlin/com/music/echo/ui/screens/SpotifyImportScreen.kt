@@ -810,15 +810,19 @@ private fun SpotifyImportSummaryDialog(
                 fontWeight = FontWeight.SemiBold,
             )
             summary.sources.forEach { source ->
+                // Show the REAL account total (not the fetched count) as the denominator so a shortfall is
+                // visible; tint it as an error when fewer tracks were imported than the account actually holds.
+                val realTotal = source.accountTotalTracks ?: source.totalTracks
+                val incomplete = source.importedTracks < realTotal
                 Text(
                     text = stringResource(
                         R.string.spotify_source_summary,
                         source.title,
                         source.importedTracks,
-                        source.totalTracks,
+                        realTotal,
                     ),
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (incomplete) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )

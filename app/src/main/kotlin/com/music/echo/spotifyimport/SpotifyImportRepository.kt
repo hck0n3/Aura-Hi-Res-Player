@@ -250,6 +250,7 @@ class SpotifyImportRepository @Inject constructor(
                         totalTracks = 0,
                         importedTracks = 0,
                         failedTracks = 0,
+                        accountTotalTracks = source.trackCount,
                     )
                     onProgress(
                         SpotifyImportProgressUi(
@@ -275,9 +276,12 @@ class SpotifyImportRepository @Inject constructor(
                 mirrorPlaylist(source, matched.map { it.metadata })
                 summaries += SpotifyImportSourceSummaryUi(
                     title = source.title,
+                    // Fetched (post null/blank filter) count we actually tried to match.
                     totalTracks = tracks.size,
                     importedTracks = matched.size,
                     failedTracks = tracks.size - matched.size,
+                    // Real Spotify total, so a fetched-vs-account shortfall is visible.
+                    accountTotalTracks = source.trackCount,
                 )
                 onProgress(
                     SpotifyImportProgressUi(
@@ -420,6 +424,7 @@ class SpotifyImportRepository @Inject constructor(
                         }
                         SpotifyTrackPage(
                             items = paging.items.map { it.track },
+                            rawCount = paging.items.size,
                             total = paging.total,
                         )
                     }
@@ -432,7 +437,10 @@ class SpotifyImportRepository @Inject constructor(
                             ).getOrThrow()
                         }
                         SpotifyTrackPage(
+                            // A playlist entry's track is null for local files / podcasts /
+                            // unavailable items; drop those from matching but NOT from pagination.
                             items = paging.items.mapNotNull { it.track },
+                            rawCount = paging.items.size,
                             total = paging.total,
                         )
                     }
@@ -443,10 +451,13 @@ class SpotifyImportRepository @Inject constructor(
                     is SpotifyImportSource.SavedAlbums -> return emptyList()
                 }
 
-            if (page.items.isEmpty()) break
+            // Terminate/advance on the RAW page size, never the post-mapNotNull list: a page of
+            // 100 that contains any null track would otherwise look "short" and cut pagination off
+            // early, dropping every later track. Keep null/blank filtering only when accumulating.
+            if (page.rawCount == 0) break
             tracks += page.items.filter { it.name.isNotBlank() }
-            offset += page.items.size
-            if (offset >= page.total || page.items.size < limit) break
+            offset += page.rawCount
+            if (offset >= page.total || page.rawCount < limit) break
         }
 
         return tracks
@@ -527,19 +538,27 @@ class SpotifyImportRepository @Inject constructor(
             .distinctBy { it.id }
 
         val best = mapperMutex.withLock {
-            candidates.maxByOrNull { candidate ->
-                SpotifyMapper.matchScore(
-                    spotifyTitle = track.name,
-                    spotifyArtist = track.artists.joinToString(" ") { it.name },
-                    spotifyDurationMs = track.durationMs,
-                    candidateTitle = candidate.title,
-                    candidateArtist = candidate.artists.joinToString(" ") { it.name },
-                    candidateDurationSec = candidate.duration,
-                )
-            }
+            candidates
+                .map { candidate ->
+                    candidate to SpotifyMapper.matchScore(
+                        spotifyTitle = track.name,
+                        spotifyArtist = track.artists.joinToString(" ") { it.name },
+                        spotifyDurationMs = track.durationMs,
+                        candidateTitle = candidate.title,
+                        candidateArtist = candidate.artists.joinToString(" ") { it.name },
+                        candidateDurationSec = candidate.duration,
+                    )
+                }
+                .maxByOrNull { it.second }
         } ?: return null
 
-        return MatchedTrack(index = index, metadata = best.toMediaMetadata())
+        // Quality gate: maxByOrNull always returns the "least-bad" candidate, so without a floor
+        // a completely wrong song was still counted as imported. Below the floor we treat the
+        // track as unmatched (return null → counts as failed) rather than import a wrong song.
+        val (bestCandidate, bestScore) = best
+        if (bestScore < MIN_MATCH_SCORE) return null
+
+        return MatchedTrack(index = index, metadata = bestCandidate.toMediaMetadata())
     }
 
     // ── Followed artists ────────────────────────────────────────────────
@@ -573,6 +592,7 @@ class SpotifyImportRepository @Inject constructor(
                 totalTracks = 0,
                 importedTracks = 0,
                 failedTracks = 0,
+                accountTotalTracks = source.trackCount,
             )
         }
 
@@ -625,6 +645,7 @@ class SpotifyImportRepository @Inject constructor(
             totalTracks = artists.size,
             importedTracks = imported.get(),
             failedTracks = artists.size - imported.get(),
+            accountTotalTracks = source.trackCount,
         )
     }
 
@@ -738,7 +759,7 @@ class SpotifyImportRepository @Inject constructor(
                     percent = progressPercent(sourceIndex + 1, sourceCount, 0, 0),
                 ),
             )
-            return SpotifyImportSourceSummaryUi(source.title, 0, 0, 0)
+            return SpotifyImportSourceSummaryUi(source.title, 0, 0, 0, source.trackCount)
         }
 
         val completed = AtomicInteger(0)
@@ -790,6 +811,7 @@ class SpotifyImportRepository @Inject constructor(
             totalTracks = albums.size,
             importedTracks = imported.get(),
             failedTracks = albums.size - imported.get(),
+            accountTotalTracks = source.trackCount,
         )
     }
 
@@ -955,7 +977,11 @@ class SpotifyImportRepository @Inject constructor(
     }
 
     private data class SpotifyTrackPage(
+        // Non-null tracks kept for matching (nulls = local files / podcasts / unavailable).
         val items: List<SpotifyTrack>,
+        // RAW number of items Spotify returned for this page, BEFORE null-filtering. Drives
+        // pagination (offset advance + loop termination) so a null-heavy page can't truncate.
+        val rawCount: Int,
         val total: Int,
     )
 
@@ -971,6 +997,15 @@ class SpotifyImportRepository @Inject constructor(
         private const val MAX_CONCURRENT_MATCHES = 2
         private const val MAX_CONCURRENT_SPOTIFY_COUNT_REQUESTS = 4
         private const val TOKEN_EXPIRY_GRACE_MS = 60_000L
+
+        // Minimum SpotifyMapper.matchScore for a YouTube candidate to count as a real match.
+        // matchScore is in [0.0, 1.0] = title*0.45 + artist*0.35 + duration*0.20 (each sub-score
+        // in [0,1]; unknown duration contributes a neutral 0.5 → 0.10 baseline). A genuine hit
+        // clears this easily (e.g. title 0.6 + artist 0.5 + unknown-duration ≈ 0.55); noise where
+        // title/artist barely overlap stays under it. Conservative on purpose: low enough not to
+        // drop legitimate matches (differing feat./artist spellings, missing duration), high enough
+        // to reject the "least-bad wrong song" that maxByOrNull would otherwise return.
+        private const val MIN_MATCH_SCORE = 0.5
     }
 }
 
