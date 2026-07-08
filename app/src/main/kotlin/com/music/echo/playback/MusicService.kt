@@ -389,9 +389,17 @@ class MusicService :
     private var secondaryPlayer: ExoPlayer? = null
     private var fadingPlayer: ExoPlayer? = null
     private var isCrossfading = false
+    // Read-only OBSERVATION flag only. Mirrors the plain [isCrossfading] boolean so the UI can observe a
+    // crossfade swap; it does NOT touch the crossfade timing, duration, curve, equal-power gains, gapless
+    // logic or preload. Set true at the existing swap start (performCrossfadeSwap) and false at the existing
+    // swap end (cleanupCrossfade) — nothing else in the crossfade changes.
+    private val _isCrossfading = MutableStateFlow(false)
     /** Read-only view for PlayerConnection: a spurious null-item transition during a crossfade swap must not
      *  blank the now-playing UI, but outside a crossfade a null transition is real and should update. */
     val crossfadingNow: Boolean get() = isCrossfading
+    /** StateFlow of the crossfade-swap state, surfaced to the UI as PlayerConnection.isCrossfading. True only
+     *  while a crossfade swap is actively in progress (performCrossfadeSwap → cleanupCrossfade). */
+    val isCrossfadingFlow: kotlinx.coroutines.flow.StateFlow<Boolean> = _isCrossfading.asStateFlow()
     private var crossfadeJob: Job? = null
 
     private lateinit var mediaSession: MediaLibrarySession
@@ -502,6 +510,11 @@ class MusicService :
 
     
     private val bypassCacheForQualityChange = mutableSetOf<String>()
+
+    // Set by refetchCurrentInOpus(): pins THIS track to the Opus (WebM/Opus) audio format on its next
+    // (re)fetch, overriding both the global AudioQuality and the currently-playing "locked quality" (which
+    // otherwise pins to the DB format's container). Cleared once a different track becomes current.
+    @Volatile private var forceOpusForMediaId: String? = null
 
     // Video mode is INTEGRATED into the main player (one engine). videoMode = sticky on/off intent;
     // videoUrl = resolved muxed URL of the current video track (null while resolving → UI spinner).
@@ -1236,8 +1249,14 @@ class MusicService :
                         // "trabones"/cuts on playback and at the crossfade swap, which the secondary player
                         // inherited). Reconciled below. (High-Performance Mode uses 60s.)
                         maxBufferMs,
-                        500,
-                        DefaultLoadControl.DEFAULT_BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS,
+                        // bufferForPlaybackMs: ~750ms buffered before playback (re)starts — a fast start
+                        // without risking an immediate re-stall on hi-res/low-end (upstream 97787ed value).
+                        // Applies in BOTH buffer profiles; the min/max duration tier split (maxBufferMs) above
+                        // is untouched.
+                        750,
+                        // bufferForPlaybackAfterRebufferMs: ~1s to resume after a stall (down from the 5s
+                        // default) so a brief connectivity drop recovers quickly. Also profile-independent.
+                        1000,
                     )
                     // 64MB byte ceiling guards against OOM with multiple pre-loaded/crossfade players,
                     // but prioritizeTimeOverSizeThresholds(true) lets the TIME buffer win so the min/max
@@ -2461,6 +2480,11 @@ class MusicService :
     ) {
         currentPlayingMediaId = mediaItem?.mediaId
         rememberRecentRadioId(mediaItem?.mediaId ?: player.currentMetadata?.id)
+        // A per-track Opus override (refetchCurrentInOpus) only applies to the track it was set for; drop it
+        // once a genuinely different (non-null) track becomes current so a later track isn't forced to Opus.
+        if (forceOpusForMediaId != null && mediaItem != null && mediaItem.mediaId != forceOpusForMediaId) {
+            forceOpusForMediaId = null
+        }
         // SponsorBlock: fetch skippable non-music segments for the NEW track (YouTube ids only; local songs
         // have long content:// ids and are skipped). Stale responses are ignored inside the manager.
         if (sponsorBlockEnabled) {
@@ -2643,6 +2667,42 @@ class MusicService :
             val duration = player.duration
             val safeTarget = if (duration > 0) minOf(target, duration) else target
             if (safeTarget > pos) player.seekTo(safeTarget)
+        }
+    }
+
+    /**
+     * Reload the CURRENTLY-playing track forcing the Opus (WebM/Opus) audio format, continuing from the
+     * current position. Mirrors the in-place reload used for an IP-version change: pin this track to Opus,
+     * drop its cached URL and bypass any non-Opus cached bytes, then stop → seek(current) → prepare so the
+     * ResolvingDataSource re-resolves it in Opus (the format-change container check is skipped while the
+     * bypass flag is set, so no mid-stream throw). Runs on the player (Main) thread via [scope]. Local files
+     * and direct-URL (podcast) media have a fixed container and are ignored.
+     */
+    fun refetchCurrentInOpus() {
+        scope.launch {
+            val mediaId = player.currentMediaItem?.mediaId ?: return@launch
+            if (mediaId.isLocalMediaId() ||
+                mediaId.startsWith("http://", ignoreCase = true) ||
+                mediaId.startsWith("https://", ignoreCase = true)
+            ) {
+                Timber.tag(TAG).d("refetchCurrentInOpus: $mediaId is local/direct-URL, ignoring")
+                return@launch
+            }
+
+            val currentPosition = player.currentPosition
+            val currentIndex = player.currentMediaItemIndex
+            val wasPlaying = player.isPlaying
+
+            forceOpusForMediaId = mediaId
+            bypassCacheForQualityChange.add(mediaId)
+            songUrlCache.remove(mediaId)
+
+            player.stop()
+            player.seekTo(currentIndex, currentPosition)
+            player.prepare()
+            if (wasPlaying) player.play()
+
+            Timber.tag(TAG).i("refetchCurrentInOpus: reloading $mediaId in Opus at ${currentPosition}ms")
         }
     }
 
@@ -3643,14 +3703,17 @@ class MusicService :
             val isCurrentlyPlaying = currentPlayingMediaId == mediaId
             val dbFormat = runBlocking(Dispatchers.IO) { database.format(mediaId).firstOrNull() }
 
-            val lockedQuality = if (isCurrentlyPlaying && dbFormat != null) {
-                when {
+            // refetchCurrentInOpus() forces this track to Opus, overriding both the global quality and the
+            // "locked" container of the currently-playing track (below).
+            val forceOpus = forceOpusForMediaId == mediaId
+            val lockedQuality = when {
+                forceOpus -> iad1tya.echo.music.constants.AudioQuality.OPUS
+                isCurrentlyPlaying && dbFormat != null -> when {
                     dbFormat.mimeType.contains("flac", ignoreCase = true) -> iad1tya.echo.music.constants.AudioQuality.LOSSLESS
                     dbFormat.mimeType.contains("mp4", ignoreCase = true) || dbFormat.mimeType.contains("m4a", ignoreCase = true) -> iad1tya.echo.music.constants.AudioQuality.SAAVN
                     else -> iad1tya.echo.music.constants.AudioQuality.OPUS
                 }
-            } else {
-                audioQuality
+                else -> audioQuality
             }
 
             if (!shouldBypassCache && !isFullyDownloaded && dbFormat != null) {
@@ -4464,6 +4527,7 @@ class MusicService :
 
     private fun performCrossfadeSwap() {
         isCrossfading = true
+        _isCrossfading.value = true // observation-only mirror for the UI; does not alter the swap
         val nextPlayer = secondaryPlayer ?: return
         val currentPlayer = player
 
@@ -4600,6 +4664,7 @@ class MusicService :
         fadingPlayer?.release()
         fadingPlayer = null
         isCrossfading = false
+        _isCrossfading.value = false // observation-only mirror for the UI; does not alter the swap
         sleepTimer.notifySongTransition()
     }
 

@@ -149,8 +149,23 @@ class PlayerConnection(
     val videoMode = service.videoMode
     val videoUrl = service.videoUrl
     val mixActive = service.mixActive
+    // True only while a crossfade swap is in progress (backed by MusicService's MutableStateFlow). The UI
+    // reads this to react to the swap (e.g. suppress the spurious null-item transition the fading player fires).
+    val isCrossfading: kotlinx.coroutines.flow.StateFlow<Boolean> = service.isCrossfadingFlow
     fun toggleVideoMode() = service.toggleVideoMode()
     fun exitVideoMode() = service.exitVideoMode()
+
+    /**
+     * Reload the currently-playing track forcing the Opus (WebM/Opus) audio format, continuing playback at
+     * the current position. Delegates to [MusicService.refetchCurrentInOpus].
+     */
+    fun refetchCurrentInOpus() {
+        try {
+            service.refetchCurrentInOpus()
+        } catch (e: Exception) {
+            Timber.tag(TAG).e(e, "Error in refetchCurrentInOpus")
+        }
+    }
 
     val waitingForNetworkConnection = service.waitingForNetworkConnection
     
