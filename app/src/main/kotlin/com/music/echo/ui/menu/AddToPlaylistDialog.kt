@@ -20,6 +20,7 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -106,6 +107,17 @@ fun AddToPlaylistDialog(
             playlists
         } else {
             playlists.filter { it.playlist.name.contains(searchQuery, ignoreCase = true) }
+        }
+    }
+
+    // This dialog is hosted in a composable that is never disposed (e.g. the Player), so a reused
+    // instance would otherwise carry the previous song/playlist state. Reset it every time it opens.
+    LaunchedEffect(isVisible) {
+        if (isVisible) {
+            songIds = null
+            selectedPlaylist = null
+            duplicates = emptyList()
+            showDuplicateDialog = false
         }
     }
 
@@ -224,9 +236,7 @@ fun AddToPlaylistDialog(
                     modifier = Modifier.clickable {
                         selectedPlaylist = playlist
                         coroutineScope.launch(Dispatchers.IO) {
-                            if (songIds == null) {
-                                songIds = onGetSong(playlist)
-                            }
+                            songIds = onGetSong(playlist)
                             duplicates = database.playlistDuplicates(playlist.id, songIds!!)
                             if (duplicates.isNotEmpty()) {
                                 showDuplicateDialog = true
