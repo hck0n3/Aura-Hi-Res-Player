@@ -85,6 +85,8 @@
     <string name="playlist_is_empty">The playlist is empty</string>
     <string name="remove_download_playlist_confirm">Do you really want to remove all \"%s\" playlist songs from the Downloaded Songs storage?</string>
     <string name="delete_playlist_confirm">Do you really want to delete the playlist \"%s\"?</string>
+    <string name="delete_playlist_from_youtube_too">Delete from YouTube too</string>
+    <string name="delete_playlist_local_only">Delete from the app only</string>
     <string name="you_might_also_like">Related Playlist</string>
 
     <!-- Button -->

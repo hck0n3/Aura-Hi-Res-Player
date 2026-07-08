@@ -379,6 +379,16 @@ fun LocalPlaylistScreen(
         mutableStateOf(false)
     }
     if (showDeletePlaylistDialog) {
+        val ytBrowseId = playlist?.playlist?.browseId
+
+        // Local delete only: removes the playlist from the app, never from YouTube.
+        val deletePlaylistLocally: () -> Unit = {
+            showDeletePlaylistDialog = false
+            database.query {
+                playlist?.let { delete(it.playlist) }
+            }
+        }
+
         DefaultDialog(
             onDismiss = { showDeletePlaylistDialog = false },
             content = {
@@ -390,6 +400,32 @@ fun LocalPlaylistScreen(
                     style = MaterialTheme.typography.bodyLarge,
                     modifier = Modifier.padding(horizontal = 18.dp)
                 )
+
+                // Synced playlist: let the user choose whether to also delete it on YouTube.
+                if (ytBrowseId != null) {
+                    Spacer(Modifier.height(16.dp))
+                    TextButton(
+                        onClick = {
+                            deletePlaylistLocally()
+                            viewModel.viewModelScope.launch(Dispatchers.IO) {
+                                YouTube.deletePlaylist(ytBrowseId)
+                            }
+                            navController.popBackStack()
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(text = stringResource(R.string.delete_playlist_from_youtube_too))
+                    }
+                    TextButton(
+                        onClick = {
+                            deletePlaylistLocally()
+                            navController.popBackStack()
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(text = stringResource(R.string.delete_playlist_local_only))
+                    }
+                }
             },
             buttons = {
                 TextButton(
@@ -399,19 +435,16 @@ fun LocalPlaylistScreen(
                 ) {
                     Text(text = stringResource(android.R.string.cancel))
                 }
-                TextButton(
-                    onClick = {
-                        showDeletePlaylistDialog = false
-                        database.query {
-                            playlist?.let { delete(it.playlist) }
+                // Pure local playlist: keep the simple confirm (no YouTube option).
+                if (ytBrowseId == null) {
+                    TextButton(
+                        onClick = {
+                            deletePlaylistLocally()
+                            navController.popBackStack()
                         }
-                        viewModel.viewModelScope.launch(Dispatchers.IO) {
-                            playlist?.playlist?.browseId?.let { YouTube.deletePlaylist(it) }
-                        }
-                        navController.popBackStack()
+                    ) {
+                        Text(text = stringResource(android.R.string.ok))
                     }
-                ) {
-                    Text(text = stringResource(android.R.string.ok))
                 }
             }
         )

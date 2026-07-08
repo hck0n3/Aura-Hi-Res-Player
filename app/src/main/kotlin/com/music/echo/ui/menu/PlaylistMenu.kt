@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -257,6 +258,20 @@ fun PlaylistMenu(
     }
 
     if (showDeletePlaylistDialog) {
+        val ytBrowseId = playlist.playlist.browseId
+
+        // Local delete only: removes the playlist from the app, never from YouTube.
+        val deletePlaylistLocally: () -> Unit = {
+            showDeletePlaylistDialog = false
+            onDismiss()
+            database.transaction {
+                if (playlist.playlist.bookmarkedAt != null) {
+                    update(playlist.playlist.toggleLike())
+                }
+                delete(playlist.playlist)
+            }
+        }
+
         DefaultDialog(
             onDismiss = { showDeletePlaylistDialog = false },
             content = {
@@ -265,6 +280,28 @@ fun PlaylistMenu(
                     style = MaterialTheme.typography.bodyLarge,
                     modifier = Modifier.padding(horizontal = 18.dp)
                 )
+
+                // Synced playlist: let the user choose whether to also delete it on YouTube.
+                if (ytBrowseId != null) {
+                    Spacer(Modifier.height(16.dp))
+                    TextButton(
+                        onClick = {
+                            deletePlaylistLocally()
+                            coroutineScope.launch(Dispatchers.IO) {
+                                YouTube.deletePlaylist(ytBrowseId)
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(text = stringResource(R.string.delete_playlist_from_youtube_too))
+                    }
+                    TextButton(
+                        onClick = { deletePlaylistLocally() },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(text = stringResource(R.string.delete_playlist_local_only))
+                    }
+                }
             },
             buttons = {
                 TextButton(
@@ -275,26 +312,13 @@ fun PlaylistMenu(
                     Text(text = stringResource(android.R.string.cancel))
                 }
 
-                TextButton(
-                    onClick = {
-                        showDeletePlaylistDialog = false
-                        onDismiss()
-                        database.transaction {
-                            
-                            if (playlist.playlist.bookmarkedAt != null) {
-                                
-                                update(playlist.playlist.toggleLike())
-                            }
-                            
-                            delete(playlist.playlist)
-                        }
-
-                        coroutineScope.launch(Dispatchers.IO) {
-                            playlist.playlist.browseId?.let { YouTube.deletePlaylist(it) }
-                        }
+                // Pure local playlist: keep the simple confirm (no YouTube option).
+                if (ytBrowseId == null) {
+                    TextButton(
+                        onClick = { deletePlaylistLocally() }
+                    ) {
+                        Text(text = stringResource(android.R.string.ok))
                     }
-                ) {
-                    Text(text = stringResource(android.R.string.ok))
                 }
             }
         )

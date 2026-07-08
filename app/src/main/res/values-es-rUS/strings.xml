@@ -56,6 +56,8 @@
     <string name="playlist_is_empty">La lista de reproducción está vacía</string>
     <string name="remove_download_playlist_confirm">¿Realmente quieres eliminar todas las canciones de la lista de reproducción \"%s\" del almacenamiento de canciones descargadas?</string>
     <string name="delete_playlist_confirm">¿Realmente quieres eliminar la lista de reproducción \"%s\"?</string>
+    <string name="delete_playlist_from_youtube_too">Eliminar también de YouTube</string>
+    <string name="delete_playlist_local_only">Solo eliminar de la app</string>
     <string name="retry">Volver a intentar</string>
     <string name="radio">Radio</string>
     <string name="shuffle">Aleatorio</string>
