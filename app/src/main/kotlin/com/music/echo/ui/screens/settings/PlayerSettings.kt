@@ -566,56 +566,10 @@ fun PlayerSettings(
                         Text(text = historyDuration.roundToInt().toString())
                     }
                 ))
-                add(Material3SettingsItem(
-                    icon = painterResource(R.drawable.fast_forward),
-                    title = { Text(stringResource(R.string.skip_silence)) },
-                    description = { Text(stringResource(R.string.skip_silence_desc)) },
-                    trailingContent = {
-                        Switch(
-                            checked = skipSilence,
-                            onCheckedChange = onSkipSilenceChange,
-                            thumbContent = {
-                                Icon(
-                                    painter = painterResource(
-                                        id = if (skipSilence) R.drawable.check else R.drawable.close
-                                    ),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(SwitchDefaults.IconSize)
-                                )
-                            }
-                        )
-                    },
-                    onClick = { onSkipSilenceChange(!skipSilence) }
-                ))
-                add(Material3SettingsItem(
-                    icon = painterResource(R.drawable.skip_next),
-                    title = { Text(stringResource(R.string.skip_silence_instant)) },
-                    description = { Text(stringResource(R.string.skip_silence_instant_desc)) },
-                    trailingContent = {
-                        Switch(
-                            checked = skipSilenceInstant,
-                            // Turning instant ON auto-enables the parent "Skip silence" (instant is a no-op
-                            // without it), so the toggle is usable directly instead of greyed out.
-                            onCheckedChange = {
-                                if (it && !skipSilence) onSkipSilenceChange(true)
-                                onSkipSilenceInstantChange(it)
-                            },
-                            thumbContent = {
-                                Icon(
-                                    painter = painterResource(
-                                        id = if (skipSilenceInstant) R.drawable.check else R.drawable.close
-                                    ),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(SwitchDefaults.IconSize)
-                                )
-                            }
-                        )
-                    },
-                    onClick = {
-                        if (!skipSilenceInstant && !skipSilence) onSkipSilenceChange(true)
-                        onSkipSilenceInstantChange(!skipSilenceInstant)
-                    }
-                ))
+                // Skip-silence toggles are intentionally HIDDEN from the UI: skip silence is hardcoded OFF in
+                // MusicService for Hi-Res / video A/V sync, so both switches ("Skip silence" and "Skip silence
+                // instantly") were non-functional. The SkipSilenceKey / SkipSilenceInstantKey prefs and their
+                // callbacks are left defined on purpose; only the two Switch items were removed.
                 add(Material3SettingsItem(
                     icon = painterResource(R.drawable.graphic_eq),
                     title = { Text(stringResource(R.string.audio_offload)) },

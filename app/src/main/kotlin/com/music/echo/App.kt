@@ -302,10 +302,10 @@ class App : Application(), SingletonImageLoader.Factory {
             p[iad1tya.echo.music.constants.HideVideoSongsKey] = false
             p[iad1tya.echo.music.constants.HideYoutubeShortsKey] = true
 
-            // Playback defaults (user request): smooth transition (crossfade) ON at 13s with the EQUAL-POWER
+            // Playback defaults (user request): smooth transition (crossfade) ON at 9s with the EQUAL-POWER
             // curve (1 = constant loudness, no mid-blend volume dip), skip silence ON and instantly ON.
             p[iad1tya.echo.music.constants.CrossfadeEnabledKey] = true
-            p[iad1tya.echo.music.constants.CrossfadeDurationKey] = 13f
+            p[iad1tya.echo.music.constants.CrossfadeDurationKey] = 9f
             p[iad1tya.echo.music.constants.CrossfadeCurveKey] = 1
             p[iad1tya.echo.music.constants.SkipSilenceKey] = true
             p[iad1tya.echo.music.constants.SkipSilenceInstantKey] = true
@@ -408,12 +408,21 @@ class App : Application(), SingletonImageLoader.Factory {
                     p[iad1tya.echo.music.constants.CrossfadeCurveKey] = 1
                     p[iad1tya.echo.music.constants.PlaybackDefaultsV4AppliedKey] = true
                 }
-                // V5 — user request: 13 s "transición suave" (EQUAL-POWER curve). Re-apply ONCE for everyone.
+                // V5 — smooth transition ("transición suave", EQUAL-POWER curve) ON. Re-apply ONCE for everyone.
                 if (settings[iad1tya.echo.music.constants.PlaybackDefaultsV5AppliedKey] != true) {
                     p[iad1tya.echo.music.constants.CrossfadeEnabledKey] = true
-                    p[iad1tya.echo.music.constants.CrossfadeDurationKey] = 13f
+                    p[iad1tya.echo.music.constants.CrossfadeDurationKey] = 9f
                     p[iad1tya.echo.music.constants.CrossfadeCurveKey] = 1
                     p[iad1tya.echo.music.constants.PlaybackDefaultsV5AppliedKey] = true
+                }
+                // V6 — best crossfade default is 9 s (equal-power). One-time, FRESH key so it re-applies even
+                // for existing users whose V5 / AudioDefaultsV2 flags already landed the old 13 s value. Only
+                // move users still on that previous 13 s DEFAULT; anyone who chose their own duration keeps it.
+                if (settings[iad1tya.echo.music.constants.CrossfadeDefault9AppliedKey] != true) {
+                    if (settings[iad1tya.echo.music.constants.CrossfadeDurationKey] == 13f) {
+                        p[iad1tya.echo.music.constants.CrossfadeDurationKey] = 9f
+                    }
+                    p[iad1tya.echo.music.constants.CrossfadeDefault9AppliedKey] = true
                 }
             }
         }
@@ -421,7 +430,7 @@ class App : Application(), SingletonImageLoader.Factory {
 
     /**
      * One-time (V2): force the requested AUDIO DEFAULTS for EVERYONE on this update — EQ ON + "Audiophile"
-     * preset + preamp 0.0 dB, crossfade 13 s equal-power ("transición suave"), and Safe Volume OFF. Gated by
+     * preset + preamp 0.0 dB, crossfade 9 s equal-power ("transición suave"), and Safe Volume OFF. Gated by
      * a FRESH key ([AudioDefaultsV2AppliedKey]) so it re-applies even for users whose per-feature flags were
      * already set by the brief 0.6.75/0.6.76 builds (a single EqAudiophileDefault boolean could only ever
      * apply ONCE per install, so bumping the version alone did NOT re-apply it — this new-key block fixes that).
@@ -431,11 +440,11 @@ class App : Application(), SingletonImageLoader.Factory {
      */
     private suspend fun migrateAudioDefaultsV2(settings: androidx.datastore.preferences.core.Preferences) {
         if (settings[iad1tya.echo.music.constants.AudioDefaultsV2AppliedKey] == true) return
-        // Playback prefs (best-effort): crossfade 13 s equal-power ON, Safe Volume OFF.
+        // Playback prefs (best-effort): crossfade 9 s equal-power ON, Safe Volume OFF.
         runCatching {
             dataStore.edit { p ->
                 p[iad1tya.echo.music.constants.CrossfadeEnabledKey] = true
-                p[iad1tya.echo.music.constants.CrossfadeDurationKey] = 13f
+                p[iad1tya.echo.music.constants.CrossfadeDurationKey] = 9f
                 p[iad1tya.echo.music.constants.CrossfadeCurveKey] = 1
                 p[iad1tya.echo.music.constants.SafeVolumeEnabledKey] = false
             }

@@ -80,9 +80,12 @@ val PlaybackDefaultsV3AppliedKey = booleanPreferencesKey("playback_defaults_v3_a
 val PlaybackDefaultsV4AppliedKey = booleanPreferencesKey("playback_defaults_v4_applied")
 // v5: crossfade duration 13s, equal-power ("transición suave") curve. Re-applied once on this update.
 val PlaybackDefaultsV5AppliedKey = booleanPreferencesKey("playback_defaults_v5_applied")
+// v6 (FRESH key): best crossfade default is 9s (equal-power). Re-applies once even for users whose
+// V5/AudioDefaultsV2 flags already landed the old 13s default; only moves users still on that 13s default.
+val CrossfadeDefault9AppliedKey = booleanPreferencesKey("crossfade_default_9_applied")
 // One-time: seed EQ ON + Audiophile preset + preamp 0.0 dB for everyone on this update.
 val EqAudiophileDefaultAppliedKey = booleanPreferencesKey("eq_audiophile_default_applied")
-// One-time (V2, FRESH key): re-apply ALL audio defaults — EQ Audiophile + preamp 0.0, crossfade 13s
+// One-time (V2, FRESH key): re-apply ALL audio defaults — EQ Audiophile + preamp 0.0, crossfade 9s
 // equal-power, Safe Volume OFF — for EVERYONE, including users whose per-feature flags were already set by
 // the brief 0.6.75/0.6.76 builds (so the settings actually land on this update).
 val AudioDefaultsV2AppliedKey = booleanPreferencesKey("audio_defaults_v2_applied")
