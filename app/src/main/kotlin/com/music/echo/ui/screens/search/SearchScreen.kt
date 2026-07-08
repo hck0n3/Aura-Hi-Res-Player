@@ -141,6 +141,10 @@ fun SearchScreen(
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
 
     var searchSource by rememberEnumPreference(SearchSourceKey, SearchSource.ONLINE)
+    // Manual "Modo sin conexión": when ON, force the search entry to the local DB (downloaded/library)
+    // and never hit the network. effectiveSource is what the UI actually renders/queries.
+    val offlineMode by rememberPreference(iad1tya.echo.music.constants.OfflineModeKey, false)
+    val effectiveSource = if (offlineMode) SearchSource.LOCAL else searchSource
     var query by rememberSaveable(stateSaver = TextFieldValue.Saver) {
         mutableStateOf(TextFieldValue())
     }
@@ -196,7 +200,11 @@ fun SearchScreen(
 
                     null -> {
                         println("[LINK_PARSE_DEBUG] No URL detected in search action")
-                        navController.navigate("search/${URLEncoder.encode(searchQuery, "UTF-8")}")
+                        // Offline: don't open the online results page. The in-bar LocalSearchScreen
+                        // already shows live DB results for the query, so just keep the bar open.
+                        if (!offlineMode) {
+                            navController.navigate("search/${URLEncoder.encode(searchQuery, "UTF-8")}")
+                        }
                     }
                 }
 
@@ -234,7 +242,9 @@ fun SearchScreen(
 
                     null -> {
                         println("[LINK_PARSE_DEBUG] No URL detected in suggestion action")
-                        navController.navigate("search/${URLEncoder.encode(searchQuery, "UTF-8")}")
+                        if (!offlineMode) {
+                            navController.navigate("search/${URLEncoder.encode(searchQuery, "UTF-8")}")
+                        }
                     }
                 }
 
@@ -356,16 +366,17 @@ fun SearchScreen(
                 SearchBar(
                     query = query.text,
                     onQueryChange = { query = TextFieldValue(it) },
-                    onSearch = { 
+                    onSearch = {
                         onSearch(it)
-                        searchActive = false
+                        // Offline: keep the bar open so the in-bar local (DB) results stay visible.
+                        if (!offlineMode) searchActive = false
                     },
                     active = searchActive,
                     onActiveChange = { searchActive = it },
                     placeholder = {
                         Text(
                             text = stringResource(
-                                when (searchSource) {
+                                when (effectiveSource) {
                                     SearchSource.LOCAL -> R.string.search_library
                                     SearchSource.ONLINE -> R.string.search_yt_music
                                 }
@@ -433,7 +444,7 @@ fun SearchScreen(
                             ) {
                                 Icon(
                                     painter = painterResource(
-                                        when (searchSource) {
+                                        when (effectiveSource) {
                                             SearchSource.LOCAL -> R.drawable.library_music
                                             SearchSource.ONLINE -> R.drawable.globe_search
                                         }
@@ -453,7 +464,7 @@ fun SearchScreen(
                         .padding(top = searchBarTopPadding)
                 ) {
                     if (showSearchContent) {
-                        when (searchSource) {
+                        when (effectiveSource) {
                             SearchSource.LOCAL -> LocalSearchScreen(
                                 query = query.text,
                                 navController = navController,

@@ -25,6 +25,11 @@ val HomeTasteOnlyKey = booleanPreferencesKey("homeTasteOnly")
 // Richer/editorial home layout (bigger artwork cards in the taste rows). On by default; the user
 // can turn it off from Appearance settings to return to the compact card look.
 val HomeRichLayoutKey = booleanPreferencesKey("homeRichLayout")
+// Manual "Modo sin conexión": persistent user preference. When ON, the app shows ONLY downloaded
+// content (home = downloaded songs, search = local DB) and never hits the network for feeds. Offered
+// via a "Continuar offline" CTA on the home when there's genuinely no connectivity + no cached content,
+// and reversible any time from Settings → Contenido. Default OFF (normal online experience).
+val OfflineModeKey = booleanPreferencesKey("offline_mode")
 // Optional genres the user picked during onboarding (CSV), a soft taste signal.
 val OnboardingGenresKey = stringPreferencesKey("onboardingGenres")
 // "No me gusta": disliked song/artist/album/playlist ids (JSON {songs:[],artists:[],albums:[],playlists:[]}).

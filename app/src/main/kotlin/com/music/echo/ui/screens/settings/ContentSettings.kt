@@ -172,6 +172,10 @@ fun ContentSettings(
         iad1tya.echo.music.constants.KeepGenreLaneKey,
         defaultValue = true
     )
+    val (offlineMode, onOfflineModeChange) = rememberPreference(
+        iad1tya.echo.music.constants.OfflineModeKey,
+        defaultValue = false
+    )
     val (ipVersion, onIpVersionChange) = rememberEnumPreference(
         IpVersionKey,
         defaultValue = IpVersion.AUTO
@@ -1110,6 +1114,27 @@ fun ContentSettings(
         Material3SettingsGroup(
             title = stringResource(R.string.misc),
             items = listOf(
+                Material3SettingsItem(
+                    icon = painterResource(R.drawable.offline),
+                    title = { Text("Modo sin conexión") },
+                    description = { Text("Muestra solo el contenido descargado. Actívalo cuando no tengas internet; desactívalo para volver a modo online.") },
+                    trailingContent = {
+                        Switch(
+                            checked = offlineMode,
+                            onCheckedChange = onOfflineModeChange,
+                            thumbContent = {
+                                Icon(
+                                    painter = painterResource(
+                                        id = if (offlineMode) R.drawable.check else R.drawable.close
+                                    ),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(SwitchDefaults.IconSize)
+                                )
+                            }
+                        )
+                    },
+                    onClick = { onOfflineModeChange(!offlineMode) }
+                ),
                 Material3SettingsItem(
                     icon = painterResource(R.drawable.home_outlined),
                     title = { Text("Solo recomendaciones por mis gustos") },

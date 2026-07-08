@@ -161,6 +161,7 @@ import iad1tya.echo.music.ui.menu.YouTubePlaylistMenu
 import iad1tya.echo.music.ui.menu.YouTubeSongMenu
 import iad1tya.echo.music.ui.utils.SnapLayoutInfoProvider
 import iad1tya.echo.music.ui.utils.resize
+import iad1tya.echo.music.utils.isInternetAvailable
 import iad1tya.echo.music.utils.listItemShape
 import iad1tya.echo.music.utils.rememberEnumPreference
 import iad1tya.echo.music.utils.rememberPreference
@@ -567,6 +568,7 @@ fun HomeScreen(
     val database = LocalDatabase.current
     val playerConnection = LocalPlayerConnection.current ?: return
     val haptic = LocalHapticFeedback.current
+    val context = LocalContext.current
 
     val isPlaying by playerConnection.isEffectivelyPlaying.collectAsState()
     val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
@@ -595,6 +597,9 @@ fun HomeScreen(
     // experimental multi-browse carousel with big images) + the never-ending bottom shimmer are what freeze the
     // UI. When perf mode is on we drop those; the light content rows stay.
     val perfOn by rememberPreference(iad1tya.echo.music.constants.HighPerformanceModeKey, false)
+    // Manual "Modo sin conexión": when ON the home shows ONLY downloaded songs (no network feed).
+    // Reversible from Settings → Contenido. Read as a var so the "Continuar offline" CTA can flip it on.
+    var offlineMode by rememberPreference(iad1tya.echo.music.constants.OfflineModeKey, false)
     val isRefreshing by viewModel.isRefreshing.collectAsState()
     val isRandomizing by viewModel.isRandomizing.collectAsState()
     val pullRefreshState = rememberPullToRefreshState()
@@ -961,7 +966,11 @@ fun HomeScreen(
         forgottenFavoritesLazyGridState.scrollToItem(0)
     }
 
-    PullToRefreshBox(
+    if (offlineMode) {
+        // Offline mode ON: swap the whole network home for the downloaded-only list. The online home
+        // (homeSections, carousels, etc.) above is fully preserved and returns when offline mode is off.
+        DownloadedOnlyView(navController = navController)
+    } else PullToRefreshBox(
         state = pullRefreshState,
         isRefreshing = isRefreshing,
         onRefresh = viewModel::refresh,
@@ -2167,6 +2176,39 @@ fun HomeScreen(
 
                 item(key = "bottom_spacer") {
                     Spacer(modifier = Modifier.height(30.dp))
+                }
+            }
+
+            // No connectivity + no cached content: offer to continue offline (downloads only). Only shown
+            // when NOT already in offline mode, the network home genuinely failed to load, and there's
+            // truly no internet. Reconnecting auto-reloads (NetworkReload) so this disappears on its own.
+            if (!offlineMode && !isLoading && homePage == null && quickPicks.isNullOrEmpty() &&
+                !isInternetAvailable(context)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(32.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = "Parece que no tienes conexión a internet.",
+                            style = MaterialTheme.typography.titleMedium,
+                            textAlign = TextAlign.Center,
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Puedes seguir escuchando tu música descargada sin conexión.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Button(onClick = { offlineMode = true }) {
+                            Text("Continuar sin conexión")
+                        }
+                    }
                 }
             }
 
