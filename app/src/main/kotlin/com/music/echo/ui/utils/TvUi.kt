@@ -2,6 +2,7 @@ package iad1tya.echo.music.ui.utils
 
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -16,46 +17,61 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.node.DrawModifierNode
 import androidx.compose.ui.node.ModifierNodeElement
 import androidx.compose.ui.node.invalidateDraw
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.window.core.layout.WindowSizeClass
 import iad1tya.echo.music.utils.DeviceForm
 
 /**
  * True on a D-pad / remote context where the TV affordances (focus ring, initial focus, TV layouts) should
- * show. That is: a real Android TV / car head unit, OR the user forced the split, OR any genuinely wide screen
- * (>=600dp). The wide/forced fallbacks are CRUCIAL: cheap Android-TV BOXES and Chinese car head units run
- * PLAIN Android and do NOT report as TV (no FEATURE_LEANBACK / UI_MODE_TYPE_TELEVISION), so form-factor
- * detection alone left every TV feature dark on them. Harmless on touch tablets — touch raises no focus events,
- * so the ring never actually draws there.
+ * show. That is: a real Android TV / car head unit, OR the user forced the split, OR a genuinely wide CURRENT
+ * window (>= 840dp, the "expanded" width breakpoint — see [rememberIsExpandedWidth]). The wide/forced
+ * fallbacks are CRUCIAL: cheap Android-TV BOXES and Chinese car head units run PLAIN Android and do NOT report
+ * as TV (no FEATURE_LEANBACK / UI_MODE_TYPE_TELEVISION), so form-factor detection alone left every TV feature
+ * dark on them. Harmless on touch tablets — touch raises no focus events, so the ring never actually draws
+ * there.
  */
 @Composable
 fun rememberIsTvOrCar(): Boolean {
     val context = LocalContext.current
-    val configuration = LocalConfiguration.current
     val deviceTvCar = remember { DeviceForm.isTvOrCar(context) }
     val forceSplit by iad1tya.echo.music.utils.rememberPreference(
         iad1tya.echo.music.constants.ForceSplitViewKey, false,
     )
-    return deviceTvCar || forceSplit || configuration.smallestScreenWidthDp >= 600
+    return deviceTvCar || forceSplit || rememberIsExpandedWidth()
 }
 
 /**
  * True on a BIG screen where a wide "Spotify-style" layout fits: TV / car head unit / tablet / car box /
- * unfolded foldable / any large-landscape display. REACTIVE — reads LocalConfiguration.smallestScreenWidthDp
- * each composition, so folding/unfolding a foldable flips this live without a restart. Phones (and folded
- * foldables, sw < 600dp) stay false in every orientation -> they keep the normal portrait UI.
+ * unfolded foldable / any large-landscape display. REACTIVE and based on the REAL CURRENT WINDOW width
+ * ([rememberIsExpandedWidth] -> [currentWindowAdaptiveInfo]), NOT the physical smallestScreenWidthDp — so
+ * folding/unfolding a foldable, entering split-screen / free-form multiwindow, or rotating flips this live
+ * without a restart, and a phone-width window on a big display (e.g. a narrow multiwindow pane) correctly
+ * stays single pane. Requires the "expanded" >= 840dp width (real room for a rail + content + panel); BELOW
+ * that -> single pane, even on a device whose old smallestScreenWidthDp >= 600 used to force the split.
  *
  * Distinct from [rememberIsTvOrCar], which gates the D-pad focus RING (only remote-driven TV/car need it).
  */
 @Composable
 fun rememberIsWideScreen(): Boolean {
-    val configuration = LocalConfiguration.current
     val isTvOrCar = rememberIsTvOrCar()
     val forceSplit by iad1tya.echo.music.utils.rememberPreference(
         iad1tya.echo.music.constants.ForceSplitViewKey, false,
     )
-    return isTvOrCar || forceSplit || configuration.smallestScreenWidthDp >= 600
+    return isTvOrCar || forceSplit || rememberIsExpandedWidth()
+}
+
+/**
+ * The CURRENT window is at least Material's "expanded" width breakpoint (840dp). Uses
+ * [currentWindowAdaptiveInfo] so it reflects the real, orientation-aware, multiwindow-aware WINDOW width —
+ * NOT the physical screen (smallestScreenWidthDp) — and recomposes when that width changes (fold/unfold,
+ * split-screen resize, rotation). This is the responsive gate that keeps foldables / multiwindow from being
+ * forced into the split by a coarse physical-size check.
+ */
+@Composable
+private fun rememberIsExpandedWidth(): Boolean {
+    val windowSizeClass = currentWindowAdaptiveInfo().windowSizeClass
+    return windowSizeClass.isWidthAtLeastBreakpoint(WindowSizeClass.WIDTH_DP_EXPANDED_LOWER_BOUND)
 }
 
 /**

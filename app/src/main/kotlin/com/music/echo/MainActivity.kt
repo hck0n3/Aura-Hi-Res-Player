@@ -56,6 +56,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
@@ -179,6 +180,7 @@ import iad1tya.echo.music.constants.PauseSearchHistoryKey
 import iad1tya.echo.music.constants.PureBlackKey
 import iad1tya.echo.music.constants.SYSTEM_DEFAULT
 import iad1tya.echo.music.constants.SelectedThemeColorKey
+import iad1tya.echo.music.constants.ShowNowPlayingPanelKey
 import iad1tya.echo.music.constants.StopMusicOnTaskClearKey
 import iad1tya.echo.music.constants.UseNewMiniPlayerDesignKey
 import iad1tya.echo.music.db.MusicDatabase
@@ -727,10 +729,24 @@ class MainActivity : ComponentActivity() {
                 // horizontal room; forcing it in portrait would crush the content).
                 val forceSplitView by rememberPreference(ForceSplitViewKey, false)
                 val sidePanelOnLeft by rememberPreference(SidePanelOnLeftKey, false)
-                // Show the persistent split panel on any WIDE context (real TV/car, forced split, or a >=600dp
-                // screen) in landscape — NOT a strict window-width >= 800dp, which left the panel dark on Android
-                // TV BOXES / car screens that report a narrower or letterboxed window. Matches the ring gate.
+                val showNowPlayingPanel by rememberPreference(ShowNowPlayingPanelKey, true)
+                // Flexible split-panel width: ~30% of the REAL current window width, clamped so it never
+                // squeezes the content pane (the old FIXED 340dp left a ~600dp screen with only ~180dp of
+                // content) nor grows unwieldy on a huge display. maxWidth is the real window width here
+                // (BoxWithConstraints), so this flexes live with folds / multiwindow resizes.
+                val sidePanelWidth = (maxWidth * 0.30f).coerceIn(300.dp, 360.dp)
+                // MIN-CONTENT guard: only keep the split panel when, after the rail (~80dp) and the panel, the
+                // browse/content pane still has real room (>= 560dp). Otherwise fall back to single pane (no
+                // panel) so a merely-wide-ish window (e.g. 840-1000dp) is NOT split into two cramped columns.
+                val contentHasRoom = (maxWidth - 80.dp - sidePanelWidth) >= 560.dp
+                // Show the persistent split panel on any WIDE context (real TV/car, forced split, or a >=840dp
+                // expanded window) in landscape — but only when the user hasn't hidden the panel AND the content
+                // pane keeps enough room. The width guard is what fixes the small-screen crush (bug 7b); folding
+                // it into showSideNowPlaying (not just the render) keeps the bottom mini-player visible as the
+                // now-playing surface whenever no panel shows. Matches the ring gate otherwise.
                 val showSideNowPlaying = showRail &&
+                    showNowPlayingPanel &&
+                    contentHasRoom &&
                     (forceSplitView || iad1tya.echo.music.ui.utils.rememberIsWideScreen())
 
                 val navPadding = if (shouldShowNavigationBar && !showRail) {
@@ -1281,7 +1297,8 @@ class MainActivity : ComponentActivity() {
                                     onExpand = { playerBottomSheetState.expandSoft() },
                                     modifier = Modifier
                                         .fillMaxHeight()
-                                        .width(340.dp),
+                                        .widthIn(min = 300.dp, max = 360.dp)
+                                        .width(sidePanelWidth),
                                 )
                             }
                             Box(Modifier.weight(1f)) {
@@ -1373,7 +1390,8 @@ class MainActivity : ComponentActivity() {
                                     onExpand = { playerBottomSheetState.expandSoft() },
                                     modifier = Modifier
                                         .fillMaxHeight()
-                                        .width(340.dp),
+                                        .widthIn(min = 300.dp, max = 360.dp)
+                                        .width(sidePanelWidth),
                                 )
                             }
                         }

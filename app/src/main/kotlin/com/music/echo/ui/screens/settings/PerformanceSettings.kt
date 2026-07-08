@@ -29,6 +29,7 @@ import iad1tya.echo.music.LocalPlayerAwareWindowInsets
 import iad1tya.echo.music.R
 import iad1tya.echo.music.constants.ForceSplitViewKey
 import iad1tya.echo.music.constants.HighPerformanceModeKey
+import iad1tya.echo.music.constants.ShowNowPlayingPanelKey
 import iad1tya.echo.music.constants.SidePanelOnLeftKey
 import iad1tya.echo.music.ui.component.IconButton
 import iad1tya.echo.music.ui.component.Material3SettingsGroup
@@ -49,6 +50,7 @@ fun PerformanceSettings(
     val (highPerfMode, onHighPerfModeChange) = rememberPreference(HighPerformanceModeKey, defaultValue = false)
     val (forceSplit, onForceSplitChange) = rememberPreference(ForceSplitViewKey, defaultValue = false)
     val (sidePanelLeft, onSidePanelLeftChange) = rememberPreference(SidePanelOnLeftKey, defaultValue = false)
+    val (showNowPlayingPanel, onShowNowPlayingPanelChange) = rememberPreference(ShowNowPlayingPanelKey, defaultValue = true)
 
     // Read-only diagnostic: why the mode auto-enabled (LOW hardware / TV / car).
     val detected = remember {
@@ -187,6 +189,33 @@ fun PerformanceSettings(
                         )
                     },
                     onClick = { onSidePanelLeftChange(!sidePanelLeft) }
+                ),
+                Material3SettingsItem(
+                    icon = painterResource(R.drawable.speed),
+                    title = { Text("Mostrar el panel del reproductor") },
+                    description = {
+                        Text(
+                            "En la vista dividida, muestra el panel lateral con la carátula y los controles del " +
+                                "tema actual. Desactívalo para dejar la lista/biblioteca a todo el ancho (solo la " +
+                                "barra lateral y el contenido). Solo aplica en pantallas anchas."
+                        )
+                    },
+                    trailingContent = {
+                        Switch(
+                            checked = showNowPlayingPanel,
+                            onCheckedChange = onShowNowPlayingPanelChange,
+                            thumbContent = {
+                                Icon(
+                                    painter = painterResource(
+                                        id = if (showNowPlayingPanel) R.drawable.check else R.drawable.close
+                                    ),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(SwitchDefaults.IconSize)
+                                )
+                            }
+                        )
+                    },
+                    onClick = { onShowNowPlayingPanelChange(!showNowPlayingPanel) }
                 )
             )
         )

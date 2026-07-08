@@ -98,6 +98,9 @@ val ForceSplitViewKey = booleanPreferencesKey("force_split_view")
 // Which side the persistent now-playing panel sits on in the wide split (some Android-auto users prefer it
 // on the left). false = right (default), true = left.
 val SidePanelOnLeftKey = booleanPreferencesKey("side_panel_on_left")
+// Show the persistent now-playing side panel in the wide "Spotify split". Default ON; users who prefer the
+// browse area at full width (rail + content only) can hide it. Gated into MainActivity's showSideNowPlaying.
+val ShowNowPlayingPanelKey = booleanPreferencesKey("show_now_playing_panel")
 // Set before the YouTube Music login (which cold-restarts the app) so that, after the restart, we
 // return the user to the YouTube Music sync selection screen — like Spotify's import flow.
 val OpenYtmSyncAfterLoginKey = booleanPreferencesKey("open_ytm_sync_after_login")
