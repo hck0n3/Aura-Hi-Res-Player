@@ -315,7 +315,7 @@ fun PlayerMenu(
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             },
-                            text = stringResource(R.string.start_an_radio),
+                            text = stringResource(R.string.start_radio),
                             onClick = {
                                 Toast.makeText(context, startingRadioText, Toast.LENGTH_SHORT).show()
                                 playerConnection.startRadioSeamlessly()
@@ -332,7 +332,7 @@ fun PlayerMenu(
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         },
-                        text = stringResource(R.string.add_to_an_playlist),
+                        text = stringResource(R.string.add_to_playlist),
                         onClick = { showChoosePlaylistDialog = true }
                     ),
                     NewAction(
@@ -433,7 +433,7 @@ fun PlayerMenu(
                     if (mediaMetadata.id.startsWith("http")) {
                         add(
                             Material3MenuItemData(
-                                title = { Text(text = "Ir al podcast") },
+                                title = { Text(text = stringResource(R.string.go_to_podcast)) },
                                 description = {
                                     Text(
                                         text = mediaMetadata.artists.joinToString { it.name },
@@ -645,7 +645,7 @@ fun PlayerMenu(
             Material3MenuGroup(
                 items = listOf(
                     Material3MenuItemData(
-                        title = { Text(text = "Set as Ringtone") },
+                        title = { Text(text = stringResource(R.string.set_as_ringtone)) },
                         icon = {
                             Icon(
                                 painter = painterResource(R.drawable.notification),

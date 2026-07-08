@@ -389,7 +389,7 @@ fun SongMenu(
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         },
-                        text = stringResource(R.string.add_to_an_playlist),
+                        text = stringResource(R.string.add_to_playlist),
                         onClick = { showChoosePlaylistDialog = true }
                     ),
                     NewAction(
@@ -502,7 +502,7 @@ fun SongMenu(
                         Material3MenuItemData(
                             title = { 
                                 Text(
-                                    text = if (isPinned) "Unpin from Speed dial" else "Pin to Speed dial" 
+                                    text = if (isPinned) stringResource(R.string.unpin_from_speed_dial) else stringResource(R.string.pin_to_speed_dial) 
                                 ) 
                             },
                             icon = {
@@ -790,7 +790,7 @@ fun SongMenu(
             Material3MenuGroup(
                 items = listOf(
                     Material3MenuItemData(
-                        title = { Text(text = "Set as Ringtone") },
+                        title = { Text(text = stringResource(R.string.set_as_ringtone)) },
                         icon = {
                             Icon(
                                 painter = painterResource(R.drawable.notification),

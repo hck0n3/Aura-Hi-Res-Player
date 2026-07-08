@@ -74,6 +74,12 @@
     <string name="remove_download">Eliminar descarga</string>
     <string name="import_playlist">Importar lista de reproducción</string>
     <string name="add_to_playlist">Añadir a lista de reproducción</string>
+    <string name="set_as_ringtone">Establecer como tono de llamada</string>
+    <string name="do_not_recommend">No recomendar</string>
+    <string name="do_not_recommend_playlist_desc">Ocultar esta lista de tus recomendaciones</string>
+    <string name="do_not_recommend_artist_desc">Ocultar este artista de tus recomendaciones</string>
+    <string name="do_not_recommend_album_desc">Ocultar este álbum de tus recomendaciones</string>
+    <string name="go_to_podcast">Ir al podcast</string>
     <string name="view_artist">Ver artista</string>
     <string name="view_album">Ver álbum</string>
     <string name="refetch">Cargar de nuevo</string>

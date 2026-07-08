@@ -252,7 +252,7 @@ fun QueueMenu(
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         },
-                        text = stringResource(R.string.start_an_radio),
+                        text = stringResource(R.string.start_radio),
                         onClick = {
                             onDismiss()
                             playerConnection.playQueue(
@@ -269,7 +269,7 @@ fun QueueMenu(
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         },
-                        text = stringResource(R.string.add_to_an_playlist),
+                        text = stringResource(R.string.add_to_playlist),
                         onClick = { showChoosePlaylistDialog = true }
                     ),
                     NewAction(

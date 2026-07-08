@@ -407,8 +407,8 @@ fun YouTubePlaylistMenu(
             Material3MenuGroup(
                 items = listOfNotNull(
                     Material3MenuItemData(
-                        title = { Text(text = "No recomendar") },
-                        description = { Text(text = "Ocultar esta lista de tus recomendaciones") },
+                        title = { Text(text = stringResource(R.string.do_not_recommend)) },
+                        description = { Text(text = stringResource(R.string.do_not_recommend_playlist_desc)) },
                         icon = {
                             Icon(
                                 painter = painterResource(R.drawable.thumb_down),
@@ -501,7 +501,7 @@ fun YouTubePlaylistMenu(
                     Material3MenuItemData(
                         title = { 
                             Text(
-                                text = if (isPinned) "Unpin from Speed dial" else "Pin to Speed dial" 
+                                text = if (isPinned) stringResource(R.string.unpin_from_speed_dial) else stringResource(R.string.pin_to_speed_dial) 
                             ) 
                         },
                         icon = {

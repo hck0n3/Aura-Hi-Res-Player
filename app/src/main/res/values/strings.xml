@@ -118,6 +118,12 @@
     <string name="add_to_playlist">Add to playlist</string>
     <string name="start_an_radio">Radio</string>
     <string name="add_to_an_playlist">Add</string>
+    <string name="set_as_ringtone">Set as Ringtone</string>
+    <string name="do_not_recommend">Do not recommend</string>
+    <string name="do_not_recommend_playlist_desc">Hide this playlist from your recommendations</string>
+    <string name="do_not_recommend_artist_desc">Hide this artist from your recommendations</string>
+    <string name="do_not_recommend_album_desc">Hide this album from your recommendations</string>
+    <string name="go_to_podcast">Go to podcast</string>
     <string name="view_artist">View artist</string>
     <string name="view_album">View album</string>
     <string name="refetch">Refetch</string>

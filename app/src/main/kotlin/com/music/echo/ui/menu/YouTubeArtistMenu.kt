@@ -95,7 +95,7 @@ fun YouTubeArtistMenu(
                                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                     },
-                                    text = stringResource(R.string.start_an_radio),
+                                    text = stringResource(R.string.start_radio),
                                     onClick = {
                                         playerConnection.playQueue(YouTubeQueue(watchEndpoint))
                                         onDismiss()
@@ -115,7 +115,7 @@ fun YouTubeArtistMenu(
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             },
-                            text = if (isPinned) "Unpin" else "Pin",
+                            text = if (isPinned) stringResource(R.string.unpin_from_speed_dial) else stringResource(R.string.pin_to_speed_dial),
                             onClick = {
                                 coroutineScope.launch(Dispatchers.IO) {
                                     if (isPinned) {
@@ -195,8 +195,8 @@ fun YouTubeArtistMenu(
                         }
                     ),
                     Material3MenuItemData(
-                        title = { Text(text = "No recomendar") },
-                        description = { Text(text = "Ocultar este artista de tus recomendaciones") },
+                        title = { Text(text = stringResource(R.string.do_not_recommend)) },
+                        description = { Text(text = stringResource(R.string.do_not_recommend_artist_desc)) },
                         icon = {
                             Icon(
                                 painter = painterResource(R.drawable.thumb_down),

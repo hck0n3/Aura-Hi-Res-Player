@@ -306,7 +306,7 @@ fun YouTubeSongMenu(
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         },
-                        text = stringResource(R.string.add_to_an_playlist),
+                        text = stringResource(R.string.add_to_playlist),
                         onClick = {
                             showChoosePlaylistDialog = true
                         }
@@ -639,7 +639,7 @@ fun YouTubeSongMenu(
             Material3MenuGroup(
                 items = listOf(
                     Material3MenuItemData(
-                        title = { Text(text = "Set as Ringtone") },
+                        title = { Text(text = stringResource(R.string.set_as_ringtone)) },
                         icon = {
                             Icon(
                                 painter = painterResource(R.drawable.notification),

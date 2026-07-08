@@ -67,6 +67,7 @@ import iad1tya.echo.music.db.entities.SpeedDialItem
 import iad1tya.echo.music.db.entities.Song
 import iad1tya.echo.music.extensions.toMediaItem
 import iad1tya.echo.music.playback.ExoDownloadService
+import iad1tya.echo.music.playback.queues.ListQueue
 import iad1tya.echo.music.playback.queues.YouTubeAlbumRadio
 import iad1tya.echo.music.ui.component.ListDialog
 import iad1tya.echo.music.ui.component.Material3MenuGroup
@@ -319,7 +320,16 @@ fun YouTubeAlbumMenu(
                                 onDismiss()
                                 album?.songs?.let { songs ->
                                     if (songs.isNotEmpty()) {
-                                        playerConnection.playQueue(YouTubeAlbumRadio(albumItem.playlistId.ifBlank { album?.album?.playlistId.orEmpty() }))
+                                        val albumPlaylistId = albumItem.playlistId.ifBlank { album?.album?.playlistId.orEmpty() }
+                                        if (albumPlaylistId.isNotBlank()) {
+                                            playerConnection.service.getAutomix(albumPlaylistId)
+                                        }
+                                        playerConnection.playQueue(
+                                            ListQueue(
+                                                title = album?.album?.title,
+                                                items = songs.shuffled().map(Song::toMediaItem)
+                                            )
+                                        )
                                     }
                                 }
                             }
@@ -397,8 +407,8 @@ fun YouTubeAlbumMenu(
                         )
                     } else null,
                     Material3MenuItemData(
-                        title = { Text(text = "No recomendar") },
-                        description = { Text(text = "Ocultar este álbum de tus recomendaciones") },
+                        title = { Text(text = stringResource(R.string.do_not_recommend)) },
+                        description = { Text(text = stringResource(R.string.do_not_recommend_album_desc)) },
                         icon = {
                             Icon(
                                 painter = painterResource(R.drawable.thumb_down),
@@ -428,7 +438,7 @@ fun YouTubeAlbumMenu(
                     Material3MenuItemData(
                         title = { 
                             Text(
-                                text = if (isPinned) "Unpin from Speed dial" else "Pin to Speed dial" 
+                                text = if (isPinned) stringResource(R.string.unpin_from_speed_dial) else stringResource(R.string.pin_to_speed_dial) 
                             ) 
                         },
                         icon = {

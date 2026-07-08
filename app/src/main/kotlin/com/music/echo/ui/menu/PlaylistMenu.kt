@@ -566,7 +566,7 @@ fun PlaylistMenu(
                         Material3MenuItemData(
                             title = { 
                                 Text(
-                                    text = if (isPinned) "Unpin from Speed dial" else "Pin to Speed dial" 
+                                    text = if (isPinned) stringResource(R.string.unpin_from_speed_dial) else stringResource(R.string.pin_to_speed_dial) 
                                 ) 
                             },
                             icon = {
@@ -674,29 +674,6 @@ fun PlaylistMenu(
                                 },
                                 onClick = {
                                     showDeletePlaylistDialog = true
-                                }
-                            )
-                        )
-                    }
-                    playlist.playlist.shareLink?.let { shareLink ->
-                        add(
-                            Material3MenuItemData(
-                                title = { Text(text = stringResource(R.string.share)) },
-                                description = { Text(text = stringResource(R.string.share_desc)) },
-                                icon = {
-                                    Icon(
-                                        painter = painterResource(R.drawable.share),
-                                        contentDescription = null,
-                                    )
-                                },
-                                onClick = {
-                                    val intent = Intent().apply {
-                                        action = Intent.ACTION_SEND
-                                        type = "text/plain"
-                                        putExtra(Intent.EXTRA_TEXT, shareLink)
-                                    }
-                                    context.startActivity(Intent.createChooser(intent, null))
-                                    onDismiss()
                                 }
                             )
                         )
