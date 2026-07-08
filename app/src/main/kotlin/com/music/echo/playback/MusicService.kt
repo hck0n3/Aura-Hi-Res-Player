@@ -315,6 +315,20 @@ class MusicService :
     lateinit var connectivityObserver: NetworkConnectivityObserver
     val waitingForNetworkConnection = MutableStateFlow(false)
     private val isNetworkConnected = MutableStateFlow(false)
+    // True only while playback is PAUSED specifically because the network retry escalator hit its dead-end
+    // (MAX_RETRY_COUNT). Gates the bounded auto-resume in triggerRetry() so we ONLY force play() for a
+    // network-caused pause. A genuine user/external pause clears it (see onPlayWhenReadyChanged), so a manual
+    // pause is never auto-resumed. Cleared on successful playback (STATE_READY) and after resuming.
+    private var pausedByNetwork = false
+    // Wall-clock time the dead-end pause was armed. triggerRetry() only auto-resumes within
+    // STALE_RESUME_WINDOW_MS, so a reconnection hours later re-buffers but never surprise-plays.
+    private var pausedByNetworkAtMs = 0L
+    // Set true by stopOnError() immediately before its player.pause(), so the resulting onPlayWhenReadyChanged
+    // can tell OUR error-pause (keep pausedByNetwork) from a real user/external pause (clear pausedByNetwork).
+    private var expectingOwnStopPause = false
+    // Single-shot, cancellable safety re-check armed at the dead-end: covers a STABLE network that never fires
+    // a new connectivity event, so we don't wait forever paused. Not a loop; cancelled in triggerRetry()/READY.
+    private var deadEndRecheckJob: Job? = null
 
     private lateinit var audioQuality: iad1tya.echo.music.constants.AudioQuality
     private lateinit var ipVersion: IpVersion
@@ -1178,13 +1192,26 @@ class MusicService :
         // High-Performance Mode trims ONLY the max-buffer + byte ceiling (less RAM on weak/TV/car devices).
         // Min-buffer, rebuffer and prioritizeTimeOverSizeThresholds are left untouched so hi-res/FLAC never
         // regresses into the "buffer full / empty time buffer" micro-stall described below.
+        // The SMALL (light) buffer profile must cover genuinely low-end HARDWARE too, not only when the
+        // High-Performance toggle is on. A low-RAM device left on the heavy 64MB/120s profile gets reaped by
+        // the Low-Memory-Killer mid-song and restarts paused. So use the small profile when the toggle is on,
+        // OR the effective device tier is ULTRA/LOW, OR the OS flags the device as low-RAM. (effectiveTier
+        // already maps a low-RAM device to LOW, and returns ULTRA when the toggle is on; the extra checks are
+        // explicit and defensive.)
         val perfMode = iad1tya.echo.music.utils.PerformanceMode.isOn(this)
-        val maxBufferMs = if (perfMode) 60_000 else 120_000
-        val targetBufferBytes = if (perfMode) 32 * 1024 * 1024 else 64 * 1024 * 1024
+        val effectiveTier = iad1tya.echo.music.utils.PerformanceMode.effectiveTier(this)
+        val isLowRamDevice =
+            (getSystemService(Context.ACTIVITY_SERVICE) as? android.app.ActivityManager)?.isLowRamDevice == true
+        val useSmallBuffer = perfMode ||
+            effectiveTier == iad1tya.echo.music.utils.DeviceTier.ULTRA ||
+            effectiveTier == iad1tya.echo.music.utils.DeviceTier.LOW ||
+            isLowRamDevice
+        val maxBufferMs = if (useSmallBuffer) 60_000 else 120_000
+        val targetBufferBytes = if (useSmallBuffer) 32 * 1024 * 1024 else 64 * 1024 * 1024
         // Music-VIDEO quality adapts to the device so switching to video never overwhelms a weak TV box / low-end
         // phone. This caps ONLY the video track the ABR selects (audio is untouched, and it's a no-op for
         // audio-only playback), so it keeps gama-baja/TV optimized without harming Hi-Res audio.
-        val maxVideoDim = when (iad1tya.echo.music.utils.PerformanceMode.effectiveTier(this)) {
+        val maxVideoDim = when (effectiveTier) {
             iad1tya.echo.music.utils.DeviceTier.ULTRA -> 1280
             iad1tya.echo.music.utils.DeviceTier.LOW -> 1280
             iad1tya.echo.music.utils.DeviceTier.MID -> 1920
@@ -1370,9 +1397,32 @@ class MusicService :
 
         
         if (retryCount >= MAX_RETRY_COUNT) {
-            Timber.tag(TAG).w("Max retry count ($MAX_RETRY_COUNT) reached, stopping playback")
+            // Dead-end: too many failed attempts. PAUSE, but do NOT abandon the state. Keep
+            // waitingForNetworkConnection = true and flag the pause as network-caused, so the connectivity
+            // collector in onCreate resumes playback when the network returns. There is no polling loop:
+            // resume happens on a connectivity event OR via the single bounded re-check armed below.
+            Timber.tag(TAG).w("Max retry count ($MAX_RETRY_COUNT) reached; pausing and waiting for the network to resume")
+            // Capture the user's intent BEFORE our own stopOnError() flips playWhenReady to false. If the user
+            // had already paused during the retry storm, playWhenReady is false here and stopOnError()'s pause()
+            // is a no-op (so the onPlayWhenReadyChanged handshake never fires) — in that case we must NOT re-arm
+            // an auto-resume, or a reconnect would wrongly resume over the user's manual pause.
+            val wasPlaying = player.playWhenReady
             stopOnError()
             retryCount = 0
+            pausedByNetwork = wasPlaying
+            pausedByNetworkAtMs = System.currentTimeMillis()
+            waitingForNetworkConnection.value = true
+            // Safety net for a STABLE network that never emits another connectivity event (so the collector
+            // never re-fires): after a short delay, try exactly ONCE if we're still network-paused and
+            // connectivity says we're online. Single-shot (no loop) and cancellable, so it can't stack or
+            // drain the battery.
+            deadEndRecheckJob?.cancel()
+            deadEndRecheckJob = scope.launch {
+                delay(DEAD_END_RECHECK_MS)
+                if (pausedByNetwork && isNetworkConnected.value) {
+                    triggerRetry()
+                }
+            }
             return
         }
 
@@ -1396,18 +1446,32 @@ class MusicService :
     private fun triggerRetry() {
         waitingForNetworkConnection.value = false
         retryJob?.cancel()
+        deadEndRecheckJob?.cancel()
 
         if (player.currentMediaItem != null) {
-            
-            
             if (retryCount > 3) {
                 Timber.tag(TAG).d("Retry count > 3, attempting to refresh stream URL")
                 val currentPosition = player.currentPosition
                 player.seekTo(player.currentMediaItemIndex, currentPosition)
             }
             player.prepare()
-            
-            
+            // If playback was PAUSED by the network dead-end (not by the user), resume now that connectivity is
+            // back. prepare() alone re-buffers but keeps playWhenReady = false (stopOnError() paused us), so we
+            // must explicitly play(). Two bounds keep this safe: (1) any genuine user/external pause clears
+            // pausedByNetwork (see onPlayWhenReadyChanged), so we never override an intentional pause; (2) we
+            // only auto-play within STALE_RESUME_WINDOW_MS, so a reconnection long after the outage re-buffers
+            // but stays paused.
+            if (pausedByNetwork) {
+                pausedByNetwork = false
+                val fresh = System.currentTimeMillis() - pausedByNetworkAtMs <= STALE_RESUME_WINDOW_MS
+                if (fresh && castConnectionHandler?.isCasting?.value != true) {
+                    // Reclaim audio focus first so we don't resume over whatever took over during the outage.
+                    requestAudioFocus()
+                    player.play()
+                }
+            }
+        } else {
+            pausedByNetwork = false
         }
     }
 
@@ -1431,6 +1495,9 @@ class MusicService :
     }
 
     private fun stopOnError() {
+        // Mark that the imminent pause is OURS, so onPlayWhenReadyChanged keeps pausedByNetwork (whereas a
+        // genuine user/external pause clears it and is therefore never auto-resumed).
+        expectingOwnStopPause = true
         player.pause()
     }
 
@@ -2646,7 +2713,9 @@ class MusicService :
             consecutivePlaybackErr = 0
             retryCount = 0
             waitingForNetworkConnection.value = false
+            pausedByNetwork = false
             retryJob?.cancel()
+            deadEndRecheckJob?.cancel()
 
             
             player.currentMediaItem?.mediaId?.let { mediaId ->
@@ -2666,6 +2735,20 @@ class MusicService :
         if (playWhenReady && castConnectionHandler?.isCasting?.value == true) {
             player.pause()
             return
+        }
+
+        // Tell OUR error-pause (stopOnError set expectingOwnStopPause right before pausing) apart from a real
+        // user/external pause. A pause we did NOT initiate clears pausedByNetwork, so it can never be
+        // auto-resumed — this is what makes "a manual pause is never auto-resumed" actually hold. Any resume
+        // invalidates a pending expectation so a later real pause can't be misattributed as ours.
+        if (!playWhenReady) {
+            if (expectingOwnStopPause) {
+                expectingOwnStopPause = false
+            } else {
+                pausedByNetwork = false
+            }
+        } else {
+            expectingOwnStopPause = false
         }
 
         if (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST) {
@@ -4539,6 +4622,11 @@ class MusicService :
         const val PERSISTENT_PLAYER_STATE_FILE = "persistent_player_state.data"
         const val MAX_CONSECUTIVE_ERR = 5
         const val MAX_RETRY_COUNT = 10
+        // Auto-resume after a network dead-end only if reconnection happens within this window, so a
+        // reconnection hours later re-buffers but never surprise-plays.
+        private const val STALE_RESUME_WINDOW_MS = 30 * 60 * 1000L
+        // One-shot delay before the dead-end safety re-check (covers a stable network that never re-emits).
+        private const val DEAD_END_RECHECK_MS = 45_000L
         // How early (ms before the fade) to build + buffer the incoming player so the crossfade has no gap.
         private const val CROSSFADE_PRELOAD_LEAD_MS = 12000L
         
