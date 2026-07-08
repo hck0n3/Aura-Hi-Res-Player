@@ -2,6 +2,8 @@ package iad1tya.echo.music.utils.cipher
 
 import android.content.Context
 import android.net.Uri
+import android.os.SystemClock
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -26,6 +28,7 @@ object CipherDeobfuscator {
         Timber.tag(TAG).d("CipherDeobfuscator initialized")
     }
 
+    private val rendererRecoveryPolicy = RendererRecoveryPolicy()
     private var cipherWebView: CipherWebView? = null
     private var currentPlayerHash: String? = null
     private val deobfuscateMutex = Mutex()
@@ -43,12 +46,24 @@ object CipherDeobfuscator {
     suspend fun deobfuscateStreamUrl(signatureCipher: String, videoId: String): String? = deobfuscateMutex.withLock {
         try {
             deobfuscateInternal(signatureCipher, videoId, isRetry = false)
+                ?.also { rendererRecoveryPolicy.onSuccess() }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: CipherRendererGoneException) {
+            onRendererGone(e, "deobfuscate")
+            null
         } catch (e: Exception) {
             Timber.tag(TAG).e(e, "Cipher deobfuscation failed, retrying with fresh JS: ${e.message}")
             try {
                 PlayerJsFetcher.invalidateCache()
                 closeWebView()
                 deobfuscateInternal(signatureCipher, videoId, isRetry = true)
+                    ?.also { rendererRecoveryPolicy.onSuccess() }
+            } catch (retryE: CancellationException) {
+                throw retryE
+            } catch (retryE: CipherRendererGoneException) {
+                onRendererGone(retryE, "deobfuscate-retry")
+                null
             } catch (retryE: Exception) {
                 Timber.tag(TAG).e(retryE, "Cipher deobfuscation retry also failed: ${retryE.message}")
                 null
@@ -113,6 +128,11 @@ object CipherDeobfuscator {
 
         return try {
             transformNInternal(url)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: CipherRendererGoneException) {
+            onRendererGone(e, "n-transform")
+            url
         } catch (e: Exception) {
             Timber.tag(TAG).e(e, "N-transform failed, returning original URL: ${e.message}")
             url
@@ -151,6 +171,7 @@ object CipherDeobfuscator {
 
         Timber.tag(TAG).d("Calling webView.transformN()...")
         val transformedN = webView.transformN(nValue)
+        rendererRecoveryPolicy.onSuccess()
 
         Timber.tag(TAG).d("=== N-TRANSFORM SUCCESS ===")
         Timber.tag(TAG).d("N-param: $nValue -> $transformedN")
@@ -165,8 +186,27 @@ object CipherDeobfuscator {
         return transformedUrl
     }
 
+    private suspend fun onRendererGone(e: CipherRendererGoneException, where: String) {
+        rendererRecoveryPolicy.onFailure(SystemClock.elapsedRealtime())
+        Timber.tag(TAG).e(e, "WebView renderer gone during $where (consecutive failures: ${rendererRecoveryPolicy.consecutiveFailures}) — dropping cipher WebView")
+        closeWebView()
+    }
+
     private suspend fun getOrCreateWebView(forceRefresh: Boolean): CipherWebView? {
         Timber.tag(TAG).d("getOrCreateWebView: forceRefresh=$forceRefresh, existing=${cipherWebView != null}")
+
+        // Never reuse a WebView whose renderer already died — its JS bridge is gone.
+        if (cipherWebView?.isDead == true) {
+            Timber.tag(TAG).w("Cached cipher WebView renderer is dead — discarding")
+            closeWebView()
+        }
+
+        // After repeated renderer deaths (memory pressure), skip the doomed multi-second rebuild
+        // for a short backoff window and let non-WebView fallbacks handle this song.
+        if (!rendererRecoveryPolicy.shouldAttempt(SystemClock.elapsedRealtime())) {
+            Timber.tag(TAG).w("Skipping cipher WebView creation: ${rendererRecoveryPolicy.consecutiveFailures} consecutive renderer deaths, in backoff window")
+            return null
+        }
 
         if (!forceRefresh && cipherWebView != null) {
             Timber.tag(TAG).d("Reusing existing CipherWebView (hash=$currentPlayerHash)")
