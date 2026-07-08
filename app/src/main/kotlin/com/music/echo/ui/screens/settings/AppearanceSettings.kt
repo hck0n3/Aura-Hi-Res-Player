@@ -58,6 +58,7 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import iad1tya.echo.music.LocalPlayerAwareWindowInsets
 import iad1tya.echo.music.R
+import iad1tya.echo.music.constants.AlbumCanvasEnabledKey
 import iad1tya.echo.music.constants.CanvasThumbnailAnimationKey
 import iad1tya.echo.music.constants.ChipSortTypeKey
 import iad1tya.echo.music.constants.CropAlbumArtKey
@@ -238,6 +239,11 @@ fun AppearanceSettings(
     )
     val (rotatingThumbnail, onRotatingThumbnailChange) = rememberPreference(
         RotatingThumbnailKey,
+        defaultValue = false
+    )
+    // Moved here from ContentSettings (IA consolidation — player-UI canvas lives in Appearance). Key unchanged.
+    val (albumCanvasEnabled, onAlbumCanvasEnabledChange) = rememberPreference(
+        AlbumCanvasEnabledKey,
         defaultValue = false
     )
     val (gridItemSize, onGridItemSizeChange) = rememberEnumPreference(
@@ -1320,6 +1326,27 @@ fun AppearanceSettings(
                         )
                     },
                     onClick = { onRotatingThumbnailChange(!rotatingThumbnail) }
+                ),
+                Material3SettingsItem(
+                    icon = painterResource(R.drawable.slow_motion_video),
+                    title = { Text(stringResource(R.string.show_album_canvas)) },
+                    description = { Text(stringResource(R.string.show_album_canvas_desc)) },
+                    trailingContent = {
+                        Switch(
+                            checked = albumCanvasEnabled,
+                            onCheckedChange = onAlbumCanvasEnabledChange,
+                            thumbContent = {
+                                Icon(
+                                    painter = painterResource(
+                                        id = if (albumCanvasEnabled) R.drawable.check else R.drawable.close
+                                    ),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(SwitchDefaults.IconSize)
+                                )
+                            }
+                        )
+                    },
+                    onClick = { onAlbumCanvasEnabledChange(!albumCanvasEnabled) }
                 ),
                 Material3SettingsItem(
                     icon = painterResource(R.drawable.chat_msg),

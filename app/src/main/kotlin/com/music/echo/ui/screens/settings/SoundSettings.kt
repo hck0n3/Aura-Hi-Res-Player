@@ -25,11 +25,10 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import iad1tya.echo.music.LocalPlayerAwareWindowInsets
 import iad1tya.echo.music.R
-import iad1tya.echo.music.constants.AudioEnhanceEnabledKey
-import iad1tya.echo.music.constants.AudioNormalizationKey
-import iad1tya.echo.music.constants.AuraSignatureToneEnabledKey
+// Dead DSP/visualizer preference-key imports removed (IA cleanup): AudioEnhanceEnabledKey,
+// AudioNormalizationKey, AuraSignatureToneEnabledKey and SpectrumVisualizerEnabledKey were imported
+// but never rendered here (their toggles/setters are not wired). Only SafeVolumeEnabledKey is used.
 import iad1tya.echo.music.constants.SafeVolumeEnabledKey
-import iad1tya.echo.music.constants.SpectrumVisualizerEnabledKey
 import iad1tya.echo.music.ui.component.Material3SettingsGroup
 import iad1tya.echo.music.ui.component.Material3SettingsItem
 import iad1tya.echo.music.utils.rememberPreference

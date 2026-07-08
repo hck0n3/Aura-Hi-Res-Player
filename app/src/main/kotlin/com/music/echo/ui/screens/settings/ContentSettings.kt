@@ -74,7 +74,6 @@ import iad1tya.echo.music.constants.EnablePaxsenixKey
 import iad1tya.echo.music.constants.HideExplicitKey
 import iad1tya.echo.music.constants.HideVideoSongsKey
 import iad1tya.echo.music.constants.HideYoutubeShortsKey
-import iad1tya.echo.music.constants.AlbumCanvasEnabledKey
 import iad1tya.echo.music.constants.LanguageCodeToName
 import iad1tya.echo.music.constants.LyricsProviderOrderKey
 import iad1tya.echo.music.constants.ProxyEnabledKey
@@ -180,8 +179,6 @@ fun ContentSettings(
         IpVersionKey,
         defaultValue = IpVersion.AUTO
     )
-    val (albumCanvasEnabled, onAlbumCanvasEnabledChange) = rememberPreference(key = AlbumCanvasEnabledKey, defaultValue = false)
-
     var showPlaybackLogsDialog by rememberSaveable { mutableStateOf(false) }
     var showSuggestionSheet by rememberSaveable { mutableStateOf(false) }
     val playbackLogs by PlaybackLogManager.logs.collectAsState()
@@ -826,33 +823,6 @@ fun ContentSettings(
             )
         )
 
-        Material3SettingsGroup(
-            title = stringResource(R.string.album_text),
-            items = listOf(
-                Material3SettingsItem(
-                    icon = painterResource(R.drawable.slow_motion_video),
-                    title = { Text(stringResource(R.string.show_album_canvas)) },
-                    description = { Text(stringResource(R.string.show_album_canvas_desc)) },
-                    trailingContent = {
-                        Switch(
-                            checked = albumCanvasEnabled,
-                            onCheckedChange = onAlbumCanvasEnabledChange,
-                            thumbContent = {
-                                Icon(
-                                    painter = painterResource(
-                                        id = if (albumCanvasEnabled) R.drawable.check else R.drawable.close
-                                    ),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(SwitchDefaults.IconSize)
-                                )
-                            }
-                        )
-                    },
-                    onClick = { onAlbumCanvasEnabledChange(!albumCanvasEnabled) }
-                )
-            )
-        )
-
         Spacer(modifier = Modifier.height(27.dp))
 
         Material3SettingsGroup(
@@ -1111,30 +1081,10 @@ fun ContentSettings(
 
         Spacer(modifier = Modifier.height(27.dp))
 
+        // ── Inicio y descubrimiento (IA grouping) ── moved here from "Varios"; PreferenceKeys unchanged.
         Material3SettingsGroup(
-            title = stringResource(R.string.misc),
+            title = "Inicio y descubrimiento",
             items = listOf(
-                Material3SettingsItem(
-                    icon = painterResource(R.drawable.offline),
-                    title = { Text("Modo sin conexión") },
-                    description = { Text("Muestra solo el contenido descargado. Actívalo cuando no tengas internet; desactívalo para volver a modo online.") },
-                    trailingContent = {
-                        Switch(
-                            checked = offlineMode,
-                            onCheckedChange = onOfflineModeChange,
-                            thumbContent = {
-                                Icon(
-                                    painter = painterResource(
-                                        id = if (offlineMode) R.drawable.check else R.drawable.close
-                                    ),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(SwitchDefaults.IconSize)
-                                )
-                            }
-                        )
-                    },
-                    onClick = { onOfflineModeChange(!offlineMode) }
-                ),
                 Material3SettingsItem(
                     icon = painterResource(R.drawable.home_outlined),
                     title = { Text("Solo recomendaciones por mis gustos") },
@@ -1199,22 +1149,6 @@ fun ContentSettings(
                     onClick = { onKeepGenreLaneChange(!keepGenreLane) }
                 ),
                 Material3SettingsItem(
-                    icon = painterResource(R.drawable.battery_charging),
-                    title = { Text("Evitar que el sistema cierre la app") },
-                    description = { Text("Quita la app de la optimización de batería para que la música no se corte en segundo plano y aparezca siempre en Android Auto (recomendado en Xiaomi/HyperOS).") },
-                    onClick = {
-                        iad1tya.echo.music.utils.BackgroundReliability.requestIgnoreBatteryOptimizations(context)
-                    }
-                ),
-                Material3SettingsItem(
-                    icon = painterResource(R.drawable.settings),
-                    title = { Text("Ajustes del sistema de la app") },
-                    description = { Text("Abre la ficha de la app para activar 'Inicio automático/Autostart' (necesario en algunas capas para que no la maten).") },
-                    onClick = {
-                        iad1tya.echo.music.utils.BackgroundReliability.openAppDetails(context)
-                    }
-                ),
-                Material3SettingsItem(
                     icon = painterResource(R.drawable.shuffle),
                     title = { Text(stringResource(R.string.randomize_home_order)) },
                     description = { Text(stringResource(R.string.randomize_home_order_desc)) },
@@ -1234,6 +1168,51 @@ fun ContentSettings(
                         )
                     },
                     onClick = { onRandomizeHomeOrderChange(!randomizeHomeOrder) }
+                )
+            )
+        )
+
+        Spacer(modifier = Modifier.height(27.dp))
+
+        Material3SettingsGroup(
+            title = stringResource(R.string.misc),
+            items = listOf(
+                Material3SettingsItem(
+                    icon = painterResource(R.drawable.offline),
+                    title = { Text("Modo sin conexión") },
+                    description = { Text("Muestra solo el contenido descargado. Actívalo cuando no tengas internet; desactívalo para volver a modo online.") },
+                    trailingContent = {
+                        Switch(
+                            checked = offlineMode,
+                            onCheckedChange = onOfflineModeChange,
+                            thumbContent = {
+                                Icon(
+                                    painter = painterResource(
+                                        id = if (offlineMode) R.drawable.check else R.drawable.close
+                                    ),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(SwitchDefaults.IconSize)
+                                )
+                            }
+                        )
+                    },
+                    onClick = { onOfflineModeChange(!offlineMode) }
+                ),
+                Material3SettingsItem(
+                    icon = painterResource(R.drawable.battery_charging),
+                    title = { Text("Evitar que el sistema cierre la app") },
+                    description = { Text("Quita la app de la optimización de batería para que la música no se corte en segundo plano y aparezca siempre en Android Auto (recomendado en Xiaomi/HyperOS).") },
+                    onClick = {
+                        iad1tya.echo.music.utils.BackgroundReliability.requestIgnoreBatteryOptimizations(context)
+                    }
+                ),
+                Material3SettingsItem(
+                    icon = painterResource(R.drawable.settings),
+                    title = { Text("Ajustes del sistema de la app") },
+                    description = { Text("Abre la ficha de la app para activar 'Inicio automático/Autostart' (necesario en algunas capas para que no la maten).") },
+                    onClick = {
+                        iad1tya.echo.music.utils.BackgroundReliability.openAppDetails(context)
+                    }
                 ),
                 Material3SettingsItem(
                     icon = painterResource(R.drawable.trending_up),
@@ -1314,7 +1293,9 @@ fun ContentSettings(
         Spacer(modifier = Modifier.height(27.dp))
 
         Material3SettingsGroup(
-            title = stringResource(R.string.logs_heading),
+            // Renamed from R.string.logs_heading ("Logs"/"Registros") to avoid a duplicate "Logs" label:
+            // the canonical Logs entry is the top-level Settings > Logs (LogsScreen). These are diagnostics.
+            title = "Diagnóstico",
             items = listOf(
                 Material3SettingsItem(
                     icon = painterResource(R.drawable.bug_report),

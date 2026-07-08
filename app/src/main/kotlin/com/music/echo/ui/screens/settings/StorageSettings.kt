@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -20,6 +21,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -68,6 +71,8 @@ import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import iad1tya.echo.music.constants.ExportDirectoryUriKey
+import iad1tya.echo.music.constants.AutoDownloadOnLikeKey
+import iad1tya.echo.music.constants.EnableExportAsMp3Key
 
 @OptIn(ExperimentalCoilApi::class, ExperimentalMaterial3Api::class, DelicateCoilApi::class)
 @Composable
@@ -96,6 +101,15 @@ fun StorageSettings(
     val (exportDirectoryUri, onExportDirectoryUriChange) = rememberPreference(
         key = ExportDirectoryUriKey,
         defaultValue = "",
+    )
+    // Moved here from PlayerSettings (IA consolidation — downloads live in Storage). Keys unchanged.
+    val (autoDownloadOnLike, onAutoDownloadOnLikeChange) = rememberPreference(
+        key = AutoDownloadOnLikeKey,
+        defaultValue = true
+    )
+    val (enableExportAsMp3, onEnableExportAsMp3Change) = rememberPreference(
+        key = EnableExportAsMp3Key,
+        defaultValue = false
     )
     val exportDirectoryLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
@@ -356,6 +370,54 @@ fun StorageSettings(
                         )
                     },
                     onClick = { openExportPicker() }
+                )
+            )
+        )
+
+        Material3SettingsGroup(
+            title = "Descargas",
+            items = listOf(
+                Material3SettingsItem(
+                    icon = painterResource(R.drawable.download),
+                    title = { Text(stringResource(R.string.auto_download_on_like)) },
+                    description = { Text(stringResource(R.string.auto_download_on_like_desc)) },
+                    trailingContent = {
+                        Switch(
+                            checked = autoDownloadOnLike,
+                            onCheckedChange = onAutoDownloadOnLikeChange,
+                            thumbContent = {
+                                Icon(
+                                    painter = painterResource(
+                                        id = if (autoDownloadOnLike) R.drawable.check else R.drawable.close
+                                    ),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(SwitchDefaults.IconSize)
+                                )
+                            }
+                        )
+                    },
+                    onClick = { onAutoDownloadOnLikeChange(!autoDownloadOnLike) }
+                ),
+                Material3SettingsItem(
+                    icon = painterResource(R.drawable.file_export),
+                    title = { Text(stringResource(R.string.export_desc)) },
+                    description = { Text("Mostrar 'Exportar como MP3' en los menús") },
+                    trailingContent = {
+                        Switch(
+                            checked = enableExportAsMp3,
+                            onCheckedChange = onEnableExportAsMp3Change,
+                            thumbContent = {
+                                Icon(
+                                    painter = painterResource(
+                                        id = if (enableExportAsMp3) R.drawable.check else R.drawable.close
+                                    ),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(SwitchDefaults.IconSize)
+                                )
+                            }
+                        )
+                    },
+                    onClick = { onEnableExportAsMp3Change(!enableExportAsMp3) }
                 )
             )
         )

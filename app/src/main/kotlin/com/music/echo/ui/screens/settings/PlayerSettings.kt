@@ -35,17 +35,13 @@ import androidx.navigation.NavController
 import iad1tya.echo.music.BuildConfig
 import iad1tya.echo.music.LocalPlayerAwareWindowInsets
 import iad1tya.echo.music.R
-import iad1tya.echo.music.constants.AudioNormalizationKey
 import iad1tya.echo.music.constants.AudioOffload
 import iad1tya.echo.music.constants.AudioQuality
 import iad1tya.echo.music.constants.AudioQualityKey
-import iad1tya.echo.music.constants.AutoDownloadOnLikeKey
 import iad1tya.echo.music.constants.CrossfadeCurveKey
 import iad1tya.echo.music.constants.CrossfadeDurationKey
 import iad1tya.echo.music.constants.CrossfadeEnabledKey
 import iad1tya.echo.music.constants.CrossfadeGaplessKey
-import iad1tya.echo.music.constants.AudioEnhanceEnabledKey
-import iad1tya.echo.music.constants.SpectrumVisualizerEnabledKey
 import iad1tya.echo.music.constants.AutoLoadMoreKey
 import iad1tya.echo.music.constants.AutoSkipNextOnErrorKey
 import iad1tya.echo.music.constants.DisableLoadMoreWhenRepeatAllKey
@@ -66,7 +62,6 @@ import iad1tya.echo.music.constants.SkipSilenceInstantKey
 import iad1tya.echo.music.constants.SkipSilenceKey
 import iad1tya.echo.music.constants.SponsorBlockEnabledKey
 import iad1tya.echo.music.constants.StopMusicOnTaskClearKey
-import iad1tya.echo.music.constants.EnableExportAsMp3Key
 
 import iad1tya.echo.music.constants.PreloadNextSongEnabledKey
 import iad1tya.echo.music.constants.PreloadNextSongLimitKey
@@ -154,11 +149,6 @@ fun PlayerSettings(
         defaultValue = false
     )
 
-    val (enableExportAsMp3, onEnableExportAsMp3Change) = rememberPreference(
-        key = EnableExportAsMp3Key,
-        defaultValue = false
-    )
-
     val context = androidx.compose.ui.platform.LocalContext.current
 
     val (enableGoogleCast, onEnableGoogleCastChange) = rememberPreference(
@@ -178,10 +168,6 @@ fun PlayerSettings(
     val (disableLoadMoreWhenRepeatAll, onDisableLoadMoreWhenRepeatAllChange) = rememberPreference(
         DisableLoadMoreWhenRepeatAllKey,
         defaultValue = false
-    )
-    val (autoDownloadOnLike, onAutoDownloadOnLikeChange) = rememberPreference(
-        AutoDownloadOnLikeKey,
-        defaultValue = true
     )
     val (similarContentEnabled, similarContentEnabledChange) = rememberPreference(
         key = SimilarContent,
@@ -799,27 +785,6 @@ fun PlayerSettings(
                     onClick = { onDisableLoadMoreWhenRepeatAllChange(!disableLoadMoreWhenRepeatAll) }
                 ),
                 Material3SettingsItem(
-                    icon = painterResource(R.drawable.download),
-                    title = { Text(stringResource(R.string.auto_download_on_like)) },
-                    description = { Text(stringResource(R.string.auto_download_on_like_desc)) },
-                    trailingContent = {
-                        Switch(
-                            checked = autoDownloadOnLike,
-                            onCheckedChange = onAutoDownloadOnLikeChange,
-                            thumbContent = {
-                                Icon(
-                                    painter = painterResource(
-                                        id = if (autoDownloadOnLike) R.drawable.check else R.drawable.close
-                                    ),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(SwitchDefaults.IconSize)
-                                )
-                            }
-                        )
-                    },
-                    onClick = { onAutoDownloadOnLikeChange(!autoDownloadOnLike) }
-                ),
-                Material3SettingsItem(
                     icon = painterResource(R.drawable.similar),
                     title = { Text(stringResource(R.string.enable_similar_content)) },
                     description = { Text(stringResource(R.string.similar_content_desc)) },
@@ -1032,27 +997,6 @@ fun PlayerSettings(
                         )
                     },
                     onClick = { onKeepScreenOnChange(!keepScreenOn) }
-                ),
-                Material3SettingsItem(
-                    icon = painterResource(R.drawable.file_export),
-                    title = { Text(stringResource(R.string.export_desc)) },
-                    description = { Text("Mostrar 'Exportar como MP3' en los menús") },
-                    trailingContent = {
-                        Switch(
-                            checked = enableExportAsMp3,
-                            onCheckedChange = onEnableExportAsMp3Change,
-                            thumbContent = {
-                                Icon(
-                                    painter = painterResource(
-                                        id = if (enableExportAsMp3) R.drawable.check else R.drawable.close
-                                    ),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(SwitchDefaults.IconSize)
-                                )
-                            }
-                        )
-                    },
-                    onClick = { onEnableExportAsMp3Change(!enableExportAsMp3) }
                 )
             )
         )
