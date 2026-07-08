@@ -667,10 +667,11 @@ class App : Application(), SingletonImageLoader.Factory {
         val cacheSize = runBlocking {
             dataStore.data.map { it[MaxImageCacheSizeKey] ?: 2048 }.first()
         }
-        // High-Performance Mode: smaller in-RAM image cache (20% vs 40%) on weak/TV/car devices. Takes effect
-        // on the NEXT launch (the ImageLoader is built once at process start).
+        // Performance Mode (ULTRA): much smaller in-RAM image cache (15% vs 40%) so a low-RAM box doesn't
+        // thrash decoding artwork. Takes effect on the NEXT launch (the ImageLoader is built once at process
+        // start). Crossfade off + RGB_565 (below) already halve per-image cost.
         val perfMode = iad1tya.echo.music.utils.PerformanceMode.isOn(this)
-        val memCachePercent = if (perfMode) 0.20 else 0.40
+        val memCachePercent = if (perfMode) 0.15 else 0.40
         return ImageLoader.Builder(this).apply {
             // Perf mode: no fade animation on image load + RGB_565 (16-bit) bitmaps = HALF the memory per image
             // (a touch of gradient banding, invisible on album art) — a real win on low-RAM boxes.

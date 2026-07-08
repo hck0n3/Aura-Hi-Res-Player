@@ -10,12 +10,12 @@ import androidx.datastore.preferences.core.Preferences
 import iad1tya.echo.music.constants.HighPerformanceModeKey
 
 /**
- * High-Performance Mode — a single master switch that makes a low-end device (Android car head units, cheap
- * tablets, <=4GB RAM boxes, Android TV) run as light as possible. When ON it treats the device as [DeviceTier.LOW]
- * for every visual/decode/memory gate, regardless of the real hardware tier, and disables the heaviest features
- * (canvas/visualizer/artist-video, capped video decode, no next-song preload, video mode off, smaller buffers +
- * image cache). AUDIO fidelity is deliberately NOT gated here — EQ, Safe Volume, normalization and the limiter
- * keep working. The flag is auto-enabled on first launch on LOW-tier / TV / car devices and is user-toggleable.
+ * Performance Mode — a single master switch that makes any device run as light as possible. When ON it treats the
+ * device as [DeviceTier.ULTRA] (the most-stripped tier, below LOW) for every visual/decode/memory gate, regardless
+ * of the real hardware tier, and disables the heaviest features (canvas/visualizer/artist-video, capped video
+ * decode, no next-song preload, video mode off, smaller buffers + image cache, fewer/smaller Home carousels).
+ * AUDIO fidelity is deliberately NOT gated here — EQ, Safe Volume, normalization and the limiter keep working.
+ * The flag is auto-enabled on first launch on LOW-tier / TV / car devices and is user-toggleable.
  */
 object PerformanceMode {
 
@@ -24,11 +24,12 @@ object PerformanceMode {
         context.applicationContext.dataStore.get(HighPerformanceModeKey, false)
 
     /**
-     * The tier the app should BEHAVE as: [DeviceTier.LOW] when High-Performance Mode is on, otherwise the real
-     * [DeviceCapabilities.tier]. Decode gates that already `when(deviceTier)` just swap their source to this.
+     * The tier the app should BEHAVE as: [DeviceTier.ULTRA] (the most-stripped path, below LOW) when Performance
+     * Mode is on, otherwise the real [DeviceCapabilities.tier]. Decode/render gates that already `when(deviceTier)`
+     * just swap their source to this; ULTRA gets the lowest/most-restricted branch everywhere.
      */
     fun effectiveTier(context: Context): DeviceTier =
-        if (isOn(context)) DeviceTier.LOW else DeviceCapabilities.tier(context)
+        if (isOn(context)) DeviceTier.ULTRA else DeviceCapabilities.tier(context)
 }
 
 /**

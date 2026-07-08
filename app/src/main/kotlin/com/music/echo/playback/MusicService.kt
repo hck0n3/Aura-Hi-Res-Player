@@ -1185,6 +1185,7 @@ class MusicService :
         // phone. This caps ONLY the video track the ABR selects (audio is untouched, and it's a no-op for
         // audio-only playback), so it keeps gama-baja/TV optimized without harming Hi-Res audio.
         val maxVideoDim = when (iad1tya.echo.music.utils.PerformanceMode.effectiveTier(this)) {
+            iad1tya.echo.music.utils.DeviceTier.ULTRA -> 1280
             iad1tya.echo.music.utils.DeviceTier.LOW -> 1280
             iad1tya.echo.music.utils.DeviceTier.MID -> 1920
             iad1tya.echo.music.utils.DeviceTier.HIGH -> Int.MAX_VALUE
