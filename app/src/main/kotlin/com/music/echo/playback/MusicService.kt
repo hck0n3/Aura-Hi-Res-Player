@@ -1254,9 +1254,9 @@ class MusicService :
                         // Applies in BOTH buffer profiles; the min/max duration tier split (maxBufferMs) above
                         // is untouched.
                         750,
-                        // bufferForPlaybackAfterRebufferMs: ~1s to resume after a stall (down from the 5s
-                        // default) so a brief connectivity drop recovers quickly. Also profile-independent.
-                        1000,
+                        // bufferForPlaybackAfterRebufferMs: ~2.5s to resume after a stall — faster than the 5s
+                        // default but not so thin it ping-pongs stalls on weak/hi-res streams. Profile-independent.
+                        2500,
                     )
                     // 64MB byte ceiling guards against OOM with multiple pre-loaded/crossfade players,
                     // but prioritizeTimeOverSizeThresholds(true) lets the TIME buffer win so the min/max
@@ -2681,6 +2681,10 @@ class MusicService :
     fun refetchCurrentInOpus() {
         scope.launch {
             val mediaId = player.currentMediaItem?.mediaId ?: return@launch
+            if (castConnectionHandler?.isCasting?.value == true) {
+                Timber.tag(TAG).d("refetchCurrentInOpus: casting, ignoring (a local reload would not affect the cast stream)")
+                return@launch
+            }
             if (mediaId.isLocalMediaId() ||
                 mediaId.startsWith("http://", ignoreCase = true) ||
                 mediaId.startsWith("https://", ignoreCase = true)
@@ -4527,8 +4531,12 @@ class MusicService :
 
     private fun performCrossfadeSwap() {
         isCrossfading = true
-        _isCrossfading.value = true // observation-only mirror for the UI; does not alter the swap
         val nextPlayer = secondaryPlayer ?: return
+        // Observation-only mirror for the UI (set AFTER the null-guard so it can't strand true); does not
+        // alter the swap. Also drop any per-track Opus force from a refetch on the OUTGOING track: the swap
+        // moves us to the next track via a path that skips onMediaItemTransition, so it must be cleared here.
+        _isCrossfading.value = true
+        forceOpusForMediaId = null
         val currentPlayer = player
 
         fadingPlayer = currentPlayer
