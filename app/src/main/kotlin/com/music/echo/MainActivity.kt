@@ -100,6 +100,7 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.draw.blur
 import com.airbnb.lottie.compose.LottieAnimation
 import com.airbnb.lottie.compose.LottieCompositionSpec
@@ -1178,9 +1179,28 @@ class MainActivity : ComponentActivity() {
                                     // still opens the full player with no animation race. Phones/narrow: alpha 1.
                                     Box(
                                         modifier = if (showSideNowPlaying) {
-                                            Modifier.graphicsLayer {
-                                                alpha = playerBottomSheetState.progress.coerceIn(0f, 1f)
-                                            }
+                                            Modifier
+                                                .graphicsLayer {
+                                                    alpha = playerBottomSheetState.progress.coerceIn(0f, 1f)
+                                                }
+                                                // While the sheet is fully collapsed (alpha == 0) the persistent
+                                                // side panel is the now-playing surface, so this redundant bottom
+                                                // mini-player is invisible. alpha=0 does NOT disable pointer input,
+                                                // so its full-width collapsed clickable/drag strip along the bottom
+                                                // would still hit-test and steal taps meant for the content list
+                                                // beneath it. Keep it composed (no state loss / recompose churn),
+                                                // but skip PLACEMENT while hidden so it is neither drawn nor
+                                                // hit-tested; it re-appears the instant expansion begins
+                                                // (progress > 0), e.g. from the side panel's expandSoft(). Size is
+                                                // reported unchanged, so the Scaffold bottomBar layout is untouched.
+                                                .layout { measurable, constraints ->
+                                                    val placeable = measurable.measure(constraints)
+                                                    layout(placeable.width, placeable.height) {
+                                                        if (playerBottomSheetState.progress > 0f) {
+                                                            placeable.place(0, 0)
+                                                        }
+                                                    }
+                                                }
                                         } else Modifier
                                     ) {
                                         BottomSheetPlayer(
