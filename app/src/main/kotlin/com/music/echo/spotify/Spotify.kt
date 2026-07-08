@@ -1651,6 +1651,98 @@ object Spotify {
         }
 
     /**
+     * Returns an artist's recent releases (albums / singles / compilations) WITH exact release dates,
+     * parsed from `queryArtistOverview.discography`. Unlike YouTube (which only exposes a release YEAR),
+     * each [SpotifyAlbum.releaseDate] here carries the full ISO date (`date.isoString`), which is what the
+     * Release Radar needs for a real Friday-to-Friday 7-day window.
+     *
+     * The discography shape has shifted over time, so the parser is defensive: it walks `latest` plus the
+     * grouped containers, tolerates the `items[] -> releases.items[]` nesting (and the flattened variant),
+     * and simply returns whatever it can read. On any unexpected shape it yields an empty list so the caller
+     * can fall back to [newReleases].
+     */
+    suspend fun artistDiscography(artistId: String): Result<List<SpotifyAlbum>> =
+        runCatching {
+            val vars =
+                buildJsonObject {
+                    put("uri", "spotify:artist:$artistId")
+                    put("locale", "")
+                }
+
+            val response =
+                graphqlPost(
+                    operationName = "queryArtistOverview",
+                    variables = vars,
+                )
+
+            val artistData =
+                response.obj("data")?.obj("artistUnion")
+                    ?: throw SpotifyException(500, "Invalid queryArtistOverview response")
+
+            val discography = artistData.obj("discography") ?: return@runCatching emptyList()
+
+            val releases = mutableListOf<SpotifyAlbum>()
+            // "latest" is a single release object (the artist's most recent drop).
+            discography.obj("latest")?.let { parseDiscographyRelease(it)?.let(releases::add) }
+            // Grouped containers: each item is either a release directly or wraps `releases.items[]`.
+            for (key in listOf("albums", "singles", "compilations", "popularReleasesAlbums")) {
+                val items = discography.obj(key)?.arr("items") ?: continue
+                for (elem in items) {
+                    val itemObj = elem.jsonObject
+                    val nested = itemObj.obj("releases")?.arr("items")
+                    if (nested != null) {
+                        nested.forEach { parseDiscographyRelease(it.jsonObject)?.let(releases::add) }
+                    } else {
+                        parseDiscographyRelease(itemObj)?.let(releases::add)
+                    }
+                }
+            }
+            // A release can appear in several sections (e.g. latest + albums); keep one per album id.
+            releases.distinctBy { it.id }
+        }
+
+    /** Parses a single discography release node into a [SpotifyAlbum] with an exact release date. */
+    private fun parseDiscographyRelease(node: JsonObject): SpotifyAlbum? {
+        // Release fields may live directly on the node or nested under `data` (wrapper variant).
+        val data = node.obj("data") ?: node
+        val uri = data.str("uri") ?: node.str("uri") ?: return null
+        val id = uri.substringAfterLast(":")
+        if (id.isBlank()) return null
+        val name = data.str("name") ?: return null
+
+        val dateObj = data.obj("date")
+        val isoDate = dateObj?.str("isoString") ?: buildIsoDateFromParts(dateObj)
+
+        val artists =
+            data.obj("artists")?.arr("items")?.mapNotNull {
+                parseGqlSimpleArtist(it.jsonObject)
+            } ?: emptyList()
+
+        return SpotifyAlbum(
+            id = id,
+            name = name,
+            albumType = data.str("type")?.lowercase(),
+            artists = artists,
+            images = parseGqlImages(data.obj("coverArt")?.arr("sources")),
+            releaseDate = isoDate,
+            uri = uri,
+        )
+    }
+
+    /** Builds a `yyyy-MM-dd` (or year-only) string from a discography `date` node lacking an isoString. */
+    private fun buildIsoDateFromParts(dateObj: JsonObject?): String? {
+        dateObj ?: return null
+        val year = dateObj.int("year") ?: return null
+        val month = dateObj.int("month")
+        val day = dateObj.int("day")
+        return if (month != null && day != null) {
+            "%04d-%02d-%02d".format(year, month, day)
+        } else {
+            year.toString() // year-only → caller treats as non-exact and windows it out
+        }
+    }
+
+    /**
      * Extracts related artists from the GQL queryArtistOverview endpoint.
      * This avoids the rate-limited REST /related-artists endpoint entirely.
      */

@@ -55,10 +55,8 @@ fun ReleaseRadarScreen(
     val releases by viewModel.releases.collectAsState()
     val lazyListState = rememberLazyListState()
 
-    // Refresh the new-releases list every time it's opened so it's always up to date.
-    androidx.compose.runtime.LaunchedEffect(Unit) {
-        ReleaseRadarWorker.runNow(context)
-    }
+    // No auto-refresh on open: the radar is a weekly Friday drop (rebuilt by ReleaseRadarWorker). A manual
+    // refresh is still available via the toolbar action below.
 
     Scaffold(
         topBar = {
