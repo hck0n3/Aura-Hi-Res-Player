@@ -48,11 +48,9 @@ import iad1tya.echo.music.ui.screens.settings.PlayerSettings
 import iad1tya.echo.music.ui.screens.settings.PrivacySettings
 import iad1tya.echo.music.ui.screens.settings.RomanizationSettings
 import iad1tya.echo.music.ui.screens.settings.SettingsScreen
-import iad1tya.echo.music.ui.screens.settings.AccountSettingsScreen
 import iad1tya.echo.music.ui.screens.settings.StorageSettings
 import iad1tya.echo.music.ui.screens.settings.ThemeScreen
 import iad1tya.echo.music.ui.screens.settings.AiSettings
-import iad1tya.echo.music.ui.screens.settings.integrations.IntegrationScreen
 import iad1tya.echo.music.ui.screens.settings.integrations.ListenTogetherSettings
 import iad1tya.echo.music.ui.screens.recognition.RecognitionScreen
 import iad1tya.echo.music.ui.screens.recognition.RecognitionHistoryScreen
@@ -141,9 +139,7 @@ fun NavGraphBuilder.navigationBuilder(
         NewReleaseScreen(navController, scrollBehavior)
     }
 
-    composable("charts_screen") {
-        ChartsScreen(navController)
-    }
+    // IA hygiene (F0): "charts_screen" (ChartsScreen) de-registered — unreachable, no navigate() caller.
 
     composable(
         route = "browse/{browseId}",
@@ -337,9 +333,7 @@ fun NavGraphBuilder.navigationBuilder(
        UpdateSettings(navController, scrollBehavior)
     }
 
-    composable("settings/account") {
-        AccountSettingsScreen(navController, scrollBehavior)
-    }
+    // IA hygiene (F0): "settings/account" (AccountSettingsScreen) de-registered — orphan, no navigate() caller.
 
     composable("settings/appearance") {
         AppearanceSettings(navController, scrollBehavior, activity, snackbarHostState)
@@ -411,9 +405,8 @@ fun NavGraphBuilder.navigationBuilder(
         BackupAndRestore(navController, scrollBehavior)
     }
 
-    composable("settings/integrations") {
-        IntegrationScreen(navController, scrollBehavior)
-    }
+    // IA hygiene (F0): "settings/integrations" (IntegrationScreen) de-registered — empty screen body, no navigate() caller.
+    // Note: the live sub-route "settings/integrations/listen_together" below is unaffected and stays registered.
 
     composable(
         route = "settings/spotify_import?onboarding={onboarding}",

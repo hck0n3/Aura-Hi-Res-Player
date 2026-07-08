@@ -1044,6 +1044,21 @@ class MainActivity : ComponentActivity() {
                                             }
                                         },
                                         actions = {
+                                            // When Listen Together is hosted in the top bar it is filtered out of
+                                            // the bottom navigation, so provide its entry point here — otherwise the
+                                            // default (top-bar) config leaves the feature with no way to reach it.
+                                            if (listenTogetherInTopBar) {
+                                                IconButton(onClick = {
+                                                    navController.navigate(Screens.ListenTogether.route) {
+                                                        launchSingleTop = true
+                                                    }
+                                                }) {
+                                                    Icon(
+                                                        painter = painterResource(R.drawable.group_outlined),
+                                                        contentDescription = stringResource(R.string.together)
+                                                    )
+                                                }
+                                            }
                                             if (showHistoryButton) {
                                                 IconButton(onClick = { navController.navigate("history") }) {
                                                     Icon(
@@ -1307,6 +1322,7 @@ class MainActivity : ComponentActivity() {
                                     navController = navController,
                                     startDestination = when (tabOpenedFromShortcut ?: defaultOpenTab) {
                                         NavigationTab.HOME -> Screens.Home
+                                        NavigationTab.SEARCH -> Screens.Search
                                         NavigationTab.LIBRARY -> Screens.Library
                                         else -> Screens.Home
                                     }.route,
