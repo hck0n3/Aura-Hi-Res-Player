@@ -167,7 +167,15 @@ fun YtmSyncScreen(
                     Material3SettingsItem(
                         icon = painterResource(R.drawable.cached),
                         title = { Text("Biblioteca (canciones)") },
-                        onClick = { start(W.TYPE_LIBRARY, "Sincronizando biblioteca…") },
+                        description = { Text("Incluye tus me gusta (favoritos)") },
+                        onClick = {
+                            // "Biblioteca" (FEmusic_liked_videos) sólo marca inLibrary, nunca liked; los
+                            // favoritos viven en LM. Encolamos ambos para que migrar la biblioteca traiga
+                            // también los me gusta. Son trabajos únicos distintos y additivos (upsert),
+                            // así que no hay doble ejecución ni bucle.
+                            W.enqueue(context, W.TYPE_LIKED_SONGS)
+                            start(W.TYPE_LIBRARY, "Sincronizando biblioteca y me gusta…")
+                        },
                     ),
                     Material3SettingsItem(
                         icon = painterResource(R.drawable.backup),
