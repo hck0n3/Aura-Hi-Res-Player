@@ -627,7 +627,10 @@ class App : Application(), SingletonImageLoader.Factory {
                     // Mirror the chosen app language to SharedPreferences so attachBaseContext can
                     // apply it at next cold start without a crash-prone blocking DataStore read.
                     getSharedPreferences("app_prefs", Context.MODE_PRIVATE).edit()
-                        .putString("app_language", appLanguage?.takeUnless { it == SYSTEM_DEFAULT } ?: "es")
+                        // No explicit in-app language => follow the device/system locale, not a
+                        // forced "es". resolveAppLanguageTag() resolves SYSTEM_DEFAULT live to the
+                        // real device locale, which also keeps search gl/hl on the device locale.
+                        .putString("app_language", appLanguage?.takeUnless { it == SYSTEM_DEFAULT } ?: SYSTEM_DEFAULT)
                         .apply()
                     val systemLocale = Locale.getDefault()
                     val effectiveAppLocale = appLanguage

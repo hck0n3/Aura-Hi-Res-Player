@@ -470,7 +470,7 @@ class MainActivity : ComponentActivity() {
         
         listenTogetherManager.initialize()
 
-        // App language (Spanish by default) is applied for all API levels in attachBaseContext().
+        // App language (device/system locale by default) is applied for all API levels in attachBaseContext().
 
         lifecycleScope.launch {
             dataStore.data

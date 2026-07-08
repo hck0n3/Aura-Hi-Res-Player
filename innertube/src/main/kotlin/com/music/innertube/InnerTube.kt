@@ -219,13 +219,18 @@ class InnerTube {
         continuation: String? = null,
     ) = withRetry {
         httpClient.post("search") {
-            ytClient(client, setLogin = useLoginForBrowse)
+            // Always attempt login on search so a logged-in user gets the same personalized
+            // ranking as the official YouTube Music app. ytClient only appends the cookie +
+            // SAPISIDHASH Authorization header when a cookie is actually present, and toContext
+            // only sets onBehalfOfUser when dataSyncId is non-null — so this degrades cleanly to
+            // an unauthenticated guest request when the user is not logged in.
+            ytClient(client, setLogin = true)
             setBody(
                 SearchBody(
                     context = client.toContext(
                         locale,
                         visitorData,
-                        if (useLoginForBrowse) dataSyncId else null
+                        dataSyncId
                     ),
                     query = query,
                     params = params

@@ -36,14 +36,15 @@ fun systemRegionCode(): String =
 /**
  * Resolves the in-app language from a lightweight SharedPreferences mirror. Safe to read in
  * attachBaseContext — DataStore must NEVER be read there: its blocking read at cold start
- * crashes/ANRs the launch (notably on some OEM ROMs). Defaults to Spanish ("es"). The mirror is
- * kept in sync from App's settings observer whenever the in-app language changes.
+ * crashes/ANRs the launch (notably on some OEM ROMs). When no in-app language is set it follows
+ * the device/system locale (not a forced "es"), which also keeps YouTube search gl/hl on the real
+ * device locale. The mirror is kept in sync from App's settings observer whenever it changes.
  */
 fun resolveAppLanguageTag(context: Context): String =
     context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
         .getString("app_language", null)
         ?.takeUnless { it == SYSTEM_DEFAULT }
-        ?: "es"
+        ?: Locale.getDefault().toLanguageTag()
 
 /**
  * Wraps [base] with a configuration forced to the resolved app language so every component
