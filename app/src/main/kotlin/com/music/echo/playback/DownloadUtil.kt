@@ -35,6 +35,8 @@ import iad1tya.echo.music.di.PlayerCache
 import iad1tya.echo.music.ui.utils.resize
 import iad1tya.echo.music.utils.YTPlayerUtils
 import iad1tya.echo.music.utils.enumPreference
+import iad1tya.echo.music.utils.DeviceTier
+import iad1tya.echo.music.utils.PerformanceMode
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.DelicateCoroutinesApi
@@ -203,7 +205,16 @@ constructor(
             dataSourceFactory,
             Executor(Runnable::run)
         ).apply {
-            maxParallelDownloads = 3
+            // Concurrent downloads hammer a weak device with parallel network + transcode/mux work (CPU/RAM/heat/
+            // data-contention). Throttle ONLY on the weak paths; capable devices are BYTE-IDENTICAL to before (3).
+            // effectiveTier() is synchronous/cached and returns ULTRA when Performance Mode is ON (perf-mode), else
+            // the real DeviceCapabilities tier — so this is strictly gated to perf-mode / LOW-tier. Downloads are a
+            // separate pipeline from playback: this never touches the 9s crossfade, playback buffers, or effects.
+            maxParallelDownloads = when (PerformanceMode.effectiveTier(context)) {
+                DeviceTier.ULTRA -> 1   // Performance Mode ON: one transfer at a time, minimal contention.
+                DeviceTier.LOW -> 2     // Genuinely low-end hardware: halve the concurrency.
+                else -> 3               // MID / HIGH (capable): unchanged.
+            }
             addListener(
                 object : DownloadManager.Listener {
                     override fun onDownloadChanged(

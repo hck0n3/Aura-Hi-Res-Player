@@ -108,6 +108,33 @@ class App : Application(), SingletonImageLoader.Factory {
             observeSettingsChanges()
         }
 
+        // Non-critical background scheduling (weekly Release Radar + weekly app-update check). On genuinely weak
+        // (LOW-tier) devices, DEFER it a few seconds so it doesn't compete with first-frame work on cold start —
+        // it still runs, just after the UI is up. On CAPABLE devices it runs immediately as before. The tier check
+        // is the cached, cheap CPU/RAM signal (NO DataStore/disk read on the main-thread cold-start path).
+        if (iad1tya.echo.music.utils.DeviceCapabilities.tier(this) == iad1tya.echo.music.utils.DeviceTier.LOW) {
+            applicationScope.launch(Dispatchers.Default) {
+                kotlinx.coroutines.delay(3000)
+                scheduleNonCriticalWork()
+            }
+        } else {
+            scheduleNonCriticalWork()
+        }
+
+        // Best-effort background refresh of the self-healing player configs (owner-hosted JSON). Idempotent
+        // and network-optional: on failure the app keeps its built-in hardcoded configs. Never throws. Lets
+        // a YouTube cipher rotation be fixed by publishing one config, with no app update.
+        applicationScope.launch(Dispatchers.IO) {
+            iad1tya.echo.music.utils.cipher.RemotePlayerConfig.refresh(applicationContext)
+        }
+    }
+
+    /**
+     * Schedules the non-critical periodic work: the weekly Release Radar check + one-time seed, and the weekly
+     * app-update check. Idempotent (unique periodic work, UPDATE policy; the seed is once-per-install), so it is
+     * safe to call every start. Extracted so perf-mode can defer it off the cold-start critical path (see onCreate).
+     */
+    private fun scheduleNonCriticalWork() {
         // Schedule the weekly Release Radar check (aligned to the next Friday morning).
         // Safe to call every start: it uses a unique periodic work item with UPDATE policy.
         runCatching { iad1tya.echo.music.releaseradar.ReleaseRadarWorker.schedule(this) }
@@ -120,12 +147,26 @@ class App : Application(), SingletonImageLoader.Factory {
         // Schedule the weekly app-update check (notifies once per new version when one is found).
         runCatching { iad1tya.echo.music.echomusic.updater.UpdateCheckWorker.schedule(this) }
             .onFailure { Timber.e(it, "Failed to schedule update-check worker") }
+    }
 
-        // Best-effort background refresh of the self-healing player configs (owner-hosted JSON). Idempotent
-        // and network-optional: on failure the app keeps its built-in hardcoded configs. Never throws. Lets
-        // a YouTube cipher rotation be fixed by publishing one config, with no app update.
-        applicationScope.launch(Dispatchers.IO) {
-            iad1tya.echo.music.utils.cipher.RemotePlayerConfig.refresh(applicationContext)
+    /**
+     * Best-effort memory-pressure relief for weak boxes (1-2 GB Android-TV / car units): under memory pressure,
+     * drop Coil's in-RAM image cache so the process survives instead of being killed. GATED to perf-mode /
+     * LOW-tier devices — on CAPABLE devices this is a no-op (nothing changes: their warm image cache is kept).
+     * The LOW-tier check is cached & cheap and short-circuits before the perf-mode flag read. Never throws.
+     */
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (level == android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW ||
+            level == android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL ||
+            level == android.content.ComponentCallbacks2.TRIM_MEMORY_BACKGROUND
+        ) {
+            // Cached, cheap tier check only — no DataStore read on the main thread under memory pressure.
+            val constrained =
+                iad1tya.echo.music.utils.DeviceCapabilities.tier(this) == iad1tya.echo.music.utils.DeviceTier.LOW
+            if (constrained) {
+                runCatching { SingletonImageLoader.get(this).memoryCache?.clear() }
+            }
         }
     }
 
@@ -143,6 +184,9 @@ class App : Application(), SingletonImageLoader.Factory {
         // Must run AFTER migrateHighPerformanceModeSeed: undoes the over-aggressive force-ON (TV + ~4 GB phones)
         // so televisions and capable phones get carousels + video back.
         migratePerfModeReseedV2(settings)
+        // Must run AFTER migratePerfModeReseedV2: re-enables perf-mode on genuinely WEAK TV/car boxes that
+        // the V2 reseed turned OFF along with capable televisions. Only affects LOW-tier devices.
+        migratePerfModeCapabilityV3(settings)
         migrateMiniPlayerDefaultBg(settings)
         migrateThemeSystemDefault(settings)
         migrateThemeSystemOnlyV2(settings)
@@ -625,6 +669,31 @@ class App : Application(), SingletonImageLoader.Factory {
                     p[iad1tya.echo.music.constants.HighPerformanceModeKey] = false
                 }
                 p[iad1tya.echo.music.constants.PerfModeReseedV2AppliedKey] = true
+            }
+        }.onFailure { reportException(it) }
+    }
+
+    /**
+     * One-time (fresh key): CAPABILITY RE-ENABLE. [migratePerfModeReseedV2] forced High-Performance Mode OFF on
+     * ALL televisions to give capable TVs the premium large-screen experience — but that also stripped perf-mode
+     * from genuinely WEAK Android-TV boxes / car head-units, sending them back down the heavy path. This corrects
+     * that regression: for genuinely LOW-tier devices (by RAM/cores/perf-class, NOT brand) whose High-Performance
+     * Mode is NOT currently true, set it TRUE. Capable devices (tier != LOW — capable phones AND TVs) are never
+     * touched, so they keep their carousels + video. It NEVER disables perf-mode. Runs once, AFTER
+     * migratePerfModeReseedV2 (so it wins on the same launch for LOW-tier TV boxes the reseed just turned off).
+     */
+    private suspend fun migratePerfModeCapabilityV3(settings: androidx.datastore.preferences.core.Preferences) {
+        if (settings[iad1tya.echo.music.constants.PerfModeCapabilityV3AppliedKey] == true) return
+        val genuinelyLow =
+            iad1tya.echo.music.utils.DeviceCapabilities.tier(this) == iad1tya.echo.music.utils.DeviceTier.LOW
+        runCatching {
+            dataStore.edit { p ->
+                // Read the CURRENT value inside the edit (not the pre-migration `settings` snapshot) so we react to
+                // what migratePerfModeReseedV2 just wrote earlier on this same launch.
+                if (genuinelyLow && p[iad1tya.echo.music.constants.HighPerformanceModeKey] != true) {
+                    p[iad1tya.echo.music.constants.HighPerformanceModeKey] = true
+                }
+                p[iad1tya.echo.music.constants.PerfModeCapabilityV3AppliedKey] = true
             }
         }.onFailure { reportException(it) }
     }

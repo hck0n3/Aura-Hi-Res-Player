@@ -473,6 +473,9 @@ class MusicService :
     @Volatile private var persistentQueueHint: Boolean = true
     @Volatile private var historyDurationMsHint: Float = 30000f
     @Volatile private var pauseListenHistoryHint: Boolean = false
+    // High-Performance Mode master switch, mirrored for the player-thread hot paths (scheduleCrossfade) so
+    // they read a @Volatile field instead of a blocking DataStore read on the transition callback thread.
+    @Volatile private var highPerformanceModeHint: Boolean = false
 
     // SponsorBlock: skip non-music segments (opt-in). Manager holds the current track's segments; the watcher
     // job polls position once a second while enabled and seeks past any segment the playhead enters.
@@ -1130,6 +1133,7 @@ class MusicService :
                 persistentQueueHint = prefs[PersistentQueueKey] ?: true
                 historyDurationMsHint = (prefs[HistoryDuration]?.times(1000f)) ?: 30000f
                 pauseListenHistoryHint = prefs[PauseListenHistoryKey] ?: false
+                highPerformanceModeHint = prefs[iad1tya.echo.music.constants.HighPerformanceModeKey] ?: false
             }
         }
 
@@ -3841,7 +3845,14 @@ class MusicService :
         val pos = player.currentPosition
         val playing = player.playWhenReady
         player.replaceMediaItem(idx, item.buildUpon().setUri(url).build())
+        // Video swap: seek keyframe-aligned (CLOSEST_SYNC) so the first video frame decodes sooner — an EXACT
+        // seek must decode every frame from the previous keyframe up to pos before it can show anything.
+        // Restored to DEFAULT (EXACT) immediately so ONLY this swap seek is keyframe-aligned; all audio seeks
+        // stay exact. In practice capable-only: video mode is force-off in High-Performance Mode. Audio-only
+        // playback never reaches swapToVideo, so the audio path is byte-identical.
+        player.setSeekParameters(androidx.media3.exoplayer.SeekParameters.CLOSEST_SYNC)
         player.seekTo(idx, pos)
+        player.setSeekParameters(androidx.media3.exoplayer.SeekParameters.DEFAULT)
         player.playWhenReady = playing
         player.prepare()
         _videoUrl.value = url
@@ -4523,6 +4534,21 @@ class MusicService :
         super.onDestroy()
     }
 
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        // Under aggressive OS memory pressure only (RUNNING_CRITICAL and above — the process is a prime LMK
+        // target), drop the ahead-of-time, fully re-derivable network caches (resolved stream URLs, video
+        // URLs) so the process is a smaller target and less likely to be reaped mid-song. This does NOT touch
+        // the ExoPlayer buffers, the audio chain, the effects, the loudness hints, or the crossfade — the
+        // currently-playing (and already-buffered) source is unaffected; these maps simply re-populate on
+        // demand at the next transition. Never fires under normal conditions, so normal playback is unchanged.
+        if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL) {
+            songUrlCache.clear()
+            videoUrlCache.clear()
+            Timber.tag(TAG).d("onTrimMemory(level=$level): cleared re-derivable URL caches under memory pressure")
+        }
+    }
+
     override fun onBind(intent: Intent?) = super.onBind(intent) ?: binder
 
     override fun onTaskRemoved(rootIntent: Intent?) {
@@ -4680,6 +4706,13 @@ class MusicService :
             }
             secondaryPlayer = null
         }
+        // High-Performance Mode: crossfade is force-disabled (crossfadeEnabled already reflects this via the
+        // perf-gated flow at collect time). This explicit, cheap @Volatile guard makes the intent robust and
+        // self-documenting — transitions fall back to normal gapless/simple playback (a single decoder, no
+        // second ExoPlayer) on weak/TV/car devices. No-op on capable devices: perf mode off → hint false →
+        // falls through to the unchanged 9s equal-power crossfade path below. The cleanup above still ran, so
+        // any incoming player preloaded before perf mode toggled on is released rather than leaked.
+        if (highPerformanceModeHint) return
         if (!crossfadeEnabled || player.duration == C.TIME_UNSET || player.duration <= crossfadeDuration) return
         // Crossfade builds a SECOND ExoPlayer and copies the queue into it; the video item (a cache-less
         // muxed source with no TextureView attached on the secondary player) would break. Skip crossfade

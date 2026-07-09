@@ -32,6 +32,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
@@ -235,7 +236,14 @@ fun Lyrics(
     val lyricsTextSize by rememberPreference(LyricsTextSizeKey, 24f)
     val lyricsLineSpacing by rememberPreference(LyricsLineSpacingKey, 1.3f)
     val lyricsStandardBlur by rememberPreference(LyricsStandardBlurKey, false)
-    
+
+    // Performance Mode (LOW-tier / perf-flag only): force the lightest lyrics render path — plain
+    // per-line text, NO per-line RenderEffect blur, NO per-character Apple-Music-v2 layout explosion,
+    // NO glow shadows. On CAPABLE devices perfOn is false, so effectiveAnimationStyle == the user's
+    // lyricsAnimationStyle and every gate below is byte-identical to before (nothing changes).
+    val perfOn by rememberPreference(iad1tya.echo.music.constants.HighPerformanceModeKey, false)
+    val effectiveAnimationStyle = if (perfOn) LyricsAnimationStyle.NONE else lyricsAnimationStyle
+
     val openRouterApiKey by rememberPreference(OpenRouterApiKey, "")
     val deeplApiKey by rememberPreference(DeeplApiKey, "")
     val aiProvider by rememberPreference(AiProviderKey, "OpenRouter")
@@ -901,7 +909,9 @@ fun Lyrics(
 
             if (lyrics == null) {
                 item {
-                    ShimmerHost {
+                    // Loading placeholders. Perf-mode (LOW-tier) renders them STATIC (no infinite
+                    // shimmer sweep = no per-frame GPU work); capable devices keep the shimmer.
+                    val placeholders: @Composable ColumnScope.() -> Unit = {
                         repeat(10) {
                             Box(
                                 contentAlignment = when (lyricsTextPosition) {
@@ -917,6 +927,11 @@ fun Lyrics(
                             }
                         }
                     }
+                    if (perfOn) {
+                        Column(content = placeholders)
+                    } else {
+                        ShimmerHost(content = placeholders)
+                    }
                 }
             } else {
                 val lyricsOffset = currentSong?.song?.lyricsOffset?.toLong() ?: 0L
@@ -927,7 +942,7 @@ fun Lyrics(
                     key = { index, item -> "$index-${item.time}" } 
                 ) { index, item ->
                     val isSelected = selectedIndices.contains(index)
-                    if (lyricsAnimationStyle == LyricsAnimationStyle.echomusic_1 && item.words?.isNotEmpty() == true) {
+                    if (effectiveAnimationStyle == LyricsAnimationStyle.echomusic_1 && item.words?.isNotEmpty() == true) {
                         val currentLineTime = if (displayedCurrentLineIndex >= 0 && displayedCurrentLineIndex < lines.size) {
                             lines[displayedCurrentLineIndex].time
                         } else -1L
@@ -1007,7 +1022,7 @@ fun Lyrics(
                             }
                         )
                         return@itemsIndexed
-                    } else if (lyricsAnimationStyle == LyricsAnimationStyle.METRO_LYRICS) {
+                    } else if (effectiveAnimationStyle == LyricsAnimationStyle.METRO_LYRICS) {
                         val currentLineTime = if (displayedCurrentLineIndex >= 0 && displayedCurrentLineIndex < lines.size) {
                             lines[displayedCurrentLineIndex].time
                         } else -1L
@@ -1184,7 +1199,7 @@ fun Lyrics(
 
                     
                     
-                    val targetBlur = if (!lyricsStandardBlur || !isAutoScrollEnabled || (isSelectionModeActive && isSelected) || isActiveByIndex || isActiveByTime) {
+                    val targetBlur = if (perfOn || !lyricsStandardBlur || !isAutoScrollEnabled || (isSelectionModeActive && isSelected) || isActiveByIndex || isActiveByTime) {
                         0f
                     } else {
                         val distance = kotlin.math.abs(index - (if (displayedCurrentLineIndex >= 0) displayedCurrentLineIndex else currentLineIndex))
@@ -1265,7 +1280,7 @@ fun Lyrics(
                         val hasWordTimings = if (romanizeAsMain && isRomanizedAvailable) false else item.words?.isNotEmpty() == true
                         
                         
-                        if (hasWordTimings && lyricsAnimationStyle == LyricsAnimationStyle.NONE) {
+                        if (hasWordTimings && effectiveAnimationStyle == LyricsAnimationStyle.NONE) {
                             val styledText = buildAnnotatedString {
                                 item.words?.forEachIndexed { wordIndex, word ->
                                     val wordStartMs = (word.startTime * 1000).toLong()
@@ -1313,7 +1328,7 @@ fun Lyrics(
                                 textAlign = alignment,
                                 lineHeight = (lyricsTextSize * lyricsLineSpacing.coerceAtMost(1.3f)).sp
                             )
-                        } else if (hasWordTimings && lyricsAnimationStyle == LyricsAnimationStyle.FADE) {
+                        } else if (hasWordTimings && effectiveAnimationStyle == LyricsAnimationStyle.FADE) {
                             val styledText = buildAnnotatedString {
                                 item.words?.forEachIndexed { wordIndex, word ->
                                     val wordStartMs = (word.startTime * 1000).toLong()
@@ -1370,7 +1385,7 @@ fun Lyrics(
                                 textAlign = alignment,
                                 lineHeight = (lyricsTextSize * lyricsLineSpacing.coerceAtMost(1.3f)).sp
                             )
-                        } else if (hasWordTimings && lyricsAnimationStyle == LyricsAnimationStyle.GLOW) {
+                        } else if (hasWordTimings && effectiveAnimationStyle == LyricsAnimationStyle.GLOW) {
                             val styledText = buildAnnotatedString {
                                 item.words?.forEachIndexed { wordIndex, word ->
                                     val wordStartMs = (word.startTime * 1000).toLong()
@@ -1417,7 +1432,7 @@ fun Lyrics(
                                 textAlign = alignment,
                                 lineHeight = (lyricsTextSize * lyricsLineSpacing.coerceAtMost(1.3f)).sp
                             )
-                        } else if (hasWordTimings && lyricsAnimationStyle == LyricsAnimationStyle.SLIDE) {
+                        } else if (hasWordTimings && effectiveAnimationStyle == LyricsAnimationStyle.SLIDE) {
                             val styledText = buildAnnotatedString {
                                 item.words?.forEachIndexed { wordIndex, word ->
                                     val wordStartMs = (word.startTime * 1000).toLong()
@@ -1468,7 +1483,7 @@ fun Lyrics(
                                 }
                             }
                             Text(text = styledText, fontSize = lyricsTextSize.sp, textAlign = alignment, lineHeight = (lyricsTextSize * lyricsLineSpacing).sp)
-                        } else if (hasWordTimings && lyricsAnimationStyle == LyricsAnimationStyle.KARAOKE) {
+                        } else if (hasWordTimings && effectiveAnimationStyle == LyricsAnimationStyle.KARAOKE) {
                             val styledText = buildAnnotatedString {
                                 item.words?.forEachIndexed { wordIndex, word ->
                                     val wordStartMs = (word.startTime * 1000).toLong()
@@ -1535,7 +1550,7 @@ fun Lyrics(
                                 }
                             }
                             Text(text = styledText, fontSize = lyricsTextSize.sp, textAlign = alignment, lineHeight = (lyricsTextSize * lyricsLineSpacing.coerceAtMost(1.3f)).sp)
-                        } else if (hasWordTimings && lyricsAnimationStyle == LyricsAnimationStyle.APPLE) {
+                        } else if (hasWordTimings && effectiveAnimationStyle == LyricsAnimationStyle.APPLE) {
                             val styledText = buildAnnotatedString {
                                 item.words?.forEachIndexed { wordIndex, word ->
                                     val wordStartMs = (word.startTime * 1000).toLong()
@@ -1589,7 +1604,7 @@ fun Lyrics(
                                 }
                             }
                             Text(text = styledText, fontSize = lyricsTextSize.sp, textAlign = alignment, lineHeight = (lyricsTextSize * lyricsLineSpacing.coerceAtMost(1.3f)).sp)
-                        } else if (lyricsAnimationStyle == LyricsAnimationStyle.APPLE_V2) {
+                        } else if (effectiveAnimationStyle == LyricsAnimationStyle.APPLE_V2) {
                             val nextEntryTime = lines.getOrNull(index + 1)?.time
                             val duration = remember(item.time, nextEntryTime) {
                                 if (nextEntryTime != null) nextEntryTime - item.time else 4000L
@@ -1695,7 +1710,7 @@ fun Lyrics(
                                     }
                                 }
                             }
-                        } else if (lyricsAnimationStyle == LyricsAnimationStyle.LYRICS_V2) {
+                        } else if (effectiveAnimationStyle == LyricsAnimationStyle.LYRICS_V2) {
                             LyricsLineV2(
                                 entry = item,
                                 isActive = isActiveLine,
@@ -1845,8 +1860,8 @@ fun Lyrics(
                         
                         
                         if (hasActiveTranslations && 
-                            lyricsAnimationStyle != LyricsAnimationStyle.LYRICS_V2 && 
-                            lyricsAnimationStyle != LyricsAnimationStyle.APPLE_V2) {
+                            effectiveAnimationStyle != LyricsAnimationStyle.LYRICS_V2 && 
+                            effectiveAnimationStyle != LyricsAnimationStyle.APPLE_V2) {
                             val translatedText by item.translatedTextFlow.collectAsState()
                             translatedText?.let { translated ->
                                 Text(

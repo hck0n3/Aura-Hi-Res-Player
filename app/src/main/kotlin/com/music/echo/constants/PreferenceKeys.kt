@@ -71,6 +71,11 @@ val HighPerfModeSeedAppliedKey = booleanPreferencesKey("high_perf_mode_seed_appl
 // OFF on televisions (premium: 1080p video, home carousels, high-res covers) and on capable phones wrongly
 // forced into it by the old ~4 GB LOW threshold. Never enables it. See App.migratePerfModeReseedV2.
 val PerfModeReseedV2AppliedKey = booleanPreferencesKey("perf_mode_reseed_v2_applied")
+// Re-migration (fresh key, runs AFTER PerfModeReseedV2): the V2 reseed forced perf-mode OFF on ALL
+// televisions, which also stripped it from genuinely WEAK Android-TV boxes / car head-units. This
+// re-enables High-Performance Mode ONLY on genuinely LOW-tier devices whose flag isn't already ON.
+// Never touches capable (tier != LOW) phones/TVs. See App.migratePerfModeCapabilityV3.
+val PerfModeCapabilityV3AppliedKey = booleanPreferencesKey("perf_mode_capability_v3_applied")
 // One-time migration: mini-player background back to DEFAULT so its text stays readable (gray onSurface)
 // in light mode. The seeded APPLE_MUSIC mini background forced white text, illegible on a light bar.
 val MiniPlayerDefaultBgAppliedKey = booleanPreferencesKey("miniplayer_default_bg_applied")
