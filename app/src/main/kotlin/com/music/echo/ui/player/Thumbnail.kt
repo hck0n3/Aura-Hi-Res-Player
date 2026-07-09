@@ -650,7 +650,11 @@ private fun ThumbnailItem(
     var skipMultiplier by remember { mutableIntStateOf(1) }
     var lastTapTime by remember { mutableLongStateOf(0L) }
 
-    val canvasThumbnailAnimation by iad1tya.echo.music.utils.rememberPerfGatedBoolean(CanvasThumbnailAnimationKey, defaultValue = false)
+    // Anti-overheating: gate the animated-cover Canvas video off when the OS reports MODERATE+ thermal, exactly
+    // like Performance Mode (deviceThrottle is always false below API 29 / while cool, so a cool device is
+    // byte-identical). The CanvasArtworkPlayer's ExoPlayer already pauses off-screen + releases onDispose.
+    val deviceThrottle = iad1tya.echo.music.utils.rememberDeviceThrottle()
+    val canvasThumbnailAnimation = iad1tya.echo.music.utils.rememberPerfGatedBoolean(CanvasThumbnailAnimationKey, defaultValue = false).value && !deviceThrottle
 
     // High-Performance Mode: skip the Apple-Music dynamic zoom/fade cover transition entirely and keep the
     // solid/instant path (covers stay full-size, full-alpha). Mirrors the perf-mode "no cover crossfade" rule.

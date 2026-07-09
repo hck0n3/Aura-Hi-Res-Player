@@ -176,8 +176,16 @@ fun ArtistScreen(
     val showArtistSubscriberCount by rememberPreference(key = ShowArtistSubscriberCountKey, defaultValue = true)
     val showMonthlyListeners by rememberPreference(key = ShowMonthlyListenersKey, defaultValue = true)
     // High-Performance Mode hides artist videos (audio-only, keeps weak/TV/car devices smooth).
-    val showArtistVideo by iad1tya.echo.music.utils.rememberPerfGatedBoolean(key = ShowArtistVideoKey, defaultValue = true)
-    val showArtistBackgroundVideo by iad1tya.echo.music.utils.rememberPerfGatedBoolean(key = ShowArtistBackgroundVideoKey, defaultValue = true)
+    // Anti-overheating: also drop artist videos when the OS reports MODERATE+ thermal (deviceThrottle) — like
+    // Perf Mode. STEP 3 (pause/stop when not visible): also gate on app foreground so the ArtistVideo ExoPlayer
+    // (which, unlike the animated Canvas, does NOT self-pause off-screen) is removed from composition and its
+    // onDispose releases the player — stopping video decode — while the app is backgrounded, instead of decoding
+    // an invisible video. A cool device that is in the foreground: both extra terms are true/false no-ops, so
+    // this is byte-identical to today.
+    val deviceThrottle = iad1tya.echo.music.utils.rememberDeviceThrottle()
+    val appInForeground = iad1tya.echo.music.ui.utils.rememberIsAppInForeground()
+    val showArtistVideo = iad1tya.echo.music.utils.rememberPerfGatedBoolean(key = ShowArtistVideoKey, defaultValue = true).value && !deviceThrottle && appInForeground
+    val showArtistBackgroundVideo = iad1tya.echo.music.utils.rememberPerfGatedBoolean(key = ShowArtistBackgroundVideoKey, defaultValue = true).value && !deviceThrottle && appInForeground
 
     val lazyListState = rememberLazyListState()
     val snackbarHostState = remember { SnackbarHostState() }

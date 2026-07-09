@@ -231,7 +231,11 @@ fun Lyrics(
     val romanizeChineseLyrics by rememberPreference(LyricsRomanizeChineseKey, true)
     val romanizeHindiLyrics by rememberPreference(LyricsRomanizeHindiKey, true)
     val romanizePunjabiLyrics by rememberPreference(LyricsRomanizePunjabiKey, true)
-    val lyricsGlowEffect by iad1tya.echo.music.utils.rememberPerfGatedBoolean(LyricsGlowEffectKey, false)
+    // Anti-overheating: true only while the OS reports MODERATE+ thermal (always false below API 29 / while
+    // cool). When hot, the per-frame Apple-Music-v2 blur+glow lyrics fall back to the cheap NONE path exactly
+    // like Performance Mode, restoring once cool. Cool/capable device: deviceThrottle == false → byte-identical.
+    val deviceThrottle = iad1tya.echo.music.utils.rememberDeviceThrottle()
+    val lyricsGlowEffect = iad1tya.echo.music.utils.rememberPerfGatedBoolean(LyricsGlowEffectKey, false).value && !deviceThrottle
     val lyricsAnimationStyle by rememberEnumPreference(LyricsAnimationStyleKey, LyricsAnimationStyle.echomusic_1)
     val lyricsTextSize by rememberPreference(LyricsTextSizeKey, 24f)
     val lyricsLineSpacing by rememberPreference(LyricsLineSpacingKey, 1.3f)
@@ -242,7 +246,9 @@ fun Lyrics(
     // NO glow shadows. On CAPABLE devices perfOn is false, so effectiveAnimationStyle == the user's
     // lyricsAnimationStyle and every gate below is byte-identical to before (nothing changes).
     val perfOn by rememberPreference(iad1tya.echo.music.constants.HighPerformanceModeKey, false)
-    val effectiveAnimationStyle = if (perfOn) LyricsAnimationStyle.NONE else lyricsAnimationStyle
+    // ...also forced to the lightest NONE path when the device is HOT (deviceThrottle), so a thermal spike drops
+    // the per-frame blur/glow/layout-explosion just like Performance Mode does; a cool device is unaffected.
+    val effectiveAnimationStyle = if (perfOn || deviceThrottle) LyricsAnimationStyle.NONE else lyricsAnimationStyle
 
     val openRouterApiKey by rememberPreference(OpenRouterApiKey, "")
     val deeplApiKey by rememberPreference(DeeplApiKey, "")

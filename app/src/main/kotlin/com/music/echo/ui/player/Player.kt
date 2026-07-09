@@ -289,6 +289,11 @@ fun BottomSheetPlayer(
     val hidePlayerSlider by rememberPreference(iad1tya.echo.music.constants.HidePlayerSliderKey, false)
     // High-Performance Mode hides these heavy visuals without touching the user's stored toggles (reversible).
     val highPerfMode by rememberPreference(iad1tya.echo.music.constants.HighPerformanceModeKey, false)
+    // Anti-overheating: true only while the OS reports MODERATE+ thermal (always false below API 29 / while
+    // cool). When hot, the heavy CONTINUOUS visuals below drop to their cheap/off path exactly like Perf Mode,
+    // then restore automatically once the device cools. A cool/capable device: deviceThrottle == false, so every
+    // gate that ORs it in is byte-identical to today.
+    val deviceThrottle = iad1tya.echo.music.utils.rememberDeviceThrottle()
     // TV / car: enable visible D-pad focus on the transport controls + auto-focus play/pause when the player opens.
     val isTvOrCar = iad1tya.echo.music.ui.utils.rememberIsTvOrCar()
     val playFocusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
@@ -299,7 +304,7 @@ fun BottomSheetPlayer(
     var transportFocusLanded by remember { mutableStateOf(false) }
     // Big screen (TV / tablet / car / unfolded foldable): show the Spotify-style split player (queue | now-playing).
     val isWideScreen = rememberIsWideScreen()
-    val spectrumVisualizerEnabled by iad1tya.echo.music.utils.rememberPerfGatedBoolean(iad1tya.echo.music.constants.SpectrumVisualizerEnabledKey, false)
+    val spectrumVisualizerEnabled = iad1tya.echo.music.utils.rememberPerfGatedBoolean(iad1tya.echo.music.constants.SpectrumVisualizerEnabledKey, false).value && !deviceThrottle
     val (hidePlayerThumbnail, onHidePlayerThumbnailChange) = rememberPreference(HidePlayerThumbnailKey, false)
     val cropAlbumArt by rememberPreference(CropAlbumArtKey, false)
     val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
@@ -328,10 +333,10 @@ fun BottomSheetPlayer(
         if (darkTheme == DarkMode.AUTO) isSystemInDarkTheme else darkTheme == DarkMode.ON
     }
 
-    val enableCanvas by iad1tya.echo.music.utils.rememberPerfGatedBoolean(CanvasThumbnailAnimationKey, true)
-    val showArtistBackgroundVideo by iad1tya.echo.music.utils.rememberPerfGatedBoolean(
+    val enableCanvas = iad1tya.echo.music.utils.rememberPerfGatedBoolean(CanvasThumbnailAnimationKey, true).value && !deviceThrottle
+    val showArtistBackgroundVideo = iad1tya.echo.music.utils.rememberPerfGatedBoolean(
         iad1tya.echo.music.constants.ShowArtistBackgroundVideoKey, true
-    )
+    ).value && !deviceThrottle
 
     val shouldUseDarkButtonColors = remember(playerBackground, useDarkTheme, highPerfMode) {
         when {
@@ -994,10 +999,12 @@ fun BottomSheetPlayer(
                     .fillMaxSize()
                     .background(bottomSheetBackgroundColor)
             ) {
-                if (highPerfMode) {
-                    // Perf mode: show the cover as a PLAIN, opaque, STATIC background — a single downsized image
-                    // draw, NO blur/glow/mesh shader, NO palette extraction, NO per-frame animation. So the
-                    // artwork is still there (the user wants to see it) but the heavy backgrounds cost nothing.
+                if (highPerfMode || deviceThrottle) {
+                    // Perf mode OR the device is HOT (deviceThrottle): show the cover as a PLAIN, opaque, STATIC
+                    // background — a single downsized image draw, NO blur/glow/mesh shader, NO palette extraction,
+                    // NO per-frame animation. This is the single gate for the heavy blurred/animated backgrounds
+                    // (BLUR / GRADIENT / GLOW_ANIMATED / APPLE_MUSIC / LIVE_MESH) and the animated Canvas draw. So
+                    // the artwork is still there (the user wants to see it) but the heavy backgrounds cost nothing.
                     // A fixed dark scrim keeps the title/controls readable.
                     val perfThumb = mediaMetadata?.thumbnailUrl
                     if (perfThumb != null) {
