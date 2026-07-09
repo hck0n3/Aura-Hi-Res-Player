@@ -30,12 +30,29 @@ class CoilBitmapLoader(
     private fun createFallbackBitmap(): Bitmap =
         createBitmap(64, 64)
 
+    // Cap the artwork used for the media notification / lockscreen / Android Auto. The full-res cover is
+    // 1200x1200 (~5.7 MB as ARGB_8888); handing a bitmap that big to NotificationManager.notify() blows the
+    // Binder transaction limit -> TransactionTooLargeException crash (seen on Xiaomi/Android 16). 512px is
+    // plenty for a notification/lockscreen icon and keeps the parcel small.
+    private fun Bitmap.downscaledIfLarge(): Bitmap {
+        val maxSide = maxOf(width, height)
+        if (maxSide <= MAX_ARTWORK_PX || maxSide <= 0) return this
+        val scale = MAX_ARTWORK_PX.toFloat() / maxSide
+        val w = (width * scale).toInt().coerceAtLeast(1)
+        val h = (height * scale).toInt().coerceAtLeast(1)
+        return try {
+            Bitmap.createScaledBitmap(this, w, h, true)
+        } catch (e: Exception) {
+            this
+        }
+    }
+
     private fun Bitmap.copyIfNeeded(): Bitmap {
         return if (isRecycled) {
             createFallbackBitmap()
         } else {
             try {
-                copy(Bitmap.Config.ARGB_8888, false) ?: createFallbackBitmap()
+                downscaledIfLarge().copy(Bitmap.Config.ARGB_8888, false) ?: createFallbackBitmap()
             } catch (e: Exception) {
                 createFallbackBitmap()
             }
@@ -97,4 +114,10 @@ class CoilBitmapLoader(
 
             direct ?: createFallbackBitmap()
         }
+
+    private companion object {
+        // Max side (px) for the media-notification/lockscreen artwork so the notification parcel stays
+        // well under the Binder transaction limit. The in-app full-res cover pipeline is unaffected.
+        const val MAX_ARTWORK_PX = 512
+    }
 }
