@@ -63,3 +63,9 @@ jsoup 1.22.2 · guava 33.6.0-jre · datastore 1.2.1 · lottie 6.7.1 · coil 3.5.
 6. Diferidos como trabajos separados.
 
 Ningún bump toca demo/licencia/suscripción, el crossfade de 9s, ni el motor de audio.
+
+## ⚠️ Resultado del intento (2026-07-09) — el "batch seguro" NO es seguro standalone
+Se aplicó el batch verde y el build de CI FALLÓ en Hilt:
+`[Hilt] Provided Metadata instance has version 2.4.0, while maximum supported version is 2.3.0`.
+Causa: **coil 3.5.0 / ktor 3.5.0 (releases de jun-2026) ya vienen compilados con Kotlin 2.4**, y su metadata 2.4.0 la procesa Hilt vía `kotlin-metadata-jvm`, que en el stack actual (Kotlin **2.3.10**) topa en 2.3.0. Revertir Hilt a 2.59.1 no lo arregla (el metadata 2.4 viene de los deps, no de Hilt).
+**Conclusión:** los minors nuevos exigen subir PRIMERO el toolchain a **Kotlin 2.4.0 + KSP 2.3.9 + Hilt compatible** (el batch MEDIO). Sin eso, incluso "patch/minor" rompen. → El batch de deps se **revirtió**; la modernización queda como **un solo trabajo aislado**: Gradle 9.6.1 → AGP 9.2.0 → Kotlin 2.4.0/KSP → luego coil/ktor/Compose, cada paso con build verde. El branch de auditoría queda SIN bumps (verde con todos los fixes reales).
