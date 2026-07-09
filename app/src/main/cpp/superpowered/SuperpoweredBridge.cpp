@@ -202,7 +202,17 @@ Java_iad1tya_echo_music_eq_audio_CustomEqualizerAudioProcessor_processAudio(JNIE
 
     int requiredSize = num_frames * channels;
     if (requiredSize > MAX_BUFFER_SIZE) {
-        LOGE("Audio buffer size %d exceeds MAX_BUFFER_SIZE %d. Aborting.", requiredSize, MAX_BUFFER_SIZE);
+        // Oversized block: the fixed native scratch arrays (conversionBuffer/deEsserBuffer) can't hold
+        // it, so the DSP chain can't run. Do NOT bare-return: media3 reuses the same output ByteBuffer
+        // and the caller always flips/publishes it, so returning without writing republishes the
+        // previous block's PCM (or uninitialized memory) as an audible click/burst. Emit a bit-exact
+        // pass-through instead — this rare block is played unprocessed (no EQ/Safe Volume) but clean.
+        // Same layout as the #else fallback below: 4 bytes/sample float (encoding==4) else 2 (16-bit),
+        // for num_frames*channels interleaved samples. memcpy on already-mapped direct buffers is
+        // allocation-free and safe on the audio thread.
+        LOGE("Audio buffer size %d exceeds MAX_BUFFER_SIZE %d. Passing through unprocessed.", requiredSize, MAX_BUFFER_SIZE);
+        int bytesPerSample = (encoding == 4) ? 4 : 2;
+        memcpy(output, input, (size_t)requiredSize * bytesPerSample);
         return;
     }
 

@@ -69,20 +69,42 @@ class CustomEqualizerAudioProcessor(private val licenseKey: String = "akloSTZUT1
 
     fun disable() {
         enabled = false
-        if (isInitialized && nativePtr != 0L) {
+        if (isInitialized && nativePtr != 0L) synchronized(eqApplyLock) {
             setPreamp(nativePtr, 0f)
             disableAllBands(nativePtr)
+            appliedBandIndices = emptySet()
         }
     }
 
     fun applyProfile(profile: ParametricEQ) {
         enabled = true
         currentProfile = profile
-        if (isInitialized && nativePtr != 0L) {
-            disableAllBands(nativePtr)
-
+        // Serialize the native apply + appliedBandIndices bookkeeping: applyProfile runs from BOTH the UI/service
+        // thread AND the media3 playback thread (onConfigure's profile restore). Without this lock a race could
+        // under-record the enabled slots and let a stale band survive permanently. Rare, non-audio path — the
+        // audio hot path (queueInput/processAudio) never takes this lock.
+        if (isInitialized && nativePtr != 0L) synchronized(eqApplyLock) {
             // Combine manual bands and auto-correction bands (auto first, then taste — LTI cascade).
             val allBands = profile.autoBands + profile.bands
+
+            // The filter slots (indices into allBands) this profile will enable.
+            val newIndices = allBands.mapIndexedNotNull { i, b -> if (b.enabled) i else null }.toHashSet()
+
+            // ATOMICITY (P48): the native bridge has no batch "apply all bands" call — every JNI call takes the
+            // shared eqMutex in its OWN short scope and releases it, so the audio thread (processAudio) can run
+            // a block MID-re-apply. The worst transient is the instant right after disableAllBands(), when EVERY
+            // filter is off and that block loses all EQ shaping (a dip on preset switch). disableAllBands() is
+            // only needed to clear STALE slots — filters the PREVIOUS profile enabled that this one no longer
+            // uses. When there are none (the common preset switch where the band layout is unchanged) we skip it
+            // and overwrite each band in place, so the audio thread never sees an all-flat block. When a slot
+            // must be cleared we fall back to disableAllBands() (unchanged behavior). Both paths converge on the
+            // exact same final enabled set + coefficients, so steady-state playback is bit-identical. A fully
+            // atomic swap (one lock spanning the whole re-apply, or a coefficient double-buffer) would require a
+            // native bridge change and is intentionally out of scope here.
+            if (appliedBandIndices.any { it !in newIndices }) {
+                disableAllBands(nativePtr)
+            }
+
             val enabledGains = allBands.filter { it.enabled }.map { it.gain }
             // AUTO-HEADROOM with a limiter margin. Only trim the preamp by the positive EQ boost that
             // EXCEEDS what the gentle -3 dBFS limiter can absorb transparently (~2 dB). So small/moderate
@@ -106,10 +128,26 @@ class CustomEqualizerAudioProcessor(private val licenseKey: String = "akloSTZUT1
                     setEqBand(nativePtr, index, band.frequency.toFloat(), band.gain.toFloat(), band.q.toFloat(), typeCode)
                 }
             }
+
+            // Record what is now enabled so the NEXT apply knows which slots (if any) must be cleared.
+            appliedBandIndices = newIndices
         }
     }
 
     private var currentProfile: ParametricEQ? = null
+
+    /**
+     * Filter-slot indices currently enabled in the native processor (set by the last [applyProfile]). Used to
+     * decide whether a re-apply must call [disableAllBands] (only when some previously-enabled slot is no longer
+     * used) so we can skip the all-filters-off transient on the common preset switch. Touched only from the UI
+     * thread that drives apply/disable — never from the audio thread's queueInput/processAudio path.
+     */
+    private var appliedBandIndices: Set<Int> = emptySet()
+
+    // Guards the native EQ apply + appliedBandIndices record so applyProfile (called from the UI thread AND the
+    // media3 playback thread via onConfigure) is atomic. Re-entrant use from onConfigure is fine. NOT taken by the
+    // audio hot path (queueInput/processAudio), so it never blocks audio.
+    private val eqApplyLock = Any()
 
     override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
         if (inputAudioFormat.encoding != C.ENCODING_PCM_16BIT && inputAudioFormat.encoding != C.ENCODING_PCM_FLOAT) {
@@ -120,19 +158,26 @@ class CustomEqualizerAudioProcessor(private val licenseKey: String = "akloSTZUT1
         // actually loaded — otherwise initSuperpowered (an external/JNI call) throws an uncaught
         // UnsatisfiedLinkError and crashes playback. When it didn't load we leave nativePtr = 0L /
         // isInitialized = false so queueInput's else-branch passes audio through unmodified (bypass).
-        if (nativeLibLoaded && nativePtr == 0L) {
-            try {
-                nativePtr = initSuperpowered(licenseKey, inputAudioFormat.sampleRate)
-            } catch (e: UnsatisfiedLinkError) {
-                // Defensive: should not happen once nativeLibLoaded is true, but never let it crash playback.
-                e.printStackTrace()
-                nativePtr = 0L
+        // Whole native (re)init + profile restore under eqApplyLock so the appliedBandIndices reset + re-apply is
+        // atomic vs a concurrent UI applyProfile (applyProfile re-enters this lock — re-entrant is fine).
+        synchronized(eqApplyLock) {
+            if (nativeLibLoaded && nativePtr == 0L) {
+                try {
+                    nativePtr = initSuperpowered(licenseKey, inputAudioFormat.sampleRate)
+                    // Fresh native processor: all 64 filters start disabled, so the apply-time bookkeeping that
+                    // decides whether disableAllBands() is needed must start clean too.
+                    appliedBandIndices = emptySet()
+                } catch (e: UnsatisfiedLinkError) {
+                    // Defensive: should not happen once nativeLibLoaded is true, but never let it crash playback.
+                    e.printStackTrace()
+                    nativePtr = 0L
+                }
             }
-        }
-        isInitialized = nativePtr != 0L
+            isInitialized = nativePtr != 0L
 
-        // Restore profile if one was applied
-        currentProfile?.let { applyProfile(it) }
+            // Restore profile if one was applied
+            currentProfile?.let { applyProfile(it) }
+        }
         // Restore Safe Volume state (native processor may have just been re-created).
         if (isInitialized && nativePtr != 0L && safeVolumeEnabled) {
             setSafeVolume(nativePtr, safeVolumeEnabled, safeVolumeGain)
@@ -168,10 +213,11 @@ class CustomEqualizerAudioProcessor(private val licenseKey: String = "akloSTZUT1
     }
 
     override fun onReset() {
-        if (isInitialized && nativePtr != 0L) {
+        if (isInitialized && nativePtr != 0L) synchronized(eqApplyLock) {
             releaseSuperpowered(nativePtr)
             nativePtr = 0L
             isInitialized = false
+            appliedBandIndices = emptySet()
         }
         super.onReset()
     }
