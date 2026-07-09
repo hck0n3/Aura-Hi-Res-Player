@@ -160,23 +160,30 @@ class ProgressState(
 fun MiniPlayer(
     positionState: MutableLongState,
     durationState: MutableLongState,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    // P13: true only when this collapsed mini is the sole owner of the shared player's video surface
+    // (i.e. the sheet is fully collapsed and the expanded player isn't composed). When false the mini
+    // must NOT call setVideoTextureView — it shows the static artwork so the expanded player keeps the
+    // single surface. See the call site in Player.kt.
+    shouldBindVideoSurface: Boolean = true
 ) {
     val useNewMiniPlayerDesign by rememberPreference(UseNewMiniPlayerDesignKey, true)
-    
-    
+
+
     val progressState = remember { ProgressState(positionState, durationState) }
 
     if (useNewMiniPlayerDesign) {
         NewMiniPlayer(
             progressState = progressState,
-            modifier = modifier
+            modifier = modifier,
+            shouldBindVideoSurface = shouldBindVideoSurface
         )
     } else {
         Box(modifier = modifier.fillMaxWidth()) {
             LegacyMiniPlayer(
                 progressState = progressState,
-                modifier = Modifier.align(Alignment.Center)
+                modifier = Modifier.align(Alignment.Center),
+                shouldBindVideoSurface = shouldBindVideoSurface
             )
         }
     }
@@ -189,7 +196,8 @@ fun MiniPlayer(
 @Composable
 private fun NewMiniPlayer(
     progressState: ProgressState,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    shouldBindVideoSurface: Boolean = true
 ) {
     val playerConnection = LocalPlayerConnection.current ?: return
     
@@ -366,6 +374,7 @@ private fun NewMiniPlayer(
                     primaryColor = primaryColor,
                     outlineColor = outlineColor,
                     playerConnection = playerConnection,
+                    shouldBindVideoSurface = shouldBindVideoSurface,
                 )
 
                 Spacer(modifier = Modifier.width(16.dp))
@@ -430,6 +439,7 @@ private fun NewMiniPlayerThumbnail(
     primaryColor: Color,
     outlineColor: Color,
     playerConnection: iad1tya.echo.music.playback.PlayerConnection? = null,
+    shouldBindVideoSurface: Boolean = true,
 ) {
     val trackColor = outlineColor.copy(alpha = 0.2f)
     val strokeWidth = 3.dp
@@ -482,7 +492,10 @@ private fun NewMiniPlayerThumbnail(
             val videoUrl by (playerConnection?.videoUrl ?: kotlinx.coroutines.flow.MutableStateFlow(null)).collectAsState()
             
             mediaMetadata?.let { metadata ->
-                if (videoMode && !videoUrl.isNullOrEmpty() && playerConnection != null) {
+                // P13: only bind the shared player's video surface when this mini owns it (sheet fully
+                // collapsed). Otherwise fall back to the static artwork so the expanded player keeps the
+                // single TextureView — never two surfaces on one ExoPlayer during a drag.
+                if (videoMode && !videoUrl.isNullOrEmpty() && playerConnection != null && shouldBindVideoSurface) {
                     iad1tya.echo.music.ui.player.PlayerVideoSurface(
                         playerConnection = playerConnection,
                         modifier = Modifier.fillMaxSize().clip(CircleShape)
@@ -561,7 +574,8 @@ private fun NewMiniPlayerSongInfo(
 @Composable
 private fun LegacyMiniPlayer(
     progressState: ProgressState,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    shouldBindVideoSurface: Boolean = true
 ) {
     val playerConnection = LocalPlayerConnection.current ?: return
     val pureBlack by rememberPreference(PureBlackMiniPlayerKey, defaultValue = false)
@@ -706,6 +720,7 @@ private fun LegacyMiniPlayer(
                         pureBlack = pureBlack,
                         modifier = Modifier.padding(horizontal = 6.dp),
                         playerConnection = playerConnection,
+                        shouldBindVideoSurface = shouldBindVideoSurface,
                     )
                 }
             }
@@ -801,6 +816,7 @@ private fun LegacyMiniMediaInfo(
     pureBlack: Boolean,
     modifier: Modifier = Modifier,
     playerConnection: iad1tya.echo.music.playback.PlayerConnection? = null,
+    shouldBindVideoSurface: Boolean = true,
 ) {
     val error by LocalPlayerConnection.current?.error?.collectAsState() ?: remember { mutableStateOf(null) }
     val cropAlbumArt by rememberPreference(CropAlbumArtKey, false)
@@ -824,7 +840,9 @@ private fun LegacyMiniMediaInfo(
             val videoMode by (playerConnection?.videoMode ?: kotlinx.coroutines.flow.MutableStateFlow(false)).collectAsState()
             val videoUrl by (playerConnection?.videoUrl ?: kotlinx.coroutines.flow.MutableStateFlow(null)).collectAsState()
 
-            if (videoMode && !videoUrl.isNullOrEmpty() && playerConnection != null) {
+            // P13: bind the shared player's video surface only while this mini owns it (sheet fully
+            // collapsed); otherwise show static artwork so the expanded player keeps the single surface.
+            if (videoMode && !videoUrl.isNullOrEmpty() && playerConnection != null && shouldBindVideoSurface) {
                 iad1tya.echo.music.ui.player.PlayerVideoSurface(
                     playerConnection = playerConnection,
                     modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(ThumbnailCornerRadius))

@@ -1337,6 +1337,7 @@ fun HomeScreen(
                                             .fillMaxWidth()
                                             .height(260.dp)
                                             .animateItem()
+                                            .tvFocusRestorer()
                                     ) { index ->
                                         val originalSong = distinctQuickPicks[index]
                                         val song by database.song(originalSong.id)
@@ -1561,6 +1562,7 @@ fun HomeScreen(
                                             modifier = Modifier
                                                 .fillMaxWidth()
                                                 .height(300.dp)
+                                                .tvFocusRestorer()
                                         ) { i ->
                                             val item = discoverList[i]
                                             DailyDiscoverCard(

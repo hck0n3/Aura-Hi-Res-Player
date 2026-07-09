@@ -25,18 +25,11 @@ object AppleMusicTokenProvider {
         expectSuccess = true
     }
 
-    /**
-     * Drop the cached token so the next [getToken] performs a fresh extraction.
-     * Intended to be called after the Apple Music API returns an HTTP 401 (token
-     * revoked/rotated before its stated `exp`). Best-effort and side-effect free.
-     */
-    suspend fun invalidate() {
-        mutex.withLock {
-            cachedToken = null
-            cachedTokenExpiryMs = 0L
-        }
-    }
-
+    // Self-healing is handled entirely by the TTL/`exp`-derived expiry window below
+    // (see [computeExpiryMs]): a stale token is dropped and re-extracted on the next
+    // [getToken], and the fallback token is deliberately never cached. An explicit
+    // 401/403 invalidation hook would have to live at the API call site (which is in a
+    // separate file), so it is intentionally omitted here rather than left as dead code.
     suspend fun getToken(): String {
         return mutex.withLock {
             // Reuse the cached token only while it is still within its validity window.

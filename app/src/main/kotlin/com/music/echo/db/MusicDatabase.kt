@@ -112,7 +112,7 @@ class MusicDatabase(
         SortedSongAlbumMap::class,
         PlaylistSongMapPreview::class,
     ],
-    version = 37,
+    version = 38,
     exportSchema = true,
     autoMigrations = [
         AutoMigration(from = 2, to = 3),
@@ -151,6 +151,7 @@ class MusicDatabase(
         AutoMigration(from = 35, to = 36),
         // 36 -> 37: pure nullable-column add (format.measuredLoudnessDb REAL, default NULL).
         AutoMigration(from = 36, to = 37),
+        // 37 -> 38: additive index on event.timestamp (P39). Handled by MIGRATION_37_38 below.
     ],
 )
 @TypeConverters(Converters::class)
@@ -172,6 +173,7 @@ abstract class InternalDatabase : RoomDatabase() {
                         MIGRATION_22_24,
                         MIGRATION_24_25,
                         MIGRATION_27_28,
+                        MIGRATION_37_38,
                     )
 
                     .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
@@ -771,5 +773,16 @@ val MIGRATION_27_28 =
             db.execSQL("CREATE VIEW `sorted_song_artist_map` AS SELECT * FROM song_artist_map ORDER BY position")
             db.execSQL("CREATE VIEW `sorted_song_album_map` AS SELECT * FROM song_album_map ORDER BY `index`")
             db.execSQL("CREATE VIEW `playlist_song_map_preview` AS SELECT * FROM playlist_song_map WHERE position <= 3 ORDER BY position")
+        }
+    }
+
+// P39: additive, non-destructive migration that indexes event.timestamp so the ~12 analytics
+// Flow queries filtering/aggregating on timestamp ranges stop doing full table scans.
+// The index name MUST match Room's auto-generated name for @Index(value = ["timestamp"]) on the
+// "event" table — i.e. "index_event_timestamp" — or Room's schema validation fails at startup.
+val MIGRATION_37_38 =
+    object : Migration(37, 38) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_event_timestamp` ON `event` (`timestamp`)")
         }
     }

@@ -1488,7 +1488,14 @@ fun BottomSheetPlayer(
         collapsedContent = {
             MiniPlayer(
                 positionState = positionState,
-                durationState = durationState
+                durationState = durationState,
+                // P13: the full player's PlayerVideoSurface and the MiniPlayer thumbnail both bind the SAME
+                // shared ExoPlayer via setVideoTextureView. During a sheet drag both the expanded content and
+                // this collapsed content are composed at once, so two TextureViews would fight over the one
+                // video output. Only let the mini bind the surface while the sheet is fully collapsed (the
+                // expanded content isn't composed then); otherwise the mini shows the static artwork and the
+                // expanded player owns the surface. Guarantees exactly one surface binding at any time.
+                shouldBindVideoSurface = state.isCollapsed
             )
         },
     ) {
