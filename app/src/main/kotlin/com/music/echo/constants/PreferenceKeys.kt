@@ -97,6 +97,10 @@ val AudioDefaultsV2AppliedKey = booleanPreferencesKey("audio_defaults_v2_applied
 // One-time: force infinite playback (auto-radio at end of album/playlist/queue) ON for EVERYONE — the owner
 // wants endless playback always active. Fresh key so it re-applies even for users who had it toggled off.
 val InfinitePlaybackForcedOnKey = booleanPreferencesKey("infinite_playback_forced_on_v1")
+// One-time (FRESH key): force "Safe Volume" ON for EVERYONE on this update — new installs and existing
+// users, including anyone who previously turned it off (owner wants it on unconditionally). Re-applies once
+// even though SafeVolumeEnabledKey may already be set, then remembers it so the user can toggle it off after.
+val SafeVolumeDefaultOnAppliedKey = booleanPreferencesKey("safe_volume_default_on_applied")
 // Manual override: force the wide "Spotify split" layout ON even on a device the app wouldn't auto-detect as
 // big (e.g. a phone/tablet the user WANTS the split on). ORed into rememberIsWideScreen().
 val ForceSplitViewKey = booleanPreferencesKey("force_split_view")
@@ -222,9 +226,10 @@ val ShuffleModeKey = booleanPreferencesKey("shuffleMode")
 val SkipSilenceKey = booleanPreferencesKey("skipSilence")
 val SkipSilenceInstantKey = booleanPreferencesKey("skipSilenceInstant")
 val AudioNormalizationKey = booleanPreferencesKey("audioNormalization")
-// Opt-in "Safe Volume" (default OFF so bit-perfect playback stays the default): brings loud masters
-// DOWN toward a reference (attenuate-only) + a gentle limiter, applied in the live float Superpowered
-// EQ processor, so loud tracks don't blast at full native level. Does not break Hi-Res output.
+// "Safe Volume" (default ON as of this update — one-time forced ON for everyone via
+// SafeVolumeDefaultOnAppliedKey; still user-toggleable afterwards): brings loud masters DOWN toward a
+// reference (attenuate-only) + a gentle limiter, applied in the live float Superpowered EQ processor, so
+// loud tracks don't blast at full native level. Does not break Hi-Res output.
 val SafeVolumeEnabledKey = booleanPreferencesKey("safeVolume")
 val AutoLoadMoreKey = booleanPreferencesKey("autoLoadMore")
 val DisableLoadMoreWhenRepeatAllKey = booleanPreferencesKey("disableLoadMoreWhenRepeatAll")

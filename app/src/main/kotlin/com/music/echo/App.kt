@@ -124,6 +124,9 @@ class App : Application(), SingletonImageLoader.Factory {
         migrateThemeSystemOnlyV2(settings)
         migratePlaybackDefaults(settings)
         migrateAudioDefaultsV2(settings)
+        // Must run AFTER migrateAudioDefaultsV2 (which historically set Safe Volume OFF on this same launch)
+        // so this one-time force-ON wins.
+        migrateSafeVolumeDefaultOn(settings)
         migrateInfinitePlaybackOn(settings)
         migrateLegacyIcon(settings)
         val locale = Locale.getDefault()
@@ -430,7 +433,7 @@ class App : Application(), SingletonImageLoader.Factory {
 
     /**
      * One-time (V2): force the requested AUDIO DEFAULTS for EVERYONE on this update — EQ ON + "Audiophile"
-     * preset + preamp 0.0 dB, crossfade 9 s equal-power ("transición suave"), and Safe Volume OFF. Gated by
+     * preset + preamp 0.0 dB, crossfade 9 s equal-power ("transición suave"), and Safe Volume ON. Gated by
      * a FRESH key ([AudioDefaultsV2AppliedKey]) so it re-applies even for users whose per-feature flags were
      * already set by the brief 0.6.75/0.6.76 builds (a single EqAudiophileDefault boolean could only ever
      * apply ONCE per install, so bumping the version alone did NOT re-apply it — this new-key block fixes that).
@@ -440,13 +443,14 @@ class App : Application(), SingletonImageLoader.Factory {
      */
     private suspend fun migrateAudioDefaultsV2(settings: androidx.datastore.preferences.core.Preferences) {
         if (settings[iad1tya.echo.music.constants.AudioDefaultsV2AppliedKey] == true) return
-        // Playback prefs (best-effort): crossfade 9 s equal-power ON, Safe Volume OFF.
+        // Playback prefs (best-effort): crossfade 9 s equal-power ON, Safe Volume ON (default flipped to ON;
+        // migrateSafeVolumeDefaultOn also forces it for users who already passed this gated migration).
         runCatching {
             dataStore.edit { p ->
                 p[iad1tya.echo.music.constants.CrossfadeEnabledKey] = true
                 p[iad1tya.echo.music.constants.CrossfadeDurationKey] = 9f
                 p[iad1tya.echo.music.constants.CrossfadeCurveKey] = 1
-                p[iad1tya.echo.music.constants.SafeVolumeEnabledKey] = false
+                p[iad1tya.echo.music.constants.SafeVolumeEnabledKey] = true
             }
         }.onFailure { reportException(it) }
         val seeded = runCatching {
@@ -496,6 +500,26 @@ class App : Application(), SingletonImageLoader.Factory {
         }.onFailure { reportException(it) }.isSuccess
         if (applied) {
             dataStore.edit { it[iad1tya.echo.music.constants.InfinitePlaybackForcedOnKey] = true }
+        }
+    }
+
+    /**
+     * Force "Safe Volume" (Volumen Seguro) ON for EVERYONE on this update — new installs and existing users,
+     * including anyone who had previously turned it OFF (owner wants it on unconditionally). Fresh key so it
+     * re-applies once even though [SafeVolumeEnabledKey] may already be set (a versionCode bump or a set flag
+     * alone would NOT re-run it). This is a one-time FORCE, not a lock: afterwards the user can still toggle
+     * Safe Volume off in Settings and their choice sticks. Runs AFTER migrateAudioDefaultsV2 (which used to set
+     * Safe Volume OFF) so this ON write wins on the same launch.
+     */
+    private suspend fun migrateSafeVolumeDefaultOn(settings: androidx.datastore.preferences.core.Preferences) {
+        if (settings[iad1tya.echo.music.constants.SafeVolumeDefaultOnAppliedKey] == true) return
+        // Only mark the one-time migration done when the write actually succeeded, so a transient DataStore
+        // failure retries on the next launch instead of silently leaving Safe Volume off forever.
+        val applied = runCatching {
+            dataStore.edit { it[iad1tya.echo.music.constants.SafeVolumeEnabledKey] = true }
+        }.onFailure { reportException(it) }.isSuccess
+        if (applied) {
+            dataStore.edit { it[iad1tya.echo.music.constants.SafeVolumeDefaultOnAppliedKey] = true }
         }
     }
 

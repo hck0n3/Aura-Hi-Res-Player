@@ -987,7 +987,7 @@ class MusicService :
         // Re-apply when the Safe Volume toggle changes so it takes effect live (mid-song), not just next track.
         scope.launch {
             dataStore.data
-                .map { it[SafeVolumeEnabledKey] ?: false }
+                .map { it[SafeVolumeEnabledKey] ?: true }
                 .distinctUntilChanged()
                 .collect {
                     safeVolumeEnabledHint = it // mirror for the crossfade pre-level
@@ -2232,9 +2232,9 @@ class MusicService :
                 val normalizeAudio = withContext(Dispatchers.IO) {
                     dataStore.data.map { it[AudioNormalizationKey] ?: true }.first()
                 }
-                // Safe Volume (opt-in, default off): drives the live EQ processor's attenuate-only gain.
+                // Safe Volume (default ON): drives the live EQ processor's attenuate-only gain.
                 val safeVol = withContext(Dispatchers.IO) {
-                    dataStore.data.map { it[SafeVolumeEnabledKey] ?: false }.first()
+                    dataStore.data.map { it[SafeVolumeEnabledKey] ?: true }.first()
                 }
 
                 if ((normalizeAudio || safeVol) && currentMediaId != null) {

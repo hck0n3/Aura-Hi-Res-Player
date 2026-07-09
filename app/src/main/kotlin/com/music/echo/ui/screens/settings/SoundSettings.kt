@@ -84,7 +84,7 @@ fun SoundSettings(
         Spacer(Modifier.height(20.dp))
 
         // ── Volumen ──
-        val (safeVolume, onSafeVolumeChange) = rememberPreference(SafeVolumeEnabledKey, defaultValue = false)
+        val (safeVolume, onSafeVolumeChange) = rememberPreference(SafeVolumeEnabledKey, defaultValue = true)
         Material3SettingsGroup(
             title = "Volumen",
             items = listOf(
