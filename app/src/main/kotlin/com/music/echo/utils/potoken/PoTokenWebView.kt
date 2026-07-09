@@ -169,15 +169,18 @@ class PoTokenWebView private constructor(
      */
     @JavascriptInterface
     fun onRunBotguardResult(botguardResponse: String) {
-        Timber.tag(TAG).d("botguardResponse: $botguardResponse")
+        // SECURITY: botguardResponse is auth material; log only its length, never the value.
+        Timber.tag(TAG).d("botguardResponse received (len=${botguardResponse.length})")
         makeBotguardServiceRequest(
             "https://www.youtube.com/api/jnn/v1/GenerateIT",
             "[ \"$REQUEST_KEY\", \"$botguardResponse\" ]",
         ) { responseBody ->
-            Timber.tag(TAG).d("GenerateIT response: $responseBody")
+            // SECURITY: this response body contains the integrity token; log only its length.
+            Timber.tag(TAG).d("GenerateIT response received (len=${responseBody.length})")
             try {
                 val (integrityToken, expirationTimeInSeconds) = parseIntegrityTokenData(responseBody)
-                Timber.tag(TAG).d("Parsed integrityToken (${integrityToken.take(50)}...), expires in $expirationTimeInSeconds sec")
+                // SECURITY: do not log any part of the integrity token value; log only its length.
+                Timber.tag(TAG).d("Parsed integrityToken (len=${integrityToken.length}), expires in $expirationTimeInSeconds sec")
 
                 // leave 10 minutes of margin just to be sure
                 expirationInstant = Instant.now().plusSeconds(expirationTimeInSeconds).minus(10, ChronoUnit.MINUTES)
@@ -283,7 +286,9 @@ class PoTokenWebView private constructor(
      */
     @JavascriptInterface
     fun onObtainPoTokenResult(identifier: String, poTokenU8: String) {
-        Timber.tag(TAG).d("Generated poToken (before decoding): identifier=$identifier poTokenU8=$poTokenU8")
+        // SECURITY: never log the raw token value (before or after decoding) to logcat.
+        // Log only the identifier and the length so the credential is not leaked.
+        Timber.tag(TAG).d("Generated poToken (before decoding): identifier=$identifier u8Len=${poTokenU8.length}")
         val poToken = try {
             u8ToBase64(poTokenU8)
         } catch (t: Throwable) {
@@ -291,7 +296,7 @@ class PoTokenWebView private constructor(
             return
         }
 
-        Timber.tag(TAG).d("Generated poToken: identifier=$identifier poToken=$poToken")
+        Timber.tag(TAG).d("Generated poToken: identifier=$identifier ok=${poToken.isNotEmpty()} len=${poToken.length}")
         popPoTokenContinuation(identifier)?.resume(poToken)
     }
 

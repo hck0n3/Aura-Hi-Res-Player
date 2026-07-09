@@ -5,6 +5,11 @@
     <exclude
         domain="file"
         path="datastore/settings.preferences_pb" />
+    <!-- Never back up the license state (subscription key, device id, demo timestamps):
+         keeps the plaintext secret out of adb/cloud backup. -->
+    <exclude
+        domain="sharedpref"
+        path="jr_license.xml" />
     <exclude
         domain="file"
         path="./exoplayer" />

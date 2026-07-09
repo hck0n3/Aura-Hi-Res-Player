@@ -9,6 +9,10 @@
         <exclude
             domain="file"
             path="datastore/settings.preferences_pb" />
+        <!-- Never export the license state (subscription key, device id, demo timestamps). -->
+        <exclude
+            domain="sharedpref"
+            path="jr_license.xml" />
         <exclude
             domain="file"
             path="./exoplayer" />
@@ -23,6 +27,10 @@
         <exclude
             domain="file"
             path="datastore/settings.preferences_pb" />
+        <!-- Never transfer the license state (subscription key, device id, demo timestamps). -->
+        <exclude
+            domain="sharedpref"
+            path="jr_license.xml" />
         <exclude
             domain="file"
             path="./exoplayer" />
