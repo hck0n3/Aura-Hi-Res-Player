@@ -4534,20 +4534,6 @@ class MusicService :
         super.onDestroy()
     }
 
-    override fun onTrimMemory(level: Int) {
-        super.onTrimMemory(level)
-        // Under aggressive OS memory pressure only (RUNNING_CRITICAL and above — the process is a prime LMK
-        // target), drop the ahead-of-time, fully re-derivable network caches (resolved stream URLs, video
-        // URLs) so the process is a smaller target and less likely to be reaped mid-song. This does NOT touch
-        // the ExoPlayer buffers, the audio chain, the effects, the loudness hints, or the crossfade — the
-        // currently-playing (and already-buffered) source is unaffected; these maps simply re-populate on
-        // demand at the next transition. Never fires under normal conditions, so normal playback is unchanged.
-        if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL) {
-            songUrlCache.clear()
-            videoUrlCache.clear()
-            Timber.tag(TAG).d("onTrimMemory(level=$level): cleared re-derivable URL caches under memory pressure")
-        }
-    }
 
     override fun onBind(intent: Intent?) = super.onBind(intent) ?: binder
 

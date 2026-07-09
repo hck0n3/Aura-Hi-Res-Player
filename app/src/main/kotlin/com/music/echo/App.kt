@@ -177,7 +177,16 @@ class App : Application(), SingletonImageLoader.Factory {
         // newImageLoader) and refresh the SharedPreferences copy so the next cold start seeds correctly. This
         // reuses the settings read above — no extra IO. StorageSettings updates the mirror synchronously on a
         // size change right before it resets the ImageLoader (see StorageSettings.kt).
-        updateImageCacheSizeMirror(this@App, settings[MaxImageCacheSizeKey] ?: DEFAULT_IMAGE_CACHE_SIZE_MB)
+        // If the cheap SharedPreferences seed used at cold start differed from the authoritative committed value
+        // (first launch after update, or after a restore), the ImageLoader may have already been built with the
+        // stale size — rebuild it once so the user's chosen disk-cache size (incl. 0 = disabled) takes effect this
+        // session, not only the next one.
+        val authoritativeImageCacheSize = settings[MaxImageCacheSizeKey] ?: DEFAULT_IMAGE_CACHE_SIZE_MB
+        val imageCacheMirrorWasStale = imageCacheSizeMb() != authoritativeImageCacheSize
+        updateImageCacheSizeMirror(this@App, authoritativeImageCacheSize)
+        if (imageCacheMirrorWasStale) {
+            runCatching { SingletonImageLoader.reset() }
+        }
         seedDefaultsIfNeeded(settings)
         migrateCanvasDefaultOn(settings)
         migrateHighPerformanceModeSeed(settings)
@@ -690,7 +699,13 @@ class App : Application(), SingletonImageLoader.Factory {
             dataStore.edit { p ->
                 // Read the CURRENT value inside the edit (not the pre-migration `settings` snapshot) so we react to
                 // what migratePerfModeReseedV2 just wrote earlier on this same launch.
-                if (genuinelyLow && p[iad1tya.echo.music.constants.HighPerformanceModeKey] != true) {
+                // Limit to genuinely-weak TV boxes / car head units — exactly what V2 wrongly forced OFF. A LOW-tier
+                // PHONE with the flag false almost always means the user deliberately opted out (to keep
+                // carousels/canvas/crossfade), so don't clobber that choice; only repair the boxes V2 regressed.
+                if (genuinelyLow &&
+                    iad1tya.echo.music.utils.DeviceForm.isTvOrCar(this) &&
+                    p[iad1tya.echo.music.constants.HighPerformanceModeKey] != true
+                ) {
                     p[iad1tya.echo.music.constants.HighPerformanceModeKey] = true
                 }
                 p[iad1tya.echo.music.constants.PerfModeCapabilityV3AppliedKey] = true
@@ -814,10 +829,11 @@ class App : Application(), SingletonImageLoader.Factory {
         // The mirror is seeded at startup and updated SYNCHRONOUSLY by StorageSettings right before it
         // calls SingletonImageLoader.reset(), so a size change still rebuilds the loader with the fresh value.
         val cacheSize = imageCacheSizeMb()
-        // Performance Mode (ULTRA): much smaller in-RAM image cache (15% vs 40%) so a low-RAM box doesn't
-        // thrash decoding artwork. Takes effect on the NEXT launch (the ImageLoader is built once at process
-        // start). Crossfade off + RGB_565 (below) already halve per-image cost.
-        val perfMode = iad1tya.echo.music.utils.PerformanceMode.isOn(this)
+        // Weak (LOW-tier) device: much smaller in-RAM image cache (15% vs 40%) so a low-RAM box doesn't thrash
+        // decoding artwork (+ RGB_565 / no fade below). Uses the CACHED device tier (cheap, non-blocking) instead
+        // of a main-thread DataStore read, so newImageLoader never blocks the main thread (P46/H4). The loader is
+        // built once at process start.
+        val perfMode = iad1tya.echo.music.utils.DeviceCapabilities.tier(this) == iad1tya.echo.music.utils.DeviceTier.LOW
         val memCachePercent = if (perfMode) 0.15 else 0.40
         return ImageLoader.Builder(this).apply {
             // Perf mode: no fade animation on image load + RGB_565 (16-bit) bitmaps = HALF the memory per image
