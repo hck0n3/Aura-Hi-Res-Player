@@ -32,6 +32,11 @@ class CrashHandler private constructor(
         try {
             val crashLog = buildCrashLog(throwable)
             Timber.e(throwable, "App crashed")
+            // Send the fatal to Crashlytics (GMS flavor; no-op on FOSS) before we kill the process,
+            // so uncaught fatals are not invisible in telemetry. Does not change crash-killing behavior.
+            CrashReporter.setKey("crash_source", "uncaught_handler")
+            CrashReporter.setKey("crash_thread", thread.name)
+            CrashReporter.record(throwable)
             AppLogger.writeCrash(applicationContext, crashLog)
             
             

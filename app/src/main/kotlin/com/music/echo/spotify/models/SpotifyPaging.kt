@@ -18,4 +18,10 @@ data class SpotifyPaging<T>(
     val next: String? = null,
     val previous: String? = null,
     val href: String? = null,
+    // RAW number of items the API returned for this page, BEFORE any client-side
+    // filtering that shrinks [items] (e.g. myPlaylists drops non-playlist
+    // pseudo-items). Callers that paginate must advance the offset and terminate
+    // on this, never items.size, or a filtered page looks "short" and truncates.
+    // Defaults to 0 for callers that don't filter and don't need it.
+    val rawCount: Int = 0,
 )

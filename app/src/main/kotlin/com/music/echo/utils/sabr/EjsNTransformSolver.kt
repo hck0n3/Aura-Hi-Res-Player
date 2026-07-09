@@ -4,14 +4,17 @@ import android.content.Context
 import android.net.Uri
 import android.webkit.ConsoleMessage
 import android.webkit.JavascriptInterface
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebChromeClient
 import android.webkit.WebView
+import android.webkit.WebViewClient
 import iad1tya.echo.music.utils.cipher.CipherDeobfuscator
 import iad1tya.echo.music.utils.cipher.PlayerJsFetcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import timber.log.Timber
 import java.io.File
 import kotlin.coroutines.Continuation
@@ -34,53 +37,64 @@ object EjsNTransformSolver {
         val nValue = Uri.decode(nMatch.groupValues[1])
         Timber.tag(TAG).d("SABR n-param: $nValue")
 
-        return withContext(NonCancellable) {
-            val solver = getOrCreateSolver()
-            if (solver == null) {
-                return@withContext url
-            }
+        // Run in the normal (cancellable) context. The previous NonCancellable wrapping made an
+        // outer timeout/skip unable to interrupt a wedged WebView, so the resolution coroutine could
+        // hang forever. Every failure branch below FALLS BACK to the original url (never throws into
+        // the caller), so streaming continues on the happy path and degrades gracefully otherwise.
+        val solver = getOrCreateSolver()
+        if (solver == null) {
+            return url
+        }
 
-            if (!solver.nFunctionAvailable) {
-                Timber.tag(TAG).e("EJS n-solver not available")
-                return@withContext url
-            }
+        if (!solver.nFunctionAvailable) {
+            Timber.tag(TAG).e("EJS n-solver not available")
+            return url
+        }
 
-            try {
-                val transformed = solver.transformN(nValue)
-                Timber.tag(TAG).d("SABR n-param transformed: $nValue -> $transformed")
-                url.replaceFirst(
-                    Regex("([?&])n=[^&]+"),
-                    "$1n=${Uri.encode(transformed)}"
-                )
-            } catch (e: Exception) {
-                Timber.tag(TAG).e(e, "SABR n-transform failed: ${e.message}")
-                url
+        return try {
+            val transformed = solver.transformN(nValue)
+            if (transformed == null) {
+                // WebView eval never called back within the timeout (wedged/dead renderer).
+                Timber.tag(TAG).e("SABR n-transform timed out; using original url")
+                return url
             }
+            Timber.tag(TAG).d("SABR n-param transformed: $nValue -> $transformed")
+            url.replaceFirst(
+                Regex("([?&])n=[^&]+"),
+                "$1n=${Uri.encode(transformed)}"
+            )
+        } catch (e: Exception) {
+            Timber.tag(TAG).e(e, "SABR n-transform failed: ${e.message}")
+            url
         }
     }
 
     private suspend fun getOrCreateSolver(): SolverWebView? {
-        solverWebView?.let { return it }
+        solverWebView?.let { if (!it.isDead) return it }
+        // A previously cached solver whose renderer died is unusable; drop it and rebuild.
+        solverWebView = null
 
-        return withContext(NonCancellable) {
-            solverWebView?.let { return@withContext it }
+        val result = PlayerJsFetcher.getPlayerJs(forceRefresh = false)
+        if (result == null) {
+            Timber.tag(TAG).e("Failed to get player JS for EJS solver")
+            return null
+        }
+        val (playerJs, hash) = result
+        Timber.tag(TAG).d("Creating EJS n-solver (player hash=$hash, ${playerJs.length} chars)")
 
-            val result = PlayerJsFetcher.getPlayerJs(forceRefresh = false)
-            if (result == null) {
-                Timber.tag(TAG).e("Failed to get player JS for EJS solver")
-                return@withContext null
-            }
-            val (playerJs, hash) = result
-            Timber.tag(TAG).d("Creating EJS n-solver (player hash=$hash, ${playerJs.length} chars)")
-
-            try {
-                val sv = SolverWebView.create(CipherDeobfuscator.appContext, playerJs)
+        return try {
+            val sv = SolverWebView.create(CipherDeobfuscator.appContext, playerJs)
+            if (sv == null) {
+                // create() timed out or the renderer died before init completed.
+                Timber.tag(TAG).e("EJS solver creation timed out; falling back")
+                null
+            } else {
                 solverWebView = sv
                 sv
-            } catch (e: Exception) {
-                Timber.tag(TAG).e(e, "Failed to create EJS solver: ${e.message}")
-                null
             }
+        } catch (e: Exception) {
+            Timber.tag(TAG).e(e, "Failed to create EJS solver: ${e.message}")
+            null
         }
     }
 
@@ -94,10 +108,19 @@ object EjsNTransformSolver {
     class SolverWebView private constructor(
         context: Context,
         private val playerJs: String,
-        private val initContinuation: Continuation<SolverWebView>,
+        initContinuation: Continuation<SolverWebView>,
     ) {
         private val webView = WebView(context)
+
+        private var initContinuation: Continuation<SolverWebView>? = initContinuation
         private var nContinuation: Continuation<String>? = null
+
+        @Volatile
+        var isDead: Boolean = false
+            private set
+
+        @Volatile
+        private var destroyed = false
 
         @Volatile
         var nFunctionAvailable: Boolean = false
@@ -114,6 +137,19 @@ object EjsNTransformSolver {
 
             webView.addJavascriptInterface(this, "EjsBridge")
 
+            // Without this, a renderer death (e.g. OOM-kill) crashes the whole app AND leaves the
+            // init/n continuations forever unresumed. Resume them with an exception and return true
+            // so the process survives, mirroring CipherWebView.onRenderProcessGone.
+            webView.webViewClient = object : WebViewClient() {
+                @androidx.annotation.RequiresApi(android.os.Build.VERSION_CODES.O)
+                override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
+                    val didCrash = runCatching { detail.didCrash() }.getOrNull()
+                    Timber.tag(TAG).e("=== EJS RENDER PROCESS GONE === didCrash=$didCrash")
+                    onRendererGone("EJS WebView render process gone (didCrash=$didCrash)")
+                    return true
+                }
+            }
+
             webView.webChromeClient = object : WebChromeClient() {
                 override fun onConsoleMessage(m: ConsoleMessage): Boolean {
                     val msg = m.message()
@@ -123,6 +159,31 @@ object EjsNTransformSolver {
                     return super.onConsoleMessage(m)
                 }
             }
+        }
+
+        /**
+         * Renderer process died (OOM-killed or crashed). Marks this instance dead, fails every
+         * pending continuation so no caller hangs, and tears the WebView down. The next resolution
+         * rebuilds a fresh solver via [getOrCreateSolver].
+         */
+        private fun onRendererGone(reason: String) {
+            isDead = true
+            val e = SabrException(reason)
+            takeInitContinuation()?.resumeSafely { it.resumeWithException(e) }
+            takeNContinuation()?.resumeSafely { it.resumeWithException(e) }
+            close()
+        }
+
+        @Synchronized
+        private fun takeInitContinuation(): Continuation<SolverWebView>? =
+            initContinuation.also { initContinuation = null }
+
+        @Synchronized
+        private fun takeNContinuation(): Continuation<String>? =
+            nContinuation.also { nContinuation = null }
+
+        private inline fun <T> T.resumeSafely(block: (T) -> Unit) {
+            runCatching { block(this) }
         }
 
         private fun loadSolverAndPlayer() {
@@ -228,27 +289,35 @@ function transformN(nValue) {
         fun onSolverReady(nAvailable: String) {
             nFunctionAvailable = nAvailable == "true"
             Timber.tag(TAG).d("EJS solver ready: n=$nFunctionAvailable")
-            initContinuation.resume(this)
+            takeInitContinuation()?.resumeSafely { it.resume(this) }
         }
 
         @JavascriptInterface
         fun onSolverError(error: String) {
             Timber.tag(TAG).e("EJS solver error: $error")
-            initContinuation.resume(this)
+            takeInitContinuation()?.resumeSafely { it.resume(this) }
         }
 
-        suspend fun transformN(nValue: String): String {
-            if (!nFunctionAvailable) {
+        /**
+         * Runs the n-transform inside the WebView. Returns null if the eval never called back within
+         * [EVAL_TIMEOUT_MS] (wedged/dead renderer) so the caller can fall back to the original url
+         * instead of hanging. The suspension is cancellable and clears [nContinuation] on cancel.
+         */
+        suspend fun transformN(nValue: String): String? {
+            if (!nFunctionAvailable || isDead) {
                 throw SabrException("EJS n-transform not available")
             }
 
-            return withContext(Dispatchers.Main) {
-                suspendCancellableCoroutine { cont ->
-                    nContinuation = cont
-                    webView.evaluateJavascript(
-                        "transformN('${escapeJsString(nValue)}')",
-                        null
-                    )
+            return withTimeoutOrNull(EVAL_TIMEOUT_MS) {
+                withContext(Dispatchers.Main) {
+                    suspendCancellableCoroutine { cont ->
+                        nContinuation = cont
+                        cont.invokeOnCancellation { takeNContinuation() }
+                        webView.evaluateJavascript(
+                            "transformN('${escapeJsString(nValue)}')",
+                            null
+                        )
+                    }
                 }
             }
         }
@@ -256,24 +325,28 @@ function transformN(nValue) {
         @JavascriptInterface
         fun onNResult(result: String) {
             Timber.tag(TAG).d("N-transform result: ${result.take(50)}")
-            nContinuation?.resume(result)
-            nContinuation = null
+            takeNContinuation()?.resumeSafely { it.resume(result) }
         }
 
         @JavascriptInterface
         fun onNError(error: String) {
             Timber.tag(TAG).e("N-transform error: $error")
-            nContinuation?.resumeWithException(SabrException("EJS n-transform failed: $error"))
-            nContinuation = null
+            takeNContinuation()?.resumeSafely { it.resumeWithException(SabrException("EJS n-transform failed: $error")) }
         }
 
         fun close() {
-            webView.clearHistory()
-            webView.clearCache(true)
-            webView.loadUrl("about:blank")
-            webView.onPause()
-            webView.removeAllViews()
-            webView.destroy()
+            // Idempotent: now reachable from onRendererGone, create-timeout cleanup, and the outer
+            // close(), so guard against a double webView.destroy().
+            if (destroyed) return
+            destroyed = true
+            runCatching {
+                webView.clearHistory()
+                webView.clearCache(true)
+                webView.loadUrl("about:blank")
+                webView.onPause()
+                webView.removeAllViews()
+                webView.destroy()
+            }.onFailure { Timber.tag(TAG).w("EJS WebView teardown threw: $it") }
             Timber.tag(TAG).d("EJS solver WebView closed")
         }
 
@@ -285,13 +358,40 @@ function transformN(nValue) {
         }
 
         companion object {
-            suspend fun create(context: Context, playerJs: String): SolverWebView {
-                return withContext(Dispatchers.Main) {
-                    suspendCancellableCoroutine { cont ->
-                        val sv = SolverWebView(context, playerJs, cont)
-                        sv.loadSolverAndPlayer()
+            // Cold-start (WebView spin-up + EJS preprocess of the multi-MB player.js) is a few
+            // seconds on a healthy device; these ceilings turn a wedged/dead solver into a fast
+            // fallback instead of an unbounded hang. Per-eval n-transform is sub-second.
+            private const val CREATE_TIMEOUT_MS = 15_000L
+            private const val EVAL_TIMEOUT_MS = 8_000L
+
+            /**
+             * Returns null if the WebView never fired onSolverReady/onSolverError within
+             * [CREATE_TIMEOUT_MS] (page never loaded, JS never hit the bridge, or renderer died).
+             * Callers fall back to the untransformed url in that case.
+             */
+            suspend fun create(context: Context, playerJs: String): SolverWebView? {
+                var created: SolverWebView? = null
+                val result = withTimeoutOrNull(CREATE_TIMEOUT_MS) {
+                    withContext(Dispatchers.Main) {
+                        suspendCancellableCoroutine { cont ->
+                            val sv = SolverWebView(context, playerJs, cont)
+                            created = sv
+                            cont.invokeOnCancellation { sv.takeInitContinuation() }
+                            sv.loadSolverAndPlayer()
+                        }
                     }
                 }
+                if (result == null) {
+                    // Timed out: tear the half-built WebView down so it doesn't leak/linger.
+                    created?.let { sv ->
+                        withContext(NonCancellable + Dispatchers.Main) {
+                            sv.isDead = true
+                            sv.takeInitContinuation()
+                            sv.close()
+                        }
+                    }
+                }
+                return result
             }
         }
     }

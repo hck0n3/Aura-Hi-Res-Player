@@ -17,10 +17,11 @@ import iad1tya.echo.music.R
 fun LoadingScreen(
     isVisible: Boolean,
     value: Int,
+    onDismissRequest: () -> Unit = {},
 ) {
     if (isVisible) {
         Dialog (
-            onDismissRequest = {}
+            onDismissRequest = onDismissRequest
         ) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,

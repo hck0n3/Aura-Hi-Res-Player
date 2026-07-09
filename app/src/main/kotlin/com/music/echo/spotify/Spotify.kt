@@ -520,15 +520,23 @@ object Spotify {
             val totalCount = libraryData.int("totalCount") ?: 0
             val pagingInfo = libraryData.obj("pagingInfo")
 
+            // RAW page as Spotify sent it, BEFORE the __typename filter below. Spotify
+            // pins non-playlist pseudo-items (Liked-Songs / episodes / prereleases /
+            // events, requested via features above) into the items array, so the raw
+            // size is what pagination must advance/terminate on — filtering only shrinks
+            // what we accumulate as playlists (mirrors SpotifyTrackPage.rawCount).
+            val rawItems = libraryData.arr("items").orEmpty()
+
             val playlists =
-                libraryData.arr("items")?.mapNotNull { itemElem ->
+                rawItems.mapNotNull { itemElem ->
                     val wrapper = itemElem.jsonObject.obj("item") ?: return@mapNotNull null
                     if (wrapper.str("__typename") != "PlaylistResponseWrapper") return@mapNotNull null
                     parsePlaylistWrapper(wrapper)
-                } ?: emptyList()
+                }
 
             SpotifyPaging(
                 items = playlists,
+                rawCount = rawItems.size,
                 total = totalCount,
                 limit = pagingInfo?.int("limit") ?: limit,
                 offset = pagingInfo?.int("offset") ?: offset,

@@ -365,10 +365,16 @@ class SpotifyImportRepository @Inject constructor(
             val page = spotifyCallWithTokenRetry {
                 Spotify.myPlaylists(limit = limit, offset = offset).getOrThrow()
             }
-            if (page.items.isEmpty()) break
+            // Terminate/advance on the RAW page size, never the post-filter items list:
+            // Spotify pins non-playlist pseudo-items (Liked-Songs / episodes / prereleases
+            // / events) into the items array, so a raw 50-item page can parse to <50
+            // playlists and would otherwise look "short", cutting pagination off early and
+            // dropping every later playlist (users with >~49 playlists). Keep the
+            // __typename filtering only for what we accumulate. Same fix as fetchAllTracks.
+            if (page.rawCount == 0) break
             playlists += enrichPlaylistTrackCounts(page.items)
-            offset += page.items.size
-            if (offset >= page.total || page.items.size < limit) break
+            offset += page.rawCount
+            if (offset >= page.total || page.rawCount < limit) break
         }
 
         return playlists

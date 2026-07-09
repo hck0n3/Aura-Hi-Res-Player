@@ -100,6 +100,9 @@ class BackupRestoreViewModel @Inject constructor(
     }
 
     fun restore(context: Context, uri: Uri) {
+        // Run the zip decompress + full-DB copy + process restart off the main thread so restoring a
+        // large library doesn't freeze the UI (ANR). Mirrors backup(); startActivity/exitProcess are safe here.
+        viewModelScope.launch(Dispatchers.IO) {
         runCatching {
             Timber.tag("RESTORE").i("Starting restore from URI: $uri")
             context.applicationContext.contentResolver.openInputStream(uri)?.use { raw ->
@@ -145,7 +148,7 @@ class BackupRestoreViewModel @Inject constructor(
                                         Toast.makeText(context, context.getString(R.string.restore_failed) + ": Backup is from a newer app version.", Toast.LENGTH_LONG).show()
                                     }
                                     tempFile.delete()
-                                    return
+                                    return@launch
                                 }
                                 
                                 try {
@@ -176,7 +179,7 @@ class BackupRestoreViewModel @Inject constructor(
                                         Toast.makeText(context, "Debido a la nueva arquitectura, esta copia de seguridad no se puede restaurar", Toast.LENGTH_LONG).show()
                                     }
                                     tempFile.delete()
-                                    return
+                                    return@launch
                                 }
                             }
                             else -> {
@@ -208,7 +211,10 @@ class BackupRestoreViewModel @Inject constructor(
         }.onFailure {
             reportException(it)
             Timber.tag("RESTORE").e(it, "Due to new architecture this backup can't be restored")
-            Toast.makeText(context, "Debido a la nueva arquitectura, esta copia de seguridad no se puede restaurar", Toast.LENGTH_SHORT).show()
+            withContext(Dispatchers.Main) {
+                Toast.makeText(context, "Debido a la nueva arquitectura, esta copia de seguridad no se puede restaurar", Toast.LENGTH_SHORT).show()
+            }
+        }
         }
     }
 

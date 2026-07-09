@@ -201,6 +201,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -297,12 +298,22 @@ class MusicService :
             Timber.tag(TAG).e(error, "Secondary player error")
             secondaryPlayer?.stop()
             secondaryPlayer?.clearMediaItems()
-            secondaryPlayer?.let { playerNormProcessors.remove(it); playerLimiterProcessors.remove(it) }
+            // Full teardown (mirror cleanupCrossfade/releasePlayer): also drop the EQ processor and release()
+            // the native player, or every secondary-player error leaks an ExoPlayer and permanently grows
+            // EqualizerService's processor list.
+            secondaryPlayer?.let {
+                playerNormProcessors.remove(it)
+                playerLimiterProcessors.remove(it)
+                playerEqProcessors.remove(it)?.let { eq -> equalizerService.removeAudioProcessor(eq) }
+                it.release()
+            }
             secondaryPlayer = null
         }
     }
 
-    private var scope = CoroutineScope(Dispatchers.Main) + Job()
+    // SupervisorJob: an uncaught exception in any child (retry, crossfade, widget, collectors) must NOT
+    // cancel the whole service scope. Matches the app's applicationScope convention.
+    private var scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
     private val binder = MusicBinder()
 
@@ -510,11 +521,12 @@ class MusicService :
     private var retryCount = 0
     private var silenceSkipJob: Job? = null
 
-    
-    private val songUrlCache = HashMap<String, Pair<String, Long>>()
+    // ConcurrentHashMap: structurally mutated from the ExoPlayer loader thread (ResolvingDataSource resolver),
+    // the Main thread (quality collector / refetchCurrentInOpus) and an IO coroutine (preloadUpcomingItems).
+    private val songUrlCache = java.util.concurrent.ConcurrentHashMap<String, Pair<String, Long>>()
 
-    
-    private val bypassCacheForQualityChange = mutableSetOf<String>()
+    // synchronizedSet: same multi-thread mutation profile as songUrlCache (loader thread + Main + IO).
+    private val bypassCacheForQualityChange = java.util.Collections.synchronizedSet(mutableSetOf<String>())
 
     // Set by refetchCurrentInOpus(): pins THIS track to the Opus (WebM/Opus) audio format on its next
     // (re)fetch, overriding both the global AudioQuality and the currently-playing "locked quality" (which
@@ -3445,16 +3457,18 @@ class MusicService :
 
         retryJob?.cancel()
         retryJob = scope.launch {
-            
-            performAggressiveCacheClear(mediaId)
+            try {
+                performAggressiveCacheClear(mediaId)
 
+                val currentIndex = player.currentMediaItemIndex
+                player.seekTo(currentIndex, 0)
+                player.prepare()
 
-            
-            val currentIndex = player.currentMediaItemIndex
-            player.seekTo(currentIndex, 0)
-            player.prepare()
-
-            Timber.tag(TAG).d("Retrying playback for $mediaId after 416 error (from position 0)")
+                Timber.tag(TAG).d("Retrying playback for $mediaId after 416 error (from position 0)")
+            } catch (e: Exception) {
+                Timber.tag(TAG).e(e, "handleRangeNotSatisfiableError retry failed")
+                reportException(e)
+            }
         }
     }
 
@@ -3469,18 +3483,21 @@ class MusicService :
 
         retryJob?.cancel()
         retryJob = scope.launch {
-            Timber.tag(TAG).d("Handling page reload error for $mediaId")
+            try {
+                Timber.tag(TAG).d("Handling page reload error for $mediaId")
 
-            
-            performAggressiveCacheClear(mediaId)
+                performAggressiveCacheClear(mediaId)
 
-            
-            val currentPosition = player.currentPosition
-            val currentIndex = player.currentMediaItemIndex
-            player.seekTo(currentIndex, currentPosition)
-            player.prepare()
+                val currentPosition = player.currentPosition
+                val currentIndex = player.currentMediaItemIndex
+                player.seekTo(currentIndex, currentPosition)
+                player.prepare()
 
-            Timber.tag(TAG).d("Retrying playback for $mediaId after page reload error")
+                Timber.tag(TAG).d("Retrying playback for $mediaId after page reload error")
+            } catch (e: Exception) {
+                Timber.tag(TAG).e(e, "handlePageReloadError retry failed")
+                reportException(e)
+            }
         }
     }
 
@@ -3506,14 +3523,17 @@ class MusicService :
 
         retryJob?.cancel()
         retryJob = scope.launch {
+            try {
+                val currentPosition = player.currentPosition
+                val currentIndex = player.currentMediaItemIndex
+                player.seekTo(currentIndex, currentPosition)
+                player.prepare()
 
-            
-            val currentPosition = player.currentPosition
-            val currentIndex = player.currentMediaItemIndex
-            player.seekTo(currentIndex, currentPosition)
-            player.prepare()
-
-            Timber.tag(TAG).d("Retrying playback for $mediaId after 403 error")
+                Timber.tag(TAG).d("Retrying playback for $mediaId after 403 error")
+            } catch (e: Exception) {
+                Timber.tag(TAG).e(e, "handleExpiredUrlError retry failed")
+                reportException(e)
+            }
         }
     }
 
@@ -3528,15 +3548,19 @@ class MusicService :
 
         retryJob?.cancel()
         retryJob = scope.launch {
-            performAggressiveCacheClear(mediaId)
+            try {
+                performAggressiveCacheClear(mediaId)
 
+                val currentPosition = player.currentPosition
+                val currentIndex = player.currentMediaItemIndex
+                player.seekTo(currentIndex, currentPosition)
+                player.prepare()
 
-            val currentPosition = player.currentPosition
-            val currentIndex = player.currentMediaItemIndex
-            player.seekTo(currentIndex, currentPosition)
-            player.prepare()
-
-            Timber.tag(TAG).d("Retrying playback for $mediaId after generic IO error")
+                Timber.tag(TAG).d("Retrying playback for $mediaId after generic IO error")
+            } catch (e: Exception) {
+                Timber.tag(TAG).e(e, "handleGenericIOError retry failed")
+                reportException(e)
+            }
         }
     }
 

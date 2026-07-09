@@ -68,6 +68,7 @@ import kotlinx.coroutines.withContext
 import timber.log.Timber
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
+import java.util.concurrent.atomic.AtomicInteger
 
 @Composable
 fun AddToPlaylistDialogOnline(
@@ -236,20 +237,19 @@ fun AddToPlaylistDialogOnline(
                         selectedPlaylist = playlist
                         coroutineScope.launch(Dispatchers.IO) {
                             onDismiss()
-                            val songsTot = songs.count().toDouble()
-                            var  songsIdx = 0.toDouble()
+                            val songsToAdd = songs.reversed()
+                            val songsTot = songsToAdd.size
+                            val processed = AtomicInteger(0)
                             onProgressStart(true)
-                            songs.reversed().forEach{
-                                    song ->
-                                var allArtists = ""
-                                song.artists.forEach {
-                                        artist ->
-                                    allArtists += " ${URLDecoder.decode(artist.name, StandardCharsets.UTF_8.toString())}"
-                                }
-                                val query = "${song.title} - $allArtists"
-
-                                coroutineScope.launch {
+                            try {
+                                songsToAdd.forEach { song ->
                                     try {
+                                        var allArtists = ""
+                                        song.artists.forEach { artist ->
+                                            allArtists += " ${URLDecoder.decode(artist.name, StandardCharsets.UTF_8.toString())}"
+                                        }
+                                        val query = "${song.title} - $allArtists"
+
                                         YouTube.search(query, YouTube.SearchFilter.FILTER_SONG)
                                             .onSuccess { result ->
                                                 val items = result.items.distinctBy { it.id }
@@ -273,26 +273,23 @@ fun AddToPlaylistDialogOnline(
                                                     }
                                                     viewStateMap.clear()
                                                 }
-                                                songsIdx += 1
                                             }
                                             .onFailure {
                                                 reportException(it)
-                                                songsIdx += 1
                                             }
-
-                                        if (songsIdx.toInt() == songsTot.toInt() - 1) {
-                                            onProgressStart(false)
-                                        }
-                                        onPercentageChange(((songsIdx / songsTot) * 100).toInt())
-
-                                    } catch (e: Exception){
+                                    } catch (e: Exception) {
                                         Timber.tag("ERROR").v(e.toString())
+                                    } finally {
+                                        val done = processed.incrementAndGet()
+                                        if (songsTot > 0) {
+                                            onPercentageChange(((done.toDouble() / songsTot) * 100).toInt())
+                                        }
                                     }
-
                                 }
-
+                            } finally {
+                                onProgressStart(false)
+                                onPercentageChange(100)
                             }
-
                         }
                     }
                 )
@@ -303,20 +300,19 @@ fun AddToPlaylistDialogOnline(
                     modifier = Modifier.clickable {
                         coroutineScope.launch(Dispatchers.IO) {
                             onDismiss()
-                            val songsTot = songs.count().toDouble()
-                            var  songsIdx = 0.toDouble()
+                            val songsToAdd = songs.reversed()
+                            val songsTot = songsToAdd.size
+                            val processed = AtomicInteger(0)
                             onProgressStart(true)
-                            songs.reversed().forEach{
-                                    song ->
-                                var allArtists = ""
-                                song.artists.forEach {
-                                        artist ->
-                                    allArtists += " ${URLDecoder.decode(artist.name, StandardCharsets.UTF_8.toString())}"
-                                }
-                                val query = "${song.title} - $allArtists"
-
-                                coroutineScope.launch {
+                            try {
+                                songsToAdd.forEach { song ->
                                     try {
+                                        var allArtists = ""
+                                        song.artists.forEach { artist ->
+                                            allArtists += " ${URLDecoder.decode(artist.name, StandardCharsets.UTF_8.toString())}"
+                                        }
+                                        val query = "${song.title} - $allArtists"
+
                                         YouTube.search(query, YouTube.SearchFilter.FILTER_SONG)
                                             .onSuccess { result ->
                                                 val items = result.items.distinctBy { it.id }
@@ -342,26 +338,23 @@ fun AddToPlaylistDialogOnline(
                                                     }
                                                     viewStateMap.clear()
                                                 }
-                                                songsIdx += 1
                                             }
                                             .onFailure {
                                                 reportException(it)
-                                                songsIdx += 1
                                             }
-
-                                        if (songsIdx.toInt() == songsTot.toInt() - 1) {
-                                            onProgressStart(false)
-                                        }
-                                        onPercentageChange(((songsIdx / songsTot) * 100).toInt())
-
-                                    } catch (e: Exception){
+                                    } catch (e: Exception) {
                                         Timber.tag("ERROR").v(e.toString())
+                                    } finally {
+                                        val done = processed.incrementAndGet()
+                                        if (songsTot > 0) {
+                                            onPercentageChange(((done.toDouble() / songsTot) * 100).toInt())
+                                        }
                                     }
-
                                 }
-
+                            } finally {
+                                onProgressStart(false)
+                                onPercentageChange(100)
                             }
-
                         }
                     },
                     title = stringResource(R.string.liked_songs),

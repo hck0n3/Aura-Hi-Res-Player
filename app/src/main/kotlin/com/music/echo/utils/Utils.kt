@@ -13,7 +13,10 @@ import java.util.Locale
 import iad1tya.echo.music.constants.SYSTEM_DEFAULT
 
 fun reportException(throwable: Throwable) {
+    // Local logging (unchanged) — keeps stack traces in logcat for local debugging.
     throwable.printStackTrace()
+    // Telemetry: records to Firebase Crashlytics on the GMS flavor; no-op on FOSS (flavor source set).
+    CrashReporter.record(throwable)
 }
 
 @Suppress("DEPRECATION")

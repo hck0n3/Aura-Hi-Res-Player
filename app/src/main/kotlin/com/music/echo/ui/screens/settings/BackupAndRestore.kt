@@ -349,6 +349,10 @@ fun BackupAndRestore(
     LoadingScreen(
         isVisible = isProgressStarted,
         value = progressPercentage,
+        onDismissRequest = {
+            isProgressStarted = false
+            progressPercentage = 0
+        },
     )
 
     
