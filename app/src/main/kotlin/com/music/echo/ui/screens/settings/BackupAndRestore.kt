@@ -147,18 +147,30 @@ fun BackupAndRestore(
         rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
             if (uri == null) return@rememberLauncherForActivityResult
             pendingCsvUri = uri
-            val previewState = viewModel.previewCsvFile(context, uri)
-            csvImportState = previewState
-            showCsvColumnMapping = true
+            // Read/parse the CSV off the main thread (previewCsvFile is suspend + Dispatchers.IO),
+            // then apply the Compose state on Main. Avoids an ANR on large/cloud-backed files.
+            coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                val previewState = viewModel.previewCsvFile(context, uri)
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    csvImportState = previewState
+                    showCsvColumnMapping = true
+                }
+            }
         }
     val importM3uLauncherOnline = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
-        val result = viewModel.loadM3UOnline(context, uri)
-        importedSongs.clear()
-        importedSongs.addAll(result)
+        // Read/parse the M3U off the main thread (loadM3UOnline is suspend + Dispatchers.IO),
+        // then apply the Compose state on Main. Avoids an ANR on large/cloud-backed files.
+        coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val result = viewModel.loadM3UOnline(context, uri)
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                importedSongs.clear()
+                importedSongs.addAll(result)
 
-        if (importedSongs.isNotEmpty()) {
-            showChoosePlaylistDialogOnline = true
+                if (importedSongs.isNotEmpty()) {
+                    showChoosePlaylistDialogOnline = true
+                }
+            }
         }
     }
 

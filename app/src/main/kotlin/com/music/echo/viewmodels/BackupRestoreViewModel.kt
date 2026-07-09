@@ -34,7 +34,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.serialization.json.Json
 import androidx.lifecycle.viewModelScope
-import androidx.lifecycle.viewModelScope
 import timber.log.Timber
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -340,27 +339,26 @@ class BackupRestoreViewModel @Inject constructor(
         }
     }
 
-    fun previewCsvFile(context: Context, uri: Uri): CsvImportState {
-        val previewRows = mutableListOf<List<String>>()
-        val csvState: CsvImportState
+    // suspend + Dispatchers.IO so the whole-file SAF read (potentially a slow/cloud DocumentProvider)
+    // never runs on the main thread. Callers invoke this from a coroutine and apply the result on Main.
+    suspend fun previewCsvFile(context: Context, uri: Uri): CsvImportState = withContext(Dispatchers.IO) {
         runCatching {
             context.contentResolver.openInputStream(uri)?.use { stream ->
                 val lines = stream.bufferedReader().readLines()
                 val rowsToPreview = lines.take(6).map { parseCsvLine(it) }
-                previewRows.addAll(rowsToPreview)
-
                 val hasHeader = lines.isNotEmpty() && lines[0].contains(",")
-                csvState = CsvImportState(
-                    previewRows = previewRows,
+                CsvImportState(
+                    previewRows = rowsToPreview,
                     hasHeader = hasHeader,
                 )
-                return csvState
             }
-        }.onFailure {
+        }.getOrElse {
             reportException(it)
-            Toast.makeText(context, "No se pudo previsualizar el archivo CSV", Toast.LENGTH_SHORT).show()
-        }
-        return CsvImportState()
+            withContext(Dispatchers.Main) {
+                Toast.makeText(context, "No se pudo previsualizar el archivo CSV", Toast.LENGTH_SHORT).show()
+            }
+            null
+        } ?: CsvImportState()
     }
 
     fun importPlaylistFromCsv(
@@ -469,32 +467,36 @@ class BackupRestoreViewModel @Inject constructor(
         return result.map { it.trim().trim('"') }
     }
 
-    fun loadM3UOnline(
+    // suspend + Dispatchers.IO so the whole-file SAF read (potentially a slow/cloud DocumentProvider)
+    // never runs on the main thread. Callers invoke this from a coroutine and apply the result on Main.
+    suspend fun loadM3UOnline(
         context: Context,
         uri: Uri,
     ): ArrayList<Song> {
         val songs = ArrayList<Song>()
 
-        runCatching {
-            context.applicationContext.contentResolver.openInputStream(uri)?.use { stream ->
-                val lines = stream.bufferedReader().readLines()
-                if (lines.first().startsWith("#EXTM3U")) {
-                    lines.forEachIndexed { _, rawLine ->
-                        if (rawLine.startsWith("#EXTINF:")) {
-                            
-                            val artists =
-                                rawLine.substringAfter("#EXTINF:").substringAfter(',').substringBefore(" - ").split(';')
-                            val title = rawLine.substringAfter("#EXTINF:").substringAfter(',').substringAfter(" - ")
+        withContext(Dispatchers.IO) {
+            runCatching {
+                context.applicationContext.contentResolver.openInputStream(uri)?.use { stream ->
+                    val lines = stream.bufferedReader().readLines()
+                    if (lines.first().startsWith("#EXTM3U")) {
+                        lines.forEachIndexed { _, rawLine ->
+                            if (rawLine.startsWith("#EXTINF:")) {
 
-                            val mockSong = Song(
-                                song = SongEntity(
-                                    id = "",
-                                    title = title,
-                                ),
-                                artists = artists.map { ArtistEntity("", it) },
-                            )
-                            songs.add(mockSong)
+                                val artists =
+                                    rawLine.substringAfter("#EXTINF:").substringAfter(',').substringBefore(" - ").split(';')
+                                val title = rawLine.substringAfter("#EXTINF:").substringAfter(',').substringAfter(" - ")
 
+                                val mockSong = Song(
+                                    song = SongEntity(
+                                        id = "",
+                                        title = title,
+                                    ),
+                                    artists = artists.map { ArtistEntity("", it) },
+                                )
+                                songs.add(mockSong)
+
+                            }
                         }
                     }
                 }
@@ -502,11 +504,13 @@ class BackupRestoreViewModel @Inject constructor(
         }
 
         if (songs.isEmpty()) {
-            Toast.makeText(
-                context,
-                "No songs found. Invalid file, or perhaps no song matches were found.",
-                Toast.LENGTH_SHORT
-            ).show()
+            withContext(Dispatchers.Main) {
+                Toast.makeText(
+                    context,
+                    "No songs found. Invalid file, or perhaps no song matches were found.",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
         }
         return songs
     }

@@ -20,11 +20,11 @@ import iad1tya.echo.music.constants.HideVideoSongsKey
 import iad1tya.echo.music.constants.HideYoutubeShortsKey
 import iad1tya.echo.music.models.ItemsPage
 import iad1tya.echo.music.utils.dataStore
-import iad1tya.echo.music.utils.get
 import iad1tya.echo.music.utils.reportException
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.net.URLDecoder
@@ -70,9 +70,7 @@ constructor(
                             YouTube
                                 .searchSummary(query)
                                 .onSuccess {
-                                    val hideExplicit = context.dataStore.get(HideExplicitKey, false)
-                                    val hideVideoSongs = context.dataStore.get(HideVideoSongsKey, false)
-                                    val hideYoutubeShorts = context.dataStore.get(HideYoutubeShortsKey, false)
+                                    val (hideExplicit, hideVideoSongs, hideYoutubeShorts) = hideFlags()
                                     summaryPage =
                                         it.filterExplicit(
                                             hideExplicit,
@@ -91,9 +89,7 @@ constructor(
                         YouTube
                             .search(query, filter)
                             .onSuccess { result ->
-                                val hideExplicit = context.dataStore.get(HideExplicitKey, false)
-                                val hideVideoSongs = context.dataStore.get(HideVideoSongsKey, false)
-                                val hideYoutubeShorts = context.dataStore.get(HideYoutubeShortsKey, false)
+                                val (hideExplicit, hideVideoSongs, hideYoutubeShorts) = hideFlags()
                                 viewStateMap[filter.value] =
                                     ItemsPage(
                                         result.items
@@ -117,6 +113,21 @@ constructor(
         }
     }
 
+    /**
+     * Reads the three "hide" filter flags off the main thread via a single suspending DataStore
+     * snapshot. Previously these were three blocking `runBlocking` `dataStore.get(...)` reads that
+     * ran on the main dispatcher every time a search/filter/pagination call resumed (P20). `data.first()`
+     * suspends instead of blocking and performs the disk read on DataStore's own IO dispatcher.
+     */
+    private suspend fun hideFlags(): Triple<Boolean, Boolean, Boolean> {
+        val prefs = context.dataStore.data.first()
+        return Triple(
+            prefs[HideExplicitKey] ?: false,
+            prefs[HideVideoSongsKey] ?: false,
+            prefs[HideYoutubeShortsKey] ?: false,
+        )
+    }
+
     fun loadMore() {
         val filter = filter.value?.value
         viewModelScope.launch {
@@ -126,9 +137,7 @@ constructor(
             if (continuation != null) {
                 val searchResult =
                     YouTube.searchContinuation(continuation).getOrNull() ?: return@launch
-                val hideExplicit = context.dataStore.get(HideExplicitKey, false)
-                val hideVideoSongs = context.dataStore.get(HideVideoSongsKey, false)
-                val hideYoutubeShorts = context.dataStore.get(HideYoutubeShortsKey, false)
+                val (hideExplicit, hideVideoSongs, hideYoutubeShorts) = hideFlags()
                 val newItems = searchResult.items
                     .filterExplicit(hideExplicit)
                     .let { items ->

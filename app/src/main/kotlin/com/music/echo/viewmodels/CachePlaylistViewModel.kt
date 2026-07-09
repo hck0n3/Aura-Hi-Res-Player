@@ -15,12 +15,13 @@ import iad1tya.echo.music.di.PlayerCache
 import iad1tya.echo.music.extensions.filterExplicit
 import iad1tya.echo.music.extensions.filterVideoSongs
 import iad1tya.echo.music.utils.dataStore
-import iad1tya.echo.music.utils.get
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.time.LocalDateTime
 import javax.inject.Inject
@@ -37,10 +38,15 @@ class CachePlaylistViewModel @Inject constructor(
     val cachedSongs: StateFlow<List<Song>> = _cachedSongs
 
     init {
-        viewModelScope.launch {
+        // Run off the main thread: the DataStore reads and SimpleCache key-scans below
+        // must not block the UI thread. Tied to viewModelScope so it is cancelled when the
+        // ViewModel is cleared (screen closed); delay() is cancellable, so the loop stops.
+        viewModelScope.launch(Dispatchers.IO) {
             while (true) {
-                val hideExplicit = context.dataStore.get(HideExplicitKey, false)
-                val hideVideoSongs = context.dataStore.get(HideVideoSongsKey, false)
+                // Non-blocking suspend read of the latest preferences (no runBlocking on any thread).
+                val prefs = context.dataStore.data.first()
+                val hideExplicit = prefs[HideExplicitKey] ?: false
+                val hideVideoSongs = prefs[HideVideoSongsKey] ?: false
                 val cachedIds = playerCache.keys.toSet()
                 val downloadedIds = downloadCache.keys.toSet()
                 val pureCacheIds = cachedIds.subtract(downloadedIds)

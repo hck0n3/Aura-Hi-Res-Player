@@ -69,7 +69,11 @@ class PlaylistWidgetReceiver : AppWidgetProvider() {
         appWidgetIds: IntArray,
     ) {
         val pendingResult = goAsync()
-        CoroutineScope(Dispatchers.Main).launch {
+        // Run off the main thread: updateIdleWidget rasterizes rounded-corner bitmaps
+        // (Canvas/BitmapShader) while building the RemoteViews. RemoteViews construction,
+        // setImageViewBitmap, getAppWidgetOptions, and updateAppWidget are all safe off-main
+        // (binder-backed), so keeping the heavy raster off the UI thread avoids frame jank.
+        CoroutineScope(Dispatchers.Default).launch {
             try {
                 appWidgetIds.forEach { appWidgetId ->
                     playlistWidgetManager.updateIdleWidget(
@@ -87,7 +91,8 @@ class PlaylistWidgetReceiver : AppWidgetProvider() {
 
     private fun refreshIdleWidgets() {
         val pendingResult = goAsync()
-        CoroutineScope(Dispatchers.Main).launch {
+        // Off-main: see refreshIdleWidgets(manager, ids) — bitmap raster off the UI thread.
+        CoroutineScope(Dispatchers.Default).launch {
             try {
                 playlistWidgetManager.updateIdleWidgets()
             } catch (e: Exception) {
@@ -100,7 +105,8 @@ class PlaylistWidgetReceiver : AppWidgetProvider() {
 
     private fun refreshIdleWidget(appWidgetId: Int, options: android.os.Bundle) {
         val pendingResult = goAsync()
-        CoroutineScope(Dispatchers.Main).launch {
+        // Off-main: see refreshIdleWidgets(manager, ids) — bitmap raster off the UI thread.
+        CoroutineScope(Dispatchers.Default).launch {
             try {
                 playlistWidgetManager.updateIdleWidget(appWidgetId, options)
             } catch (e: Exception) {

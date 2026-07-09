@@ -2,10 +2,13 @@
 
 package iad1tya.echo.music.ui.screens.search.suggestions
 
+import android.content.Context
 import android.util.Log
+import android.widget.Toast
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,7 +27,9 @@ import iad1tya.echo.music.playback.queues.YouTubeQueue
 import androidx.navigation.NavController
 
 @HiltViewModel
-class SuggestionsViewModel @Inject constructor() : ViewModel() {
+class SuggestionsViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
+) : ViewModel() {
     private var currentLoadedRegion: String? = null
     
     private val _suggestionTracks = MutableStateFlow<List<SuggestionTrack>?>(null)
@@ -157,6 +162,14 @@ class SuggestionsViewModel @Inject constructor() : ViewModel() {
         return apNorm.contains(ytNorm) || ytNorm.contains(apNorm)
     }
 
+    // Surfaces a brief message on the main thread. Tap handlers used to swallow both search failures
+    // (flaky network) and no-match cases silently, so a tap did nothing with zero feedback (P36).
+    private suspend fun showToast(resId: Int) {
+        withContext(Dispatchers.Main) {
+            Toast.makeText(context, resId, Toast.LENGTH_SHORT).show()
+        }
+    }
+
     fun playTrack(track: SuggestionTrack, playerConnection: PlayerConnection?) {
         viewModelScope.launch(Dispatchers.IO) {
             // YouTube Music chart song: we already have the exact video id, play it directly.
@@ -169,8 +182,8 @@ class SuggestionsViewModel @Inject constructor() : ViewModel() {
             val query = "${track.title} ${track.artist}"
             YouTube.search(query, YouTube.SearchFilter.FILTER_SONG).onSuccess { searchResult ->
                 val songs = searchResult.items.filterIsInstance<SongItem>()
-                
-                
+
+
                 val bestMatch = songs.firstOrNull { s ->
                     s.title.equals(track.title, ignoreCase = true) &&
                     s.artists.any { a -> artistMatches(a.name, track.artist) }
@@ -192,7 +205,12 @@ class SuggestionsViewModel @Inject constructor() : ViewModel() {
                     withContext(Dispatchers.Main) {
                         playerConnection?.playQueue(YouTubeQueue(WatchEndpoint(videoId = bestMatch.id)))
                     }
+                } else {
+                    showToast(iad1tya.echo.music.R.string.no_results_found)
                 }
+            }.onFailure {
+                Log.e("SuggestionsViewModel", "playTrack search failed", it)
+                showToast(iad1tya.echo.music.R.string.error_unknown)
             }
         }
     }
@@ -207,7 +225,13 @@ class SuggestionsViewModel @Inject constructor() : ViewModel() {
                         withContext(Dispatchers.Main) {
                             navController.navigate("artist/${firstArtist.id}")
                         }
+                    } else {
+                        showToast(iad1tya.echo.music.R.string.no_results_found)
                     }
+                }
+                .onFailure {
+                    Log.e("SuggestionsViewModel", "navigateToArtist search failed", it)
+                    showToast(iad1tya.echo.music.R.string.error_unknown)
                 }
         }
     }
@@ -222,7 +246,13 @@ class SuggestionsViewModel @Inject constructor() : ViewModel() {
                         withContext(Dispatchers.Main) {
                             navController.navigate("album/${firstAlbum.id}")
                         }
+                    } else {
+                        showToast(iad1tya.echo.music.R.string.no_results_found)
                     }
+                }
+                .onFailure {
+                    Log.e("SuggestionsViewModel", "navigateToAlbum search failed", it)
+                    showToast(iad1tya.echo.music.R.string.error_unknown)
                 }
         }
     }
@@ -252,7 +282,13 @@ class SuggestionsViewModel @Inject constructor() : ViewModel() {
                         withContext(Dispatchers.Main) {
                             playerConnection?.playQueue(YouTubeQueue(WatchEndpoint(videoId = bestMatch.id)))
                         }
+                    } else {
+                        showToast(iad1tya.echo.music.R.string.no_results_found)
                     }
+                }
+                .onFailure {
+                    Log.e("SuggestionsViewModel", "playVideo search failed", it)
+                    showToast(iad1tya.echo.music.R.string.error_unknown)
                 }
         }
     }

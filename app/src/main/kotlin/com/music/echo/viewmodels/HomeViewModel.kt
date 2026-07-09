@@ -880,12 +880,12 @@ class HomeViewModel @Inject constructor(
     private val _isLoadingMore = MutableStateFlow(false)
     fun loadMoreYouTubeItems(continuation: String?) {
         if (continuation == null || _isLoadingMore.value) return
-        val hideExplicit = context.dataStore.get(HideExplicitKey, false)
-        val hideVideoSongs = context.dataStore.get(HideVideoSongsKey, false)
-        val hideYoutubeShorts = context.dataStore.get(HideYoutubeShortsKey, false)
 
         viewModelScope.launch(Dispatchers.IO) {
             _isLoadingMore.value = true
+            val hideExplicit = context.dataStore.get(HideExplicitKey, false)
+            val hideVideoSongs = context.dataStore.get(HideVideoSongsKey, false)
+            val hideYoutubeShorts = context.dataStore.get(HideYoutubeShortsKey, false)
             val nextSections = YouTube.home(continuation).getOrNull() ?: run {
                 _isLoadingMore.value = false
                 return@launch

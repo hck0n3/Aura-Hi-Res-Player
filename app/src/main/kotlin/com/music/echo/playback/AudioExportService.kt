@@ -1,27 +1,40 @@
 package iad1tya.echo.music.playback
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.net.ConnectivityManager
 import android.net.Uri
+import android.os.Build
 import android.os.IBinder
+import android.util.Log
+import android.widget.Toast
+import androidx.core.app.NotificationCompat
+import androidx.core.app.ServiceCompat
+import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
 import androidx.documentfile.provider.DocumentFile
 import com.arthenica.ffmpegkit.FFmpegKit
 import com.arthenica.ffmpegkit.ReturnCode
 import com.music.innertube.YouTube
+import iad1tya.echo.music.R
 import iad1tya.echo.music.constants.AudioQuality
 import iad1tya.echo.music.constants.ExportingSongIdsKey
 import iad1tya.echo.music.constants.ExportedSongIdsKey
 import iad1tya.echo.music.utils.YTPlayerUtils
 import iad1tya.echo.music.utils.dataStore
 import androidx.datastore.preferences.core.edit
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
@@ -31,12 +44,23 @@ class AudioExportService : Service() {
     private val httpClient = OkHttpClient()
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val songId = intent?.getStringExtra(EXTRA_SONG_ID) ?: return START_NOT_STICKY
+        // P11: promote to a foreground dataSync service for the whole export so the OS does not
+        // kill the long download+FFmpeg transcode mid-flight. The manifest already declares this
+        // service with foregroundServiceType="dataSync" and the matching permission. Call this
+        // FIRST (before any early return) to honour the startForegroundService 5s deadline.
+        startExportForeground()
+
+        val songId = intent?.getStringExtra(EXTRA_SONG_ID)
+        val targetDirectoryUri = intent?.getStringExtra(EXTRA_TARGET_DIRECTORY_URI)
+        if (songId == null || targetDirectoryUri == null) {
+            ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+            stopSelf()
+            return START_NOT_STICKY
+        }
         val songTitle = intent.getStringExtra(EXTRA_SONG_TITLE).orEmpty()
         val songArtist = intent.getStringExtra(EXTRA_SONG_ARTIST).orEmpty()
         val songAlbum = intent.getStringExtra(EXTRA_SONG_ALBUM).orEmpty()
         val artworkUrl = intent.getStringExtra(EXTRA_ARTWORK_URL).orEmpty()
-        val targetDirectoryUri = intent.getStringExtra(EXTRA_TARGET_DIRECTORY_URI) ?: return START_NOT_STICKY
 
         serviceScope.launch {
             exportSong(
@@ -61,6 +85,13 @@ class AudioExportService : Service() {
     ) {
         val safeTitle = sanitizeTitle(songTitle.ifBlank { songId })
         addExportingSongId(songId)
+        // P9: hold temp-file references outside runCatching so they can be cleaned up on BOTH the
+        // success and failure paths (runCatching never rethrows, so the block after it acts as a
+        // finally). Previously the .delete() calls sat after every error() throw site and leaked
+        // multi-MB temp files into cacheDir on any failed export.
+        var sourceFileRef: File? = null
+        var artworkFileRef: File? = null
+        var mp3FileRef: File? = null
         runCatching {
             val connectivityManager = getSystemService<ConnectivityManager>()
                 ?: error("No connectivity manager")
@@ -83,9 +114,9 @@ class AudioExportService : Service() {
                 "$baseUrl&range=0-$totalLength"
             }
 
-            val tempSourceFile = File.createTempFile("export_source_", ".m4a", cacheDir)
-            val tempArtworkFile = File.createTempFile("export_cover_", ".jpg", cacheDir)
-            val tempMp3File = File.createTempFile("export_result_", ".mp3", cacheDir)
+            val tempSourceFile = File.createTempFile("export_source_", ".m4a", cacheDir).also { sourceFileRef = it }
+            val tempArtworkFile = File.createTempFile("export_cover_", ".jpg", cacheDir).also { artworkFileRef = it }
+            val tempMp3File = File.createTempFile("export_result_", ".mp3", cacheDir).also { mp3FileRef = it }
 
             val streamRequest = Request.Builder().url(rangedStreamUrl).build()
             var totalBytes = -1L
@@ -161,13 +192,70 @@ class AudioExportService : Service() {
                 } ?: error("Unable to open output stream")
             }
 
-            tempSourceFile.delete()
-            tempArtworkFile.delete()
-            tempMp3File.delete()
             addExportedSongId(songId)
-        }.onFailure { }
-        removeExportingSongId(songId)
+        }.onFailure { throwable ->
+            // P7: never swallow the failure silently. Cancellation (e.g. the service being
+            // destroyed) is expected teardown, not an export error, so don't alarm the user for it.
+            if (throwable is CancellationException) {
+                Log.w(TAG, "Export cancelled for $songId")
+            } else {
+                Log.e(TAG, "Export failed for $songId", throwable)
+                // Surface the failure to the user on the main thread. NonCancellable keeps the
+                // toast alive even if we got here via cancellation-adjacent teardown.
+                runCatching {
+                    withContext(NonCancellable + Dispatchers.Main) {
+                        Toast.makeText(
+                            this@AudioExportService,
+                            "Export failed: $safeTitle",
+                            Toast.LENGTH_LONG,
+                        ).show()
+                    }
+                }
+            }
+        }
+        // P9: clean up temp files on every path (success, failure, cancellation).
+        sourceFileRef?.delete()
+        artworkFileRef?.delete()
+        mp3FileRef?.delete()
+        // Clear the "exporting" flag even if the coroutine was cancelled, so the song is never
+        // left stuck in the exporting set (P11 graceful-teardown).
+        withContext(NonCancellable) {
+            removeExportingSongId(songId)
+        }
+        ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         stopSelf()
+    }
+
+    private fun startExportForeground() {
+        runCatching {
+            val nm = getSystemService<NotificationManager>()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && nm?.getNotificationChannel(CHANNEL_ID) == null) {
+                nm?.createNotificationChannel(
+                    NotificationChannel(
+                        CHANNEL_ID,
+                        "Audio export",
+                        NotificationManager.IMPORTANCE_LOW,
+                    ).apply { setShowBadge(false) },
+                )
+            }
+            val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_launcher_nobg)
+                .setContentTitle("Exporting song")
+                .setContentText("Saving audio file")
+                .setOngoing(true)
+                .setPriority(NotificationCompat.PRIORITY_LOW)
+                .build()
+            ServiceCompat.startForeground(
+                this,
+                NOTIFICATION_ID,
+                notification,
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC else 0,
+            )
+        }.onFailure {
+            // If the platform refuses the foreground start (e.g. a background-start restriction),
+            // fall back to running as a plain service rather than crashing the export.
+            Log.e(TAG, "Unable to start export foreground service", it)
+        }
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -210,6 +298,10 @@ class AudioExportService : Service() {
     }
 
     companion object {
+        private const val TAG = "AudioExportService"
+        private const val CHANNEL_ID = "audio_export"
+        private const val NOTIFICATION_ID = 0xE5A0
+
         private const val EXTRA_SONG_ID = "extra_song_id"
         private const val EXTRA_SONG_TITLE = "extra_song_title"
         private const val EXTRA_SONG_ARTIST = "extra_song_artist"
@@ -234,7 +326,9 @@ class AudioExportService : Service() {
                 putExtra(EXTRA_ARTWORK_URL, artworkUrl)
                 putExtra(EXTRA_TARGET_DIRECTORY_URI, targetDirectoryUri)
             }
-            context.startService(intent)
+            // P11: start as a foreground service so onStartCommand can call startForeground within
+            // the platform deadline and the export survives the app leaving the foreground.
+            ContextCompat.startForegroundService(context, intent)
         }
 
         private fun sanitizeTitle(title: String): String =

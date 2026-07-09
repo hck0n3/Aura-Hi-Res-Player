@@ -21,12 +21,12 @@ import iad1tya.echo.music.db.MusicDatabase
 import iad1tya.echo.music.extensions.filterExplicit
 import iad1tya.echo.music.extensions.filterExplicitAlbums
 import iad1tya.echo.music.utils.dataStore
-import iad1tya.echo.music.utils.get
 import iad1tya.echo.music.utils.reportException
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -98,17 +98,39 @@ class ArtistViewModel @Inject constructor(
                     )
                 }
                 .distinctUntilChanged()
-                .collect {
-                    fetchArtistsFromYTM()
+                .collect { (hideExplicit, hideVideoSongs, hideYoutubeShorts) ->
+                    fetchArtistsFromYTM(hideExplicit, hideVideoSongs, hideYoutubeShorts)
                 }
         }
     }
 
+    private var fetchJob: Job? = null
+
+    // Public entry point used by ArtistScreen. Reads the current hide-keys off the
+    // main thread via the DataStore Flow (which reads on its own IO dispatcher)
+    // instead of three blocking runBlocking reads, then delegates to the worker.
     fun fetchArtistsFromYTM() {
         viewModelScope.launch {
-            val hideExplicit = context.dataStore.get(HideExplicitKey, false)
-            val hideVideoSongs = context.dataStore.get(HideVideoSongsKey, false)
-            val hideYoutubeShorts = context.dataStore.get(HideYoutubeShortsKey, false)
+            val prefs = context.dataStore.data.first()
+            fetchArtistsFromYTM(
+                prefs[HideExplicitKey] ?: false,
+                prefs[HideVideoSongsKey] ?: false,
+                prefs[HideYoutubeShortsKey] ?: false,
+            )
+        }
+    }
+
+    // Cancels any in-flight fetch before starting a new one, so a hide-key change
+    // (or a manual re-fetch) supersedes the previous fetch instead of racing an
+    // uncancelled concurrent one. Hide-key values are passed in (already in hand
+    // from the init collect / the public overload), avoiding blocking DataStore reads.
+    fun fetchArtistsFromYTM(
+        hideExplicit: Boolean,
+        hideVideoSongs: Boolean,
+        hideYoutubeShorts: Boolean,
+    ) {
+        fetchJob?.cancel()
+        fetchJob = viewModelScope.launch {
             // Instant re-open: show this session's cached artist page immediately (no spinner), then
             // still refresh from YouTube below so the data stays up to date.
             if (artistPage == null) pageCache[artistId]?.let { artistPage = it }

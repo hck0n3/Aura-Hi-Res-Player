@@ -8,6 +8,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import iad1tya.echo.music.db.MusicDatabase
 import iad1tya.echo.music.db.entities.LyricsEntity
+import iad1tya.echo.music.db.entities.LyricsEntity.Companion.LYRICS_NOT_FOUND
 import iad1tya.echo.music.db.entities.Song
 import iad1tya.echo.music.lyrics.LyricsHelper
 import iad1tya.echo.music.lyrics.LyricsResult
@@ -21,7 +22,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import javax.inject.Inject
 
 @HiltViewModel
@@ -90,13 +90,22 @@ constructor(
         mediaMetadata: MediaMetadata,
         lyricsEntity: LyricsEntity?,
     ) {
-        database.query {
-            lyricsEntity?.let(::delete)
-            val lyricsWithProvider =
-                runBlocking {
-                    lyricsHelper.getLyrics(mediaMetadata)
-                }
-            upsert(LyricsEntity(mediaMetadata.id, lyricsWithProvider.lyrics, lyricsWithProvider.provider))
+        // Fetch the new lyrics FIRST, off the Room queryExecutor thread, so the
+        // DB pool isn't blocked on a network call and — crucially — the user's
+        // existing saved lyrics are only touched once the re-fetch succeeds.
+        viewModelScope.launch(Dispatchers.IO) {
+            val lyricsWithProvider = lyricsHelper.getLyrics(mediaMetadata)
+            // A failed/offline re-fetch returns the LYRICS_NOT_FOUND sentinel
+            // (LyricsHelper). In that case leave the previously-saved lyrics
+            // intact instead of clobbering them with the sentinel.
+            if (lyricsWithProvider.lyrics == LYRICS_NOT_FOUND) {
+                return@launch
+            }
+            // upsert keys on mediaMetadata.id, so it overwrites any existing row
+            // for this song; the prior explicit pre-delete was redundant.
+            database.upsert(
+                LyricsEntity(mediaMetadata.id, lyricsWithProvider.lyrics, lyricsWithProvider.provider),
+            )
         }
     }
 }

@@ -200,7 +200,7 @@ fun CommunityPlaylistCard(
 ) {
     val database = LocalDatabase.current
     val playerConnection = LocalPlayerConnection.current
-    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     val isDark = isSystemInDarkTheme()
 
     val containerColor = if (isDark) {
@@ -384,7 +384,11 @@ fun CommunityPlaylistCard(
 
                 IconButton(
                     onClick = {
-                        scope.launch(Dispatchers.IO) {
+                        // P35: run the bookmark save on the lifecycle-safe application scope
+                        // (outlives composition) instead of the composition-bound rememberCoroutineScope,
+                        // so scrolling the card off-screen can't cancel a half-finished song save.
+                        val appScope = (context.applicationContext as iad1tya.echo.music.App).applicationScope
+                        appScope.launch(Dispatchers.IO) {
                             if (dbPlaylist?.playlist == null) {
                                 database.transaction {
                                     val playlistEntity = PlaylistEntity(
@@ -397,7 +401,7 @@ fun CommunityPlaylistCard(
                                         radioEndpointParams = item.playlist.radioEndpoint?.params
                                     ).toggleLike()
                                     insert(playlistEntity)
-                                    scope.launch(Dispatchers.IO) {
+                                    appScope.launch(Dispatchers.IO) {
                                         item.songs.ifEmpty {
                                             YouTube.playlist(item.playlist.id).completed()
                                                 .getOrNull()?.songs.orEmpty()
