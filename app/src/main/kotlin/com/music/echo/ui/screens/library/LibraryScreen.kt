@@ -96,6 +96,9 @@ fun LibraryScreen(navController: NavController) {
     }
 
     val isPlaylists = filterType == LibraryFilter.PLAYLISTS
+    // Show the create/import floating buttons on the main Library hub AND the Playlists tab so they're
+    // discoverable right away (not buried behind the Playlists chip).
+    val showLibraryFab = filterType == LibraryFilter.LIBRARY || filterType == LibraryFilter.PLAYLISTS
 
     // On the Playlists tab, reserve extra bottom space so the list can scroll clear of the floating
     // action buttons. Other tabs keep the normal player-aware insets untouched.
@@ -118,8 +121,12 @@ fun LibraryScreen(navController: NavController) {
         }
     }
 
+    // Wrap the screen content AND the floating buttons in one full-size Box so the FABs are guaranteed to
+    // overlay the list (as top-level siblings they weren't reliably stacked by the nav host — the reason the
+    // import/create buttons weren't showing).
+    Box(modifier = Modifier.fillMaxSize()) {
     CompositionLocalProvider(
-        LocalPlayerAwareWindowInsets provides if (isPlaylists) paddedInsets else currentInsets,
+        LocalPlayerAwareWindowInsets provides if (showLibraryFab) paddedInsets else currentInsets,
     ) {
         Box(
             modifier = Modifier.fillMaxSize(),
@@ -148,9 +155,8 @@ fun LibraryScreen(navController: NavController) {
         }
     }
 
-    // Floating actions for the Playlists tab: create, AI-generate, and import a playlist from
-    // Spotify or YouTube Music by URL.
-    if (isPlaylists) {
+    // Floating actions: create, AI-generate, and import a playlist from Spotify or YouTube Music by URL.
+    if (showLibraryFab) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -222,6 +228,7 @@ fun LibraryScreen(navController: NavController) {
                 }
             }
         }
+    }
     }
 
     if (showYoutubeImportDialog) {

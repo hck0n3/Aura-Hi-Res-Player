@@ -2179,15 +2179,16 @@ fun HomeScreen(
                 }
             }
 
-            // No connectivity + no cached content: offer to continue offline (downloads only). Only shown
-            // when NOT already in offline mode, the network home genuinely failed to load, and there's
-            // truly no internet. Reconnecting auto-reloads (NetworkReload) so this disappears on its own.
-            if (!offlineMode && !isLoading && homePage == null && quickPicks.isNullOrEmpty() &&
-                !isInternetAvailable(context)
-            ) {
+            // No internet + the network home failed to load: offer to continue offline (downloads only).
+            // Shown whenever there's genuinely no internet and the online home is empty — NOT gated on
+            // quickPicks being empty (locally-seeded quick picks are almost always present for returning
+            // users, which previously hid this prompt). An opaque background covers any stale/broken-cover
+            // content behind it. Reconnecting auto-reloads (NetworkReload) so this disappears on its own.
+            if (!offlineMode && !isLoading && homePage == null && !isInternetAvailable(context)) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.surface)
                         .padding(32.dp),
                     contentAlignment = Alignment.Center,
                 ) {
