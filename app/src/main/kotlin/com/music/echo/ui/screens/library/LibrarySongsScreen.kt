@@ -40,6 +40,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import iad1tya.echo.music.LocalPlayerAwareWindowInsets
+import iad1tya.echo.music.ui.utils.tvFocusRestorer
 import iad1tya.echo.music.LocalPlayerConnection
 import iad1tya.echo.music.R
 import iad1tya.echo.music.constants.CONTENT_TYPE_HEADER
@@ -128,6 +129,8 @@ fun LibrarySongsScreen(
         LazyColumn(
             state = lazyListState,
             contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
+            // TV/car: keep the D-pad focus ring alive when scrolling to not-yet-composed rows. No-op on phone.
+            modifier = Modifier.tvFocusRestorer(),
         ) {
             item(
                 key = "filter",

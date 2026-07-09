@@ -223,6 +223,7 @@ import iad1tya.echo.music.ui.theme.PlayerColorExtractor
 import iad1tya.echo.music.ui.theme.PlayerSliderColors
 import iad1tya.echo.music.ui.utils.rememberIsAppInForeground
 import iad1tya.echo.music.ui.utils.tvFocusable
+import iad1tya.echo.music.ui.utils.tvFocusRestorer
 import iad1tya.echo.music.utils.DeviceCapabilities
 import iad1tya.echo.music.utils.DeviceTier
 import iad1tya.echo.music.ui.utils.ShowMediaInfo
@@ -3440,8 +3441,9 @@ private fun LandscapeQueuePane(
     val isTvOrCar = iad1tya.echo.music.ui.utils.rememberIsTvOrCar()
     LazyColumn(
         state = lazyState,
-        // TV/car: focus group so D-pad directional search enters/leaves the queue pane cleanly.
-        modifier = modifier.focusGroup(),
+        // TV/car: focus group so D-pad directional search enters/leaves the queue pane cleanly, plus a focus
+        // restorer so scrolling to a not-yet-composed row keeps the ring on the last row instead of dropping it.
+        modifier = modifier.tvFocusRestorer().focusGroup(),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {

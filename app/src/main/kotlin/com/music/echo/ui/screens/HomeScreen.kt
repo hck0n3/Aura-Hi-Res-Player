@@ -44,6 +44,7 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import iad1tya.echo.music.ui.utils.tvFocusable
+import iad1tya.echo.music.ui.utils.tvFocusRestorer
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -1013,7 +1014,10 @@ fun HomeScreen(
 
             LazyColumn(
                 state = lazylistState,
-                contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues()
+                contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
+                // TV/car: restore focus to the last-focused row when the D-pad re-enters the column so the
+                // focus ring never drops to the root while scrolling vertically. No-op on phone/touch.
+                modifier = Modifier.tvFocusRestorer(),
             ) {
                 item {
                     ChipsRow(
@@ -1037,6 +1041,7 @@ fun HomeScreen(
                             LazyRow(
                                 contentPadding = PaddingValues(horizontal = 16.dp),
                                 horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                modifier = Modifier.tvFocusRestorer(),
                             ) {
                                 items(pinnedPodcasts, key = { it.id }) { show ->
                                     Column(
@@ -1294,7 +1299,7 @@ fun HomeScreen(
                                     LazyRow(
                                         contentPadding = PaddingValues(horizontal = 16.dp),
                                         horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                        modifier = Modifier.animateItem(),
+                                        modifier = Modifier.animateItem().tvFocusRestorer(),
                                     ) {
                                         items(distinctQuickPicks, key = { it.id }) { song ->
                                             Box(
@@ -1458,7 +1463,7 @@ fun HomeScreen(
                                     LazyRow(
                                         contentPadding = PaddingValues(horizontal = 16.dp),
                                         horizontalArrangement = Arrangement.spacedBy(16.dp),
-                                        modifier = Modifier.animateItem()
+                                        modifier = Modifier.animateItem().tvFocusRestorer()
                                     ) {
                                         items(playlists, key = { it.playlist.id }) { item ->
                                             CommunityPlaylistCard(
@@ -1510,7 +1515,7 @@ fun HomeScreen(
                                     LazyRow(
                                         contentPadding = PaddingValues(horizontal = 16.dp),
                                         horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                        modifier = Modifier.animateItem(),
+                                        modifier = Modifier.animateItem().tvFocusRestorer(),
                                     ) {
                                         items(discoverList, key = { it.recommendation.id }) { item ->
                                             Box(
@@ -1606,7 +1611,7 @@ fun HomeScreen(
                                         contentPadding = WindowInsets.systemBars.only(WindowInsetsSides.Horizontal)
                                             .asPaddingValues(),
                                         horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                        modifier = Modifier.fillMaxWidth().animateItem(),
+                                        modifier = Modifier.fillMaxWidth().animateItem().tvFocusRestorer(),
                                     ) {
                                         items(keepListening, key = { it.id }) { item ->
                                             // keepListening mixes Songs, Albums AND Artists — handle all
@@ -1723,7 +1728,7 @@ fun HomeScreen(
                                         contentPadding = WindowInsets.systemBars
                                             .only(WindowInsetsSides.Horizontal)
                                             .asPaddingValues(),
-                                        modifier = Modifier.animateItem()
+                                        modifier = Modifier.animateItem().tvFocusRestorer()
                                     ) {
                                         items(
                                             items = accountPlaylists.distinctBy { it.id },
@@ -1748,7 +1753,7 @@ fun HomeScreen(
                                         contentPadding = WindowInsets.systemBars
                                             .only(WindowInsetsSides.Horizontal)
                                             .asPaddingValues(),
-                                        modifier = Modifier.animateItem()
+                                        modifier = Modifier.animateItem().tvFocusRestorer()
                                     ) {
                                         items(
                                             items = albums.distinctBy { it.id },
@@ -1782,7 +1787,7 @@ fun HomeScreen(
                                         contentPadding = WindowInsets.systemBars
                                             .only(WindowInsetsSides.Horizontal)
                                             .asPaddingValues(),
-                                        modifier = Modifier.animateItem()
+                                        modifier = Modifier.animateItem().tvFocusRestorer()
                                     ) {
                                         items(
                                             items = mix.songs.distinctBy { it.id },
@@ -1829,6 +1834,7 @@ fun HomeScreen(
                                             .fillMaxWidth()
                                             .height(ListItemHeight * rows)
                                             .animateItem()
+                                            .tvFocusRestorer()
                                     ) {
                                         itemsIndexed(
                                             items = forgottenFavorites.distinctBy { it.id },
@@ -1947,7 +1953,7 @@ fun HomeScreen(
                                         contentPadding = WindowInsets.systemBars
                                             .only(WindowInsetsSides.Horizontal)
                                             .asPaddingValues(),
-                                        modifier = Modifier.animateItem()
+                                        modifier = Modifier.animateItem().tvFocusRestorer()
                                     ) {
                                         items(recommendation.items, key = { it.id }) { item ->
                                             ytGridItem(item, richCardHeight)
@@ -2024,6 +2030,7 @@ fun HomeScreen(
                                                 .fillMaxWidth()
                                                 .height(ListItemHeight * 4)
                                                 .animateItem()
+                                                .tvFocusRestorer()
                                         ) {
                                             itemsIndexed(
                                                 items = sectionSongs.distinctBy { it.id },
@@ -2087,7 +2094,7 @@ fun HomeScreen(
                                             contentPadding = WindowInsets.systemBars
                                                 .only(WindowInsetsSides.Horizontal)
                                                 .asPaddingValues(),
-                                            modifier = Modifier.animateItem()
+                                            modifier = Modifier.animateItem().tvFocusRestorer()
                                         ) {
                                             items(sectionData.items, key = { it.id }) { item ->
                                                 ytGridItem(item, richCardHeight)
@@ -2115,6 +2122,7 @@ fun HomeScreen(
                                         modifier = Modifier
                                             .height((MoodAndGenresButtonHeight + 12.dp) * 4 + 12.dp)
                                             .animateItem()
+                                            .tvFocusRestorer()
                                     ) {
                                         items(moodAndGenres, key = { it.title }) {
                                             MoodAndGenresButton(

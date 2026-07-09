@@ -97,6 +97,7 @@ import androidx.core.content.ContextCompat
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
 import iad1tya.echo.music.LocalPlayerAwareWindowInsets
+import iad1tya.echo.music.ui.utils.tvFocusRestorer
 import iad1tya.echo.music.LocalPlayerConnection
 import iad1tya.echo.music.R
 import iad1tya.echo.music.constants.CONTENT_TYPE_HEADER
@@ -377,7 +378,8 @@ fun LocalSongScreen(
             state = listState,
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues),
+                .padding(paddingValues)
+                .tvFocusRestorer(),
             verticalArrangement = Arrangement.spacedBy(14.dp),
             contentPadding = PaddingValues(
                 top = 12.dp,

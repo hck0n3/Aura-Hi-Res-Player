@@ -135,6 +135,7 @@ import iad1tya.echo.music.ui.menu.SelectionMediaMetadataMenu
 import iad1tya.echo.music.ui.screens.CommentSheet
 import iad1tya.echo.music.ui.utils.ShowMediaInfo
 import iad1tya.echo.music.ui.utils.tvFocusable
+import iad1tya.echo.music.ui.utils.tvFocusRestorer
 import iad1tya.echo.music.utils.listItemShape
 import iad1tya.echo.music.utils.makeTimeString
 import iad1tya.echo.music.utils.rememberPreference
@@ -1125,6 +1126,8 @@ fun Queue(
                     modifier = Modifier
                         .fillMaxSize()
                         .nestedScroll(state.preUpPostDownNestedScrollConnection)
+                        // TV/car: restore the D-pad focus ring to the last row when scrolling the queue. No-op on phone.
+                        .tvFocusRestorer()
                 ) {
                     item(key = "queue_top_spacer") {
                         Spacer(

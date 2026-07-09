@@ -10,6 +10,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusEventModifierNode
 import androidx.compose.ui.focus.FocusState
+import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
@@ -130,6 +131,27 @@ fun Modifier.tvFocusableItem(
     shape: Shape = RoundedCornerShape(8.dp),
     scaleFocused: Float = 1f,
 ): Modifier = tvFocusable(enabled = enabled, shape = shape, addFocusable = false, scaleFocused = scaleFocused)
+
+/**
+ * TV/car ONLY: make a Lazy* container (LazyColumn / LazyRow / LazyVerticalGrid / LazyHorizontalGrid) — or any
+ * focus group — REMEMBER its last-focused child and RESTORE focus to it when the D-pad re-enters. Place it on
+ * the CONTAINER'S own `modifier`, e.g. `LazyRow(modifier = Modifier.tvFocusRestorer()) { … }`.
+ *
+ * WHY (the "se pierde el apuntador" bug): moving the D-pad toward an item that is off-screen and NOT YET
+ * COMPOSED, or scrolling the currently-focused item out of view (it gets disposed), leaves nothing focusable,
+ * so Compose drops focus to the container root — the [tvFocusable] ring has nothing to draw on and disappears
+ * mid-navigation. [focusRestorer] plants a parent focus node that re-targets the remembered child (by
+ * scrolling it back / restoring it) so focus — and the ring — stay put. On the FIRST entry (nothing saved yet)
+ * it falls back to a normal directional search (the first focusable child), so a list entered by D-pad always
+ * lights the ring.
+ *
+ * No-op + ZERO cost off TV: touch devices never traverse focus, so phone/tablet behavior is byte-for-byte
+ * unchanged (returns `this`). Gated by the SAME [rememberIsTvOrCar] as [tvFocusable]. Called ONCE per
+ * container (not per item), so reading [rememberIsTvOrCar] here is cheap.
+ */
+@Composable
+fun Modifier.tvFocusRestorer(): Modifier =
+    if (rememberIsTvOrCar()) this.focusRestorer() else this
 
 private data class TvFocusRingElement(
     val shape: Shape,
