@@ -1494,8 +1494,10 @@ fun BottomSheetPlayer(
                 // this collapsed content are composed at once, so two TextureViews would fight over the one
                 // video output. Only let the mini bind the surface while the sheet is fully collapsed (the
                 // expanded content isn't composed then); otherwise the mini shows the static artwork and the
-                // expanded player owns the surface. Guarantees exactly one surface binding at any time.
-                shouldBindVideoSurface = state.isCollapsed
+                // expanded player owns the surface. Also skip binding in PiP, where MainActivity's fullscreen
+                // PlayerVideoSurface owns the single output (otherwise two TextureViews bind and the mini
+                // freezes on PiP exit). Together these keep exactly one surface bound at a time.
+                shouldBindVideoSurface = state.isCollapsed && !LocalIsInPipMode.current
             )
         },
     ) {

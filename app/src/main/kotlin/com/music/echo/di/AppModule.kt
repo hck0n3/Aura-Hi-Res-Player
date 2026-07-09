@@ -61,6 +61,9 @@ object AppModule {
             iad1tya.echo.music.db.MIGRATION_22_24,
             iad1tya.echo.music.db.MIGRATION_24_25,
             iad1tya.echo.music.db.MIGRATION_27_28,
+            // v37->v38: add index on event.timestamp. MUST be here (this is the builder Hilt injects);
+            // registering it only on the unused MusicDatabase.newInstance would crash every v37 user on update.
+            iad1tya.echo.music.db.MIGRATION_37_38,
         )
 
         .setJournalMode(androidx.room.RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
