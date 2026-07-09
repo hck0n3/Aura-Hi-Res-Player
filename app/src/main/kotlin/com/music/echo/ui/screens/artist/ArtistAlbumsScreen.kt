@@ -6,6 +6,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -103,12 +104,15 @@ fun ArtistAlbumsScreen(
 
     val snackbarHostState = remember { SnackbarHostState() }
 
-    Box(
+    BoxWithConstraints(
         modifier = Modifier.fillMaxSize()
     ) {
+        // Panel-relative columns (split-screen aware): phone / narrow pane keeps 3; a wider content
+        // pane adds columns instead of stretching 3 oversized cards.
+        val columns = (maxWidth / 152.dp).toInt().coerceAtLeast(3)
         LazyVerticalGrid(
             state = lazyGridState,
-            columns = GridCells.Fixed(3),
+            columns = GridCells.Fixed(columns),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
             contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues()

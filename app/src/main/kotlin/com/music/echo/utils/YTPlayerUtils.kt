@@ -53,6 +53,17 @@ object YTPlayerUtils {
     private var hasShownLosslessToast = false
     private var hasShownSaavnToast = false
 
+    // The signature timestamp (sts) is a per-PLAYER-VERSION constant — identical for every video until
+    // YouTube rotates player.js (rare, ~weekly). Recomputing it for every song runs NewPipe's JS engine
+    // over the ~2.8 MB player.js each time, which is multi-second on weak (TV) CPUs and needlessly
+    // repeats work on the critical path of every song change. Memoize the successful value for a bounded
+    // window (same 6 h horizon the player.js disk cache already tolerates) so only the first song pays
+    // it. Only SUCCESSES are cached — a failure (which also carries the early age-restriction hint)
+    // always re-runs, so nothing is lost.
+    @Volatile private var cachedSignatureTimestamp: Int? = null
+    @Volatile private var cachedSignatureTimestampAtMs: Long = 0L
+    private const val SIGNATURE_TIMESTAMP_TTL_MS = 6 * 60 * 60 * 1000L
+
     private val httpClient: OkHttpClient = OkHttpClient.Builder()
         .dns(object : Dns {
             override fun lookup(hostname: String): List<InetAddress> {
@@ -94,6 +105,18 @@ object YTPlayerUtils {
             val sessionId = if (isLoggedIn) YouTube.dataSyncId else YouTube.visitorData
             if (!sessionId.isNullOrBlank()) poTokenGenerator.prewarm(sessionId)
         }
+    }
+
+    /**
+     * Warm the cipher player.js + WebView ahead of the first play so the first song's URL resolution
+     * doesn't pay the ~2.8 MB player.js fetch + WebView-create + JS discovery on the critical path.
+     * This fills [iad1tya.echo.music.utils.cipher.PlayerJsFetcher]'s cache (shared by the sig-deobf and
+     * EJS n-transform paths) and pre-creates the reused cipher WebView; both stay warm and are reused
+     * for every subsequent song. Best-effort — never throws, never blocks. Call off the main thread.
+     */
+    suspend fun prewarmCipher() {
+        runCatching { CipherDeobfuscator.prewarm() }
+            .onFailure { Timber.tag(TAG).d("Cipher prewarm skipped: ${it.message}") }
     }
 
     
@@ -434,6 +457,7 @@ object YTPlayerUtils {
         audioQuality: AudioQuality,
         connectivityManager: ConnectivityManager,
         preferVideo: Boolean = false,
+        videoMaxHeight: Int? = null,
     ): Result<PlaybackData> = runCatching {
         Timber.tag(logTag).d("Fetching player response for videoId: $videoId, playlistId: $playlistId")
         PlaybackLogManager.log(PlaybackLogLevel.INFO, "Resolving playback data", "Video: $videoId")
@@ -650,6 +674,7 @@ object YTPlayerUtils {
                         audioQuality,
                         connectivityManager,
                         preferVideo,
+                        videoMaxHeight,
                     )
 
                 if (format == null) {
@@ -842,11 +867,13 @@ object YTPlayerUtils {
     suspend fun videoStreamUrl(
         videoId: String,
         connectivityManager: ConnectivityManager,
+        videoMaxHeight: Int? = null,
     ): String? = resolvePlaybackData(
         videoId = videoId,
         audioQuality = AudioQuality.OPUS,
         connectivityManager = connectivityManager,
         preferVideo = true,
+        videoMaxHeight = videoMaxHeight,
     ).getOrNull()?.streamUrl
 
     /**
@@ -857,11 +884,13 @@ object YTPlayerUtils {
     suspend fun videoStreamUrlDiag(
         videoId: String,
         connectivityManager: ConnectivityManager,
+        videoMaxHeight: Int? = null,
     ): Result<String> = resolvePlaybackData(
         videoId = videoId,
         audioQuality = AudioQuality.OPUS,
         connectivityManager = connectivityManager,
         preferVideo = true,
+        videoMaxHeight = videoMaxHeight,
     ).mapCatching { it.streamUrl }
 
     private fun findFormat(
@@ -869,6 +898,7 @@ object YTPlayerUtils {
         audioQuality: AudioQuality,
         connectivityManager: ConnectivityManager,
         preferVideo: Boolean = false,
+        videoMaxHeight: Int? = null,
     ): PlayerResponse.StreamingData.Format? {
         if (preferVideo) {
             // Video mode resolves an ADAPTIVE VIDEO-ONLY stream (no audio) — MusicService MERGES it with the
@@ -879,7 +909,10 @@ object YTPlayerUtils {
             // (widest ExoPlayer compatibility, smooth on low-end), else any video-only. null only if a video
             // has no video-only format at all (extremely rare) → caller keeps audio + "no disponible".
             val metered = connectivityManager.isActiveNetworkMetered
-            val targetHeight = if (metered) 360 else 720
+            // On TV (big screen) the caller passes an explicit cap (1080p Full HD) so video mode reaches true FHD
+            // via a VIDEO-ONLY adaptive stream (merged with a separate audio track in MusicService). Phones/tablets
+            // pass null → keep the existing metered-aware cap (720p WiFi / 360p data) EXACTLY as before.
+            val targetHeight = videoMaxHeight ?: if (metered) 360 else 720
             val videoOnly = playerResponse.streamingData?.adaptiveFormats
                 ?.filter { !it.url.isNullOrEmpty() || !it.signatureCipher.isNullOrEmpty() || !it.cipher.isNullOrEmpty() }
                 ?.filter { !it.isAudio && it.mimeType.startsWith("video/") }
@@ -965,11 +998,22 @@ object YTPlayerUtils {
     )
 
     private fun getSignatureTimestampOrNull(videoId: String): SignatureTimestampResult {
+        // Reuse the memoized sts if still fresh — it's the same for every video until the player rotates,
+        // so this skips the per-song hop into NewPipe (regex over the ~2.8 MB player JS, plus the
+        // first-call download/parse) for a value that never changes between songs.
+        val cached = cachedSignatureTimestamp
+        if (cached != null &&
+            android.os.SystemClock.elapsedRealtime() - cachedSignatureTimestampAtMs < SIGNATURE_TIMESTAMP_TTL_MS) {
+            Timber.tag(logTag).d("Signature timestamp (cached): $cached")
+            return SignatureTimestampResult(cached, isAgeRestricted = false)
+        }
         Timber.tag(logTag).d("Getting signature timestamp for videoId: $videoId")
         val result = NewPipeExtractor.getSignatureTimestamp(videoId)
         return result.fold(
             onSuccess = { timestamp ->
                 Timber.tag(logTag).d("Signature timestamp obtained: $timestamp")
+                cachedSignatureTimestamp = timestamp
+                cachedSignatureTimestampAtMs = android.os.SystemClock.elapsedRealtime()
                 SignatureTimestampResult(timestamp, isAgeRestricted = false)
             },
             onFailure = { error ->

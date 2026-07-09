@@ -11,6 +11,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -305,10 +306,11 @@ fun ArtistScreen(
                         }
                     }
 
-                    Box {
-                        // TV/car (wide landscape): cap the full-width square header to a short banner so it isn't a
-                        // giant wall of art; phones/tablets keep the square.
-                        val isTvHero = iad1tya.echo.music.ui.utils.rememberIsWideScreen()
+                    BoxWithConstraints {
+                        // Base the wide-hero banner on the REAL content-pane width (split-screen aware),
+                        // NOT the window: a narrow split pane keeps the square cover like a phone; only a
+                        // genuinely wide pane (>= 840dp, the expanded breakpoint) caps it to a short banner.
+                        val isTvHero = maxWidth >= 840.dp
                         if (thumbnail != null || backgroundVideoUrl != null) {
                             Box(
                                 modifier = Modifier

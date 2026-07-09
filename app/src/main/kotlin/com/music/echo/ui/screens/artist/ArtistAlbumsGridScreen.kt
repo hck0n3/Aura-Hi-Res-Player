@@ -4,6 +4,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -74,8 +75,11 @@ fun ArtistAlbumsGridScreen(
             },
             scrollBehavior = scrollBehavior,
         )
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        // Panel-relative columns (split-screen aware): phone / narrow pane keeps 3; a wider pane adds columns.
+        val columns = (maxWidth / 152.dp).toInt().coerceAtLeast(3)
         LazyVerticalGrid(
-            columns = GridCells.Fixed(3),
+            columns = GridCells.Fixed(columns),
             modifier = Modifier.fillMaxSize(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -120,6 +124,7 @@ fun ArtistAlbumsGridScreen(
                         ),
                 )
             }
+        }
         }
     }
 }

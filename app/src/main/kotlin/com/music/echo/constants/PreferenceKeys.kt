@@ -67,6 +67,10 @@ val CanvasDefaultOffAppliedKey = booleanPreferencesKey("canvas_default_off_appli
 val CanvasDefaultOnAppliedKey = booleanPreferencesKey("canvas_default_on_applied")
 // One-time (fresh key): auto-enable High-Performance Mode for existing users on LOW-tier / TV / car devices.
 val HighPerfModeSeedAppliedKey = booleanPreferencesKey("high_perf_mode_seed_applied_v1")
+// Re-migration (fresh key): corrects the over-aggressive perf-mode auto-enable. Turns High-Performance Mode
+// OFF on televisions (premium: 1080p video, home carousels, high-res covers) and on capable phones wrongly
+// forced into it by the old ~4 GB LOW threshold. Never enables it. See App.migratePerfModeReseedV2.
+val PerfModeReseedV2AppliedKey = booleanPreferencesKey("perf_mode_reseed_v2_applied")
 // One-time migration: mini-player background back to DEFAULT so its text stays readable (gray onSurface)
 // in light mode. The seeded APPLE_MUSIC mini background forced white text, illegible on a light bar.
 val MiniPlayerDefaultBgAppliedKey = booleanPreferencesKey("miniplayer_default_bg_applied")

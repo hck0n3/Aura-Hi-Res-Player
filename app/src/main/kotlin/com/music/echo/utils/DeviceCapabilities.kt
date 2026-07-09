@@ -48,8 +48,12 @@ object DeviceCapabilities {
         // DEMOTE a high-RAM device, or a flagship could lock to MID just because cores were parked at startup.
         return when {
             lowRam -> DeviceTier.LOW
-            totalRamMb in 1..4300 -> DeviceTier.LOW           // ~4 GB and below (reported)
-            totalRamMb in 1..6800 -> DeviceTier.MID           // ~6 GB phones
+            // Genuinely low-end only (~3 GB and below, reported). A nominal 4 GB phone reports ~3.6-3.9 GB and
+            // must land in MID so it keeps the home carousels + full experience (perf-mode is NOT auto-forced on
+            // MID). The old 4300 threshold mis-tagged ~4 GB phones as LOW → perf-mode ON → carousels stripped on
+            // capable devices ("los carruseles no salen en dispositivos que no son gama baja").
+            totalRamMb in 1..3072 -> DeviceTier.LOW           // ~3 GB and below (reported) = genuinely low-end
+            totalRamMb in 1..6800 -> DeviceTier.MID           // ~4-6 GB phones
             totalRamMb > 6800 -> DeviceTier.HIGH              // 8 GB+ flagships (RAM is enough on its own)
             // RAM unknown (0): fall back to core count + the OEM media-performance class.
             cores <= 4 -> DeviceTier.LOW

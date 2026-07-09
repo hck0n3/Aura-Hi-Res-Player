@@ -5,6 +5,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -153,8 +154,11 @@ fun OnboardingArtistsScreen(
                     }
                 }
                 else -> {
+                    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                    // Panel-relative columns (split-screen aware): phone / narrow pane keeps 3 circles; a wider pane adds columns.
+                    val columns = (maxWidth / 120.dp).toInt().coerceAtLeast(3)
                     LazyVerticalGrid(
-                        columns = GridCells.Fixed(3),
+                        columns = GridCells.Fixed(columns),
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp),
                         modifier = Modifier.fillMaxSize(),
@@ -205,6 +209,7 @@ fun OnboardingArtistsScreen(
                                 )
                             }
                         }
+                    }
                     }
                 }
             }

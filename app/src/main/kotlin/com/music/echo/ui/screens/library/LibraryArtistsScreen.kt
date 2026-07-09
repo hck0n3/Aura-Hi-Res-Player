@@ -5,6 +5,7 @@ package iad1tya.echo.music.ui.screens.library
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
@@ -243,7 +244,7 @@ fun LibraryArtistsScreen(
         }
     }
 
-    Box(
+    BoxWithConstraints(
         modifier = Modifier.fillMaxSize(),
     ) {
         when (viewType) {
@@ -299,9 +300,11 @@ fun LibraryArtistsScreen(
                     state = lazyGridState,
                     columns =
                     GridCells.Adaptive(
-                        // TV/wide: a smaller min cell = MORE columns = smaller artist circles (they were huge
-                        // because the adaptive cell fills the wide column width). Phones keep the normal size.
-                        minSize = if (iad1tya.echo.music.ui.utils.rememberIsWideScreen()) 110.dp
+                        // Reflow to the REAL panel width (split-screen aware), NOT the window. Only a
+                        // genuinely wide content pane (>= 840dp, the expanded breakpoint) uses the compact
+                        // 110dp cell = more, smaller circles; a narrow split pane keeps phone-size circles
+                        // instead of inheriting the wide window's compact sizing.
+                        minSize = if (maxWidth >= 840.dp) 110.dp
                         else GridThumbnailHeight + if (gridItemSize == GridItemSize.BIG) 24.dp else (-24).dp,
                     ),
                     contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),

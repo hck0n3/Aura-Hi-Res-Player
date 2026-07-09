@@ -48,7 +48,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import iad1tya.echo.music.ui.component.MediaMetadataListItem
 import iad1tya.echo.music.ui.utils.rememberIsWideScreen
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -110,8 +109,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.foundation.focusGroup
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithCache
@@ -1029,7 +1032,10 @@ fun BottomSheetPlayer(
                                     AsyncImage(
                                         model = ImageRequest.Builder(context)
                                             .data(thumbnailUrl)
-                                            .size(100, 100)
+                                            // TV/large screen: request a high-res cover so the blurred backdrop
+                                            // isn't pixelated on a big display. Phones keep the tiny 100px source
+                                            // (and Performance Mode never reaches here — it draws the plain cover).
+                                            .size(if (isTvOrCar) 720 else 100, if (isTvOrCar) 720 else 100)
                                             .allowHardware(false)
                                             .build(),
                                         contentDescription = null,
@@ -1253,7 +1259,9 @@ fun BottomSheetPlayer(
                                     AsyncImage(
                                         model = ImageRequest.Builder(context)
                                             .data(thumbnailUrl)
-                                            .size(128, 128) 
+                                            // TV/large screen: high-res source so the blurred Apple-Music backdrop
+                                            // stays clean on a big display (phones/Performance Mode unchanged).
+                                            .size(if (isTvOrCar) 720 else 128, if (isTvOrCar) 720 else 128)
                                             .allowHardware(false)
                                             .build(),
                                         contentDescription = null,
@@ -1391,7 +1399,7 @@ fun BottomSheetPlayer(
                                     AsyncImage(
                                         model = ImageRequest.Builder(context)
                                             .data(thumbnailUrl)
-                                            .size(128, 128) 
+                                            .size(if (isTvOrCar) 384 else 128, if (isTvOrCar) 384 else 128)
                                             .allowHardware(false)
                                             .build(),
                                         contentDescription = null,
@@ -1407,7 +1415,7 @@ fun BottomSheetPlayer(
                                     AsyncImage(
                                         model = ImageRequest.Builder(context)
                                             .data(thumbnailUrl)
-                                            .size(128, 128) 
+                                            .size(if (isTvOrCar) 384 else 128, if (isTvOrCar) 384 else 128)
                                             .allowHardware(false)
                                             .build(),
                                         contentDescription = null,
@@ -1427,7 +1435,7 @@ fun BottomSheetPlayer(
                                     AsyncImage(
                                         model = ImageRequest.Builder(context)
                                             .data(thumbnailUrl)
-                                            .size(128, 128) 
+                                            .size(if (isTvOrCar) 384 else 128, if (isTvOrCar) 384 else 128)
                                             .allowHardware(false)
                                             .build(),
                                         contentDescription = null,
@@ -1815,6 +1823,9 @@ fun BottomSheetPlayer(
                         modifier = Modifier
                             .fillMaxWidth()
                             .basicMarquee(iterations = 1, initialDelayMillis = 3000, velocity = 30.dp)
+                            // TV/car: own visible D-pad focus stop for the TITLE (opens the album), separate
+                            // from the cover. Ring modifier sits ABOVE the clickable so it observes its focus.
+                            .tvFocusable(isTvOrCar, RoundedCornerShape(6.dp))
                             .combinedClickable(
                                 enabled = true,
                                 indication = null,
@@ -1844,6 +1855,9 @@ fun BottomSheetPlayer(
                         modifier = Modifier
                             .fillMaxWidth()
                             .basicMarquee(iterations = 1, initialDelayMillis = 3000, velocity = 30.dp)
+                            // TV/car: the ARTIST is its OWN focusable target (navigates to the artist), distinct
+                            // from the cover and the title — so the D-pad can land on it and show the ring.
+                            .tvFocusable(isTvOrCar, RoundedCornerShape(6.dp))
                             .combinedClickable(
                                 enabled = true,
                                 indication = null,
@@ -2054,7 +2068,11 @@ fun BottomSheetPlayer(
                             playerBackground = playerBackground,
                             useDarkTheme = useDarkTheme
                         ),
-                        modifier = Modifier.padding(horizontal = PlayerHorizontalPadding),
+                        modifier = Modifier
+                            .padding(horizontal = PlayerHorizontalPadding)
+                            // TV/car: visible D-pad focus ring around the timeline (Material's Slider shows no
+                            // focus affordance on a remote). D-pad left/right seeks once focused. No-op off-TV.
+                            .tvFocusable(isTvOrCar, RoundedCornerShape(12.dp)),
                     )
                 }
 
@@ -2078,7 +2096,9 @@ fun BottomSheetPlayer(
                                 }
                                 sliderPosition = null
                             },
-                            modifier = Modifier.padding(horizontal = PlayerHorizontalPadding),
+                            modifier = Modifier
+                                .padding(horizontal = PlayerHorizontalPadding)
+                                .tvFocusable(isTvOrCar, RoundedCornerShape(12.dp)),
                             colors = PlayerSliderColors.getSliderColors(
                                 activeColor = if (useNewPlayerDesign) textButtonColor else textButtonColor.copy(alpha = 0.7f),
                                 playerBackground = playerBackground,
@@ -2110,7 +2130,9 @@ fun BottomSheetPlayer(
                                 playerBackground = playerBackground,
                                 useDarkTheme = useDarkTheme
                             ),
-                            modifier = Modifier.padding(horizontal = PlayerHorizontalPadding),
+                            modifier = Modifier
+                                .padding(horizontal = PlayerHorizontalPadding)
+                                .tvFocusable(isTvOrCar, RoundedCornerShape(12.dp)),
                             isPlaying = effectiveIsPlaying
                         )
                     }
@@ -2167,7 +2189,9 @@ fun BottomSheetPlayer(
                                 )
                             )
                         },
-                        modifier = Modifier.padding(horizontal = PlayerHorizontalPadding)
+                        modifier = Modifier
+                            .padding(horizontal = PlayerHorizontalPadding)
+                            .tvFocusable(isTvOrCar, RoundedCornerShape(12.dp))
                     )
                 }
             }
@@ -2799,13 +2823,29 @@ fun BottomSheetPlayer(
                 var lsControls by remember { mutableStateOf(true) }
                 // Auto-hide after 3.5 s. NOT keyed on isPlaying — buffering/play-state changes would keep
                 // restarting the timer (so it never hid, e.g. while HD video rebuffers).
-                LaunchedEffect(lsControls, inPip) {
-                    if (lsControls && !inPip) { delay(3500); lsControls = false }
+                // TV/car: a remote can't tap to bring hidden controls back, so DON'T auto-hide on TV — the
+                // transport stays on screen and D-pad focusable. Touch devices keep the 3.5 s auto-hide.
+                LaunchedEffect(lsControls, inPip, isTvOrCar) {
+                    if (lsControls && !inPip && !isTvOrCar) { delay(3500); lsControls = false }
+                }
+                // TV/car: land initial focus on the video play/pause so the controls are immediately navigable;
+                // combined with the key handler below, a D-pad user is never stuck without controls.
+                val lsVideoFocus = remember { androidx.compose.ui.focus.FocusRequester() }
+                LaunchedEffect(isTvOrCar, lsControls) {
+                    if (isTvOrCar && lsControls) {
+                        repeat(10) { runCatching { lsVideoFocus.requestFocus() }; delay(50) }
+                    }
                 }
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .background(Color.Black)
+                        // TV/car: any D-pad key re-shows the controls (and, with no auto-hide on TV, keeps them
+                        // up). Returns false so the key still performs its normal focus navigation.
+                        .onPreviewKeyEvent {
+                            if (isTvOrCar && it.type == KeyEventType.KeyDown) lsControls = true
+                            false
+                        }
                         .pointerInput(Unit) { detectTapGestures { if (!inPip) lsControls = !lsControls } },
                 ) {
                     // In PiP the top-level overlay (MainActivity) renders the video; skip the sheet's surface
@@ -2872,17 +2912,31 @@ fun BottomSheetPlayer(
                                 .padding(horizontal = 24.dp, vertical = 14.dp),
                         ) {
                             Spacer(Modifier.weight(1f))
-                            IconButton(onClick = { playerConnection.seekToPrevious() }) {
+                            IconButton(
+                                onClick = { playerConnection.seekToPrevious() },
+                                modifier = Modifier.tvFocusable(isTvOrCar),
+                            ) {
                                 Icon(painterResource(R.drawable.skip_previous), null, tint = Color.White, modifier = Modifier.size(34.dp))
                             }
-                            IconButton(onClick = { playerConnection.player.togglePlayPause() }) {
+                            IconButton(
+                                onClick = { playerConnection.player.togglePlayPause() },
+                                modifier = Modifier
+                                    .focusRequester(lsVideoFocus)
+                                    .tvFocusable(isTvOrCar),
+                            ) {
                                 Icon(painterResource(if (isPlaying) R.drawable.pause else R.drawable.play), null, tint = Color.White, modifier = Modifier.size(44.dp))
                             }
-                            IconButton(onClick = { playerConnection.seekToNext() }) {
+                            IconButton(
+                                onClick = { playerConnection.seekToNext() },
+                                modifier = Modifier.tvFocusable(isTvOrCar),
+                            ) {
                                 Icon(painterResource(R.drawable.skip_next), null, tint = Color.White, modifier = Modifier.size(34.dp))
                             }
                             Spacer(Modifier.weight(1f))
-                            IconButton(onClick = { playerConnection.exitVideoMode() }) {
+                            IconButton(
+                                onClick = { playerConnection.exitVideoMode() },
+                                modifier = Modifier.tvFocusable(isTvOrCar),
+                            ) {
                                 Icon(painterResource(R.drawable.music_note), null, tint = Color.White, modifier = Modifier.size(30.dp))
                             }
                         }
@@ -2892,12 +2946,24 @@ fun BottomSheetPlayer(
                 // Rotated + canvas (Apple-Music animated background) → show it FULLSCREEN (the background
                 // canvas already fills the screen behind) with auto-hiding controls (tap toggles them).
                 var lsCanvasControls by remember { mutableStateOf(true) }
-                LaunchedEffect(lsCanvasControls, isPlaying) {
-                    if (lsCanvasControls) { delay(3500); lsCanvasControls = false }
+                // TV/car: don't auto-hide (a remote can't tap them back); touch keeps the 3.5 s auto-hide.
+                LaunchedEffect(lsCanvasControls, isPlaying, isTvOrCar) {
+                    if (lsCanvasControls && !isTvOrCar) { delay(3500); lsCanvasControls = false }
+                }
+                val lsCanvasFocus = remember { androidx.compose.ui.focus.FocusRequester() }
+                LaunchedEffect(isTvOrCar, lsCanvasControls) {
+                    if (isTvOrCar && lsCanvasControls) {
+                        repeat(10) { runCatching { lsCanvasFocus.requestFocus() }; delay(50) }
+                    }
                 }
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
+                        // TV/car: any D-pad key re-shows the controls. Returns false so navigation still runs.
+                        .onPreviewKeyEvent {
+                            if (isTvOrCar && it.type == KeyEventType.KeyDown) lsCanvasControls = true
+                            false
+                        }
                         .pointerInput(Unit) { detectTapGestures { lsCanvasControls = !lsCanvasControls } },
                 ) {
                     androidx.compose.animation.AnimatedVisibility(
@@ -2918,13 +2984,24 @@ fun BottomSheetPlayer(
                                 .padding(horizontal = 24.dp, vertical = 14.dp),
                         ) {
                             Spacer(Modifier.weight(1f))
-                            IconButton(onClick = { playerConnection.seekToPrevious() }) {
+                            IconButton(
+                                onClick = { playerConnection.seekToPrevious() },
+                                modifier = Modifier.tvFocusable(isTvOrCar),
+                            ) {
                                 Icon(painterResource(R.drawable.skip_previous), null, tint = Color.White, modifier = Modifier.size(34.dp))
                             }
-                            IconButton(onClick = { playerConnection.player.togglePlayPause() }) {
+                            IconButton(
+                                onClick = { playerConnection.player.togglePlayPause() },
+                                modifier = Modifier
+                                    .focusRequester(lsCanvasFocus)
+                                    .tvFocusable(isTvOrCar),
+                            ) {
                                 Icon(painterResource(if (isPlaying) R.drawable.pause else R.drawable.play), null, tint = Color.White, modifier = Modifier.size(44.dp))
                             }
-                            IconButton(onClick = { playerConnection.seekToNext() }) {
+                            IconButton(
+                                onClick = { playerConnection.seekToNext() },
+                                modifier = Modifier.tvFocusable(isTvOrCar),
+                            ) {
                                 Icon(painterResource(R.drawable.skip_next), null, tint = Color.White, modifier = Modifier.size(34.dp))
                             }
                             Spacer(Modifier.weight(1f))
@@ -2958,6 +3035,9 @@ fun BottomSheetPlayer(
                         // controls column jammed against the screen edge. Only on wide screens; lyrics/phones fall
                         // through to the side-by-side layout below.
                         LandscapeQueuePane(
+                            // Match the player's own text treatment (white over blur/gradient) so the queue is
+                            // readable in every theme now that the rows are flat/transparent.
+                            contentColor = TextBackgroundColor,
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxHeight()
@@ -2969,6 +3049,9 @@ fun BottomSheetPlayer(
                             modifier = Modifier
                                 .weight(1.7f)
                                 .fillMaxHeight()
+                                // TV/car: group the now-playing pane so D-pad directional search moves cleanly
+                                // between this pane and the queue pane (free traversal in every direction).
+                                .focusGroup()
                                 .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Top))
                         ) {
                             Box(
@@ -3334,11 +3417,12 @@ private fun PlayerActionChip(
 /**
  * Spotify-style queue pane for the LEFT side of the wide (TV / tablet / car / unfolded-foldable) player split.
  * Renders the live play queue as a focusable list: the current song is highlighted, tapping/clicking (or D-pad
- * center) a row jumps to it, and the list auto-scrolls to the current song. Rows reuse MediaMetadataListItem
- * (which already carries the TV focus ring), so D-pad navigation works out of the box.
+ * center) a row jumps to it, and the list auto-scrolls to the current song. Rows use the flat modern
+ * [LandscapeQueueRow] (with the TV focus ring), so D-pad navigation works out of the box.
  */
 @Composable
 private fun LandscapeQueuePane(
+    contentColor: Color,
     modifier: Modifier = Modifier,
 ) {
     val playerConnection = LocalPlayerConnection.current ?: return
@@ -3353,9 +3437,13 @@ private fun LandscapeQueuePane(
         }
     }
 
+    val isTvOrCar = iad1tya.echo.music.ui.utils.rememberIsTvOrCar()
     LazyColumn(
         state = lazyState,
-        modifier = modifier,
+        // TV/car: focus group so D-pad directional search enters/leaves the queue pane cleanly.
+        modifier = modifier.focusGroup(),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         itemsIndexed(
             items = windows,
@@ -3363,11 +3451,13 @@ private fun LandscapeQueuePane(
         ) { index, window ->
             val isActive = index == currentWindowIndex
             window.mediaItem.metadata?.let { meta ->
-                MediaMetadataListItem(
-                    mediaMetadata = meta,
+                LandscapeQueueRow(
+                    meta = meta,
                     isActive = isActive,
                     isPlaying = isPlaying && isActive,
-                    modifier = Modifier.clickable {
+                    isTvOrCar = isTvOrCar,
+                    contentColor = contentColor,
+                    onClick = {
                         if (isActive) {
                             playerConnection.togglePlayPause()
                         } else {
@@ -3378,6 +3468,90 @@ private fun LandscapeQueuePane(
                 )
             }
         }
+    }
+}
+
+/**
+ * Modern, flat Material3 row for the wide/TV split-player queue — replaces the old boxed white ListItem look.
+ * The row is transparent by default; the CURRENT track gets a soft secondaryContainer tint, a primary accent
+ * bar and a bold title so it's clearly marked. Larger cover + spacing for a TV, and the D-pad focus ring lights
+ * on the whole row. Only used by the wide/TV [LandscapeQueuePane], so the phone queue stays exactly as it was.
+ */
+@Composable
+private fun LandscapeQueueRow(
+    meta: MediaMetadata,
+    isActive: Boolean,
+    isPlaying: Boolean,
+    isTvOrCar: Boolean,
+    contentColor: Color,
+    onClick: () -> Unit,
+) {
+    val shape = RoundedCornerShape(12.dp)
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp)
+            .clip(shape)
+            // Ring sits ABOVE the clickable so it observes the row's focus and lights the whole row.
+            .tvFocusable(isTvOrCar, shape)
+            .clickable(onClick = onClick)
+            .background(
+                if (isActive) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.9f)
+                else Color.Transparent
+            )
+            .padding(horizontal = 8.dp, vertical = 8.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .width(3.dp)
+                .height(44.dp)
+                .clip(RoundedCornerShape(50))
+                .background(if (isActive) MaterialTheme.colorScheme.primary else Color.Transparent)
+        )
+        AsyncImage(
+            model = meta.thumbnailUrl,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .size(52.dp)
+                .clip(RoundedCornerShape(8.dp)),
+        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = meta.title,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium,
+                color = if (isActive) MaterialTheme.colorScheme.onSecondaryContainer else contentColor,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = meta.artists.joinToString { it.name },
+                style = MaterialTheme.typography.bodySmall,
+                color = if (isActive) MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.75f)
+                        else contentColor.copy(alpha = 0.7f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        // Small now-playing dot for the active + playing track (clear affordance without an extra icon asset).
+        if (isPlaying) {
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(MaterialTheme.colorScheme.primary)
+            )
+        }
+        Text(
+            text = makeTimeString(meta.duration * 1000L),
+            style = MaterialTheme.typography.labelMedium,
+            color = if (isActive) MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.75f)
+                    else contentColor.copy(alpha = 0.7f),
+        )
     }
 }
 

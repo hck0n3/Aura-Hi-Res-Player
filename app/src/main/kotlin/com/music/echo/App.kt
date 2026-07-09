@@ -88,6 +88,10 @@ class App : Application(), SingletonImageLoader.Factory {
 
         CipherDeobfuscator.initialize(this)
 
+        // Load any previously-fetched self-healing player configs from disk synchronously, so a cached
+        // config resolves on the very first stream extraction (even offline). Cheap + best-effort.
+        iad1tya.echo.music.utils.cipher.RemotePlayerConfig.loadCache(this)
+
         if (iad1tya.echo.music.BuildConfig.DEBUG) {
             Timber.plant(Timber.DebugTree())
         }
@@ -111,6 +115,13 @@ class App : Application(), SingletonImageLoader.Factory {
         // Schedule the weekly app-update check (notifies once per new version when one is found).
         runCatching { iad1tya.echo.music.echomusic.updater.UpdateCheckWorker.schedule(this) }
             .onFailure { Timber.e(it, "Failed to schedule update-check worker") }
+
+        // Best-effort background refresh of the self-healing player configs (owner-hosted JSON). Idempotent
+        // and network-optional: on failure the app keeps its built-in hardcoded configs. Never throws. Lets
+        // a YouTube cipher rotation be fixed by publishing one config, with no app update.
+        applicationScope.launch(Dispatchers.IO) {
+            iad1tya.echo.music.utils.cipher.RemotePlayerConfig.refresh(applicationContext)
+        }
     }
 
     private suspend fun initializeSettings() {
@@ -119,6 +130,9 @@ class App : Application(), SingletonImageLoader.Factory {
         seedDefaultsIfNeeded(settings)
         migrateCanvasDefaultOn(settings)
         migrateHighPerformanceModeSeed(settings)
+        // Must run AFTER migrateHighPerformanceModeSeed: undoes the over-aggressive force-ON (TV + ~4 GB phones)
+        // so televisions and capable phones get carousels + video back.
+        migratePerfModeReseedV2(settings)
         migrateMiniPlayerDefaultBg(settings)
         migrateThemeSystemDefault(settings)
         migrateThemeSystemOnlyV2(settings)
@@ -292,12 +306,13 @@ class App : Application(), SingletonImageLoader.Factory {
                 p[iad1tya.echo.music.constants.ShowArtistBackgroundVideoKey] = !lowEndDevice
             }
 
-            // High-Performance Mode: auto-ON on LOW-tier devices AND on Android TV / car head units (both are
-            // typically low-power). Seeded only when unset, so a manual choice is never clobbered. When on it
-            // routes every visual/decode/memory gate through the LOW path and disables video mode (audio only).
+            // High-Performance Mode: auto-ON ONLY on genuinely LOW-tier phones. NOT on Android TV: a television
+            // is the premium large-screen experience (1080p video, home carousels, high-res covers) and perf-mode
+            // would disable video mode + strip carousels. A genuinely weak TV box can still enable it manually.
+            // Seeded only when unset, so a manual choice is never clobbered. When on it routes every
+            // visual/decode/memory gate through the LOW path and disables video mode (audio only).
             if (p[iad1tya.echo.music.constants.HighPerformanceModeKey] == null) {
-                p[iad1tya.echo.music.constants.HighPerformanceModeKey] =
-                    lowEndDevice || iad1tya.echo.music.utils.DeviceForm.isTvOrCar(this@App)
+                p[iad1tya.echo.music.constants.HighPerformanceModeKey] = lowEndDevice
             }
 
             // Hide video songs is OFF by default (show video music too); only YouTube Shorts are
@@ -556,22 +571,50 @@ class App : Application(), SingletonImageLoader.Factory {
     }
 
     /**
-     * One-time (fresh key): auto-enable High-Performance Mode for EXISTING users on LOW-tier phones AND on
-     * Android TV / car head units, so a weak device that predates the toggle gets the lean path on this update.
-     * Only sets it when still unset (a capable phone that never had the key is left OFF — matches the seed's
-     * "respect the device" stance); afterwards the user's manual choice in the Rendimiento screen wins.
+     * One-time (fresh key): auto-enable High-Performance Mode for EXISTING users on genuinely LOW-tier phones,
+     * so a weak device that predates the toggle gets the lean path on this update. NOT on TV (the television
+     * gets the full premium experience — see [migratePerfModeReseedV2]). Only sets it when still unset (a
+     * capable phone that never had the key is left OFF); afterwards the user's manual choice wins.
      */
     private suspend fun migrateHighPerformanceModeSeed(settings: androidx.datastore.preferences.core.Preferences) {
         if (settings[iad1tya.echo.music.constants.HighPerfModeSeedAppliedKey] == true) return
         val forcePerf =
-            iad1tya.echo.music.utils.DeviceCapabilities.tier(this) == iad1tya.echo.music.utils.DeviceTier.LOW ||
-                iad1tya.echo.music.utils.DeviceForm.isTvOrCar(this)
+            iad1tya.echo.music.utils.DeviceCapabilities.tier(this) == iad1tya.echo.music.utils.DeviceTier.LOW
         runCatching {
             dataStore.edit { p ->
                 if (p[iad1tya.echo.music.constants.HighPerformanceModeKey] == null) {
                     p[iad1tya.echo.music.constants.HighPerformanceModeKey] = forcePerf
                 }
                 p[iad1tya.echo.music.constants.HighPerfModeSeedAppliedKey] = true
+            }
+        }.onFailure { reportException(it) }
+    }
+
+    /**
+     * One-time (fresh key): corrects the earlier OVER-aggressive High-Performance Mode auto-enable. The old
+     * ~4300 MB LOW threshold plus the TV/car force turned perf-mode ON on capable ~4 GB phones and on televisions,
+     * which strips the home carousels and disables video mode (audio only). This turns perf-mode OFF for:
+     *   - ALL televisions (the TV is the premium large-screen experience: 1080p video + carousels + covers), and
+     *   - capable phones (tier != LOW under the corrected threshold) that are currently forced ON.
+     * It NEVER enables perf-mode: a genuinely low-end phone that has it ON keeps it. The user can still toggle it
+     * manually afterwards (e.g. re-enable it on a very weak TV box). Runs once, gated by a fresh key.
+     */
+    private suspend fun migratePerfModeReseedV2(settings: androidx.datastore.preferences.core.Preferences) {
+        if (settings[iad1tya.echo.music.constants.PerfModeReseedV2AppliedKey] == true) return
+        val isTelevision = iad1tya.echo.music.utils.DeviceForm.isTelevision(this)
+        val genuinelyLow =
+            iad1tya.echo.music.utils.DeviceCapabilities.tier(this) == iad1tya.echo.music.utils.DeviceTier.LOW
+        runCatching {
+            dataStore.edit { p ->
+                val current = p[iad1tya.echo.music.constants.HighPerformanceModeKey]
+                if (isTelevision) {
+                    // TV = full experience, regardless of RAM tier (1080p video, carousels, high-res covers).
+                    p[iad1tya.echo.music.constants.HighPerformanceModeKey] = false
+                } else if (current == true && !genuinelyLow) {
+                    // Capable phone wrongly forced into the lean path → restore the full home (carousels).
+                    p[iad1tya.echo.music.constants.HighPerformanceModeKey] = false
+                }
+                p[iad1tya.echo.music.constants.PerfModeReseedV2AppliedKey] = true
             }
         }.onFailure { reportException(it) }
     }

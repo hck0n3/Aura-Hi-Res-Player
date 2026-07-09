@@ -45,6 +45,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.material3.ToggleButton
 import androidx.compose.material3.ToggleButtonDefaults
+import iad1tya.echo.music.ui.utils.rememberIsTvOrCar
+import iad1tya.echo.music.ui.utils.tvFocusable
+import iad1tya.echo.music.ui.utils.tvFocusableItem
 
 
 @Composable
@@ -80,6 +83,7 @@ fun NewActionButton(
 
     Card(
         modifier = modifier
+            .tvFocusable(rememberIsTvOrCar(), RoundedCornerShape(16.dp), scaleFocused = 1f)
             .clickable(enabled = enabled) { performAction = true },
         colors = CardDefaults.cardColors(
             containerColor = animatedBackground
@@ -134,6 +138,7 @@ fun NewMenuItem(
         trailingContent = trailingContent,
         supportingContent = supportingContent,
         modifier = modifier
+            .tvFocusableItem(rememberIsTvOrCar())
             .clickable(enabled = enabled) { onClick?.invoke() }
             .padding(horizontal = 4.dp),
         tonalElevation = 0.dp
@@ -165,6 +170,7 @@ fun NewActionGrid(
     modifier: Modifier = Modifier,
     columns: Int = 3
 ) {
+    val isTvOrCar = rememberIsTvOrCar()
     Column(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -208,6 +214,7 @@ fun NewActionGrid(
                         modifier = Modifier
                             .weight(1f)
                             .semantics { role = Role.Button }
+                            .tvFocusable(isTvOrCar, RoundedCornerShape(16.dp), scaleFocused = 1f)
                     ) {
                         action.icon()
                         Spacer(Modifier.size(ToggleButtonDefaults.IconSpacing))
@@ -289,6 +296,7 @@ fun NewIconButton(
 
     Card(
         modifier = modifier
+            .tvFocusable(rememberIsTvOrCar(), CircleShape)
             .clickable(enabled = enabled) { onClick() },
         colors = CardDefaults.cardColors(
             containerColor = animatedBackground

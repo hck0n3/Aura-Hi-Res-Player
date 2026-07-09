@@ -2,6 +2,7 @@ package iad1tya.echo.music.ui.utils
 
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -9,11 +10,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusEventModifierNode
 import androidx.compose.ui.focus.FocusState
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.drawscope.ContentDrawScope
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.node.DrawModifierNode
 import androidx.compose.ui.node.ModifierNodeElement
 import androidx.compose.ui.node.invalidateDraw
@@ -75,27 +80,40 @@ private fun rememberIsExpandedWidth(): Boolean {
 }
 
 /**
- * D-pad focus ring for TV / car remotes: draws a clearly VISIBLE white ring around the control while it holds
- * focus, so the user sees which one is selected (plain Material3 shows no visible focus on a TV remote).
+ * D-pad focus ring for TV / car remotes: draws a clearly VISIBLE, HIGH-CONTRAST ring around the control while
+ * it holds focus, so the user always sees which one is selected (plain Material3 shows no visible focus on a TV
+ * remote). The ring is a DOUBLE stroke that reads on ANY background (light covers included): a dark outer halo
+ * ([Color.Black] @ 0.6 alpha, ~6dp) drawn first, then the theme [MaterialTheme.colorScheme.primary] ring
+ * (~3.75dp) on top. A ~2dp inset keeps the stroke inside the node bounds so a child's own `.clip(shape)` can't
+ * cut it. On focus the content also gets a subtle [scaleFocused] pop (default ~1.06) drawn as a pure canvas
+ * scale — it does NOT reflow layout, so tight rows never shift; pass `scaleFocused = 1f` to disable it.
  *
- * PERFORMANCE: this is a pure draw-layer [Modifier.Node] — NOT `composed {}` and NO recomposition. Focus flips
- * only invalidate the DRAW (a redraw of the ring), so scrolling a long TV list/grid where every row/card wraps
- * this stays smooth (the old composed{} version broke Compose skipping and allocated per recomposition per
- * item — the cause of the TV/low-end jank). It draws ONLY a ring (no scale) for the same reason.
+ * COLOR: a [Modifier.Node] draw pass can't call composable APIs, so the primary color is captured at THIS
+ * composable factory and threaded into the Element/Node.
+ *
+ * PERFORMANCE: this is a pure draw-layer [Modifier.Node] — NOT `composed {}`. Focus flips only invalidate the
+ * DRAW (a redraw of the ring), so scrolling a long TV list/grid where every row/card wraps this stays smooth
+ * (the old composed{} version broke Compose skipping and allocated per recomposition per item — the cause of
+ * the TV/low-end jank). Reading [MaterialTheme] here does NOT re-introduce that: the Element is a stable data
+ * class, so recomposition only touches the node if the primary color/shape actually change.
  *
  * It does NOT add its own `.focusable()` (unless addFocusable=true): it relies on the control's OWN focus
  * target (any Button / IconButton / `.clickable {}`), sitting ABOVE it so its FocusEvent observes that one
  * stop — D-pad center still fires the control's real onClick. A no-op off-TV (returns `this` unchanged), so
  * phones/tablets are completely unaffected and pay ZERO cost.
  */
+@Composable
 fun Modifier.tvFocusable(
     enabled: Boolean,
     shape: Shape = RoundedCornerShape(50),
     addFocusable: Boolean = false,
-    @Suppress("UNUSED_PARAMETER") scaleFocused: Float = 1.12f,
+    scaleFocused: Float = 1.06f,
 ): Modifier {
+    // Capture the theme accent here (draw nodes can't call composables). Read unconditionally so the composable
+    // call count is stable across `enabled` flips (fold/unfold, force-split).
+    val ringColor = MaterialTheme.colorScheme.primary
     if (!enabled) return this
-    val ring = this.then(TvFocusRingElement(shape))
+    val ring = this.then(TvFocusRingElement(shape, ringColor, scaleFocused))
     return if (addFocusable) ring.focusable() else ring
 }
 
@@ -103,20 +121,34 @@ fun Modifier.tvFocusable(
  * Item-level D-pad focus ring for list rows / grid cards. Place it as the OUTERMOST modifier of a SHARED item
  * composable, wrapping the caller's own `.clickable`/`.combinedClickable`:
  *   Row(modifier = Modifier.tvFocusableItem(isTvOrCar).then(callerModifier) ...)
- * Its FocusEvent sits ABOVE the caller's clickable and observes that one focus stop. No-op + zero cost off-TV.
+ * Its FocusEvent sits ABOVE the caller's clickable and observes that one focus stop. Defaults to NO scale
+ * (`scaleFocused = 1f`) since full-width rows shouldn't pop. No-op + zero cost off-TV.
  */
+@Composable
 fun Modifier.tvFocusableItem(
     enabled: Boolean,
     shape: Shape = RoundedCornerShape(8.dp),
-    @Suppress("UNUSED_PARAMETER") scaleFocused: Float = 1f,
-): Modifier = tvFocusable(enabled = enabled, shape = shape, addFocusable = false)
+    scaleFocused: Float = 1f,
+): Modifier = tvFocusable(enabled = enabled, shape = shape, addFocusable = false, scaleFocused = scaleFocused)
 
-private data class TvFocusRingElement(val shape: Shape) : ModifierNodeElement<TvFocusRingNode>() {
-    override fun create(): TvFocusRingNode = TvFocusRingNode(shape)
-    override fun update(node: TvFocusRingNode) { node.shape = shape }
+private data class TvFocusRingElement(
+    val shape: Shape,
+    val ringColor: Color,
+    val scaleFocused: Float,
+) : ModifierNodeElement<TvFocusRingNode>() {
+    override fun create(): TvFocusRingNode = TvFocusRingNode(shape, ringColor, scaleFocused)
+    override fun update(node: TvFocusRingNode) {
+        node.shape = shape
+        node.ringColor = ringColor
+        node.scaleFocused = scaleFocused
+    }
 }
 
-private class TvFocusRingNode(var shape: Shape) : Modifier.Node(), FocusEventModifierNode, DrawModifierNode {
+private class TvFocusRingNode(
+    var shape: Shape,
+    var ringColor: Color,
+    var scaleFocused: Float,
+) : Modifier.Node(), FocusEventModifierNode, DrawModifierNode {
     private var focused = false
 
     override fun onFocusEvent(focusState: FocusState) {
@@ -128,10 +160,41 @@ private class TvFocusRingNode(var shape: Shape) : Modifier.Node(), FocusEventMod
     }
 
     override fun ContentDrawScope.draw() {
-        drawContent()
-        if (focused) {
-            val outline = shape.createOutline(size, layoutDirection, this)
-            drawOutline(outline = outline, color = Color.White, style = Stroke(width = 3.dp.toPx()))
+        if (!focused) {
+            drawContent()
+            return
+        }
+        if (scaleFocused != 1f) {
+            // Pure canvas scale around center: pops the pixels without reflowing layout.
+            scale(scaleFocused) {
+                this@draw.drawContent()
+                drawFocusRing()
+            }
+        } else {
+            drawContent()
+            drawFocusRing()
+        }
+    }
+
+    /** Dark halo first, then the primary ring on top, both inset ~2dp so a child `.clip(shape)` can't cut it. */
+    private fun DrawScope.drawFocusRing() {
+        val inset = 2.dp.toPx()
+        val insetSize = Size(
+            width = (size.width - inset * 2f).coerceAtLeast(0f),
+            height = (size.height - inset * 2f).coerceAtLeast(0f),
+        )
+        val outline = shape.createOutline(insetSize, layoutDirection, this)
+        translate(left = inset, top = inset) {
+            drawOutline(
+                outline = outline,
+                color = Color.Black.copy(alpha = 0.6f),
+                style = Stroke(width = 6.dp.toPx()),
+            )
+            drawOutline(
+                outline = outline,
+                color = ringColor,
+                style = Stroke(width = 3.75.dp.toPx()),
+            )
         }
     }
 }

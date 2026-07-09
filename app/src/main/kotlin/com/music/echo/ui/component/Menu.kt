@@ -22,6 +22,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import iad1tya.echo.music.ui.utils.rememberIsTvOrCar
+import iad1tya.echo.music.ui.utils.tvFocusableItem
 
 @Composable
 fun Material3MenuGroup(
@@ -62,6 +64,7 @@ private fun Material3MenuItemRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .tvFocusableItem(rememberIsTvOrCar())
             .clickable(
                 enabled = item.onClick != null,
                 onClick = { item.onClick?.invoke() }

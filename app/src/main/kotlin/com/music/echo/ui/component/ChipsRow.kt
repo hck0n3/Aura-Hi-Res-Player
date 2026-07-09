@@ -57,6 +57,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import iad1tya.echo.music.R
 import iad1tya.echo.music.ui.screens.OptionStats
+import iad1tya.echo.music.ui.utils.rememberIsTvOrCar
+import iad1tya.echo.music.ui.utils.tvFocusable
 
 @Composable
 fun <E> ChipsRow(
@@ -66,6 +68,7 @@ fun <E> ChipsRow(
     modifier: Modifier = Modifier,
     containerColor: Color = MaterialTheme.colorScheme.surfaceContainer,
 ) {
+    val isTvOrCar = rememberIsTvOrCar()
     Row(
         modifier =
         modifier
@@ -109,12 +112,14 @@ fun <E> ChipsRow(
                 },
                 shape = RoundedCornerShape(cornerRadius),
                 border = null,
-                modifier = Modifier.animateContentSize(
-                    animationSpec = spring(
-                        dampingRatio = Spring.DampingRatioMediumBouncy,
-                        stiffness = Spring.StiffnessMedium
+                modifier = Modifier
+                    .tvFocusable(isTvOrCar, RoundedCornerShape(cornerRadius), scaleFocused = 1f)
+                    .animateContentSize(
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioMediumBouncy,
+                            stiffness = Spring.StiffnessMedium
+                        )
                     )
-                )
             )
 
             Spacer(Modifier.width(8.dp))
@@ -134,6 +139,7 @@ fun <Int> ChoiceChipsRow(
     modifier: Modifier = Modifier,
     containerColor: Color = MaterialTheme.colorScheme.surfaceContainer,
 ) {
+    val isTvOrCar = rememberIsTvOrCar()
     var menuExpanded by remember { mutableStateOf(false) }
 
     var expandIconDegree by remember { mutableFloatStateOf(0f) }
@@ -155,6 +161,7 @@ fun <Int> ChoiceChipsRow(
                 FilterChip(
                     selected = false,
                     modifier = Modifier
+                        .tvFocusable(isTvOrCar, RoundedCornerShape(16.dp), scaleFocused = 1f)
                         .padding(horizontal = 4.dp),
                     onClick = {
                         menuExpanded = !menuExpanded
@@ -257,6 +264,7 @@ fun <Int> ChoiceChipsRow(
                     shape = RoundedCornerShape(cornerRadius),
                     border = null,
                     modifier = Modifier
+                        .tvFocusable(isTvOrCar, RoundedCornerShape(cornerRadius), scaleFocused = 1f)
                         .padding(horizontal = 4.dp)
                         .animateContentSize(
                             animationSpec = spring(

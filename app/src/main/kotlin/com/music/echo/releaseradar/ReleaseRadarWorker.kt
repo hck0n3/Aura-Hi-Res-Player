@@ -253,17 +253,63 @@ class ReleaseRadarWorker(
         SpotifyReleaseHit(album, artistName, date, followed)
     }
 
-    /** Searches YouTube Music for a Spotify release and returns the closest album match (for playback). */
+    /**
+     * Searches YouTube Music for a Spotify release and returns a STRICT album match for playback.
+     *
+     * A candidate is only accepted when BOTH hold (normalized: lowercase, accent- and punctuation-stripped,
+     * feat./ft. markers dropped):
+     *  - ARTIST matches: one of the candidate's artists equals, contains, or is contained in the expected
+     *    Spotify [artistName] (covers collaborations / "Artist & Guest" listings).
+     *  - TITLE matches forward only: the candidate title equals or CONTAINS the wanted album name. The old
+     *    reverse check (`albumName.contains(item.title)`) is gone, so a short YT title ("Love") no longer
+     *    false-matches a longer query ("Love Story").
+     *
+     * When nothing passes both checks it returns null and the caller DROPS the release (see [gatherSpotify]:
+     * `ytMatch?.let { … }` + `filterNotNull()`), so a wrong/similar release is never stored in `playId`.
+     */
     private suspend fun matchSpotifyToYoutubeAlbum(albumName: String, artistName: String): AlbumItem? {
         val query = listOf(albumName, artistName).filter { it.isNotBlank() }.joinToString(" ")
         if (query.isBlank()) return null
         val result = YouTube.search(query, YouTube.SearchFilter.FILTER_ALBUM).getOrNull() ?: return null
+
+        val wantedTitle = normalizeForMatch(albumName)
+        val wantedArtist = normalizeForMatch(artistName)
+        // Without a usable title AND artist we cannot verify a match — drop rather than guess.
+        if (wantedTitle.isBlank() || wantedArtist.isBlank()) return null
+
         return result.items
             .filterIsInstance<AlbumItem>()
             .firstOrNull { item ->
-                item.title.contains(albumName, ignoreCase = true) ||
-                    albumName.contains(item.title, ignoreCase = true)
+                val candidateTitle = normalizeForMatch(item.title)
+                // Forward-only: candidate title equals or contains the wanted album name.
+                val titleOk = candidateTitle.isNotBlank() &&
+                    (candidateTitle == wantedTitle || candidateTitle.contains(wantedTitle))
+                if (!titleOk) return@firstOrNull false
+
+                // Artist verification: at least one candidate artist must line up with the Spotify artist.
+                item.artists.orEmpty().any { a ->
+                    val candidateArtist = normalizeForMatch(a.name)
+                    candidateArtist.isNotBlank() && (
+                        candidateArtist == wantedArtist ||
+                            candidateArtist.contains(wantedArtist) ||
+                            wantedArtist.contains(candidateArtist)
+                        )
+                }
             }
+    }
+
+    /**
+     * Normalizes a title/artist for tolerant-but-safe comparison: strips diacritics (é→e), lowercases,
+     * removes feat./ft./featuring markers, and reduces punctuation to single spaces. Used by
+     * [matchSpotifyToYoutubeAlbum] so "Beyoncé" ≈ "Beyonce" and "Album (Deluxe)" ≈ "album deluxe".
+     */
+    private fun normalizeForMatch(raw: String): String {
+        val decomposed = java.text.Normalizer.normalize(raw.lowercase(), java.text.Normalizer.Form.NFD)
+        return decomposed
+            .replace(DIACRITICS_REGEX, "")
+            .replace(FEAT_REGEX, " ")
+            .replace(NON_ALNUM_REGEX, " ")
+            .trim()
     }
 
     /**
@@ -437,6 +483,14 @@ class ReleaseRadarWorker(
 
         /** One-time initial-seed guard so a fresh install seeds once, not on every launch. */
         private const val SEED_ONCE_KEY = "release_radar_seeded_once"
+
+        // Normalization regexes for strict Spotify→YouTube album matching (see matchSpotifyToYoutubeAlbum).
+        /** Combining diacritical marks left after NFD decomposition (é→e). */
+        private val DIACRITICS_REGEX = Regex("\\p{M}+")
+        /** "feat"/"ft"/"featuring" markers, dropped so collaborations still match. */
+        private val FEAT_REGEX = Regex("\\b(?:feat|ft|featuring)\\b")
+        /** Any run of non-alphanumeric chars → a single space. */
+        private val NON_ALNUM_REGEX = Regex("[^a-z0-9]+")
 
         /**
          * Schedules the weekly run, aligned to the next Friday ~08:00 local time. Safe to call on

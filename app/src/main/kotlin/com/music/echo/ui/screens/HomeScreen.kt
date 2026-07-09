@@ -1318,7 +1318,10 @@ fun HomeScreen(
                                     val distinctQuickPicks = quickPicks.distinctBy { it.id }
                                     HorizontalCenteredHeroCarousel(
                                         state = rememberCarouselState { distinctQuickPicks.size },
-                                        maxItemWidth = 250.dp,
+                                        // Scale the hero item to the REAL panel width (split/wide aware),
+                                        // clamped so phone stays ~250dp and the width is NEVER 0/negative — a
+                                        // 0 or non-finite width makes the carousel render nothing.
+                                        maxItemWidth = (maxWidth * 0.5f).coerceIn(250.dp, 420.dp),
                                         itemSpacing = 8.dp,
                                         contentPadding = PaddingValues(horizontal = 16.dp),
                                         modifier = Modifier
@@ -1531,7 +1534,7 @@ fun HomeScreen(
                                         }
                                     }
                                 } else item(key = "daily_discover_content") {
-                                    Box(
+                                    BoxWithConstraints(
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .height(310.dp)
@@ -1541,7 +1544,10 @@ fun HomeScreen(
                                         val carouselState = rememberCarouselState { discoverList.size }
                                         HorizontalMultiBrowseCarousel(
                                             state = carouselState,
-                                            preferredItemWidth = 320.dp,
+                                            // Scale to the REAL panel width (split/wide aware), clamped so phone
+                                            // stays ~320dp and the width is NEVER 0/negative (a 0/non-finite width
+                                            // makes the carousel render nothing).
+                                            preferredItemWidth = (maxWidth * 0.45f).coerceIn(320.dp, 460.dp),
                                             itemSpacing = 16.dp,
                                             modifier = Modifier
                                                 .fillMaxWidth()

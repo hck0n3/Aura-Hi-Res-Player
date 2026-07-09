@@ -33,6 +33,8 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
+import iad1tya.echo.music.ui.utils.rememberIsTvOrCar
+import iad1tya.echo.music.ui.utils.tvFocusableItem
 
 
 @Composable
@@ -95,6 +97,7 @@ private fun Material3SettingsItemRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .tvFocusableItem(rememberIsTvOrCar())
             .clickable(
                 enabled = item.enabled && item.onClick != null,
                 onClick = hapticOnClick

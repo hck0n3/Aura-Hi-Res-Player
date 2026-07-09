@@ -311,11 +311,24 @@ object FunctionNameExtractor {
             Timber.tag(TAG).d("  sigFunc=${config.sigFuncName}(${config.sigConstantArg}, ...)")
             Timber.tag(TAG).d("  nFunc=${config.nFuncName}[${config.nArrayIndex}]")
             Timber.tag(TAG).d("  signatureTimestamp=${config.signatureTimestamp}")
-        } else {
-            Timber.tag(TAG).w("No hardcoded config for hash: $playerHash")
-            Timber.tag(TAG).w("Known hashes: ${KNOWN_PLAYER_CONFIGS.keys.joinToString()}")
+            return config
         }
-        return config
+
+        // Self-healing second source (AUGMENT-ONLY): if YouTube rotated to a brand-new hash that isn't
+        // hardcoded above, consult the remote/cached configs before giving up, so a new player.js can be
+        // resolved WITHOUT an app update. Hardcoded entries always take priority (checked first, returned
+        // above); this is reached ONLY on a hardcoded miss. With no remote data it returns null and we fall
+        // through to the exact same warning + null as before — the hardcoded path is unchanged.
+        val remote = RemotePlayerConfig.configFor(playerHash)
+        if (remote != null) {
+            Timber.tag(TAG).d("Found REMOTE/cached (self-healing) config for hash $playerHash:")
+            Timber.tag(TAG).d("  sigFunc=${remote.sigFuncName} nFunc=${remote.nFuncName} sts=${remote.signatureTimestamp}")
+            return remote
+        }
+
+        Timber.tag(TAG).w("No hardcoded config for hash: $playerHash")
+        Timber.tag(TAG).w("Known hashes: ${KNOWN_PLAYER_CONFIGS.keys.joinToString()}")
+        return null
     }
 
     /**

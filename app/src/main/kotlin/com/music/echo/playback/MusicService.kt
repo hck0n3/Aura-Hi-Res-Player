@@ -499,6 +499,11 @@ class MusicService :
     // True when a radio seed was started from the STATE_ENDED safety net (the queue truly ended): once the
     // seed appends items, advance+play into them so predictive infinite playback resumes with no manual action.
     @Volatile private var resumeAfterSeed = false
+    // Idempotent watchdog armed by STATE_ENDED when a head-start (B3) seed was ALREADY in flight (so we skipped
+    // launching a second one): if that in-flight seed settles with nothing appended, it clears the flags and the
+    // player would dead-end. Once the seed settles, this re-checks and kicks a fresh seed if we're still stopped
+    // at a true end-of-queue. Single-shot, cancelled on the next STATE_READY, so it can never stack or loop.
+    private var radioResumeWatchdogJob: Job? = null
 
     private var consecutivePlaybackErr = 0
     private var retryJob: Job? = null
@@ -536,6 +541,13 @@ class MusicService :
 
     private val videoUrlCache = HashMap<String, Pair<String, Long>>()
 
+    // Best VIDEO-ONLY height to request for video mode. On Android TV (big screen, detected server-side via
+    // UiModeManager in DeviceForm.isTelevision) we ask for true 1080p Full HD — an adaptive video-only stream
+    // that MusicService MERGES with a separate audio track (see createMediaSourceFactory). Phones/tablets get
+    // null → YTPlayerUtils keeps its existing metered-aware cap (720p WiFi / 360p data), behaviour unchanged.
+    private val videoModeMaxHeight: Int?
+        get() = if (iad1tya.echo.music.utils.DeviceForm.isTelevision(this)) 1080 else null
+
     private var userHasUsedVideo: Boolean
         get() = playbackState.userHasUsedVideo
         set(value) { playbackState.userHasUsedVideo = value }
@@ -551,7 +563,22 @@ class MusicService :
 
     private val preloadedVideoOriginalUris = mutableMapOf<String, String>()
 
-    
+    // Multi-item video tracking (generalizes the single videoModeMediaId). Every mediaId here has its player
+    // MediaItem URI currently set to a VIDEO stream — the playing video track AND any UPCOMING item that was
+    // pre-built for a seamless auto-advance (see prebuildNextVideoItem). createMediaSource is authoritative
+    // off this map: any id present → it builds the MergingMediaSource (video-only + merged audio), so an item
+    // can become a video source BEFORE it is current and the transition needs no swap on the running track.
+    // ConcurrentHashMap because createMediaSource may be invoked off the main thread.
+    private data class VideoTrackState(
+        val videoUrl: String,
+        val originalAudioUri: String?,
+        val isMuxedPodcast: Boolean,
+    )
+    private val videoModeItems = java.util.concurrent.ConcurrentHashMap<String, VideoTrackState>()
+    // Ids with a video-URL resolve currently in flight (dedupe; cleared in a finally / on exit).
+    private val prebuildingIds = java.util.Collections.synchronizedSet(mutableSetOf<String>())
+
+
     private var currentMediaIdRetryCount = mutableMapOf<String, Int>()
     private val MAX_RETRY_PER_SONG = 3
     private val RETRY_DELAY_MS = 1000L
@@ -702,6 +729,10 @@ class MusicService :
         scope.launch(Dispatchers.IO) {
             kotlinx.coroutines.delay(500)
             runCatching { iad1tya.echo.music.utils.YTPlayerUtils.prewarmPoToken() }
+            // Also warm the cipher player.js + WebView so the FIRST song's URL resolution is fast too
+            // (and stays warm/reused for every song after). Run AFTER the poToken prewarm — sequential,
+            // so two WebViews don't spin up at once on weak/low-RAM devices. Best-effort; never blocks.
+            runCatching { iad1tya.echo.music.utils.YTPlayerUtils.prewarmCipher() }
         }
 
         // Podcast progress + periodic position persistence used to run in two while(true) loops that
@@ -1723,6 +1754,30 @@ class MusicService :
         radioSeedInFlight = true
 
         scope.launch(SilentHandler) {
+            // Resolve the YouTube videoId to seed the radio from. For a normal online track the mediaId IS the
+            // videoId. For a LOCAL library track (content://) or a direct-URL (http) podcast the mediaId is NOT a
+            // YouTube id — tryRadio/tryRelated would fail and we'd loop forever on the replay last-resort instead
+            // of getting real infinite radio. So look the current song up on YouTube by "title artist" and seed
+            // from that match. Runs on IO (network). Null → no YouTube identity found → skip radio, fall through
+            // to the replay last-resort. (Kept off the player thread; only addMediaItems below runs on Main.)
+            val seedVideoId: String? = withContext(Dispatchers.IO) {
+                if (!currentMediaId.isLocalMediaId() &&
+                    !currentMediaId.startsWith("http", ignoreCase = true)
+                ) {
+                    currentMediaId
+                } else {
+                    val artistText = currentMediaMetadata.artists.joinToString(" ") { it.name }
+                    val query = listOf(currentMediaMetadata.title, artistText)
+                        .filter { it.isNotBlank() }
+                        .joinToString(" ")
+                    if (query.isBlank()) null
+                    else runCatching {
+                        YouTube.search(query, YouTube.SearchFilter.FILTER_SONG).getOrNull()
+                            ?.items?.filterIsInstance<SongItem>()?.firstOrNull()?.id
+                    }.getOrNull()
+                }
+            }
+
             // Appends a batch after the current item, re-orders it by the user's taste, and — if we were waiting
             // at a TRUE end-of-queue (resumeAfterSeed armed) — advances into it + resumes. Returns true if it
             // actually appended anything. Wrapped by the callers so a failure simply falls through to the next
@@ -1757,16 +1812,19 @@ class MusicService :
                 return true
             }
 
-            // Source 1 — a proper radio queue seeded from the last song the user heard.
+            // Source 1 — a proper radio queue seeded from the last song the user heard (or, for a local/direct-URL
+            // track, from its resolved YouTube match). No seed id → nothing to seed from → let a later source /
+            // the replay last-resort handle it.
             suspend fun tryRadio(): Boolean = runCatching {
-                val radioQueue = YouTubeQueue(endpoint = WatchEndpoint(videoId = currentMediaId))
+                val seed = seedVideoId ?: return@runCatching false
+                val radioQueue = YouTubeQueue(endpoint = WatchEndpoint(videoId = seed))
                 val initialStatus = withContext(Dispatchers.IO) {
                     radioQueue.getInitialStatus()
                         .filterExplicit(dataStore.get(HideExplicitKey, false))
                         .filterVideoSongs(dataStore.get(HideVideoSongsKey, false))
                 }
                 if (initialStatus.title != null) queueTitle = initialStatus.title
-                val items = initialStatus.items.filter { it.mediaId != currentMediaId }
+                val items = initialStatus.items.filter { it.mediaId != seed && it.mediaId != currentMediaId }
                 val ok = appendSeed(items)
                 if (ok) currentQueue = radioQueue
                 ok
@@ -1774,13 +1832,14 @@ class MusicService :
 
             // Source 2 — "related" songs of the last song (a different YT endpoint; recovers when radio is empty).
             suspend fun tryRelated(): Boolean = runCatching {
+                val seed = seedVideoId ?: return@runCatching false
                 val nextResult = withContext(Dispatchers.IO) {
-                    YouTube.next(WatchEndpoint(videoId = currentMediaId)).getOrNull()
+                    YouTube.next(WatchEndpoint(videoId = seed)).getOrNull()
                 }
                 val relatedEndpoint = nextResult?.relatedEndpoint ?: return@runCatching false
                 val relatedPage = withContext(Dispatchers.IO) { YouTube.related(relatedEndpoint).getOrNull() }
                 val items = relatedPage?.songs.orEmpty()
-                    .filter { it.id != currentMediaId }
+                    .filter { it.id != seed && it.id != currentMediaId }
                     .map { it.toMediaItem() }
                     .filterExplicit(dataStore.get(HideExplicitKey, false))
                     .filterVideoSongs(dataStore.get(HideVideoSongsKey, false))
@@ -1791,7 +1850,7 @@ class MusicService :
                 // on a fresh un-loaded YouTubeQueue, so without priming pagination wouldn't fire. Best-effort: if
                 // priming fails, the always-on STATE_ENDED net still re-seeds when this finite batch ends.
                 if (ok) {
-                    val rq = YouTubeQueue(endpoint = WatchEndpoint(videoId = currentMediaId))
+                    val rq = YouTubeQueue(endpoint = WatchEndpoint(videoId = seed))
                     runCatching { withContext(Dispatchers.IO) { rq.getInitialStatus() } }
                     currentQueue = rq
                 }
@@ -1816,6 +1875,39 @@ class MusicService :
             } finally {
                 radioSeedInFlight = false
                 resumeAfterSeed = false
+            }
+        }
+    }
+
+    /**
+     * Race hardening for the STATE_ENDED net. If the queue truly ended while a head-start (B3) seed was still in
+     * flight, we did NOT launch a second seed (radioSeedInFlight guard). Should that in-flight seed settle having
+     * appended nothing, it clears radioSeedInFlight + resumeAfterSeed in its finally and the player is left
+     * stopped at end-of-queue with no next item — a dead-end. This bounded, single-shot, idempotent watchdog
+     * waits for the seed to settle, then re-checks the LIVE player: only if we're still genuinely stopped at a
+     * true end-of-queue (no seed running, nothing more to play) does it re-arm resumeAfterSeed and kick a fresh
+     * seed — which itself has a replay last-resort, so playback can never dead-end online. If the seed already
+     * appended/resumed us, every condition is false → no-op. Runs on [scope] (Main), so player access is safe.
+     */
+    private fun armRadioResumeWatchdog() {
+        radioResumeWatchdogJob?.cancel()
+        radioResumeWatchdogJob = scope.launch {
+            // Poll until the in-flight seed settles (it retries with a ~2.5s backoff); give up after a bound so a
+            // genuinely stuck seed can never keep this alive (that seed's own replay last-resort still covers us).
+            var waited = 0
+            while (radioSeedInFlight && waited < 15_000) {
+                delay(500)
+                waited += 500
+            }
+            if (!radioSeedInFlight &&
+                !player.isPlaying &&
+                player.playbackState == Player.STATE_ENDED &&
+                player.mediaItemCount > 0 &&
+                !player.hasNextMediaItem()
+            ) {
+                Timber.tag(TAG).w("In-flight radio seed settled empty at end-of-queue; re-seeding so playback doesn't dead-end")
+                resumeAfterSeed = true
+                startRadioSeamlessly()
             }
         }
     }
@@ -2500,20 +2592,37 @@ class MusicService :
         } else {
             sponsorBlock.clear()
         }
-        // Sticky video mode: when the track changes while video mode is on, swap the NEW current track to
-        // its video (restoring the previous one to audio). Stays in video until the user turns it off.
-        if (_videoMode.value && mediaItem != null && mediaItem.mediaId != videoModeMediaId) {
-            applyVideoToCurrent()
+        // Sticky video mode. On a track change while video mode is on:
+        //  - FAST PATH: if the incoming track was PRE-BUILT as a video (Merging) source ahead of time
+        //    (prebuildNextVideoItem), ADOPT it with NO replaceMediaItem/prepare on the now-running track —
+        //    that in-place rebuild is exactly what forced STATE_BUFFERING and caused the brief stop the user
+        //    reported. Its source is already video+audio, so we only update UI/state and restore the track we
+        //    just left back to audio.
+        //  - FALLBACK: not pre-built in time (slow resolve), or the incoming item isn't a YouTube video song
+        //    (podcast/local/non-video) → on-demand swap (applyVideoToCurrent → brief spinner), exactly as
+        //    before. No black screen, no regression.
+        if (_videoMode.value && mediaItem != null) {
+            val newId = mediaItem.mediaId
+            val prebuilt = videoModeItems[newId]
+            if (prebuilt != null) {
+                _videoUrl.value = prebuilt.videoUrl
+                restoreVideoTracksExcept(newId)   // restore previous video track(s) to audio; refreshes single-field state
+            } else if (newId != videoModeMediaId) {
+                applyVideoToCurrent()
+            }
         }
-        // Prefetch the NEXT track's video URL only while ACTIVELY in video mode (instant auto-advance).
-        // We deliberately do NOT prefetch during normal audio playback: doing it on every track change
-        // hammered YouTube with extra stream-resolution requests and got the app rate-limited, which then
-        // stalled normal audio after a few songs (it resumed once the limit cooled). Toggling video resolves
-        // on demand instead (a brief spinner), which is fine.
+        // PRE-BUILD the NEXT track as a video source NOW (while the current one plays) so the next
+        // auto-advance is seamless: the item becomes video BEFORE it is current, so the transition needs no
+        // swap on the running track. Reuses videoUrlCache. Only while ACTIVELY in video mode — we deliberately
+        // do NOT resolve during normal audio playback: doing it on every track change hammered YouTube with
+        // extra stream-resolution requests and got the app rate-limited, which then stalled normal audio.
+        // Safe no-op if it can't resolve or the next item isn't a YouTube video song (that case uses the
+        // on-demand fallback above).
         if (_videoMode.value) {
             val nextIdx = player.nextMediaItemIndex
             if (nextIdx != C.INDEX_UNSET) {
-                prefetchVideoUrl(runCatching { player.getMediaItemAt(nextIdx).mediaId }.getOrNull())
+                val nid = runCatching { player.getMediaItemAt(nextIdx).mediaId }.getOrNull()
+                if (nid != null) prebuildNextVideoItem(nextIdx, nid)
             }
         }
 
@@ -2615,14 +2724,18 @@ class MusicService :
         }
 
         // B3 — keep the music going when a FINITE queue ends. Album / artist-top / new-release radar / imported
-        // list / single-song queues have no next page, so when we reach the LAST item we seed a radio from that
-        // song (its YouTube relations, taste-ordered if any history exists — so it works even on a fresh empty
-        // install). Gated to genuine auto-advance or first-play (not a manual SEEK around the queue), only while
-        // actually playing, only at the very last item (so the list is never truncated), and never twice for the
-        // same end (radioSeedInFlight). Skipped while the first block already handles continuation (next page).
+        // list / single-song queues have no next page, so as soon as the LAST item becomes current (i.e. the last
+        // song STARTS playing) we PRE-SEED a radio from that song (its YouTube relations, taste-ordered if any
+        // history exists — so it works even on a fresh empty install), OFF the player thread. Fetching + appending
+        // while the last song is still playing makes the infinite queue VISIBLE during that song and buffers the
+        // next stream BEFORE it ends → no gap / micro-cut at the transition.
+        // Fires on ANY transition reason EXCEPT a pure REPEAT (so it also covers the user manually STARTING a
+        // finite artist queue or SEEKING onto the last item — not only AUTO auto-advance / PLAYLIST_CHANGED).
+        // Still guarded: only the very last item to PLAY (shuffle/repeat-aware, so the list is never truncated),
+        // only while actually playing, never twice for the same end (radioSeedInFlight), and skipped while the
+        // first block already handles continuation (next page).
         if (dataStore.get(AutoLoadMoreKey, true) &&
-            (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO ||
-                reason == Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED) &&
+            reason != Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT &&
             player.playWhenReady &&
             !radioSeedInFlight &&
             !currentQueue.hasNextPage() &&
@@ -2762,7 +2875,16 @@ class MusicService :
                 // running. ALWAYS on — never gated by the AutoLoadMore toggle — so the music never just stops at
                 // the end of any queue (the user's explicit requirement).
                 resumeAfterSeed = true
-                if (!radioSeedInFlight) startRadioSeamlessly()
+                if (!radioSeedInFlight) {
+                    startRadioSeamlessly()
+                } else {
+                    // A head-start (B3) seed is ALREADY running; don't launch a second one (radioSeedInFlight
+                    // guard against duplicate/looping seeds). But if that in-flight seed settles having appended
+                    // NOTHING, its finally clears radioSeedInFlight + resumeAfterSeed and the player would
+                    // dead-end here (stopped, no next item). Arm the idempotent watchdog to re-evaluate once the
+                    // seed settles.
+                    armRadioResumeWatchdog()
+                }
             }
         }
 
@@ -2780,8 +2902,11 @@ class MusicService :
             pausedByNetwork = false
             retryJob?.cancel()
             deadEndRecheckJob?.cancel()
+            // Playback (re)started with something to play → the dead-end watchdog is moot; drop it so a stale
+            // timer can never fire a redundant re-seed later.
+            radioResumeWatchdogJob?.cancel()
 
-            
+
             player.currentMediaItem?.mediaId?.let { mediaId ->
                 resetRetryCount(mediaId)
                 Timber.tag(TAG).d("Playback successful for $mediaId, reset retry count")
@@ -3552,35 +3677,32 @@ class MusicService :
             userHasUsedVideo = true
             _videoMode.value = true
             applyVideoToCurrent()
+            // Also pre-build the NEXT item now so the FIRST auto-advance is already seamless (no track change
+            // fires on a plain toggle, so onMediaItemTransition wouldn't otherwise get a chance to pre-build).
+            val nextIdx = player.nextMediaItemIndex
+            if (nextIdx != C.INDEX_UNSET) {
+                runCatching { player.getMediaItemAt(nextIdx).mediaId }.getOrNull()
+                    ?.let { prebuildNextVideoItem(nextIdx, it) }
+            }
         }
     }
 
-    /** Background-resolve a track's muxed video URL into the cache so a later toggle/switch is instant. */
-    private fun prefetchVideoUrl(id: String?) {
-        if (id.isNullOrEmpty() || id.isLocalMediaId() || id.startsWith("http", ignoreCase = true)) return
-        // Already warm? Nothing to do.
-        if (videoUrlCache[id]?.takeIf { it.second > System.currentTimeMillis() }?.first != null) return
-        scope.launch(Dispatchers.IO) {
-            val url = runCatching { YTPlayerUtils.videoStreamUrl(id, connectivityManager) }.getOrNull()
-            if (!url.isNullOrEmpty()) {
-                videoUrlCache[id] = url to (System.currentTimeMillis() + 5 * 60 * 1000L)
-            }
-        }
-        // We deliberately DON'T pre-swap the next item's URI to the video stream. Doing so desynced the
-        // source: while videoModeMediaId still pointed at the CURRENT track, the audio ResolvingDataSource
-        // (keyed on the media id) overrode the pre-swapped video URI back to the cached AUDIO stream, so the
-        // next item's source was built audio-only. swapToVideo then saw uri == url and returned WITHOUT a
-        // prepare() → blank/frozen video with audio playing on the next song. We now only WARM videoUrlCache;
-        // the real swap (replaceMediaItem + prepare → video source) happens in swapToVideo at the transition,
-        // which is fast and adds NO extra network request because the URL is already cached.
-    }
+    // NOTE (historical): a prior attempt "pre-swapped" the next item's URI to the video stream while the
+    // single videoModeMediaId still pointed at the CURRENT track. Because that id wasn't recognised as a
+    // video item, createMediaSource built it via the DEFAULT factory, whose audio ResolvingDataSource (keyed
+    // on the mediaId) overrode the pre-set video URI back to the AUDIO stream → the next item played
+    // audio-only, and swapToVideo then saw uri == url and returned WITHOUT prepare() → blank/frozen video.
+    // The fix (prebuildNextVideoItem + the videoModeItems map read in createMediaSource) marks the upcoming
+    // id as a video item FIRST, so its source is built through videoFactory (which honours the video URI
+    // directly) and the ResolvingDataSource only ever touches the SEPARATE merged audio sub-source.
 
     /** Resolve the current track's muxed video URL and swap its source in-place (audio is never stopped). */
     private fun applyVideoToCurrent() {
         val item = player.currentMediaItem ?: return
         val id = item.mediaId
-        // Only the current track is ever a video source — restore any previous one to audio first.
-        if (videoModeMediaId != null && videoModeMediaId != id) restoreVideoTrackToAudio()
+        // Restore any OTHER tracked video items (the previous track, or a stale pre-built one) to audio;
+        // the current id is about to be (re)swapped to video below.
+        restoreVideoTracksExcept(id)
 
         // Video PODCAST episode: it already carries a direct video stream — swap to it immediately, no
         // YouTube resolution (the id here is an http audio URL, which YTPlayerUtils can't resolve anyway).
@@ -3608,8 +3730,15 @@ class MusicService :
         val cached = videoUrlCache[id]?.takeIf { it.second > System.currentTimeMillis() }?.first
         if (!cached.isNullOrEmpty()) { swapToVideo(id, cached); return }
         scope.launch(Dispatchers.IO) {
-            val result = runCatching { YTPlayerUtils.videoStreamUrlDiag(id, connectivityManager) }
+            val maxH = videoModeMaxHeight
+            var result = runCatching { YTPlayerUtils.videoStreamUrlDiag(id, connectivityManager, maxH) }
                 .getOrElse { Result.failure(it) }
+            // TV robustness: if 1080p video-only selection failed at runtime, fall back to the default (720p)
+            // resolution so video mode never black-screens (no regression vs. phone/tablet behaviour).
+            if (maxH != null && result.getOrNull().isNullOrEmpty()) {
+                result = runCatching { YTPlayerUtils.videoStreamUrlDiag(id, connectivityManager, null) }
+                    .getOrElse { Result.failure(it) }
+            }
             val url = result.getOrNull()
             withContext(Dispatchers.Main) {
                 if (!_videoMode.value || player.currentMediaItem?.mediaId != id) return@withContext
@@ -3633,11 +3762,19 @@ class MusicService :
         val idx = player.currentMediaItemIndex
         val item = player.currentMediaItem ?: return
         if (item.mediaId != id) return
-        videoModeOriginalUri = preloadedVideoOriginalUris.remove(id) ?: item.localConfiguration?.uri?.toString()
+        // Prefer a previously-captured original audio URI (pre-built entry or preload map) so we never store
+        // the video URL itself as the "audio" URI for an item that is already showing video.
+        val origUri = videoModeItems[id]?.originalAudioUri
+            ?: preloadedVideoOriginalUris.remove(id)
+            ?: item.localConfiguration?.uri?.toString()
+        videoModeOriginalUri = origUri
         videoModeMediaId = id
         // Podcast video is a single muxed stream (has audio) → don't merge a 2nd audio; YouTube is video-only.
         videoModeIsMuxedPodcast = isMuxed
-        
+        // Register in the shared map so createMediaSource builds this item's video+audio source (the map, not
+        // the single id, is now authoritative there).
+        videoModeItems[id] = VideoTrackState(url, origUri, isMuxed)
+
         if (item.localConfiguration?.uri?.toString() == url) {
             _videoUrl.value = url
             return
@@ -3652,37 +3789,110 @@ class MusicService :
         _videoUrl.value = url
     }
 
-    /** Restore the video track (wherever it sits in the queue) back to its normal audio source. */
-    private fun restoreVideoTrackToAudio() {
-        val vid = videoModeMediaId ?: return
-        val origUri = videoModeOriginalUri
-        videoModeMediaId = null
-        videoModeOriginalUri = null
-        videoModeIsMuxedPodcast = false
-        if (origUri == null) return
-        for (i in 0 until player.mediaItemCount) {
-            val it = runCatching { player.getMediaItemAt(i) }.getOrNull() ?: continue
-            if (it.mediaId == vid) {
-                val isCurrent = i == player.currentMediaItemIndex
-                val pos = if (isCurrent) player.currentPosition else 0L
-                val playing = player.playWhenReady
-                player.replaceMediaItem(i, it.buildUpon().setUri(origUri).build())
-                if (isCurrent) {
-                    player.seekTo(i, pos)
-                    player.playWhenReady = playing
-                    player.prepare()
+    /**
+     * Restore tracked video items (wherever they sit in the queue) back to their normal audio source,
+     * EXCEPT [keepId] (the one that should stay a video source). Pass null to restore ALL (leaving video
+     * mode). Only the CURRENT item, if restored, does a prepare(); non-current items are replaced in place
+     * with no effect on the running track. Keeps the single-field bookkeeping consistent with what remains.
+     */
+    private fun restoreVideoTracksExcept(keepId: String?) {
+        val toRestore = videoModeItems.keys.filter { it != keepId }
+        for (vid in toRestore) {
+            val state = videoModeItems.remove(vid) ?: continue
+            val origUri = state.originalAudioUri ?: continue
+            for (i in 0 until player.mediaItemCount) {
+                val it = runCatching { player.getMediaItemAt(i) }.getOrNull() ?: continue
+                if (it.mediaId == vid) {
+                    val isCurrent = i == player.currentMediaItemIndex
+                    val pos = if (isCurrent) player.currentPosition else 0L
+                    val playing = player.playWhenReady
+                    player.replaceMediaItem(i, it.buildUpon().setUri(origUri).build())
+                    if (isCurrent) {
+                        player.seekTo(i, pos)
+                        player.playWhenReady = playing
+                        player.prepare()
+                    }
+                    break
                 }
-                break
+            }
+        }
+        val kept = keepId?.let { videoModeItems[it] }
+        if (kept != null) {
+            videoModeMediaId = keepId
+            videoModeOriginalUri = kept.originalAudioUri
+            videoModeIsMuxedPodcast = kept.isMuxedPodcast
+        } else {
+            videoModeMediaId = null
+            videoModeOriginalUri = null
+            videoModeIsMuxedPodcast = false
+        }
+    }
+
+    /**
+     * AUTO-ADVANCE fast path: pre-build the UPCOMING item ([nextIdx]/[nextId]) as a video (Merging) source
+     * BEFORE it becomes current, so the auto-advance transition needs NO replaceMediaItem/prepare on the
+     * running track (that in-place rebuild forced STATE_BUFFERING → the brief stop). We resolve the next
+     * track's video URL (reusing videoUrlCache) and, on the main thread, replace ONLY the next (non-current)
+     * item's URI with the video URL + register it in [videoModeItems] so createMediaSource builds video+audio
+     * directly when media3 preloads/plays that window.
+     *
+     * Fully guarded so it can never regress audio or the on-demand toggle: only genuine YouTube video songs,
+     * NEVER the current/running item, and a graceful no-op if resolution fails or the queue moved — in which
+     * case the transition simply falls back to the on-demand swap (applyVideoToCurrent → brief spinner).
+     */
+    private fun prebuildNextVideoItem(nextIdx: Int, nextId: String) {
+        if (nextId.isEmpty() || nextId.isLocalMediaId() || nextId.startsWith("http", ignoreCase = true)) return
+        if (videoModeItems.containsKey(nextId)) return // already pre-built as video
+        // Only genuine YouTube VIDEO songs can be shown as merged video-only + audio. Anything else
+        // (audio-only song, podcast, non-video) falls back to the on-demand path at its own transition.
+        val nextMeta = runCatching { player.getMediaItemAt(nextIdx).metadata }.getOrNull()
+        if (nextMeta?.isVideoSong != true) return
+        if (!prebuildingIds.add(nextId)) return // a resolve for this id is already in flight
+        scope.launch(Dispatchers.IO) {
+            try {
+                val maxH = videoModeMaxHeight
+                var url = videoUrlCache[nextId]?.takeIf { it.second > System.currentTimeMillis() }?.first
+                if (url.isNullOrEmpty()) {
+                    url = runCatching { YTPlayerUtils.videoStreamUrl(nextId, connectivityManager, maxH) }.getOrNull()
+                    // TV robustness: if 1080p came back empty, fall back to the default resolution.
+                    if (url.isNullOrEmpty() && maxH != null) {
+                        url = runCatching { YTPlayerUtils.videoStreamUrl(nextId, connectivityManager, null) }.getOrNull()
+                    }
+                }
+                val resolved = url
+                if (resolved.isNullOrEmpty()) return@launch
+                videoUrlCache[nextId] = resolved to (System.currentTimeMillis() + 5 * 60 * 1000L)
+                withContext(Dispatchers.Main) {
+                    // Re-validate on the main thread: still in video mode, the target is still the NEXT item
+                    // (never the current/running one — that would re-introduce the stall), not already built.
+                    if (!_videoMode.value) return@withContext
+                    if (videoModeItems.containsKey(nextId)) return@withContext
+                    val idx = player.nextMediaItemIndex
+                    if (idx == C.INDEX_UNSET || idx == player.currentMediaItemIndex) return@withContext
+                    val item = runCatching { player.getMediaItemAt(idx) }.getOrNull() ?: return@withContext
+                    if (item.mediaId != nextId) return@withContext
+                    val origUri = item.localConfiguration?.uri?.toString()
+                    // Register FIRST so the createMediaSource triggered by replaceMediaItem sees the video
+                    // state and builds video+audio (not audio-only — the earlier pre-swap failure).
+                    videoModeItems[nextId] = VideoTrackState(resolved, origUri, false)
+                    if (origUri != resolved) {
+                        // Replace ONLY the upcoming (non-current) item → no STATE_BUFFERING on the running track.
+                        player.replaceMediaItem(idx, item.buildUpon().setUri(resolved).build())
+                    }
+                }
+            } finally {
+                prebuildingIds.remove(nextId)
             }
         }
     }
 
     /** Leaves video mode: restore the current track to audio (playback continues at the same position). */
     fun exitVideoMode() {
-        if (!_videoMode.value && videoModeMediaId == null) return
+        if (!_videoMode.value && videoModeMediaId == null && videoModeItems.isEmpty()) return
         _videoMode.value = false
         _videoUrl.value = null
-        restoreVideoTrackToAudio()
+        prebuildingIds.clear()
+        restoreVideoTracksExcept(null)   // restore ALL tracked video items (current + any pre-built) to audio
     }
 
     private fun createDataSourceFactory(): DataSource.Factory {
@@ -3938,17 +4148,26 @@ class MusicService :
             override fun createMediaSource(
                 mediaItem: MediaItem
             ): androidx.media3.exoplayer.source.MediaSource {
-                // Video mode: the track's item URI was swapped (swapToVideo) to an adaptive VIDEO-ONLY HD
-                // stream. MERGE it with the track's normal AUDIO source (resolved from the original URI via
-                // the default/ResolvingDataSource factory — the same path restore uses) → HD video + the
-                // app's normal audio, synced on the same video timeline, no double audio. clipDurations
-                // tolerates a tiny end-of-stream length difference between the two streams.
-                if (mediaItem.mediaId == videoModeMediaId) {
+                // Video mode: the track's item URI was set (swapToVideo for the current track, or
+                // prebuildNextVideoItem for an UPCOMING one) to an adaptive VIDEO-ONLY HD stream. MERGE it
+                // with the track's normal AUDIO source (resolved from the original URI via the
+                // default/ResolvingDataSource factory) → HD video + the app's normal audio, synced on the
+                // same video timeline, no double audio. clipDurations tolerates a tiny end-of-stream length
+                // difference between the two streams.
+                //
+                // Keyed off the SET/MAP (not the single videoModeMediaId) so ANY tracked video item builds a
+                // video source — including a pre-built next item that becomes current with NO swap on the
+                // running track. The video URI on the item is used DIRECTLY by videoFactory (plain OkHttp), so
+                // it is never overwritten by the audio ResolvingDataSource (keyed on the mediaId) — that
+                // overwrite is exactly why the earlier "pre-swap the next item" attempt built it audio-only.
+                // The ResolvingDataSource only ever resolves the SEPARATE merged audio sub-source below.
+                val vstate = videoModeItems[mediaItem.mediaId]
+                if (vstate != null) {
                     val videoSource = videoFactory.createMediaSource(mediaItem)
-                    val origUri = videoModeOriginalUri
+                    val origUri = vstate.originalAudioUri
                     // Merge a separate audio source ONLY for genuinely video-only streams (YouTube). A muxed
                     // podcast already has audio — merging would add a redundant/conflicting 2nd audio track.
-                    if (origUri != null && !videoModeIsMuxedPodcast) {
+                    if (origUri != null && !vstate.isMuxedPodcast) {
                         val audioItem = mediaItem.buildUpon().setUri(origUri).build()
                         val audioSource = default.createMediaSource(audioItem)
                         return androidx.media3.exoplayer.source.MergingMediaSource(

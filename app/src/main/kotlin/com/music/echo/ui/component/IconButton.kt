@@ -32,6 +32,8 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import iad1tya.echo.music.ui.utils.rememberHapticClick
+import iad1tya.echo.music.ui.utils.rememberIsTvOrCar
+import iad1tya.echo.music.ui.utils.tvFocusable
 
 @Composable
 fun ResizableIconButton(
@@ -48,6 +50,7 @@ fun ResizableIconButton(
         contentDescription = null,
         colorFilter = ColorFilter.tint(color),
         modifier = modifier
+            .tvFocusable(rememberIsTvOrCar(), CircleShape)
             .clickable(
                 indication = indication ?: ripple(bounded = false),
                 interactionSource = remember { MutableInteractionSource() },
@@ -74,6 +77,7 @@ fun IconButton(
         modifier = modifier
             .minimumInteractiveComponentSize()
             .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+            .tvFocusable(rememberIsTvOrCar(), CircleShape)
             .clip(CircleShape)
             .background(color = colors.containerColor)
             .combinedClickable(

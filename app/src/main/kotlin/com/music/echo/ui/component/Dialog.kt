@@ -47,6 +47,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import iad1tya.echo.music.R
+import iad1tya.echo.music.ui.utils.rememberIsTvOrCar
+import iad1tya.echo.music.ui.utils.tvFocusable
 
 import kotlinx.coroutines.delay
 
@@ -155,6 +157,7 @@ fun ActionPromptDialog(
                 Row(modifier = Modifier.weight(1f)) {
                     TextButton(
                         onClick = { onReset() },
+                        modifier = Modifier.tvFocusable(rememberIsTvOrCar(), scaleFocused = 1f),
                     ) {
                         Text(stringResource(R.string.reset))
                     }
@@ -163,14 +166,16 @@ fun ActionPromptDialog(
 
             if (onCancel != null) {
                 TextButton(
-                    onClick = { onCancel() }
+                    onClick = { onCancel() },
+                    modifier = Modifier.tvFocusable(rememberIsTvOrCar(), scaleFocused = 1f),
                 ) {
                     Text(stringResource(android.R.string.cancel))
                 }
             }
 
             TextButton(
-                onClick = { onConfirm() }
+                onClick = { onConfirm() },
+                modifier = Modifier.tvFocusable(rememberIsTvOrCar(), scaleFocused = 1f),
             ) {
                 Text(stringResource(android.R.string.ok))
             }
@@ -268,7 +273,10 @@ fun TextFieldDialog(
         icon = icon,
         title = title,
         buttons = {
-            TextButton(onClick = onDismiss) {
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.tvFocusable(rememberIsTvOrCar(), scaleFocused = 1f),
+            ) {
                 Text(text = stringResource(android.R.string.cancel))
             }
 
@@ -277,6 +285,7 @@ fun TextFieldDialog(
 
             TextButton(
                 enabled = isValid,
+                modifier = Modifier.tvFocusable(rememberIsTvOrCar(), scaleFocused = 1f),
                 onClick = {
                     if (autoDismiss) onDismiss()
                     if (textFields != null && onDoneMultiple != null) {

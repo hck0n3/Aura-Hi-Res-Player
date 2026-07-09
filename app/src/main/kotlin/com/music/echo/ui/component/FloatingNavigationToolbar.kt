@@ -75,6 +75,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import iad1tya.echo.music.R
 import iad1tya.echo.music.ui.screens.Screens
+import iad1tya.echo.music.ui.utils.rememberIsTvOrCar
+import iad1tya.echo.music.ui.utils.tvFocusable
 
 @Composable
 fun FloatingNavigationToolbar(
@@ -256,6 +258,7 @@ private fun FloatingToolbarOverflowMenuButton(
     Box {
         FloatingToolbarDefaults.VibrantFloatingActionButton(
             onClick = { menuExpanded = !menuExpanded },
+            modifier = Modifier.tvFocusable(rememberIsTvOrCar(), CircleShape, scaleFocused = 1f),
             shape = CircleShape,
             containerColor = floatingToolbarFabContainerColor(pureBlack = pureBlack),
             contentColor = floatingToolbarFabContentColor(pureBlack = pureBlack),
@@ -345,6 +348,7 @@ private fun FloatingToolbarFabAction(
 
     FloatingToolbarDefaults.VibrantFloatingActionButton(
         onClick = onClick,
+        modifier = Modifier.tvFocusable(rememberIsTvOrCar(), CircleShape, scaleFocused = 1f),
         containerColor = floatingToolbarFabContainerColor(pureBlack = pureBlack),
         contentColor = floatingToolbarFabContentColor(pureBlack = pureBlack),
     ) {
@@ -415,6 +419,7 @@ private fun FloatingNavigationToolbarItem(
     Row(
         modifier = modifier
             .scale(pressScale)
+            .tvFocusable(rememberIsTvOrCar(), shape, scaleFocused = 1f)
             .clip(shape)
             .clickable(
                 interactionSource = interactionSource,

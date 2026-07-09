@@ -33,6 +33,42 @@ object CipherDeobfuscator {
     private var currentPlayerHash: String? = null
     private val deobfuscateMutex = Mutex()
 
+    @Volatile
+    private var prewarmed = false
+
+    /**
+     * Best-effort warm-up of the cipher path BEFORE the first play, so the first song after a cold
+     * start / fresh install doesn't pay for (a) the ~2.8 MB player.js fetch and (b) the multi-second
+     * cipher WebView creation + JS discovery on the critical path.
+     *
+     * It warms the EXACT instances the real playback path reuses: it fills [PlayerJsFetcher]'s on-disk
+     * cache and pre-creates the singleton [cipherWebView] that [getOrCreateWebView] then reuses for
+     * every subsequent song. The WebView is long-lived — it is only recreated on a renderer death or a
+     * player-hash change, never torn down between songs — so only this one prewarm pays the cost.
+     *
+     * Idempotent, never throws, never blocks playback. MUST be called off the main thread (the WebView
+     * creation hops to Main internally). A prewarm timeout/failure is swallowed and, unlike the real
+     * path, is deliberately NOT routed through the renderer-death backoff.
+     */
+    suspend fun prewarm() {
+        if (prewarmed) return
+        prewarmed = true
+        try {
+            deobfuscateMutex.withLock {
+                if (cipherWebView == null) {
+                    // forceRefresh=false → reuse the cached player.js and store the created WebView in
+                    // [cipherWebView], exactly what the first real deobfuscate/transform would do.
+                    getOrCreateWebView(forceRefresh = false)
+                }
+            }
+        } catch (e: CancellationException) {
+            prewarmed = false
+            throw e
+        } catch (e: Exception) {
+            Timber.tag(TAG).d("Cipher prewarm skipped (best-effort): ${e.message}")
+        }
+    }
+
     /**
      * Deobfuscate a signatureCipher stream URL.
      *
@@ -49,6 +85,9 @@ object CipherDeobfuscator {
                 ?.also { rendererRecoveryPolicy.onSuccess() }
         } catch (e: CancellationException) {
             throw e
+        } catch (e: CipherTimeoutException) {
+            onTimeout(e, "deobfuscate")
+            null
         } catch (e: CipherRendererGoneException) {
             onRendererGone(e, "deobfuscate")
             null
@@ -61,6 +100,9 @@ object CipherDeobfuscator {
                     ?.also { rendererRecoveryPolicy.onSuccess() }
             } catch (retryE: CancellationException) {
                 throw retryE
+            } catch (retryE: CipherTimeoutException) {
+                onTimeout(retryE, "deobfuscate-retry")
+                null
             } catch (retryE: CipherRendererGoneException) {
                 onRendererGone(retryE, "deobfuscate-retry")
                 null
@@ -130,6 +172,9 @@ object CipherDeobfuscator {
             transformNInternal(url)
         } catch (e: CancellationException) {
             throw e
+        } catch (e: CipherTimeoutException) {
+            onTimeout(e, "n-transform")
+            url
         } catch (e: CipherRendererGoneException) {
             onRendererGone(e, "n-transform")
             url
@@ -189,6 +234,18 @@ object CipherDeobfuscator {
     private suspend fun onRendererGone(e: CipherRendererGoneException, where: String) {
         rendererRecoveryPolicy.onFailure(SystemClock.elapsedRealtime())
         Timber.tag(TAG).e(e, "WebView renderer gone during $where (consecutive failures: ${rendererRecoveryPolicy.consecutiveFailures}) — dropping cipher WebView")
+        closeWebView()
+    }
+
+    /**
+     * A create/eval TIMEOUT (slow or busy device), NOT a proven renderer death. Drop the wedged
+     * WebView so the next song rebuilds it, but do NOT count it against the renderer-death backoff:
+     * otherwise ~1–2 slow first-plays on a weak device would open the 60s no-WebView window and lock
+     * streaming out of the cipher path. Genuine repeated onRenderProcessGone deaths still back off via
+     * [onRendererGone].
+     */
+    private suspend fun onTimeout(e: CipherTimeoutException, where: String) {
+        Timber.tag(TAG).w(e, "Cipher WebView timed out during $where — dropping WebView (NOT counted as a renderer death)")
         closeWebView()
     }
 

@@ -41,6 +41,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import iad1tya.echo.music.R
 import iad1tya.echo.music.constants.PlaylistSongSortType
+import iad1tya.echo.music.ui.utils.rememberIsTvOrCar
+import iad1tya.echo.music.ui.utils.tvFocusable
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -54,6 +56,7 @@ inline fun <reified T : Enum<T>> SortHeader(
     showDescending: Boolean? = true,
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
+    val isTvOrCar = rememberIsTvOrCar()
 
     val displayDescending = showDescending == true && sortType != PlaylistSongSortType.CUSTOM
 
@@ -65,7 +68,9 @@ inline fun <reified T : Enum<T>> SortHeader(
                     containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
                     contentColor = MaterialTheme.colorScheme.onSurfaceVariant
                 ),
-                modifier = Modifier.widthIn(min = 120.dp)
+                modifier = Modifier
+                    .tvFocusable(isTvOrCar, scaleFocused = 1f)
+                    .widthIn(min = 120.dp)
             ) {
                 Text(
                     text = stringResource(sortTypeText(sortType)),
@@ -90,10 +95,12 @@ inline fun <reified T : Enum<T>> SortHeader(
                             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
                             contentColor = MaterialTheme.colorScheme.onSurfaceVariant
                         ),
-                        modifier = Modifier.semantics {
-                            stateDescription = if (sortDescending) "Descending" else "Ascending"
-                            contentDescription = description
-                        },
+                        modifier = Modifier
+                            .tvFocusable(isTvOrCar, scaleFocused = 1f)
+                            .semantics {
+                                stateDescription = if (sortDescending) "Descending" else "Ascending"
+                                contentDescription = description
+                            },
                     ) {
                         val rotation: Float by animateFloatAsState(
                             targetValue = if (sortDescending) 180f else 0f,
@@ -118,10 +125,12 @@ inline fun <reified T : Enum<T>> SortHeader(
                         containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
                         contentColor = MaterialTheme.colorScheme.onSurfaceVariant
                     ),
-                    modifier = Modifier.semantics {
-                        stateDescription = if (menuExpanded) "Expanded" else "Collapsed"
-                        contentDescription = "Show sort options"
-                    },
+                    modifier = Modifier
+                        .tvFocusable(isTvOrCar, scaleFocused = 1f)
+                        .semantics {
+                            stateDescription = if (menuExpanded) "Expanded" else "Collapsed"
+                            contentDescription = "Show sort options"
+                        },
                 ) {
                     val rotation: Float by animateFloatAsState(
                         targetValue = if (menuExpanded) 180f else 0f,

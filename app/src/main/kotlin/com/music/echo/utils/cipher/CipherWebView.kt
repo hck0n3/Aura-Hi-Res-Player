@@ -151,15 +151,16 @@ class CipherWebView private constructor(
     }
 
     /**
-     * A JS evaluation that never called back within the timeout is treated as a renderer-gone
-     * equivalent: the renderer is wedged, so we mark dead and surface the same recoverable
-     * exception instead of hanging the playback path.
+     * A JS evaluation (sig/n) that never called back within the timeout. The renderer is WEDGED
+     * (slow/busy CPU), not proven dead: we mark this instance dead so the orchestrator drops it and
+     * rebuilds on the next song, but we surface a [CipherTimeoutException] — NOT renderer-gone — so a
+     * mere timeout does not count toward the renderer-death backoff and lock out the WebView path.
      */
-    private fun failAsRendererGone(reason: String): Nothing {
+    private fun failAsTimeout(reason: String): Nothing {
         isDead = true
         takeSigContinuation()
         takeNContinuation()
-        throw CipherRendererGoneException(reason)
+        throw CipherTimeoutException(reason)
     }
 
     private fun loadPlayerJsFromFile() {
@@ -561,7 +562,7 @@ function discoverAndInit() {
             }
         } catch (e: TimeoutCancellationException) {
             Timber.tag(TAG).e("Sig deobfuscation timed out after ${EVAL_TIMEOUT_MS}ms")
-            failAsRendererGone("Sig deobfuscation timed out after ${EVAL_TIMEOUT_MS}ms")
+            failAsTimeout("Sig deobfuscation timed out after ${EVAL_TIMEOUT_MS}ms")
         }
     }
 
@@ -607,7 +608,7 @@ function discoverAndInit() {
             }
         } catch (e: TimeoutCancellationException) {
             Timber.tag(TAG).e("N-transform timed out after ${EVAL_TIMEOUT_MS}ms")
-            failAsRendererGone("N-transform timed out after ${EVAL_TIMEOUT_MS}ms")
+            failAsTimeout("N-transform timed out after ${EVAL_TIMEOUT_MS}ms")
         }
     }
 
@@ -692,7 +693,9 @@ function discoverAndInit() {
             } catch (e: TimeoutCancellationException) {
                 Timber.tag(TAG).e("CipherWebView init timed out after ${CREATE_TIMEOUT_MS}ms")
                 destroyQuietly(created)
-                throw CipherRendererGoneException("CipherWebView init timed out")
+                // A slow/busy device that couldn't finish WebView init in time is a TIMEOUT, not a proven
+                // renderer death: surface CipherTimeoutException so it does NOT trip the renderer-death backoff.
+                throw CipherTimeoutException("CipherWebView init timed out")
             } catch (e: CancellationException) {
                 destroyQuietly(created)
                 throw e
@@ -712,3 +715,12 @@ function discoverAndInit() {
 
 class CipherException(message: String) : Exception(message)
 class CipherRendererGoneException(message: String) : Exception(message)
+
+/**
+ * A cipher WebView create/eval that never called back within its timeout. The renderer is WEDGED
+ * (slow/busy CPU), NOT proven dead: the orchestrator drops the WebView and rebuilds it on the next
+ * attempt, but — unlike [CipherRendererGoneException] — a timeout must NOT count toward the
+ * renderer-death backoff, so a slow first-play on a low-end box can't lock streaming out of the
+ * cipher WebView path.
+ */
+class CipherTimeoutException(message: String) : Exception(message)
