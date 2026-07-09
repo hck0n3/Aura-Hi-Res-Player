@@ -109,6 +109,9 @@ constructor(
             .conflate()
             .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
+    // In-memory search query over the songs currently in the library (the screen folds it into its list).
+    val searchQuery = MutableStateFlow("")
+
     fun syncLikedSongs() {
         viewModelScope.launch(Dispatchers.IO) { syncUtils.syncLikedSongs() }
     }

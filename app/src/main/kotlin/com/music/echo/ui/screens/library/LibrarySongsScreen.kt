@@ -21,6 +21,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -86,6 +87,7 @@ fun LibrarySongsScreen(
     val hideExplicit by rememberPreference(key = HideExplicitKey, defaultValue = false)
 
     val songs by viewModel.allSongs.collectAsState()
+    val searchQuery by viewModel.searchQuery.collectAsState()
 
     var filter by rememberEnumPreference(SongFilterKey, SongFilter.LIKED)
 
@@ -113,11 +115,12 @@ fun LibrarySongsScreen(
         }
     }
 
-    val filteredSongs = if (hideExplicit) {
-        songs.filter { !it.song.explicit }
-    } else {
-        songs
-    }
+    val filteredSongs = songs
+        .let { list -> if (hideExplicit) list.filter { !it.song.explicit } else list }
+        .let { list ->
+            if (searchQuery.isBlank()) list
+            else list.filter { it.song.title.contains(searchQuery, ignoreCase = true) }
+        }
 
     Box(
         modifier = Modifier.fillMaxSize(),
@@ -162,6 +165,32 @@ fun LibrarySongsScreen(
                         modifier = Modifier.weight(1f),
                     )
                 }
+            }
+
+            item(
+                key = "song_search",
+                contentType = CONTENT_TYPE_HEADER,
+            ) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { viewModel.searchQuery.value = it },
+                    singleLine = true,
+                    leadingIcon = {
+                        Icon(painter = painterResource(R.drawable.search), contentDescription = null)
+                    },
+                    trailingIcon = {
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { viewModel.searchQuery.value = "" }) {
+                                Icon(painter = painterResource(R.drawable.close), contentDescription = null)
+                            }
+                        }
+                    },
+                    placeholder = { Text(stringResource(R.string.search_library)) },
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 4.dp),
+                )
             }
 
             item(
