@@ -34,23 +34,26 @@ object SpotifyMapper {
      * on the same Spotify title/artist across multiple candidate comparisons.
      * Bounded to [NORM_CACHE_MAX_SIZE] entries to limit memory usage.
      */
-    private val normalizeCache = object : LinkedHashMap<String, String>(
-        NORM_CACHE_MAX_SIZE, 0.75f, true
-    ) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>?): Boolean =
-            size > NORM_CACHE_MAX_SIZE
-    }
+    // Wrapped in a synchronized map: matching now runs on up to MAX_CONCURRENT_MATCHES threads in parallel,
+    // and an access-order LinkedHashMap relinks its internal list on every get, so unsynchronized concurrent
+    // access could corrupt it (infinite loop / CME). synchronizedMap serializes each get/put.
+    private val normalizeCache: MutableMap<String, String> = java.util.Collections.synchronizedMap(
+        object : LinkedHashMap<String, String>(NORM_CACHE_MAX_SIZE, 0.75f, true) {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>?): Boolean =
+                size > NORM_CACHE_MAX_SIZE
+        }
+    )
 
     /**
      * LRU cache for pre-computed bigram sets. Avoids re-creating Set<String>
      * on every stringSimilarity call for the same normalized string.
      */
-    private val bigramCache = object : LinkedHashMap<String, Set<String>>(
-        NORM_CACHE_MAX_SIZE, 0.75f, true
-    ) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Set<String>>?): Boolean =
-            size > NORM_CACHE_MAX_SIZE
-    }
+    private val bigramCache: MutableMap<String, Set<String>> = java.util.Collections.synchronizedMap(
+        object : LinkedHashMap<String, Set<String>>(NORM_CACHE_MAX_SIZE, 0.75f, true) {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Set<String>>?): Boolean =
+                size > NORM_CACHE_MAX_SIZE
+        }
+    )
 
     /**
      * Pre-computed data for one side of a match comparison.
