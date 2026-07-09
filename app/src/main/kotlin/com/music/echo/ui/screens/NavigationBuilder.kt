@@ -38,6 +38,7 @@ import iad1tya.echo.music.ui.screens.playlist.TopPlaylistScreen
 import iad1tya.echo.music.ui.screens.search.OnlineSearchResult
 import iad1tya.echo.music.ui.screens.search.SearchScreen
 import iad1tya.echo.music.ui.screens.settings.AboutScreen
+import iad1tya.echo.music.ui.screens.settings.AccountsScreen
 import iad1tya.echo.music.ui.screens.settings.LogsScreen
 import iad1tya.echo.music.ui.screens.settings.AppearanceSettings
 import iad1tya.echo.music.ui.screens.settings.BackupAndRestore
@@ -334,6 +335,10 @@ fun NavGraphBuilder.navigationBuilder(
     }
 
     // IA hygiene (F0): "settings/account" (AccountSettingsScreen) de-registered — orphan, no navigate() caller.
+
+    composable("settings/accounts") {
+        AccountsScreen(navController, scrollBehavior)
+    }
 
     composable("settings/appearance") {
         AppearanceSettings(navController, scrollBehavior, activity, snackbarHostState)

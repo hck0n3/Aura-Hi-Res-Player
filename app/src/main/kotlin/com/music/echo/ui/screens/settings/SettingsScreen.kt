@@ -62,6 +62,7 @@ fun SettingsScreen(
     val searchLower = searchQuery.lowercase()
 
     val accountText = stringResource(R.string.account)
+    val accountsText = "Cuentas"
     val appearanceText = stringResource(R.string.appearance)
     val playerText = "Ajustes del reproductor"
     val soundText = "Sonido y ecualización"
@@ -129,7 +130,15 @@ fun SettingsScreen(
         )
 
         val itemsList = buildList {
-            // Login/account intentionally NOT listed in Settings (use the account avatar on Home).
+            if (accountsText.lowercase().contains(searchLower)) {
+                add(
+                    Material3SettingsItem(
+                        icon = painterResource(R.drawable.account),
+                        title = { Text(accountsText) },
+                        onClick = { navController.navigate("settings/accounts") }
+                    )
+                )
+            }
             if (appearanceText.lowercase().contains(searchLower)) {
                 add(
                     Material3SettingsItem(
@@ -251,7 +260,26 @@ fun SettingsScreen(
             }
         }
 
-        if (itemsList.isEmpty() && searchQuery.isNotEmpty()) {
+        // Indexed sub-settings: while searching, surface every individual setting (adapted from upstream
+        // e244ac9). Each result navigates to its PARENT screen — the scroll-to-highlight refinement is not
+        // ported (it would require editing every settings screen). See SearchableSettings.kt.
+        val finalItemsList = if (searchQuery.isNotEmpty()) {
+            val matchedSubSettings = getAllSearchableSettings()
+                .filter { it.first.lowercase().contains(searchLower) }
+                .map { (title, parentTitle, route) ->
+                    Material3SettingsItem(
+                        icon = painterResource(R.drawable.search),
+                        title = { Text(title) },
+                        description = { Text(parentTitle) },
+                        onClick = { navController.navigate(route) }
+                    )
+                }
+            itemsList + matchedSubSettings
+        } else {
+            itemsList
+        }
+
+        if (finalItemsList.isEmpty() && searchQuery.isNotEmpty()) {
             Spacer(modifier = Modifier.height(32.dp))
             Text(
                 text = noResultsText,
@@ -263,7 +291,7 @@ fun SettingsScreen(
                     .padding(horizontal = 16.dp)
             )
         } else {
-            Material3SettingsGroup(items = itemsList)
+            Material3SettingsGroup(items = finalItemsList)
         }
         
         Spacer(modifier = Modifier.height(50.dp))
