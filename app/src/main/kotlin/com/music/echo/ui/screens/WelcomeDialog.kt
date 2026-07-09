@@ -94,7 +94,7 @@ fun WelcomeDialog(
                     WelcomeFeatureRow(
                         iconRes = R.drawable.tune,
                         title = "Audio de alta calidad",
-                        subtitle = "Sonido sin pérdida (Qobuz/Saavn), normalización de volumen, visualizador de espectro y control de tempo/tono"
+                        subtitle = "Sonido sin pérdida (Qobuz/Saavn), Volumen Seguro activado por defecto (nivela y limita las pistas muy altas), visualizador de espectro y control de tempo/tono"
                     )
                     WelcomeDivider()
                     WelcomeFeatureRow(
@@ -136,7 +136,7 @@ fun WelcomeDialog(
                     WelcomeFeatureRow(
                         iconRes = R.drawable.speed,
                         title = "Se adapta a tu teléfono",
-                        subtitle = "Detecta la potencia del dispositivo (RAM/CPU) y ajusta los efectos; el fondo animado se pausa con la app en segundo plano o la pantalla apagada, para no calentar ni gastar batería. En plegables (Z Fold), al desplegar, el ecualizador y los efectos DSP se ven en dos columnas a la vez"
+                        subtitle = "Detecta la potencia del dispositivo (RAM/CPU) y ajusta los efectos; además el Modo Rendimiento (ULTRA) fuerza el modo más ligero posible para gama baja, Android TV o auto (sin tocar la calidad de audio). El fondo animado se pausa con la app en segundo plano o la pantalla apagada, para no calentar ni gastar batería. En plegables (Z Fold), al desplegar, el ecualizador y los efectos DSP se ven en dos columnas a la vez"
                     )
                     WelcomeDivider()
                     WelcomeFeatureRow(
@@ -160,13 +160,43 @@ fun WelcomeDialog(
                     WelcomeFeatureRow(
                         iconRes = R.drawable.mic,
                         title = "Reconocer canción y buscar por voz",
-                        subtitle = "Identifica lo que suena a tu alrededor (desde la app, el widget o Ajustes Rápidos) y busca hablando"
+                        subtitle = "Identifica lo que suena a tu alrededor (desde la app, el widget o Ajustes Rápidos) y busca hablando, también en Android TV"
                     )
                     WelcomeDivider()
                     WelcomeFeatureRow(
                         iconRes = R.drawable.queue_music,
                         title = "Podcasts",
                         subtitle = "Motor propio de podcasts con progreso, fijado y búsqueda"
+                    )
+                    WelcomeDivider()
+                    WelcomeFeatureRow(
+                        iconRes = R.drawable.new_release,
+                        title = "Radar de novedades",
+                        subtitle = "Los estrenos de los artistas que sigues, renovados cada viernes al estilo Spotify: solo la tanda de la semana"
+                    )
+                    WelcomeDivider()
+                    WelcomeFeatureRow(
+                        iconRes = R.drawable.grid_view,
+                        title = "Pantallas grandes (estilo Spotify)",
+                        subtitle = "En tablets, Android TV y plegables la app usa una interfaz dividida (lista + detalle) que aprovecha todo el ancho"
+                    )
+                    WelcomeDivider()
+                    WelcomeFeatureRow(
+                        iconRes = R.drawable.image,
+                        title = "Carátula estilo Apple Music",
+                        subtitle = "Al cambiar de canción la carátula hace un zoom y fundido dinámico estilo Apple Music"
+                    )
+                    WelcomeDivider()
+                    WelcomeFeatureRow(
+                        iconRes = R.drawable.account,
+                        title = "Cuentas y búsqueda rápida",
+                        subtitle = "Un apartado Cuentas reúne YouTube Music y Spotify, con buscadores en Ajustes y en tu Biblioteca (artistas seguidos y canciones)"
+                    )
+                    WelcomeDivider()
+                    WelcomeFeatureRow(
+                        iconRes = R.drawable.ic_ringtone,
+                        title = "Extras del reproductor",
+                        subtitle = "Pon cualquier canción como tono del dispositivo y recarga el audio en Opus desde el menú del reproductor"
                     )
                 }
 

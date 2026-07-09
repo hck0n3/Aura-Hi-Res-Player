@@ -39,14 +39,16 @@ private val PLAYBACK_FEATURES = listOf(
     Feature(R.drawable.play, "Reproducción", "Sin cortes (gapless), transición suave (crossfade) lineal de 10s, normalización de volumen al mismo nivel en todas las canciones y temporizador de apagado"),
     Feature(R.drawable.videocam, "Video musical", "Reproduce el videoclip con su sonido dentro del reproductor (cuando está disponible), sigue en video al cambiar de canción; pantalla completa al girar el teléfono, Picture-in-Picture (ventana flotante) y cambio rápido entre audio y video. El audio sigue en segundo plano y con la pantalla apagada"),
     Feature(R.drawable.graphic_eq, "Sonido y EQ", "Ecualizador gráfico de 24 bandas (las que dejes en 0 dB hacen bypass real — no tocan la señal) o modo paramétrico (PEQ) interactivo: arrastra puntos en la curva de respuesta para dar forma al sonido (5-8 bandas, con frecuencia/Q/ganancia exactas), limitador multibanda anti-distorsión con headroom automático, Auto-EQ por modelo de auricular (+5000) que bloquea el EQ manual para no corromper la corrección, nivelado de volumen (misma sonoridad en todas las canciones) con limitador true-peak, firma Aura, excitador y ancho estéreo"),
+    Feature(R.drawable.volume_up, "Volumen Seguro", "Activado por defecto: nivela las canciones muy altas a un volumen parejo y protege con un limitador true-peak, para que ninguna pista salte de golpe. Puedes desactivarlo cuando quieras en Ajustes ▸ Sonido"),
     Feature(R.drawable.tune, "Sonido sin pérdida", "Reproduce en calidad sin pérdida desde Qobuz/Saavn cuando está disponible"),
+    Feature(R.drawable.refresh, "Recargar en Opus", "Desde el menú del reproductor, vuelve a cargar el audio de la canción actual en Opus si un stream viene con fallos o quieres refrescarlo"),
     Feature(R.drawable.auto_awesome, "Mejorar calidad baja", "Reduce la distorsión (declip) y regenera agudos en fuentes de bajo bitrate"),
     Feature(R.drawable.equalizer, "Visualizador y control", "Visualizador de espectro y control de tempo/tono"),
     Feature(R.drawable.lyrics, "Letras", "Sincronizadas (palabra por palabra), con traducción por IA y desenfoque estilo Apple Music"),
     Feature(R.drawable.queue_music, "Cola", "Cola inteligente y gestión de 'a continuación'; tocar una canción en el top de un artista o en el radar de novedades reproduce toda la lista como cola"),
     Feature(R.drawable.bluetooth, "Reproducción inteligente", "Pausa al silenciar y reanuda al reconectar Bluetooth; notificación enriquecida estilo Dynamic Island"),
     Feature(R.drawable.skip_next, "Saltar partes sin música (SponsorBlock)", "Actívalo en Ajustes ▸ Reproductor y la app salta sola patrocinios, autopromo e interrupciones no musicales usando la base comunitaria SponsorBlock; nunca corta el audio real de la canción (no toca intros/outros)"),
-    Feature(R.drawable.speed, "Rendimiento adaptable", "Detecta la gama del dispositivo por sus características (RAM, núcleos), no por la marca, y ajusta calidad/buffers de los efectos; el fondo animado (Canvas) se pausa con la app en segundo plano o la pantalla apagada, para no calentar ni gastar batería de más; en plegables, el ecualizador adopta un layout de dos columnas (EQ + efectos DSP) al desplegar"),
+    Feature(R.drawable.speed, "Rendimiento adaptable y Modo Rendimiento (ULTRA)", "Detecta la gama del dispositivo por sus características (RAM, núcleos), no por la marca, y ajusta calidad/buffers de los efectos. El Modo Rendimiento (ULTRA) es un interruptor maestro que fuerza el modo más ligero posible —ideal en gama baja, Android TV o auto— desactivando lo más pesado (Canvas, visualizador, video del artista) sin tocar la fidelidad de audio; se activa solo en dispositivos de gama baja/TV/coche y puedes conmutarlo en Ajustes. El fondo animado (Canvas) se pausa con la app en segundo plano o la pantalla apagada, para no calentar ni gastar batería de más; en plegables, el ecualizador adopta un layout de dos columnas (EQ + efectos DSP) al desplegar"),
 )
 
 private val DISCOVERY_FEATURES = listOf(
@@ -57,11 +59,13 @@ private val DISCOVERY_FEATURES = listOf(
     Feature(R.drawable.music_history, "Release Radar", "Estrenos de los artistas que sigues, renovados cada viernes al estilo Spotify: solo la tanda de la semana; las anteriores desaparecen"),
     Feature(R.drawable.library_music, "Discografía completa", "Catálogos de artista autocompletados, con secciones 'Aparece en' y 'Videos oficiales' (reproducibles)"),
     Feature(R.drawable.mic, "Reconocer canción", "Identifica la música que suena a tu alrededor, desde la app, el widget o un mosaico de Ajustes Rápidos"),
-    Feature(R.drawable.ic_search_mic, "Búsqueda por voz", "Busca hablando, además de explorar Charts, Estados de ánimo y Géneros"),
+    Feature(R.drawable.ic_search_mic, "Búsqueda por voz", "Busca hablando —también en Android TV, con reconocimiento propio cuando no hay ventana de voz del sistema— además de explorar Charts, Estados de ánimo y Géneros"),
 )
 
 private val LIBRARY_FEATURES = listOf(
     Feature(R.drawable.library_music, "Biblioteca y sincronización", "Sincroniza tu contenido de YouTube Music desde Ajustes ▸ Importar: me gusta, álbumes, artistas, suscripciones, playlists y biblioteca — manual o automática (diaria/semanal), con la hora de la última sincronización a la vista"),
+    Feature(R.drawable.account, "Cuentas", "Un solo apartado reúne tus servicios conectados —YouTube Music y Spotify— para ver el estado, iniciar sesión o desconectar cada uno desde el mismo sitio"),
+    Feature(R.drawable.search, "Buscadores en Biblioteca", "Un buscador dentro de tus artistas seguidos y otro dentro de tus canciones para encontrar al instante lo que ya tienes guardado"),
     Feature(R.drawable.download, "Importar y migrar", "Importa de YouTube, Spotify (listas, me gusta y álbumes — o pega el link de cualquier lista pública de Spotify, aunque no sea tuya) y Aura Hi-Res Player (.jrpl.json); migración selectiva propia (elige playlists, todos los artistas y/o todos los presets de EQ) que se importa de forma aditiva sin borrar nada; y re-sigue tus artistas de Spotify"),
     Feature(R.drawable.sync, "Sincronización programada", "Mantén al día YouTube Music (todo) y las listas de Spotify que elijas, con la frecuencia que prefieras (diaria o semanal)"),
     Feature(R.drawable.download, "Modo sin conexión", "Descarga canciones, álbumes y playlists con un gestor de descargas dedicado"),
@@ -75,7 +79,10 @@ private val EXTRAS_FEATURES = listOf(
     Feature(R.drawable.home_outlined, "Tu inicio a tu gusto", "Elige tus artistas y géneros al empezar; el inicio se llena solo con tus artistas, lo que escuchas y tus favoritos, y YouTube recomienda en base a eso"),
     Feature(R.drawable.group_outlined, "Escuchar juntos", "Escucha sincronizada en tiempo real con amigos"),
     Feature(R.drawable.palette, "Temas y fondos", "Material You, modo oscuro puro AMOLED, acento dinámico y Canvas animado del artista y del álbum (a pantalla completa al girar el teléfono)"),
+    Feature(R.drawable.grid_view, "Interfaz dividida (pantallas anchas)", "En tablets, Android TV y plegables desplegados la app adopta un layout dividido estilo Spotify (lista + detalle a la vez) que aprovecha todo el ancho de pantalla"),
     Feature(R.drawable.tune, "Opciones de pantalla", "Escala de densidad, alta tasa de refresco, ocultar miniatura/videos/Shorts y recortar carátula"),
+    Feature(R.drawable.manage_search, "Búsqueda de ajustes", "Un buscador en Ajustes localiza cualquier opción por su nombre, sin recorrer menús"),
+    Feature(R.drawable.image, "Transición de carátula (Apple Music)", "Al cambiar de canción la carátula hace un zoom y fundido dinámico estilo Apple Music (se desactiva solo en Modo Rendimiento)"),
     Feature(R.drawable.share, "Compartir y widget", "Comparte con enlaces de YouTube Music y controla la música desde el widget de vinilo"),
     Feature(R.drawable.ic_ringtone, "Establecer como tono", "Usa cualquier canción como tono de tu dispositivo"),
     Feature(R.drawable.play, "Android Auto y Android TV", "Compatible con Android Auto en el coche y con Android TV (se instala y navega con el control en televisores)"),

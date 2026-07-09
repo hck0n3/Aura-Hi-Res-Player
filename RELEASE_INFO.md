@@ -1,31 +1,13 @@
-# Aura Hi-Res Player 0.6.78 — Rendimiento, Radar tipo Spotify, offline, Cuentas y muchos arreglos
+# Aura Hi-Res Player 0.6.79 — Pulido: import visible, offline y letras
 
-## ✨ Novedades
-- **Modo Rendimiento (un solo interruptor):** aligera la app al máximo en gama baja, Android TV y pantallas de auto — sin fondos animados, carátulas más ligeras, buffers menores. **El audio no se toca.** Se activa solo en equipos lentos y podés controlarlo en Ajustes ▸ Rendimiento.
-- **Interfaz dividida estilo Spotify** en pantallas anchas (TV/tablet/auto), ahora **adaptable al ancho real**, con panel de reproducción flexible y opción de ocultarlo.
-- **Radar de novedades tipo Spotify:** estrenos de tus artistas con fecha exacta, se **limpia y actualiza cada viernes** (1 por artista).
-- **Modo sin conexión:** botón "Continuar offline" cuando no hay internet → solo tu contenido descargado. Reversible desde Ajustes.
-- **Apartado Cuentas:** mirá en qué cuentas estás (YouTube Music + Spotify) e iniciá/cerrá sesión desde un solo lugar.
-- **Búsqueda de ajustes** (encontrá cualquier opción escribiendo) y **buscadores en Biblioteca** para tus **artistas seguidos** y tus **canciones**.
-- **Importar de Spotify por enlace** (cualquier playlist) + **botón de importar** en Biblioteca (Spotify o YouTube Music por URL).
-- **Poner como tono**, **Recargar en Opus**, **transición de carátula estilo Apple Music** e indicador de fundido.
-- **SponsorBlock** (saltar segmentos no musicales) y **búsqueda por voz** en Android TV.
+## 🔧 Arreglos
+- **Botones de importar/crear playlist** ahora **se ven** en Biblioteca (aparecen al abrir, no solo en la pestaña Playlists, y ya no quedaban ocultos).
+- **Modo sin conexión:** el botón **"Continuar sin conexión"** ahora aparece siempre que no hay internet (antes casi nunca salía).
+- **Letras** más suaves y mejor sincronizadas.
 
-## 🔧 Arreglos importantes
-- **El audio ya no se queda parado** tras una caída de red en equipos de gama baja: se reanuda al reconectar.
-- **Letras más suaves y mejor sincronizadas.**
-- La **migración selectiva conserva las carátulas** y **ahora sí migra tus favoritos de YouTube**.
-- **Agregar a playlist** usa la canción correcta; **borrar una playlist sincronizada ahora pregunta** (borrar también de YouTube o solo de la app).
-- **Búsqueda de YouTube Music** con tu sesión → mejores resultados. **Import de Spotify** ya no pierde canciones.
-- Menos cuelgues de streaming en equipos con poca memoria; **sincronización más rápida y sin parpadeo**.
-
-## 🔊 Audio
-- **Volumen Seguro queda activado por defecto** (podés desactivarlo en Ajustes ▸ Sonido).
-- **Fundido (crossfade) suave de 9 s** por defecto.
-
-## ⚠️ Cambios que vas a notar (una sola vez, tras actualizar)
-- Se activan por defecto: **Volumen Seguro**, **reproducción infinita** y el **fundido de 9 s** (si tenías el valor viejo de 13 s). El **tema** vuelve a "según el sistema".
-- Después, tus propias elecciones mandan.
+## ✨ Recordatorio de novedades (desde 0.6.78)
+- Modo Rendimiento (ULTRA), interfaz dividida estilo Spotify, Radar de novedades tipo Spotify, modo offline, apartado Cuentas (YouTube Music + Spotify), buscadores en Biblioteca, importar de Spotify por enlace, SponsorBlock, Volumen Seguro por defecto.
+- Las pantallas de bienvenida y "Acerca de" ahora reflejan todas estas funciones.
 
 ## ✅ Actualización segura
-- Base de datos sin cambios → **no hay riesgo de fallo al actualizar**, sin pérdida de datos. Tu suscripción y tus descargas siguen igual.
+- Base de datos sin cambios → sin riesgo al actualizar. Suscripción y descargas intactas.
