@@ -1,20 +1,31 @@
-# Aura Hi-Res Player 0.6.78 — Modo alto rendimiento, 3 días offline y un solo APK para todos
+# Aura Hi-Res Player 0.6.78 — Rendimiento, Radar tipo Spotify, offline, Cuentas y muchos arreglos
 
-## ⚡ Modo alto rendimiento (gama baja)
-- Nuevo **Modo alto rendimiento** para dispositivos de gama baja: **pantallas de auto Android**, **tablets económicas**, equipos con **4 GB de RAM o menos** y **Android TV**.
-- **Se activa solo** en el primer inicio cuando detecta un equipo de gama baja / TV / pantalla de auto, y también podés activarlo/desactivarlo a mano en **Ajustes ▸ Rendimiento**.
-- Cuando está activo: apaga fondos animados y visualizador, **desactiva el video musical** (solo audio), baja resolución/buffers de decodificación y la precarga — todo para que vaya **fluido y sin calentar**.
-- **El sonido no se toca**: ecualizador, Volumen Seguro y normalización siguen igual. Es solo rendimiento visual.
+## ✨ Novedades
+- **Modo Rendimiento (un solo interruptor):** aligera la app al máximo en gama baja, Android TV y pantallas de auto — sin fondos animados, carátulas más ligeras, buffers menores. **El audio no se toca.** Se activa solo en equipos lentos y podés controlarlo en Ajustes ▸ Rendimiento.
+- **Interfaz dividida estilo Spotify** en pantallas anchas (TV/tablet/auto), ahora **adaptable al ancho real**, con panel de reproducción flexible y opción de ocultarlo.
+- **Radar de novedades tipo Spotify:** estrenos de tus artistas con fecha exacta, se **limpia y actualiza cada viernes** (1 por artista).
+- **Modo sin conexión:** botón "Continuar offline" cuando no hay internet → solo tu contenido descargado. Reversible desde Ajustes.
+- **Apartado Cuentas:** mirá en qué cuentas estás (YouTube Music + Spotify) e iniciá/cerrá sesión desde un solo lugar.
+- **Búsqueda de ajustes** (encontrá cualquier opción escribiendo) y **buscadores en Biblioteca** para tus **artistas seguidos** y tus **canciones**.
+- **Importar de Spotify por enlace** (cualquier playlist) + **botón de importar** en Biblioteca (Spotify o YouTube Music por URL).
+- **Poner como tono**, **Recargar en Opus**, **transición de carátula estilo Apple Music** e indicador de fundido.
+- **SponsorBlock** (saltar segmentos no musicales) y **búsqueda por voz** en Android TV.
 
-## 📥 3 días sin internet (usá tus descargas offline)
-- Ahora podés usar la app y **reproducir tus descargas hasta 3 días sin conexión** (antes se bloqueaba al día). Pasados los 3 días, reconectás una vez y listo.
+## 🔧 Arreglos importantes
+- **El audio ya no se queda parado** tras una caída de red en equipos de gama baja: se reanuda al reconectar.
+- **Letras más suaves y mejor sincronizadas.**
+- La **migración selectiva conserva las carátulas** y **ahora sí migra tus favoritos de YouTube**.
+- **Agregar a playlist** usa la canción correcta; **borrar una playlist sincronizada ahora pregunta** (borrar también de YouTube o solo de la app).
+- **Búsqueda de YouTube Music** con tu sesión → mejores resultados. **Import de Spotify** ya no pierde canciones.
+- Menos cuelgues de streaming en equipos con poca memoria; **sincronización más rápida y sin parpadeo**.
 
-## 📦 Un solo APK universal para todos
-- De ahora en más publicamos **un único APK universal** (todas las arquitecturas: arm64/armeabi-v7a/x86/x86_64) para evitar problemas de compatibilidad — el mismo archivo anda en teléfonos, Android TV, pantallas de auto y equipos viejos de 32 bits.
+## 🔊 Audio
+- **Volumen Seguro queda activado por defecto** (podés desactivarlo en Ajustes ▸ Sonido).
+- **Fundido (crossfade) suave de 9 s** por defecto.
 
-## 📺 Mejor en Android TV y pantallas de auto
-- En Android TV la interfaz ya **no se ve microscópica** (densidad ajustada), y el modo alto rendimiento se activa solo en TV y pantallas de auto para que vaya suave. Sigue apareciendo en el launcher de TV y con Android Auto.
+## ⚠️ Cambios que vas a notar (una sola vez, tras actualizar)
+- Se activan por defecto: **Volumen Seguro**, **reproducción infinita** y el **fundido de 9 s** (si tenías el valor viejo de 13 s). El **tema** vuelve a "según el sistema".
+- Después, tus propias elecciones mandan.
 
-## 👉 Para probar
-- En un equipo de gama baja / TV / pantalla de auto: al abrir, revisá **Ajustes ▸ Rendimiento** — debería estar activado. Probá prender/apagar y ver cómo cambian los fondos animados / video.
-- Descargá canciones, poné el equipo en modo avión y comprobá que suenan hasta 3 días.
+## ✅ Actualización segura
+- Base de datos sin cambios → **no hay riesgo de fallo al actualizar**, sin pérdida de datos. Tu suscripción y tus descargas siguen igual.
