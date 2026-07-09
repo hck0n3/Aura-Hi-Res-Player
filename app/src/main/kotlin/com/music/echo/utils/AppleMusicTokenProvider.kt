@@ -25,11 +25,12 @@ object AppleMusicTokenProvider {
         expectSuccess = true
     }
 
-    // Self-healing is handled entirely by the TTL/`exp`-derived expiry window below
-    // (see [computeExpiryMs]): a stale token is dropped and re-extracted on the next
-    // [getToken], and the fallback token is deliberately never cached. An explicit
-    // 401/403 invalidation hook would have to live at the API call site (which is in a
-    // separate file), so it is intentionally omitted here rather than left as dead code.
+    // Self-healing is handled by the TTL/`exp`-derived expiry window below (see
+    // [computeExpiryMs]): a stale token is dropped and re-extracted on the next
+    // [getToken], and the fallback token is deliberately never cached. In addition,
+    // [invalidate] lets the API call site drop a token that Apple revoked before its
+    // `exp` (a 401/403), so the very next [getToken] re-extracts instead of serving the
+    // dead token for the rest of its TTL window.
     suspend fun getToken(): String {
         return mutex.withLock {
             // Reuse the cached token only while it is still within its validity window.
@@ -76,6 +77,19 @@ object AppleMusicTokenProvider {
                 // crash and never a permanently poisoned cache.
                 FALLBACK_TOKEN
             }
+        }
+    }
+
+    /**
+     * Drop the currently cached token so the next [getToken] re-extracts a fresh one.
+     * Intended for the API call site to invoke when Apple rejects the cached token with
+     * a 401/403 (revoked before its `exp`). Best-effort and safe to call at any time:
+     * if no token is cached this is a no-op, and a concurrent [getToken] simply refetches.
+     */
+    suspend fun invalidate() {
+        mutex.withLock {
+            cachedToken = null
+            cachedTokenExpiryMs = 0L
         }
     }
 

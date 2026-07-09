@@ -41,7 +41,6 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import okhttp3.Credentials
 import timber.log.Timber
@@ -68,6 +67,12 @@ class App : Application(), SingletonImageLoader.Factory {
 
     override fun onCreate() {
         super.onCreate()
+
+        // Seed the process-wide image-cache-size mirror synchronously from a cheap SharedPreferences copy
+        // (NOT DataStore) so newImageLoader() — which Coil invokes lazily on the main thread at first image
+        // load — can read it without a blocking DataStore read. The authoritative DataStore value re-seeds
+        // this (and refreshes the SharedPreferences copy) once initializeSettings() runs; see below.
+        seedImageCacheSizeMirror(this)
 
         com.music.jiosaavn.DeviceRouter.init(this)
         Timber.d("Device ID: ${com.music.jiosaavn.DeviceRouter.getDeviceId()} | Assigned JioSaavn Server: ${com.music.jiosaavn.DeviceRouter.getCurrentServer()}")
@@ -127,6 +132,11 @@ class App : Application(), SingletonImageLoader.Factory {
     private suspend fun initializeSettings() {
         reseedAfterRestoreIfNeeded()
         val settings = dataStore.data.first()
+        // Re-seed the image-cache-size mirror from the authoritative committed value (same 2048 fallback as
+        // newImageLoader) and refresh the SharedPreferences copy so the next cold start seeds correctly. This
+        // reuses the settings read above — no extra IO. StorageSettings updates the mirror synchronously on a
+        // size change right before it resets the ImageLoader (see StorageSettings.kt).
+        updateImageCacheSizeMirror(this@App, settings[MaxImageCacheSizeKey] ?: DEFAULT_IMAGE_CACHE_SIZE_MB)
         seedDefaultsIfNeeded(settings)
         migrateCanvasDefaultOn(settings)
         migrateHighPerformanceModeSeed(settings)
@@ -731,9 +741,10 @@ class App : Application(), SingletonImageLoader.Factory {
     override fun newImageLoader(context: PlatformContext): ImageLoader {
         // Default the image cache to a large size (2 GB on disk, half the app's RAM in memory) so
         // artwork loads instantly and isn't re-downloaded; the user can still lower it in settings.
-        val cacheSize = runBlocking {
-            dataStore.data.map { it[MaxImageCacheSizeKey] ?: 2048 }.first()
-        }
+        // Read from a process-wide mirror instead of a main-thread runBlocking DataStore read (P46/H4).
+        // The mirror is seeded at startup and updated SYNCHRONOUSLY by StorageSettings right before it
+        // calls SingletonImageLoader.reset(), so a size change still rebuilds the loader with the fresh value.
+        val cacheSize = imageCacheSizeMb()
         // Performance Mode (ULTRA): much smaller in-RAM image cache (15% vs 40%) so a low-RAM box doesn't
         // thrash decoding artwork. Takes effect on the NEXT launch (the ImageLoader is built once at process
         // start). Crossfade off + RGB_565 (below) already halve per-image cost.
@@ -778,6 +789,51 @@ class App : Application(), SingletonImageLoader.Factory {
     companion object {
         /** Bump when adding a new one-time default set so it re-seeds for everyone (and after restore). */
         const val CURRENT_SEED_VERSION = 6
+
+        /**
+         * Process-wide mirror of [MaxImageCacheSizeKey] so [newImageLoader] reads the image-cache size
+         * WITHOUT a main-thread blocking DataStore read (P46/H4). It is:
+         *  - seeded synchronously at process start from a cheap SharedPreferences copy ([seedImageCacheSizeMirror]),
+         *  - re-seeded from the authoritative DataStore value once settings load (in initializeSettings), and
+         *  - updated synchronously by StorageSettings right BEFORE SingletonImageLoader.reset() so the rebuilt
+         *    ImageLoader reads the just-committed size ([updateImageCacheSizeMirror]).
+         * The default matches newImageLoader's historical `?: 2048` fallback exactly.
+         */
+        const val DEFAULT_IMAGE_CACHE_SIZE_MB = 2048
+        private const val IMAGE_CACHE_MIRROR_PREFS = "image_loader_prefs"
+        private const val IMAGE_CACHE_MIRROR_KEY = "max_image_cache_size_mb"
+
+        @Volatile
+        private var imageCacheSizeMbMirror: Int = DEFAULT_IMAGE_CACHE_SIZE_MB
+
+        /** Non-blocking read of the image-cache-size mirror (in MB), used by [newImageLoader]. */
+        fun imageCacheSizeMb(): Int = imageCacheSizeMbMirror
+
+        /**
+         * Synchronously set the image-cache-size mirror (in-memory + a cheap SharedPreferences copy used to
+         * seed the mirror on the next cold start). StorageSettings MUST call this right BEFORE
+         * SingletonImageLoader.reset() so the rebuilt ImageLoader reads the just-committed size — this replaces
+         * the former main-thread runBlocking DataStore read inside newImageLoader().
+         */
+        fun updateImageCacheSizeMirror(context: Context, sizeMb: Int) {
+            imageCacheSizeMbMirror = sizeMb
+            runCatching {
+                context.applicationContext
+                    .getSharedPreferences(IMAGE_CACHE_MIRROR_PREFS, Context.MODE_PRIVATE)
+                    .edit()
+                    .putInt(IMAGE_CACHE_MIRROR_KEY, sizeMb)
+                    .apply()
+            }
+        }
+
+        /** Seed the mirror synchronously at process start from the SharedPreferences copy (no DataStore blocking). */
+        private fun seedImageCacheSizeMirror(context: Context) {
+            imageCacheSizeMbMirror = runCatching {
+                context.applicationContext
+                    .getSharedPreferences(IMAGE_CACHE_MIRROR_PREFS, Context.MODE_PRIVATE)
+                    .getInt(IMAGE_CACHE_MIRROR_KEY, DEFAULT_IMAGE_CACHE_SIZE_MB)
+            }.getOrDefault(DEFAULT_IMAGE_CACHE_SIZE_MB)
+        }
 
         suspend fun forgetAccount(context: Context) {
             Timber.d("forgetAccount: Starting logout process")

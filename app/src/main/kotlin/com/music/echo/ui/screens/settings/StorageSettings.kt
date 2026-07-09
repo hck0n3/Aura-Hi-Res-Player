@@ -46,10 +46,12 @@ import coil3.SingletonImageLoader
 import coil3.annotation.DelicateCoilApi
 import coil3.annotation.ExperimentalCoilApi
 import coil3.imageLoader
+import iad1tya.echo.music.App
 import iad1tya.echo.music.LocalDatabase
 import iad1tya.echo.music.LocalPlayerAwareWindowInsets
 import iad1tya.echo.music.LocalPlayerConnection
 import iad1tya.echo.music.R
+import iad1tya.echo.music.utils.dataStore
 import iad1tya.echo.music.constants.MaxImageCacheSizeKey
 import iad1tya.echo.music.constants.MaxSongCacheSizeKey
 import iad1tya.echo.music.extensions.tryOrNull
@@ -63,6 +65,7 @@ import iad1tya.echo.music.utils.rememberPreference
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import okio.ByteString.Companion.encodeUtf8
@@ -178,6 +181,14 @@ fun StorageSettings(
     )
 
     LaunchedEffect(maxImageCacheSize) {
+        // Mirror the just-committed cache size into App BEFORE resetting the loader, so the rebuilt
+        // ImageLoader reads the fresh value without a main-thread runBlocking DataStore read (P46/H4).
+        // Read the committed value with the SAME 2048 fallback newImageLoader uses (NOT the 512 screen
+        // default) via a non-blocking suspend read, so behavior is identical to the old runBlocking path.
+        val committedCacheSize = context.dataStore.data
+            .map { it[MaxImageCacheSizeKey] ?: App.DEFAULT_IMAGE_CACHE_SIZE_MB }
+            .first()
+        App.updateImageCacheSizeMirror(context, committedCacheSize)
         SingletonImageLoader.reset()
         if (maxImageCacheSize == 0) {
             coroutineScope.launch(Dispatchers.IO) {

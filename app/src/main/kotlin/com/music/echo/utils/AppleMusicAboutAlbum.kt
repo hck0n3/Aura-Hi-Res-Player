@@ -72,7 +72,17 @@ object AppleMusicAboutAlbum {
                 parameter("extend", "editorialNotes")
             }
 
-            if (searchResponse.status != HttpStatusCode.OK) return@runCatching null
+            if (searchResponse.status != HttpStatusCode.OK) {
+                // If Apple rejected the (cached) developer token as revoked/expired,
+                // drop it so the next call self-heals with a freshly extracted token.
+                // Best-effort: never let this throw out of the happy path.
+                if (searchResponse.status == HttpStatusCode.Unauthorized ||
+                    searchResponse.status == HttpStatusCode.Forbidden
+                ) {
+                    runCatching { AppleMusicTokenProvider.invalidate() }
+                }
+                return@runCatching null
+            }
 
             val searchRoot = searchResponse.body<JsonObject>()
             val albumsData = searchRoot["results"]?.jsonObject?.get("albums")?.jsonObject?.get("data")?.jsonArray 

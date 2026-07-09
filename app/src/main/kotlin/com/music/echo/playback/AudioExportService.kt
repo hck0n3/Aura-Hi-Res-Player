@@ -252,8 +252,14 @@ class AudioExportService : Service() {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC else 0,
             )
         }.onFailure {
-            // If the platform refuses the foreground start (e.g. a background-start restriction),
-            // fall back to running as a plain service rather than crashing the export.
+            // NOTE: this is NOT a graceful fallback to a plain service. The caller starts us via
+            // ContextCompat.startForegroundService(), which obliges the service to call
+            // startForeground() within ~5s; if we never make that call successfully the OS raises
+            // ForegroundServiceDidNotStartInTimeException and kills the process. This runCatching
+            // only swallows an exception thrown by startForeground() itself in the rare cases where
+            // the platform does not also crash us (e.g. notification build/channel hiccups); it does
+            // not let the export keep running as an ordinary background service. We log so the
+            // failure is diagnosable when it does surface.
             Log.e(TAG, "Unable to start export foreground service", it)
         }
     }
