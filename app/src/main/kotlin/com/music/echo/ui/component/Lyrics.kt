@@ -79,6 +79,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameMillis
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -638,14 +639,21 @@ fun Lyrics(
             currentLineIndex = -1
             return@LaunchedEffect
         }
+        // FIX #1: frame-aligned instead of delay(8). The old 8ms loop pushed currentPlaybackPosition
+        // ~125x/s, and that state feeds effectivePlaybackPosition to every visible line, recomposing the
+        // whole echomusic list ~125x/s (a recomposition storm on slow devices). withFrameMillis ties the
+        // updates to the display refresh so the ticker never runs faster than the UI can draw.
+        // (Follow-up: further cut recomposition scope so only the active line recomputes — e.g. pass the
+        //  position as a () -> Long / wrap the per-line dependency in derivedStateOf.)
         while (isActive) {
-            delay(8) 
-            val sliderPosition = sliderPositionProvider()
-            isSeeking = sliderPosition != null
-            val position = sliderPosition ?: playerConnection.player.currentPosition
-            currentPlaybackPosition = position
-            val lyricsOffset = currentSong?.song?.lyricsOffset ?: 0
-            currentLineIndex = findCurrentLineIndex(lines, position + lyricsOffset)
+            withFrameMillis {
+                val sliderPosition = sliderPositionProvider()
+                isSeeking = sliderPosition != null
+                val position = sliderPosition ?: playerConnection.player.currentPosition
+                currentPlaybackPosition = position
+                val lyricsOffset = currentSong?.song?.lyricsOffset ?: 0
+                currentLineIndex = findCurrentLineIndex(lines, position + lyricsOffset)
+            }
         }
     }
 

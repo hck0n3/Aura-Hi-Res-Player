@@ -100,11 +100,18 @@ fun echomusicLyricsLine(
     }
 
     
-    val wordData = remember(entry.text, entry.words, activeDuration) {
-        val isHindiText = iad1tya.echo.music.lyrics.LyricsUtils.isHindi(entry.text)
-        if (!isHindiText && entry.words != null && entry.words.isNotEmpty()) {
+    // Whether this entry has REAL per-word timings. When false we must NOT fabricate a left-to-right
+    // karaoke sweep — there is no ground truth for word positions, so a synthetic char-weighted sweep
+    // just guesses and drifts against the audio. Instead the whole line highlights together on
+    // activation (see the hasRealWordTimings gate in the render loop below).
+    val hasRealWordTimings = remember(entry.text, entry.words) {
+        !iad1tya.echo.music.lyrics.LyricsUtils.isHindi(entry.text) && !entry.words.isNullOrEmpty()
+    }
+
+    val wordData = remember(entry.text, entry.words, activeDuration, hasRealWordTimings) {
+        if (hasRealWordTimings) {
             
-            entry.words.mapIndexed { index, word ->
+            entry.words.orEmpty().mapIndexed { index, word ->
                 val wordStart = ((word.startTime * 1000).toLong() - entry.time).coerceAtLeast(0L)
                 val wordEnd = ((word.endTime * 1000).toLong() - entry.time).coerceAtLeast(wordStart + 50L)
                 Triple(word.text, wordStart, wordEnd)
@@ -113,20 +120,11 @@ fun echomusicLyricsLine(
             
             val words = entry.text.split(" ").filter { it.isNotEmpty() }
             if (words.isEmpty()) {
-                listOf(Triple(entry.text, 0L, activeDuration))
+                listOf(Triple(entry.text, 0L, 0L))
             } else {
-                val totalChars = entry.text.length
-                var accumulatedTime = 0L
-                words.mapIndexed { index, word ->
-                    val wordLength = word.length
-                    val includeSpace = index < words.size - 1
-                    val charCount = if (includeSpace) wordLength + 1 else wordLength
-                    val wordStart = accumulatedTime
-                    val wordDur = if (totalChars > 0) (activeDuration * charCount.toFloat() / totalChars).toLong() else activeDuration
-                    val wordEnd = wordStart + wordDur
-                    accumulatedTime += wordDur
-                    Triple(word, wordStart, wordEnd)
-                }
+                // Split for LAYOUT only; the (0,0) timings are unused — the whole line is highlighted
+                // together via wholeLineProgress in the render loop, never a fabricated sweep.
+                words.map { word -> Triple(word, 0L, 0L) }
             }
         }
     }
@@ -149,6 +147,15 @@ fun echomusicLyricsLine(
         targetValue = if (isActive) 1.05f else 1f,
         animationSpec = tween(durationMillis = 400),
         label = "lineScale"
+    )
+
+    // Used when the entry has NO real per-word timings: the whole line fills together on activation
+    // (no fabricated left-to-right sweep). A short tween gives a soft "the line lights up" feel and
+    // drives every word's gradient progress uniformly in that case.
+    val wholeLineProgress by animateFloatAsState(
+        targetValue = if (isActive) 1f else 0f,
+        animationSpec = tween(durationMillis = 350),
+        label = "wholeLineFill"
     )
 
     val itemModifier = modifier
@@ -227,7 +234,15 @@ fun echomusicLyricsLine(
                     else -> ((lineRelTime - startRelative).toFloat() / wordDuration).coerceIn(0f, 1f)
                 }
                 // smoothstep for a softer intra-word edge (still on the live value — no temporal lag).
-                val progress = rawProgress * rawProgress * (3f - 2f * rawProgress)
+                // FIX #3: with no real per-word timings, ignore the fabricated sweep and light the WHOLE
+                // line together (animated on activation) via wholeLineProgress instead of a fake wipe.
+                val progress = if (hasRealWordTimings) {
+                    rawProgress * rawProgress * (3f - 2f * rawProgress)
+                } else {
+                    wholeLineProgress
+                }
+                // Whether THIS word (and its trailing space) is fully lit — coherent for both modes.
+                val wordFilled = if (hasRealWordTimings) lineRelTime >= endRelative else wholeLineProgress >= 0.99f
 
                 val finalFontWeight = if (isActive) FontWeight.ExtraBold else FontWeight.Bold
 
@@ -259,10 +274,10 @@ fun echomusicLyricsLine(
                     Text(
                         text = " ",
                         fontSize = textSize.sp,
-                        color = textColor.copy(alpha = if (lineRelTime >= endRelative) 1f else 0.45f), 
+                        color = textColor.copy(alpha = if (wordFilled) 1f else 0.45f),
                         lineHeight = (textSize * lineSpacing.coerceAtMost(1.3f)).sp,
                         style = TextStyle(
-                            shadow = if (lineRelTime >= endRelative) {
+                            shadow = if (wordFilled) {
                                 androidx.compose.ui.graphics.Shadow(
                                     color = textColor.copy(alpha = 0.3f),
                                     offset = Offset.Zero,

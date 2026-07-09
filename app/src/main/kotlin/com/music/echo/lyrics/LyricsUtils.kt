@@ -562,7 +562,11 @@ object LyricsUtils {
         position: Long,
     ): Int {
         for (index in lines.indices) {
-            if (lines[index].time >= position + 300L) {
+            // Coherence fix: no look-ahead. The intra-line word fill (EchoMusicLyrics) starts at
+            // (position - entry.time) with NO look-ahead, so a +300ms line look-ahead lit the line
+            // ~300ms before any word could fill — an empty highlight. Switch the active line exactly
+            // when the word fill begins by comparing against the raw position.
+            if (lines[index].time >= position) {
                 return index - 1
             }
         }
