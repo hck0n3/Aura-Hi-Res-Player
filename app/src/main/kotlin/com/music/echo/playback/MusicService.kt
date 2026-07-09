@@ -2666,6 +2666,11 @@ class MusicService :
                 if (nid != null) prebuildNextVideoItem(nextIdx, nid)
             }
         }
+        // AUDIO→VIDEO toggle speed: when video mode is OFF (this fires on the initial track of a queue and on
+        // every track change), proactively pre-resolve THIS track's video URL into videoUrlCache in the
+        // background so a subsequent on-demand toggle swaps near-instantly (cache hit, no network wait). Fully
+        // self-gated + fire-and-forget on IO; a no-op that never affects audio when video was never used.
+        prefetchCurrentVideoUrl()
 
         // B5: remember what we've played this shuffle session (consumed by applyShuffleOrder to avoid repeats).
         if (player.shuffleModeEnabled) {
@@ -3935,6 +3940,53 @@ class MusicService :
                 }
             } finally {
                 prebuildingIds.remove(nextId)
+            }
+        }
+    }
+
+    /**
+     * AUDIO→VIDEO TOGGLE LATENCY FIX. Proactively resolve the CURRENT (audio) track's video URL into
+     * [videoUrlCache] in the BACKGROUND so that when the user later flips the on-demand video toggle,
+     * [applyVideoToCurrent] hits the cache (line ~3783) and goes straight to [swapToVideo] with NO synchronous
+     * network round-trip (cipher / PoToken / format selection via [YTPlayerUtils.videoStreamUrlDiag] — the
+     * dominant, avoidable cost). The perceived toggle latency then drops to just the media3 buffer fill.
+     *
+     * Fire-and-forget on [Dispatchers.IO]; the ONLY main-thread work is the cheap gate reads below, and it
+     * NEVER touches the player/audio graph — a failed resolve is swallowed and the toggle still falls back to
+     * the live resolve exactly as today. Gated to avoid the documented rate-limit risk (resolving video for
+     * every track once hammered YouTube and stalled audio — see onMediaItemTransition prebuild note):
+     *   - video mode currently OFF (a toggle-to-video is only possible from audio; when ON the swap already ran),
+     *   - the user has used video at least once THIS session ([userHasUsedVideo], in-memory, resets per process)
+     *     → no wasted resolutions for users who never open video,
+     *   - a genuine YouTube VIDEO song (isVideoSong == true; skips local / http-podcast / audio-only ids).
+     * Idempotent: no-op if a fresh URL is already cached or a resolve for this id is already in flight
+     * (shared [prebuildingIds], keyed by a distinct id from the next-item prebuild so they never collide).
+     */
+    private fun prefetchCurrentVideoUrl() {
+        if (_videoMode.value || !userHasUsedVideo) return
+        val id = player.currentMediaItem?.mediaId ?: return
+        if (id.isEmpty() || id.isLocalMediaId() || id.startsWith("http", ignoreCase = true)) return
+        if (player.currentMetadata?.isVideoSong != true) return
+        // Already resolved and still fresh → the toggle is already instant; nothing to do.
+        val cached = videoUrlCache[id]?.takeIf { it.second > System.currentTimeMillis() }?.first
+        if (!cached.isNullOrEmpty()) return
+        if (!prebuildingIds.add(id)) return // a resolve for this id is already in flight (dedupe)
+        scope.launch(Dispatchers.IO) {
+            try {
+                val maxH = videoModeMaxHeight
+                var url = runCatching { YTPlayerUtils.videoStreamUrl(id, connectivityManager, maxH) }.getOrNull()
+                // TV robustness: if 1080p came back empty, fall back to the default resolution (matches
+                // applyVideoToCurrent / prebuildNextVideoItem) so the pre-resolved URL is never black-screened.
+                if (url.isNullOrEmpty() && maxH != null) {
+                    url = runCatching { YTPlayerUtils.videoStreamUrl(id, connectivityManager, null) }.getOrNull()
+                }
+                val resolved = url
+                // Same TTL as the on-demand resolve → applyVideoToCurrent's cache read accepts it as fresh.
+                if (!resolved.isNullOrEmpty()) {
+                    videoUrlCache[id] = resolved to (System.currentTimeMillis() + 5 * 60 * 1000L)
+                }
+            } finally {
+                prebuildingIds.remove(id)
             }
         }
     }
