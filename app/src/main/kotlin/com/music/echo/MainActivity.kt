@@ -292,6 +292,10 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    // Tracks whether serviceConnection is currently registered, so we never double-unbind
+    // (double unbindService with the same connection throws IllegalArgumentException).
+    private var isServiceBound = false
+
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
             if (service is MusicBinder) {
@@ -341,10 +345,14 @@ class MainActivity : ComponentActivity() {
             serviceConnection,
             BIND_AUTO_CREATE
         )
+        isServiceBound = true
     }
 
     override fun onStop() {
-        unbindService(serviceConnection)
+        if (isServiceBound) {
+            runCatching { unbindService(serviceConnection) }
+            isServiceBound = false
+        }
         super.onStop()
     }
 
@@ -357,7 +365,10 @@ class MainActivity : ComponentActivity() {
             isFinishing
         ) {
             stopService(Intent(this, MusicService::class.java))
-            unbindService(serviceConnection)
+            if (isServiceBound) {
+                runCatching { unbindService(serviceConnection) }
+                isServiceBound = false
+            }
             playerConnection = null
         }
     }
@@ -666,8 +677,8 @@ class MainActivity : ComponentActivity() {
                 }
                 val tabOpenedFromShortcut = remember {
                     when (intent?.action) {
-                        ACTION_SEARCH -> NavigationTab.LIBRARY
-                        ACTION_LIBRARY -> NavigationTab.SEARCH
+                        ACTION_SEARCH -> NavigationTab.SEARCH
+                        ACTION_LIBRARY -> NavigationTab.LIBRARY
                         else -> null
                     }
                 }

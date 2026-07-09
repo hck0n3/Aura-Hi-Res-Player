@@ -18,7 +18,6 @@ import iad1tya.echo.music.R
 import iad1tya.echo.music.db.entities.PlaylistEntity
 import iad1tya.echo.music.ui.component.TextFieldDialog
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 
 @Composable
@@ -47,10 +46,18 @@ fun ImportPlaylistDialog(
                 val newPlaylist = PlaylistEntity(
                     name = finalName
                 )
-                database.query { insert(newPlaylist) }
 
                 coroutineScope.launch(Dispatchers.IO) {
-                    val playlist = database.playlist(newPlaylist.id).firstOrNull()
+                    // Create/commit the playlist row FIRST, on this same thread, so the
+                    // read-back below is guaranteed to observe it (deterministic happens-before).
+                    // Previously the insert was fired via database.query{} on Room's async
+                    // queryExecutor while a separate coroutine read the row through a Flow's
+                    // first emission — with no ordering, the SELECT could snapshot before the
+                    // INSERT committed, silently producing an empty imported playlist.
+                    database.insert(newPlaylist)
+
+                    // Suspend read-back after the synchronous insert has completed.
+                    val playlist = database.getPlaylistById(newPlaylist.id)
 
                     if (playlist != null) {
                         songIds = onGetSong()

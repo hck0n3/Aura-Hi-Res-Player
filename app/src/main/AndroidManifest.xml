@@ -10,6 +10,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <!-- Music Recognizer widget runs its recognition capture as a microphone foreground service (API 34+). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <!-- Lets the user exempt the app from battery optimization so aggressive OEM skins (MIUI/HyperOS,
          etc.) stop freezing/killing the playback service and Android Auto can always bind to it. -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
@@ -258,6 +260,12 @@
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
+        <!-- Music Recognizer widget: captures audio for recognition as a microphone foreground service. -->
+        <service
+            android:name=".widget.MusicRecognizerWidgetService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
+
         <!-- Quick Settings tile to start music recognition (Shazam) without opening the app. -->
         <service
             android:name=".widget.RecognitionTileService"
@@ -359,6 +367,22 @@
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/playlist_widget_info" />
+        </receiver>
+
+        <!-- Music Recognizer Widget -->
+        <receiver
+            android:name=".widget.MusicRecognizerWidgetReceiver"
+            android:exported="true"
+            android:label="@string/recognition">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="iad1tya.echo.music.widget.recognizer.TAP_MIC" />
+                <action android:name="iad1tya.echo.music.widget.recognizer.UPDATE" />
+                <action android:name="iad1tya.echo.music.widget.recognizer.RESET" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/recognizer_widget_info" />
         </receiver>
 
         <!-- Turntable Widget -->

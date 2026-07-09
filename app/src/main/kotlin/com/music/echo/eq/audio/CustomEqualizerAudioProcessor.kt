@@ -19,9 +19,18 @@ private const val EQ_LIMITER_HEADROOM_MARGIN_DB = 1.5
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 class CustomEqualizerAudioProcessor(private val licenseKey: String = "akloSTZUT1k4N2ZGeGE5N2RhOGU3OWYyOGU4M2RkMGQxOGNmNjA4MDA5MjcwMjNlM2NjNzJoT0R4OGtwem1OamRtSGpFaHFG") : BaseAudioProcessor() {
 
+    /**
+     * True only if the native "superpowered-bridge" library loaded successfully. If it failed to load,
+     * every `external` JNI method below would throw UnsatisfiedLinkError when called. We must NOT call any
+     * of them in that case; instead the processor degrades to a transparent bypass (queueInput passes audio
+     * through unmodified) rather than crashing playback.
+     */
+    private var nativeLibLoaded = false
+
     init {
         try {
             System.loadLibrary("superpowered-bridge")
+            nativeLibLoaded = true
         } catch (e: UnsatisfiedLinkError) {
             e.printStackTrace()
         }
@@ -107,9 +116,18 @@ class CustomEqualizerAudioProcessor(private val licenseKey: String = "akloSTZUT1
             throw UnhandledAudioFormatException(inputAudioFormat)
         }
         
-        // Re-initialize if pointer was lost or not created
-        if (nativePtr == 0L) {
-            nativePtr = initSuperpowered(licenseKey, inputAudioFormat.sampleRate)
+        // Re-initialize if pointer was lost or not created. Only touch the native side if the bridge library
+        // actually loaded — otherwise initSuperpowered (an external/JNI call) throws an uncaught
+        // UnsatisfiedLinkError and crashes playback. When it didn't load we leave nativePtr = 0L /
+        // isInitialized = false so queueInput's else-branch passes audio through unmodified (bypass).
+        if (nativeLibLoaded && nativePtr == 0L) {
+            try {
+                nativePtr = initSuperpowered(licenseKey, inputAudioFormat.sampleRate)
+            } catch (e: UnsatisfiedLinkError) {
+                // Defensive: should not happen once nativeLibLoaded is true, but never let it crash playback.
+                e.printStackTrace()
+                nativePtr = 0L
+            }
         }
         isInitialized = nativePtr != 0L
 

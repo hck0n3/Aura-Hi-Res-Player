@@ -31,7 +31,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyHorizontalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
@@ -188,9 +188,18 @@ private fun getMediaItems(
 
     val items = listOfNotNull(previousMediaItem, currentMediaItem, nextMediaItem)
     val currentMediaIndex = items.indexOf(currentMediaItem)
-    
+
     return MediaItemsData(items, currentMediaIndex)
 }
+
+
+// The queue window is a fixed [prev, current, next] slice, so two adjacent slots can hold the SAME song
+// (e.g. a song queued twice in a row). Keying LazyHorizontalGrid items by mediaId alone then yields a
+// duplicate key and Compose crashes ("Key ... was already used"). Folding the (stable) window index into
+// the key guarantees uniqueness while staying stable across recompositions.
+@Stable
+private fun thumbnailItemKey(index: Int, item: MediaItem): String =
+    "${index}_${item.mediaId.ifEmpty { "unknown_${item.hashCode()}" }}"
 
 
 @Stable
@@ -487,14 +496,13 @@ fun Thumbnail(
                             Modifier.fillMaxSize()
                         }
                     ) {
-                        items(
+                        itemsIndexed(
                             items = mediaItems,
-                            key = { item -> 
-                                item.mediaId.ifEmpty { "unknown_${item.hashCode()}" }
-                            }
-                        ) { item ->
+                            key = { index, item -> thumbnailItemKey(index, item) }
+                        ) { index, item ->
                             ThumbnailItem(
                                 item = item,
+                                itemKey = thumbnailItemKey(index, item),
                                 dimensions = dimensions,
                                 hidePlayerThumbnail = hidePlayerThumbnail,
                                 cropAlbumArt = cropAlbumArt,
@@ -606,6 +614,7 @@ private fun ThumbnailHeader(
 @Composable
 private fun ThumbnailItem(
     item: MediaItem,
+    itemKey: Any,
     dimensions: ThumbnailDimensions,
     hidePlayerThumbnail: Boolean,
     cropAlbumArt: Boolean,
@@ -665,7 +674,6 @@ private fun ThumbnailItem(
                 // crossfades. Gated OFF in perf mode (highPerfMode) to keep the instant, no-transform path.
                 if (!highPerfMode) {
                     val layoutInfo = lazyGridState.layoutInfo
-                    val itemKey = item.mediaId.ifEmpty { "unknown_${item.hashCode()}" }
                     val visibleItem = layoutInfo.visibleItemsInfo.find { it.key == itemKey }
                     if (visibleItem != null) {
                         val center = layoutInfo.viewportEndOffset / 2f

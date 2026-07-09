@@ -689,10 +689,15 @@ class SpotifyImportRepository @Inject constructor(
             val page = spotifyCallWithTokenRetry {
                 Spotify.myArtists(limit = limit, offset = offset).getOrThrow()
             }
-            if (page.items.isEmpty()) break
+            // Terminate/advance on the RAW page size, never the post-filter list:
+            // myArtists drops foreign-typed / unparseable rows, so a full 50-row page
+            // can parse to <50 artists and would otherwise look "short", cutting
+            // pagination off early and dropping every later artist. Same fix as
+            // fetchAllPlaylists / fetchAllTracks.
+            if (page.rawCount == 0) break
             artists += page.items.filter { it.name.isNotBlank() }
-            offset += page.items.size
-            if (offset >= page.total || page.items.size < limit) break
+            offset += page.rawCount
+            if (offset >= page.total || page.rawCount < limit) break
         }
 
         return artists
@@ -856,10 +861,15 @@ class SpotifyImportRepository @Inject constructor(
             val page = spotifyCallWithTokenRetry {
                 Spotify.mySavedAlbums(limit = limit, offset = offset).getOrThrow()
             }
-            if (page.items.isEmpty()) break
+            // Terminate/advance on the RAW page size, never the post-filter list:
+            // mySavedAlbums drops foreign-typed / unparseable rows, so a full 50-row
+            // page can parse to <50 albums and would otherwise look "short", cutting
+            // pagination off early and dropping every later album. Same fix as
+            // fetchAllPlaylists / fetchAllTracks.
+            if (page.rawCount == 0) break
             albums += page.items.filter { it.name.isNotBlank() }
-            offset += page.items.size
-            if (offset >= page.total || page.items.size < limit) break
+            offset += page.rawCount
+            if (offset >= page.total || page.rawCount < limit) break
         }
         return albums
     }

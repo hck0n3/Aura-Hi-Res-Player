@@ -729,8 +729,14 @@ object Spotify {
             val totalCount = libraryData.int("totalCount") ?: 0
             val pagingInfo = libraryData.obj("pagingInfo")
 
+            // RAW page as Spotify sent it, BEFORE the __typename/data filter below.
+            // Pagination must advance/terminate on this raw size, never the filtered
+            // list, or a page that drops a foreign-typed row looks "short" and
+            // truncates the import (mirrors myPlaylists / SpotifyTrackPage.rawCount).
+            val rawItems = libraryData.arr("items").orEmpty()
+
             val artists =
-                libraryData.arr("items")?.mapNotNull { itemElem ->
+                rawItems.mapNotNull { itemElem ->
                     val wrapper = itemElem.jsonObject.obj("item") ?: return@mapNotNull null
                     val typeName = wrapper.str("__typename") ?: ""
                     if (!typeName.contains("Artist", ignoreCase = true)) return@mapNotNull null
@@ -753,10 +759,11 @@ object Spotify {
                         images = images,
                         uri = artistUri,
                     )
-                } ?: emptyList()
+                }
 
             SpotifyPaging(
                 items = artists,
+                rawCount = rawItems.size,
                 total = totalCount,
                 limit = pagingInfo?.int("limit") ?: limit,
                 offset = pagingInfo?.int("offset") ?: offset,
@@ -798,8 +805,14 @@ object Spotify {
             val totalCount = libraryData.int("totalCount") ?: 0
             val pagingInfo = libraryData.obj("pagingInfo")
 
+            // RAW page as Spotify sent it, BEFORE the __typename/data filter below.
+            // Pagination must advance/terminate on this raw size, never the filtered
+            // list, or a page that drops a foreign-typed row looks "short" and
+            // truncates the import (mirrors myPlaylists / SpotifyTrackPage.rawCount).
+            val rawItems = libraryData.arr("items").orEmpty()
+
             val albums =
-                libraryData.arr("items")?.mapNotNull { itemElem ->
+                rawItems.mapNotNull { itemElem ->
                     val wrapper = itemElem.jsonObject.obj("item") ?: return@mapNotNull null
                     val typeName = wrapper.str("__typename") ?: ""
                     if (!typeName.contains("Album", ignoreCase = true)) return@mapNotNull null
@@ -825,10 +838,11 @@ object Spotify {
                         images = images,
                         uri = albumUri,
                     )
-                } ?: emptyList()
+                }
 
             SpotifyPaging(
                 items = albums,
+                rawCount = rawItems.size,
                 total = totalCount,
                 limit = pagingInfo?.int("limit") ?: limit,
                 offset = pagingInfo?.int("offset") ?: offset,
