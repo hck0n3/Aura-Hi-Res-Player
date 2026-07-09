@@ -49,8 +49,11 @@ class ListenTogetherManager @Inject constructor(
         
         private const val POSITION_TOLERANCE_MS = 2000L
         
-        
+
         private const val PLAYBACK_POSITION_TOLERANCE_MS = 3000L
+
+
+        private const val BUFFER_WAIT_TIMEOUT_MS = 8000L
     }
 
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
@@ -62,6 +65,7 @@ class ListenTogetherManager @Inject constructor(
     
     private var playerConnection: PlayerConnection? = null
     private var eventCollectorJob: Job? = null
+    private var roleCollectorJob: Job? = null
     private var queueObserverJob: Job? = null
     private var volumeObserverJob: Job? = null
     private var playerListenerRegistered = false
@@ -323,6 +327,8 @@ class ListenTogetherManager @Inject constructor(
     }
 
     private fun observePreferences() {
+
+
         scope.launch {
             context.dataStore.data
                 .map { it[ListenTogetherSyncVolumeKey] ?: true }
@@ -330,7 +336,9 @@ class ListenTogetherManager @Inject constructor(
                 .collect { enabled ->
                     syncHostVolumeEnabled.value = enabled
                 }
+        }
 
+        scope.launch {
             context.dataStore.data
                 .map { it[ListenTogetherSmartResyncKey] ?: true }
                 .distinctUntilChanged()
@@ -354,9 +362,10 @@ class ListenTogetherManager @Inject constructor(
                 }
             }
         }
-        
-        
-        scope.launch {
+
+
+        roleCollectorJob?.cancel()
+        roleCollectorJob = scope.launch {
             role.collect { newRole ->
                 try {
                     val previousRole = lastRole
@@ -1265,7 +1274,7 @@ class ListenTogetherManager @Inject constructor(
                     bufferingTrackId = null
                     bufferCompleteReceivedForTrack = null
                 } else {
-                    
+
                     connection.pause()
                     pendingSyncState = SyncStatePayload(
                         currentTrack = currentTrack,
@@ -1275,6 +1284,29 @@ class ListenTogetherManager @Inject constructor(
                     )
                     applyPendingSyncIfReady()
                     client.sendBufferReady(currentTrack.id)
+
+
+
+                    val watchdogTrackId = currentTrack.id
+                    scope.launch {
+                        delay(BUFFER_WAIT_TIMEOUT_MS)
+
+                        if (currentTrackGeneration != generation) return@launch
+
+
+                        if (bufferingTrackId != watchdogTrackId) return@launch
+
+                        Timber.tag(TAG).w("BufferComplete never arrived for $watchdogTrackId after ${BUFFER_WAIT_TIMEOUT_MS}ms - forcing recovery")
+
+                        bufferCompleteReceivedForTrack = watchdogTrackId
+                        applyPendingSyncIfReady()
+
+
+                        if (bufferingTrackId == watchdogTrackId) {
+                            Timber.tag(TAG).w("Recovery apply did not resolve buffer wait for $watchdogTrackId - requesting fresh sync")
+                            requestSync()
+                        }
+                    }
                 }
                 
             } catch (e: Exception) {

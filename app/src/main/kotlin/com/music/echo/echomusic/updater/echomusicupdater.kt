@@ -34,6 +34,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -50,6 +51,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.graphics.Color
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import androidx.lifecycle.Observer
 import androidx.navigation.NavHostController
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
@@ -144,38 +146,46 @@ fun UpdateScreen(navController: NavHostController) {
     }
 
     
-    LaunchedEffect(Unit) {
-        WorkManager.getInstance(context)
+    // Observe the download WorkInfo with an observer that is explicitly removed when this
+    // composable leaves composition. Using observeForever inside a LaunchedEffect would leak
+    // the observer (and duplicate it on every screen re-entry), since observeForever is not
+    // tied to the composition/coroutine lifecycle. DisposableEffect guarantees cleanup.
+    DisposableEffect(Unit) {
+        val liveData = WorkManager.getInstance(context)
             .getWorkInfosForUniqueWorkLiveData("update_download")
-            .observeForever { workInfos ->
-                val workInfo = workInfos?.firstOrNull() ?: return@observeForever
+        val observer = Observer<List<WorkInfo>> { workInfos ->
+            val workInfo = workInfos?.firstOrNull() ?: return@Observer
 
-                when (workInfo.state) {
-                    WorkInfo.State.RUNNING -> {
-                        isDownloading = true
-                        downloadProgress = workInfo.progress.getFloat("progress", 0f)
-                    }
-                    WorkInfo.State.SUCCEEDED -> {
-                        isDownloading = false
-                        isDownloadComplete = true
-                        val filePath = workInfo.outputData.getString("file_path")
-                        if (filePath != null) {
-                            downloadedFile = File(filePath)
-                        }
-                    }
-                    WorkInfo.State.FAILED -> {
-                        isDownloading = false
-                        scope.launch {
-                            snackbarHostState.showSnackbar(context.getString(R.string.download_failed))
-                        }
-                    }
-                    WorkInfo.State.CANCELLED -> {
-                        isDownloading = false
-                        downloadProgress = 0f
-                    }
-                    else -> {}
+            when (workInfo.state) {
+                WorkInfo.State.RUNNING -> {
+                    isDownloading = true
+                    downloadProgress = workInfo.progress.getFloat("progress", 0f)
                 }
+                WorkInfo.State.SUCCEEDED -> {
+                    isDownloading = false
+                    isDownloadComplete = true
+                    val filePath = workInfo.outputData.getString("file_path")
+                    if (filePath != null) {
+                        downloadedFile = File(filePath)
+                    }
+                }
+                WorkInfo.State.FAILED -> {
+                    isDownloading = false
+                    scope.launch {
+                        snackbarHostState.showSnackbar(context.getString(R.string.download_failed))
+                    }
+                }
+                WorkInfo.State.CANCELLED -> {
+                    isDownloading = false
+                    downloadProgress = 0f
+                }
+                else -> {}
             }
+        }
+        liveData.observeForever(observer)
+        onDispose {
+            liveData.removeObserver(observer)
+        }
     }
 
     

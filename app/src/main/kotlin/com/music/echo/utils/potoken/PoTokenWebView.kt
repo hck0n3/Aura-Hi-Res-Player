@@ -309,9 +309,14 @@ class PoTokenWebView private constructor(
     }
 
     private fun popAllPoTokenContinuations(): Map<String, Continuation<String>> {
-        val result = poTokenContinuations.toMap()
-        poTokenContinuations.clear()
-        return result
+        // Collections.synchronizedMap requires the caller to hold the map's monitor while
+        // iterating it (toMap() walks entrySet). Holding it here also makes the copy-then-clear
+        // atomic, so no emitter added concurrently is silently dropped.
+        return synchronized(poTokenContinuations) {
+            val result = HashMap(poTokenContinuations)
+            poTokenContinuations.clear()
+            result
+        }
     }
     //endregion
 

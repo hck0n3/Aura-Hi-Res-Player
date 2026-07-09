@@ -163,12 +163,18 @@ object CipherDeobfuscator {
      * IMPORTANT: This must be called for WEB_REMIX, WEB, WEB_CREATOR, TVHTML5 clients
      * and for privately owned tracks (uploaded songs).
      */
-    suspend fun transformNParamInUrl(url: String): String {
+    suspend fun transformNParamInUrl(url: String): String = deobfuscateMutex.withLock {
         Timber.tag(TAG).d("=== N-TRANSFORM URL ===")
         Timber.tag(TAG).d("Input URL length: ${url.length}")
         Timber.tag(TAG).d("Input URL preview: ${url.take(100)}...")
 
-        return try {
+        // Serialize the n-transform through the SAME mutex as deobfuscateStreamUrl: both drive the
+        // single long-lived CipherWebView with one shared continuation. Without this lock, concurrent
+        // n-transforms (e.g. download-while-playing) overwrite the WebView's continuation and the
+        // unlocked closeWebView could tear down the WebView the sig path is awaiting. Per-eval calls
+        // are sub-second, so serializing is acceptable. transformNInternal/onTimeout/onRendererGone do
+        // NOT take this mutex, so there is no re-entrant double-lock here.
+        try {
             transformNInternal(url)
         } catch (e: CancellationException) {
             throw e

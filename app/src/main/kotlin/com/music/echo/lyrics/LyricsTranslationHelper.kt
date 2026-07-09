@@ -52,10 +52,11 @@ object LyricsTranslationHelper {
     val translationSaved: SharedFlow<Unit> = _translationSaved.asSharedFlow()
 
     private var translationJob: Job? = null
+    @Volatile
     private var isCompositionActive = true
 
-    
-    private val translationCache = mutableMapOf<String, List<String>>()
+
+    private val translationCache = java.util.concurrent.ConcurrentHashMap<String, List<String>>()
 
     private fun getCacheKey(lyricsText: String, mode: String, language: String): String =
         "${lyricsText.hashCode()}_${mode}_$language"

@@ -462,6 +462,18 @@ class MusicService :
     @Volatile private var safeVolumeEnabledHint: Boolean = false
     @Volatile private var audioOffloadHint: Boolean = false
 
+    // P33 — the player-thread callbacks onMediaItemTransition/onPlaybackStatsReady used to call dataStore.get(),
+    // which is a runBlocking disk-backed flow read, several times per track transition ON THE MAIN/APPLICATION
+    // (ExoPlayer) thread — a blocking-I/O-on-main anti-pattern (jank risk). Mirror those prefs into memory via the
+    // single collector in onCreate (same pattern as normalizationEnabledHint/audioOffloadHint) and read the fields
+    // in the hot paths instead. Initial values equal the DataStore defaults, so behaviour is unchanged.
+    @Volatile private var autoLoadMoreHint: Boolean = true
+    @Volatile private var disableLoadMoreWhenRepeatAllHint: Boolean = false
+    @Volatile private var keepGenreLaneHint: Boolean = true
+    @Volatile private var persistentQueueHint: Boolean = true
+    @Volatile private var historyDurationMsHint: Float = 30000f
+    @Volatile private var pauseListenHistoryHint: Boolean = false
+
     // SponsorBlock: skip non-music segments (opt-in). Manager holds the current track's segments; the watcher
     // job polls position once a second while enabled and seeks past any segment the playhead enters.
     private val sponsorBlock = iad1tya.echo.music.playback.sponsorblock.SponsorBlockManager()
@@ -551,7 +563,10 @@ class MusicService :
         get() = playbackState.videoModeIsMuxedPodcast
         set(value) { playbackState.videoModeIsMuxedPodcast = value }
 
-    private val videoUrlCache = HashMap<String, Pair<String, Long>>()
+    // ConcurrentHashMap: read/written from both Main (applyVideoToCurrent, onPlayerError) and Dispatchers.IO
+    // (prebuildNextVideoItem resolves + writes before its withContext(Main)). Those windows overlap on a real
+    // cross-thread data race, so mirror the songUrlCache/loudnessHintCache/videoModeItems convention in this file.
+    private val videoUrlCache = java.util.concurrent.ConcurrentHashMap<String, Pair<String, Long>>()
 
     // Best VIDEO-ONLY height to request for video mode. On Android TV (big screen, detected server-side via
     // UiModeManager in DeviceForm.isTelevision) we ask for true 1080p Full HD — an adaptive video-only stream
@@ -1102,6 +1117,20 @@ class MusicService :
              audioOffloadHint = useOffload
              player.setOffloadEnabled(useOffload)
              secondaryPlayer?.setOffloadEnabled(useOffload)
+        }
+
+        // P33 — keep the memory mirrors for the player-thread hot paths (onMediaItemTransition /
+        // onPlaybackStatsReady) in sync, so those callbacks read a @Volatile field instead of a blocking
+        // runBlocking DataStore read on the main thread. Same defaults as the original dataStore.get calls.
+        scope.launch {
+            dataStore.data.collect { prefs ->
+                autoLoadMoreHint = prefs[AutoLoadMoreKey] ?: true
+                disableLoadMoreWhenRepeatAllHint = prefs[DisableLoadMoreWhenRepeatAllKey] ?: false
+                keepGenreLaneHint = prefs[KeepGenreLaneKey] ?: true
+                persistentQueueHint = prefs[PersistentQueueKey] ?: true
+                historyDurationMsHint = (prefs[HistoryDuration]?.times(1000f)) ?: 30000f
+                pauseListenHistoryHint = prefs[PauseListenHistoryKey] ?: false
+            }
         }
 
 
@@ -2684,11 +2713,11 @@ class MusicService :
         }
 
         
-        if (dataStore.get(AutoLoadMoreKey, true) &&
+        if (autoLoadMoreHint &&
             reason != Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT &&
             player.mediaItemCount - player.currentMediaItemIndex <= 5 &&
             currentQueue.hasNextPage() &&
-            !(dataStore.get(DisableLoadMoreWhenRepeatAllKey, false) && player.repeatMode == REPEAT_MODE_ALL)
+            !(disableLoadMoreWhenRepeatAllHint && player.repeatMode == REPEAT_MODE_ALL)
         ) {
             // Captured on the player thread: the lane of what's currently playing, so autoplay can
             // stay in the same style instead of drifting (e.g. Christian -> secular).
@@ -2696,7 +2725,7 @@ class MusicService :
             val currentLaneText = listOfNotNull(
                 curItem?.mediaMetadata?.title, curItem?.mediaMetadata?.artist, curItem?.mediaMetadata?.albumTitle,
             ).joinToString(" ")
-            val keepLane = dataStore.get(KeepGenreLaneKey, true)
+            val keepLane = keepGenreLaneHint
             scope.launch(SilentHandler) {
                 val disliked = runCatching { dislikeStore.snapshot() }.getOrDefault(iad1tya.echo.music.dislike.DislikeStore.Disliked())
                 val currentLane = if (keepLane) iad1tya.echo.music.reco.GenreLane.laneOf(currentLaneText) else null
@@ -2746,20 +2775,20 @@ class MusicService :
         // Still guarded: only the very last item to PLAY (shuffle/repeat-aware, so the list is never truncated),
         // only while actually playing, never twice for the same end (radioSeedInFlight), and skipped while the
         // first block already handles continuation (next page).
-        if (dataStore.get(AutoLoadMoreKey, true) &&
+        if (autoLoadMoreHint &&
             reason != Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT &&
             player.playWhenReady &&
             !radioSeedInFlight &&
             !currentQueue.hasNextPage() &&
             player.mediaItemCount > 0 &&
             !player.hasNextMediaItem() &&  // shuffle/repeat-aware "on the last item to PLAY" (not a raw timeline index)
-            !(dataStore.get(DisableLoadMoreWhenRepeatAllKey, false) && player.repeatMode == REPEAT_MODE_ALL)
+            !(disableLoadMoreWhenRepeatAllHint && player.repeatMode == REPEAT_MODE_ALL)
         ) {
             startRadioSeamlessly()
         }
 
 
-        if (dataStore.get(PersistentQueueKey, true)) {
+        if (persistentQueueHint) {
             saveQueueToDisk()
         }
     }
@@ -4235,10 +4264,10 @@ class MusicService :
         playbackStats: PlaybackStats,
     ) {
         val mediaItem = eventTime.timeline.getWindow(eventTime.windowIndex, Timeline.Window()).mediaItem
-        val historyDurationMs = dataStore[HistoryDuration]?.times(1000f) ?: 30000f
+        val historyDurationMs = historyDurationMsHint
 
         if (playbackStats.totalPlayTimeMs >= historyDurationMs &&
-            !dataStore.get(PauseListenHistoryKey, false)
+            !pauseListenHistoryHint
         ) {
             database.query {
                 incrementTotalPlayTime(mediaItem.mediaId, playbackStats.totalPlayTimeMs)

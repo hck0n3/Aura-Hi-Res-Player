@@ -13,6 +13,8 @@ import iad1tya.echo.music.utils.cipher.PlayerJsFetcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import timber.log.Timber
@@ -27,7 +29,14 @@ object EjsNTransformSolver {
 
     private var solverWebView: SolverWebView? = null
 
-    
+    // Serializes solver creation AND every n-transform. Two things are unsafe to run concurrently on
+    // the shared singleton: (1) getOrCreateSolver has a check-then-act split by a suspension point
+    // (PlayerJsFetcher.getPlayerJs), so unguarded concurrent callers each build a SolverWebView and
+    // leak the loser; (2) SolverWebView has a single nContinuation field, so a second in-flight
+    // transformN would clobber the first's continuation and orphan a coroutine. Holding this lock
+    // across the whole resolution body guarantees exactly one solver and one transform at a time.
+    private val solverMutex = Mutex()
+
     suspend fun transformNParamInUrl(url: String): String {
         val nMatch = Regex("[?&]n=([^&]+)").find(url)
         if (nMatch == null) {
@@ -41,34 +50,43 @@ object EjsNTransformSolver {
         // outer timeout/skip unable to interrupt a wedged WebView, so the resolution coroutine could
         // hang forever. Every failure branch below FALLS BACK to the original url (never throws into
         // the caller), so streaming continues on the happy path and degrades gracefully otherwise.
-        val solver = getOrCreateSolver()
-        if (solver == null) {
-            return url
-        }
-
-        if (!solver.nFunctionAvailable) {
-            Timber.tag(TAG).e("EJS n-solver not available")
-            return url
-        }
-
-        return try {
-            val transformed = solver.transformN(nValue)
-            if (transformed == null) {
-                // WebView eval never called back within the timeout (wedged/dead renderer).
-                Timber.tag(TAG).e("SABR n-transform timed out; using original url")
-                return url
+        //
+        // The whole body runs under solverMutex so concurrent per-track callers (prefetch + the
+        // crossfade secondary player) can neither race solver creation nor clobber nContinuation.
+        // This is cheap: a per-eval n-transform is sub-second (bounded by EVAL_TIMEOUT_MS), and the
+        // one-time WebView cold start is bounded by CREATE_TIMEOUT_MS.
+        return solverMutex.withLock {
+            val solver = getOrCreateSolver()
+            if (solver == null) {
+                return@withLock url
             }
-            Timber.tag(TAG).d("SABR n-param transformed: $nValue -> $transformed")
-            url.replaceFirst(
-                Regex("([?&])n=[^&]+"),
-                "$1n=${Uri.encode(transformed)}"
-            )
-        } catch (e: Exception) {
-            Timber.tag(TAG).e(e, "SABR n-transform failed: ${e.message}")
-            url
+
+            if (!solver.nFunctionAvailable) {
+                Timber.tag(TAG).e("EJS n-solver not available")
+                return@withLock url
+            }
+
+            try {
+                val transformed = solver.transformN(nValue)
+                if (transformed == null) {
+                    // WebView eval never called back within the timeout (wedged/dead renderer).
+                    Timber.tag(TAG).e("SABR n-transform timed out; using original url")
+                    return@withLock url
+                }
+                Timber.tag(TAG).d("SABR n-param transformed: $nValue -> $transformed")
+                url.replaceFirst(
+                    Regex("([?&])n=[^&]+"),
+                    "$1n=${Uri.encode(transformed)}"
+                )
+            } catch (e: Exception) {
+                Timber.tag(TAG).e(e, "SABR n-transform failed: ${e.message}")
+                url
+            }
         }
     }
 
+    // Callers MUST hold [solverMutex]. The double-check + create below is only safe because the lock
+    // serializes the suspension point at PlayerJsFetcher.getPlayerJs.
     private suspend fun getOrCreateSolver(): SolverWebView? {
         solverWebView?.let { if (!it.isDead) return it }
         // A previously cached solver whose renderer died is unusable; drop it and rebuild.
@@ -99,10 +117,13 @@ object EjsNTransformSolver {
     }
 
     suspend fun close() {
-        withContext(Dispatchers.Main) {
-            solverWebView?.close()
+        // Take the same lock so teardown can't null out solverWebView while a transform is mid-flight.
+        solverMutex.withLock {
+            withContext(Dispatchers.Main) {
+                solverWebView?.close()
+            }
+            solverWebView = null
         }
-        solverWebView = null
     }
 
     class SolverWebView private constructor(
@@ -113,6 +134,11 @@ object EjsNTransformSolver {
         private val webView = WebView(context)
 
         private var initContinuation: Continuation<SolverWebView>? = initContinuation
+
+        // @Volatile is defense-in-depth: the outer solverMutex already guarantees a single in-flight
+        // transform, but this field is set on Main (transformN) and cleared/read from the JavaBridge
+        // thread via takeNContinuation (onNResult/onNError), so publish it safely across threads.
+        @Volatile
         private var nContinuation: Continuation<String>? = null
 
         @Volatile
