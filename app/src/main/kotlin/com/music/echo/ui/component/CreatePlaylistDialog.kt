@@ -106,21 +106,28 @@ fun CreatePlaylistDialog(
                         Switch(
                             checked = syncedPlaylist,
                             onCheckedChange = {
-                                val isYtmSyncEnabled = context.isSyncEnabled()
-                                if (!isSignedIn && !syncedPlaylist) {
-                                    Toast.makeText(
-                                        context,
-                                        context.getString(R.string.not_logged_in_youtube),
-                                        Toast.LENGTH_SHORT
-                                    ).show()
-                                } else if (!isYtmSyncEnabled) {
-                                    Toast.makeText(
-                                        context,
-                                        context.getString(R.string.sync_disabled),
-                                        Toast.LENGTH_SHORT
-                                    ).show()
-                                } else {
-                                    syncedPlaylist = !syncedPlaylist
+                                // isSyncEnabled() does a blocking DataStore read; run it off the main
+                                // thread. The launch body runs on the Compose Main dispatcher, so the
+                                // Toast/state update below stay on Main exactly as before.
+                                coroutineScope.launch {
+                                    val isYtmSyncEnabled = withContext(Dispatchers.IO) {
+                                        context.isSyncEnabled()
+                                    }
+                                    if (!isSignedIn && !syncedPlaylist) {
+                                        Toast.makeText(
+                                            context,
+                                            context.getString(R.string.not_logged_in_youtube),
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                    } else if (!isYtmSyncEnabled) {
+                                        Toast.makeText(
+                                            context,
+                                            context.getString(R.string.sync_disabled),
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                    } else {
+                                        syncedPlaylist = !syncedPlaylist
+                                    }
                                 }
                             }
                         )

@@ -19,7 +19,12 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
 import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.cache.CacheDataSource
+import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
+import androidx.media3.datasource.cache.SimpleCache
+import androidx.media3.database.StandaloneDatabaseProvider
 import androidx.media3.datasource.okhttp.OkHttpDataSource
+import android.content.Context
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
@@ -31,6 +36,30 @@ import java.util.Locale
 import android.view.ViewGroup
 import android.view.TextureView
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
+
+/**
+ * Bounded LRU disk cache dedicated to animated-cover (canvas) videos, keyed by the media URL.
+ *
+ * All tracks of the same album resolve to the SAME animated-cover URL, so without a URL-keyed
+ * disk cache every song in an album re-downloaded the identical video from the network (wasting
+ * mobile data). With this cache a repeated URL is served from disk instead of being re-fetched.
+ *
+ * It lives in [Context.getCacheDir] (OS-evictable) with a 256 MB LRU cap, and is a process-wide
+ * singleton so it never collides with the audio @PlayerCache / @DownloadCache directories.
+ */
+object CanvasVideoCache {
+    private const val MAX_BYTES = 256L * 1024 * 1024 // 256 MB LRU cap
+    @Volatile private var cache: SimpleCache? = null
+
+    @Synchronized
+    fun get(context: Context): SimpleCache {
+        return cache ?: SimpleCache(
+            context.applicationContext.cacheDir.resolve("canvas_video"),
+            LeastRecentlyUsedCacheEvictor(MAX_BYTES),
+            StandaloneDatabaseProvider(context.applicationContext),
+        ).also { cache = it }
+    }
+}
 
 @Composable
 fun CanvasArtworkPlayer(
@@ -99,12 +128,20 @@ fun CanvasArtworkPlayer(
         }
     val mediaSourceFactory =
         remember(okHttpClient) {
-            DefaultMediaSourceFactory(
+            val upstreamFactory =
                 DefaultDataSource.Factory(
                     context,
                     OkHttpDataSource.Factory(okHttpClient),
-                ),
-            )
+                )
+            // Serve a repeated canvas URL (same animated cover across an album) from disk instead
+            // of re-downloading it every song. Cache is keyed by the media URL by default, so a
+            // genuinely different canvas (different URL) still triggers its own download.
+            val cacheDataSourceFactory =
+                CacheDataSource.Factory()
+                    .setCache(CanvasVideoCache.get(context))
+                    .setUpstreamDataSourceFactory(upstreamFactory)
+                    .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+            DefaultMediaSourceFactory(cacheDataSourceFactory)
         }
     val exoPlayer =
         remember(initial) {
