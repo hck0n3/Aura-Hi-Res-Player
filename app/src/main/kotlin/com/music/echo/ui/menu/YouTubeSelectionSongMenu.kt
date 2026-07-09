@@ -120,7 +120,7 @@ fun YouTubeSelectionSongMenu(
 
     AddToPlaylistDialogOnline(
         isVisible = showChoosePlaylistDialog,
-        songs = remember { 
+        songs = remember(songSelection) { 
             songSelection.map { song ->
                 
                 val metadata = song.toMediaMetadata()

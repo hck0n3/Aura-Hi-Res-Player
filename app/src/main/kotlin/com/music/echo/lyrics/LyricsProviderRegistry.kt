@@ -31,13 +31,15 @@ object LyricsProviderRegistry {
 
     fun getDefaultProviderOrder(): List<String> = listOf(
         "YouLyPlus",
-        "Paxsenix",
         "BetterLyrics",
         "SimpMusic",
         "LrcLib",
         "Kugou",
         "YouTubeSubtitle",
         "YouTubeMusic",
+        // Paxsenix last: its public endpoint 403s / rate-limits often, so it is a
+        // last-resort fallback tried only after the reliable providers.
+        "Paxsenix",
     )
 
     fun getOrderedProviders(orderString: String): List<LyricsProvider> =
