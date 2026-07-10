@@ -17,13 +17,16 @@ import com.music.innertube.models.YTItem
 import com.music.innertube.models.getItems
 import com.music.innertube.models.oddElements
 import com.music.innertube.models.splitBySeparator
+import kotlinx.serialization.Serializable
 
+@Serializable
 data class ArtistSection(
     val title: String,
     val items: List<YTItem>,
     val moreEndpoint: BrowseEndpoint?,
 )
 
+@Serializable
 data class ArtistPage(
     val artist: ArtistItem,
     val sections: List<ArtistSection>,
