@@ -115,6 +115,7 @@ fun SuggestedSongsSection(
     modifier: Modifier = Modifier,
 ) {
     val suggestions by viewModel.suggestedSongs.collectAsState()
+    val isRefreshing by viewModel.isRefreshingSuggestions.collectAsState()
     val addedIds = remember { mutableStateListOf<String>() }
 
     if (suggestions.isEmpty()) return
@@ -132,7 +133,10 @@ fun SuggestedSongsSection(
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
             )
-            IconButton(onClick = { viewModel.refreshSuggestions() }) {
+            IconButton(
+                onClick = { viewModel.refreshSuggestions() },
+                enabled = !isRefreshing,
+            ) {
                 Icon(
                     painter = painterResource(R.drawable.refresh),
                     contentDescription = stringResource(R.string.refresh),

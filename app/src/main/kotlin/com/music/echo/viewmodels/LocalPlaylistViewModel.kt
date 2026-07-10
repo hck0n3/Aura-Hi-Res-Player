@@ -45,8 +45,8 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.Collator
-import java.util.Collections
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 
 @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
@@ -123,7 +123,20 @@ constructor(
             .distinctUntilChanged { old, new -> old.toSet() == new.toSet() }
             .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
+    /** Last accepted refresh tap — taps within 800ms of it are ignored (spam guard). */
+    private var lastRefreshTapMs = 0L
+
+    private val _isRefreshingSuggestions = MutableStateFlow(false)
+
+    /** True from an accepted refresh tap until the recomputed batch emits — the refresh button
+     *  disables itself on this so taps can't pile up while a batch is still loading. */
+    val isRefreshingSuggestions: StateFlow<Boolean> = _isRefreshingSuggestions
+
     fun refreshSuggestions() {
+        val now = System.currentTimeMillis()
+        if (now - lastRefreshTapMs < 800) return
+        lastRefreshTapMs = now
+        _isRefreshingSuggestions.value = true
         suggestionsRefresh.value = suggestionsRefresh.value + 1
     }
 
@@ -147,7 +160,10 @@ constructor(
     val sheetSuggestedSongs: StateFlow<List<Song>> =
         combine(playlistSongIds, suggestionsRefresh) { ids, nonce -> ids to nonce }
             .flatMapLatest { (ids, nonce) ->
-                flow { emit(computeSuggestions(ids, limit = 20, seed = nonce)) }
+                flow {
+                    emit(computeSuggestions(ids, limit = 20, seed = nonce))
+                    _isRefreshingSuggestions.value = false
+                }
             }
             .flowOn(Dispatchers.IO)
             .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
@@ -279,14 +295,26 @@ constructor(
         return toAdd.size
     }
 
-    /** Ids surfaced by earlier suggestion batches this session — excluded on refresh so every tap
-     *  yields fresh candidates; cleared once the pool runs dry so suggestions never go empty.
-     *  Only touched from the (serialized) suggestions flow. */
+    /** Ids surfaced by earlier suggestion batches this session — excluded on an EXPLICIT refresh so
+     *  every tap yields fresh candidates; cleared once the pool runs dry so suggestions never go
+     *  empty. Only touched from the (serialized) suggestions flow. */
     private val shownSuggestionIds = mutableSetOf<String>()
 
+    /** Highest refresh nonce whose batch has been applied. Lets [computeSuggestions] tell an explicit
+     *  refresh (nonce bumped → rotate to fresh candidates, record the new batch) apart from an id-set
+     *  recompute (a song was added → keep the visible list stable minus the now-in-playlist songs).
+     *  Starts at -1 so the very first compute (nonce 0) counts as a refresh and records its batch. */
+    private var lastAppliedNonce = -1
+
+    /** Online related-songs memo, one entry per seed id for the ViewModel lifetime — recomputes never
+     *  re-hit the network for a seed already fetched. Failed/empty fetches are NOT cached so a later
+     *  explicit refresh can retry them (offline → online recovery). */
+    private val onlineRelatedCache = ConcurrentHashMap<String, List<SongItem>>()
+
     /** Ids added to the playlist through this ViewModel this session — extra exclusion guard while
-     *  the Room id-set flow re-emits. Synchronized: written from add paths, read by the engine. */
-    private val sessionAddedIds: MutableSet<String> = Collections.synchronizedSet(mutableSetOf())
+     *  the Room id-set flow re-emits. ConcurrentHashMap-backed set: written from add paths, iterated
+     *  by the engine — its weakly-consistent iterator never throws ConcurrentModificationException. */
+    private val sessionAddedIds: MutableSet<String> = ConcurrentHashMap.newKeySet()
 
     /** Online suggestion ids already persisted by this ViewModel — bounds the DB insert to at most
      *  ONE call per id per session (insert() is IGNORE-on-conflict anyway, so this is belt-and-braces). */
@@ -298,13 +326,17 @@ constructor(
      *     playlist (never just the first song); the sample window rotates with each refresh nonce.
      *  2. LOCAL layer: database.relatedSongs(seed) for every sampled seed.
      *  3. ONLINE layer (YouTube's relatedness algorithm): next(seed).relatedEndpoint → related() for
-     *     up to 3 of the sampled seeds, fetched in parallel — always blended in, not fallback-only.
+     *     up to 3 of the sampled seeds, fetched in parallel and memoized per seed. Cached results are
+     *     always blended in; the NETWORK is hit only on an explicit refresh or when the local pool
+     *     can't fill [limit] — so per-'+'-add recomputes never touch the network.
      *  4. RANK by relatedness frequency (how many DISTINCT seeds a candidate is related to), with
-     *     per-seed round-robin as the tiebreak so no single seed dominates the head of the list.
+     *     round-robin over the interleaved local/online seed lists as the tiebreak so no single seed
+     *     or layer dominates the head of the list.
      *  5. ARTIST DIVERSITY: at most 2 songs per primary artist in the top list (overflow goes to the
      *     tail), so 5 footer suggestions are never one artist.
-     *  6. EXCLUDES playlist songs, songs added this session, and (until the pool runs dry)
-     *     previously shown batches, so refresh doesn't recycle the same candidates.
+     *  6. EXCLUDES playlist songs and songs added this session always; previously shown batches are
+     *     excluded (until the pool runs dry) ONLY on an explicit refresh — an id-set recompute after
+     *     a '+' add keeps the visible list stable minus the just-added songs.
      *  7. BACKFILL from quickPicks (recently/most played) when relatedness alone can't fill [limit]
      *     — restores the "playlist content + recently played" blend, offline-safe.
      */
@@ -314,7 +346,10 @@ constructor(
         seed: Int = 0,
     ): List<Song> {
         if (songIds.isEmpty()) return emptyList()
-        val excluded = songIds.toHashSet() + sessionAddedIds.toSet()
+        // Explicit refresh (nonce bumped) vs. id-set recompute (a song was added): only a refresh may
+        // rotate the batch; per-add recomputes stay deterministic so the visible list is stable.
+        val isRefresh = seed > lastAppliedNonce
+        val excluded = songIds.toHashSet() + sessionAddedIds
 
         // 1. Stride-sampled seeds, rotated by the refresh nonce.
         val seedCount = minOf(8, songIds.size)
@@ -322,18 +357,42 @@ constructor(
         val seedSongs = List(seedCount) { i -> songIds[(seed + i * stride).mod(songIds.size)] }
             .distinct()
 
-        // 2 + 3. Fetch both layers; the online fetches run in parallel and fail soft (offline-safe).
+        // 2. LOCAL layer first — it's free and decides whether the online layer needs the network.
+        val localBySeed: List<Pair<String, List<Song>>> =
+            seedSongs.map { sid -> sid to database.relatedSongs(sid).distinctBy { it.id } }
+        val localPoolSize = localBySeed
+            .asSequence()
+            .flatMap { it.second }
+            .map { it.id }
+            .filter { it !in excluded }
+            .distinct()
+            .count()
+
+        // 3. ONLINE layer: cached per-seed results are always blended in (free, and keeps per-add
+        // recomputes deterministic), but the NETWORK is hit only on an explicit refresh or when the
+        // local pool can't fill [limit] by itself — per-add recomputes are pure-local + cache.
+        // Fetches run in parallel and fail soft (offline-safe).
+        val allowNetwork = isRefresh || localPoolSize < limit
         val onlineSeeds = seedSongs.take(3)
         val onlineBySeed: List<Pair<String, List<SongItem>>> = coroutineScope {
             onlineSeeds.map { sid ->
-                async { sid to runCatching { onlineRelatedItems(sid) }.getOrDefault(emptyList()) }
+                async {
+                    val cached = onlineRelatedCache[sid]
+                    val items = when {
+                        cached != null -> cached
+                        allowNetwork ->
+                            runCatching { onlineRelatedItems(sid) }
+                                .getOrDefault(emptyList())
+                                .also { if (it.isNotEmpty()) onlineRelatedCache[sid] = it }
+                        else -> emptyList()
+                    }
+                    sid to items
+                }
             }.awaitAll()
         }
-        val localBySeed: List<Pair<String, List<Song>>> =
-            seedSongs.map { sid -> sid to database.relatedSongs(sid).distinctBy { it.id } }
 
-        // 4. Accumulate candidates round-robin (position j of every seed, then j+1, …); count how
-        // many DISTINCT seeds each candidate is related to.
+        // 4. Accumulate candidates round-robin (position j of every seed list, then j+1, …); count
+        // how many DISTINCT seeds each candidate is related to.
         val seedHits = HashMap<String, MutableSet<String>>()
         val orderIds = LinkedHashSet<String>() // round-robin first-seen order = the tiebreak
         val localById = HashMap<String, Song>()
@@ -353,13 +412,22 @@ constructor(
             onlineById.putIfAbsent(item.id, item)
         }
 
-        val maxLocal = localBySeed.maxOfOrNull { it.second.size } ?: 0
-        for (j in 0 until maxLocal) {
-            localBySeed.forEach { (sid, list) -> list.getOrNull(j)?.let { offerLocal(sid, it) } }
+        // ONE round-robin over ALL seed lists, local and online lanes interleaved
+        // (local[0], online[0], local[1], online[1], …) so the online layer genuinely blends into
+        // the head of the ranking instead of trailing after every local candidate.
+        val lanes = ArrayList<Pair<String, List<Any>>>()
+        for (i in 0 until maxOf(localBySeed.size, onlineBySeed.size)) {
+            localBySeed.getOrNull(i)?.let { (sid, list) -> lanes += sid to list }
+            onlineBySeed.getOrNull(i)?.let { (sid, list) -> lanes += sid to list }
         }
-        val maxOnline = onlineBySeed.maxOfOrNull { it.second.size } ?: 0
-        for (j in 0 until maxOnline) {
-            onlineBySeed.forEach { (sid, list) -> list.getOrNull(j)?.let { offerOnline(sid, it) } }
+        val maxLane = lanes.maxOfOrNull { it.second.size } ?: 0
+        for (j in 0 until maxLane) {
+            lanes.forEach { (sid, list) ->
+                when (val candidate = list.getOrNull(j)) {
+                    is Song -> offerLocal(sid, candidate)
+                    is SongItem -> offerOnline(sid, candidate)
+                }
+            }
         }
 
         val firstSeen = orderIds.withIndex().associate { (i, id) -> id to i }
@@ -368,12 +436,18 @@ constructor(
                 .thenBy { firstSeen[it] ?: Int.MAX_VALUE },
         )
 
-        // 6. Cross-refresh memory: prefer never-shown candidates; once they can't fill a batch,
-        // reset the memory so the pool recycles instead of going empty.
-        val fresh = ranked.filter { it !in shownSuggestionIds }
-        if (fresh.size < limit) shownSuggestionIds.clear()
-        val freshSet = fresh.toHashSet()
-        val ordered = fresh + ranked.filter { it !in freshSet }
+        // 6. Cross-refresh memory — applied ONLY on an explicit refresh: prefer never-shown
+        // candidates; once they can't fill a batch, reset the memory so the pool recycles instead of
+        // going empty. Same-nonce recomputes (a song was added) skip this — the current batch IS in
+        // shownSuggestionIds, so excluding it would replace the whole visible list on every '+' add.
+        val ordered = if (isRefresh) {
+            val fresh = ranked.filter { it !in shownSuggestionIds }
+            if (fresh.size < limit) shownSuggestionIds.clear()
+            val freshSet = fresh.toHashSet()
+            fresh + ranked.filter { it !in freshSet }
+        } else {
+            ranked
+        }
 
         // 5. Artist-diversity pass: greedy max 2 per primary artist; overflow appended at the tail.
         fun primaryArtist(id: String): String =
@@ -411,7 +485,12 @@ constructor(
         val result = chosen.mapNotNull { id ->
             localById[id] ?: onlineById[id]?.let { resolveOnlineSong(it) }
         }
-        shownSuggestionIds += result.map { it.id }
+        // Record the batch as "shown" (and latch the nonce) ONLY for explicit refreshes — same-nonce
+        // recomputes must not feed the exclusion memory or the next refresh would skip too much.
+        if (isRefresh) {
+            shownSuggestionIds += result.map { it.id }
+            lastAppliedNonce = seed
+        }
         return result
     }
 

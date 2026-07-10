@@ -328,13 +328,16 @@ private fun androidx.compose.foundation.lazy.LazyListScope.pagedSongSection(
                 .tvFocusRestorer(),
         ) {
             gridItemsIndexed(songs, key = { _, it -> "$keyPrefix-${it.id}" }) { index, song ->
+                // The last page may be PARTIAL: its column holds fewer than [rows] rows, so corner
+                // shapes must be computed against the actual column height, not the full row count.
+                val colStart = (index / rows) * rows
                 SongListItem(
                     song = song,
                     isActive = previewController.currentPreviewId == song.id,
                     isPlaying = previewController.currentPreviewId == song.id && !previewController.isLoading,
                     showDownloadIcon = false,
                     isSwipeable = false,
-                    shape = listItemShape(index = index % rows, count = rows),
+                    shape = listItemShape(index = index % rows, count = minOf(rows, songs.size - colStart)),
                     trailingContent = {
                         AddOrAddedButton(
                             added = song.id in addedIds,
