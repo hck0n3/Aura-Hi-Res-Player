@@ -204,6 +204,7 @@ import iad1tya.echo.music.echomusic.isSpeaker
 import iad1tya.echo.music.echomusic.AudioDeviceBottomSheet
 import iad1tya.echo.music.ui.component.BottomSheet
 import iad1tya.echo.music.ui.component.BottomSheetState
+import iad1tya.echo.music.ui.component.CastButton
 import iad1tya.echo.music.ui.component.LocalBottomSheetPageState
 import iad1tya.echo.music.ui.component.LocalMenuState
 import iad1tya.echo.music.ui.component.Lyrics
@@ -3365,6 +3366,22 @@ fun BottomSheetPlayer(
                 }
                 }
             }
+        }
+
+        // CAST: the cast/output button is PINNED to the TOP-RIGHT of the expanded player in EVERY layout
+        // (portrait, inline lyrics, Apple-Music full-screen canvas, landscape, wide/TV split, video) — it
+        // used to live only inside the portrait ThumbnailHeader, so it vanished with lyrics/canvas/landscape.
+        // Hidden in PiP (the floating window must stay a clean video). Drawn BEFORE the Queue sheet below so
+        // the expanded queue still covers it. FOSS builds: CastButton is a no-op stub, nothing renders.
+        if (!LocalIsInPipMode.current) {
+            CastButton(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Top + WindowInsetsSides.End))
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .size(24.dp),
+                tintColor = TextBackgroundColor,
+            )
         }
 
         AnimatedVisibility(

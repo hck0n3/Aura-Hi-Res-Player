@@ -296,9 +296,19 @@ constructor(
     }
 
     /** Ids surfaced by earlier suggestion batches this session — excluded on an EXPLICIT refresh so
-     *  every tap yields fresh candidates; cleared once the pool runs dry so suggestions never go
-     *  empty. Only touched from the (serialized) suggestions flow. */
+     *  every tap yields fresh candidates. When the pool runs dry the engine EXPANDS it (new seeds,
+     *  see step 6 of [computeSuggestions]) instead of recycling; this set is cleared only as the
+     *  last-resort fallback when an expansion round adds nothing (offline / tiny corpus), so the
+     *  section never goes empty. Doubles as the seed pool for suggestion-of-suggestion expansion.
+     *  Only touched from the (serialized) suggestions flow. */
     private val shownSuggestionIds = mutableSetOf<String>()
+
+    /** Seeds whose online-related fetch COMPLETED this session (even with an empty result), so seed
+     *  rotation never re-spends network on them — over successive refreshes this walks through ALL
+     *  playlist songs, then through previously shown suggestions. FAILED fetches (offline) are NOT
+     *  recorded, so a later refresh retries them (offline → online recovery). Concurrent set because
+     *  parallel fetch coroutines write it. */
+    private val usedOnlineSeeds: MutableSet<String> = ConcurrentHashMap.newKeySet()
 
     /** Highest refresh nonce whose batch has been applied. Lets [computeSuggestions] tell an explicit
      *  refresh (nonce bumped → rotate to fresh candidates, record the new batch) apart from an id-set
@@ -335,8 +345,12 @@ constructor(
      *  5. ARTIST DIVERSITY: at most 2 songs per primary artist in the top list (overflow goes to the
      *     tail), so 5 footer suggestions are never one artist.
      *  6. EXCLUDES playlist songs and songs added this session always; previously shown batches are
-     *     excluded (until the pool runs dry) ONLY on an explicit refresh — an id-set recompute after
-     *     a '+' add keeps the visible list stable minus the just-added songs.
+     *     excluded ONLY on an explicit refresh — an id-set recompute after a '+' add keeps the
+     *     visible list stable minus the just-added songs. When never-shown candidates can't fill a
+     *     refresh batch, the pool EXPANDS (cache-wide blend, then up to the remaining per-tap fetch
+     *     budget of new seeds: unused playlist songs first, then shown suggestions one hop deeper),
+     *     so refreshes keep yielding NEW songs indefinitely; only a zero-yield expansion (offline /
+     *     tiny corpus) falls back to recycling so the section never goes empty.
      *  7. BACKFILL from quickPicks (recently/most played) when relatedness alone can't fill [limit]
      *     — restores the "playlist content + recently played" blend, offline-safe.
      */
@@ -374,6 +388,13 @@ constructor(
         // Fetches run in parallel and fail soft (offline-safe).
         val allowNetwork = isRefresh || localPoolSize < limit
         val onlineSeeds = seedSongs.take(3)
+        // HARD per-tap network bound: at most 3 related-fetch attempts per compute, SHARED between
+        // this base layer and the expansion pass in step 6 (cache hits are free and don't count).
+        var networkBudget = 3
+        if (allowNetwork) {
+            networkBudget = (networkBudget - onlineSeeds.count { !onlineRelatedCache.containsKey(it) })
+                .coerceAtLeast(0)
+        }
         val onlineBySeed: List<Pair<String, List<SongItem>>> = coroutineScope {
             onlineSeeds.map { sid ->
                 async {
@@ -382,6 +403,7 @@ constructor(
                         cached != null -> cached
                         allowNetwork ->
                             runCatching { onlineRelatedItems(sid) }
+                                .onSuccess { usedOnlineSeeds += sid }
                                 .getOrDefault(emptyList())
                                 .also { if (it.isNotEmpty()) onlineRelatedCache[sid] = it }
                         else -> emptyList()
@@ -430,19 +452,73 @@ constructor(
             }
         }
 
-        val firstSeen = orderIds.withIndex().associate { (i, id) -> id to i }
-        val ranked = orderIds.sortedWith(
-            compareByDescending<String> { seedHits[it]?.size ?: 0 }
-                .thenBy { firstSeen[it] ?: Int.MAX_VALUE },
-        )
+        fun rank(): List<String> {
+            val firstSeen = orderIds.withIndex().associate { (i, id) -> id to i }
+            return orderIds.sortedWith(
+                compareByDescending<String> { seedHits[it]?.size ?: 0 }
+                    .thenBy { firstSeen[it] ?: Int.MAX_VALUE },
+            )
+        }
+        var ranked = rank()
 
         // 6. Cross-refresh memory — applied ONLY on an explicit refresh: prefer never-shown
-        // candidates; once they can't fill a batch, reset the memory so the pool recycles instead of
-        // going empty. Same-nonce recomputes (a song was added) skip this — the current batch IS in
+        // candidates. When they can't fill a batch, EXPAND the pool instead of recycling:
+        //   6a. FREE: blend in every seed already fetched this session (pure cache, zero network)
+        //       that this tap's stride sample missed.
+        //   6b. NETWORK (bounded by the shared 3-fetch-per-tap budget): fetch related for seeds
+        //       never used this session — the playlist's own songs first (successive taps walk the
+        //       WHOLE playlist because used seeds are skipped), then previously SHOWN suggestions
+        //       one hop deeper (suggestion-of-suggestion — still content-derived; depth needs no
+        //       explicit bookkeeping since an id only becomes a seed after it has been shown).
+        //   6c. Only if expansion adds ZERO never-shown candidates (offline / tiny corpus) fall
+        //       back to recycling: clear the memory so the section never goes empty — repeats are
+        //       acceptable there.
+        // Same-nonce recomputes (a song was added) skip all of this — the current batch IS in
         // shownSuggestionIds, so excluding it would replace the whole visible list on every '+' add.
         val ordered = if (isRefresh) {
-            val fresh = ranked.filter { it !in shownSuggestionIds }
-            if (fresh.size < limit) shownSuggestionIds.clear()
+            var fresh = ranked.filter { it !in shownSuggestionIds }
+            if (fresh.size < limit) {
+                // 6a. Cache-wide blend — free candidates from seeds fetched on earlier taps.
+                onlineRelatedCache.forEach { (sid, items) ->
+                    items.forEach { offerOnline(sid, it) }
+                }
+                // 6b. Bounded network expansion with never-used seeds.
+                if (networkBudget > 0) {
+                    val expansionSeeds =
+                        (songIds.asSequence() +
+                            shownSuggestionIds.asSequence().filter { it !in excluded })
+                            .filter { it !in usedOnlineSeeds && !onlineRelatedCache.containsKey(it) }
+                            .distinct()
+                            .take(networkBudget)
+                            .toList()
+                    val fetched: List<Pair<String, List<SongItem>>> = coroutineScope {
+                        expansionSeeds.map { sid ->
+                            async {
+                                val items = runCatching { onlineRelatedItems(sid) }
+                                    .onSuccess { usedOnlineSeeds += sid }
+                                    .getOrDefault(emptyList())
+                                if (items.isNotEmpty()) onlineRelatedCache[sid] = items
+                                sid to items
+                            }
+                        }.awaitAll()
+                    }
+                    // Round-robin offer so no single expansion seed dominates the tiebreak order.
+                    val maxRow = fetched.maxOfOrNull { it.second.size } ?: 0
+                    for (j in 0 until maxRow) {
+                        fetched.forEach { (sid, list) ->
+                            list.getOrNull(j)?.let { offerOnline(sid, it) }
+                        }
+                    }
+                }
+                ranked = rank()
+                val expandedFresh = ranked.filter { it !in shownSuggestionIds }
+                if (expandedFresh.size > fresh.size) {
+                    fresh = expandedFresh
+                } else {
+                    // 6c. Expansion yielded nothing new — recycle fallback.
+                    shownSuggestionIds.clear()
+                }
+            }
             val freshSet = fresh.toHashSet()
             fresh + ranked.filter { it !in freshSet }
         } else {

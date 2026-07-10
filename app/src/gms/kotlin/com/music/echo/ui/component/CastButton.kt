@@ -34,6 +34,7 @@ import com.google.android.gms.cast.framework.CastContext
 import iad1tya.echo.music.LocalPlayerConnection
 import iad1tya.echo.music.R
 import iad1tya.echo.music.constants.EnableGoogleCastKey
+import iad1tya.echo.music.ui.utils.tvFocusable
 import iad1tya.echo.music.utils.rememberPreference
 import timber.log.Timber
 
@@ -151,6 +152,9 @@ fun CastButton(
                     .size(40.dp)
                     .align(Alignment.Center)
                     .clip(RoundedCornerShape(20.dp))
+                    // TV/car: visible D-pad focus ring observing the .clickable below (same pattern as the
+                    // player's transport buttons) — the button is pinned top-right of the expanded player.
+                    .tvFocusable(iad1tya.echo.music.ui.utils.rememberIsTvOrCar(), RoundedCornerShape(20.dp))
                     .clickable {
                     if (currentMetadata == null && !isCasting) {
                         Toast.makeText(context, "Play a song first to cast", Toast.LENGTH_SHORT).show()
