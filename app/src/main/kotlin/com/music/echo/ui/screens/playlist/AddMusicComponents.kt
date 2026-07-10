@@ -25,6 +25,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -38,12 +39,23 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.collectAsState
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
+import com.music.innertube.YouTube
+import com.music.innertube.models.SongItem
+import com.music.innertube.models.WatchEndpoint
 import iad1tya.echo.music.R
 import iad1tya.echo.music.db.entities.ArtistEntity
+import iad1tya.echo.music.models.toMediaMetadata
+import iad1tya.echo.music.playback.PlayerConnection
+import iad1tya.echo.music.playback.queues.YouTubeQueue
 import iad1tya.echo.music.ui.component.SongListItem
+import iad1tya.echo.music.ui.component.shimmer.ListItemPlaceHolder
+import iad1tya.echo.music.ui.component.shimmer.ShimmerHost
 import iad1tya.echo.music.ui.utils.resize
 import iad1tya.echo.music.utils.listItemShape
 import iad1tya.echo.music.viewmodels.LocalPlaylistViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** Prominent, full-width Apple-Music-style "Add Music" button. */
 @Composable
@@ -105,20 +117,28 @@ fun AddOrAddedButton(
 
 /**
  * "Suggested Songs" footer section: a header with a refresh button, plus 5 rows recommended from the
- * playlist's own content. Tapping the row OR its artwork previews in place (Apple behavior: artwork tap
- * toggles the preview); the trailing "+" adds the song to the playlist immediately.
+ * playlist's own content. Tapping the ROW (or title) PLAYS the song in the main player; tapping the
+ * ARTWORK previews it in place (Apple behavior: artwork tap toggles the preview); the trailing "+" adds
+ * the song to the playlist immediately. While the first (instant local-first) batch is still computing,
+ * shimmer placeholders show instead of a blank.
  */
 @Composable
 fun SuggestedSongsSection(
     viewModel: LocalPlaylistViewModel,
     previewController: SongPreviewController,
+    playerConnection: PlayerConnection,
     modifier: Modifier = Modifier,
 ) {
     val suggestions by viewModel.suggestedSongs.collectAsState()
     val isRefreshing by viewModel.isRefreshingSuggestions.collectAsState()
+    val loaded by viewModel.suggestionsLoaded.collectAsState()
     val addedIds = remember { mutableStateListOf<String>() }
+    val coroutineScope = rememberCoroutineScope()
 
-    if (suggestions.isEmpty()) return
+    // Show shimmer while the first batch is still being computed OR a refresh top-up is in flight and we
+    // have nothing yet — never a bare blank. Once loaded and genuinely empty, collapse the section.
+    val showShimmer = suggestions.isEmpty() && (!loaded || isRefreshing)
+    if (suggestions.isEmpty() && !showShimmer) return
 
     Column(modifier = modifier.fillMaxWidth()) {
         Row(
@@ -144,6 +164,13 @@ fun SuggestedSongsSection(
             }
         }
 
+        if (showShimmer) {
+            ShimmerHost {
+                repeat(5) { ListItemPlaceHolder() }
+            }
+            return@Column
+        }
+
         suggestions.forEachIndexed { index, song ->
             val isPreviewing = previewController.currentPreviewId == song.id
             SongListItem(
@@ -160,10 +187,45 @@ fun SuggestedSongsSection(
                         },
                     )
                 },
+                // Artwork tap = PREVIEW (Apple behavior). Row/title tap = PLAY in the main player.
                 onThumbnailClick = { previewController.toggle(song.id) },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { previewController.toggle(song.id) },
+                    .clickable {
+                        // Real playback must stop any active preview so two songs don't play at once.
+                        previewController.stop()
+                        val videoId = song.id
+                        if (videoId.isNotBlank()) {
+                            // Play by videoId — reliable and seeds radio (footer items are real DB rows,
+                            // online-fallback ones already resolved to song.id == videoId before showing).
+                            playerConnection.playQueue(
+                                YouTubeQueue(WatchEndpoint(videoId = videoId), song.toMediaMetadata()),
+                            )
+                        } else {
+                            // Extremely rare (a DB row always has a videoId key); fall back to search.
+                            coroutineScope.launch(Dispatchers.IO) {
+                                val match = YouTube
+                                    .search(
+                                        "${song.title} ${song.artists.joinToString { it.name }}",
+                                        YouTube.SearchFilter.FILTER_SONG,
+                                    )
+                                    .getOrNull()
+                                    ?.items
+                                    ?.filterIsInstance<SongItem>()
+                                    ?.firstOrNull()
+                                if (match != null) {
+                                    withContext(Dispatchers.Main) {
+                                        playerConnection.playQueue(
+                                            YouTubeQueue(
+                                                WatchEndpoint(videoId = match.id),
+                                                match.toMediaMetadata(),
+                                            ),
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    },
             )
         }
     }

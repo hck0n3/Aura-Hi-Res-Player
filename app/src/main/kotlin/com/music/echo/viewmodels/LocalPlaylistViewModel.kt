@@ -125,12 +125,16 @@ constructor(
 
     // The SET of song ids in this playlist. Suggestions key off THIS (not the full playlistSongs, which
     // also re-emits on sort / hide-video changes) so the network + insert side effects don't re-run on
-    // every reorder.
-    private val playlistSongIds: StateFlow<List<String>> =
-        playlistSongs
+    // every reorder. NULL until the DB has answered: derived from the RAW Room flow (playlistSongs'
+    // stateIn placeholder [] would otherwise emit synchronously, latching suggestionsLoaded in ms and
+    // blanking the shimmer on first open of a non-empty playlist) — an empty list here is therefore
+    // always a REAL "this playlist has 0 songs" result, never a placeholder.
+    private val playlistSongIds: StateFlow<List<String>?> =
+        database
+            .playlistSongs(playlistId)
             .map { songs -> songs.map { it.song.id } }
             .distinctUntilChanged { old, new -> old.toSet() == new.toSet() }
-            .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+            .stateIn(viewModelScope, SharingStarted.Lazily, null)
 
     /** Last accepted refresh tap — a SMALL debounce (only double-fire protection). The visible list
      *  now swaps instantly (cache-only Phase A), so this no longer needs to cover a network window. */
@@ -141,6 +145,14 @@ constructor(
     /** True ONLY while the background network top-up (Phase B) is in flight — never during the instant
      *  cache-only swap. Drives just the refresh button's spinner/disable; the list already updated. */
     val isRefreshingSuggestions: StateFlow<Boolean> = _isRefreshingSuggestions
+
+    private val _suggestionsLoaded = MutableStateFlow(false)
+
+    /** False until the FIRST suggestion batch has been computed from REAL DB ids (even if it came back
+     *  empty) — never latched on the ids flow's null start sentinel. Lets the footer distinguish
+     *  "still computing the instant local-first pass" from "computed, genuinely empty" and show
+     *  shimmer placeholders instead of a long blank on first open. */
+    val suggestionsLoaded: StateFlow<Boolean> = _suggestionsLoaded
 
     fun refreshSuggestions() {
         val now = System.currentTimeMillis()
@@ -171,6 +183,11 @@ constructor(
         combine(playlistSongIds, suggestionsRefresh) { ids, nonce -> ids to nonce }
             .flatMapLatest { (ids, nonce) ->
                 flow {
+                    // NULL = the DB hasn't answered yet (the ids flow's start sentinel). Emit nothing and
+                    // DON'T latch suggestionsLoaded — the footer keeps its shimmer instead of blanking
+                    // then popping. A real [] from the DB (playlist with 0 songs) falls through: the
+                    // compute early-returns empty and the flag latches → loaded, genuinely no suggestions.
+                    if (ids == null) return@flow
                     // Snapshot the refresh flag BEFORE Phase A runs — Phase A is recordShown=false so it
                     // won't latch lastAppliedNonce, keeping this accurate for the branch below.
                     val wasRefresh = nonce > lastAppliedNonce
@@ -189,6 +206,9 @@ constructor(
                         recordShown = false,
                     )
                     emit(instant)
+                    // First batch is in hand — the footer can stop showing shimmer (an empty result while
+                    // a refresh is still running keeps shimmer via isRefreshingSuggestions below).
+                    _suggestionsLoaded.value = true
 
                     if (wasRefresh) {
                         // Escalate to the network top-up when the instant batch can't satisfy either
@@ -217,8 +237,12 @@ constructor(
                         } else {
                             // Cache filled the footer — the instant list is final. Record it as shown so
                             // infinite-no-repeat advances, and latch the nonce so a following per-'+'-add
-                            // recompute stays stable (same-nonce → isRefresh=false).
-                            recordBatchShown(instant.map { it.id }, nonce)
+                            // recompute stays stable (same-nonce → isRefresh=false). Library-backfill
+                            // padding (if any) never enters the no-repeat memory.
+                            recordBatchShown(
+                                instant.map { it.id }.filter { it !in lastComputeBackfillIds },
+                                nonce,
+                            )
                         }
                     }
                 }
@@ -387,6 +411,12 @@ constructor(
      *  the batch with already-shown songs, and without the freshness signal it would re-record and
      *  repeat the same batch forever. Only written from the (serialized) suggestions flow. */
     private var lastComputeFreshHeadCount = 0
+
+    /** Ids the last compute's 7b LIBRARY backfill contributed. These must never be recorded into
+     *  [shownSuggestionIds] — they aren't real relatedness picks, and if Phase B's network top-up
+     *  fails they must remain suggestable on future refreshes instead of being excluded as seen.
+     *  Only written from the (serialized) suggestions flow. */
+    private var lastComputeBackfillIds: Set<String> = emptySet()
 
     /** Online related-songs memo, one entry per seed id — recomputes never re-hit the network for a
      *  seed already fetched. Bounded, access-ordered LRU (64 seeds) so a long session hopping across
@@ -675,6 +705,29 @@ constructor(
                 }
         }
 
+        // 7b. Library backfill — LAST-resort local content so the instant Phase A pass (zero network)
+        // NEVER paints blank on a freshly-imported/light-usage library, where relatedSongs is empty and
+        // quickPicks is tiny. Newest-added library songs (bounded SQL LIMIT — never materialize the
+        // whole library), offline-safe, excluding playlist + session songs. Runs ONLY when the batch is
+        // TRULY sparse (can't even fill the footer's picks) — the sheet may show fewer than [limit]
+        // real picks rather than be diluted with unrelated library songs. Backfill ids are remembered
+        // so they are never recorded as "shown": if Phase B's network top-up fails, they must stay
+        // suggestable on future refreshes instead of being excluded as already-seen.
+        val libraryBackfillIds = mutableSetOf<String>()
+        if (chosen.size < FOOTER_SUGGESTIONS) {
+            val chosenSet = chosen.toHashSet()
+            database.songsByCreateDateDesc(limit = 50).first()
+                .asSequence()
+                .filter { it.id !in excluded && it.id !in chosenSet }
+                .take(limit - chosen.size)
+                .forEach { lib ->
+                    localById.putIfAbsent(lib.id, lib)
+                    chosen += lib.id
+                    libraryBackfillIds += lib.id
+                }
+        }
+        lastComputeBackfillIds = libraryBackfillIds
+
         val result = chosen.mapNotNull { id ->
             localById[id] ?: onlineById[id]?.let { resolveOnlineSong(it) }
         }
@@ -685,9 +738,10 @@ constructor(
         // Record the batch as "shown" (and latch the nonce) ONLY for explicit refreshes AND only when
         // this compute is the one the user keeps (recordShown) — same-nonce recomputes must not feed
         // the exclusion memory, and the instant Phase A defers recording to the flow so a following
-        // network top-up records the batch actually shown.
+        // network top-up records the batch actually shown. Library-backfill padding is filtered out:
+        // it was never a real pick, so it must not enter the no-repeat memory.
         if (isRefresh && recordShown) {
-            recordBatchShown(result.map { it.id }, seed)
+            recordBatchShown(result.map { it.id }.filter { it !in libraryBackfillIds }, seed)
         }
         return result
     }

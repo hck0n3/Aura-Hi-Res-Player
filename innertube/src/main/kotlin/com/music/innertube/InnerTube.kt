@@ -303,15 +303,21 @@ class InnerTube {
         params: String? = null,
         continuation: String? = null,
         setLogin: Boolean = false,
+        // Force an ANONYMOUS request even when logged in / useLoginForBrowse: drops the auth cookie +
+        // SAPISIDHASH Authorization header (ytClient) and the onBehalfOfUser dataSyncId (context).
+        // visitorData is kept — it's anonymous device identity, present for logged-out sessions too.
+        // Used for endpoints whose signed-in layout is broken (e.g. FEmusic_new_releases_albums).
+        noLogin: Boolean = false,
     ) = withRetry {
+        val login = !noLogin && (setLogin || useLoginForBrowse)
         httpClient.post("browse") {
-            ytClient(client, setLogin = setLogin || useLoginForBrowse)
+            ytClient(client, setLogin = login)
             setBody(
                 BrowseBody(
                     context = client.toContext(
                         locale,
                         visitorData,
-                        if (setLogin || useLoginForBrowse) dataSyncId else null
+                        if (login) dataSyncId else null
                     ),
                     browseId = browseId,
                     params = params,

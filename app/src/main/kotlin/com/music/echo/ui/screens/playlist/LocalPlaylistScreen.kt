@@ -781,6 +781,7 @@ fun LocalPlaylistScreen(
                     SuggestedSongsSection(
                         viewModel = viewModel,
                         previewController = previewController,
+                        playerConnection = playerConnection,
                         modifier = Modifier.animateItem(),
                     )
                 }

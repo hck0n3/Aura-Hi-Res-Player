@@ -670,12 +670,12 @@ fun ExploreTabContent(
                     } else {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(
-                                text = "No se pudieron cargar las sugerencias.",
+                                text = stringResource(R.string.couldnt_load_recommendations),
                                 textAlign = TextAlign.Center,
                             )
                             Spacer(Modifier.height(12.dp))
                             Button(onClick = { viewModel.retry() }) {
-                                Text("Reintentar")
+                                Text(stringResource(R.string.retry))
                             }
                         }
                     }
@@ -703,10 +703,13 @@ fun AlbumsTabContent(
     val explorePage by viewModel.explorePage.collectAsState()
     val newReleaseAlbums = explorePage?.newReleaseAlbums
     val isLoading by viewModel.isLoading.collectAsState()
+    val loadFailed by viewModel.loadFailed.collectAsState()
 
     val gridItemSize by rememberEnumPreference(GridItemsSizeKey, GridItemSize.BIG)
 
-    if (isLoading && newReleaseAlbums == null) {
+    // isNullOrEmpty (not == null): after a successful-but-empty load, explorePage is non-null with an
+    // empty album list — Retry must still show the spinner instead of freezing on the empty state.
+    if (isLoading && newReleaseAlbums.isNullOrEmpty()) {
         Box(
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.Center
@@ -719,13 +722,17 @@ fun AlbumsTabContent(
             contentAlignment = Alignment.Center
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                // Truthful message: a real fetch failure vs. a genuinely-empty shelf are different.
                 Text(
-                    text = "No se pudieron cargar las sugerencias.",
+                    text = stringResource(
+                        if (loadFailed) R.string.couldnt_load_new_releases
+                        else R.string.no_new_releases
+                    ),
                     textAlign = TextAlign.Center,
                 )
                 Spacer(Modifier.height(12.dp))
                 Button(onClick = { viewModel.retry() }) {
-                    Text("Reintentar")
+                    Text(stringResource(R.string.retry))
                 }
             }
         }

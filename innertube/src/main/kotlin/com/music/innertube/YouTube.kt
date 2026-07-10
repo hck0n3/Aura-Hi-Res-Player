@@ -743,11 +743,41 @@ object YouTube {
     }
 
     suspend fun newReleaseAlbums(): Result<List<AlbumItem>> = runCatching {
-        val response = innerTube.browse(WEB_REMIX, browseId = "FEmusic_new_releases_albums").body<BrowseResponse>()
-        response.contents?.singleColumnBrowseResultsRenderer?.tabs?.firstOrNull()?.tabRenderer?.content?.sectionListRenderer?.contents?.firstOrNull()?.gridRenderer?.items
-            ?.mapNotNull { it.musicTwoRowItemRenderer }
-            ?.mapNotNull(NewReleaseAlbumPage::fromMusicTwoRowItemRenderer)
-            .orEmpty()
+        // Logged OUT this endpoint is known-good; logged IN, YouTube can serve a layout that fails or
+        // parses to zero albums (the reported "Álbum tab empty only when signed in"). So: try with the
+        // session as configured, and when that fails or comes back EMPTY while a login cookie is
+        // actually attached, retry ONCE anonymously — same browse request minus the auth cookie +
+        // SAPISIDHASH header and the onBehalfOfUser dataSyncId (see InnerTube.browse(noLogin)).
+        // Bounded to one retry and this endpoint only; auth for everything else is untouched.
+        val authed = runCatching { fetchNewReleaseAlbums(noLogin = false) }
+        authed.getOrNull()?.takeIf { it.isNotEmpty() }
+            ?: if (cookie != null) fetchNewReleaseAlbums(noLogin = true) else authed.getOrThrow()
+    }
+
+    private suspend fun fetchNewReleaseAlbums(noLogin: Boolean): List<AlbumItem> {
+        val response = innerTube
+            .browse(WEB_REMIX, browseId = "FEmusic_new_releases_albums", noLogin = noLogin)
+            .body<BrowseResponse>()
+        val sections = response.contents?.singleColumnBrowseResultsRenderer?.tabs?.firstOrNull()
+            ?.tabRenderer?.content?.sectionListRenderer?.contents.orEmpty()
+        // The albums shelf isn't always the FIRST section, and YouTube sometimes returns it as a
+        // carousel shelf instead of a grid — scanning both layouts across ALL sections keeps the
+        // "Álbum" tab populated instead of falling back to a generic "couldn't load" error. A section
+        // can also parse to ZERO albums (e.g. a promo shelf that is a grid/carousel of other content),
+        // so don't stop at the first renderer found: take the first that parses NON-EMPTY.
+        val fromGrids = sections.firstNotNullOfOrNull { section ->
+            section.gridRenderer?.items
+                ?.mapNotNull { it.musicTwoRowItemRenderer }
+                ?.mapNotNull(NewReleaseAlbumPage::fromMusicTwoRowItemRenderer)
+                ?.takeIf { it.isNotEmpty() }
+        }
+        return fromGrids
+            ?: sections.firstNotNullOfOrNull { section ->
+                section.musicCarouselShelfRenderer?.contents
+                    ?.mapNotNull { it.musicTwoRowItemRenderer }
+                    ?.mapNotNull(NewReleaseAlbumPage::fromMusicTwoRowItemRenderer)
+                    ?.takeIf { it.isNotEmpty() }
+            }.orEmpty()
     }
 
     suspend fun moodAndGenres(): Result<List<MoodAndGenres>> = runCatching {

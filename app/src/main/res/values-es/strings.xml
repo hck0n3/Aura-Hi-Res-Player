@@ -471,6 +471,10 @@
     <string name="ai_playlist_enabled_desc">Mostrar el botón Lista AI en tu biblioteca</string>
     <string name="add_music">Agregar música</string>
     <string name="suggested_songs">Canciones sugeridas</string>
+    <string name="couldnt_load_new_releases">No se pudieron cargar los nuevos lanzamientos. Revisa tu conexión.</string>
+    <string name="no_new_releases">No hay nuevos lanzamientos por ahora.</string>
+    <string name="couldnt_load_recommendations">No se pudieron cargar las recomendaciones. Revisa tu conexión.</string>
+    <string name="preview_unavailable">Vista previa no disponible por ahora</string>
     <string name="featured_artists">Artistas destacados</string>
     <string name="from_replay">Desde Replay</string>
     <string name="recently_added">Agregado recientemente</string>
