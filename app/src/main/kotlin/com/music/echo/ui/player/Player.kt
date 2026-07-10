@@ -3585,7 +3585,11 @@ fun InlineLyricsView(
     positionProvider: () -> Long?
 ) {
     val playerConnection = LocalPlayerConnection.current ?: return
-    val currentLyrics by playerConnection.currentLyrics.collectAsState(initial = null)
+    val rawCurrentLyrics by playerConnection.currentLyrics.collectAsState(initial = null)
+    // Wrong-song guard: ignore a lyrics row that belongs to a previously-playing song (the
+    // flatMapLatest DB flow lags a track change by a frame), so the previous song's lyrics can
+    // never flash onto the current one — during that gap we correctly stay in the LOADING state.
+    val currentLyrics = rawCurrentLyrics?.takeIf { it.id == mediaMetadata?.id }
     val lyrics = remember(currentLyrics) { currentLyrics?.lyrics?.trim() }
     val context = LocalContext.current
     val database = LocalDatabase.current

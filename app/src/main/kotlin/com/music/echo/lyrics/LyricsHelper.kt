@@ -19,8 +19,11 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.coroutines.cancellation.CancellationException
 import javax.inject.Inject
 
 class LyricsHelper
@@ -53,56 +56,83 @@ constructor(
     private var currentLyricsJob: Job? = null
 
     suspend fun getLyrics(mediaMetadata: MediaMetadata): LyricsWithProvider {
-        currentLyricsJob?.cancel()
-
-        val cached = cache.get(mediaMetadata.id)?.firstOrNull()
-        if (cached != null) {
+        // Re-opening the same song within a session is instant, and the 2–3 fetchers that can
+        // fire for a single song (service collector + inline view fallback + preload) dedupe
+        // onto one cached result instead of each hitting the network. Keyed by song id so it
+        // is coherent with how the result is read back below.
+        cache.get(mediaMetadata.id)?.firstOrNull()?.let { cached ->
             return LyricsWithProvider(cached.lyrics, cached.providerName)
         }
 
-        
-        
         val isNetworkAvailable = try {
             networkConnectivity.isCurrentlyConnected()
         } catch (e: Exception) {
-            
             true
         }
-        
         if (!isNetworkAvailable) {
-            
             return LyricsWithProvider(LYRICS_NOT_FOUND, "Unknown")
         }
 
-        val providers = resolveLyricsProviders()
-        val scope = CoroutineScope(SupervisorJob())
-        val deferred = scope.async {
-            for (provider in providers) {
-                if (provider.isEnabled(context)) {
+        val providers = resolveLyricsProviders().filter { it.isEnabled(context) }
+        if (providers.isEmpty()) {
+            return LyricsWithProvider(LYRICS_NOT_FOUND, "Unknown")
+        }
+
+        // Structured concurrency (coroutineScope, NOT a detached SupervisorJob scope): every
+        // provider is queried CONCURRENTLY so a slow/failing high-priority provider no longer
+        // serially delays the rest (the old sequential loop paid each provider's timeout back
+        // to back). Results are still consumed in PREFERENCE ORDER, so the quality ranking is
+        // preserved — a fast low-priority provider can't beat a higher-priority one, and
+        // Paxsenix stays the last resort. Because this is structured, a caller cancellation
+        // (the user skipping to another song) cancels every in-flight provider fetch: no
+        // orphaned network work and no late result that could surface for the wrong song.
+        val result = coroutineScope {
+            val deferreds = providers.map { provider ->
+                provider to async {
                     try {
-                        val result = provider.getLyrics(
-                            mediaMetadata.id,
-                            mediaMetadata.title,
-                            mediaMetadata.artists.joinToString { it.name },
-                            mediaMetadata.duration,
-                            mediaMetadata.album?.title,
-                        )
-                        result.onSuccess { lyrics ->
-                            return@async LyricsWithProvider(lyrics, provider.name)
-                        }.onFailure {
-                            reportException(it)
+                        withTimeoutOrNull(PROVIDER_TIMEOUT_MS) {
+                            provider.getLyrics(
+                                mediaMetadata.id,
+                                mediaMetadata.title,
+                                mediaMetadata.artists.joinToString { it.name },
+                                mediaMetadata.duration,
+                                mediaMetadata.album?.title,
+                            )
                         }
+                    } catch (e: CancellationException) {
+                        throw e
                     } catch (e: Exception) {
-                        
                         reportException(e)
+                        null
                     }
                 }
             }
-            return@async LyricsWithProvider(LYRICS_NOT_FOUND, "Unknown")
+
+            var winner: LyricsWithProvider? = null
+            for ((provider, deferred) in deferreds) {
+                val providerResult = try {
+                    deferred.await()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    reportException(e)
+                    null
+                }
+                providerResult?.onFailure { reportException(it) }
+                val lyrics = providerResult?.getOrNull()
+                if (!lyrics.isNullOrBlank()) {
+                    winner = LyricsWithProvider(lyrics, provider.name)
+                    break
+                }
+            }
+            // Once the in-order winner is decided, stop any providers still in flight.
+            deferreds.forEach { (_, deferred) -> deferred.cancel() }
+            winner ?: LyricsWithProvider(LYRICS_NOT_FOUND, "Unknown")
         }
 
-        val result = deferred.await()
-        scope.cancel()
+        if (result.lyrics != LYRICS_NOT_FOUND) {
+            cache.put(mediaMetadata.id, listOf(LyricsResult(result.provider, result.lyrics)))
+        }
         return result
     }
 
@@ -168,6 +198,9 @@ constructor(
 
     companion object {
         private const val MAX_CACHE_SIZE = 3
+        // Per-provider cap. Providers run concurrently, so this bounds a single hung provider
+        // without stacking (the old sequential loop could wait this long for EACH provider).
+        private const val PROVIDER_TIMEOUT_MS = 8_000L
     }
 }
 

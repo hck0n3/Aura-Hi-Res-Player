@@ -262,8 +262,13 @@ fun Lyrics(
     val scope = rememberCoroutineScope()
 
     val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
-    val lyricsEntity by playerConnection.currentLyrics.collectAsState(initial = null)
+    val rawLyricsEntity by playerConnection.currentLyrics.collectAsState(initial = null)
     val currentSong by playerConnection.currentSong.collectAsState(initial = null)
+    // Wrong-song guard: currentLyrics is a flatMapLatest over the DB, so on a track change it
+    // keeps emitting the PREVIOUS song's row until Room re-queries for the new id. Only accept
+    // the entity when it belongs to the currently-playing song; otherwise fall back to the
+    // LOADING state so a stale/late row can never paint the previous song's lyrics on this one.
+    val lyricsEntity = rawLyricsEntity?.takeIf { it.id == mediaMetadata?.id }
     val lyrics = remember(lyricsEntity) { lyricsEntity?.lyrics?.trim() }
 
     val playerBackground by rememberEnumPreference(
