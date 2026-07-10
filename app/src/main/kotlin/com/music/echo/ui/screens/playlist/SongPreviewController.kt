@@ -14,6 +14,7 @@ import androidx.core.content.getSystemService
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
@@ -75,7 +76,9 @@ class SongPreviewController(
 
         currentPreviewId = videoId
         isLoading = true
-        mainWasPlaying = onRequestMainPause()
+        // Preserve the remembered state across a preview→preview swap: the main player is already paused
+        // by us (onRequestMainPause returns false), so only capture a fresh value when nothing was active.
+        mainWasPlaying = onRequestMainPause() || mainWasPlaying
 
         resolveJob = scope.launch {
             val url = withContext(Dispatchers.IO) {
@@ -194,6 +197,17 @@ class SongPreviewController(
                 )
                 repeatMode = Player.REPEAT_MODE_OFF
                 volume = 1f
+                // Natural end (song plays to completion) or a playback error (e.g. googlevideo 403) must
+                // stop the preview so the main player is resumed — otherwise it stays paused forever.
+                addListener(object : Player.Listener {
+                    override fun onPlaybackStateChanged(playbackState: Int) {
+                        if (playbackState == Player.STATE_ENDED) stop()
+                    }
+
+                    override fun onPlayerError(error: PlaybackException) {
+                        stop()
+                    }
+                })
             }
             .also { exoPlayer = it }
     }

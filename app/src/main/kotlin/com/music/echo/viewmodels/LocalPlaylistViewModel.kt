@@ -44,6 +44,7 @@ import kotlinx.coroutines.withContext
 import java.text.Collator
 import java.util.Locale
 import javax.inject.Inject
+import kotlin.random.Random
 
 @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
 @HiltViewModel
@@ -106,16 +107,17 @@ constructor(
 
     // ---- Apple-Music-style "Add Music" feature ----------------------------------------------------
 
-    // Bumped by refreshSuggestions() to regenerate the footer's 5 suggested songs on demand.
+    // Bumped by refreshSuggestions(); its value doubles as a per-refresh shuffle/seed nonce (NOT a
+    // latched boolean) so every tap rotates to fresh candidates.
     private val suggestionsRefresh = MutableStateFlow(0)
 
-    /** 5 songs recommended FROM this playlist's own content (footer section). */
-    val suggestedSongs: StateFlow<List<Song>> =
-        combine(playlistSongs, suggestionsRefresh) { songs, refresh -> songs to refresh }
-            .flatMapLatest { (songs, refresh) ->
-                flow { emit(computeSuggestions(songs, limit = 5, shuffle = refresh > 0)) }
-            }
-            .flowOn(Dispatchers.IO)
+    // The SET of song ids in this playlist. Suggestions key off THIS (not the full playlistSongs, which
+    // also re-emits on sort / hide-video changes) so the network + insert side effects don't re-run on
+    // every reorder.
+    private val playlistSongIds: StateFlow<List<String>> =
+        playlistSongs
+            .map { songs -> songs.map { it.song.id } }
+            .distinctUntilChanged { old, new -> old.toSet() == new.toSet() }
             .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     fun refreshSuggestions() {
@@ -146,25 +148,36 @@ constructor(
             .mostPlayedSongs(System.currentTimeMillis() - 30L * 24 * 60 * 60 * 1000, limit = 30)
             .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
-    /** Recently added library songs (inLibrary DESC). */
+    /** Recently added library songs, newest-first (inLibrary DESC). librarySongsForTaste orders by
+     *  rowId (song-table insertion order), not library-add time, so reuse songsByCreateDateAsc
+     *  (inLibrary ASC) reversed. */
     val recentlyAddedSongs: StateFlow<List<Song>> =
         database
-            .librarySongsForTaste(50)
+            .songsByCreateDateAsc()
+            .map { it.asReversed().take(50) }
             .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
-    /** Larger suggested list (~20) for the Add-Music sheet. */
+    /** Larger suggested list (~20) for the Add-Music sheet; the footer's 5 are derived from this so the
+     *  (network-touching) computation runs ONCE, not twice. */
     val sheetSuggestedSongs: StateFlow<List<Song>> =
-        playlistSongs
-            .flatMapLatest { songs ->
-                flow { emit(computeSuggestions(songs, limit = 20, shuffle = false)) }
+        combine(playlistSongIds, suggestionsRefresh) { ids, nonce -> ids to nonce }
+            .flatMapLatest { (ids, nonce) ->
+                flow { emit(computeSuggestions(ids, limit = 20, shuffle = nonce > 0, seed = nonce)) }
             }
             .flowOn(Dispatchers.IO)
             .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
-    /** The user's liked songs (multi-select source). */
+    /** Footer's 5 suggestions — the head of [sheetSuggestedSongs] (single shared computation). */
+    val suggestedSongs: StateFlow<List<Song>> =
+        sheetSuggestedSongs
+            .map { it.take(5) }
+            .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
+    /** The user's whole library (multi-select source), newest-first. */
     val librarySongs: StateFlow<List<Song>> =
         database
-            .likedSongsByCreateDateAsc()
+            .songsByCreateDateAsc()
+            .map { it.asReversed() }
             .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     private val _searchQuery = MutableStateFlow("")
@@ -174,6 +187,12 @@ constructor(
         _searchQuery.value = q
     }
 
+    private val _searchLoading = MutableStateFlow(false)
+
+    /** True while a global YouTube-Music search is in flight, so the sheet can tell "loading" apart from
+     *  "no results" instead of spinning forever on a zero-result / failed search. */
+    val searchLoading: StateFlow<Boolean> = _searchLoading
+
     /** Global YouTube Music song search for the Add-Music sheet (debounced). */
     val searchResults: StateFlow<List<SongItem>> =
         _searchQuery
@@ -182,8 +201,13 @@ constructor(
             .flatMapLatest { q ->
                 flow {
                     if (q.isBlank()) {
+                        _searchLoading.value = false
                         emit(emptyList())
-                    } else {
+                        return@flow
+                    }
+                    _searchLoading.value = true
+                    emit(emptyList()) // drop stale results while the new query loads
+                    try {
                         val items = YouTube
                             .search(q, YouTube.SearchFilter.FILTER_SONG)
                             .getOrNull()
@@ -192,6 +216,8 @@ constructor(
                             .filterIsInstance<SongItem>()
                             .distinctBy { it.id }
                         emit(items)
+                    } finally {
+                        _searchLoading.value = false
                     }
                 }.flowOn(Dispatchers.IO)
             }
@@ -214,7 +240,7 @@ constructor(
         }
     }
 
-    private fun addByIds(songIds: List<String>): Int {
+    private suspend fun addByIds(songIds: List<String>): Int {
         if (songIds.isEmpty()) return 0
         val pl = playlist.value ?: return 0
         val duplicates = database.playlistDuplicates(pl.id, songIds)
@@ -230,24 +256,29 @@ constructor(
     }
 
     private suspend fun computeSuggestions(
-        songs: List<PlaylistSong>,
+        songIds: List<String>,
         limit: Int,
         shuffle: Boolean,
+        seed: Int = 0,
     ): List<Song> {
-        val playlistIds = songs.map { it.song.id }.toSet()
-        if (playlistIds.isEmpty()) return emptyList()
+        val idSet = songIds.toSet()
+        if (idSet.isEmpty()) return emptyList()
 
-        val seeds = if (shuffle) songs.shuffled() else songs
+        val random = Random(seed)
+        val seeds = if (shuffle) songIds.shuffled(random) else songIds
         val related = seeds
-            .flatMap { database.relatedSongs(it.song.id) }
-            .filter { it.id !in playlistIds }
+            .flatMap { database.relatedSongs(it) }
+            .filter { it.id !in idSet }
             .distinctBy { it.id }
-        val local = if (shuffle) related.shuffled() else related
-        if (local.isNotEmpty()) return local.take(limit)
+        val local = if (shuffle) related.shuffled(random) else related
+        if (local.size >= limit) return local.take(limit)
 
-        // Local corpus empty (songs never played → no related_song_map). Fall back ONLINE.
-        val seedId = seeds.firstOrNull()?.song?.id ?: return emptyList()
-        return onlineRelatedSongs(seedId, playlistIds, limit)
+        // Not enough local related candidates (small / never-played corpus) — top up ONLINE. Rotate the
+        // seed song per refresh so each refresh pulls fresh candidates instead of the same few.
+        val seedSong = seeds[seed.mod(seeds.size)]
+        val exclude = idSet + local.mapTo(HashSet()) { it.id }
+        val online = onlineRelatedSongs(seedSong, exclude, limit - local.size)
+        return (local + online).distinctBy { it.id }.take(limit)
     }
 
     private suspend fun onlineRelatedSongs(
@@ -255,6 +286,7 @@ constructor(
         exclude: Set<String>,
         limit: Int,
     ): List<Song> {
+        if (limit <= 0) return emptyList()
         val next = YouTube.next(WatchEndpoint(videoId = seedId)).getOrNull()
         val fromNext = next?.items.orEmpty()
         val fromRelated = next?.relatedEndpoint
@@ -264,6 +296,10 @@ constructor(
             .distinctBy { it.id }
             .filter { it.id !in exclude }
             .take(limit)
+        // insert() is IGNORE-on-conflict — idempotent and never clobbers an existing song's liked /
+        // library flags. Persisting here is what lets the "+" (add-by-id) path resolve these songs;
+        // it's bounded to playlist set-changes / refreshes by the distinctUntilChanged above, so it no
+        // longer runs on every recomposition.
         return songItems.mapNotNull { item ->
             database.insert(item.toMediaMetadata())
             database.song(item.id).first()

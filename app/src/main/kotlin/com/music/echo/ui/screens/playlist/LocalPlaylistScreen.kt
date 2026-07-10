@@ -248,6 +248,12 @@ fun LocalPlaylistScreen(
         selection.clear()
     }
 
+    // Entering search or multi-select hides the Add-Music footer; stop any active preview so it doesn't
+    // keep playing invisibly.
+    LaunchedEffect(isSearching, inSelectMode) {
+        if (isSearching || inSelectMode) previewController.stop()
+    }
+
     if (isSearching) {
         BackHandler {
             isSearching = false
@@ -263,8 +269,8 @@ fun LocalPlaylistScreen(
     }
 
     val editable: Boolean = playlist?.playlist?.isEditable == true
-    // The Add-Music feature is ONLY for pure-local editable playlists (editable AND no YouTube browseId).
-    val isPureLocalEditable: Boolean = editable && playlist?.playlist?.browseId == null
+    // The Add-Music feature shows on ALL editable playlists (pure-local AND YouTube-synced) — addByIds
+    // mirrors adds to YouTube for synced playlists.
 
     LaunchedEffect(songs) {
         selection.fastForEachReversed { mapId ->
@@ -717,16 +723,21 @@ fun LocalPlaylistScreen(
                                     onClick = {
                                         if (inSelectMode) {
                                             onCheckedChange(!selection.contains(song.map.id))
-                                        } else if (song.song.id == mediaMetadata?.id) {
-                                            playerConnection.togglePlayPause()
                                         } else {
-                                            playerConnection.playQueue(
-                                                ListQueue(
-                                                    title = playlist!!.playlist.name,
-                                                    items = songs.map { it.song.toMediaItem() },
-                                                    startIndex = songs.indexOfFirst { it.map.id == song.map.id },
-                                                ),
-                                            )
+                                            // Starting real playback must stop any active footer/sheet
+                                            // preview so two songs don't play at once.
+                                            previewController.stop()
+                                            if (song.song.id == mediaMetadata?.id) {
+                                                playerConnection.togglePlayPause()
+                                            } else {
+                                                playerConnection.playQueue(
+                                                    ListQueue(
+                                                        title = playlist!!.playlist.name,
+                                                        items = songs.map { it.song.toMediaItem() },
+                                                        startIndex = songs.indexOfFirst { it.map.id == song.map.id },
+                                                    ),
+                                                )
+                                            }
                                         }
                                     },
                                     onLongClick = {
@@ -755,7 +766,7 @@ fun LocalPlaylistScreen(
                     }
                 }
             }
-            if (isPureLocalEditable && !isSearching && !inSelectMode) {
+            if (editable && !isSearching && !inSelectMode) {
                 item(key = "add_music_button") {
                     AddMusicButton(
                         onClick = {

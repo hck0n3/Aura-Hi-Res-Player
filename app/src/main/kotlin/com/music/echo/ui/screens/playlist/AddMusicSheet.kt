@@ -28,6 +28,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -62,12 +63,18 @@ fun AddMusicSheet(
 
     val query by viewModel.searchQuery.collectAsState()
     val searchResults by viewModel.searchResults.collectAsState()
+    val searchLoading by viewModel.searchLoading.collectAsState()
     val replaySongs by viewModel.replaySongs.collectAsState()
     val recentlyAdded by viewModel.recentlyAddedSongs.collectAsState()
     val suggested by viewModel.sheetSuggestedSongs.collectAsState()
     val librarySongs by viewModel.librarySongs.collectAsState()
 
     val selection = remember { mutableStateListOf<String>() }
+
+    // Prune ids whose song left the library so a stale id can't inflate the "Add (N)" count.
+    LaunchedEffect(librarySongs) {
+        selection.retainAll { id -> librarySongs.any { it.id == id } }
+    }
 
     // Resolve section titles here (composable scope) — they can't be read inside the LazyColumn builder.
     val suggestedTitle = stringResource(R.string.suggested_songs)
@@ -151,7 +158,15 @@ fun AddMusicSheet(
                                         .height(120.dp),
                                     contentAlignment = Alignment.Center,
                                 ) {
-                                    CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                                    if (searchLoading) {
+                                        CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                                    } else {
+                                        Text(
+                                            text = stringResource(R.string.add_music_no_results),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
                                 }
                             }
                         }
