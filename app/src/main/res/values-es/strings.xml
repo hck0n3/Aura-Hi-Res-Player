@@ -431,4 +431,13 @@
     <string name="search_youtube_music">Buscar en YouTube Music</string>
     <string name="your_library">Tu biblioteca</string>
     <string name="add_music_no_results">Sin resultados</string>
+
+    <!-- Notificación del servicio de reconocimiento de canciones -->
+    <string name="recognition_notification_channel_name">Reconocimiento de música</string>
+    <string name="recognition_notification_channel_desc">Muestra una notificación mientras se identifica una canción</string>
+    <string name="recognition_notification_listening">Escuchando música…</string>
+    <string name="recognition_notification_processing">Identificando…</string>
+    <string name="recognition_notification_no_match">No se encontró ninguna coincidencia</string>
+    <string name="recognition_notification_failed">Error de reconocimiento</string>
+    <string name="listen_on_aura">Escuchar en Aura</string>
 </resources>

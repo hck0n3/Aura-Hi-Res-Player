@@ -252,6 +252,9 @@ class MainActivity : ComponentActivity() {
         private const val ACTION_LIBRARY = "iad1tya.echo.music.action.LIBRARY"
         // Quick Settings recognition tile opens the app straight to the Recognition screen.
         const val ACTION_RECOGNITION = "iad1tya.echo.music.action.RECOGNITION"
+        // With this extra the Recognition screen starts listening immediately (no second tap needed) —
+        // used by the tile/widget flow when the mic permission still has to be requested in-app.
+        const val EXTRA_AUTO_START_RECOGNITION = "auto_start_recognition"
         // Picture-in-Picture playback controls (system RemoteActions shown when the PiP window is tapped).
         const val PIP_ACTION = "iad1tya.echo.music.action.PIP"
         const val PIP_CONTROL = "control"
@@ -1542,11 +1545,18 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleDeepLinkIntent(intent: Intent, navController: NavHostController) {
-        // Quick Settings recognition tile (or a RECOGNITION deep link): open the Recognition screen, which
-        // auto-starts recording + Shazam matching. (No background mic service — reliable on every Android.)
+        // Recognition entry (tile permission fallback, result-notification tap, or a RECOGNITION deep
+        // link): open the Recognition screen; with EXTRA_AUTO_START_RECOGNITION it starts listening
+        // immediately instead of requiring a second tap.
         if (intent.action == ACTION_RECOGNITION) {
             intent.action = null
-            runCatching { navController.navigate("recognition") }
+            val autoStart = intent.getBooleanExtra(EXTRA_AUTO_START_RECOGNITION, false)
+            intent.removeExtra(EXTRA_AUTO_START_RECOGNITION)
+            runCatching {
+                navController.navigate(if (autoStart) "recognition?autoStart=true" else "recognition") {
+                    launchSingleTop = true
+                }
+            }
             return
         }
         val uri = intent.data ?: run {

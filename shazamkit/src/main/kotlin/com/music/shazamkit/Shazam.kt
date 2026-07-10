@@ -149,28 +149,38 @@ object Shazam {
     }
 
     /**
-     * Enqueue request for processing
+     * Enqueue request for processing.
+     *
+     * The queue is drained by [processQueue] launched on Shazam's OWN scope (never the caller's),
+     * and the caller awaits OUTSIDE the mutex. The previous version ran processQueue() inline
+     * inside requestMutex.withLock and awaited while holding the lock: if the caller was cancelled
+     * during the ~1s rate-limit delay, isProcessingQueue stayed true forever and every later
+     * attempt hung at "Processing" (then "Request queue is full" after 50).
      */
     private suspend fun enqueueRequest(
         signature: String,
         sampleDurationMs: Long
-    ): Result<RecognitionResult> = requestMutex.withLock {
-        if (requestQueue.size >= MAX_QUEUE_SIZE) {
-            return Result.failure(Exception("Request queue is full. Please wait."))
-        }
+    ): Result<RecognitionResult> {
+        val request = requestMutex.withLock {
+            if (requestQueue.size >= MAX_QUEUE_SIZE) {
+                return Result.failure(Exception("Request queue is full. Please wait."))
+            }
 
-        val requestId = nextRequestId++
-        val request = PendingRequest(
-            id = requestId,
-            signature = signature,
-            sampleDurationMs = sampleDurationMs
-        )
+            val requestId = nextRequestId++
+            val request = PendingRequest(
+                id = requestId,
+                signature = signature,
+                sampleDurationMs = sampleDurationMs
+            )
 
-        requestQueue.offer(request)
+            requestQueue.offer(request)
 
-        if (!isProcessingQueue) {
-            isProcessingQueue = true
-            processQueue()
+            if (!isProcessingQueue) {
+                isProcessingQueue = true
+                scope.launch { processQueue() }
+            }
+
+            request
         }
 
         return request.awaitResult()
@@ -180,30 +190,34 @@ object Shazam {
      * Process request queue
      */
     private suspend fun processQueue() {
-        while (true) {
-            val request = requestQueue.poll() ?: break
+        try {
+            while (true) {
+                val request = requestQueue.poll() ?: break
 
-            while (activeRequests.get() >= MAX_CONCURRENT_REQUESTS) {
-                delay(100)
-            }
-
-            activeRequests.incrementAndGet()
-
-            scope.launch {
-                try {
-                    val result = executeRequest(request.signature, request.sampleDurationMs)
-                    request.completeWith(result)
-                } catch (e: Exception) {
-                    request.completeWith(Result.failure(e))
-                } finally {
-                    activeRequests.decrementAndGet()
+                while (activeRequests.get() >= MAX_CONCURRENT_REQUESTS) {
+                    delay(100)
                 }
+
+                activeRequests.incrementAndGet()
+
+                scope.launch {
+                    try {
+                        val result = executeRequest(request.signature, request.sampleDurationMs)
+                        request.completeWith(result)
+                    } catch (e: Exception) {
+                        request.completeWith(Result.failure(e))
+                    } finally {
+                        activeRequests.decrementAndGet()
+                    }
+                }
+
+                enforceRateLimit()
             }
-
-            enforceRateLimit()
+        } finally {
+            // Whatever happens, never leave the flag stuck true — that would poison the queue
+            // (nothing would ever drain it again).
+            isProcessingQueue = false
         }
-
-        isProcessingQueue = false
     }
 
     /**
@@ -433,7 +447,13 @@ object Shazam {
         val sampleDurationMs: Long
     ) {
         private val mutex = Mutex()
+
+        // completeWith() runs on Shazam's IO scope while awaitResult() polls from the caller's
+        // thread — @Volatile guarantees the completion is visible across threads.
+        @Volatile
         private var result: Result<RecognitionResult>? = null
+
+        @Volatile
         private var isCompleted = false
 
         suspend fun awaitResult(): Result<RecognitionResult> {

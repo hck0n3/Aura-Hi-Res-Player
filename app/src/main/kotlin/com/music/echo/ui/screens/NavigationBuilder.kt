@@ -487,8 +487,19 @@ fun NavGraphBuilder.navigationBuilder(
         PodcastScreen(navController)
     }
 
-    composable("recognition") {
-        RecognitionScreen(navController)
+    composable(
+        "recognition?autoStart={autoStart}",
+        arguments = listOf(
+            androidx.navigation.navArgument("autoStart") {
+                type = androidx.navigation.NavType.BoolType
+                defaultValue = false
+            },
+        ),
+    ) { backStackEntry ->
+        RecognitionScreen(
+            navController,
+            autoStart = backStackEntry.arguments?.getBoolean("autoStart") == true,
+        )
     }
 
     composable("recognition_history") {

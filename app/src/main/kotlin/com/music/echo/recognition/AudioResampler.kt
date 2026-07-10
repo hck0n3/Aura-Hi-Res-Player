@@ -61,7 +61,11 @@ object AudioResampler {
                 decodedAudio.pcmEncoding
             )
             val outputFormat = sonic.configure(inputFormat)
-            sonic.flush()
+            // media3 1.10.1: the no-arg AudioProcessor.flush() interface default THROWS
+            // IllegalStateException ("AudioProcessor must implement at least one #flush() overload"),
+            // which made EVERY recognition attempt fail with "Failed to resample audio".
+            // Call the StreamMetadata overload that SonicAudioProcessor actually implements.
+            sonic.flush(AudioProcessor.StreamMetadata.DEFAULT)
 
             val inputBuf = ByteBuffer.wrap(decodedAudio.data).order(ByteOrder.nativeOrder())
             sonic.queueInput(inputBuf)
