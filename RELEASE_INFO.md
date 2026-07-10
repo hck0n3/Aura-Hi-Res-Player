@@ -1,37 +1,25 @@
-# Aura Hi-Res Player 0.6.89 — Artista, Inicio y reproducción afinados
+# Aura Hi-Res Player 0.6.90 — Detalles pulidos y la portada de vuelta
 
-## 🎤 Pantalla de artista arreglada
-- **Álbumes / Singles / EP:** ya no aparece el número raro ni el título duplicado, y se quitó el espacio vacío de arriba.
-- **Videos:** ya no se queda cargando para siempre — muestra el contenido o un botón de reintentar.
-- **"Aparece en":** ahora muestra todas las colaboraciones, sin recortar.
-- **"Canciones más escuchadas":** carga a la **primera** vez que entras (antes solo a la segunda).
+## 🖼️ Liquid Glass — portada de vuelta
+- Arreglado: con el estilo Liquid Glass activo ya se ve la **portada del álbum** en el reproductor (se había ocultado por un panel de cristal de más). El efecto de cristal se mantiene donde debe: en el **mini-reproductor** y la **barra de navegación**.
 
-## 🏠 Inicio y novedades
-- **Marcación rápida:** solo canciones (ya no te manda a artistas ni álbumes).
-- **Radar de novedades:** vuelve a poblarse — verás los estrenos de tus artistas.
-- **Tocar una novedad abre exactamente esa novedad** (en Inicio y en el Radar), la que ves en la portada.
-- **Modo estado de ánimo:** toca un chip de ánimo arriba y el contenido se actualiza al instante; además, **la reproducción se sesga a ese ánimo** mientras el chip esté activo. Al desactivarlo, vuelve a lo normal.
+## ❤️ Tus me gusta, siempre arriba
+- Las canciones que marcas con **me gusta suben al inicio** de la lista — en álbumes, playlists (tuyas y online) y en tu biblioteca. Es solo orden de visualización (no cambia el orden real de la playlist) y al tocarlas reproduce la correcta.
 
-## ▶️ Reproducción
-- **Sin el pequeño corte al inicio** de algunas canciones (el crossfade ahora espera a que la siguiente esté lista antes de mezclar).
-- **La transición se siente igual en todas** las canciones (se corrigieron los saltos inconsistentes; solo hay corte directo donde debe haberlo, como saltar a mano o el modo gapless).
-- **La cola infinita ya no repite** canciones que acabas de escuchar.
+## 👤 Cuentas y ajustes
+- En **Cuentas**, tocar la cuenta de **YouTube Music** o **Spotify** te lleva directo a su sección de **importación**.
+- El **botón de volver** ya no se esconde al desplazar en Cuentas, sincronización y otras pantallas.
 
-## 🔎 Búsqueda y sugerencias
-- **Tocar una sugerencia reproduce al instante** (se pre-resuelven en segundo plano las canciones visibles).
+## ▶️ Reproducción y contenido
+- **Álbumes que no cargaban a la primera:** ahora reintentan solos cuando YouTube va lento (ya no hay que entrar dos veces), y un fallo de red no borra el álbum guardado.
+- **Vista previa:** si el primer toque fallaba con "no disponible", ahora reintenta solo una vez antes de rendirse (y precalienta la sesión) — se acabó el "toca dos veces".
+- **Botón de actualizar sugeridas:** responde al **primer toque** (antes había que tocarlo dos veces).
 
-## 🎙️ Reconocer canción
-- El **botón de reconocer está siempre visible** (un botón dedicado, ya no escondido en el menú ⋯).
-- **Toca y empieza a reconocer** de inmediato.
+## 🔔 Notificaciones
+- La notificación de **actualización de la app** ya no re-suena en cada 1% mientras descarga (progreso silencioso).
 
-## 🤖 Listas con IA — más precisas
-- Si pides 20 canciones, crea **20** (antes se quedaba corta al no encontrar algunas). Y **respeta el género/idioma/ánimo** que pides (antes se iba a un subgénero distinto).
-
-## 🎧 Importar
-- **Importar listas de Spotify por link:** ahora te pide el enlace (como YouTube) e importa listas públicas, incluso sin iniciar sesión.
-
-## ⚖️ Legal
-- Ajuste del valor de responsabilidad limitada en los Términos y condiciones.
+## ⚡ Menos consumo
+- La sección **"Aparece en"** del artista se resuelve una sola vez y se guarda — ya no hace decenas de búsquedas cada vez que vuelves a entrar.
 
 ## ✅ Como siempre
 - Suscripción, licencia, demo, crossfade de 9s y motor de audio: intactos. Calor y batería vigilados.
