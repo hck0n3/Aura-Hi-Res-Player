@@ -147,7 +147,7 @@ Estos Términos y Condiciones (los "Términos") regulan el uso de la aplicación
 
 14.1. **EN LA MÁXIMA MEDIDA PERMITIDA POR LA LEY, EL DESARROLLADOR NO SERÁ RESPONSABLE DE DAÑOS INDIRECTOS, INCIDENTALES, ESPECIALES, EJEMPLARES, PUNITIVOS O CONSECUENTES, NI DE LUCRO CESANTE, PÉRDIDA DE DATOS, PÉRDIDA DE USO, DAÑO REPUTACIONAL, SANCIONES DE PLATAFORMAS DE TERCEROS (INCLUIDA LA SUSPENSIÓN DE CUENTAS), NI DE NINGUNA PÉRDIDA DERIVADA DEL USO O LA IMPOSIBILIDAD DE USO DE LA APLICACIÓN, AUNQUE SE HAYA ADVERTIDO DE LA POSIBILIDAD DE TALES DAÑOS.**
 
-14.2. **LA RESPONSABILIDAD TOTAL Y ACUMULADA DEL DESARROLLADOR POR CUALQUIER RECLAMACIÓN RELACIONADA CON LA APLICACIÓN O ESTOS TÉRMINOS QUEDA LIMITADA AL IMPORTE EFECTIVAMENTE PAGADO POR EL USUARIO AL DESARROLLADOR EN LOS DOCE (12) MESES ANTERIORES AL HECHO QUE ORIGINE LA RECLAMACIÓN Y, SI EL USUARIO NO HA PAGADO NADA (POR EJEMPLO, EN MODO DE DEMOSTRACIÓN), A DIEZ DÓLARES ESTADOUNIDENSES (USD 10).**
+14.2. **LA RESPONSABILIDAD TOTAL Y ACUMULADA DEL DESARROLLADOR POR CUALQUIER RECLAMACIÓN RELACIONADA CON LA APLICACIÓN O ESTOS TÉRMINOS QUEDA LIMITADA AL IMPORTE EFECTIVAMENTE PAGADO POR EL USUARIO AL DESARROLLADOR EN LOS DOCE (12) MESES ANTERIORES AL HECHO QUE ORIGINE LA RECLAMACIÓN Y, SI EL USUARIO NO HA PAGADO NADA (POR EJEMPLO, EN MODO DE DEMOSTRACIÓN), A TRES DÓLARES CON SETENTA Y CUATRO CENTAVOS ESTADOUNIDENSES (USD 3.74).**
 
 14.3. Nada en estos Términos excluye o limita la responsabilidad que no pueda excluirse o limitarse conforme a la ley aplicable (por ejemplo, por dolo, culpa grave, o daños a la vida o integridad física donde así lo disponga la ley), ni los derechos imperativos del consumidor.
 
@@ -219,6 +219,6 @@ Este resumen es solo una ayuda de lectura. **No sustituye a las cláusulas anter
 - **La suscripción paga funciones de la app** (ecualizador, extras del reproductor), nunca la música. Puedes cancelarla cuando quieras en Gumroad. Hay modo demo gratuito.
 - **El código es libre (GPL-3.0).** Puedes ver, estudiar y modificar el código fuente. La marca "Aura" y el servidor de licencias, no.
 - **Sin garantías.** YouTube puede cambiar mañana y romper cosas; haremos lo posible por arreglarlo, pero no podemos prometerlo. La app se ofrece "tal cual".
-- **Responsabilidad limitada.** Si algo sale mal, nuestra responsabilidad máxima es lo que pagaste en el último año (o 10 USD si no pagaste nada). Nunca respondemos por daños indirectos ni por sanciones de otras plataformas.
+- **Responsabilidad limitada.** Si algo sale mal, nuestra responsabilidad máxima es lo que pagaste en el último año (o 3.74 USD si no pagaste nada). Nunca respondemos por daños indirectos ni por sanciones de otras plataformas.
 - **Si incumples estas reglas**, podemos cancelar tu licencia o suscripción. Tus derechos sobre el código GPL no se tocan.
 - **Si cambiamos estos términos**, te lo mostraremos en la app y tendrás que aceptarlos de nuevo para seguir.
