@@ -5,6 +5,7 @@ package iad1tya.echo.music.ui.screens.artist
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -19,6 +20,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -32,10 +34,12 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -89,6 +93,7 @@ fun ArtistItemsScreen(
 
     val title by viewModel.title.collectAsState()
     val itemsPage by viewModel.itemsPage.collectAsState()
+    val hasFailed by viewModel.hasFailed.collectAsState()
 
     LaunchedEffect(lazyListState) {
         snapshotFlow {
@@ -108,7 +113,8 @@ fun ArtistItemsScreen(
         }
     }
 
-    if (itemsPage == null) {
+    if (itemsPage == null && !hasFailed) {
+        // Genuine loading only: shimmer until we have items OR the fetch terminates in failure.
         ShimmerHost(
             modifier = Modifier.windowInsetsPadding(LocalPlayerAwareWindowInsets.current),
         ) {
@@ -116,8 +122,21 @@ fun ArtistItemsScreen(
                 ListItemPlaceHolder()
             }
         }
+    } else if (itemsPage == null && hasFailed) {
+        // Terminal failure: stop the infinite spinner and let the user retry the fetch.
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .windowInsetsPadding(LocalPlayerAwareWindowInsets.current),
+            contentAlignment = Alignment.Center,
+        ) {
+            Button(onClick = viewModel::load) {
+                Text(stringResource(R.string.retry))
+            }
+        }
     }
 
+    if (itemsPage != null) {
     if (itemsPage?.items?.firstOrNull() is SongItem) {
         LazyColumn(
             state = lazyListState,
@@ -225,14 +244,6 @@ fun ArtistItemsScreen(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues()
         ) {
-            item(span = { GridItemSpan(maxLineSpan) }) {
-                Text(
-                    text = "$title · ${itemsPage?.items.orEmpty().distinctBy { it.id }.size}",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                )
-            }
             items(
                 items = itemsPage?.items.orEmpty().distinctBy { it.id }
                     .sortedByDescending { (it as? AlbumItem)?.year ?: 0 },
@@ -308,6 +319,7 @@ fun ArtistItemsScreen(
             }
         }
         }
+    }
     }
 
     TopAppBar(

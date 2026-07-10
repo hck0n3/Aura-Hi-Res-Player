@@ -20,6 +20,7 @@ import iad1tya.echo.music.constants.HideYoutubeShortsKey
 import iad1tya.echo.music.db.MusicDatabase
 import iad1tya.echo.music.extensions.filterExplicit
 import iad1tya.echo.music.extensions.filterExplicitAlbums
+import iad1tya.echo.music.utils.ArtistPageCache
 import iad1tya.echo.music.utils.dataStore
 import iad1tya.echo.music.utils.reportException
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -132,8 +133,24 @@ class ArtistViewModel @Inject constructor(
         fetchJob?.cancel()
         fetchJob = viewModelScope.launch {
             // Instant re-open: show this session's cached artist page immediately (no spinner), then
-            // still refresh from YouTube below so the data stays up to date.
-            if (artistPage == null) pageCache[artistId]?.let { artistPage = it }
+            // still refresh from YouTube below so the data stays up to date. On a COLD first entry (no
+            // in-memory cache yet) fall back to the page persisted last session, so the shelves (e.g.
+            // "Canciones más escuchadas") render instantly instead of waiting for the slow live fetch —
+            // which previously left the screen blank until the user backed out and re-entered.
+            if (artistPage == null) {
+                pageCache[artistId]?.let { artistPage = it }
+                    ?: ArtistPageCache.load(context, artistId)?.let { persisted ->
+                        if (artistPage == null) {
+                            val filtered = persisted.copy(
+                                sections = persisted.sections
+                                    .map { s -> s.copy(items = s.items.filterExplicit(hideExplicit).filterVideoSongs(hideVideoSongs).filterYoutubeShorts(hideYoutubeShorts)) }
+                                    .filter { s -> s.items.isNotEmpty() }
+                            )
+                            pageCache[artistId] = filtered
+                            artistPage = filtered
+                        }
+                    }
+            }
             // Retry transient failures (YouTube throttling) so the screen doesn't get stuck on the spinner,
             // which forced the user to leave and re-enter the artist several times.
             var attempt = 0
@@ -147,9 +164,12 @@ class ArtistViewModel @Inject constructor(
                         }
                         .filter { section -> section.items.isNotEmpty() }
 
-                    artistPage = page.copy(sections = filteredSections)
-                    pageCache[artistId] = artistPage!!
+                    val filteredPage = page.copy(sections = filteredSections)
+                    artistPage = filteredPage
+                    pageCache[artistId] = filteredPage
                     loaded = true
+                    // Persist so a COLD first entry next session can show this instantly (see seed above).
+                    launch { ArtistPageCache.save(context, artistId, filteredPage) }
 
                     val topSongsSection = page.sections.find { it.items.firstOrNull() is com.music.innertube.models.SongItem }
                     launch(Dispatchers.IO) {
@@ -186,7 +206,7 @@ class ArtistViewModel @Inject constructor(
                         // without hammering the network.
                         val guest = iad1tya.echo.music.utils.iTunesDiscography
                             .fetchAppearsOn(artistName, "us")
-                            .take(10)
+                            .take(40)
                         if (guest.isEmpty()) return@launch
                         val sem = Semaphore(1)
                         val found = coroutineScope {

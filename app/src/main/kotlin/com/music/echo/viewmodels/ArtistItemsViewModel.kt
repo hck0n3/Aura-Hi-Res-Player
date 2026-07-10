@@ -48,6 +48,9 @@ constructor(
 
     val title = MutableStateFlow("")
     val itemsPage = MutableStateFlow<ItemsPage?>(null)
+    // Terminal-failure flag: when YouTube.artistItems fails (e.g. the Videos "more" browse), flip this so
+    // the screen STOPS the shimmer and offers Retry instead of spinning forever (itemsPage stays null).
+    val hasFailed = MutableStateFlow(false)
 
     companion object {
         // Per-artist cache of the completed (iTunes-driven) discography for this app session, so
@@ -57,6 +60,11 @@ constructor(
     }
 
     init {
+        load()
+    }
+
+    fun load() {
+        hasFailed.value = false
         viewModelScope.launch {
             YouTube
                 .artistItems(
@@ -99,6 +107,7 @@ constructor(
                     }
                 }.onFailure {
                     reportException(it)
+                    hasFailed.value = true
                 }
         }
     }
