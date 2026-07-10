@@ -20,9 +20,15 @@ import java.util.concurrent.TimeUnit
  * 1. USER KEY OVERRIDE — if the user configured an API key, their provider/baseUrl/model are used
  *    exactly as before (BYO key, full control).
  * 2. AURA WORKER — with no key, the same OpenAI-shape body is POSTed to the owner's Cloudflare
- *    Worker `/ai` route (Workers AI relay, no Authorization header).
- * 3. POLLINATIONS — if the Worker fails (non-2xx after retries, network error, or unparseable
- *    reply), the request falls back to the public keyless endpoint text.pollinations.ai.
+ *    Worker `/ai` route (Workers AI relay, no Authorization header). Treated as a PROBE: anything
+ *    that is NOT a usable OpenAI-shape completion (HTTP 4xx incl. a not-yet-deployed 404, or a 200
+ *    whose body has no choices[0].message.content — e.g. {"status":"invalid"}) is a FAST FAILURE
+ *    and falls through to Pollinations immediately. Only a genuine 5xx (a deployed Worker hiccup)
+ *    is retried. So an undeployed Worker costs ~one quick 404, never wasted retries; once the owner
+ *    deploys /ai it becomes the reliable primary automatically, with no further app change.
+ * 3. POLLINATIONS — public keyless endpoint text.pollinations.ai. It intermittently returns empty
+ *    content or rate-limits, so it gets a bounded retry (POLLINATIONS_MAX_RETRIES) with short backoff
+ *    before the chain gives up.
  * If every keyless endpoint fails, [AiServiceUnavailableException] is returned so the UI can show
  * a friendly "try again" message instead of asking for an API key.
  *
@@ -55,6 +61,12 @@ object AiPlaylistService {
 
     /** Modest per-endpoint retries for the keyless chain so the chained worst case stays bounded. */
     private const val KEYLESS_MAX_RETRIES = 2
+
+    /**
+     * Pollinations is the last keyless hop and flakes (empty content / rate-limit), so it gets one
+     * extra bounded attempt beyond the Worker probe. Still small, to respect the battery/heat budget.
+     */
+    private const val POLLINATIONS_MAX_RETRIES = 3
 
     class UnsupportedProviderException(val providerName: String) :
         Exception("Provider not supported for AI playlists: $providerName")
@@ -109,7 +121,9 @@ object AiPlaylistService {
             )
         }
 
-        // 2. Aura Worker (keyless primary).
+        // 2. Aura Worker (keyless primary). Probe-style: only a 5xx from a deployed Worker is retried;
+        // a 4xx (incl. the current not-yet-deployed 404) or a 200 with no usable content fast-fails
+        // so we fall through to Pollinations without burning retries on a route that isn't serving.
         val workerResult = requestChatCompletion(
             url = AURA_WORKER_URL,
             apiKey = null,
@@ -118,10 +132,12 @@ object AiPlaylistService {
             maxTokens = maxTokens,
             count = count,
             maxRetries = KEYLESS_MAX_RETRIES,
+            retryEmptyContent = false,
         )
         if (workerResult.isSuccess) return@withContext workerResult
 
-        // 3. Pollinations fallback (keyless).
+        // 3. Pollinations fallback (keyless). Bounded retry with short backoff to ride out its
+        // intermittent empty replies / rate-limits before the chain gives up.
         val fallbackResult = requestChatCompletion(
             url = POLLINATIONS_URL,
             apiKey = null,
@@ -129,7 +145,8 @@ object AiPlaylistService {
             messages = messages,
             maxTokens = maxTokens,
             count = count,
-            maxRetries = KEYLESS_MAX_RETRIES,
+            maxRetries = POLLINATIONS_MAX_RETRIES,
+            retryEmptyContent = true,
         )
         if (fallbackResult.isSuccess) return@withContext fallbackResult
 
@@ -139,6 +156,15 @@ object AiPlaylistService {
     /**
      * One OpenAI-compatible chat-completion round trip against [url] with 5xx retries/backoff.
      * [apiKey] null/blank → no Authorization header (keyless endpoints). Returns the parsed spec.
+     *
+     * [retryEmptyContent] controls how a "reachable but useless" reply is treated (a 200 with an
+     * empty body, or a 200 whose choices[0].message.content is missing/blank — e.g. an undeployed
+     * Worker stub like {"status":"invalid"}):
+     *  - true  (Pollinations): keep retrying up to [maxRetries], it flakes transiently.
+     *  - false (Aura Worker probe): fast-fail immediately so the chain falls through without wasting
+     *    retries on a route that isn't actually serving completions.
+     * A genuine 5xx is retried regardless of this flag, since it signals a deployed-but-hiccuping
+     * endpoint; a 4xx (incl. the not-yet-deployed 404) always fails fast as before.
      */
     private suspend fun requestChatCompletion(
         url: String,
@@ -148,6 +174,7 @@ object AiPlaylistService {
         maxTokens: Int,
         count: Int,
         maxRetries: Int,
+        retryEmptyContent: Boolean = true,
     ): Result<AiPlaylistSpec> {
         val requestJson = JSONObject().apply {
             if (model.isNotBlank()) put("model", model)
@@ -197,7 +224,12 @@ object AiPlaylistService {
                 }
 
                 if (responseBody == null) {
+                    if (!retryEmptyContent) {
+                        return Result.failure(Exception("Empty AI response body"))
+                    }
                     attempt++
+                    lastError = "Empty AI response body"
+                    delay(1000L * attempt)
                     continue
                 }
 
@@ -226,6 +258,12 @@ object AiPlaylistService {
                     }
                 }
 
+                // Reachable but no usable content. For the Worker probe (retryEmptyContent=false)
+                // this means "not really serving completions" (e.g. an undeployed {"status":"invalid"}
+                // stub) → fail fast and fall through to Pollinations instead of retrying a dead route.
+                if (!retryEmptyContent) {
+                    return Result.failure(Exception("Empty AI response"))
+                }
                 lastError = "Empty AI response"
             } catch (e: Exception) {
                 if (attempt == maxRetries - 1) {
