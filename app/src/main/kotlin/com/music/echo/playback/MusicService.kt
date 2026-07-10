@@ -3737,10 +3737,32 @@ class MusicService :
 
     // Unresolvable-song dead-end (see YTPlayerUtils.StreamResolutionException, mapped to ERROR_CODE_NO_STREAM
     // in the loader). This is NOT a network error — it must fail fast with a message + skip, never wait/retry
-    // or silently pause. Checks both the error and its cause (ExoPlayer may wrap our thrown exception).
+    // or silently pause. Walk the WHOLE cause chain (like getHttpResponseCode): our PlaybackException(NO_STREAM)
+    // is thrown from inside the ResolvingDataSource, so media3's Loader wraps it in UnexpectedLoaderException
+    // (an IOException) and ExoPlayer wraps THAT again — the NO_STREAM code / StreamResolutionException ends up
+    // 2+ levels deep, so a one-level check would miss it and fall through to handleGenericIOError (the exact
+    // "stuck / never loads" behavior this fix kills). Anchoring on StreamResolutionException is most robust.
     private fun isNoStreamError(error: PlaybackException): Boolean {
-        return error.errorCode == ERROR_CODE_NO_STREAM ||
-                (error.cause as? PlaybackException)?.errorCode == ERROR_CODE_NO_STREAM
+        var cause: Throwable? = error
+        while (cause != null) {
+            if (cause is YTPlayerUtils.StreamResolutionException) return true
+            if (cause is PlaybackException && cause.errorCode == ERROR_CODE_NO_STREAM) return true
+            cause = cause.cause
+        }
+        return false
+    }
+
+    // The real, user-facing reason for an unresolvable song lives on the innermost StreamResolutionException
+    // (region-locked / premium / members-only / timed-out …), NOT on the top-level ExoPlaybackException whose
+    // message is a generic loader string. Walk the chain to recover it so the toast surfaces WHY.
+    private fun noStreamReason(error: PlaybackException): String? {
+        var cause: Throwable? = error
+        while (cause != null) {
+            if (cause is YTPlayerUtils.StreamResolutionException) return cause.reason
+            if (cause is PlaybackException && cause.errorCode == ERROR_CODE_NO_STREAM) return cause.message
+            cause = cause.cause
+        }
+        return error.message
     }
 
 
@@ -3803,8 +3825,8 @@ class MusicService :
                 // never loop in a fake "no internet" state. When OFFLINE, this branch is skipped and the
                 // `!isNetworkConnected.value` branch below waits for the network instead (a resolve failure
                 // while offline may just be the outage, not a genuinely unavailable song).
-                Timber.tag(TAG).w(error, "Unresolvable song (no stream) for $mediaId: ${error.message}")
-                handleUnresolvableSong(mediaId, error.message)
+                Timber.tag(TAG).w(error, "Unresolvable song (no stream) for $mediaId: ${noStreamReason(error)}")
+                handleUnresolvableSong(mediaId, noStreamReason(error))
                 return
             }
             isAudioRendererError(error) -> {
