@@ -35,7 +35,7 @@ constructor(
     val allPlaylists =
         context.dataStore.data
             .map {
-                it[AddToPlaylistSortTypeKey].toEnum(PlaylistSortType.CREATE_DATE) to (it[AddToPlaylistSortDescendingKey]
+                it[AddToPlaylistSortTypeKey].toEnum(PlaylistSortType.LAST_UPDATED) to (it[AddToPlaylistSortDescendingKey]
                     ?: true)
             }.distinctUntilChanged()
             .flatMapLatest { (sortType, descending) ->

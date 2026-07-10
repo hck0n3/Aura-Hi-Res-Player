@@ -262,7 +262,8 @@ class App : Application(), SingletonImageLoader.Factory {
             settings[iad1tya.echo.music.constants.PlaybackDefaultsV4AppliedKey] != true ||
             settings[iad1tya.echo.music.constants.PlaybackDefaultsV5AppliedKey] != true ||
             settings[iad1tya.echo.music.constants.CrossfadeDefault9AppliedKey] != true ||
-            settings[iad1tya.echo.music.constants.LyricsBlurDefaultOnV1AppliedKey] != true
+            settings[iad1tya.echo.music.constants.LyricsBlurDefaultOnV1AppliedKey] != true ||
+            settings[iad1tya.echo.music.constants.AddToPlaylistLastUpdatedDefaultV1AppliedKey] != true
         if (batchAPending) {
             runCatching {
                 dataStore.edit { p ->
@@ -278,6 +279,7 @@ class App : Application(), SingletonImageLoader.Factory {
                     applyThemeSystemOnlyV2(p, settings)
                     applyPlaybackDefaults(p, settings)
                     applyLyricsBlurDefaultOnV1(p, settings)
+                    applyAddToPlaylistLastUpdatedDefaultV1(p, settings)
                 }
             }.onFailure { reportException(it) }
         }
@@ -712,6 +714,24 @@ class App : Application(), SingletonImageLoader.Factory {
         if (settings[iad1tya.echo.music.constants.LyricsBlurDefaultOnV1AppliedKey] == true) return
         p[iad1tya.echo.music.constants.LyricsStandardBlurKey] = true
         p[iad1tya.echo.music.constants.LyricsBlurDefaultOnV1AppliedKey] = true
+    }
+
+    /**
+     * One-time (V1, FRESH key): default the Add-to-playlist dialog sort to LAST_UPDATED descending —
+     * recently-added-to playlists first — for EVERYONE, including installs that already have
+     * addToPlaylistSortType persisted (a set flag or versionCode bump alone won't re-run a migration).
+     * Enum prefs are stored as their String name (see rememberEnumPreference). One-time only: the sort
+     * header inside the dialog stays functional, so the user's later choice sticks.
+     */
+    private fun applyAddToPlaylistLastUpdatedDefaultV1(
+        p: androidx.datastore.preferences.core.MutablePreferences,
+        settings: androidx.datastore.preferences.core.Preferences,
+    ) {
+        if (settings[iad1tya.echo.music.constants.AddToPlaylistLastUpdatedDefaultV1AppliedKey] == true) return
+        p[iad1tya.echo.music.constants.AddToPlaylistSortTypeKey] =
+            iad1tya.echo.music.constants.PlaylistSortType.LAST_UPDATED.name
+        p[iad1tya.echo.music.constants.AddToPlaylistSortDescendingKey] = true
+        p[iad1tya.echo.music.constants.AddToPlaylistLastUpdatedDefaultV1AppliedKey] = true
     }
 
     private fun applyMiniPlayerDefaultBg(

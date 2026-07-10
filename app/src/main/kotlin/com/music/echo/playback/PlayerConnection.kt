@@ -133,6 +133,19 @@ class PlayerConnection(
             database.format(mediaMetadata?.id)
         }
 
+    /** True while the CURRENT song is in the "No me gusta" store (live: current mediaId × DislikeStore). */
+    val currentSongDisliked: kotlinx.coroutines.flow.StateFlow<Boolean> =
+        combine(mediaMetadata, service.dislikeStore.disliked) { meta, disliked ->
+            val id = meta?.id
+            id != null && id in disliked.songs
+        }.stateIn(scope, SharingStarted.Lazily, false)
+
+    /** Autoplay suggestion chips for the queue footer (YT Music parity); see MusicService.autoplayChips. */
+    val autoplayChips: kotlinx.coroutines.flow.StateFlow<List<AutoplayChip>> = service.autoplayChips
+
+    /** The chip currently steering the autoplay (default = the "related" chip of the live seed). */
+    val autoplaySelectedChip: kotlinx.coroutines.flow.StateFlow<AutoplayChip?> = service.autoplaySelectedChip
+
     val queueTitle = MutableStateFlow<String?>(null)
     val queueWindows = MutableStateFlow<List<Timeline.Window>>(emptyList())
     val currentMediaItemIndex = MutableStateFlow(-1)
@@ -301,6 +314,42 @@ class PlayerConnection(
             service.dislikeCurrentSong()
         } catch (e: Exception) {
             Timber.tag(TAG).e(e, "Error in dislikeCurrentSong")
+        }
+    }
+
+    /**
+     * Toggleable dislike for the current song: undo (store-only removal, no skip) if already disliked,
+     * else the full dislike flow (dislike + unlike-if-liked via UPSERT + purge + skip). Observe
+     * [currentSongDisliked] for the live state.
+     */
+    fun toggleDislikeCurrentSong() {
+        try {
+            service.toggleDislikeCurrentSong()
+        } catch (e: Exception) {
+            Timber.tag(TAG).e(e, "Error in toggleDislikeCurrentSong")
+        }
+    }
+
+    /** UI → service: the full-screen player sheet was expanded (true) or collapsed (false). */
+    fun setPlayerSheetExpanded(expanded: Boolean) {
+        try {
+            service.setPlayerSheetExpanded(expanded)
+        } catch (e: Exception) {
+            Timber.tag(TAG).e(e, "Error in setPlayerSheetExpanded")
+        }
+    }
+
+    /** Re-seed the autoplay tail from [chip]'s endpoint (blocked for Listen Together guests, like
+     *  startRadioSeamlessly — a guest must never mutate the shared queue). */
+    fun selectAutoplayChip(chip: AutoplayChip) {
+        if (shouldBlockPlaybackChanges?.invoke() == true) {
+            Timber.tag(TAG).d("selectAutoplayChip blocked - Listen Together guest")
+            return
+        }
+        try {
+            service.selectAutoplayChip(chip)
+        } catch (e: Exception) {
+            Timber.tag(TAG).e(e, "Error in selectAutoplayChip")
         }
     }
 

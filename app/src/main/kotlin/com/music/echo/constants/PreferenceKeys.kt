@@ -114,6 +114,11 @@ val SafeVolumeDefaultOnAppliedKey = booleanPreferencesKey("safe_volume_default_o
 // the default lyric style is APPLE_V2, whose Apple-style blur is gated on that key (default false), so the
 // advertised blur was invisible by default. Re-applies once; the user can toggle it off afterwards.
 val LyricsBlurDefaultOnV1AppliedKey = booleanPreferencesKey("lyrics_blur_default_on_v1_applied")
+// One-time (FRESH key): default the Add-to-playlist dialog sort to LAST_UPDATED descending for EVERYONE —
+// recently-added-to playlists first. Re-applies once even if AddToPlaylistSortTypeKey was already set;
+// the in-dialog sort header stays functional so the user can change it afterwards.
+val AddToPlaylistLastUpdatedDefaultV1AppliedKey =
+    booleanPreferencesKey("add_to_playlist_last_updated_default_v1_applied")
 // Manual override: force the wide "Spotify split" layout ON even on a device the app wouldn't auto-detect as
 // big (e.g. a phone/tablet the user WANTS the split on). ORed into rememberIsWideScreen().
 val ForceSplitViewKey = booleanPreferencesKey("force_split_view")

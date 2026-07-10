@@ -84,13 +84,15 @@ fun AddToPlaylistDialogOnline(
     val database = LocalDatabase.current
     val coroutineScope = rememberCoroutineScope()
     val viewStateMap = remember { mutableStateMapOf<String, ItemsPage?>() }
+    // Defaults MUST match PlaylistsViewModel.allPlaylists (LAST_UPDATED + descending), or the header
+    // shows one sort while the list uses another. Recently-added-to playlists first by default.
     val (sortType, onSortTypeChange) = rememberEnumPreference(
         AddToPlaylistSortTypeKey,
-        PlaylistSortType.NAME
+        PlaylistSortType.LAST_UPDATED
     )
     val (sortDescending, onSortDescendingChange) = rememberPreference(
         AddToPlaylistSortDescendingKey,
-        false
+        true
     )
     val playlists by viewModel.allPlaylists.collectAsState()
 
