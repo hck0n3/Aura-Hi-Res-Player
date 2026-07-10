@@ -480,4 +480,13 @@
     <string name="ai_playlist_settings_title">AI Playlist</string>
     <string name="ai_playlist_enabled_title">Text-to-playlist</string>
     <string name="ai_playlist_enabled_desc">Show the AI Playlist button in your library</string>
+    <string name="add_music">Add Music</string>
+    <string name="suggested_songs">Suggested Songs</string>
+    <string name="featured_artists">Featured Artists</string>
+    <string name="from_replay">From Replay</string>
+    <string name="recently_added">Recently Added</string>
+    <string name="refresh">Refresh</string>
+    <string name="add_selected">Add (%1$d)</string>
+    <string name="search_youtube_music">Search YouTube Music</string>
+    <string name="your_library">Your Library</string>
 </resources>

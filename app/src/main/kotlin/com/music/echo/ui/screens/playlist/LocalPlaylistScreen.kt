@@ -205,6 +205,10 @@ fun LocalPlaylistScreen(
     val coroutineScope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
 
+    // Apple-Music-style "Add Music" footer (only shown on pure-local editable playlists — see below).
+    var showAddMusicSheet by remember { mutableStateOf(false) }
+    val previewController = rememberSongPreviewController()
+
     var isSearching by rememberSaveable { mutableStateOf(false) }
 
     var query by rememberSaveable(stateSaver = TextFieldValue.Saver) {
@@ -259,6 +263,8 @@ fun LocalPlaylistScreen(
     }
 
     val editable: Boolean = playlist?.playlist?.isEditable == true
+    // The Add-Music feature is ONLY for pure-local editable playlists (editable AND no YouTube browseId).
+    val isPureLocalEditable: Boolean = editable && playlist?.playlist?.browseId == null
 
     LaunchedEffect(songs) {
         selection.fastForEachReversed { mapId ->
@@ -749,9 +755,42 @@ fun LocalPlaylistScreen(
                     }
                 }
             }
+            if (isPureLocalEditable && !isSearching && !inSelectMode) {
+                item(key = "add_music_button") {
+                    AddMusicButton(
+                        onClick = {
+                            // Stop any footer preview so it doesn't overlap the sheet's own preview player.
+                            previewController.stop()
+                            showAddMusicSheet = true
+                        },
+                        modifier = Modifier.animateItem(),
+                    )
+                }
+                item(key = "suggested_songs_section") {
+                    SuggestedSongsSection(
+                        viewModel = viewModel,
+                        previewController = previewController,
+                        modifier = Modifier.animateItem(),
+                    )
+                }
+                item(key = "featured_artists_section") {
+                    FeaturedArtistsSection(
+                        viewModel = viewModel,
+                        navController = navController,
+                        modifier = Modifier.animateItem(),
+                    )
+                }
+            }
             item(key = "bottom_spacer") {
                 Spacer(Modifier.height(50.dp))
             }
+        }
+
+        if (showAddMusicSheet) {
+            AddMusicSheet(
+                viewModel = viewModel,
+                onDismiss = { showAddMusicSheet = false },
+            )
         }
 
         DraggableScrollbar(
