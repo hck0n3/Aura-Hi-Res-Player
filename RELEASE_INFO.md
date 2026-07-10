@@ -1,25 +1,20 @@
-# Aura Hi-Res Player 0.6.90 — Detalles pulidos y la portada de vuelta
+# Aura Hi-Res Player 0.6.91 — Cristal en los botones, me gusta más claro y menos "cuelgues" de canciones
 
-## 🖼️ Liquid Glass — portada de vuelta
-- Arreglado: con el estilo Liquid Glass activo ya se ve la **portada del álbum** en el reproductor (se había ocultado por un panel de cristal de más). El efecto de cristal se mantiene donde debe: en el **mini-reproductor** y la **barra de navegación**.
+## 🫧 Botones flotantes con Liquid Glass
+- Los **botones flotantes** (mezclar, micrófono y crear) ahora usan el efecto **Liquid Glass** cuando está activo — a juego con el mini-reproductor y la barra de navegación. En dispositivos donde el cristal no aplica, se ven igual que antes (sin cambios).
 
-## ❤️ Tus me gusta, siempre arriba
-- Las canciones que marcas con **me gusta suben al inicio** de la lista — en álbumes, playlists (tuyas y online) y en tu biblioteca. Es solo orden de visualización (no cambia el orden real de la playlist) y al tocarlas reproduce la correcta.
+## 👍👎 Me gusta / No me gusta más claro
+- Los pulgares del reproductor ahora empiezan **sin relleno** (contorno). Solo se **rellena el que eliges** — igual que YouTube Music hoy. Ya no parece que "no me gusta" estuviera activado por defecto.
 
-## 👤 Cuentas y ajustes
-- En **Cuentas**, tocar la cuenta de **YouTube Music** o **Spotify** te lleva directo a su sección de **importación**.
-- El **botón de volver** ya no se esconde al desplazar en Cuentas, sincronización y otras pantallas.
+## 📡 Menos canciones "colgadas"
+- **Canciones que se quedaban como si no hubiera internet (y nunca cargaban):** ahora se distingue una canción **imposible de reproducir** (bloqueada por región, solo premium, restringida por edad…) de una **caída de red real**.
+  - Si la canción no se puede servir: **falla rápido una vez, avisa el motivo y pasa a la siguiente** — se acabó el bucle infinito.
+  - Si de verdad no hay internet: espera y reintenta con cordura, como antes.
+- Se añadió un **límite de tiempo** a la resolución de YouTube (30 s) para que nunca se quede pensando para siempre, y la **cadena de respaldo** ya no se aborta si el primer cliente falla (más canciones se resuelven al primer intento).
+- **Invitados (sin sesión):** las canciones con restricción de edad ahora intentan una vía sin login en vez de fallar seguro.
 
-## ▶️ Reproducción y contenido
-- **Álbumes que no cargaban a la primera:** ahora reintentan solos cuando YouTube va lento (ya no hay que entrar dos veces), y un fallo de red no borra el álbum guardado.
-- **Vista previa:** si el primer toque fallaba con "no disponible", ahora reintenta solo una vez antes de rendirse (y precalienta la sesión) — se acabó el "toca dos veces".
-- **Botón de actualizar sugeridas:** responde al **primer toque** (antes había que tocarlo dos veces).
-
-## 🔔 Notificaciones
-- La notificación de **actualización de la app** ya no re-suena en cada 1% mientras descarga (progreso silencioso).
-
-## ⚡ Menos consumo
-- La sección **"Aparece en"** del artista se resuelve una sola vez y se guarda — ya no hace decenas de búsquedas cada vez que vuelves a entrar.
+## 🤖 IA sin clave más robusta
+- Las **playlists con IA** ahora funcionan de forma fiable aunque el servidor propio esté caído: si no responde, cae al instante al motor de respaldo (con reintentos) en vez de tardar y fallar.
 
 ## ✅ Como siempre
 - Suscripción, licencia, demo, crossfade de 9s y motor de audio: intactos. Calor y batería vigilados.

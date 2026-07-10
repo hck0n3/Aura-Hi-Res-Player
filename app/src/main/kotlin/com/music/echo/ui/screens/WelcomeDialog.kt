@@ -76,7 +76,7 @@ fun WelcomeDialog(
                     WelcomeFeatureRow(
                         iconRes = R.drawable.music_note,
                         title = "Música ilimitada",
-                        subtitle = "Todo el catálogo de YouTube Music, sin anuncios; reproductor estilo YouTube Music con Me gusta / No me gusta en una píldora dividida abajo, cola al deslizar hacia arriba con pestañas SIGUIENTE / LETRA / RELACIONADOS y reproducción automática con chips al final de la cola"
+                        subtitle = "Todo el catálogo de YouTube Music, sin anuncios; reproductor estilo YouTube Music con Me gusta / No me gusta en una píldora dividida abajo (los pulgares empiezan en contorno y solo se rellena el que eliges), cola al deslizar hacia arriba con pestañas SIGUIENTE / LETRA / RELACIONADOS y reproducción automática con chips al final de la cola"
                     )
                     WelcomeDivider()
                     WelcomeFeatureRow(
@@ -124,7 +124,7 @@ fun WelcomeDialog(
                     WelcomeFeatureRow(
                         iconRes = R.drawable.palette,
                         title = "Temas a tu estilo",
-                        subtitle = "Acento dinámico, Material You, modo oscuro puro AMOLED y Liquid Glass (Beta): estilo de cristal para reproductor, mini-reproductor y barra de navegación en equipos capaces — desactivado por defecto"
+                        subtitle = "Acento dinámico, Material You, modo oscuro puro AMOLED y Liquid Glass (Beta): estilo de cristal para reproductor, mini-reproductor, barra de navegación y botones flotantes en equipos capaces — desactivado por defecto"
                     )
                     WelcomeDivider()
                     WelcomeFeatureRow(
