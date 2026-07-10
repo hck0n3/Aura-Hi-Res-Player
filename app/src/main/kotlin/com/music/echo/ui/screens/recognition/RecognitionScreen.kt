@@ -5,6 +5,7 @@ package iad1tya.echo.music.ui.screens.recognition
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
@@ -25,6 +26,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -38,10 +40,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
@@ -54,6 +58,8 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -70,13 +76,27 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
+import com.music.innertube.YouTube
+import com.music.innertube.models.SongItem
+import iad1tya.echo.music.LocalDatabase
+import iad1tya.echo.music.LocalPlayerConnection
+import iad1tya.echo.music.LocalSyncUtils
 import iad1tya.echo.music.R
+import iad1tya.echo.music.models.toMediaMetadata
 import iad1tya.echo.music.ui.component.IconButton
+import iad1tya.echo.music.ui.menu.AddToPlaylistDialog
+import iad1tya.echo.music.ui.screens.search.suggestions.SuggestionTrack
+import iad1tya.echo.music.ui.screens.search.suggestions.SuggestionsViewModel
 import iad1tya.echo.music.ui.utils.backToMain
 import com.music.shazamkit.models.RecognitionResult
 import com.music.shazamkit.models.RecognitionStatus
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -85,6 +105,11 @@ fun RecognitionScreen(
     autoStart: Boolean = false
 ) {
     val context = LocalContext.current
+    val database = LocalDatabase.current
+    val playerConnection = LocalPlayerConnection.current
+    val syncUtils = LocalSyncUtils.current
+    val suggestionsViewModel: SuggestionsViewModel = hiltViewModel()
+    val coroutineScope = rememberCoroutineScope()
 
 
     // Only reset when no session is live — otherwise entering the screen mid-recognition
@@ -167,6 +192,82 @@ fun RecognitionScreen(
         iad1tya.echo.music.recognition.MusicRecognitionService.reset()
     }
 
+    // Resolve-once: the first time a Success result renders, match it to a YouTube Music SongItem
+    // (lazily, off the main thread) so Like / Add-to-playlist can persist the REAL song — the same
+    // one the Play button would pick (same search + best-match logic as SuggestionsViewModel).
+    // Keyed by trackId: a new recognition re-resolves, re-rendering the same result reuses the cache.
+    var resolvedSong by remember { mutableStateOf<SongItem?>(null) }
+    var resolveFailed by remember { mutableStateOf(false) }
+    var resolvedTrackId by remember { mutableStateOf<String?>(null) }
+
+    val successResult = (recognitionStatus as? RecognitionStatus.Success)?.result
+    LaunchedEffect(successResult?.trackId) {
+        val result = successResult ?: return@LaunchedEffect
+        if (resolvedTrackId == result.trackId) return@LaunchedEffect
+        resolvedTrackId = result.trackId
+        resolvedSong = null
+        resolveFailed = false
+        val match = withContext(Dispatchers.IO) {
+            YouTube.search("${result.title} ${result.artist}", YouTube.SearchFilter.FILTER_SONG)
+                .getOrNull()
+                ?.items
+                ?.filterIsInstance<SongItem>()
+                ?.let { songs -> bestSongMatch(songs, result) }
+        }
+        if (match != null) {
+            resolvedSong = match
+        } else {
+            resolveFailed = true
+            Toast.makeText(context, R.string.recognition_resolve_failed, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    // Live liked state of the resolved song (DB flow), so the heart reflects/persists toggles.
+    val librarySongFlow = remember(resolvedSong?.id) {
+        resolvedSong?.id?.let { database.song(it) } ?: flowOf(null)
+    }
+    val librarySong by librarySongFlow.collectAsState(initial = null)
+    val isLiked = librarySong?.song?.liked == true
+
+    fun toggleLikeResolved() {
+        val songItem = resolvedSong ?: return
+        // UPSERT rule: insert-if-missing + read-back + toggle + upsert inside ONE query task
+        // (mirrors MusicService.toggleLike semantics WITHOUT touching the playing song). insert() is
+        // IGNORE-on-conflict, so an already-saved song keeps its state before the toggle.
+        database.query {
+            insert(songItem.toMediaMetadata())
+            getSongByIdBlocking(songItem.id)?.song?.let { entity ->
+                val toggled = entity.toggleLike()
+                upsert(toggled)
+                syncUtils.likeSong(toggled)
+            }
+        }
+    }
+
+    var showChoosePlaylistDialog by rememberSaveable { mutableStateOf(false) }
+
+    // Mirrors YouTubeSongMenu's AddToPlaylistDialog wiring.
+    AddToPlaylistDialog(
+        isVisible = showChoosePlaylistDialog,
+        onGetSong = { playlist ->
+            val songItem = resolvedSong
+            if (songItem == null) {
+                emptyList()
+            } else {
+                database.withTransaction {
+                    insert(songItem.toMediaMetadata())
+                }
+                coroutineScope.launch(Dispatchers.IO) {
+                    playlist.playlist.browseId?.let { browseId ->
+                        YouTube.addToPlaylist(browseId, songItem.id)
+                    }
+                }
+                listOf(songItem.id)
+            }
+        },
+        onDismiss = { showChoosePlaylistDialog = false }
+    )
+
     // History is saved by RecognitionForegroundService's success branch (single writer — the in-app
     // flow also runs through that service). Saving here too would duplicate every entry, and a
     // retained headless Success re-rendered on screen entry would duplicate it again.
@@ -228,10 +329,30 @@ fun RecognitionScreen(
                         SuccessState(
                             result = status.result,
                             onPlayOnApp = { result ->
-                                
-                                val searchQuery = "${result.title} ${result.artist}"
-                                navController.navigate("search/${java.net.URLEncoder.encode(searchQuery, "UTF-8")}")
+                                if (playerConnection != null) {
+                                    // Actually play: direct video id when Shazam gave one, else the
+                                    // proven search + best-match + YouTubeQueue path (with failure toasts).
+                                    suggestionsViewModel.playTrack(
+                                        SuggestionTrack(
+                                            rank = 0,
+                                            title = result.title,
+                                            artist = result.artist,
+                                            thumbnailUrl = result.coverArtHqUrl ?: result.coverArtUrl,
+                                            videoId = result.youtubeVideoId,
+                                        ),
+                                        playerConnection
+                                    )
+                                } else {
+                                    // No live player connection: fall back to the old search navigation.
+                                    val searchQuery = "${result.title} ${result.artist}"
+                                    navController.navigate("search/${java.net.URLEncoder.encode(searchQuery, "UTF-8")}")
+                                }
                             },
+                            isResolving = resolvedSong == null && !resolveFailed,
+                            isResolved = resolvedSong != null,
+                            isLiked = isLiked,
+                            onToggleLike = ::toggleLikeResolved,
+                            onAddToPlaylist = { showChoosePlaylistDialog = true },
                             onTryAgain = {
                                 startRecognition()
                             },
@@ -435,10 +556,39 @@ private fun ProcessingState() {
     }
 }
 
+// Bidirectional artist match — same semantics as SuggestionsViewModel.playTrack, so the resolved
+// song (Like / Add-to-playlist) is the SAME one the Play button would pick.
+private fun artistMatches(ytArtistName: String, recognizedArtist: String): Boolean {
+    val ytNorm = ytArtistName.trim().lowercase()
+    val recNorm = recognizedArtist.trim().lowercase()
+    return recNorm.contains(ytNorm) || ytNorm.contains(recNorm)
+}
+
+private fun bestSongMatch(songs: List<SongItem>, result: RecognitionResult): SongItem? =
+    // Shazam already gave us the exact video id: trust it above the name heuristics.
+    result.youtubeVideoId?.let { id -> songs.firstOrNull { it.id == id } }
+        ?: songs.firstOrNull { s ->
+            s.title.equals(result.title, ignoreCase = true) &&
+                s.artists.any { a -> artistMatches(a.name, result.artist) }
+        }
+        ?: songs.firstOrNull { s ->
+            s.title.contains(result.title, ignoreCase = true) &&
+                s.artists.any { a -> artistMatches(a.name, result.artist) }
+        }
+        // Title-first fallback so the right track wins over a different song by the same artist.
+        ?: songs.firstOrNull { s -> s.title.equals(result.title, ignoreCase = true) }
+        ?: songs.firstOrNull { s -> s.title.contains(result.title, ignoreCase = true) }
+        ?: songs.firstOrNull()
+
 @Composable
 private fun SuccessState(
     result: RecognitionResult,
     onPlayOnApp: (RecognitionResult) -> Unit,
+    isResolving: Boolean,
+    isResolved: Boolean,
+    isLiked: Boolean,
+    onToggleLike: () -> Unit,
+    onAddToPlaylist: () -> Unit,
     onTryAgain: () -> Unit,
     onClose: () -> Unit
 ) {
@@ -514,7 +664,55 @@ private fun SuccessState(
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(stringResource(R.string.play_on_app))
             }
-            
+
+            // Like + Add-to-playlist: enabled once the recognized track has been resolved to a real
+            // YouTube Music song; a brief spinner shows while that one-shot resolve is in flight.
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                FilledTonalButton(
+                    onClick = onToggleLike,
+                    enabled = isResolved,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    if (isResolving) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Icon(
+                            painter = painterResource(
+                                if (isLiked) R.drawable.favorite else R.drawable.favorite_border
+                            ),
+                            contentDescription = stringResource(R.string.action_like),
+                            modifier = Modifier.size(18.dp),
+                            tint = if (isLiked) MaterialTheme.colorScheme.error else LocalContentColor.current
+                        )
+                    }
+                }
+
+                FilledTonalButton(
+                    onClick = onAddToPlaylist,
+                    enabled = isResolved,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    if (isResolving) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Icon(
+                            painter = painterResource(R.drawable.playlist_add),
+                            contentDescription = stringResource(R.string.add_to_playlist),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+            }
+
             FilledTonalButton(
                 onClick = onTryAgain,
                 modifier = Modifier.fillMaxWidth()

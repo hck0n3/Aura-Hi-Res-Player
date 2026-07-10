@@ -61,12 +61,21 @@ class SongPreviewController(
     private var resolveJob: Job? = null
     private var mainWasPlaying = false
 
+    /** Max entries kept in [urlCache] — a small LRU so a long browsing session can't grow it unbounded. */
+    private val URL_CACHE_MAX = 50
+
     /**
      * Session cache of resolved preview stream URLs: videoId -> (streamUrl, expiry epoch ms).
      * Re-previewing the same song (tap again, or toggle back and forth between rows) skips the whole
-     * resolution pipeline and plays instantly. Expiry uses YouTube's own `streamExpiresInSeconds`.
+     * resolution pipeline and plays instantly. Expiry uses YouTube's own `streamExpiresInSeconds`
+     * minus a safety margin. Access-ordered LRU capped at [URL_CACHE_MAX]; expired entries are
+     * dropped when touched (see [start]) and failed URLs are evicted on player error so a re-tap
+     * re-resolves. Only touched from the main thread (composition scope).
      */
-    private val urlCache = HashMap<String, Pair<String, Long>>()
+    private val urlCache = object : LinkedHashMap<String, Pair<String, Long>>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Pair<String, Long>>): Boolean =
+            size > URL_CACHE_MAX
+    }
 
     /** Tap handler: same song toggles it off; a different song starts a new preview. */
     fun toggle(videoId: String) {
@@ -88,7 +97,12 @@ class SongPreviewController(
         mainWasPlaying = onRequestMainPause() || mainWasPlaying
 
         // Cache hit (unexpired): skip the whole resolution pipeline + loading spinner and play instantly.
-        val cached = urlCache[videoId]?.takeIf { it.second > System.currentTimeMillis() }
+        // An EXPIRED entry is dropped on touch so the LRU doesn't keep dead URLs alive.
+        var cached = urlCache[videoId]
+        if (cached != null && cached.second <= System.currentTimeMillis()) {
+            urlCache.remove(videoId)
+            cached = null
+        }
         if (cached != null) {
             isLoading = false
             playUrl(cached.first)
@@ -120,8 +134,10 @@ class SongPreviewController(
                 return@launch
             }
 
-            // Cache for instant re-preview this session, keyed to YouTube's own stream expiry.
-            urlCache[videoId] = url to (System.currentTimeMillis() + data.streamExpiresInSeconds * 1000L)
+            // Cache for instant re-preview this session, keyed to YouTube's own stream expiry minus a
+            // ~60s safety margin so a URL isn't replayed right at the edge of expiring (403 mid-play).
+            urlCache[videoId] =
+                url to (System.currentTimeMillis() + data.streamExpiresInSeconds * 1000L - 60_000L)
             playUrl(url)
         }
     }
@@ -240,13 +256,19 @@ class SongPreviewController(
                 volume = 0.85f
                 // Natural end (song plays to completion) or a playback error (e.g. googlevideo 403) must
                 // stop the preview so the main player is resumed — otherwise it stays paused forever.
+                // NOTE: the CONTROLLER's stop() must be called explicitly — a bare stop() here resolves
+                // to the enclosing apply's ExoPlayer.stop(), which would never clear currentPreviewId
+                // nor resume the main player.
                 addListener(object : Player.Listener {
                     override fun onPlaybackStateChanged(playbackState: Int) {
-                        if (playbackState == Player.STATE_ENDED) stop()
+                        if (playbackState == Player.STATE_ENDED) this@SongPreviewController.stop()
                     }
 
                     override fun onPlayerError(error: PlaybackException) {
-                        stop()
+                        // Evict the failed entry (e.g. a cached URL that started 403ing) BEFORE stop()
+                        // clears currentPreviewId, so a re-tap re-resolves instead of replaying it.
+                        currentPreviewId?.let { urlCache.remove(it) }
+                        this@SongPreviewController.stop()
                     }
                 })
             }

@@ -175,6 +175,7 @@ import iad1tya.echo.music.echomusic.updater.getUpdateNotificationsSetting
 import iad1tya.echo.music.echomusic.UpdateNotificationHelper
 import android.util.Log
 import androidx.compose.ui.platform.LocalContext
+import iad1tya.echo.music.constants.OfflineModeKey
 import iad1tya.echo.music.constants.PauseListenHistoryKey
 import iad1tya.echo.music.constants.PauseSearchHistoryKey
 import iad1tya.echo.music.constants.PureBlackKey
@@ -928,6 +929,7 @@ class MainActivity : ComponentActivity() {
                 }
                 val snackbarHostState = remember { SnackbarHostState() }
                 var showSettingDialoge by remember { mutableStateOf(false) }
+                val (offlineMode, onOfflineModeChange) = rememberPreference(OfflineModeKey, defaultValue = false)
 
                 val (lastOpenedVersionCode, setLastOpenedVersionCode) = rememberPreference(iad1tya.echo.music.constants.LastOpenedVersionCodeKey, -1)
                 var showWelcomeDialog by remember { mutableStateOf(false) }
@@ -1087,10 +1089,20 @@ class MainActivity : ComponentActivity() {
                                                     )
                                                 }
                                             }
-                                            IconButton(onClick = { navController.navigate("stats") }) {
+                                            val offlineModeOnMsg = stringResource(R.string.offline_mode_on)
+                                            val offlineModeOffMsg = stringResource(R.string.offline_mode_off)
+                                            IconButton(onClick = {
+                                                val enabled = !offlineMode
+                                                onOfflineModeChange(enabled)
+                                                coroutineScope.launch {
+                                                    snackbarHostState.showSnackbar(
+                                                        if (enabled) offlineModeOnMsg else offlineModeOffMsg
+                                                    )
+                                                }
+                                            }) {
                                                 Icon(
-                                                    painter = painterResource(R.drawable.stats),
-                                                    contentDescription = stringResource(R.string.stats)
+                                                    painter = painterResource(if (offlineMode) R.drawable.offline else R.drawable.cloud),
+                                                    contentDescription = stringResource(R.string.offline_mode)
                                                 )
                                             }
                                              IconButton(onClick = { showSettingDialoge = true }) {

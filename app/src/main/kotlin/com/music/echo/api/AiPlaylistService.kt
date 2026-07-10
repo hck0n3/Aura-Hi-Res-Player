@@ -158,8 +158,11 @@ object AiPlaylistService {
             // Keyless fallbacks (Pollinations "openai", some Workers AI models) route to REASONING models
             // that otherwise burn the whole token budget on hidden reasoning and return null content
             // (finish_reason "length") → "servicio ocupado". "low" makes them emit the JSON in ~5s.
-            // Harmless for non-reasoning models and BYO-key OpenAI-compatible providers ignore unknown fields.
-            put("reasoning_effort", "low")
+            // KEYLESS CHAIN ONLY (apiKey null/blank): some BYO-key providers hard-reject unknown
+            // fields, so the user-key request body stays byte-identical to the pre-existing one.
+            if (apiKey.isNullOrBlank()) {
+                put("reasoning_effort", "low")
+            }
         }
 
         var attempt = 0
@@ -211,10 +214,16 @@ object AiPlaylistService {
 
                 // Reasoning models sometimes leave content null but emit the JSON inside "reasoning"
                 // (finish_reason "length"). AiPlaylistParser extracts the {...} substring, so passing
-                // the reasoning text as a fallback content lets the request still recover.
+                // the reasoning text as a fallback content lets the request still recover. Return
+                // early ONLY when the parse SUCCEEDS — reasoning text is usually truncated prose, and
+                // failing the whole request on it would kill the remaining retries; fall through to
+                // "Empty AI response" instead so the retry loop keeps going.
                 val reasoning = message?.optString("reasoning")?.trim()
                 if (!reasoning.isNullOrBlank()) {
-                    return AiPlaylistParser.parse(reasoning, count)
+                    val parsed = AiPlaylistParser.parse(reasoning, count)
+                    if (parsed.isSuccess) {
+                        return parsed
+                    }
                 }
 
                 lastError = "Empty AI response"

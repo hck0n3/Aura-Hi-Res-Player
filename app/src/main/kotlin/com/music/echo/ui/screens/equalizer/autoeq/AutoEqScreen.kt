@@ -35,6 +35,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -49,14 +50,21 @@ import iad1tya.echo.music.eq.autoeq.AutoEqRepository
 import iad1tya.echo.music.eq.autoeq.projectAutoEqToBands
 import iad1tya.echo.music.eq.data.EqConstants
 import iad1tya.echo.music.ui.screens.equalizer.axion.AxionEqViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import android.content.Context
 import android.widget.Toast
 
 /**
  * Auto-EQ: search the AutoEq (jaakkopasanen) catalog for your headphone model and apply its profile
- * to the equalizer. The catalog is cached on disk (24 h) — use "Actualizar base de datos" to refresh.
+ * to the equalizer. A bundled snapshot renders instantly; a downloaded copy is cached on disk for
+ * 30 days and refreshed in the background — "Actualizar base de datos" forces a refresh.
  */
+@OptIn(FlowPreview::class)
 @Composable
 fun AutoEqScreen(navController: NavController) {
     val context = LocalContext.current
@@ -92,11 +100,45 @@ fun AutoEqScreen(navController: NavController) {
         refreshing = false
     }
 
-    LaunchedEffect(Unit) { load(forceRefresh = false) }
+    LaunchedEffect(Unit) {
+        // First render is INSTANT: fresh disk cache or the bundled asset, no network.
+        load(forceRefresh = false)
+        // Network refresh runs only in the BACKGROUND (one-shot, never blocks the list): if the disk
+        // cache is missing/stale, download the current catalog and swap it in when it lands.
+        val fresh = withContext(Dispatchers.IO) { repo.isIndexFresh() }
+        if (!fresh) {
+            val updated = repo.getIndex(forceRefresh = true)
+            if (updated.isNotEmpty()) entries = updated
+        }
+    }
 
-    val filtered = remember(entries, query) {
-        if (query.isBlank()) entries.take(100)
-        else entries.filter { it.name.contains(query, ignoreCase = true) }.take(200)
+    // SEARCH: debounced ~200 ms and filtered on Dispatchers.Default with a pre-lowercased name per
+    // entry — filtering 5000+ entries on the main thread per keystroke made typing stutter. The
+    // lowercased list is rebuilt (off the main thread) only when the catalog itself changes.
+    var filtered by remember { mutableStateOf<List<AutoEqEntry>>(emptyList()) }
+    LaunchedEffect(Unit) {
+        var lowerSource: List<AutoEqEntry> = emptyList()
+        var lowered: List<Pair<AutoEqEntry, String>> = emptyList()
+        snapshotFlow { entries to query }
+            .debounce { (_, q) -> if (q.isBlank()) 0L else 200L }
+            .collectLatest { (list, q) ->
+                filtered = withContext(Dispatchers.Default) {
+                    if (q.isBlank()) {
+                        list.take(100)
+                    } else {
+                        if (lowerSource !== list) {
+                            lowered = list.map { it to it.name.lowercase() }
+                            lowerSource = list
+                        }
+                        val needle = q.lowercase()
+                        lowered.asSequence()
+                            .filter { it.second.contains(needle) }
+                            .map { it.first }
+                            .take(200)
+                            .toList()
+                    }
+                }
+            }
     }
 
     // Favorites come from the FULL catalog (not the filtered search), sorted by name.
@@ -118,8 +160,8 @@ fun AutoEqScreen(navController: NavController) {
             modifier = Modifier.padding(top = 16.dp, bottom = 4.dp),
         )
         Text(
-            "Busca tu modelo y aplica su perfil AutoEq al ecualizador. El catálogo (más de 5000 " +
-                "auriculares) se descarga de internet la primera vez y luego queda guardado para cargar al instante.",
+            "Busca tu modelo y aplica su perfil AutoEq al ecualizador. El catálogo (más de 8000 " +
+                "auriculares) viene incluido en la app y carga al instante; se actualiza solo en segundo plano.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

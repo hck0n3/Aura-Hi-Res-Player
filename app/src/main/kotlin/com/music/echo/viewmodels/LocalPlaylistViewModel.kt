@@ -53,6 +53,11 @@ import javax.inject.Inject
  *  whether the instant cache-only batch needs a background network top-up. */
 private const val FOOTER_SUGGESTIONS = 5
 
+/** How many suggestions the Add-Music sheet shows (the full batch size computed per pass). The
+ *  network top-up (Phase B) also escalates when the cached relatedness pool fills less than HALF of
+ *  this, so the sheet isn't mostly quickPicks padding even when the footer's 5 look fine. */
+private const val SHEET_SUGGESTIONS = 20
+
 @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
 @HiltViewModel
 class LocalPlaylistViewModel
@@ -170,28 +175,37 @@ constructor(
                     // won't latch lastAppliedNonce, keeping this accurate for the branch below.
                     val wasRefresh = nonce > lastAppliedNonce
 
-                    // ── Phase A — INSTANT swap: local DB relatedSongs ∪ already-cached online only, ZERO
-                    // network. Emits right away so the footer's 5 change with no round-trip wait. Does not
-                    // record the batch as shown / latch the nonce yet (that decision is made below).
+                    // ── Phase A — INSTANT swap. On a refresh tap: local DB relatedSongs ∪ already-cached
+                    // online only, ZERO network, so the footer's 5 change with no round-trip wait; it does
+                    // not record the batch as shown / latch the nonce yet (that decision is made below).
+                    // On a per-'+'-add recompute (not a refresh): forceNetwork = null keeps the
+                    // pre-existing heuristic — the bounded network fetch still kicks in when the local
+                    // pool alone can't fill the batch (recordShown stays false: no recording/latching).
                     val instant = computeSuggestions(
                         ids,
-                        limit = 20,
+                        limit = SHEET_SUGGESTIONS,
                         seed = nonce,
-                        forceNetwork = false,
+                        forceNetwork = if (wasRefresh) false else null,
                         recordShown = false,
                     )
                     emit(instant)
 
                     if (wasRefresh) {
-                        if (lastComputeRelatednessCount < FOOTER_SUGGESTIONS) {
-                            // ── Phase B — BACKGROUND top-up: the cached relatedness pool couldn't fill the
-                            // footer's 5 on its own (quickPicks padded it), so hit the existing bounded
-                            // (≤3) network fetch and re-emit when it arrives. The spinner shows ONLY here.
+                        // Escalate to the network top-up when the instant batch can't satisfy either
+                        // surface: (a) the footer's head isn't 5 FRESH (never-shown) picks — an exhausted
+                        // cache otherwise re-records and repeats the same batch forever (recycle stays the
+                        // last-resort fallback inside computeSuggestions); or (b) the cached relatedness
+                        // pool filled less than half the sheet, i.e. it's mostly quickPicks padding.
+                        if (lastComputeFreshHeadCount < FOOTER_SUGGESTIONS ||
+                            lastComputeRelatednessCount < SHEET_SUGGESTIONS / 2
+                        ) {
+                            // ── Phase B — BACKGROUND top-up: hit the existing bounded (≤3) network fetch
+                            // and re-emit when it arrives. The spinner shows ONLY here.
                             _isRefreshingSuggestions.value = true
                             try {
                                 val topped = computeSuggestions(
                                     ids,
-                                    limit = 20,
+                                    limit = SHEET_SUGGESTIONS,
                                     seed = nonce,
                                     forceNetwork = true,
                                     recordShown = true,
@@ -366,6 +380,13 @@ constructor(
      *  couldn't fill the footer's 5, quickPicks padding is standing in and Phase B fetches real ones.
      *  Only written from the (serialized) suggestions flow. */
     private var lastComputeRelatednessCount = 0
+
+    /** How many of the last compute's HEAD picks (the footer's [FOOTER_SUGGESTIONS]) were FRESH —
+     *  not in [shownSuggestionIds] at compute time (measured BEFORE the batch is recorded). The
+     *  two-phase flow gates Phase B on this rather than the total: an exhausted cache can still fill
+     *  the batch with already-shown songs, and without the freshness signal it would re-record and
+     *  repeat the same batch forever. Only written from the (serialized) suggestions flow. */
+    private var lastComputeFreshHeadCount = 0
 
     /** Online related-songs memo, one entry per seed id — recomputes never re-hit the network for a
      *  seed already fetched. Bounded, access-ordered LRU (64 seeds) so a long session hopping across
@@ -657,6 +678,10 @@ constructor(
         val result = chosen.mapNotNull { id ->
             localById[id] ?: onlineById[id]?.let { resolveOnlineSong(it) }
         }
+        // Freshness of the HEAD (the footer's picks), measured BEFORE any recording below mutates
+        // shownSuggestionIds — the two-phase flow reads this to decide if Phase B must escalate.
+        lastComputeFreshHeadCount =
+            result.take(FOOTER_SUGGESTIONS).count { it.id !in shownSuggestionIds }
         // Record the batch as "shown" (and latch the nonce) ONLY for explicit refreshes AND only when
         // this compute is the one the user keeps (recordShown) — same-nonce recomputes must not feed
         // the exclusion memory, and the instant Phase A defers recording to the flow so a following

@@ -23,6 +23,9 @@
     <!-- Home -->
     <string name="history">History</string>
     <string name="stats">Stats</string>
+    <string name="offline_mode">Offline mode</string>
+    <string name="offline_mode_on">Offline mode enabled</string>
+    <string name="offline_mode_off">Offline mode disabled</string>
     <string name="mood_and_genres">Mood and Genres</string>
     <string name="account">Account</string>
     <string name="quick_picks">Quick picks</string>
@@ -500,5 +503,6 @@
     <string name="recognition_notification_processing">Identifying…</string>
     <string name="recognition_notification_no_match">No match found</string>
     <string name="recognition_notification_failed">Recognition failed</string>
+    <string name="recognition_resolve_failed">Song not found on YouTube Music</string>
     <string name="listen_on_aura">Listen on Aura</string>
 </resources>

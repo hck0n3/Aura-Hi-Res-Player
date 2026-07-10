@@ -17,6 +17,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -26,6 +29,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.media3.common.Player
+import iad1tya.echo.music.LocalPlayerConnection
 import iad1tya.echo.music.R
 import iad1tya.echo.music.constants.ThumbnailCornerRadius
 import kotlinx.coroutines.delay
@@ -89,19 +94,30 @@ fun PlayingIndicatorBox(
     playWhenReady: Boolean,
     color: Color = Color.White,
 ) {
-    // Show the animated bars the moment the item becomes the active/playing item (isActive gates the
-    // wrapper's visibility, playWhenReady selects bars vs. the play icon). The animation only exists
-    // while composed — i.e. only when active AND playing — so it stops on pause/stop and off-screen.
+    // isActive gates the wrapper's visibility; [playWhenReady] receives the screen's ALREADY-collected
+    // playing state (isPlaying/isEffectivelyPlaying — false on pause and at STATE_ENDED), selecting
+    // bars vs. the play icon, so the bars still appear the moment playback starts.
     AnimatedVisibility(
         visible = isActive,
         enter = fadeIn(tween(500)),
         exit = fadeOut(tween(500)),
     ) {
+        // This block is composed ONLY for the single ACTIVE row of a screen (isActive gates it), so
+        // this playbackState read is one live collection app-wide — NOT the old per-row re-subscribe
+        // that every visible list row paid. It keeps the bars honest where the boolean alone can't:
+        // no animation while the track is still buffering and the play icon at STATE_ENDED, so the
+        // infinite bar animation never runs when nothing is audible (battery/heat rule). Fallback
+        // STATE_READY (no player connection in scope) trusts [playWhenReady] alone.
+        val playerConnection = LocalPlayerConnection.current
+        val playbackState by (
+            playerConnection?.playbackState?.collectAsState()
+                ?: remember { mutableStateOf(Player.STATE_READY) }
+            )
         Box(
             contentAlignment = Alignment.Center,
             modifier = modifier,
         ) {
-            if (playWhenReady) {
+            if (playWhenReady && playbackState == Player.STATE_READY) {
                 PlayingIndicator(
                     color = color,
                     modifier = Modifier.height(24.dp),

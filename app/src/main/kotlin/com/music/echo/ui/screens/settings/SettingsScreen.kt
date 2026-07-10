@@ -73,6 +73,7 @@ fun SettingsScreen(
     val privacyText = stringResource(R.string.privacy)
     val storageText = stringResource(R.string.storage)
     val backupText = stringResource(R.string.backup_restore)
+    val statsText = stringResource(R.string.stats)
     val logsText = stringResource(R.string.logs)
     val aboutText = stringResource(R.string.about)
     val updateText = "Aura Hi-Res Update"
@@ -236,6 +237,15 @@ fun SettingsScreen(
                         icon = painterResource(R.drawable.restore),
                         title = { Text(backupText) },
                         onClick = { navController.navigate("settings/backup_restore") }
+                    )
+                )
+            }
+            if (statsText.lowercase().contains(searchLower)) {
+                add(
+                    Material3SettingsItem(
+                        icon = painterResource(R.drawable.stats),
+                        title = { Text(statsText) },
+                        onClick = { navController.navigate("stats") }
                     )
                 )
             }
