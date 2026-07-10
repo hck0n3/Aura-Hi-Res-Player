@@ -785,6 +785,26 @@ fun PlayerMenu(
                         )
                     )
 
+                    // 0.6.92 Modo Ambiente — full-screen lean-back now-playing view.
+                    add(
+                        Material3MenuItemData(
+                            title = { Text(text = stringResource(R.string.ambient_mode)) },
+                            description = { Text(text = stringResource(R.string.ambient_mode_desc)) },
+                            icon = {
+                                Icon(
+                                    painter = painterResource(R.drawable.fullscreen),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            },
+                            onClick = {
+                                playerBottomSheetState.collapseSoft()
+                                navController.navigate("ambient_mode") { launchSingleTop = true }
+                                onDismiss()
+                            }
+                        )
+                    )
+
                     if (isQueueTrigger != true) {
                         add(
                             Material3MenuItemData(
