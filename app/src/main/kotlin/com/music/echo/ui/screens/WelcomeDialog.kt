@@ -152,6 +152,12 @@ fun WelcomeDialog(
                     )
                     WelcomeDivider()
                     WelcomeFeatureRow(
+                        iconRes = R.drawable.add,
+                        title = "Agregar música a tus playlists",
+                        subtitle = "Al final de tus playlists: canciones sugeridas según su contenido (con preview y botón +), artistas destacados y un botón 'Agregar música' con búsqueda global, Desde Replay, Agregado recientemente y selección múltiple de tu biblioteca — estilo Apple Music"
+                    )
+                    WelcomeDivider()
+                    WelcomeFeatureRow(
                         iconRes = R.drawable.videocam,
                         title = "Video musical",
                         subtitle = "Mira el videoclip con sonido, sigue en video entre canciones; pantalla completa al girar, ventana flotante (Picture-in-Picture) y sección 'Videos oficiales' en cada artista"
