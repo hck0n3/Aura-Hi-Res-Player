@@ -1,4 +1,4 @@
-# Aura Hi-Res Player 0.6.85 — Reconocimiento reparado, letras en sincronía y Agregar música pulido
+# Aura Hi-Res Player 0.6.86 — Reconocimiento reparado, letras en sincronía y Agregar música pulido
 
 ## 🎙️ Reconocer canción — REPARADO
 - **Vuelve a funcionar el reconocimiento de canciones** (llevaba roto desde 0.6.82 por una actualización interna del motor de reproducción): identifica lo que suena a tu alrededor desde la app, el widget o el mosaico de Ajustes Rápidos.

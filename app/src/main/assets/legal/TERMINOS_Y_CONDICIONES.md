@@ -222,7 +222,3 @@ Este resumen es solo una ayuda de lectura. **No sustituye a las cláusulas anter
 - **Responsabilidad limitada.** Si algo sale mal, nuestra responsabilidad máxima es lo que pagaste en el último año (o 10 USD si no pagaste nada). Nunca respondemos por daños indirectos ni por sanciones de otras plataformas.
 - **Si incumples estas reglas**, podemos cancelar tu licencia o suscripción. Tus derechos sobre el código GPL no se tocan.
 - **Si cambiamos estos términos**, te lo mostraremos en la app y tendrás que aceptarlos de nuevo para seguir.
-
----
-
-> **AVISO IMPORTANTE:** Este documento es un borrador preparado con el mejor esfuerzo por una inteligencia artificial (Claude, de Anthropic) a petición del desarrollador. **NO constituye asesoramiento legal** y no crea una relación abogado-cliente. Antes de publicarlo o apoyarse en él, se recomienda encarecidamente que un abogado colegiado —idealmente con experiencia en propiedad intelectual, software y derecho del consumidor de las jurisdicciones relevantes— lo revise y adapte.
