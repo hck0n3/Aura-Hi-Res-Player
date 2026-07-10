@@ -71,6 +71,9 @@ fun AddMusicSheet(
 
     val selection = remember { mutableStateListOf<String>() }
 
+    // Rows whose song was added through THIS sheet — flips their "+" to a check (instant feedback).
+    val addedIds = remember { mutableStateListOf<String>() }
+
     // Prune ids whose song left the library so a stale id can't inflate the "Add (N)" count.
     LaunchedEffect(librarySongs) {
         selection.retainAll { id -> librarySongs.any { it.id == id } }
@@ -138,13 +141,14 @@ fun AddMusicSheet(
                                 isSwipeable = false,
                                 shape = listItemShape(index = index, count = searchResults.size),
                                 trailingContent = {
-                                    IconButton(onClick = { viewModel.addOnlineSongs(listOf(item)) }) {
-                                        Icon(
-                                            painter = painterResource(R.drawable.add),
-                                            contentDescription = stringResource(R.string.add_music),
-                                        )
-                                    }
+                                    AddOrAddedButton(
+                                        added = item.id in addedIds,
+                                        onAdd = {
+                                            viewModel.addOnlineSongs(listOf(item)) { addedIds.add(item.id) }
+                                        },
+                                    )
                                 },
+                                onThumbnailClick = { previewController.toggle(item.id) },
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable { previewController.toggle(item.id) },
@@ -177,7 +181,8 @@ fun AddMusicSheet(
                             songs = suggested,
                             keyPrefix = "sug",
                             previewController = previewController,
-                            onAdd = { viewModel.addLocalSongs(listOf(it.id)) },
+                            addedIds = addedIds,
+                            onAdd = { song -> viewModel.addLocalSongs(listOf(song.id)) { addedIds.add(song.id) } },
                         )
                         // --- From Replay ---
                         localSongSection(
@@ -185,7 +190,8 @@ fun AddMusicSheet(
                             songs = replaySongs,
                             keyPrefix = "replay",
                             previewController = previewController,
-                            onAdd = { viewModel.addLocalSongs(listOf(it.id)) },
+                            addedIds = addedIds,
+                            onAdd = { song -> viewModel.addLocalSongs(listOf(song.id)) { addedIds.add(song.id) } },
                         )
                         // --- Recently Added ---
                         localSongSection(
@@ -193,7 +199,8 @@ fun AddMusicSheet(
                             songs = recentlyAdded,
                             keyPrefix = "recent",
                             previewController = previewController,
-                            onAdd = { viewModel.addLocalSongs(listOf(it.id)) },
+                            addedIds = addedIds,
+                            onAdd = { song -> viewModel.addLocalSongs(listOf(song.id)) { addedIds.add(song.id) } },
                         )
                         // --- Library multi-select ---
                         if (librarySongs.isNotEmpty()) {
@@ -209,6 +216,13 @@ fun AddMusicSheet(
                                     showDownloadIcon = false,
                                     shape = listItemShape(index = index, count = librarySongs.size),
                                     trailingContent = {
+                                        // Instant single add — ADDITIONAL to the multi-select checkbox.
+                                        AddOrAddedButton(
+                                            added = song.id in addedIds,
+                                            onAdd = {
+                                                viewModel.addLocalSongs(listOf(song.id)) { addedIds.add(song.id) }
+                                            },
+                                        )
                                         Checkbox(
                                             checked = checked,
                                             onCheckedChange = {
@@ -216,6 +230,7 @@ fun AddMusicSheet(
                                             },
                                         )
                                     },
+                                    onThumbnailClick = { previewController.toggle(song.id) },
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .clickable { previewController.toggle(song.id) },
@@ -230,7 +245,7 @@ fun AddMusicSheet(
                 Button(
                     onClick = {
                         val ids = selection.toList()
-                        viewModel.addLocalSongs(ids)
+                        viewModel.addLocalSongs(ids) { addedIds.addAll(ids) }
                         selection.clear()
                     },
                     modifier = Modifier
@@ -254,6 +269,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.localSongSection(
     songs: List<Song>,
     keyPrefix: String,
     previewController: SongPreviewController,
+    addedIds: List<String>,
     onAdd: (Song) -> Unit,
 ) {
     if (songs.isEmpty()) return
@@ -268,13 +284,12 @@ private fun androidx.compose.foundation.lazy.LazyListScope.localSongSection(
             showDownloadIcon = false,
             shape = listItemShape(index = index, count = songs.size),
             trailingContent = {
-                IconButton(onClick = { onAdd(song) }) {
-                    Icon(
-                        painter = painterResource(R.drawable.add),
-                        contentDescription = stringResource(R.string.add_music),
-                    )
-                }
+                AddOrAddedButton(
+                    added = song.id in addedIds,
+                    onAdd = { onAdd(song) },
+                )
             },
+            onThumbnailClick = { previewController.toggle(song.id) },
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable { previewController.toggle(song.id) },

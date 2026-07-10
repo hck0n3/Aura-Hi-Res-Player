@@ -23,6 +23,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -75,8 +77,36 @@ fun AddMusicButton(
 }
 
 /**
+ * Trailing "+" that adds the row's song instantly and flips to a check once added (Apple-Music-style
+ * instant feedback). The check is also shown for a de-duped add — either way the song IS in the playlist.
+ */
+@Composable
+fun AddOrAddedButton(
+    added: Boolean,
+    onAdd: () -> Unit,
+) {
+    if (added) {
+        IconButton(onClick = {}, enabled = false) {
+            Icon(
+                painter = painterResource(R.drawable.done),
+                contentDescription = stringResource(R.string.done),
+                tint = MaterialTheme.colorScheme.primary,
+            )
+        }
+    } else {
+        IconButton(onClick = onAdd) {
+            Icon(
+                painter = painterResource(R.drawable.add),
+                contentDescription = stringResource(R.string.add_music),
+            )
+        }
+    }
+}
+
+/**
  * "Suggested Songs" footer section: a header with a refresh button, plus 5 rows recommended from the
- * playlist's own content. Each row previews in place on tap and has a "+" to add it to the playlist.
+ * playlist's own content. Tapping the row OR its artwork previews in place (Apple behavior: artwork tap
+ * toggles the preview); the trailing "+" adds the song to the playlist immediately.
  */
 @Composable
 fun SuggestedSongsSection(
@@ -85,6 +115,7 @@ fun SuggestedSongsSection(
     modifier: Modifier = Modifier,
 ) {
     val suggestions by viewModel.suggestedSongs.collectAsState()
+    val addedIds = remember { mutableStateListOf<String>() }
 
     if (suggestions.isEmpty()) return
 
@@ -118,13 +149,14 @@ fun SuggestedSongsSection(
                 showDownloadIcon = false,
                 shape = listItemShape(index = index, count = suggestions.size),
                 trailingContent = {
-                    IconButton(onClick = { viewModel.addLocalSongs(listOf(song.id)) }) {
-                        Icon(
-                            painter = painterResource(R.drawable.add),
-                            contentDescription = stringResource(R.string.add_music),
-                        )
-                    }
+                    AddOrAddedButton(
+                        added = song.id in addedIds,
+                        onAdd = {
+                            viewModel.addLocalSongs(listOf(song.id)) { addedIds.add(song.id) }
+                        },
+                    )
                 },
+                onThumbnailClick = { previewController.toggle(song.id) },
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable { previewController.toggle(song.id) },

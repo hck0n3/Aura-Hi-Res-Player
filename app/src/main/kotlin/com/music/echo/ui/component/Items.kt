@@ -449,6 +449,8 @@ fun SongListItem(
     isSwipeable: Boolean = true,
     onSelectionChange: (Boolean) -> Unit = {},
     trailingContent: @Composable RowScope.() -> Unit = {},
+    // Apple-Music-style artwork tap (e.g. in-place preview) — null keeps the thumbnail non-clickable.
+    onThumbnailClick: (() -> Unit)? = null,
     drawHighlight: Boolean = true,
     shape: Shape = RectangleShape,
     horizontalPadding: Dp = 16.dp,
@@ -474,7 +476,12 @@ fun SongListItem(
                     isActive = isActive,
                     isPlaying = isPlaying,
                     shape = RoundedCornerShape(ThumbnailCornerRadius),
-                    modifier = Modifier.size(ListThumbnailSize)
+                    modifier = Modifier
+                        .size(ListThumbnailSize)
+                        .then(
+                            if (onThumbnailClick != null) Modifier.clickable(onClick = onThumbnailClick)
+                            else Modifier
+                        )
                 )
             },
             trailingContent = trailingContent,
@@ -1047,6 +1054,8 @@ fun YouTubeListItem(
     isPlaying: Boolean = false,
     isSwipeable: Boolean = true,
     trailingContent: @Composable RowScope.() -> Unit = {},
+    // Apple-Music-style artwork tap (e.g. in-place preview) — null keeps the thumbnail non-clickable.
+    onThumbnailClick: (() -> Unit)? = null,
     badges: @Composable RowScope.() -> Unit = {
         val database = LocalDatabase.current
         val song by produceState<Song?>(initialValue = null, item.id) {
@@ -1062,7 +1071,7 @@ fun YouTubeListItem(
             Icon.Favorite()
         }
         if (item.explicit) Icon.Explicit()
-        
+
         if (item is SongItem) {
             val download by LocalDownloadUtil.current.getDownload(item.id).collectAsState(null)
             Icon.Download(download?.state)
@@ -1091,7 +1100,12 @@ fun YouTubeListItem(
                     isActive = isActive,
                     isPlaying = isPlaying,
                     shape = if (item is ArtistItem) CircleShape else RoundedCornerShape(ThumbnailCornerRadius),
-                    modifier = Modifier.size(ListThumbnailSize)
+                    modifier = Modifier
+                        .size(ListThumbnailSize)
+                        .then(
+                            if (onThumbnailClick != null) Modifier.clickable(onClick = onThumbnailClick)
+                            else Modifier
+                        )
                 )
             },
             trailingContent = trailingContent,
