@@ -184,22 +184,17 @@ class SuggestionsViewModel @Inject constructor(
                 val songs = searchResult.items.filterIsInstance<SongItem>()
 
 
+                // BOTH title AND artist must match. The old artist-agnostic fallbacks (title-only, then
+                // a blind first result) could resolve a cover / remix / any-song, so a "top" tap played
+                // a DIFFERENT song. If nothing matches on both, we show "no results" rather than lie.
                 val bestMatch = songs.firstOrNull { s ->
                     s.title.equals(track.title, ignoreCase = true) &&
                     s.artists.any { a -> artistMatches(a.name, track.artist) }
                 } ?:
-
                 songs.firstOrNull { s ->
                     s.title.contains(track.title, ignoreCase = true) &&
                     s.artists.any { a -> artistMatches(a.name, track.artist) }
-                } ?:
-
-                // Prioritize the TITLE so tapping a chart song plays THAT song, not a different track by
-                // the same artist (the old "artist-only" / "first result" fallbacks played wrong songs).
-                songs.firstOrNull { s -> s.title.equals(track.title, ignoreCase = true) } ?:
-                songs.firstOrNull { s -> s.title.contains(track.title, ignoreCase = true) } ?:
-
-                songs.firstOrNull()
+                }
 
                 if (bestMatch != null) {
                     withContext(Dispatchers.Main) {
@@ -265,6 +260,8 @@ class SuggestionsViewModel @Inject constructor(
                     val songs = searchResult.items.filterIsInstance<SongItem>()
 
                     
+                    // BOTH title AND artist must match (no artist-agnostic / first-result fallback), so a
+                    // tap plays THAT song, never a same-title cover or a different track by the artist.
                     val bestMatch = songs.firstOrNull { s ->
                         s.title.equals(video.title, ignoreCase = true) &&
                         s.artists.any { a -> artistMatches(a.name, video.artist) }
@@ -272,11 +269,7 @@ class SuggestionsViewModel @Inject constructor(
                     songs.firstOrNull { s ->
                         s.title.contains(video.title, ignoreCase = true) &&
                         s.artists.any { a -> artistMatches(a.name, video.artist) }
-                    } ?:
-                    // Title-first so the right track plays (not a different song by the same artist).
-                    songs.firstOrNull { s -> s.title.equals(video.title, ignoreCase = true) } ?:
-                    songs.firstOrNull { s -> s.title.contains(video.title, ignoreCase = true) } ?:
-                    songs.firstOrNull()
+                    }
 
                     if (bestMatch != null) {
                         withContext(Dispatchers.Main) {

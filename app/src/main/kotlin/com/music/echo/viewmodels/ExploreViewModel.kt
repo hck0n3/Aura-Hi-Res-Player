@@ -6,6 +6,7 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.music.innertube.YouTube
+import com.music.innertube.models.AlbumItem
 import com.music.innertube.models.filterExplicit
 import com.music.innertube.pages.ExplorePage
 import iad1tya.echo.music.constants.HideExplicitKey
@@ -32,9 +33,14 @@ constructor(
     // True while the first/most-recent explore fetch is in flight. The UI uses this (instead of
     // "explorePage == null") so a failed load shows an empty/retry state rather than spinning forever.
     val isLoading = MutableStateFlow(true)
+    // True only when the load genuinely FAILED (both the explore call and the new-releases fallback
+    // threw). Lets the "Álbum" tab tell a real error ("couldn't load, check connection") apart from a
+    // successful-but-empty shelf ("no new releases right now") — no more one generic message for both.
+    val loadFailed = MutableStateFlow(false)
 
     private suspend fun load() {
         isLoading.value = true
+        loadFailed.value = false
         val result = YouTube.explore()
         val page = result.getOrNull()
         result.exceptionOrNull()?.let { reportException(it) }
@@ -44,11 +50,29 @@ constructor(
         // sugerencias". Fall back to the dedicated FEmusic_new_releases_albums endpoint, which reads the
         // albums grid directly and doesn't depend on the explore-page layout.
         var albums = page?.newReleaseAlbums.orEmpty()
+        var fallbackResult: Result<List<AlbumItem>>? = null
         if (albums.isEmpty()) {
-            albums = YouTube.newReleaseAlbums().getOrNull().orEmpty()
+            fallbackResult = YouTube.newReleaseAlbums()
+            fallbackResult.exceptionOrNull()?.let { reportException(it) }
+            albums = fallbackResult.getOrNull().orEmpty()
         }
 
-        if (albums.isNotEmpty() || page != null) {
+        if (albums.isEmpty()) {
+            // Nothing to publish as albums. Keep any moodAndGenres the explore page did return so the
+            // Explore tab still works, and flag a REAL failure only when BOTH fetches errored (empty but
+            // successful responses are "no releases", not an error).
+            if (page != null) {
+                explorePage.value = ExplorePage(
+                    newReleaseAlbums = emptyList(),
+                    moodAndGenres = page.moodAndGenres,
+                )
+            }
+            loadFailed.value = result.isFailure && (fallbackResult?.isFailure ?: true)
+            isLoading.value = false
+            return
+        }
+
+        run {
             val artists: MutableMap<Int, String> = mutableMapOf()
             val favouriteArtists: MutableMap<Int, String> = mutableMapOf()
             database.allArtistsByPlayTime().first().let { list ->

@@ -142,6 +142,13 @@ constructor(
      *  cache-only swap. Drives just the refresh button's spinner/disable; the list already updated. */
     val isRefreshingSuggestions: StateFlow<Boolean> = _isRefreshingSuggestions
 
+    private val _suggestionsLoaded = MutableStateFlow(false)
+
+    /** False until the FIRST suggestion batch has been computed (even if it came back empty). Lets the
+     *  footer distinguish "still computing the instant local-first pass" from "computed, genuinely
+     *  empty" and show shimmer placeholders instead of a long blank on first open. */
+    val suggestionsLoaded: StateFlow<Boolean> = _suggestionsLoaded
+
     fun refreshSuggestions() {
         val now = System.currentTimeMillis()
         // Small debounce: reject only a rapid double-fire; a single tap swaps the list instantly.
@@ -189,6 +196,9 @@ constructor(
                         recordShown = false,
                     )
                     emit(instant)
+                    // First batch is in hand — the footer can stop showing shimmer (an empty result while
+                    // a refresh is still running keeps shimmer via isRefreshingSuggestions below).
+                    _suggestionsLoaded.value = true
 
                     if (wasRefresh) {
                         // Escalate to the network top-up when the instant batch can't satisfy either
@@ -672,6 +682,23 @@ constructor(
                 .forEach { qp ->
                     localById.putIfAbsent(qp.id, qp)
                     chosen += qp.id
+                }
+        }
+
+        // 7b. Library backfill — LAST-resort local content so the instant Phase A pass (zero network)
+        // NEVER paints blank on a freshly-imported/light-usage library, where relatedSongs is empty and
+        // quickPicks is tiny. Newest-added library songs, offline-safe, excluding playlist + session
+        // songs. Phase B still tops up with real online relatedness in the background.
+        if (chosen.size < limit) {
+            val chosenSet = chosen.toHashSet()
+            database.songsByCreateDateAsc().first()
+                .asReversed()
+                .asSequence()
+                .filter { it.id !in excluded && it.id !in chosenSet }
+                .take(limit - chosen.size)
+                .forEach { lib ->
+                    localById.putIfAbsent(lib.id, lib)
+                    chosen += lib.id
                 }
         }
 

@@ -490,6 +490,10 @@
     <string name="ai_playlist_enabled_desc">Show the AI Playlist button in your library</string>
     <string name="add_music">Add Music</string>
     <string name="suggested_songs">Suggested Songs</string>
+    <string name="couldnt_load_new_releases">Couldn\'t load new releases. Check your connection.</string>
+    <string name="no_new_releases">No new releases right now.</string>
+    <string name="couldnt_load_recommendations">Couldn\'t load recommendations. Check your connection.</string>
+    <string name="preview_unavailable">Preview unavailable right now</string>
     <string name="featured_artists">Featured Artists</string>
     <string name="from_replay">From Replay</string>
     <string name="recently_added">Recently Added</string>

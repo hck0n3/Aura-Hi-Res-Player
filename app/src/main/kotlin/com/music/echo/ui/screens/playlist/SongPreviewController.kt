@@ -2,6 +2,7 @@ package iad1tya.echo.music.ui.screens.playlist
 
 import android.content.Context
 import android.net.ConnectivityManager
+import android.widget.Toast
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -24,6 +25,7 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import com.music.innertube.YouTube
 import com.music.innertube.models.YouTubeClient
 import iad1tya.echo.music.LocalPlayerConnection
+import iad1tya.echo.music.R
 import iad1tya.echo.music.constants.AudioQuality
 import iad1tya.echo.music.utils.YTPlayerUtils
 import kotlinx.coroutines.CoroutineScope
@@ -75,6 +77,12 @@ class SongPreviewController(
     private val urlCache = object : LinkedHashMap<String, Pair<String, Long>>(16, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Pair<String, Long>>): Boolean =
             size > URL_CACHE_MAX
+    }
+
+    /** Brief feedback when a preview can't play (resolution failure / stream 403), so a failed tap isn't
+     *  silent. Called on the main thread (resolve launch is Main-scoped; player callbacks are on Main). */
+    private fun notifyUnavailable() {
+        Toast.makeText(context, R.string.preview_unavailable, Toast.LENGTH_SHORT).show()
     }
 
     /** Tap handler: same song toggles it off; a different song starts a new preview. */
@@ -129,7 +137,9 @@ class SongPreviewController(
             isLoading = false
             val url = data?.streamUrl
             if (url.isNullOrBlank()) {
-                // Resolution failed: no-op, resume the main player.
+                // Resolution failed (YouTube rotated its player / throttle / region- or age-restriction):
+                // tell the user so a failed preview isn't a silent dead tap, then resume the main player.
+                notifyUnavailable()
                 stop()
                 return@launch
             }
@@ -268,6 +278,7 @@ class SongPreviewController(
                         // Evict the failed entry (e.g. a cached URL that started 403ing) BEFORE stop()
                         // clears currentPreviewId, so a re-tap re-resolves instead of replaying it.
                         currentPreviewId?.let { urlCache.remove(it) }
+                        notifyUnavailable()
                         this@SongPreviewController.stop()
                     }
                 })

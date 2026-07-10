@@ -744,10 +744,21 @@ object YouTube {
 
     suspend fun newReleaseAlbums(): Result<List<AlbumItem>> = runCatching {
         val response = innerTube.browse(WEB_REMIX, browseId = "FEmusic_new_releases_albums").body<BrowseResponse>()
-        response.contents?.singleColumnBrowseResultsRenderer?.tabs?.firstOrNull()?.tabRenderer?.content?.sectionListRenderer?.contents?.firstOrNull()?.gridRenderer?.items
+        val sections = response.contents?.singleColumnBrowseResultsRenderer?.tabs?.firstOrNull()
+            ?.tabRenderer?.content?.sectionListRenderer?.contents.orEmpty()
+        // The albums shelf isn't always the FIRST section, and YouTube sometimes returns it as a
+        // carousel shelf instead of a grid — scanning both layouts across ALL sections keeps the
+        // "Álbum" tab populated instead of falling back to a generic "couldn't load" error.
+        val fromGrid = sections.firstNotNullOfOrNull { it.gridRenderer }?.items
             ?.mapNotNull { it.musicTwoRowItemRenderer }
             ?.mapNotNull(NewReleaseAlbumPage::fromMusicTwoRowItemRenderer)
             .orEmpty()
+        fromGrid.ifEmpty {
+            sections.firstNotNullOfOrNull { it.musicCarouselShelfRenderer }?.contents
+                ?.mapNotNull { it.musicTwoRowItemRenderer }
+                ?.mapNotNull(NewReleaseAlbumPage::fromMusicTwoRowItemRenderer)
+                .orEmpty()
+        }
     }
 
     suspend fun moodAndGenres(): Result<List<MoodAndGenres>> = runCatching {
