@@ -248,6 +248,11 @@ constructor(
         }
 
     init {
+        // Synchronous index scan. DownloadUtil is now constructed OFF the main thread (App.onCreate warms it
+        // on Dispatchers.IO via dagger.Lazy), so this disk/DB scan runs off-main anyway — no cold-start freeze.
+        // Keeping it synchronous means `downloads` is fully populated the instant construction returns, so
+        // Android Auto / media-browser clients never see 0 downloaded songs during the first moments (an async
+        // fill would also have to reconcile removals that arrive mid-scan, which the merge did not handle).
         val result = mutableMapOf<String, Download>()
         downloadManager.downloadIndex.getDownloads().use { cursor ->
             while (cursor.moveToNext()) {

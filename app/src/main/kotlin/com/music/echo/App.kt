@@ -37,6 +37,7 @@ import iad1tya.echo.music.utils.reportException
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -62,8 +63,18 @@ class App : Application(), SingletonImageLoader.Factory {
     lateinit var applicationScope: CoroutineScope
 
     // Same @Singleton the MusicService DSP observes — used once at startup to seed the default EQ tuning.
+    // dagger.Lazy so App member-injection does NOT eagerly construct it on the MAIN thread (its init reads +
+    // JSON-parses the saved profiles). We warm it off-main in onCreate instead; the DSP observer collects a
+    // StateFlow, so a slightly-later first emission is fine.
     @Inject
-    lateinit var eqProfileRepository: iad1tya.echo.music.eq.data.EQProfileRepository
+    lateinit var eqProfileRepository: dagger.Lazy<iad1tya.echo.music.eq.data.EQProfileRepository>
+
+    // dagger.Lazy so App member-injection does NOT construct DownloadUtil (and, transitively, the two
+    // @PlayerCache/@DownloadCache SimpleCache singletons) on the MAIN thread. Each SimpleCache constructor
+    // synchronously scans its whole cache dir — the ~1-minute cold-start freeze. We force construction OFF the
+    // main thread in onCreate, so the Activity's later @Inject DownloadUtil gets the ready singleton cheaply.
+    @Inject
+    lateinit var downloadUtilLazy: dagger.Lazy<iad1tya.echo.music.playback.DownloadUtil>
 
     override fun onCreate() {
         super.onCreate()
@@ -93,10 +104,6 @@ class App : Application(), SingletonImageLoader.Factory {
 
         CipherDeobfuscator.initialize(this)
 
-        // Load any previously-fetched self-healing player configs from disk synchronously, so a cached
-        // config resolves on the very first stream extraction (even offline). Cheap + best-effort.
-        iad1tya.echo.music.utils.cipher.RemotePlayerConfig.loadCache(this)
-
         if (iad1tya.echo.music.BuildConfig.DEBUG) {
             Timber.plant(Timber.DebugTree())
         }
@@ -125,7 +132,39 @@ class App : Application(), SingletonImageLoader.Factory {
         // and network-optional: on failure the app keeps its built-in hardcoded configs. Never throws. Lets
         // a YouTube cipher rotation be fixed by publishing one config, with no app update.
         applicationScope.launch(Dispatchers.IO) {
+            // Load any previously-fetched configs from disk FIRST (off the main thread now — it reads + parses a
+            // JSON cache), so a cached config resolves on the first stream extraction even offline; then refresh.
+            iad1tya.echo.music.utils.cipher.RemotePlayerConfig.loadCache(applicationContext)
             iad1tya.echo.music.utils.cipher.RemotePlayerConfig.refresh(applicationContext)
+        }
+
+        // Cold-start freeze fix: force the two @PlayerCache/@DownloadCache SimpleCache singletons (via DownloadUtil,
+        // which depends on both) OFF the main thread here, BEFORE the Activity's @Inject DownloadUtil forces them
+        // during its onCreate. Each SimpleCache constructor synchronously scans its whole cache dir; done here the
+        // scan runs on IO and the Activity gets the ready @Singleton cheaply. Warm the EQ repo (reads+parses saved
+        // profiles) off-main too. Best-effort; never throws.
+        applicationScope.launch(Dispatchers.IO) {
+            runCatching { downloadUtilLazy.get() }
+            runCatching { eqProfileRepository.get() }
+        }
+
+        // Preload the native Superpowered bridge off the main thread so the later CustomEqualizerAudioProcessor
+        // init{} System.loadLibrary is a cheap no-op instead of a main-thread dlopen during the first player build.
+        applicationScope.launch(Dispatchers.Default) {
+            runCatching { System.loadLibrary("superpowered-bridge") }
+        }
+
+        // Keep the song-cache-size mirror (read by AppModule.providePlayerCache without a blocking DataStore read)
+        // in sync with the authoritative DataStore value: the first emission seeds it, later changes refresh the
+        // SharedPreferences copy for the next process start. Default -1 == unlimited, matching providePlayerCache.
+        applicationScope.launch(Dispatchers.IO) {
+            dataStore.data
+                .map { it[MaxSongCacheSizeKey] ?: DEFAULT_SONG_CACHE_SIZE_MB }
+                .distinctUntilChanged()
+                // Best-effort, matching the sibling startup coroutines: a DataStore read error must not crash
+                // the process — just report it and stop mirroring for this session.
+                .catch { reportException(it) }
+                .collect { updateSongCacheSizeMirror(this@App, it) }
         }
     }
 
@@ -187,24 +226,79 @@ class App : Application(), SingletonImageLoader.Factory {
         if (imageCacheMirrorWasStale) {
             runCatching { SingletonImageLoader.reset() }
         }
-        seedDefaultsIfNeeded(settings)
-        migrateCanvasDefaultOn(settings)
-        migrateHighPerformanceModeSeed(settings)
-        // Must run AFTER migrateHighPerformanceModeSeed: undoes the over-aggressive force-ON (TV + ~4 GB phones)
-        // so televisions and capable phones get carousels + video back.
-        migratePerfModeReseedV2(settings)
-        // Must run AFTER migratePerfModeReseedV2: re-enables perf-mode on genuinely WEAK TV/car boxes that
-        // the V2 reseed turned OFF along with capable televisions. Only affects LOW-tier devices.
-        migratePerfModeCapabilityV3(settings)
-        migrateMiniPlayerDefaultBg(settings)
-        migrateThemeSystemDefault(settings)
-        migrateThemeSystemOnlyV2(settings)
-        migratePlaybackDefaults(settings)
+        // Seed the song-cache-size mirror synchronously from the authoritative committed value (reuses the
+        // settings read above — no extra IO). On first launch after this update / after a device restore the
+        // mirror is empty, so without this providePlayerCache would fall back to -1 (unlimited) and ignore the
+        // user's configured size limit. Seeding it here (and the missing-key fallback in songCacheSizeMb) makes
+        // the SimpleCache honor the configured limit from this session on.
+        updateSongCacheSizeMirror(this@App, settings[MaxSongCacheSizeKey] ?: DEFAULT_SONG_CACHE_SIZE_MB)
+        // ── One-time default seeds & migrations ──────────────────────────────────────────────────────────────
+        // Previously ~13 helpers each ran their own dataStore.edit{} (a startup write-storm that serialized behind
+        // the DataStore actor and blocked main-thread reads; migratePlaybackDefaults even wrote on EVERY launch).
+        // They are coalesced into single transactions here, each gated so an already-migrated device does ZERO
+        // writes. Ordering, keys/values, guard flags and the two-phase "mark done only if applied" semantics are
+        // preserved exactly (in one transaction the value+flag are atomic, which is strictly stronger). Cross-batch
+        // reads that a prior migration wrote (e.g. HighPerformanceModeKey chained through perf-mode migrations) all
+        // read the SHARED MutablePreferences `p`, matching the old commit-then-read chaining. The two migrations
+        // with non-DataStore side effects stay SEPARATE: migrateAudioDefaultsV2 (EQ repo + echo_eq_prefs, two-phase
+        // on seed success) keeps its position BETWEEN the batches so Safe Volume's forced-ON still lands AFTER it,
+        // and migrateLegacyIcon (PackageManager) runs last.
+
+        // Batch A — every pure-DataStore seed/migration that runs BEFORE migrateAudioDefaultsV2, in original order.
+        val seedStored = settings[iad1tya.echo.music.constants.SeedVersionKey]
+        val seedLegacyApplied = settings[iad1tya.echo.music.constants.JrDefaultsAppliedKey] == true
+        val batchAPending =
+            iad1tya.echo.music.viewmodels.shouldReseed(seedStored, seedLegacyApplied, CURRENT_SEED_VERSION) ||
+            seedStored == null ||
+            settings[iad1tya.echo.music.constants.CanvasDefaultOnAppliedKey] != true ||
+            settings[iad1tya.echo.music.constants.HighPerfModeSeedAppliedKey] != true ||
+            settings[iad1tya.echo.music.constants.PerfModeReseedV2AppliedKey] != true ||
+            settings[iad1tya.echo.music.constants.PerfModeCapabilityV3AppliedKey] != true ||
+            settings[iad1tya.echo.music.constants.MiniPlayerDefaultBgAppliedKey] != true ||
+            settings[iad1tya.echo.music.constants.ThemeSystemDefaultAppliedKey] != true ||
+            settings[iad1tya.echo.music.constants.ThemeSystemOnlyV2AppliedKey] != true ||
+            settings[iad1tya.echo.music.constants.PlaybackDefaultsV2AppliedKey] != true ||
+            settings[iad1tya.echo.music.constants.PlaybackDefaultsV3AppliedKey] != true ||
+            settings[iad1tya.echo.music.constants.PlaybackDefaultsV4AppliedKey] != true ||
+            settings[iad1tya.echo.music.constants.PlaybackDefaultsV5AppliedKey] != true ||
+            settings[iad1tya.echo.music.constants.CrossfadeDefault9AppliedKey] != true
+        if (batchAPending) {
+            runCatching {
+                dataStore.edit { p ->
+                    applySeedDefaults(p, settings)
+                    applyCanvasDefaultOn(p, settings)
+                    applyHighPerformanceModeSeed(p, settings)
+                    // AFTER HighPerformanceModeSeed: undoes the over-aggressive force-ON (TV + ~4 GB phones).
+                    applyPerfModeReseedV2(p, settings)
+                    // AFTER PerfModeReseedV2: re-enables perf-mode on genuinely WEAK TV/car boxes it turned OFF.
+                    applyPerfModeCapabilityV3(p, settings)
+                    applyMiniPlayerDefaultBg(p, settings)
+                    applyThemeSystemDefault(p, settings)
+                    applyThemeSystemOnlyV2(p, settings)
+                    applyPlaybackDefaults(p, settings)
+                }
+            }.onFailure { reportException(it) }
+        }
+
+        // SEPARATE (EQ repo + echo_eq_prefs side effects, own two-phase commit on seed success).
         migrateAudioDefaultsV2(settings)
-        // Must run AFTER migrateAudioDefaultsV2 (which historically set Safe Volume OFF on this same launch)
-        // so this one-time force-ON wins.
-        migrateSafeVolumeDefaultOn(settings)
-        migrateInfinitePlaybackOn(settings)
+
+        // Batch B — pure-DataStore migrations that MUST run AFTER migrateAudioDefaultsV2 (Safe Volume forced ON
+        // wins over it). Both are two-phase in the original; in one transaction value+flag are written atomically,
+        // so the flag is still never set without the value being applied.
+        val batchBPending =
+            settings[iad1tya.echo.music.constants.SafeVolumeDefaultOnAppliedKey] != true ||
+            settings[iad1tya.echo.music.constants.InfinitePlaybackForcedOnKey] != true
+        if (batchBPending) {
+            runCatching {
+                dataStore.edit { p ->
+                    applySafeVolumeDefaultOn(p, settings)
+                    applyInfinitePlaybackOn(p, settings)
+                }
+            }.onFailure { reportException(it) }
+        }
+
+        // SEPARATE (PackageManager component toggling; only acts when the removed Legacy Icon was enabled).
         migrateLegacyIcon(settings)
         val locale = Locale.getDefault()
         val languageTag = locale.language
@@ -313,13 +407,16 @@ class App : Application(), SingletonImageLoader.Factory {
      * version's defaults. Pre-SeedVersion installs (legacy boolean guard set) are treated as seed v1
      * and simply recorded, so existing users' manual changes are NOT clobbered on upgrade.
      */
-    private suspend fun seedDefaultsIfNeeded(settings: androidx.datastore.preferences.core.Preferences) {
+    private fun applySeedDefaults(
+        p: androidx.datastore.preferences.core.MutablePreferences,
+        settings: androidx.datastore.preferences.core.Preferences,
+    ) {
         val stored = settings[iad1tya.echo.music.constants.SeedVersionKey]
         val legacyApplied = settings[iad1tya.echo.music.constants.JrDefaultsAppliedKey] == true
         if (!iad1tya.echo.music.viewmodels.shouldReseed(stored, legacyApplied, CURRENT_SEED_VERSION)) {
             // Record the migration of a pre-SeedVersion install so we don't recompute every launch.
             if (stored == null) {
-                dataStore.edit { it[iad1tya.echo.music.constants.SeedVersionKey] = CURRENT_SEED_VERSION }
+                p[iad1tya.echo.music.constants.SeedVersionKey] = CURRENT_SEED_VERSION
             }
             return
         }
@@ -328,7 +425,7 @@ class App : Application(), SingletonImageLoader.Factory {
         // can still enable everything, and existing installs (already past this seed) are untouched.
         val lowEndDevice =
             iad1tya.echo.music.utils.DeviceCapabilities.tier(this) == iad1tya.echo.music.utils.DeviceTier.LOW
-        dataStore.edit { p ->
+        run {
             // "Inspirado en Apple Music" player. The toggle is ON when UseNewPlayerDesign == false AND
             // the player background is APPLE_MUSIC — seeding LIVE_MESH before made the switch *look* on
             // but not actually apply (it only kicked in after a manual off→on). Seed APPLE_MUSIC so it
@@ -426,17 +523,16 @@ class App : Application(), SingletonImageLoader.Factory {
      * were previously seeded ON. Gated by its own flag so it never disturbs anything else and never
      * repeats; users who want them can turn them back on (and the flag keeps that choice).
      */
-    private suspend fun migrateThemeSystemDefault(settings: androidx.datastore.preferences.core.Preferences) {
+    private fun applyThemeSystemDefault(
+        p: androidx.datastore.preferences.core.MutablePreferences,
+        settings: androidx.datastore.preferences.core.Preferences,
+    ) {
         // User request: appearance should start following the SYSTEM theme. Apply once (even on installs that
         // had the old forced-dark default), then remember so the user's later choice is respected.
         if (settings[iad1tya.echo.music.constants.ThemeSystemDefaultAppliedKey] == true) return
-        runCatching {
-            dataStore.edit { p ->
-                p[iad1tya.echo.music.constants.DarkModeKey] =
-                    iad1tya.echo.music.ui.screens.settings.DarkMode.AUTO.name
-                p[iad1tya.echo.music.constants.ThemeSystemDefaultAppliedKey] = true
-            }
-        }
+        p[iad1tya.echo.music.constants.DarkModeKey] =
+            iad1tya.echo.music.ui.screens.settings.DarkMode.AUTO.name
+        p[iad1tya.echo.music.constants.ThemeSystemDefaultAppliedKey] = true
     }
 
     /**
@@ -446,17 +542,16 @@ class App : Application(), SingletonImageLoader.Factory {
      * user lands on the new system theme with exactly one selection. Runs once (own flag); afterwards the
      * user's later theme choices are respected.
      */
-    private suspend fun migrateThemeSystemOnlyV2(settings: androidx.datastore.preferences.core.Preferences) {
+    private fun applyThemeSystemOnlyV2(
+        p: androidx.datastore.preferences.core.MutablePreferences,
+        settings: androidx.datastore.preferences.core.Preferences,
+    ) {
         if (settings[iad1tya.echo.music.constants.ThemeSystemOnlyV2AppliedKey] == true) return
-        runCatching {
-            dataStore.edit { p ->
-                p[iad1tya.echo.music.constants.DarkModeKey] =
-                    iad1tya.echo.music.ui.screens.settings.DarkMode.AUTO.name
-                p[iad1tya.echo.music.constants.PureBlackKey] = false
-                p[iad1tya.echo.music.constants.DynamicThemeKey] = true
-                p[iad1tya.echo.music.constants.ThemeSystemOnlyV2AppliedKey] = true
-            }
-        }
+        p[iad1tya.echo.music.constants.DarkModeKey] =
+            iad1tya.echo.music.ui.screens.settings.DarkMode.AUTO.name
+        p[iad1tya.echo.music.constants.PureBlackKey] = false
+        p[iad1tya.echo.music.constants.DynamicThemeKey] = true
+        p[iad1tya.echo.music.constants.ThemeSystemOnlyV2AppliedKey] = true
     }
 
     /**
@@ -464,48 +559,48 @@ class App : Application(), SingletonImageLoader.Factory {
      * (crossfade) ON at 9s, skip silence ON, and skip silence instantly ON. Runs once (own flag);
      * afterwards the user's later choices are respected.
      */
-    private suspend fun migratePlaybackDefaults(settings: androidx.datastore.preferences.core.Preferences) {
-        runCatching {
-            dataStore.edit { p ->
-                // V2 — initial playback defaults (once).
-                if (settings[iad1tya.echo.music.constants.PlaybackDefaultsV2AppliedKey] != true) {
-                    p[iad1tya.echo.music.constants.CrossfadeEnabledKey] = true
-                    p[iad1tya.echo.music.constants.SkipSilenceKey] = true
-                    p[iad1tya.echo.music.constants.SkipSilenceInstantKey] = true
-                    p[iad1tya.echo.music.constants.PlaybackDefaultsV1AppliedKey] = true
-                    p[iad1tya.echo.music.constants.PlaybackDefaultsV2AppliedKey] = true
-                }
-                // V3 — re-apply ONCE for existing users: 12 s + EQUAL-POWER crossfade (the old default was the
-                // dip-prone LINEAR curve at 10 s, the "baja y de la nada sube" the user reported).
-                if (settings[iad1tya.echo.music.constants.PlaybackDefaultsV3AppliedKey] != true) {
-                    p[iad1tya.echo.music.constants.CrossfadeDurationKey] = 12f
-                    p[iad1tya.echo.music.constants.CrossfadeCurveKey] = 1
-                    p[iad1tya.echo.music.constants.PlaybackDefaultsV3AppliedKey] = true
-                }
-                // V4 — user asked for 10 s transitions; keep the EQUAL-POWER curve (no mid dip, chosen over
-                // strict-linear). Re-apply ONCE for existing users (V3 had set 12 s).
-                if (settings[iad1tya.echo.music.constants.PlaybackDefaultsV4AppliedKey] != true) {
-                    p[iad1tya.echo.music.constants.CrossfadeDurationKey] = 10f
-                    p[iad1tya.echo.music.constants.CrossfadeCurveKey] = 1
-                    p[iad1tya.echo.music.constants.PlaybackDefaultsV4AppliedKey] = true
-                }
-                // V5 — smooth transition ("transición suave", EQUAL-POWER curve) ON. Re-apply ONCE for everyone.
-                if (settings[iad1tya.echo.music.constants.PlaybackDefaultsV5AppliedKey] != true) {
-                    p[iad1tya.echo.music.constants.CrossfadeEnabledKey] = true
-                    p[iad1tya.echo.music.constants.CrossfadeDurationKey] = 9f
-                    p[iad1tya.echo.music.constants.CrossfadeCurveKey] = 1
-                    p[iad1tya.echo.music.constants.PlaybackDefaultsV5AppliedKey] = true
-                }
-                // V6 — best crossfade default is 9 s (equal-power). One-time, FRESH key so it re-applies even
-                // for existing users whose V5 / AudioDefaultsV2 flags already landed the old 13 s value. Only
-                // move users still on that previous 13 s DEFAULT; anyone who chose their own duration keeps it.
-                if (settings[iad1tya.echo.music.constants.CrossfadeDefault9AppliedKey] != true) {
-                    if (settings[iad1tya.echo.music.constants.CrossfadeDurationKey] == 13f) {
-                        p[iad1tya.echo.music.constants.CrossfadeDurationKey] = 9f
-                    }
-                    p[iad1tya.echo.music.constants.CrossfadeDefault9AppliedKey] = true
-                }
+    private fun applyPlaybackDefaults(
+        p: androidx.datastore.preferences.core.MutablePreferences,
+        settings: androidx.datastore.preferences.core.Preferences,
+    ) {
+        // V2 — initial playback defaults (once).
+        if (settings[iad1tya.echo.music.constants.PlaybackDefaultsV2AppliedKey] != true) {
+            p[iad1tya.echo.music.constants.CrossfadeEnabledKey] = true
+            p[iad1tya.echo.music.constants.SkipSilenceKey] = true
+            p[iad1tya.echo.music.constants.SkipSilenceInstantKey] = true
+            p[iad1tya.echo.music.constants.PlaybackDefaultsV1AppliedKey] = true
+            p[iad1tya.echo.music.constants.PlaybackDefaultsV2AppliedKey] = true
+        }
+        // V3 — re-apply ONCE for existing users: 12 s + EQUAL-POWER crossfade (the old default was the
+        // dip-prone LINEAR curve at 10 s, the "baja y de la nada sube" the user reported).
+        if (settings[iad1tya.echo.music.constants.PlaybackDefaultsV3AppliedKey] != true) {
+            p[iad1tya.echo.music.constants.CrossfadeDurationKey] = 12f
+            p[iad1tya.echo.music.constants.CrossfadeCurveKey] = 1
+            p[iad1tya.echo.music.constants.PlaybackDefaultsV3AppliedKey] = true
+        }
+        // V4 — user asked for 10 s transitions; keep the EQUAL-POWER curve (no mid dip, chosen over
+        // strict-linear). Re-apply ONCE for existing users (V3 had set 12 s).
+        if (settings[iad1tya.echo.music.constants.PlaybackDefaultsV4AppliedKey] != true) {
+            p[iad1tya.echo.music.constants.CrossfadeDurationKey] = 10f
+            p[iad1tya.echo.music.constants.CrossfadeCurveKey] = 1
+            p[iad1tya.echo.music.constants.PlaybackDefaultsV4AppliedKey] = true
+        }
+        // V5 — smooth transition ("transición suave", EQUAL-POWER curve) ON. Re-apply ONCE for everyone.
+        if (settings[iad1tya.echo.music.constants.PlaybackDefaultsV5AppliedKey] != true) {
+            p[iad1tya.echo.music.constants.CrossfadeEnabledKey] = true
+            p[iad1tya.echo.music.constants.CrossfadeDurationKey] = 9f
+            p[iad1tya.echo.music.constants.CrossfadeCurveKey] = 1
+            p[iad1tya.echo.music.constants.PlaybackDefaultsV5AppliedKey] = true
+        }
+        // V6 — best crossfade default is 9 s (equal-power). One-time, FRESH key so it re-applies even
+        // for existing users whose V5 / AudioDefaultsV2 flags already landed the old 13 s value. Only
+        // move users still on that previous 13 s DEFAULT; anyone who chose their own duration keeps it.
+        // (Reads the pre-migration `settings` snapshot, exactly as before — NOT `p`.)
+        if (settings[iad1tya.echo.music.constants.CrossfadeDefault9AppliedKey] != true) {
+            if (settings[iad1tya.echo.music.constants.CrossfadeDurationKey] == 13f) {
+                p[iad1tya.echo.music.constants.CrossfadeDurationKey] = 9f
             }
+            p[iad1tya.echo.music.constants.CrossfadeDefault9AppliedKey] = true
         }
     }
 
@@ -545,9 +640,10 @@ class App : Application(), SingletonImageLoader.Factory {
                 isActive = true,
             )
             // DSP source of truth: MusicService collects combine(activeProfile, unsavedProfile){ unsaved ?: active }.
-            eqProfileRepository.saveProfile(profile)
-            eqProfileRepository.setUnsavedProfile(profile)
-            eqProfileRepository.setActiveProfile(profile.id)
+            val eqRepo = eqProfileRepository.get()
+            eqRepo.saveProfile(profile)
+            eqRepo.setUnsavedProfile(profile)
+            eqRepo.setActiveProfile(profile.id)
             // EQ-screen UI mirror so the enabled toggle / sliders / preamp reflect the seeded Audiophile tuning.
             val eqPrefs = applicationContext.getSharedPreferences("echo_eq_prefs", Context.MODE_PRIVATE)
             val ed = eqPrefs.edit()
@@ -569,16 +665,15 @@ class App : Application(), SingletonImageLoader.Factory {
      * you open an artist's top songs) ON for everyone — the owner wants endless playback always active. Fresh
      * key so it re-applies once even for users who had turned [AutoLoadMoreKey] off.
      */
-    private suspend fun migrateInfinitePlaybackOn(settings: androidx.datastore.preferences.core.Preferences) {
+    private fun applyInfinitePlaybackOn(
+        p: androidx.datastore.preferences.core.MutablePreferences,
+        settings: androidx.datastore.preferences.core.Preferences,
+    ) {
         if (settings[iad1tya.echo.music.constants.InfinitePlaybackForcedOnKey] == true) return
-        // Only mark the one-time migration done when the write actually succeeded, so a transient DataStore
-        // failure retries on the next launch instead of silently leaving a user's infinite playback off forever.
-        val applied = runCatching {
-            dataStore.edit { it[iad1tya.echo.music.constants.AutoLoadMoreKey] = true }
-        }.onFailure { reportException(it) }.isSuccess
-        if (applied) {
-            dataStore.edit { it[iad1tya.echo.music.constants.InfinitePlaybackForcedOnKey] = true }
-        }
+        // Value + flag are written atomically in the shared transaction, so the flag is never set without the
+        // value being applied (a failed commit rolls back both and it retries on the next launch).
+        p[iad1tya.echo.music.constants.AutoLoadMoreKey] = true
+        p[iad1tya.echo.music.constants.InfinitePlaybackForcedOnKey] = true
     }
 
     /**
@@ -589,33 +684,34 @@ class App : Application(), SingletonImageLoader.Factory {
      * Safe Volume off in Settings and their choice sticks. Runs AFTER migrateAudioDefaultsV2 (which used to set
      * Safe Volume OFF) so this ON write wins on the same launch.
      */
-    private suspend fun migrateSafeVolumeDefaultOn(settings: androidx.datastore.preferences.core.Preferences) {
+    private fun applySafeVolumeDefaultOn(
+        p: androidx.datastore.preferences.core.MutablePreferences,
+        settings: androidx.datastore.preferences.core.Preferences,
+    ) {
         if (settings[iad1tya.echo.music.constants.SafeVolumeDefaultOnAppliedKey] == true) return
-        // Only mark the one-time migration done when the write actually succeeded, so a transient DataStore
-        // failure retries on the next launch instead of silently leaving Safe Volume off forever.
-        val applied = runCatching {
-            dataStore.edit { it[iad1tya.echo.music.constants.SafeVolumeEnabledKey] = true }
-        }.onFailure { reportException(it) }.isSuccess
-        if (applied) {
-            dataStore.edit { it[iad1tya.echo.music.constants.SafeVolumeDefaultOnAppliedKey] = true }
-        }
+        // Value + flag written atomically (see applyInfinitePlaybackOn). Runs AFTER migrateAudioDefaultsV2 so
+        // this forced-ON wins on the same launch.
+        p[iad1tya.echo.music.constants.SafeVolumeEnabledKey] = true
+        p[iad1tya.echo.music.constants.SafeVolumeDefaultOnAppliedKey] = true
     }
 
-    private suspend fun migrateMiniPlayerDefaultBg(settings: androidx.datastore.preferences.core.Preferences) {
+    private fun applyMiniPlayerDefaultBg(
+        p: androidx.datastore.preferences.core.MutablePreferences,
+        settings: androidx.datastore.preferences.core.Preferences,
+    ) {
         // The mini-player was seeded with a dynamic (APPLE_MUSIC) background, which forces white text that is
         // illegible in light mode. Reset the mini-player background to DEFAULT once so its text is the
         // readable gray (onSurface). Runs once; the user can pick a dynamic mini background again later.
         if (settings[iad1tya.echo.music.constants.MiniPlayerDefaultBgAppliedKey] == true) return
-        runCatching {
-            dataStore.edit { p ->
-                p[iad1tya.echo.music.constants.MiniPlayerBackgroundStyleKey] =
-                    iad1tya.echo.music.constants.PlayerBackgroundStyle.DEFAULT.name
-                p[iad1tya.echo.music.constants.MiniPlayerDefaultBgAppliedKey] = true
-            }
-        }
+        p[iad1tya.echo.music.constants.MiniPlayerBackgroundStyleKey] =
+            iad1tya.echo.music.constants.PlayerBackgroundStyle.DEFAULT.name
+        p[iad1tya.echo.music.constants.MiniPlayerDefaultBgAppliedKey] = true
     }
 
-    private suspend fun migrateCanvasDefaultOn(settings: androidx.datastore.preferences.core.Preferences) {
+    private fun applyCanvasDefaultOn(
+        p: androidx.datastore.preferences.core.MutablePreferences,
+        settings: androidx.datastore.preferences.core.Preferences,
+    ) {
         // User request: ALL canvas/lienzo toggles enabled. Force them ON once (even for installs that had
         // the previous default-OFF migration), then remember it so the user's later choice is respected.
         if (settings[iad1tya.echo.music.constants.CanvasDefaultOnAppliedKey] == true) return
@@ -624,13 +720,9 @@ class App : Application(), SingletonImageLoader.Factory {
         // devices, right after seedDefaultsIfNeeded had defaulted them off on a fresh install).
         val lowEndDevice =
             iad1tya.echo.music.utils.DeviceCapabilities.tier(this) == iad1tya.echo.music.utils.DeviceTier.LOW
-        runCatching {
-            dataStore.edit { p ->
-                p[iad1tya.echo.music.constants.CanvasThumbnailAnimationKey] = !lowEndDevice
-                p[iad1tya.echo.music.constants.AlbumCanvasEnabledKey] = !lowEndDevice
-                p[iad1tya.echo.music.constants.CanvasDefaultOnAppliedKey] = true
-            }
-        }
+        p[iad1tya.echo.music.constants.CanvasThumbnailAnimationKey] = !lowEndDevice
+        p[iad1tya.echo.music.constants.AlbumCanvasEnabledKey] = !lowEndDevice
+        p[iad1tya.echo.music.constants.CanvasDefaultOnAppliedKey] = true
     }
 
     /**
@@ -639,18 +731,19 @@ class App : Application(), SingletonImageLoader.Factory {
      * gets the full premium experience — see [migratePerfModeReseedV2]). Only sets it when still unset (a
      * capable phone that never had the key is left OFF); afterwards the user's manual choice wins.
      */
-    private suspend fun migrateHighPerformanceModeSeed(settings: androidx.datastore.preferences.core.Preferences) {
+    private fun applyHighPerformanceModeSeed(
+        p: androidx.datastore.preferences.core.MutablePreferences,
+        settings: androidx.datastore.preferences.core.Preferences,
+    ) {
         if (settings[iad1tya.echo.music.constants.HighPerfModeSeedAppliedKey] == true) return
         val forcePerf =
             iad1tya.echo.music.utils.DeviceCapabilities.tier(this) == iad1tya.echo.music.utils.DeviceTier.LOW
-        runCatching {
-            dataStore.edit { p ->
-                if (p[iad1tya.echo.music.constants.HighPerformanceModeKey] == null) {
-                    p[iad1tya.echo.music.constants.HighPerformanceModeKey] = forcePerf
-                }
-                p[iad1tya.echo.music.constants.HighPerfModeSeedAppliedKey] = true
-            }
-        }.onFailure { reportException(it) }
+        // Reads the SHARED `p` so it sees any HighPerformanceModeKey applySeedDefaults just wrote (matching the
+        // old commit-then-read chain across these perf-mode migrations).
+        if (p[iad1tya.echo.music.constants.HighPerformanceModeKey] == null) {
+            p[iad1tya.echo.music.constants.HighPerformanceModeKey] = forcePerf
+        }
+        p[iad1tya.echo.music.constants.HighPerfModeSeedAppliedKey] = true
     }
 
     /**
@@ -662,24 +755,23 @@ class App : Application(), SingletonImageLoader.Factory {
      * It NEVER enables perf-mode: a genuinely low-end phone that has it ON keeps it. The user can still toggle it
      * manually afterwards (e.g. re-enable it on a very weak TV box). Runs once, gated by a fresh key.
      */
-    private suspend fun migratePerfModeReseedV2(settings: androidx.datastore.preferences.core.Preferences) {
+    private fun applyPerfModeReseedV2(
+        p: androidx.datastore.preferences.core.MutablePreferences,
+        settings: androidx.datastore.preferences.core.Preferences,
+    ) {
         if (settings[iad1tya.echo.music.constants.PerfModeReseedV2AppliedKey] == true) return
         val isTelevision = iad1tya.echo.music.utils.DeviceForm.isTelevision(this)
         val genuinelyLow =
             iad1tya.echo.music.utils.DeviceCapabilities.tier(this) == iad1tya.echo.music.utils.DeviceTier.LOW
-        runCatching {
-            dataStore.edit { p ->
-                val current = p[iad1tya.echo.music.constants.HighPerformanceModeKey]
-                if (isTelevision) {
-                    // TV = full experience, regardless of RAM tier (1080p video, carousels, high-res covers).
-                    p[iad1tya.echo.music.constants.HighPerformanceModeKey] = false
-                } else if (current == true && !genuinelyLow) {
-                    // Capable phone wrongly forced into the lean path → restore the full home (carousels).
-                    p[iad1tya.echo.music.constants.HighPerformanceModeKey] = false
-                }
-                p[iad1tya.echo.music.constants.PerfModeReseedV2AppliedKey] = true
-            }
-        }.onFailure { reportException(it) }
+        val current = p[iad1tya.echo.music.constants.HighPerformanceModeKey]
+        if (isTelevision) {
+            // TV = full experience, regardless of RAM tier (1080p video, carousels, high-res covers).
+            p[iad1tya.echo.music.constants.HighPerformanceModeKey] = false
+        } else if (current == true && !genuinelyLow) {
+            // Capable phone wrongly forced into the lean path → restore the full home (carousels).
+            p[iad1tya.echo.music.constants.HighPerformanceModeKey] = false
+        }
+        p[iad1tya.echo.music.constants.PerfModeReseedV2AppliedKey] = true
     }
 
     /**
@@ -691,26 +783,25 @@ class App : Application(), SingletonImageLoader.Factory {
      * touched, so they keep their carousels + video. It NEVER disables perf-mode. Runs once, AFTER
      * migratePerfModeReseedV2 (so it wins on the same launch for LOW-tier TV boxes the reseed just turned off).
      */
-    private suspend fun migratePerfModeCapabilityV3(settings: androidx.datastore.preferences.core.Preferences) {
+    private fun applyPerfModeCapabilityV3(
+        p: androidx.datastore.preferences.core.MutablePreferences,
+        settings: androidx.datastore.preferences.core.Preferences,
+    ) {
         if (settings[iad1tya.echo.music.constants.PerfModeCapabilityV3AppliedKey] == true) return
         val genuinelyLow =
             iad1tya.echo.music.utils.DeviceCapabilities.tier(this) == iad1tya.echo.music.utils.DeviceTier.LOW
-        runCatching {
-            dataStore.edit { p ->
-                // Read the CURRENT value inside the edit (not the pre-migration `settings` snapshot) so we react to
-                // what migratePerfModeReseedV2 just wrote earlier on this same launch.
-                // Limit to genuinely-weak TV boxes / car head units — exactly what V2 wrongly forced OFF. A LOW-tier
-                // PHONE with the flag false almost always means the user deliberately opted out (to keep
-                // carousels/canvas/crossfade), so don't clobber that choice; only repair the boxes V2 regressed.
-                if (genuinelyLow &&
-                    iad1tya.echo.music.utils.DeviceForm.isTvOrCar(this) &&
-                    p[iad1tya.echo.music.constants.HighPerformanceModeKey] != true
-                ) {
-                    p[iad1tya.echo.music.constants.HighPerformanceModeKey] = true
-                }
-                p[iad1tya.echo.music.constants.PerfModeCapabilityV3AppliedKey] = true
-            }
-        }.onFailure { reportException(it) }
+        // Read the CURRENT value from the SHARED `p` (not the pre-migration `settings` snapshot) so we react to
+        // what applyPerfModeReseedV2 just wrote earlier in this same transaction.
+        // Limit to genuinely-weak TV boxes / car head units — exactly what V2 wrongly forced OFF. A LOW-tier
+        // PHONE with the flag false almost always means the user deliberately opted out (to keep
+        // carousels/canvas/crossfade), so don't clobber that choice; only repair the boxes V2 regressed.
+        if (genuinelyLow &&
+            iad1tya.echo.music.utils.DeviceForm.isTvOrCar(this) &&
+            p[iad1tya.echo.music.constants.HighPerformanceModeKey] != true
+        ) {
+            p[iad1tya.echo.music.constants.HighPerformanceModeKey] = true
+        }
+        p[iad1tya.echo.music.constants.PerfModeCapabilityV3AppliedKey] = true
     }
 
     /**
@@ -918,6 +1009,49 @@ class App : Application(), SingletonImageLoader.Factory {
                     .getSharedPreferences(IMAGE_CACHE_MIRROR_PREFS, Context.MODE_PRIVATE)
                     .getInt(IMAGE_CACHE_MIRROR_KEY, DEFAULT_IMAGE_CACHE_SIZE_MB)
             }.getOrDefault(DEFAULT_IMAGE_CACHE_SIZE_MB)
+        }
+
+        /**
+         * Process-wide SharedPreferences mirror of [MaxSongCacheSizeKey] so [AppModule.providePlayerCache] reads
+         * the song-cache size WITHOUT a main-thread blocking DataStore read (mirrors the image-cache-size pattern
+         * above). Default -1 == unlimited (NoOpCacheEvictor), matching providePlayerCache's historical `?: -1`.
+         * Seeded + kept fresh reactively in [onCreate] (collect of the key's flow).
+         */
+        const val DEFAULT_SONG_CACHE_SIZE_MB = -1
+        private const val SONG_CACHE_MIRROR_PREFS = "player_cache_prefs"
+        private const val SONG_CACHE_MIRROR_KEY = "max_song_cache_size_mb"
+
+        /** Non-blocking read of the song-cache-size mirror (in MB, -1 = unlimited), used by providePlayerCache. */
+        fun songCacheSizeMb(context: Context): Int = runCatching {
+            val prefs = context.applicationContext
+                .getSharedPreferences(SONG_CACHE_MIRROR_PREFS, Context.MODE_PRIVATE)
+            if (prefs.contains(SONG_CACHE_MIRROR_KEY)) {
+                // Mirror present (steady state): cheap non-blocking read, no DataStore access.
+                prefs.getInt(SONG_CACHE_MIRROR_KEY, DEFAULT_SONG_CACHE_SIZE_MB)
+            } else {
+                // First launch after this update (or after a device restore): the mirror hasn't been
+                // seeded yet. Falling through to the default (-1 = unlimited) here would build the
+                // SimpleCache with NoOpCacheEvictor even when the user configured a size limit. Do ONE
+                // blocking DataStore read of the authoritative value ONLY in this unseeded case, then
+                // seed the mirror so every subsequent launch hits the non-blocking path above.
+                val authoritative = kotlinx.coroutines.runBlocking {
+                    context.applicationContext.dataStore.data.first()[MaxSongCacheSizeKey]
+                        ?: DEFAULT_SONG_CACHE_SIZE_MB
+                }
+                updateSongCacheSizeMirror(context, authoritative)
+                authoritative
+            }
+        }.getOrDefault(DEFAULT_SONG_CACHE_SIZE_MB)
+
+        /** Synchronously update the song-cache-size mirror SharedPreferences copy (read at the next process start). */
+        fun updateSongCacheSizeMirror(context: Context, sizeMb: Int) {
+            runCatching {
+                context.applicationContext
+                    .getSharedPreferences(SONG_CACHE_MIRROR_PREFS, Context.MODE_PRIVATE)
+                    .edit()
+                    .putInt(SONG_CACHE_MIRROR_KEY, sizeMb)
+                    .apply()
+            }
         }
 
         suspend fun forgetAccount(context: Context) {

@@ -33,6 +33,7 @@ import androidx.media3.common.Tracks
 import androidx.media3.common.VideoSize
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.AspectRatioFrameLayout
@@ -106,13 +107,22 @@ fun MusicVideoPlayer(
         )
     }
 
+    // E2: only force the highest video bitrate on HIGH-tier devices; on weaker links forcing max
+    // bitrate guarantees stalls, so leave adaptive/default there to pick a sustainable rendition.
+    // Mirrors Player.kt (BackgroundVideoView) / CanvasArtworkPlayer.kt gating.
+    val deviceTier = remember { iad1tya.echo.music.utils.PerformanceMode.effectiveTier(context) }
     val exoPlayer = remember {
         ExoPlayer.Builder(context)
             .setMediaSourceFactory(mediaSourceFactory)
+            // Enable decoder fallback so muxed-video AAC audio falls through to the software decoder on
+            // weak SoCs (mirror of the main player fix) — fixes missing audio on hardware-accelerated video.
+            .setRenderersFactory(
+                DefaultRenderersFactory(context).setEnableDecoderFallback(true),
+            )
             .build()
             .apply {
                 trackSelectionParameters = trackSelectionParameters.buildUpon()
-                    .setForceHighestSupportedBitrate(true)
+                    .setForceHighestSupportedBitrate(deviceTier == iad1tya.echo.music.utils.DeviceTier.HIGH)
                     .build()
                 setAudioAttributes(
                     AudioAttributes.Builder()

@@ -572,11 +572,32 @@ class MusicService :
     private val videoUrlCache = java.util.concurrent.ConcurrentHashMap<String, Pair<String, Long>>()
 
     // Best VIDEO-ONLY height to request for video mode. On Android TV (big screen, detected server-side via
-    // UiModeManager in DeviceForm.isTelevision) we ask for true 1080p Full HD — an adaptive video-only stream
-    // that MusicService MERGES with a separate audio track (see createMediaSourceFactory). Phones/tablets get
-    // null → YTPlayerUtils keeps its existing metered-aware cap (720p WiFi / 360p data), behaviour unchanged.
+    // UiModeManager in DeviceForm.isTelevision) we derive the target height from a LIVE bandwidth estimate so
+    // video STARTS at a sustainable resolution instead of always demanding 1080p — the root cause of TV video
+    // stalling like the network is failing (a single fixed-resolution ProgressiveMediaSource can't drop). The
+    // chosen video-only stream is MERGED with a separate audio track (see createMediaSourceFactory). Phones/
+    // tablets get null → YTPlayerUtils keeps its existing metered-aware cap (720p WiFi / 360p data), unchanged.
     private val videoModeMaxHeight: Int?
-        get() = if (iad1tya.echo.music.utils.DeviceForm.isTelevision(this)) 1080 else null
+        get() = if (iad1tya.echo.music.utils.DeviceForm.isTelevision(this)) bandwidthAwareVideoHeight() else null
+
+    // Map the current downstream bandwidth estimate to a TV video-only target height. Capped at the TV 1080
+    // ceiling. NOTE: DefaultBandwidthMeter.bitrateEstimate never actually returns 0 — before any real transfer
+    // it hands back a synthetic country/network INITIAL estimate (~4-8 Mbps), so a cold TV must not read that
+    // as "fast enough for 1080". The 1080 gate is therefore raised to 8 Mbps so only a genuinely strong,
+    // measured estimate yields 1080; a cold synthetic estimate now yields <=720 (safe). The tier's maxVideoDim
+    // is aligned in createExoPlayer to allow up to 1080 (1920 wide) on TV so the chosen track is never silently
+    // rejected. The existing 720p (null) fallback in the resolve paths still covers a failed selection.
+    private fun bandwidthAwareVideoHeight(): Int {
+        val estimate = runCatching {
+            androidx.media3.exoplayer.upstream.DefaultBandwidthMeter.getSingletonInstance(this).bitrateEstimate
+        }.getOrDefault(0L)
+        return when {
+            estimate >= 8_000_000L -> 1080       // genuinely strong measured link only
+            estimate >= 3_500_000L -> 720        // cold synthetic estimate (~4-8 Mbps) lands here → <=720
+            estimate >= 1_500_000L -> 480
+            else -> 360
+        }.coerceAtMost(1080)                     // never exceed the TV 1080 request
+    }
 
     private var userHasUsedVideo: Boolean
         get() = playbackState.userHasUsedVideo
@@ -759,10 +780,20 @@ class MusicService :
         scope.launch(Dispatchers.IO) {
             kotlinx.coroutines.delay(500)
             runCatching { iad1tya.echo.music.utils.YTPlayerUtils.prewarmPoToken() }
-            // Also warm the cipher player.js + WebView so the FIRST song's URL resolution is fast too
-            // (and stays warm/reused for every song after). Run AFTER the poToken prewarm — sequential,
-            // so two WebViews don't spin up at once on weak/low-RAM devices. Best-effort; never blocks.
-            runCatching { iad1tya.echo.music.utils.YTPlayerUtils.prewarmCipher() }
+            // Also warm the cipher player.js + WebView so the FIRST song's URL resolution is fast too (and
+            // stays warm/reused for every song after). On MID/HIGH tier run it in PARALLEL with the poToken
+            // prewarm (two WebViews at once is fine on capable RAM) so both are ready sooner; on LOW/ULTRA
+            // keep it sequential so two WebViews don't spin up at once on weak/low-RAM devices. Best-effort.
+            val warmTier = iad1tya.echo.music.utils.PerformanceMode.effectiveTier(this@MusicService)
+            if (warmTier == iad1tya.echo.music.utils.DeviceTier.MID ||
+                warmTier == iad1tya.echo.music.utils.DeviceTier.HIGH
+            ) {
+                scope.launch(Dispatchers.IO) {
+                    runCatching { iad1tya.echo.music.utils.YTPlayerUtils.prewarmCipher() }
+                }
+            } else {
+                runCatching { iad1tya.echo.music.utils.YTPlayerUtils.prewarmCipher() }
+            }
         }
 
         // Podcast progress + periodic position persistence used to run in two while(true) loops that
@@ -791,11 +822,16 @@ class MusicService :
                     ),
                 ).setBitmapLoader(CoilBitmapLoader(this, scope))
                 .build()
-        player.repeatMode = dataStore.get(RepeatModeKey, REPEAT_MODE_OFF)
 
-        
-        if (dataStore.get(RememberShuffleAndRepeatKey, true)) {
-            player.shuffleModeEnabled = dataStore.get(ShuffleModeKey, false)
+        // Cold-start: read the whole settings snapshot ONCE instead of firing several separate blocking
+        // dataStore.get(...) actor round-trips (each is its own runBlocking { data.first() } disk read)
+        // during onCreate. Same keys, same defaults, same downstream usage — just one read instead of many.
+        val prefs = runBlocking { dataStore.data.first() }
+        player.repeatMode = prefs[RepeatModeKey] ?: REPEAT_MODE_OFF
+
+
+        if (prefs[RememberShuffleAndRepeatKey] ?: true) {
+            player.shuffleModeEnabled = prefs[ShuffleModeKey] ?: false
         }
 
         
@@ -814,12 +850,12 @@ class MusicService :
 
         audioManager.registerAudioDeviceCallback(audioDeviceCallback, null)
 
-        audioQuality = dataStore.get(AudioQualityKey).toEnum(iad1tya.echo.music.constants.AudioQuality.OPUS)
-        ipVersion = dataStore.get(IpVersionKey).toEnum(IpVersion.AUTO)
+        audioQuality = prefs[AudioQualityKey].toEnum(iad1tya.echo.music.constants.AudioQuality.OPUS)
+        ipVersion = prefs[IpVersionKey].toEnum(IpVersion.AUTO)
         // Repair: a persisted ~0 volume means it was captured mid-crossfade/duck by the old bug (a real
         // "I want silence" never persists as 0 — the user pauses/mutes instead). Treat it as full.
         playerVolume = MutableStateFlow(
-            dataStore.get(PlayerVolumeKey, 1f).let { if (it < 0.05f) 1f else it.coerceIn(0f, 1f) },
+            (prefs[PlayerVolumeKey] ?: 1f).let { if (it < 0.05f) 1f else it.coerceIn(0f, 1f) },
         )
 
         // Cast is initialized lazily on first playback (see initializeCast) — NOT here in onCreate,
@@ -1300,9 +1336,14 @@ class MusicService :
         // Music-VIDEO quality adapts to the device so switching to video never overwhelms a weak TV box / low-end
         // phone. This caps ONLY the video track the ABR selects (audio is untouched, and it's a no-op for
         // audio-only playback), so it keeps gama-baja/TV optimized without harming Hi-Res audio.
+        // ALIGNMENT: on a TV form factor the video path can request up to 1080p (1920 wide, via
+        // videoModeMaxHeight). A 1280 cap (1080 tall but 1920 wide) would silently REJECT that track → no video
+        // renders and it looks like an endless network stall. So on TV, raise the ULTRA/LOW cap to 1920 so the
+        // bandwidth-chosen height (≤1080) is always selectable; non-TV low-tier keeps the tighter 1280 cap.
+        val isTv = iad1tya.echo.music.utils.DeviceForm.isTelevision(this)
         val maxVideoDim = when (effectiveTier) {
-            iad1tya.echo.music.utils.DeviceTier.ULTRA -> 1280
-            iad1tya.echo.music.utils.DeviceTier.LOW -> 1280
+            iad1tya.echo.music.utils.DeviceTier.ULTRA -> if (isTv) 1920 else 1280
+            iad1tya.echo.music.utils.DeviceTier.LOW -> if (isTv) 1920 else 1280
             iad1tya.echo.music.utils.DeviceTier.MID -> 1920
             iad1tya.echo.music.utils.DeviceTier.HIGH -> Int.MAX_VALUE
         }
@@ -3978,6 +4019,11 @@ class MusicService :
     private fun prefetchCurrentVideoUrl() {
         // A toggle-to-video is only possible from audio; when already in video mode the swap has run.
         if (_videoMode.value) return
+        // Cheap in-memory checks FIRST: bail on a non-video / local / direct-URL track BEFORE paying for the
+        // PerformanceMode reads in the first-toggle gate below (those only matter for a genuine video song).
+        val id = player.currentMediaItem?.mediaId ?: return
+        if (id.isEmpty() || id.isLocalMediaId() || id.startsWith("http", ignoreCase = true)) return
+        if (player.currentMetadata?.isVideoSong != true) return
         // FIRST-TOGGLE COVERAGE (capable devices only). Normally we speculatively resolve only AFTER the user
         // has opened video once this session (userHasUsedVideo). That left the VERY FIRST toggle of a session
         // paying the full synchronous resolve (applyVideoToCurrent cache-miss → cipher/PoToken/format, seconds)
@@ -3994,9 +4040,6 @@ class MusicService :
                 tier != iad1tya.echo.music.utils.DeviceTier.ULTRA
             if (!capable) return
         }
-        val id = player.currentMediaItem?.mediaId ?: return
-        if (id.isEmpty() || id.isLocalMediaId() || id.startsWith("http", ignoreCase = true)) return
-        if (player.currentMetadata?.isVideoSong != true) return
         // Already resolved and still fresh → the toggle is already instant; nothing to do.
         val cached = videoUrlCache[id]?.takeIf { it.second > System.currentTimeMillis() }?.first
         if (!cached.isNullOrEmpty()) return
@@ -4050,6 +4093,29 @@ class MusicService :
             val isFullyDownloaded = cachedLength != androidx.media3.common.C.LENGTH_UNSET.toLong() && cachedLength > 0 && downloadCache.isCached(mediaId, 0, cachedLength)
 
             val isCurrentlyPlaying = currentPlayingMediaId == mediaId
+
+            // FULLY-DOWNLOADED short-circuit — a *complete* downloaded file is container-locked as a whole, so
+            // it's always safe to serve WITHOUT the DB container check (its container can't drift with the
+            // global quality) and we skip the runBlocking DB read below. PARTIAL downloads are deliberately NOT
+            // served here: their tail is still missing, and if the user switched global quality mid-download the
+            // tail would arrive in a new container (old-container prefix + new-container tail = garbled /
+            // ERROR_CODE_PARSING_CONTAINER_MALFORMED). Partials fall through to the dbFormat container-mismatch
+            // guard, then get served (container matches) or bypassed+refetched (mismatch) by the post-guard
+            // downloadCache handling below. A playerCache / songUrlCache hit is likewise NOT served here.
+            if (!shouldBypassCache && isFullyDownloaded) {
+                if (downloadCache.isCached(
+                        mediaId,
+                        dataSpec.position,
+                        if (dataSpec.length >= 0) dataSpec.length else 1
+                    )
+                ) {
+                    scope.launch(Dispatchers.IO) { recoverSong(mediaId) }
+                    return@Factory dataSpec
+                }
+            }
+
+            // Read Room NOW — BEFORE serving any playerCache/songUrlCache hit — for the locked-quality /
+            // container decisions the fetch below needs AND the container-mismatch guard.
             val dbFormat = runBlocking(Dispatchers.IO) { database.format(mediaId).firstOrNull() }
 
             // refetchCurrentInOpus() forces this track to Opus, overriding both the global quality and the
@@ -4082,7 +4148,14 @@ class MusicService :
                 }
             }
 
+            // CONTAINER-CHECKED cache hit — only NOW serve a partial-download / playerCache / songUrlCache
+            // entry. The container-mismatch guard above has either confirmed the cached container matches the
+            // target quality or set shouldBypassCache (and ghost-removed the mismatched playerCache entry) to
+            // force a fresh fetch. So no cache hit is ever served with a container mismatch (garbled audio).
             if (!shouldBypassCache) {
+                // PARTIAL download whose container the guard above confirmed matches the target quality — serve
+                // the cached bytes (the CacheDataSource fills the missing tail from the network in the same,
+                // matching container). A mismatching partial set shouldBypassCache above and skips this block.
                 if (downloadCache.isCached(
                         mediaId,
                         dataSpec.position,
@@ -4106,7 +4179,9 @@ class MusicService :
                     scope.launch(Dispatchers.IO) { recoverSong(mediaId) }
                     return@Factory dataSpec.withUri(it.first.toUri())
                 }
-            } else {
+            }
+
+            if (shouldBypassCache) {
                 Timber.tag("MusicService").i("BYPASSING CACHE for $mediaId due to quality change")
             }
 
@@ -4327,18 +4402,40 @@ class MusicService :
                 context: Context,
                 enableFloatOutput: Boolean,
                 enableAudioTrackPlaybackParams: Boolean,
-            ) = DefaultAudioSink
-                .Builder(this@MusicService)
-                .setEnableFloatOutput(true) // ALWAYS output Float for 32-bit pure path
-                .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
-                .setAudioProcessorChain(
-                    DefaultAudioSink.DefaultAudioProcessorChain(
-                        silenceProcessor,
-                        eqProcessor,
-                        normProcessor,
-                        limiterProcessor
-                    )
-                ).build()
+            ) = run {
+                // Float (32-bit) output is the pure path, but on genuinely low-end/TV/low-RAM devices some
+                // weak audio HALs mis-handle float output and play back accelerated/pitched-up. Fall back to
+                // the integer path there — same low-end signal as the buffer profile in createExoPlayer. Keep
+                // float ON for MID/HIGH.
+                // NOTE: the media3 `enableFloatOutput` param is always false here (this factory never calls
+                // setEnableAudioFloatOutput), so gating on it would disable float everywhere and break the
+                // 32-bit path on capable devices. Gate on the RAW HARDWARE tier instead: float ON unless the
+                // hardware is genuinely low-end. Deliberately NOT gated on High-Performance Mode / effectiveTier
+                // — perf mode is a memory/decode saver and must NOT strip 32-bit float audio fidelity (a MID/HIGH
+                // device with perf mode manually ON keeps float).
+                val rawTier = iad1tya.echo.music.utils.DeviceCapabilities.tier(this@MusicService)
+                val isLowRamDevice =
+                    (this@MusicService.getSystemService(Context.ACTIVITY_SERVICE) as? android.app.ActivityManager)?.isLowRamDevice == true
+                val lowEnd = rawTier == iad1tya.echo.music.utils.DeviceTier.LOW ||
+                    rawTier == iad1tya.echo.music.utils.DeviceTier.ULTRA ||
+                    isLowRamDevice
+                DefaultAudioSink
+                    .Builder(this@MusicService)
+                    .setEnableFloatOutput(!lowEnd)
+                    .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+                    .setAudioProcessorChain(
+                        DefaultAudioSink.DefaultAudioProcessorChain(
+                            silenceProcessor,
+                            eqProcessor,
+                            normProcessor,
+                            limiterProcessor
+                        )
+                    ).build()
+            }
+        }.apply {
+            // Fall through to the software decoder when a vendor HW AAC/HE-AAC decoder mis-decodes (a known
+            // cause of accelerated/garbled audio on some devices).
+            setEnableDecoderFallback(true)
         }
 
     override fun onPlaybackStatsReady(
@@ -5085,9 +5182,11 @@ class MusicService :
         if (currentIndex == androidx.media3.common.C.INDEX_UNSET) return
         // Cap at the PreloadNextSongLimit slider maximum (10) so `take(preloadLimit)` below can still honour
         // the user's configured value; the real limit is applied inside the coroutine.
+        // Prefetch ONLY the UPCOMING items (after the current index). The current/just-tapped track is
+        // resolved by the ResolvingDataSource on play — prefetching it here double-resolves AND can poison
+        // songUrlCache with a wrong-container URL.
         val lookahead = kotlin.math.min(10, player.mediaItemCount - currentIndex - 1)
-        if (lookahead <= 0) return
-        val upcomingAll = ArrayList<String>(lookahead)
+        val upcomingAll = ArrayList<String>(kotlin.math.max(0, lookahead))
         for (i in 1..lookahead) {
             upcomingAll.add(player.getMediaItemAt(currentIndex + i).mediaId)
         }
@@ -5102,15 +5201,30 @@ class MusicService :
                 Timber.tag(TAG).d("Preload skipped: battery saver (power save mode) is on")
                 return@launch
             }
-            // High-Performance Mode: skip the upcoming-track network preload too (low-end/TV/car devices).
-            if (iad1tya.echo.music.utils.PerformanceMode.isOn(this@MusicService)) {
-                Timber.tag(TAG).d("Preload skipped: high-performance mode is on")
-                return@launch
+            // High-Performance Mode: DON'T skip entirely. Keep a LIGHT, url-only prefetch (resolve + cache the
+            // stream URL so the first frame starts fast on low-end/TV/car too); only the heavier per-song
+            // extras (loudness/format DB caching + lyrics) are gated OFF below. Battery Saver above still
+            // skips everything.
+            val perfMode = iad1tya.echo.music.utils.PerformanceMode.isOn(this@MusicService)
+            if (perfMode) {
+                Timber.tag(TAG).d("Preload: high-performance mode — url-only (extras skipped)")
             }
-            val preloadLimit = dataStore.get(iad1tya.echo.music.constants.PreloadNextSongLimitKey, 1)
+            // Default 2 (was 1) so the very next song is ready even while the current one is still resolving;
+            // the user's slider value is still honoured when set.
+            val preloadLimit = dataStore.get(iad1tya.echo.music.constants.PreloadNextSongLimitKey, 2)
             val preloadLyrics = dataStore.get(iad1tya.echo.music.constants.PreloadLyricsEnabledKey, true)
-            val upcomingMediaIds = upcomingAll.take(preloadLimit)
+            // Only the next N upcoming tracks per the slider (the current track is resolved on play by the
+            // ResolvingDataSource). distinct() so a duplicated id isn't resolved twice.
+            val upcomingMediaIds = upcomingAll.take(preloadLimit).distinct()
             for (mediaId in upcomingMediaIds) {
+                // Skip a fully-DOWNLOADED upcoming song — it plays straight from the download cache, so
+                // re-resolving its URL is wasted work (and could poison songUrlCache with a wrong-container URL).
+                // NOTE: do NOT also skip on a playerCache hit here. songUrlCache is in-memory (empty on a fresh
+                // process), so skipping a playerCache-cached song would leave the resolver later hitting
+                // playerCache.isCached with no URL, taking the "Ghost cache entry" path that DELETES the cached
+                // bytes and re-downloads — destroying cross-session cache. The `!songUrlCache.containsKey(mediaId)`
+                // guard just below already prevents redundant resolves for anything already resolved this session.
+                if (downloadCache.isCached(mediaId, 0, 1)) continue
 
                 if (!mediaId.isLocalMediaId() && !songUrlCache.containsKey(mediaId)) {
                     Timber.tag(TAG).d("Preloading stream for $mediaId")
@@ -5129,7 +5243,9 @@ class MusicService :
                         )
 
                         playbackData.getOrNull()?.let { data ->
-                            songUrlCache[mediaId] = Pair(data.streamUrl, System.currentTimeMillis() + 1000 * 60 * 60)
+                            // Mirror the main resolver's TTL: honour the real stream expiry instead of a
+                            // hardcoded 1h (a googlevideo URL can expire sooner and would then 403).
+                            songUrlCache[mediaId] = Pair(data.streamUrl, System.currentTimeMillis() + (data.streamExpiresInSeconds * 1000L))
                             Timber.tag(TAG).d("Preloaded stream for $mediaId")
 
                             // FIX A: cache the loudness (FormatEntity) for the UPCOMING track NOW, so when it
@@ -5137,7 +5253,8 @@ class MusicService :
                             // correct gain at second 0 — no audible volume swell. Mirrors the resolver's
                             // FormatEntity construction exactly. Preserve any existing row's loudness: only fill
                             // when missing, never overwrite a known loudness with null.
-                            kotlin.runCatching {
+                            // Gated OFF in High-Performance Mode (url-only prefetch there).
+                            if (!perfMode) kotlin.runCatching {
                                 val existing = database.format(mediaId).firstOrNull()
                                 val loudnessDb = data.audioConfig?.loudnessDb ?: existing?.loudnessDb
                                 val perceptualLoudnessDb = data.audioConfig?.perceptualLoudnessDb ?: existing?.perceptualLoudnessDb
@@ -5176,7 +5293,7 @@ class MusicService :
                     }
                 }
 
-                if (preloadLyrics) {
+                if (preloadLyrics && !perfMode) {
                     val dbLyrics = database.lyrics(mediaId).firstOrNull()
                     if (dbLyrics == null) {
                         Timber.tag(TAG).d("Preloading lyrics for $mediaId")

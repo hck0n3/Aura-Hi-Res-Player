@@ -9,13 +9,10 @@ import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
 import androidx.media3.datasource.cache.NoOpCacheEvictor
 import androidx.media3.datasource.cache.SimpleCache
 import androidx.room.Room
-import iad1tya.echo.music.constants.MaxSongCacheSizeKey
 import iad1tya.echo.music.db.InternalDatabase
 import iad1tya.echo.music.db.MusicDatabase
 import iad1tya.echo.music.listentogether.ListenTogetherClient
 import iad1tya.echo.music.listentogether.ListenTogetherManager
-import iad1tya.echo.music.utils.dataStore
-import iad1tya.echo.music.utils.get
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -99,7 +96,11 @@ object AppModule {
     ): SimpleCache {
         // Default to unlimited (-1 -> NoOpCacheEvictor): never evict cached songs unless the user
         // picks a size limit in settings.
-        val cacheSize = context.dataStore[MaxSongCacheSizeKey] ?: -1
+        // Read the cheap process-wide SharedPreferences mirror of MaxSongCacheSizeKey instead of a blocking
+        // main-thread DataStore read. This @Provides runs when the SimpleCache is first constructed (which the
+        // app warms off-main at startup); App seeds + reactively refreshes the mirror. Default -1 (unlimited)
+        // and the evictor selection below are unchanged.
+        val cacheSize = iad1tya.echo.music.App.songCacheSizeMb(context)
         return SimpleCache(
             context.filesDir.resolve("exoplayer"),
             when (cacheSize) {

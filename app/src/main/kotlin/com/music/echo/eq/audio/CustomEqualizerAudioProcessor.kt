@@ -39,6 +39,9 @@ class CustomEqualizerAudioProcessor(private val licenseKey: String = "akloSTZUT1
     private var isInitialized = false
     private var enabled = false
     private var nativePtr: Long = 0L
+    // Sample rate the native processor was initialized at. If the input format changes to a different rate
+    // mid-stream, the native filters are still tuned for the OLD rate (mistuned EQ), so we must re-init.
+    private var nativeSampleRate = 0
 
     private external fun initSuperpowered(licenseKey: String, sampleRate: Int): Long
     private external fun setPreamp(ptr: Long, preampDb: Float)
@@ -60,8 +63,13 @@ class CustomEqualizerAudioProcessor(private val licenseKey: String = "akloSTZUT1
     fun applySafeVolume(enabled: Boolean, gainLinear: Float) {
         safeVolumeEnabled = enabled
         safeVolumeGain = gainLinear
-        if (isInitialized && nativePtr != 0L) {
-            setSafeVolume(nativePtr, enabled, gainLinear)
+        // Serialize the native check + call under eqApplyLock: onConfigure's sample-rate re-init can call
+        // releaseSuperpowered(nativePtr) and null the pointer mid-stream, so touching nativePtr here without the
+        // lock is a use-after-free race. The audio hot path (queueInput/processAudio) does NOT take this lock.
+        synchronized(eqApplyLock) {
+            if (isInitialized && nativePtr != 0L) {
+                setSafeVolume(nativePtr, enabled, gainLinear)
+            }
         }
     }
 
@@ -161,9 +169,16 @@ class CustomEqualizerAudioProcessor(private val licenseKey: String = "akloSTZUT1
         // Whole native (re)init + profile restore under eqApplyLock so the appliedBandIndices reset + re-apply is
         // atomic vs a concurrent UI applyProfile (applyProfile re-enters this lock — re-entrant is fine).
         synchronized(eqApplyLock) {
+            // Sample rate changed mid-stream: the native filters are still tuned for the old rate, so drop the
+            // stale processor and let the nativePtr == 0L branch below re-init at the new rate.
+            if (nativeLibLoaded && nativePtr != 0L && inputAudioFormat.sampleRate != nativeSampleRate) {
+                releaseSuperpowered(nativePtr)
+                nativePtr = 0L
+            }
             if (nativeLibLoaded && nativePtr == 0L) {
                 try {
                     nativePtr = initSuperpowered(licenseKey, inputAudioFormat.sampleRate)
+                    nativeSampleRate = inputAudioFormat.sampleRate
                     // Fresh native processor: all 64 filters start disabled, so the apply-time bookkeeping that
                     // decides whether disableAllBands() is needed must start clean too.
                     appliedBandIndices = emptySet()
@@ -177,12 +192,14 @@ class CustomEqualizerAudioProcessor(private val licenseKey: String = "akloSTZUT1
 
             // Restore profile if one was applied
             currentProfile?.let { applyProfile(it) }
+
+            // Restore Safe Volume state (native processor may have just been re-created). Kept INSIDE the lock so
+            // it can't race the sample-rate re-init above (which releases + re-creates nativePtr).
+            if (isInitialized && nativePtr != 0L && safeVolumeEnabled) {
+                setSafeVolume(nativePtr, safeVolumeEnabled, safeVolumeGain)
+            }
         }
-        // Restore Safe Volume state (native processor may have just been re-created).
-        if (isInitialized && nativePtr != 0L && safeVolumeEnabled) {
-            setSafeVolume(nativePtr, safeVolumeEnabled, safeVolumeGain)
-        }
-        
+
         // Output format is exactly the same as the input format (pure 32-bit float supported natively)
         return inputAudioFormat
     }
@@ -216,6 +233,7 @@ class CustomEqualizerAudioProcessor(private val licenseKey: String = "akloSTZUT1
         if (isInitialized && nativePtr != 0L) synchronized(eqApplyLock) {
             releaseSuperpowered(nativePtr)
             nativePtr = 0L
+            nativeSampleRate = 0
             isInitialized = false
             appliedBandIndices = emptySet()
         }
