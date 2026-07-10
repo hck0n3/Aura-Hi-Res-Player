@@ -95,7 +95,6 @@ import iad1tya.echo.music.constants.SwipeThumbnailKey
 import iad1tya.echo.music.constants.ThumbnailCornerRadiusKey
 import iad1tya.echo.music.constants.ThumbnailCornerRadius
 import iad1tya.echo.music.listentogether.RoomRole
-import iad1tya.echo.music.ui.component.CastButton
 import iad1tya.echo.music.utils.rememberEnumPreference
 import iad1tya.echo.music.constants.CanvasThumbnailAnimationKey
 import iad1tya.echo.music.canvas.TidalCanvasProvider
@@ -600,12 +599,9 @@ private fun ThumbnailHeader(
             }
         }
 
-        CastButton(
-            modifier = Modifier
-                .align(Alignment.CenterEnd)
-                .size(24.dp),
-            tintColor = textColor
-        )
+        // CAST: the cast button moved OUT of this header — it is now pinned to the TOP-RIGHT of the whole
+        // expanded player (Player.kt, over the sheet content) so it stays visible in EVERY layout (lyrics,
+        // Apple-Music canvas, landscape, wide/TV split), not just when this portrait header is composed.
     }
 }
 

@@ -204,6 +204,7 @@ import iad1tya.echo.music.echomusic.isSpeaker
 import iad1tya.echo.music.echomusic.AudioDeviceBottomSheet
 import iad1tya.echo.music.ui.component.BottomSheet
 import iad1tya.echo.music.ui.component.BottomSheetState
+import iad1tya.echo.music.ui.component.CastButton
 import iad1tya.echo.music.ui.component.LocalBottomSheetPageState
 import iad1tya.echo.music.ui.component.LocalMenuState
 import iad1tya.echo.music.ui.component.Lyrics
@@ -908,6 +909,13 @@ fun BottomSheetPlayer(
     var isFullScreen by rememberSaveable {
         mutableStateOf(false)
     }
+
+    // Mirror of the immersive layouts' tap-toggled controls visibility (ptControls / lsControls /
+    // lsCanvasControls are LOCAL to their deep layout branches, so root-pinned overlays can't read
+    // them directly). The pinned CastButton follows this so it obeys the same tap-to-hide "clean
+    // view" rule instead of floating alone over the video/canvas. Each immersive branch syncs it
+    // while composed and resets it to true on dispose (non-immersive layouts always see true).
+    var immersiveControlsVisible by remember { mutableStateOf(true) }
 
     val hideStatusBarOnFullscreen by rememberPreference(HideStatusBarOnFullscreenKey, defaultValue = true)
 
@@ -2838,6 +2846,9 @@ fun BottomSheetPlayer(
                     onDispose { runCatching { ctrl?.show(androidx.core.view.WindowInsetsCompat.Type.systemBars()) } }
                 }
                 var lsControls by remember { mutableStateOf(true) }
+                // Keep the root-pinned CastButton in step with the tap-to-hide controls (clean view).
+                LaunchedEffect(lsControls) { immersiveControlsVisible = lsControls }
+                DisposableEffect(Unit) { onDispose { immersiveControlsVisible = true } }
                 // Auto-hide after 3.5 s. NOT keyed on isPlaying — buffering/play-state changes would keep
                 // restarting the timer (so it never hid, e.g. while HD video rebuffers).
                 // TV/car: a remote can't tap to bring hidden controls back, so DON'T auto-hide on TV — the
@@ -2963,6 +2974,9 @@ fun BottomSheetPlayer(
                 // Rotated + canvas (Apple-Music animated background) → show it FULLSCREEN (the background
                 // canvas already fills the screen behind) with auto-hiding controls (tap toggles them).
                 var lsCanvasControls by remember { mutableStateOf(true) }
+                // Keep the root-pinned CastButton in step with the tap-to-hide controls (clean view).
+                LaunchedEffect(lsCanvasControls) { immersiveControlsVisible = lsCanvasControls }
+                DisposableEffect(Unit) { onDispose { immersiveControlsVisible = true } }
                 // TV/car: don't auto-hide (a remote can't tap them back); touch keeps the 3.5 s auto-hide.
                 LaunchedEffect(lsCanvasControls, isPlaying, isTvOrCar) {
                     if (lsCanvasControls && !isTvOrCar) { delay(3500); lsCanvasControls = false }
@@ -3170,6 +3184,9 @@ fun BottomSheetPlayer(
                     // Controls toggle ONLY by tapping the video (no timed auto-hide): tap once to hide them
                     // for a clean view, tap again to bring them back. Back exits video.
                     var ptControls by remember { mutableStateOf(true) }
+                    // Keep the root-pinned CastButton in step with the tap-to-hide controls (clean view).
+                    LaunchedEffect(ptControls) { immersiveControlsVisible = ptControls }
+                    DisposableEffect(Unit) { onDispose { immersiveControlsVisible = true } }
                     // In Picture-in-Picture render a CLEAN view: keep the title/artist over the video, but hide
                     // the bottom controls and the toggle — playback controls come from the system PiP actions.
                     val inPip = LocalIsInPipMode.current
@@ -3213,7 +3230,10 @@ fun BottomSheetPlayer(
                                     .fillMaxWidth()
                                     .then(if (inPip) Modifier.background(Color.Black.copy(alpha = 0.35f)) else Modifier)
                                     .windowInsetsPadding(WindowInsets.systemBars)
-                                    .padding(horizontal = if (inPip) 10.dp else 16.dp, vertical = if (inPip) 6.dp else 10.dp),
+                                    // 56dp side padding (non-PiP) keeps long marquee titles clear of the
+                                    // root-pinned cast button at the top-right; symmetric so the title
+                                    // stays visually centered.
+                                    .padding(horizontal = if (inPip) 10.dp else 56.dp, vertical = if (inPip) 6.dp else 10.dp),
                             ) {
                                 Text(
                                     text = mm.title,
@@ -3365,6 +3385,25 @@ fun BottomSheetPlayer(
                 }
                 }
             }
+        }
+
+        // CAST: the cast/output button is PINNED to the TOP-RIGHT of the expanded player in EVERY layout
+        // (portrait, inline lyrics, Apple-Music full-screen canvas, landscape, wide/TV split, video) — it
+        // used to live only inside the portrait ThumbnailHeader, so it vanished with lyrics/canvas/landscape.
+        // Hidden in PiP (the floating window must stay a clean video). Gated on the queue sheet NOT being
+        // expanded — merely drawing it before the Queue covered it visually but left it in the D-pad focus
+        // search under the expanded sheet. Gated on immersiveControlsVisible so it follows the immersive
+        // layouts' tap-to-hide controls (clean full-screen video/canvas view) instead of floating alone.
+        // FOSS builds: CastButton is a no-op stub, nothing renders.
+        if (!LocalIsInPipMode.current && !queueSheetState.isExpanded && immersiveControlsVisible) {
+            CastButton(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Top + WindowInsetsSides.End))
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .size(24.dp),
+                tintColor = TextBackgroundColor,
+            )
         }
 
         AnimatedVisibility(
