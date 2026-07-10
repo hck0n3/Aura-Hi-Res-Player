@@ -247,6 +247,11 @@
     <string name="audio_quality_high">Alta</string>
     <string name="audio_quality_low">Baja</string>
     <string name="queue">Cola</string>
+    <!-- Pestañas de la cola (paridad con YT Music: SIGUIENTE / LETRA / RELACIONADOS) -->
+    <string name="queue_tab_next">Siguiente</string>
+    <string name="queue_tab_lyrics">Letra</string>
+    <string name="queue_tab_related">Relacionados</string>
+    <string name="queue_related_empty">Las canciones relacionadas aparecerán aquí cuando la reproducción automática las cargue</string>
     <string name="persistent_queue">Cola persistente</string>
     <string name="persistent_queue_desc">Restaura tu última cola al iniciar la aplicación</string>
     <string name="skip_silence">Omitir silencios</string>
@@ -338,6 +343,35 @@
     <string name="color_palette">Paleta de colores</string>
     <string name="use_system_colors">Usar colores del sistema</string>
     <string name="apple_music">Apple Music</string>
+    <!-- Liquid Glass (Beta) -->
+    <string name="liquid_glass">Liquid Glass (Beta)</string>
+    <string name="player_background_liquid_glass">Liquid Glass</string>
+    <string name="liquid_glass_settings">Liquid Glass (Beta)</string>
+    <string name="liquid_glass_settings_desc">Superficies de cristal para el reproductor, el mini reproductor y la barra de navegación</string>
+    <string name="liquid_glass_global_enabled">Activar Liquid Glass</string>
+    <string name="liquid_glass_effects">Efectos</string>
+    <string name="liquid_glass_appearance">Apariencia</string>
+    <string name="liquid_glass_per_component">Por componente</string>
+    <string name="liquid_glass_vibrancy">Viveza</string>
+    <string name="liquid_glass_vibrancy_desc">Aumenta la saturación del fondo del cristal</string>
+    <string name="liquid_glass_blur_radius">Radio de desenfoque</string>
+    <string name="liquid_glass_blur_radius_desc">Cantidad de desenfoque en la superficie de cristal</string>
+    <string name="liquid_glass_lens_height">Altura de refracción de la lente</string>
+    <string name="liquid_glass_lens_amount">Cantidad de refracción de la lente</string>
+    <string name="liquid_glass_chromatic_aberration">Aberración cromática</string>
+    <string name="liquid_glass_depth_effect">Efecto de profundidad</string>
+    <string name="liquid_glass_surface_opacity">Opacidad de la superficie</string>
+    <string name="liquid_glass_surface_opacity_desc">Opacidad del tinte del cristal para mejorar la legibilidad</string>
+    <string name="liquid_glass_surface_tint">Tinte de la superficie</string>
+    <string name="liquid_glass_surface_tint_desc">Color de tinte aplicado a la superficie de cristal (por defecto se adapta al tema)</string>
+    <string name="liquid_glass_text_color">Color del texto sobre cristal</string>
+    <string name="liquid_glass_text_color_desc">Color del texto en superficies de cristal (por defecto se adapta al tema)</string>
+    <string name="liquid_glass_player">Reproductor de cristal</string>
+    <string name="liquid_glass_mini_player">Mini reproductor de cristal</string>
+    <string name="liquid_glass_nav_bar">Barra de navegación de cristal</string>
+    <string name="liquid_glass_performance_warning">Renderizar el cristal líquido consume muchos recursos y puede reducir la fluidez y la batería en algunos dispositivos</string>
+    <string name="liquid_glass_unavailable">No disponible en este dispositivo</string>
+    <string name="color_picker_hex">Hex</string>
     <string name="show_audio_quality_badge">Mostrar insignia de calidad de audio</string>
     <string name="network_ip_version">Versión IP de la red</string>
     <string name="ip_version_auto">Automático</string>

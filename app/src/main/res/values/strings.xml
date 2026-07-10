@@ -303,6 +303,35 @@
     <string name="player_slider_style">Player slider style</string>
     <string name="default_">Default</string>
     <string name="apple_music">Apple Music</string>
+    <!-- Liquid Glass (Beta) -->
+    <string name="liquid_glass">Liquid Glass (Beta)</string>
+    <string name="player_background_liquid_glass">Liquid Glass</string>
+    <string name="liquid_glass_settings">Liquid Glass (Beta)</string>
+    <string name="liquid_glass_settings_desc">Glass surfaces for the player, mini player and navigation bar</string>
+    <string name="liquid_glass_global_enabled">Enable Liquid Glass</string>
+    <string name="liquid_glass_effects">Effects</string>
+    <string name="liquid_glass_appearance">Appearance</string>
+    <string name="liquid_glass_per_component">Per component</string>
+    <string name="liquid_glass_vibrancy">Vibrancy</string>
+    <string name="liquid_glass_vibrancy_desc">Boost saturation of the glass backdrop</string>
+    <string name="liquid_glass_blur_radius">Blur radius</string>
+    <string name="liquid_glass_blur_radius_desc">Amount of blur on the glass surface</string>
+    <string name="liquid_glass_lens_height">Lens refraction height</string>
+    <string name="liquid_glass_lens_amount">Lens refraction amount</string>
+    <string name="liquid_glass_chromatic_aberration">Chromatic aberration</string>
+    <string name="liquid_glass_depth_effect">Depth effect</string>
+    <string name="liquid_glass_surface_opacity">Surface opacity</string>
+    <string name="liquid_glass_surface_opacity_desc">Opacity of the glass tint overlay for readability</string>
+    <string name="liquid_glass_surface_tint">Surface tint</string>
+    <string name="liquid_glass_surface_tint_desc">Tint color applied to the glass surface (default adapts to the theme)</string>
+    <string name="liquid_glass_text_color">Glass text color</string>
+    <string name="liquid_glass_text_color_desc">Text color used on glass surfaces (default adapts to the theme)</string>
+    <string name="liquid_glass_player">Glass player</string>
+    <string name="liquid_glass_mini_player">Glass mini player</string>
+    <string name="liquid_glass_nav_bar">Glass navigation bar</string>
+    <string name="liquid_glass_performance_warning">Rendering liquid glass is performance heavy and may reduce smoothness and battery life on some devices</string>
+    <string name="liquid_glass_unavailable">Not available on this device</string>
+    <string name="color_picker_hex">Hex</string>
     <string name="squiggly">Squiggly</string>
     <string name="misc">Misc</string>
     <string name="default_open_tab">Default open tab</string>
@@ -337,6 +366,11 @@
     <string name="audio_quality_low">Low</string>
     <string name="audio_quality_lossless">Lossless Music</string>
     <string name="queue">Queue</string>
+    <!-- Queue sheet tabs (YT Music parity: UP NEXT / LYRICS / RELATED) -->
+    <string name="queue_tab_next">Up next</string>
+    <string name="queue_tab_lyrics">Lyrics</string>
+    <string name="queue_tab_related">Related</string>
+    <string name="queue_related_empty">Related songs will appear here when autoplay loads them</string>
     <string name="persistent_queue">Persistent queue</string>
     <string name="persistent_queue_desc">Restore your last queue when the app starts</string>
     <string name="auto_load_more">Auto load more songs</string>

@@ -63,6 +63,7 @@ fun getAllSearchableSettings(): List<Triple<String, String, String>> {
             Triple(stringResource(R.string.glow_animated), "Apariencia", "settings/appearance"),
             Triple(stringResource(R.string.apple_music), "Apariencia", "settings/appearance"),
             Triple(stringResource(R.string.live_mesh), "Apariencia", "settings/appearance"),
+            Triple(stringResource(R.string.liquid_glass), "Apariencia", "settings/appearance/liquidglass"),
             Triple(stringResource(R.string.miniplayer_background_style), "Apariencia", "settings/appearance"),
             Triple(stringResource(R.string.default_open_tab), "Apariencia", "settings/appearance"),
             Triple(stringResource(R.string.home), "Apariencia", "settings/appearance"),

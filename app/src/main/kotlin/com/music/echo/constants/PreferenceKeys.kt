@@ -546,7 +546,29 @@ enum class PlayerBackgroundStyle {
     GLOW_ANIMATED,
     APPLE_MUSIC,
     LIVE_MESH,
+    // Liquid Glass (Beta): backdrop-sampling glass surfaces (ui/component/backdrop engine).
+    // Runtime-gated: API 31+, raw tier MID/HIGH, not TV/car, Performance Mode off (isGlassEligible).
+    LIQUID_GLASS,
 }
+
+// ── Liquid Glass (Beta) ──
+// Master switch is DEFAULT OFF; the effect additionally requires the runtime eligibility gate
+// (GlassEffect.isGlassEligible) so it can never light up on TV/car, LOW-tier or Performance Mode devices.
+val LiquidGlassGlobalEnabledKey = booleanPreferencesKey("liquidGlassGlobalEnabled")
+// 0 = theme-adaptive (dark text on light glass, white on dark) — NOT hardcoded white (upstream bug).
+val LiquidGlassTextColorKey = intPreferencesKey("liquidGlassTextColor")
+// 0 = theme-adaptive surface tint.
+val LiquidGlassSurfaceTintColorKey = intPreferencesKey("liquidGlassSurfaceTintColor")
+val LiquidGlassSurfaceOpacityKey = floatPreferencesKey("liquidGlassSurfaceOpacity")
+val LiquidGlassVibrancyKey = floatPreferencesKey("liquidGlassVibrancy")
+val LiquidGlassBlurRadiusKey = floatPreferencesKey("liquidGlassBlurRadius")
+val LiquidGlassLensHeightKey = floatPreferencesKey("liquidGlassLensHeight")
+val LiquidGlassLensAmountKey = floatPreferencesKey("liquidGlassLensAmount")
+val LiquidGlassChromaticAberrationKey = booleanPreferencesKey("liquidGlassChromaticAberration")
+val LiquidGlassDepthEffectKey = booleanPreferencesKey("liquidGlassDepthEffect")
+val LiquidGlassPlayerEnabledKey = booleanPreferencesKey("liquidGlassPlayerEnabled")
+val LiquidGlassMiniPlayerEnabledKey = booleanPreferencesKey("liquidGlassMiniPlayerEnabled")
+val LiquidGlassNavBarEnabledKey = booleanPreferencesKey("liquidGlassNavBarEnabled")
 
 val TopSize = stringPreferencesKey("topSize")
 val HistoryDuration = floatPreferencesKey("historyDuration")

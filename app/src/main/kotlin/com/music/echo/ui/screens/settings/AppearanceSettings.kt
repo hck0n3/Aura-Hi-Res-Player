@@ -57,6 +57,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import iad1tya.echo.music.LocalPlayerAwareWindowInsets
+import iad1tya.echo.music.ui.component.isGlassEligible
 import iad1tya.echo.music.R
 import iad1tya.echo.music.constants.AlbumCanvasEnabledKey
 import iad1tya.echo.music.constants.CanvasThumbnailAnimationKey
@@ -314,8 +315,12 @@ fun AppearanceSettings(
         defaultValue = false
     )
 
+    // Liquid Glass only appears as a choice on eligible devices (API 31+, MID/HIGH tier,
+    // not TV/car, Performance Mode off); everywhere else the option is hidden.
+    val glassEligible = remember { isGlassEligible(activity) }
     val availableBackgroundStyles = PlayerBackgroundStyle.entries.filter {
-        it != PlayerBackgroundStyle.BLUR || Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+        (it != PlayerBackgroundStyle.BLUR || Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) &&
+            (it != PlayerBackgroundStyle.LIQUID_GLASS || glassEligible)
     }
 
     val availableMiniPlayerBackgroundStyles = availableBackgroundStyles.filter { 
@@ -576,6 +581,7 @@ fun AppearanceSettings(
                     PlayerBackgroundStyle.GLOW_ANIMATED -> stringResource(R.string.glow_animated)
                     PlayerBackgroundStyle.APPLE_MUSIC -> stringResource(R.string.apple_music)
                     PlayerBackgroundStyle.LIVE_MESH -> stringResource(R.string.live_mesh)
+                    PlayerBackgroundStyle.LIQUID_GLASS -> stringResource(R.string.player_background_liquid_glass)
                 }
             }
         )
@@ -598,6 +604,7 @@ fun AppearanceSettings(
                     PlayerBackgroundStyle.BLUR -> stringResource(R.string.player_background_blur)
                     PlayerBackgroundStyle.GLOW_ANIMATED -> stringResource(R.string.glow_animated)
                     PlayerBackgroundStyle.LIVE_MESH -> stringResource(R.string.live_mesh)
+                    PlayerBackgroundStyle.LIQUID_GLASS -> stringResource(R.string.player_background_liquid_glass)
                     else -> "Unknown"
                 }
             }
@@ -1086,6 +1093,7 @@ fun AppearanceSettings(
                                     PlayerBackgroundStyle.BLUR -> stringResource(R.string.player_background_blur)
                                     PlayerBackgroundStyle.GLOW_ANIMATED -> stringResource(R.string.glow_animated)
                                     PlayerBackgroundStyle.LIVE_MESH -> stringResource(R.string.live_mesh)
+                                    PlayerBackgroundStyle.LIQUID_GLASS -> stringResource(R.string.player_background_liquid_glass)
                                     else -> stringResource(R.string.follow_theme)
                                 }
                             )
@@ -1173,12 +1181,31 @@ fun AppearanceSettings(
                                 PlayerBackgroundStyle.GLOW_ANIMATED -> stringResource(R.string.glow_animated)
                                 PlayerBackgroundStyle.APPLE_MUSIC -> stringResource(R.string.apple_music)
                                 PlayerBackgroundStyle.LIVE_MESH -> stringResource(R.string.live_mesh)
+                                PlayerBackgroundStyle.LIQUID_GLASS -> stringResource(R.string.player_background_liquid_glass)
                             }
                         )
                     },
                     onClick = { 
                         showPlayerBackgroundDialog = true 
                     }
+                ),
+                // Liquid Glass (Beta): entry point to the glass-effect settings. On ineligible
+                // devices (API < 31, LOW tier, TV/car or Performance Mode ON) it is shown
+                // disabled with an "unavailable on this device" subtitle instead of hidden,
+                // so users know why the option is missing.
+                Material3SettingsItem(
+                    icon = painterResource(R.drawable.palette),
+                    title = { Text(stringResource(R.string.liquid_glass)) },
+                    description = {
+                        Text(
+                            stringResource(
+                                if (glassEligible) R.string.liquid_glass_settings_desc
+                                else R.string.liquid_glass_unavailable
+                            )
+                        )
+                    },
+                    enabled = glassEligible,
+                    onClick = { if (glassEligible) navController.navigate("settings/appearance/liquidglass") }
                 ),
                 Material3SettingsItem(
                     icon = painterResource(R.drawable.hide_image),

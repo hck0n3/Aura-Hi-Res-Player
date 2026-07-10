@@ -198,6 +198,25 @@ import iad1tya.echo.music.ui.component.AppNavigationRail
 import iad1tya.echo.music.ui.component.BottomSheetMenu
 import iad1tya.echo.music.ui.component.BottomSheetPage
 import iad1tya.echo.music.ui.component.FloatingNavigationToolbar
+import iad1tya.echo.music.ui.component.GlassEffectConfig
+import iad1tya.echo.music.ui.component.LocalAppBackdrop
+import iad1tya.echo.music.ui.component.LocalGlassEffectConfig
+import iad1tya.echo.music.ui.component.backdrop.backdrops.layerBackdrop
+import iad1tya.echo.music.ui.component.backdrop.backdrops.rememberLayerBackdrop
+import iad1tya.echo.music.ui.component.isGlassEligible
+import iad1tya.echo.music.constants.LiquidGlassBlurRadiusKey
+import iad1tya.echo.music.constants.LiquidGlassChromaticAberrationKey
+import iad1tya.echo.music.constants.LiquidGlassDepthEffectKey
+import iad1tya.echo.music.constants.LiquidGlassGlobalEnabledKey
+import iad1tya.echo.music.constants.LiquidGlassLensAmountKey
+import iad1tya.echo.music.constants.LiquidGlassLensHeightKey
+import iad1tya.echo.music.constants.LiquidGlassMiniPlayerEnabledKey
+import iad1tya.echo.music.constants.LiquidGlassNavBarEnabledKey
+import iad1tya.echo.music.constants.LiquidGlassPlayerEnabledKey
+import iad1tya.echo.music.constants.LiquidGlassSurfaceOpacityKey
+import iad1tya.echo.music.constants.LiquidGlassSurfaceTintColorKey
+import iad1tya.echo.music.constants.LiquidGlassTextColorKey
+import iad1tya.echo.music.constants.LiquidGlassVibrancyKey
 import iad1tya.echo.music.ui.component.LocalBottomSheetPageState
 import iad1tya.echo.music.ui.component.LocalMenuState
 import iad1tya.echo.music.ui.component.rememberBottomSheetState
@@ -995,6 +1014,57 @@ class MainActivity : ComponentActivity() {
 
                 val baseBg = if (pureBlack) Color.Black else MaterialTheme.colorScheme.surfaceContainer
 
+                // ── Liquid Glass (Beta) ── DEFAULT OFF. The stored master switch is AND-ed with the
+                // runtime eligibility gate (API 31+, raw tier MID/HIGH, not TV/car, Performance Mode
+                // off) so the effect can never render on excluded devices. Keyed on highPerfMode so
+                // toggling Performance Mode kills glass immediately without restart.
+                val glassEligible = remember(highPerfMode) { isGlassEligible(context) }
+                val (liquidGlassGlobalEnabled) = rememberPreference(LiquidGlassGlobalEnabledKey, defaultValue = false)
+                val (liquidGlassVibrancy) = rememberPreference(LiquidGlassVibrancyKey, defaultValue = 1f)
+                val (liquidGlassBlurRadius) = rememberPreference(LiquidGlassBlurRadiusKey, defaultValue = 8f)
+                val (liquidGlassLensHeight) = rememberPreference(LiquidGlassLensHeightKey, defaultValue = 0.5f)
+                val (liquidGlassLensAmount) = rememberPreference(LiquidGlassLensAmountKey, defaultValue = 0.5f)
+                val (liquidGlassChromaticAberration) = rememberPreference(LiquidGlassChromaticAberrationKey, defaultValue = true)
+                val (liquidGlassDepthEffect) = rememberPreference(LiquidGlassDepthEffectKey, defaultValue = true)
+                val (liquidGlassSurfaceTintColorInt) = rememberPreference(LiquidGlassSurfaceTintColorKey, defaultValue = 0)
+                val (liquidGlassSurfaceOpacity) = rememberPreference(LiquidGlassSurfaceOpacityKey, defaultValue = 0.4f)
+                // 0 = theme-adaptive text color (dark on light glass, white on dark). Deliberately NOT
+                // upstream's hardcoded-white default, which was illegible on light themes.
+                val (liquidGlassTextColorInt) = rememberPreference(LiquidGlassTextColorKey, defaultValue = 0)
+                val (liquidGlassPlayerEnabled) = rememberPreference(LiquidGlassPlayerEnabledKey, defaultValue = true)
+                val (liquidGlassMiniPlayerEnabled) = rememberPreference(LiquidGlassMiniPlayerEnabledKey, defaultValue = true)
+                val (liquidGlassNavBarEnabled) = rememberPreference(LiquidGlassNavBarEnabledKey, defaultValue = true)
+                val glassEffectConfig = remember(
+                    liquidGlassGlobalEnabled, glassEligible, liquidGlassVibrancy, liquidGlassBlurRadius,
+                    liquidGlassLensHeight, liquidGlassLensAmount, liquidGlassChromaticAberration,
+                    liquidGlassDepthEffect, liquidGlassSurfaceTintColorInt,
+                    liquidGlassSurfaceOpacity, liquidGlassTextColorInt, liquidGlassPlayerEnabled,
+                    liquidGlassMiniPlayerEnabled, liquidGlassNavBarEnabled,
+                ) {
+                    GlassEffectConfig(
+                        globalEnabled = liquidGlassGlobalEnabled && glassEligible,
+                        vibrancy = liquidGlassVibrancy,
+                        blurRadius = liquidGlassBlurRadius,
+                        lensHeight = liquidGlassLensHeight,
+                        lensAmount = liquidGlassLensAmount,
+                        chromaticAberration = liquidGlassChromaticAberration,
+                        depthEffect = liquidGlassDepthEffect,
+                        surfaceTintColor = if (liquidGlassSurfaceTintColorInt == 0) Color.Unspecified else Color(liquidGlassSurfaceTintColorInt),
+                        surfaceOpacity = liquidGlassSurfaceOpacity,
+                        textColor = if (liquidGlassTextColorInt == 0) Color.Unspecified else Color(liquidGlassTextColorInt),
+                        playerEnabled = liquidGlassPlayerEnabled,
+                        miniPlayerEnabled = liquidGlassMiniPlayerEnabled,
+                        navBarEnabled = liquidGlassNavBarEnabled,
+                    )
+                }
+                // The app-content layer glass surfaces sample from. Only recorded into while glass is
+                // globally enabled (see the conditional layerBackdrop on the NavHost below), so the
+                // default-OFF path costs nothing.
+                val appBackdrop = rememberLayerBackdrop {
+                    drawRect(baseBg)
+                    drawContent()
+                }
+
                 val ringtoneViewModel: RingtoneViewModel = hiltViewModel()
                 val ringtoneUiState by ringtoneViewModel.uiState.collectAsState()
 
@@ -1009,6 +1079,8 @@ class MainActivity : ComponentActivity() {
                     LocalSyncUtils provides syncUtils,
                     LocalListenTogetherManager provides listenTogetherManager,
                     LocalIsInPipMode provides inPipMode,
+                    LocalGlassEffectConfig provides glassEffectConfig,
+                    LocalAppBackdrop provides appBackdrop,
                 ) {
 
                     Scaffold(
@@ -1414,7 +1486,17 @@ class MainActivity : ComponentActivity() {
                                         else
                                             slideOutHorizontally { it / 8 } + fadeOut(tween(200))
                                     },
-                                    modifier = Modifier.nestedScroll(topAppBarScrollBehavior.nestedScrollConnection)
+                                    // Record the app content into the glass backdrop ONLY while Liquid
+                                    // Glass is enabled + eligible; the default-OFF path adds no layer work.
+                                    modifier = Modifier
+                                        .then(
+                                            if (glassEffectConfig.globalEnabled) {
+                                                Modifier.layerBackdrop(appBackdrop)
+                                            } else {
+                                                Modifier
+                                            }
+                                        )
+                                        .nestedScroll(topAppBarScrollBehavior.nestedScrollConnection)
                                 ) {
                                     navigationBuilder(
                                         navController = navController,

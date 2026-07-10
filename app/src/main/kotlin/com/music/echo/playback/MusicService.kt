@@ -626,7 +626,15 @@ class MusicService :
      *  "the user may toggle video next" moment, so it also kicks the bounded connection warm-up. */
     fun setPlayerSheetExpanded(expanded: Boolean) {
         playbackState.playerSheetExpanded = expanded
-        if (expanded) maybeWarmVideoConnection()
+        if (expanded) {
+            maybeWarmVideoConnection()
+            // INSTANT VIDEO SWAP: expanding is the "user may toggle video next" moment — attempt the
+            // pre-prepare (all hard gates re-checked inside; no-op when anything fails).
+            scheduleInstantVideoPrepare()
+        } else {
+            // Sheet collapsed → the speculative player has no plausible toggle anymore; release it.
+            teardownInstantVideoSwap("player sheet collapsed")
+        }
     }
 
     /**
@@ -664,6 +672,35 @@ class MusicService :
     private val videoModeItems = java.util.concurrent.ConcurrentHashMap<String, VideoTrackState>()
     // Ids with a video-URL resolve currently in flight (dedupe; cleared in a finally / on exit).
     private val prebuildingIds = java.util.Collections.synchronizedSet(mutableSetOf<String>())
+
+    // ---- INSTANT VIDEO SWAP (pre-prepared dual-player publish; kill switch in companion) ----
+    // While the expanded player shows a video song in AUDIO mode (and every hard gate passes — see
+    // maybePrepareInstantVideoSwap), a SECOND ExoPlayer is pre-prepared with the CURRENT track's merged
+    // video+audio source, muted + paused. toggleVideoMode then PUBLISHES it (exactly like
+    // performCrossfadeSwap publishes the crossfade secondary) instead of rebuilding the running item in
+    // place — audio never halts. On ANY doubt (not READY, live position outside its buffered window, a
+    // crossfade secondary exists, any exception) the pre-player is released and the EXISTING swapToVideo
+    // path runs byte-identically. Max 2 ExoPlayers ever: prepareSecondaryPlayer tears this one down first,
+    // and pre-prepare is skipped while any crossfade secondary/fading player exists.
+    private var instantVideoPlayer: ExoPlayer? = null
+    private var instantVideoPlayerId: String? = null
+    private var instantVideoPlayerUrl: String? = null
+    // Position the pre-player was prepared (and started buffering) at. Its playable window is roughly
+    // [this, bufferedPosition]; the swap-time gate falls back to the normal path outside it.
+    private var instantVideoPreparedAtPosMs = 0L
+    private var instantVideoPrepareJob: Job? = null
+    // Pre-prepare registrations, SEPARATE from videoModeItems on purpose: registering the current id in
+    // videoModeItems while video mode is OFF would make any audio-path rebuild of the current item come out
+    // as a (broken) video source. createMediaSource consults this map ONLY when the item's URI equals the
+    // registered video URL — true only for the pre-player's own item, never for the main player's audio item.
+    private val instantSwapItems = java.util.concurrent.ConcurrentHashMap<String, VideoTrackState>()
+    private val instantVideoPlayerListener = object : Player.Listener {
+        override fun onPlayerError(error: PlaybackException) {
+            // Speculative player only — release it; the toggle simply falls back to the normal swap path.
+            Timber.tag(TAG).w(error, "Instant-video pre-player error")
+            releaseInstantVideoPlayer("pre-player error")
+        }
+    }
 
     // ---- DEBUG-ONLY video-swap latency instrumentation (release builds: dead fields, zero work) ----
     // Timestamps the audio→video toggle pipeline so the real on-device split (resolve vs network vs
@@ -770,6 +807,9 @@ class MusicService :
         override fun onReceive(context: Context, intent: Intent) {
             when (intent.action) {
                 Intent.ACTION_SCREEN_OFF -> {
+                    // INSTANT VIDEO SWAP: screen off = invisible → no speculative player may keep
+                    // buffering video bytes (heat/battery rule). No-op when nothing is prepared.
+                    teardownInstantVideoSwap("screen off")
                     if (!player.isPlaying) {
                         scope.launch(Dispatchers.IO) {
                             discordRpc?.closeRPC()
@@ -777,6 +817,9 @@ class MusicService :
                     }
                 }
                 Intent.ACTION_SCREEN_ON -> {
+                    // Re-attempt the instant-swap pre-prepare (fully re-gated inside: only if the player
+                    // sheet is still expanded over a video song in audio mode, unmetered, capable, etc).
+                    scheduleInstantVideoPrepare(INSTANT_VIDEO_PREPARE_DELAY_MS)
                     if (player.isPlaying) {
                         scope.launch {
                             currentSong.value?.let { song ->
@@ -1004,6 +1047,13 @@ class MusicService :
         scope.launch {
             connectivityObserver.networkStatus.collect { isConnected ->
                 isNetworkConnected.value = isConnected
+                // INSTANT VIDEO SWAP: speculative buffering is unmetered-only. On ANY network change,
+                // re-check — connection lost or now metered → drop the pre-player (no-op when idle).
+                if (!isConnected ||
+                    runCatching { connectivityManager.isActiveNetworkMetered }.getOrDefault(true)
+                ) {
+                    teardownInstantVideoSwap("network lost or metered")
+                }
                 if (isConnected && waitingForNetworkConnection.value) {
                     triggerRetry()
                 }
@@ -2994,6 +3044,14 @@ class MusicService :
                 if (nid != null) prebuildNextVideoItem(nextIdx, nid)
             }
         }
+        // INSTANT VIDEO SWAP: any pre-prepared player was built for the PREVIOUS track — release it, then
+        // (if the expanded player is still up, in audio mode) re-attempt for the NEW track after a short
+        // delay so it never competes with this track's own startup buffering. For a cached URL the delayed
+        // attempt succeeds directly; for a miss, prefetchCurrentVideoUrl below re-triggers it on resolve.
+        teardownInstantVideoSwap("media item transition")
+        if (!_videoMode.value && playerSheetExpanded) {
+            scheduleInstantVideoPrepare(INSTANT_VIDEO_PREPARE_DELAY_MS)
+        }
         // AUDIO→VIDEO toggle speed: when video mode is OFF (this fires on the initial track of a queue and on
         // every track change), proactively pre-resolve THIS track's video URL into videoUrlCache in the
         // background so a subsequent on-demand toggle swaps near-instantly (cache hit, no network wait). Fully
@@ -4065,8 +4123,16 @@ class MusicService :
         } else {
             userHasUsedVideo = true
             videoSwapMeasureStart() // debug-only latency probe: T0 = the audio→video toggle
-            _videoMode.value = true
-            applyVideoToCurrent()
+            // INSTANT FAST PATH: publish the pre-prepared dual player if (and only if) it is healthy —
+            // tryInstantVideoSwap sets _videoMode/_videoUrl itself on success. On ANY doubt it returns
+            // false having released the pre-player, and the EXISTING path below runs byte-identically.
+            if (!tryInstantVideoSwap()) {
+                // Entering video via the NORMAL path → any leftover speculative player must not coexist
+                // with the in-place rebuild (teardown rule: video-on via normal path releases it).
+                teardownInstantVideoSwap("video mode on via normal path")
+                _videoMode.value = true
+                applyVideoToCurrent()
+            }
             // Also pre-build the NEXT item now so the FIRST auto-advance is already seamless (no track change
             // fires on a plain toggle, so onMediaItemTransition wouldn't otherwise get a chance to pre-build).
             val nextIdx = player.nextMediaItemIndex
@@ -4364,9 +4430,14 @@ class MusicService :
                 if (!resolved.isNullOrEmpty()) {
                     videoUrlCache[id] = resolved to (System.currentTimeMillis() + 5 * 60 * 1000L)
                     // If the user is looking at the expanded player right now, also warm the connection
-                    // (fully re-gated inside: unmetered + capable + video song + once per URL).
+                    // (fully re-gated inside: unmetered + capable + video song + once per URL) and attempt
+                    // the instant-swap pre-prepare (same trigger moment; delayed so it never competes with
+                    // the just-started track's own buffering; every hard gate re-checked at fire time).
                     if (playerSheetExpanded) {
-                        withContext(Dispatchers.Main) { maybeWarmVideoConnection() }
+                        withContext(Dispatchers.Main) {
+                            maybeWarmVideoConnection()
+                            scheduleInstantVideoPrepare(INSTANT_VIDEO_PREPARE_DELAY_MS)
+                        }
                     }
                 }
             } finally {
@@ -4375,13 +4446,20 @@ class MusicService :
         }
     }
 
-    /** Leaves video mode: restore the current track to audio (playback continues at the same position). */
+    /** Leaves video mode: restore the current track to audio (playback continues at the same position).
+     *  The video→audio path itself is UNTOUCHED by the instant-swap feature; the teardown below only
+     *  releases a speculative pre-player (normally none exists while video mode is on — defensive), and
+     *  the trailing schedule merely re-arms the speculative pre-prepare for a possible re-toggle. */
     fun exitVideoMode() {
         if (!_videoMode.value && videoModeMediaId == null && videoModeItems.isEmpty()) return
+        teardownInstantVideoSwap("exit video mode")
         _videoMode.value = false
         _videoUrl.value = null
         prebuildingIds.clear()
         restoreVideoTracksExcept(null)   // restore ALL tracked video items (current + any pre-built) to audio
+        // Re-arm the instant-swap pre-prepare (fully re-gated inside) so toggling video back on soon after
+        // is instant again; delayed so it never competes with the audio restore's own re-prepare.
+        if (playerSheetExpanded) scheduleInstantVideoPrepare(INSTANT_VIDEO_PREPARE_DELAY_MS)
     }
 
     private fun createDataSourceFactory(): DataSource.Factory {
@@ -4720,6 +4798,263 @@ class MusicService :
         }
     }
 
+    /** Debounced trigger for the instant-video pre-prepare. Cancels any pending attempt; the gates are
+     *  (re)checked on the main thread at fire time, so a stale schedule can never prepare wrongly. */
+    private fun scheduleInstantVideoPrepare(delayMs: Long = 0L) {
+        if (!INSTANT_VIDEO_SWAP_ENABLED) return
+        instantVideoPrepareJob?.cancel()
+        instantVideoPrepareJob = scope.launch {
+            if (delayMs > 0) delay(delayMs)
+            maybePrepareInstantVideoSwap()
+        }
+    }
+
+    /**
+     * INSTANT VIDEO SWAP pre-prepare. Builds a muted, paused SECONDARY ExoPlayer around the CURRENT
+     * track's merged video+audio source (the exact MergingMediaSource path createMediaSource builds for
+     * video items) so a later toggleVideoMode can publish it with no in-place rebuild of the running item
+     * (that rebuild is the audio halt in the normal path). Speculative work → every gate is HARD:
+     *
+     *  1. [INSTANT_VIDEO_SWAP_ENABLED] kill switch on.
+     *  2. Player sheet EXPANDED (the only moment a video toggle is plausible) + screen interactive
+     *     + not in OS battery saver (heat/battery: no speculative work when invisible/saving).
+     *  3. Video mode OFF (when ON the swap already happened) and the main player initialized.
+     *  4. NO crossfade machinery live (isCrossfading / fadingPlayer / secondaryPlayer) and not within
+     *     [INSTANT_VIDEO_CROSSFADE_MARGIN_MS] of the crossfade preload moment → max 2 players, ever.
+     *  5. Current track is a genuine YouTube VIDEO song (not local/http/podcast/audio-only).
+     *  6. Video URL already resolved in [videoUrlCache] (this function NEVER resolves).
+     *  7. Network UNMETERED (speculative ~video-bitrate buffering must never touch mobile data).
+     *  8. Device capable: no High-Performance Mode, tier not LOW/ULTRA (TV/low tiers excluded).
+     *
+     * Idempotent: a healthy pre-player for the same id+URL is kept as-is. Main thread only.
+     */
+    private fun maybePrepareInstantVideoSwap() {
+        if (!INSTANT_VIDEO_SWAP_ENABLED) return
+        if (!playerSheetExpanded) return
+        if (_videoMode.value) return
+        if (!playerInitialized.value) return
+        // Crossfade coexistence guard (direction 1: don't prepare while crossfade machinery is live).
+        // Direction 2 is in prepareSecondaryPlayer, which tears the pre-player down before building its own.
+        if (isCrossfading || fadingPlayer != null || secondaryPlayer != null) return
+        if (crossfadeEnabled && !highPerformanceModeHint) {
+            val dur = player.duration
+            if (dur != C.TIME_UNSET && dur > crossfadeDuration) {
+                val preloadAt = dur - crossfadeDuration.toLong() - CROSSFADE_PRELOAD_LEAD_MS
+                if (player.currentPosition >= preloadAt - INSTANT_VIDEO_CROSSFADE_MARGIN_MS) return
+            }
+        }
+        val item = player.currentMediaItem ?: return
+        val id = item.mediaId
+        if (id.isEmpty() || id.isLocalMediaId() || id.startsWith("http", ignoreCase = true)) return
+        if (player.currentMetadata?.isVideoSong != true) return
+        val url = videoUrlCache[id]?.takeIf { it.second > System.currentTimeMillis() }?.first ?: return
+        if (runCatching { connectivityManager.isActiveNetworkMetered }.getOrDefault(true)) return
+        val perfMode = iad1tya.echo.music.utils.PerformanceMode.isOn(this)
+        val tier = iad1tya.echo.music.utils.PerformanceMode.effectiveTier(this)
+        if (perfMode ||
+            tier == iad1tya.echo.music.utils.DeviceTier.LOW ||
+            tier == iad1tya.echo.music.utils.DeviceTier.ULTRA
+        ) return
+        if ((getSystemService(POWER_SERVICE) as? android.os.PowerManager)?.isPowerSaveMode == true) return
+        if ((getSystemService(POWER_SERVICE) as? android.os.PowerManager)?.isInteractive == false) return
+        // Already prepared for this exact id+URL and not errored → keep it (idempotent re-trigger).
+        instantVideoPlayer?.let { existing ->
+            if (instantVideoPlayerId == id && instantVideoPlayerUrl == url &&
+                existing.playbackState != Player.STATE_IDLE
+            ) return
+            releaseInstantVideoPlayer("stale pre-player (track/url changed)")
+        }
+        // The merged source needs the item's normal AUDIO uri to merge back in; without it we can't build.
+        val origUri = item.localConfiguration?.uri?.toString() ?: return
+
+        // Register FIRST (separate map + URI-match guard in createMediaSource) so the pre-player's
+        // setMediaItem builds the MergingMediaSource (video-only + normal audio), never audio-only.
+        instantSwapItems[id] = VideoTrackState(url, origUri, false)
+        var pre: ExoPlayer? = null
+        try {
+            pre = createExoPlayer(isSecondary = true)
+            pre.addListener(instantVideoPlayerListener)
+            pre.setMediaItem(item.buildUpon().setUri(url).build())
+            // Keyframe-aligned seeks for the whole pre-prepare life (mirrors swapToVideo's CLOSEST_SYNC swap
+            // seek); restored to DEFAULT right after the publish seek in tryInstantVideoSwap.
+            pre.setSeekParameters(androidx.media3.exoplayer.SeekParameters.CLOSEST_SYNC)
+            val pos = player.currentPosition
+            pre.seekTo(pos)
+            pre.volume = 0f
+            pre.playWhenReady = false
+            // Safe Volume is per-EQ-processor state (no companion static): mirror the CURRENT track's applied
+            // gain onto the pre-player so the published player is level-identical from its first sample.
+            // Norm/limiter need nothing: their processors follow the companion statics, which already hold
+            // this same track's values (never re-normalizes — no instanceGain pin, so nothing to clean up).
+            if (safeVolumeEnabledHint) playerEqProcessors[pre]?.applySafeVolume(true, lastAppliedGain)
+            pre.prepare()
+            instantVideoPlayer = pre
+            instantVideoPlayerId = id
+            instantVideoPlayerUrl = url
+            instantVideoPreparedAtPosMs = pos
+            Timber.tag(TAG).d("Instant-video pre-player preparing for $id @ $pos ms")
+        } catch (e: Exception) {
+            // Speculative only — never let a failed prepare leak a player or the factory registration.
+            Timber.tag(TAG).w(e, "Instant-video pre-prepare failed (normal path unaffected)")
+            instantSwapItems.clear()
+            instantVideoPlayer = null
+            instantVideoPlayerId = null
+            instantVideoPlayerUrl = null
+            pre?.let { p ->
+                p.removeListener(instantVideoPlayerListener)
+                playerSilenceProcessors.remove(p)
+                playerNormProcessors.remove(p)
+                playerLimiterProcessors.remove(p)
+                playerEqProcessors.remove(p)?.let { eq -> equalizerService.removeAudioProcessor(eq) }
+                runCatching { p.release() }
+            }
+        }
+    }
+
+    /**
+     * INSTANT VIDEO SWAP fast path (called ONLY from toggleVideoMode, audio→video direction). Publishes
+     * the pre-prepared player exactly like performCrossfadeSwap publishes the crossfade secondary:
+     * seek to the LIVE position first, adopt the live queue, swap the player reference, republish
+     * [_playerFlow] (the UI re-attaches the TextureView to the new player), move MediaSession/SleepTimer,
+     * restore volume/play state, then release the old player. Returns true only when fully published;
+     * ANY doubt (gates below, or any pre-commit exception) releases the pre-player and returns false so
+     * the caller falls through to the EXISTING swapToVideo path unchanged.
+     */
+    private fun tryInstantVideoSwap(): Boolean {
+        if (!INSTANT_VIDEO_SWAP_ENABLED) return false
+        val pre = instantVideoPlayer ?: return false
+        val id = instantVideoPlayerId
+        val url = instantVideoPlayerUrl
+        // --- Swap-time health gates (ANY failure → release + normal path) ---
+        val old = player
+        val item = old.currentMediaItem
+        if (id == null || url == null || item == null || item.mediaId != id ||
+            isCrossfading || fadingPlayer != null || secondaryPlayer != null ||
+            pre.playbackState != Player.STATE_READY ||
+            pre.currentMediaItem?.mediaId != id
+        ) {
+            releaseInstantVideoPlayer("swap gates failed (not READY / track changed / crossfade live)")
+            return false
+        }
+        val livePos = old.currentPosition
+        val buffered = runCatching { pre.bufferedPosition }.getOrDefault(0L)
+        // Lazy position sync: valid only inside the window the paused pre-player actually buffered.
+        if (livePos < instantVideoPreparedAtPosMs ||
+            livePos + INSTANT_VIDEO_MIN_BUFFER_AHEAD_MS > buffered
+        ) {
+            releaseInstantVideoPlayer("live position outside pre-buffered window")
+            return false
+        }
+        var committed = false
+        return try {
+            // ---- PRE-COMMIT (old player untouched; a throw here falls back with zero side effects) ----
+            val playing = old.playWhenReady
+            pre.seekTo(livePos) // keyframe-aligned (CLOSEST_SYNC since prepare), same as swapToVideo's seek
+            pre.setSeekParameters(androidx.media3.exoplayer.SeekParameters.DEFAULT)
+            // Adopt the LIVE queue around the already-playing period (addMediaItems never rebuilds it),
+            // so the published player has the exact up-to-date queue — no stale-copy divergence.
+            val curIdx = old.currentMediaItemIndex
+            if (curIdx > 0) {
+                pre.addMediaItems(0, (0 until curIdx).map { old.getMediaItemAt(it) })
+            }
+            if (curIdx + 1 < old.mediaItemCount) {
+                pre.addMediaItems((curIdx + 1 until old.mediaItemCount).map { old.getMediaItemAt(it) })
+            }
+            pre.repeatMode = old.repeatMode
+            pre.shuffleModeEnabled = old.shuffleModeEnabled
+            // Hand the registration over to the normal video bookkeeping, exactly as swapToVideo does —
+            // from here on, transitions / exitVideoMode / error recovery see the standard video state.
+            val state = instantSwapItems.remove(id) ?: VideoTrackState(url, item.localConfiguration?.uri?.toString(), false)
+            videoModeItems[id] = state
+            videoModeMediaId = id
+            videoModeOriginalUri = state.originalAudioUri
+            videoModeIsMuxedPodcast = false
+
+            // ---- COMMIT: publish (mirrors performCrossfadeSwap's swap block) ----
+            committed = true
+            instantVideoPlayer = null
+            instantVideoPlayerId = null
+            instantVideoPlayerUrl = null
+            instantVideoPreparedAtPosMs = 0L
+            old.removeListener(this)
+            old.removeListener(sleepTimer)
+            pre.removeListener(instantVideoPlayerListener)
+            pre.addListener(this)
+            pre.addListener(sleepTimer)
+            player = pre
+            _playerFlow.value = pre // UI (PlayerVideoSurface/MiniPlayer/PiP) re-attaches the surface here
+            sleepTimer.player = pre
+            try {
+                (mediaSession as MediaSession).player = pre
+            } catch (e: Exception) {
+                Timber.tag(TAG).e(e, "Instant-video swap: failed to swap player in MediaSession")
+            }
+            pre.volume = if (isMuted.value) 0f else playerVolume.value
+            pre.playWhenReady = playing
+            _videoMode.value = true
+            _videoUrl.value = url
+            // Old player: silence, detach its surface, full release (mirrors cleanupCrossfade's teardown).
+            runCatching {
+                old.volume = 0f
+                old.stop()
+                old.clearMediaItems()
+                old.clearVideoSurface()
+            }
+            playerSilenceProcessors.remove(old)
+            playerNormProcessors.remove(old)
+            playerLimiterProcessors.remove(old)
+            playerEqProcessors.remove(old)?.let { eq -> equalizerService.removeAudioProcessor(eq) }
+            runCatching { old.release() }
+            videoSwapMark("INSTANT swap published (pre-prepared dual player)")
+            true
+        } catch (e: Exception) {
+            if (!committed) {
+                // Nothing was published — undo any bookkeeping and fall back to the normal path.
+                videoModeItems.remove(id)
+                videoModeMediaId = null
+                videoModeOriginalUri = null
+                releaseInstantVideoPlayer("exception before publish: ${e.message}")
+                false
+            } else {
+                // Already published; the new player IS the player. Log and carry on (normal video mode).
+                Timber.tag(TAG).e(e, "Instant-video swap: post-publish exception (continuing on new player)")
+                reportException(e)
+                true
+            }
+        }
+    }
+
+    /** Release the speculative pre-player + its processor bookkeeping + the factory registration.
+     *  No-op when nothing is prepared. Never touches the main player, crossfade, or video state. */
+    private fun releaseInstantVideoPlayer(reason: String) {
+        val pre = instantVideoPlayer
+        instantVideoPlayer = null
+        instantVideoPlayerId = null
+        instantVideoPlayerUrl = null
+        instantVideoPreparedAtPosMs = 0L
+        instantSwapItems.clear()
+        if (pre == null) return
+        Timber.tag(TAG).d("Instant-video pre-player released: $reason")
+        pre.removeListener(instantVideoPlayerListener)
+        playerSilenceProcessors.remove(pre)
+        playerNormProcessors.remove(pre)
+        playerLimiterProcessors.remove(pre)
+        playerEqProcessors.remove(pre)?.let { eq -> equalizerService.removeAudioProcessor(eq) }
+        runCatching {
+            pre.stop()
+            pre.clearMediaItems()
+            pre.release()
+        }
+    }
+
+    /** Full teardown: cancel any pending pre-prepare AND release the pre-player. Called on sheet collapse,
+     *  track transition, network→metered, video-on via the normal path, crossfade preload, destroy. */
+    private fun teardownInstantVideoSwap(reason: String) {
+        instantVideoPrepareJob?.cancel()
+        instantVideoPrepareJob = null
+        releaseInstantVideoPlayer(reason)
+    }
+
     // Video mode is INTEGRATED into the main player: the current track's source is swapped to its muxed
     // (video+audio) stream (via [videoDataSourceFactory]) and rendered on the main player's TextureView.
     // One engine → background audio, native transport/seek, no double audio. Other tracks stay audio.
@@ -4757,7 +5092,15 @@ class MusicService :
                 // it is never overwritten by the audio ResolvingDataSource (keyed on the mediaId) — that
                 // overwrite is exactly why the earlier "pre-swap the next item" attempt built it audio-only.
                 // The ResolvingDataSource only ever resolves the SEPARATE merged audio sub-source below.
+                // INSTANT VIDEO SWAP pre-prepare: the speculative registration lives in a SEPARATE map and
+                // only applies when the item's URI IS the registered video URL — true only for the
+                // pre-player's own item. The main player's audio item keeps its audio URI, so an audio-path
+                // rebuild of the same id can never match → the audio pipeline is byte-identical (and with
+                // the feature idle both maps miss, falling straight through to the default factory).
                 val vstate = videoModeItems[mediaItem.mediaId]
+                    ?: instantSwapItems[mediaItem.mediaId]?.takeIf {
+                        it.videoUrl == mediaItem.localConfiguration?.uri?.toString()
+                    }
                 if (vstate != null) {
                     val videoSource = videoFactory.createMediaSource(mediaItem)
                     val origUri = vstate.originalAudioUri
@@ -5008,6 +5351,9 @@ class MusicService :
         playerSilenceProcessors.remove(player)
         playerNormProcessors.remove(player); playerLimiterProcessors.remove(player)
         playerEqProcessors.remove(player)?.let { eq -> equalizerService.removeAudioProcessor(eq) }
+
+        // Release the speculative instant-video pre-player (if any) so it never leaks past the service.
+        teardownInstantVideoSwap("service destroyed")
 
         // Release crossfade players (incl. any preloaded incoming one) so they don't leak.
         crossfadeJob?.cancel()
@@ -5305,6 +5651,11 @@ class MusicService :
         if (secondaryPlayer != null || isCrossfading) return
         if (targetIndex == C.INDEX_UNSET) return
 
+        // INSTANT VIDEO SWAP: the crossfade secondary and the speculative video pre-player must NEVER
+        // coexist (max 2 ExoPlayers, same envelope as before the feature). Crossfade wins — the video
+        // pre-player is pure speculation; the toggle falls back to the normal swap path.
+        teardownInstantVideoSwap("crossfade secondary player preparing")
+
         val sec = createExoPlayer(isSecondary = true)
         sec.addListener(secondaryPlayerListener)
 
@@ -5552,6 +5903,21 @@ class MusicService :
         private const val DEAD_END_RECHECK_MS = 45_000L
         // How early (ms before the fade) to build + buffer the incoming player so the crossfade has no gap.
         private const val CROSSFADE_PRELOAD_LEAD_MS = 12000L
+
+        // KILL SWITCH for the instant audio→video dual-player swap (pre-prepared secondary publish).
+        // Flip to false to disable the whole feature at runtime: every hook becomes a no-op and the
+        // audio pipeline / normal swapToVideo path are byte-identical to the pre-feature behaviour.
+        @Volatile
+        var INSTANT_VIDEO_SWAP_ENABLED = true
+        // Delay before pre-preparing after a track transition / video exit, so the speculative player never
+        // competes with the running track's own startup buffering (750 ms floor + rebuffer window).
+        private const val INSTANT_VIDEO_PREPARE_DELAY_MS = 2500L
+        // Never pre-prepare inside this margin of the crossfade preload moment (preload lead + margin):
+        // guarantees the video pre-player and the crossfade secondary never race to exist at once.
+        private const val INSTANT_VIDEO_CROSSFADE_MARGIN_MS = 3000L
+        // The live position must be at least this far inside the pre-player's buffered window at swap
+        // time, or we fall back to the normal path instead of publishing a player about to rebuffer.
+        private const val INSTANT_VIDEO_MIN_BUFFER_AHEAD_MS = 1500L
         
         private const val MAX_GAIN_MB = 300 
         private const val MIN_GAIN_MB = -1500 

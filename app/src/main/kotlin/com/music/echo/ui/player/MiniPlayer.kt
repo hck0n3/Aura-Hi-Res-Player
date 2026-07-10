@@ -119,6 +119,11 @@ import iad1tya.echo.music.listentogether.ListenTogetherManager
 import iad1tya.echo.music.models.MediaMetadata
 import iad1tya.echo.music.playback.CastConnectionHandler
 import iad1tya.echo.music.playback.PlayerConnection
+import iad1tya.echo.music.ui.component.GlassComponent
+import iad1tya.echo.music.ui.component.LocalGlassEffectConfig
+import iad1tya.echo.music.ui.component.glassContentColor
+import iad1tya.echo.music.ui.component.isGlassSupported
+import iad1tya.echo.music.ui.component.liquidGlass
 import iad1tya.echo.music.ui.screens.settings.DarkMode
 import iad1tya.echo.music.ui.theme.PlayerColorExtractor
 import iad1tya.echo.music.utils.rememberEnumPreference
@@ -271,12 +276,28 @@ private fun NewMiniPlayer(
     )
     
     
-    val isDynamicBackground = miniPlayerBackground != PlayerBackgroundStyle.DEFAULT
-    val backgroundColor = if (pureBlack && useDarkTheme) Color.Black else MaterialTheme.colorScheme.surfaceContainer
-    
-    val primaryColor = if (isDynamicBackground) Color.White else MaterialTheme.colorScheme.primary
-    val outlineColor = if (isDynamicBackground) Color.White.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outline
-    val onSurfaceColor = if (isDynamicBackground) Color.White else MaterialTheme.colorScheme.onSurface
+    val glassConfig = LocalGlassEffectConfig.current
+    val useGlassMiniPlayer = miniPlayerBackground == PlayerBackgroundStyle.LIQUID_GLASS &&
+        glassConfig.isEnabledFor(GlassComponent.MINI_PLAYER) && isGlassSupported()
+    // LIQUID_GLASS only counts as a dynamic (over-image) background while the glass actually
+    // renders; if eligibility is lost later (e.g. Performance Mode turned on) the mini player
+    // falls back to the plain surface, which needs theme colors — not forced white.
+    val isDynamicBackground = miniPlayerBackground != PlayerBackgroundStyle.DEFAULT &&
+        (miniPlayerBackground != PlayerBackgroundStyle.LIQUID_GLASS || useGlassMiniPlayer)
+    // Adaptive content color on glass (dark text on the light glass of a light theme, white on
+    // dark) — NOT hardcoded white, or the mini player is illegible on light themes.
+    val glassText = glassContentColor(glassConfig)
+    val backgroundColor = if (useGlassMiniPlayer) {
+        Color.Transparent
+    } else if (pureBlack && useDarkTheme) {
+        Color.Black
+    } else {
+        MaterialTheme.colorScheme.surfaceContainer
+    }
+
+    val primaryColor = if (useGlassMiniPlayer) glassText else if (isDynamicBackground) Color.White else MaterialTheme.colorScheme.primary
+    val outlineColor = if (useGlassMiniPlayer) glassText.copy(alpha = 0.5f) else if (isDynamicBackground) Color.White.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outline
+    val onSurfaceColor = if (useGlassMiniPlayer) glassText else if (isDynamicBackground) Color.White else MaterialTheme.colorScheme.onSurface
     val errorColor = MaterialTheme.colorScheme.error
 
     Box(
@@ -1142,6 +1163,24 @@ private fun MiniPlayerBackgroundLayer(
                         .graphicsLayer { rotationZ = rotation.value }
                 )
                 Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.3f)))
+            }
+        }
+        PlayerBackgroundStyle.LIQUID_GLASS -> {
+            val glassConfig = LocalGlassEffectConfig.current
+            if (glassConfig.isEnabledFor(GlassComponent.MINI_PLAYER) && isGlassSupported()) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .liquidGlass(config = glassConfig)
+                )
+            } else if (gradientColors.isNotEmpty()) {
+                // Glass unavailable (gate off / unsupported device): degrade to the gradient look.
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Brush.verticalGradient(gradientColors))
+                        .background(Color.Black.copy(alpha = 0.2f))
+                )
             }
         }
         else -> {}

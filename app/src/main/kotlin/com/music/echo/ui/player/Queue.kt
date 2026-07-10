@@ -58,7 +58,10 @@ import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.PlainTooltip
+import androidx.compose.material3.SecondaryTabRow
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.ToggleButton
 import androidx.compose.material3.ToggleButtonDefaults
 import androidx.compose.material3.SnackbarDuration
@@ -80,6 +83,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -107,6 +111,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.Timeline
 import androidx.media3.exoplayer.source.ShuffleOrder.DefaultShuffleOrder
@@ -277,6 +282,15 @@ fun Queue(
     }
 
     var locked by rememberPreference(QueueEditLockKey, defaultValue = false)
+
+    // ── Queue sheet tabs (YT Music parity): 0 = UP NEXT (queue, default), 1 = LYRICS, 2 = RELATED.
+    // Hoisted OUTSIDE the BottomSheet content (which is not composed while collapsed) so the
+    // collapse-reset below always runs: reopening the sheet lands on UP NEXT, and the lyrics
+    // ticker/related list never stay alive in a hidden sheet (heat/battery).
+    var selectedTab by rememberSaveable { mutableIntStateOf(QUEUE_TAB_NEXT) }
+    LaunchedEffect(state.isCollapsed) {
+        if (state.isCollapsed) selectedTab = QUEUE_TAB_NEXT
+    }
 
     val (useNewPlayerDesign, onUseNewPlayerDesignChange) = rememberPreference(
         UseNewPlayerDesignKey,
@@ -898,6 +912,54 @@ fun Queue(
                     }
                 }
 
+                // ── Tab header (YT Music exact): UP NEXT / LYRICS / RELATED. Styled like the app's
+                // existing tab idiom (SearchScreen SecondaryTabRow: transparent container + 32dp
+                // rounded pill indicator), each Tab TV/D-pad focusable. Static — no polling/animation
+                // while idle.
+                run {
+                    val isTvOrCarTabs = iad1tya.echo.music.ui.utils.rememberIsTvOrCar()
+                    SecondaryTabRow(
+                        selectedTabIndex = selectedTab,
+                        containerColor = Color.Transparent,
+                        indicator = {
+                            Box(
+                                modifier = Modifier
+                                    .tabIndicatorOffset(selectedTab)
+                                    .fillMaxWidth(),
+                                contentAlignment = Alignment.BottomCenter,
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .width(32.dp)
+                                        .height(3.dp)
+                                        .clip(RoundedCornerShape(topStart = 3.dp, topEnd = 3.dp))
+                                        .background(MaterialTheme.colorScheme.primary)
+                                )
+                            }
+                        },
+                    ) {
+                        listOf(
+                            R.string.queue_tab_next,
+                            R.string.queue_tab_lyrics,
+                            R.string.queue_tab_related,
+                        ).forEachIndexed { index, titleRes ->
+                            Tab(
+                                selected = selectedTab == index,
+                                onClick = { selectedTab = index },
+                                selectedContentColor = MaterialTheme.colorScheme.primary,
+                                unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                text = { Text(stringResource(titleRes).uppercase()) },
+                                modifier = Modifier.tvFocusable(isTvOrCarTabs),
+                            )
+                        }
+                    }
+                }
+                // Selection mode only exists on the UP NEXT tab — leave it when switching away.
+                LaunchedEffect(selectedTab) {
+                    if (selectedTab != QUEUE_TAB_NEXT) onExitSelectionMode()
+                }
+
+                if (selectedTab == QUEUE_TAB_NEXT) {
                 FlowRow(
                     modifier = Modifier
                         .padding(horizontal = 12.dp, vertical = 8.dp)
@@ -1117,9 +1179,95 @@ fun Queue(
                         }
                     }
                 }
+                } // if (selectedTab == QUEUE_TAB_NEXT)
             }
 
             Box(modifier = Modifier.weight(1f)) {
+                when (selectedTab) {
+                    // ── LYRICS tab: hosts the SAME InlineLyricsView the player embeds (Player.kt),
+                    // honoring its positionProvider contract — null falls through to the component's
+                    // LIVE frame-aligned position, NEVER the 500ms-throttled ticker; a value is only
+                    // supplied while casting (the active stream), mirroring the player call site.
+                    // Only composed while this tab is selected AND the sheet is not collapsed
+                    // (BottomSheet skips content when collapsed), so the lyrics ticker never runs
+                    // in a hidden sheet (heat/battery).
+                    QUEUE_TAB_LYRICS -> {
+                        val castPosition by castHandler?.castPosition?.collectAsState()
+                            ?: remember { mutableLongStateOf(0L) }
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .nestedScroll(state.preUpPostDownNestedScrollConnection)
+                                .windowInsetsPadding(
+                                    WindowInsets.systemBars
+                                        .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom),
+                                ),
+                        ) {
+                            InlineLyricsView(
+                                mediaMetadata = mediaMetadata,
+                                showLyrics = true,
+                                positionProvider = { if (isCasting) castPosition else null },
+                            )
+                        }
+                    }
+
+                    // ── RELATED tab: renders the related pool the service ALREADY fetched for
+                    // autoplay (automixItems — YouTube.next related items, taste-ordered). ZERO new
+                    // network: this only mirrors data the autoplay footer shows. Rows reuse the exact
+                    // automix row (play next / add to queue / long-press menu).
+                    QUEUE_TAB_RELATED -> {
+                        if (automix.isEmpty()) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .nestedScroll(state.preUpPostDownNestedScrollConnection),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.queue_related_empty),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.padding(horizontal = 32.dp),
+                                )
+                            }
+                        } else {
+                            LazyColumn(
+                                contentPadding =
+                                    WindowInsets.systemBars
+                                        .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)
+                                        .add(
+                                            WindowInsets(
+                                                top = 8.dp,
+                                                bottom = ListItemHeight + 8.dp,
+                                            ),
+                                        ).asPaddingValues(),
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .nestedScroll(state.preUpPostDownNestedScrollConnection)
+                                    // TV/car: restore the D-pad focus ring when scrolling. No-op on phone.
+                                    .tvFocusRestorer(),
+                            ) {
+                                itemsIndexed(
+                                    items = automix,
+                                    key = { _, it -> it.mediaId },
+                                ) { index, item ->
+                                    AutomixSongRow(
+                                        item = item,
+                                        index = index,
+                                        total = automix.size,
+                                        isListenTogetherGuest = isListenTogetherGuest,
+                                        navController = navController,
+                                        playerBottomSheetState = playerBottomSheetState,
+                                        modifier = Modifier.animateItem(),
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // ── UP NEXT tab (default): the current queue list + autoplay footer, unchanged.
+                    else -> Box(modifier = Modifier.fillMaxSize()) {
                 LazyColumn(
                     state = lazyListState,
                     contentPadding =
@@ -1384,76 +1532,26 @@ fun Queue(
                             }
                         }
 
-                        // Preview rows: the upcoming auto-tracks (existing automix behavior, unchanged).
+                        // Preview rows: the upcoming auto-tracks (existing automix behavior, unchanged —
+                        // row extracted to AutomixSongRow, shared verbatim with the RELATED tab).
                         itemsIndexed(
                             items = automix,
                             key = { _, it -> it.mediaId },
                         ) { index, item ->
-                            Row(
-                                horizontalArrangement = Arrangement.Center,
-                            ) {
-                                MediaMetadataListItem(
-                                    mediaMetadata = item.metadata!!,
-                                    shape = listItemShape(index, automix.size),
-                                    trailingContent = {
-                                        if (!isListenTogetherGuest) {
-                                            IconButton(
-                                                onClick = {
-                                                    playerConnection.service.playNextAutomix(
-                                                        item,
-                                                        index,
-                                                    )
-                                                },
-                                            ) {
-                                                Icon(
-                                                    painter = painterResource(R.drawable.playlist_play),
-                                                    contentDescription = null,
-                                                )
-                                            }
-                                            IconButton(
-                                                onClick = {
-                                                    playerConnection.service.addToQueueAutomix(
-                                                        item,
-                                                        index,
-                                                    )
-                                                },
-                                            ) {
-                                                Icon(
-                                                    painter = painterResource(R.drawable.queue_music),
-                                                    contentDescription = null,
-                                                )
-                                            }
-                                        }
-                                    },
-                                    modifier =
-                                        Modifier
-                                            .fillMaxWidth()
-                                            .combinedClickable(
-                                                onClick = {},
-                                                onLongClick = {
-                                                    menuState.show {
-                                                        QueueMenu(
-                                                            mediaMetadata = item.metadata!!,
-                                                            navController = navController,
-                                                            playerBottomSheetState = playerBottomSheetState,
-                                                            onShowDetailsDialog = {
-                                                                item.mediaId.let {
-                                                                    bottomSheetPageState.show {
-                                                                        ShowMediaInfo(it)
-                                                                    }
-                                                                }
-                                                            },
-                                                            onDismiss = menuState::dismiss,
-                                                        )
-                                                    }
-                                                },
-                                            )
-                                            .animateItem(),
-                                )
-                            }
+                            AutomixSongRow(
+                                item = item,
+                                index = index,
+                                total = automix.size,
+                                isListenTogetherGuest = isListenTogetherGuest,
+                                navController = navController,
+                                playerBottomSheetState = playerBottomSheetState,
+                                modifier = Modifier.animateItem(),
+                            )
                         }
                     }
                 }
+                    } // else Box (UP NEXT tab)
+                } // when (selectedTab)
 
                 SnackbarHost(
                     hostState = snackbarHostState,
@@ -1476,6 +1574,94 @@ fun Queue(
         CommentSheet(
             videoId = mediaMetadata?.id ?: "",
             onDismiss = { showCommentSheet = false }
+        )
+    }
+}
+
+// Queue sheet tab indices (YT Music parity): UP NEXT is the default.
+private const val QUEUE_TAB_NEXT = 0
+private const val QUEUE_TAB_LYRICS = 1
+private const val QUEUE_TAB_RELATED = 2
+
+/**
+ * One related/automix song row — the EXACT row the autoplay footer used to inline: play-next and
+ * add-to-queue trailing actions (service pool operations, ZERO network) + long-press QueueMenu.
+ * Shared by the UP NEXT footer and the RELATED tab so the two can never drift apart.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun AutomixSongRow(
+    item: MediaItem,
+    index: Int,
+    total: Int,
+    isListenTogetherGuest: Boolean,
+    navController: NavController,
+    playerBottomSheetState: BottomSheetState,
+    modifier: Modifier = Modifier,
+) {
+    val playerConnection = LocalPlayerConnection.current ?: return
+    val menuState = LocalMenuState.current
+    val bottomSheetPageState = LocalBottomSheetPageState.current
+
+    Row(
+        horizontalArrangement = Arrangement.Center,
+    ) {
+        MediaMetadataListItem(
+            mediaMetadata = item.metadata!!,
+            shape = listItemShape(index, total),
+            trailingContent = {
+                if (!isListenTogetherGuest) {
+                    IconButton(
+                        onClick = {
+                            playerConnection.service.playNextAutomix(
+                                item,
+                                index,
+                            )
+                        },
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.playlist_play),
+                            contentDescription = null,
+                        )
+                    }
+                    IconButton(
+                        onClick = {
+                            playerConnection.service.addToQueueAutomix(
+                                item,
+                                index,
+                            )
+                        },
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.queue_music),
+                            contentDescription = null,
+                        )
+                    }
+                }
+            },
+            modifier =
+                modifier
+                    .fillMaxWidth()
+                    .combinedClickable(
+                        onClick = {},
+                        onLongClick = {
+                            menuState.show {
+                                QueueMenu(
+                                    mediaMetadata = item.metadata!!,
+                                    navController = navController,
+                                    playerBottomSheetState = playerBottomSheetState,
+                                    onShowDetailsDialog = {
+                                        item.mediaId.let {
+                                            bottomSheetPageState.show {
+                                                ShowMediaInfo(it)
+                                            }
+                                        }
+                                    },
+                                    onDismiss = menuState::dismiss,
+                                )
+                            }
+                        },
+                    ),
         )
     }
 }
@@ -1537,7 +1723,7 @@ private fun PlayerQueueButton(
                 iconButtonColor
             } else {
                 when (playerBackground) {
-                    PlayerBackgroundStyle.BLUR, PlayerBackgroundStyle.GRADIENT, PlayerBackgroundStyle.GLOW_ANIMATED, PlayerBackgroundStyle.APPLE_MUSIC, PlayerBackgroundStyle.LIVE_MESH ->
+                    PlayerBackgroundStyle.BLUR, PlayerBackgroundStyle.GRADIENT, PlayerBackgroundStyle.GLOW_ANIMATED, PlayerBackgroundStyle.APPLE_MUSIC, PlayerBackgroundStyle.LIVE_MESH, PlayerBackgroundStyle.LIQUID_GLASS ->
                         Color.White
                     PlayerBackgroundStyle.DEFAULT ->
                         MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)

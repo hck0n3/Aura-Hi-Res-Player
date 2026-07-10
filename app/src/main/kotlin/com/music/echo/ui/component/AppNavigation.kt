@@ -135,13 +135,19 @@ fun AppNavigationBar(
     slimNav: Boolean = false,
     onSearchLongClick: (() -> Unit)? = null
 ) {
-    val containerColor = if (pureBlack) Color.Black else MaterialTheme.colorScheme.surfaceContainer
-    val contentColor = if (pureBlack) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+    // Liquid Glass (Beta): transparent container + backdrop-sampling glass surface. Content color
+    // is theme-adaptive (glassContentColor) so nav text/icons stay legible in light AND dark themes.
+    val glassConfig = LocalGlassEffectConfig.current
+    val useGlass = glassConfig.isEnabledFor(GlassComponent.NAV_BAR) && isGlassSupported()
+    val containerColor = if (useGlass) Color.Transparent else if (pureBlack) Color.Black else MaterialTheme.colorScheme.surfaceContainer
+    val contentColor = if (useGlass) glassContentColor(glassConfig) else if (pureBlack) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
     val haptics = LocalHapticFeedback.current
     val viewConfiguration = LocalViewConfiguration.current
-    
+
+    val navModifier = if (useGlass) modifier.liquidGlass(config = glassConfig) else modifier
+
     NavigationBar(
-        modifier = modifier,
+        modifier = navModifier,
         containerColor = containerColor,
         contentColor = contentColor
     ) {

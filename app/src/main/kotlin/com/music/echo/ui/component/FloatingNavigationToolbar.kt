@@ -75,6 +75,11 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import iad1tya.echo.music.R
 import iad1tya.echo.music.ui.screens.Screens
+import iad1tya.echo.music.ui.component.GlassComponent
+import iad1tya.echo.music.ui.component.LocalGlassEffectConfig
+import iad1tya.echo.music.ui.component.glassContentColor
+import iad1tya.echo.music.ui.component.isGlassSupported
+import iad1tya.echo.music.ui.component.liquidGlass
 import iad1tya.echo.music.ui.utils.rememberIsTvOrCar
 import iad1tya.echo.music.ui.utils.tvFocusable
 
@@ -95,10 +100,24 @@ fun FloatingNavigationToolbar(
     isSelected: (Screens) -> Boolean,
     onItemClick: (Screens, Boolean) -> Unit,
 ) {
-    val toolbarContainerColor = floatingToolbarContainerColor(pureBlack = pureBlack)
+    // Liquid Glass (Beta): when the glass nav-bar surface is active the toolbar container goes
+    // transparent and the pill renders as a backdrop-sampling glass surface. Content colors stay
+    // theme-adaptive (see floatingToolbar*Color below) so text/icons remain legible in BOTH light
+    // and dark themes — never hardcoded white.
+    val glassConfig = LocalGlassEffectConfig.current
+    val useGlass = glassConfig.isEnabledFor(GlassComponent.NAV_BAR) && isGlassSupported()
+    val toolbarContainerColor = if (useGlass) Color.Transparent else floatingToolbarContainerColor(pureBlack = pureBlack)
     val toolbarColors = FloatingToolbarDefaults.standardFloatingToolbarColors(
         toolbarContainerColor = toolbarContainerColor,
     )
+    val glassModifier = if (useGlass) {
+        Modifier.liquidGlass(
+            config = glassConfig,
+            shape = RoundedCornerShape(percent = 50),
+        )
+    } else {
+        Modifier
+    }
     val hasOverflowMenu = (onShuffleClick != null && shuffleIconRes != null) || onMusicRecognitionClick != null
     val hasFabAction = onFabClick != null && fabIconRes != null
 
@@ -121,7 +140,7 @@ fun FloatingNavigationToolbar(
                         musicRecognitionContentDescription = musicRecognitionContentDescription,
                     )
                 },
-                modifier = Modifier.widthIn(max = 480.dp),
+                modifier = glassModifier.widthIn(max = 480.dp),
                 colors = toolbarColors,
                 scrollBehavior = scrollBehavior,
                 animationSpec = FloatingToolbarDefaults.animationSpec(),
@@ -145,7 +164,7 @@ fun FloatingNavigationToolbar(
                         contentDescription = fabContentDescription,
                     )
                 },
-                modifier = Modifier.widthIn(max = 480.dp),
+                modifier = glassModifier.widthIn(max = 480.dp),
                 colors = toolbarColors,
                 scrollBehavior = scrollBehavior,
                 animationSpec = FloatingToolbarDefaults.animationSpec(),
@@ -161,7 +180,7 @@ fun FloatingNavigationToolbar(
         } else {
             HorizontalFloatingToolbar(
                 expanded = true,
-                modifier = Modifier.widthIn(max = 420.dp),
+                modifier = glassModifier.widthIn(max = 420.dp),
                 colors = toolbarColors,
                 scrollBehavior = scrollBehavior,
             ) {
@@ -508,17 +527,31 @@ private fun floatingToolbarFabContentColor(pureBlack: Boolean): Color {
 
 @Composable
 private fun floatingToolbarSelectedItemContainerColor(pureBlack: Boolean): Color {
+    val glassConfig = LocalGlassEffectConfig.current
+    if (glassConfig.isEnabledFor(GlassComponent.NAV_BAR) && isGlassSupported()) {
+        // Subtle adaptive pill on glass: derived from the adaptive content color so it reads
+        // in both themes instead of assuming a dark backdrop.
+        return glassContentColor(glassConfig).copy(alpha = 0.14f)
+    }
     return if (pureBlack) Color.White.copy(alpha = 0.12f) else MaterialTheme.colorScheme.secondaryContainer
 }
 
 @Composable
 private fun floatingToolbarSelectedItemContentColor(pureBlack: Boolean): Color {
+    val glassConfig = LocalGlassEffectConfig.current
+    if (glassConfig.isEnabledFor(GlassComponent.NAV_BAR) && isGlassSupported()) {
+        return glassContentColor(glassConfig)
+    }
     return if (pureBlack) Color.White else MaterialTheme.colorScheme.onSecondaryContainer
 }
 
 
 @Composable
 private fun floatingToolbarItemContentColor(pureBlack: Boolean): Color {
+    val glassConfig = LocalGlassEffectConfig.current
+    if (glassConfig.isEnabledFor(GlassComponent.NAV_BAR) && isGlassSupported()) {
+        return glassContentColor(glassConfig).copy(alpha = 0.65f)
+    }
     return if (pureBlack) {
         Color.White.copy(alpha = 0.82f)
     } else {

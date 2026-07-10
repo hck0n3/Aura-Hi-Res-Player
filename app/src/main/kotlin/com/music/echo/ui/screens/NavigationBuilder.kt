@@ -42,6 +42,7 @@ import iad1tya.echo.music.ui.screens.settings.AccountsScreen
 import iad1tya.echo.music.ui.screens.settings.LogsScreen
 import iad1tya.echo.music.ui.screens.settings.AppearanceSettings
 import iad1tya.echo.music.ui.screens.settings.BackupAndRestore
+import iad1tya.echo.music.ui.screens.settings.GlassEffectSettings
 import iad1tya.echo.music.ui.screens.settings.ContentSettings
 import iad1tya.echo.music.ui.screens.settings.UptimeScreen
 import iad1tya.echo.music.ui.screens.settings.DarkMode
@@ -346,6 +347,10 @@ fun NavGraphBuilder.navigationBuilder(
 
     composable("settings/appearance/theme") {
         ThemeScreen(navController)
+    }
+
+    composable("settings/appearance/liquidglass") {
+        GlassEffectSettings(navController, scrollBehavior)
     }
 
     composable("settings/content") {
