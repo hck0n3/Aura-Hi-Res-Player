@@ -3735,7 +3735,15 @@ class MusicService :
                 (error.cause as? PlaybackException)?.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED
     }
 
-    
+    // Unresolvable-song dead-end (see YTPlayerUtils.StreamResolutionException, mapped to ERROR_CODE_NO_STREAM
+    // in the loader). This is NOT a network error — it must fail fast with a message + skip, never wait/retry
+    // or silently pause. Checks both the error and its cause (ExoPlayer may wrap our thrown exception).
+    private fun isNoStreamError(error: PlaybackException): Boolean {
+        return error.errorCode == ERROR_CODE_NO_STREAM ||
+                (error.cause as? PlaybackException)?.errorCode == ERROR_CODE_NO_STREAM
+    }
+
+
     private fun isAudioRendererError(error: PlaybackException): Boolean {
         return error.errorCode == PlaybackException.ERROR_CODE_AUDIO_TRACK_WRITE_FAILED ||
                 error.errorCode == PlaybackException.ERROR_CODE_AUDIO_TRACK_INIT_FAILED ||
@@ -3788,6 +3796,17 @@ class MusicService :
 
         
         when {
+            isNoStreamError(error) && isNetworkConnected.value -> {
+                // UNRESOLVABLE SONG dead-end (fix #3): the song genuinely can't be served by any client
+                // AND we ARE online (so it's not just the network being down). Surface the reason and SKIP
+                // past it (regardless of the AutoSkipNextOnErrorKey toggle) — never silently pause forever,
+                // never loop in a fake "no internet" state. When OFFLINE, this branch is skipped and the
+                // `!isNetworkConnected.value` branch below waits for the network instead (a resolve failure
+                // while offline may just be the outage, not a genuinely unavailable song).
+                Timber.tag(TAG).w(error, "Unresolvable song (no stream) for $mediaId: ${error.message}")
+                handleUnresolvableSong(mediaId, error.message)
+                return
+            }
             isAudioRendererError(error) -> {
                 Timber.tag(TAG).d("AudioTrack error detected (${error.errorCode}), performing safe recovery")
                 handleAudioRendererError(mediaId)
@@ -3814,8 +3833,28 @@ class MusicService :
                 return
             }
 
-            !isNetworkConnected.value || isNetworkRelatedError(error) -> {
-                Timber.tag(TAG).d("Network-related error detected, waiting for connection")
+            !isNetworkConnected.value -> {
+                // GENUINELY OFFLINE — wait for the network to come back. waitOnNetworkError() is already
+                // bounded (MAX_RETRY_COUNT, then a single-shot re-check), so this never loops forever.
+                Timber.tag(TAG).d("Offline — waiting for the network to return")
+                waitOnNetworkError()
+                return
+            }
+            isNetworkRelatedError(error) -> {
+                // CONNECTED but the error still looks network-ish (fix #2). This is the fake "no internet"
+                // trap: a dead deciphered URL / bad content-type keeps failing while we ARE online, so an
+                // unbounded wait/retry would loop forever. Bound it PER SONG: count each attempt and, once
+                // the per-song limit is hit, treat the song as unrecoverable (skip) instead of looping.
+                if (mediaId != null) {
+                    incrementRetryCount(mediaId)
+                    if (hasExceededRetryLimit(mediaId)) {
+                        Timber.tag(TAG).w("Connected but $mediaId keeps failing network-like; giving up (skip)")
+                        markSongAsFailed(mediaId)
+                        handleFinalFailure()
+                        return
+                    }
+                }
+                Timber.tag(TAG).d("Connected but network-like error; bounded retry")
                 waitOnNetworkError()
                 return
             }
@@ -4079,6 +4118,24 @@ class MusicService :
             Timber.tag(TAG).d("All recovery attempts exhausted, stopping playback")
             stopOnError()
         }
+    }
+
+    // Surface + auto-skip an UNSERVEABLE song (fix #3). Shows a brief message with the real reason and
+    // SKIPS past the track REGARDLESS of the AutoSkipNextOnErrorKey toggle — an unresolvable song must
+    // never silently pause forever or loop in a fake "no internet" state. Runs on the player callback
+    // thread (main looper), so Toast is safe here.
+    private fun handleUnresolvableSong(mediaId: String?, reason: String?) {
+        val base = "Canción no disponible"
+        val clean = reason?.trim()?.takeIf {
+            it.isNotEmpty() &&
+                it != getString(R.string.error_unknown) &&
+                it != getString(R.string.error_no_internet) &&
+                it != getString(R.string.error_timeout)
+        }
+        val msg = if (clean != null) "$base: $clean" else base
+        runCatching { Toast.makeText(this, msg, Toast.LENGTH_SHORT).show() }
+        if (mediaId != null) markSongAsFailed(mediaId)
+        skipOnError()
     }
 
     override fun onDeviceVolumeChanged(volume: Int, muted: Boolean) {
@@ -4675,6 +4732,19 @@ class MusicService :
                 )
             }.getOrElse { throwable ->
                 when (throwable) {
+                    // UNRESOLVABLE SONG dead-end (fix #1): region-locked, premium/members-only,
+                    // deleted-but-listed, age-restricted-for-guests, no playable format/URL, or the
+                    // resolution timed out. This is NOT a network problem — map it to NO_STREAM carrying
+                    // the real reason, so onPlayerError skips the song with a message instead of looping
+                    // forever in a fake "no internet" state. NEVER map this to a network code.
+                    is iad1tya.echo.music.utils.YTPlayerUtils.StreamResolutionException -> {
+                        throw PlaybackException(
+                            throwable.reason,
+                            throwable,
+                            ERROR_CODE_NO_STREAM
+                        )
+                    }
+
                     is PlaybackException -> throw throwable
 
                     is java.net.ConnectException, is java.net.UnknownHostException -> {

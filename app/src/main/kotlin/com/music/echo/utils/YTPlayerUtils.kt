@@ -4,7 +4,6 @@ package iad1tya.echo.music.utils
 
 import android.net.ConnectivityManager
 import android.util.Log
-import androidx.media3.common.PlaybackException
 import com.music.innertube.NewPipeExtractor
 import com.music.innertube.YouTube
 import com.music.innertube.models.YouTubeClient
@@ -152,7 +151,25 @@ object YTPlayerUtils {
         val streamExpiresInSeconds: Int,
         val isSaavnStream: Boolean = false,
     )
-    
+
+    /**
+     * Thrown when a song genuinely CANNOT be served by any client — region-locked, premium/members-only,
+     * deleted-but-listed, age-restricted-for-guests, some music-video-only / podcast ids, no playable
+     * format / no stream URL, or the whole resolution timed out. This is a DEAD-END, NOT a network
+     * problem: the loader maps it to [MusicService.ERROR_CODE_NO_STREAM] (never a network code), so the
+     * song fails FAST, ONCE, with a clear message + auto-skip instead of blocking the loader for minutes
+     * or looping in a fake "no internet" state. [reason] carries the real playability reason for the UI.
+     */
+    class StreamResolutionException(
+        val reason: String,
+        cause: Throwable? = null,
+    ) : Exception(reason, cause)
+
+    // Hard cap on the WALL-CLOCK time the YouTube resolve (the 12-client fallback loop) may spend before
+    // we give up and surface a NO_STREAM dead-end. Only the YouTube resolve is bounded by this — the
+    // Qobuz/Saavn budgets in playerResponseForPlayback are independent and unchanged.
+    private const val RESOLVE_TIMEOUT_MS = 30_000L
+
     suspend fun playerResponseForPlayback(
         videoId: String,
         playlistId: String? = null,
@@ -440,17 +457,34 @@ object YTPlayerUtils {
             }
         }
         
-        val firstAttempt = resolvePlaybackData(videoId, playlistId, audioQuality, connectivityManager, preferSmallestAudio = preferSmallestAudio)
+        // BOUND the YouTube resolve (fix #4). The 12-client fallback loop can, for an unserveable song,
+        // spend a long time hopping clients + HEAD-validating dead URLs — which the user saw as an endless
+        // "loading" / fake "no internet". Cap the wall-clock: on timeout, surface a NO_STREAM dead-end so
+        // the loader SKIPS the song instead of hanging. NOTE: resolvePlaybackData's internal runCatching
+        // swallows the timeout's CancellationException into a Result.failure, so withTimeoutOrNull returns
+        // that failed Result (not null); we detect the swallowed cancellation and remap it to a typed
+        // StreamResolutionException so the loader routes it to NO_STREAM (never a network error).
+        suspend fun boundedResolve(): Result<PlaybackData> {
+            val timeoutReason = "La canción tardó demasiado en resolverse"
+            val r = kotlinx.coroutines.withTimeoutOrNull(RESOLVE_TIMEOUT_MS) {
+                resolvePlaybackData(videoId, playlistId, audioQuality, connectivityManager, preferSmallestAudio = preferSmallestAudio)
+            } ?: return Result.failure(StreamResolutionException(timeoutReason))
+            return if (r.exceptionOrNull() is java.util.concurrent.CancellationException) {
+                Result.failure(StreamResolutionException(timeoutReason))
+            } else r
+        }
+
+        val firstAttempt = boundedResolve()
 
         if (firstAttempt.isFailure && YouTube.cookie == null) {
             Timber.tag(TAG).w("Playback failed for guest. Rotating session and retrying...")
             PlaybackLogManager.log(PlaybackLogLevel.BOT, "Playback failed for guest", "Triggering bot detection mitigation (rotating guest session)")
             BotDetectionMitigator.rotateGuestSession()
-            val retryResult = resolvePlaybackData(videoId, playlistId, audioQuality, connectivityManager, preferSmallestAudio = preferSmallestAudio)
+            val retryResult = boundedResolve()
             retryResult.onSuccess { BotDetectionMitigator.notifyPlaybackSuccess() }
             return retryResult
         }
-        
+
         firstAttempt.onSuccess { BotDetectionMitigator.notifyPlaybackSuccess() }
         return firstAttempt
     }
@@ -519,16 +553,21 @@ object YTPlayerUtils {
             // (ANDROID_VR) is audio-focused and returns no usable video, so for video we query
             // VIDEO_CLIENT (TVHTML5), which reliably returns adaptive video. The player then merges this
             // video-only track with the (separately resolved, MAIN_CLIENT) audio track. Audio is untouched.
+            // getOrNull (NOT getOrThrow): a MAIN_CLIENT failure / non-OK response must NOT abort the whole
+            // resolution (fix #5). A null (or non-OK) main response now falls through to the
+            // STREAM_FALLBACK_CLIENTS loop (startIndex is forced to 0 below when main is null), so
+            // region-locked / members-only / deleted-but-listed songs still get EVERY fallback client
+            // instead of dead-ending on the very first client.
             val main = if (preferVideo) {
                 YouTube.player(
                     videoId, playlistId, VIDEO_CLIENT,
                     signatureTimestamp.timestamp, null,
-                ).getOrThrow()
+                ).getOrNull()
             } else {
                 YouTube.player(
                     videoId, playlistId, MAIN_CLIENT,
                     signatureTimestamp.timestamp, poToken?.playerRequestPoToken,
-                ).getOrThrow()
+                ).getOrNull()
             }
             main to metadataDeferred?.await()
         }
@@ -537,11 +576,11 @@ object YTPlayerUtils {
 
         
         if (isUploadedTrack || playlistId?.contains("MLPT") == true) {
-            println("[PLAYBACK_DEBUG] Main player response status: ${mainPlayerResponse.playabilityStatus.status}")
-            println("[PLAYBACK_DEBUG] Playability reason: ${mainPlayerResponse.playabilityStatus.reason}")
-            println("[PLAYBACK_DEBUG] Video details: title=${mainPlayerResponse.videoDetails?.title}, videoId=${mainPlayerResponse.videoDetails?.videoId}")
-            println("[PLAYBACK_DEBUG] Streaming data null? ${mainPlayerResponse.streamingData == null}")
-            println("[PLAYBACK_DEBUG] Adaptive formats count: ${mainPlayerResponse.streamingData?.adaptiveFormats?.size ?: 0}")
+            println("[PLAYBACK_DEBUG] Main player response status: ${mainPlayerResponse?.playabilityStatus?.status}")
+            println("[PLAYBACK_DEBUG] Playability reason: ${mainPlayerResponse?.playabilityStatus?.reason}")
+            println("[PLAYBACK_DEBUG] Video details: title=${mainPlayerResponse?.videoDetails?.title}, videoId=${mainPlayerResponse?.videoDetails?.videoId}")
+            println("[PLAYBACK_DEBUG] Streaming data null? ${mainPlayerResponse?.streamingData == null}")
+            println("[PLAYBACK_DEBUG] Adaptive formats count: ${mainPlayerResponse?.streamingData?.adaptiveFormats?.size ?: 0}")
         }
 
         var usedAgeRestrictedClient: YouTubeClient? = null
@@ -552,8 +591,8 @@ object YTPlayerUtils {
         
         
         
-        val mainStatus = mainPlayerResponse.playabilityStatus.status
-        val isAgeRestrictedFromResponse = mainStatus in listOf(
+        val mainStatus = mainPlayerResponse?.playabilityStatus?.status
+        val isAgeRestrictedFromResponse = mainStatus != null && mainStatus in listOf(
             "AGE_CHECK_REQUIRED",
             "AGE_VERIFICATION_REQUIRED",
             "CONTENT_CHECK_REQUIRED"
@@ -561,7 +600,7 @@ object YTPlayerUtils {
         wasOriginallyAgeRestricted = isAgeRestrictedFromResponse
 
         if (isAgeRestrictedFromResponse && isLoggedIn) {
-            
+
             Timber.tag(logTag).d("Age-restricted detected, using WEB_CREATOR")
             Log.i(TAG, "Age-restricted: using WEB_CREATOR for videoId=$videoId")
             val creatorResponse = YouTube.player(videoId, playlistId, WEB_CREATOR, null, null).getOrNull()
@@ -570,27 +609,44 @@ object YTPlayerUtils {
                 mainPlayerResponse = creatorResponse
                 usedAgeRestrictedClient = WEB_CREATOR
             }
+        } else if (isAgeRestrictedFromResponse && !isLoggedIn) {
+            // GUEST age-restricted path (fix #5): WEB_CREATOR is login-gated, so signed-out users used to
+            // dead-end on age-restricted content. The TV embedded player commonly serves age-gated streams
+            // WITHOUT auth — try it so age restriction isn't a guaranteed dead-end for guests.
+            Timber.tag(logTag).d("Age-restricted (guest), trying embedded player TVHTML5_SIMPLY_EMBEDDED_PLAYER")
+            Log.i(TAG, "Age-restricted (guest): using TVHTML5_SIMPLY_EMBEDDED_PLAYER for videoId=$videoId")
+            val embedResponse = YouTube.player(videoId, playlistId, TVHTML5_SIMPLY_EMBEDDED_PLAYER, null, null).getOrNull()
+            if (embedResponse?.playabilityStatus?.status == "OK") {
+                Timber.tag(logTag).d("Embedded player works for age-restricted (guest) content")
+                mainPlayerResponse = embedResponse
+                usedAgeRestrictedClient = TVHTML5_SIMPLY_EMBEDDED_PLAYER
+            }
         }
 
-        
+        // NOTE (fix #5): a null mainPlayerResponse is NO LONGER a hard failure/abort. We fall through to
+        // the STREAM_FALLBACK_CLIENTS loop (startIndex forced to 0 below when main is null) so every
+        // fallback client still gets a chance instead of dead-ending here.
         if (mainPlayerResponse == null) {
-            throw Exception("Failed to get player response")
+            Timber.tag(logTag).w("MAIN_CLIENT returned no response; continuing into fallback clients from index 0")
         }
 
-        
-        
-        val audioConfig = metadataResponse?.playerConfig?.audioConfig ?: mainPlayerResponse.playerConfig?.audioConfig
-        val videoDetails = metadataResponse?.videoDetails ?: mainPlayerResponse.videoDetails
-        val playbackTracking = metadataResponse?.playbackTracking ?: mainPlayerResponse.playbackTracking
+
+
+        val audioConfig = metadataResponse?.playerConfig?.audioConfig ?: mainPlayerResponse?.playerConfig?.audioConfig
+        val videoDetails = metadataResponse?.videoDetails ?: mainPlayerResponse?.videoDetails
+        val playbackTracking = metadataResponse?.playbackTracking ?: mainPlayerResponse?.playbackTracking
         var format: PlayerResponse.StreamingData.Format? = null
         var streamUrl: String? = null
         var streamExpiresInSeconds: Int? = null
         var streamPlayerResponse: PlayerResponse? = null
+        // Carries the most recent real playability reason seen while iterating clients, so an
+        // all-clients-exhausted dead-end can surface WHY (region-locked, members-only, …) to the user.
+        var lastPlayabilityReason: String? = null
         var retryMainPlayerResponse: PlayerResponse? = if (usedAgeRestrictedClient != null) mainPlayerResponse else null
 
-        
-        val currentStatus = mainPlayerResponse.playabilityStatus.status
-        var isAgeRestricted = currentStatus in listOf(
+
+        val currentStatus = mainPlayerResponse?.playabilityStatus?.status
+        var isAgeRestricted = currentStatus != null && currentStatus in listOf(
             "AGE_CHECK_REQUIRED",
             "AGE_VERIFICATION_REQUIRED",
             "CONTENT_CHECK_REQUIRED"
@@ -601,14 +657,15 @@ object YTPlayerUtils {
             Log.i(TAG, "Age-restricted content detected: videoId=$videoId, status=$currentStatus")
         }
 
-        
-        val isPrivateTrack = mainPlayerResponse.videoDetails?.musicVideoType == "MUSIC_VIDEO_TYPE_PRIVATELY_OWNED_TRACK"
 
-        
-        
-        
+        val isPrivateTrack = mainPlayerResponse?.videoDetails?.musicVideoType == "MUSIC_VIDEO_TYPE_PRIVATELY_OWNED_TRACK"
+
+
+
+
         val startIndex = when {
-            isPrivateTrack -> 1  
+            mainPlayerResponse == null -> 0   // no main response to reuse → straight into the fallback clients
+            isPrivateTrack -> 1
             isAgeRestricted -> 0
             else -> -1
         }
@@ -791,6 +848,9 @@ object YTPlayerUtils {
             } else {
                 val status = streamPlayerResponse?.playabilityStatus?.status ?: "Unknown"
                 val reason = streamPlayerResponse?.playabilityStatus?.reason ?: "No reason"
+                // Remember the real reason (e.g. region/premium/members) so an all-clients-exhausted
+                // dead-end can tell the user WHY instead of a generic failure.
+                streamPlayerResponse?.playabilityStatus?.reason?.let { lastPlayabilityReason = it }
                 Timber.tag(logTag).d("Player response status not OK: $status, reason: $reason")
                 PlaybackLogManager.log(PlaybackLogLevel.WARNING, "Client failed: ${client.clientName}", "$status: $reason")
                 
@@ -804,7 +864,9 @@ object YTPlayerUtils {
             if (isUploadedTrack) {
                 println("[PLAYBACK_DEBUG] FAILURE: All clients failed for uploaded track videoId=$videoId")
             }
-            throw Exception("Bad stream player response")
+            // DEAD-END (fix #1): no client could serve this song. Typed so the loader maps it to NO_STREAM
+            // (skip + message), NEVER a network code — carry the real reason when we captured one.
+            throw StreamResolutionException(lastPlayabilityReason ?: "No hay ninguna fuente disponible para esta canción")
         }
 
         if (streamPlayerResponse.playabilityStatus.status != "OK") {
@@ -813,26 +875,24 @@ object YTPlayerUtils {
             if (isUploadedTrack) {
                 println("[PLAYBACK_DEBUG] FAILURE: Playability not OK for uploaded track - status=${streamPlayerResponse.playabilityStatus.status}, reason=$errorReason")
             }
-            throw PlaybackException(
-                errorReason,
-                null,
-                PlaybackException.ERROR_CODE_REMOTE_ERROR
-            )
+            // DEAD-END (fix #1): carry the real playability reason (region/premium/members/…) so the loader
+            // maps it to NO_STREAM with that reason instead of a generic REMOTE_ERROR silent pause.
+            throw StreamResolutionException(errorReason ?: lastPlayabilityReason ?: "Esta canción no está disponible")
         }
 
         if (streamExpiresInSeconds == null) {
             Timber.tag(logTag).e("Missing stream expire time")
-            throw Exception("Missing stream expire time")
+            throw StreamResolutionException(lastPlayabilityReason ?: "No se pudo obtener el stream de esta canción")
         }
 
         if (format == null) {
             Timber.tag(logTag).e("Could not find format")
-            throw Exception("Could not find format")
+            throw StreamResolutionException(lastPlayabilityReason ?: "No hay un formato reproducible para esta canción")
         }
 
         if (streamUrl == null) {
             Timber.tag(logTag).e("Could not find stream url")
-            throw Exception("Could not find stream url")
+            throw StreamResolutionException(lastPlayabilityReason ?: "No se pudo obtener el enlace de esta canción")
         }
 
         Timber.tag(logTag).d("Successfully obtained playback data with format: ${format.mimeType}, bitrate: ${format.bitrate}")
