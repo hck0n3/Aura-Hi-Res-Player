@@ -15,8 +15,12 @@ object AiPlaylistPrompt {
             - "name" es un título corto (máximo 40 caracteres) para la playlist.
             - Cada canción debe ser real, con "title" y "artist" verificables.
             - No repitas canciones ni añadas explicaciones.
+            - Respeta EXACTAMENTE el género, subgénero, estado de ánimo, idioma y época pedidos.
+            - NO sustituyas por un subgénero relacionado ni más amplio.
+            - Cada canción debe pertenecer claramente al tema pedido; ante la duda, elige una canción real que encaje con certeza.
+            - Respeta el idioma implícito de la petición.
         """.trimIndent()
-        val user = "Crea una playlist de $count canciones para esta idea: \"$prompt\"."
+        val user = "Crea una playlist de $count canciones que cumpla ESTRICTAMENTE esta petición: \"$prompt\". Todas deben encajar en el género/idioma/tono pedido."
         return listOf(
             ChatMessage(role = "system", content = system),
             ChatMessage(role = "user", content = user),

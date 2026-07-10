@@ -61,8 +61,14 @@ object SongResolver {
     }
 
     private suspend fun searchSong(query: String): MediaMetadata? {
-        val items = YouTube.search(query, YouTube.SearchFilter.FILTER_SONG).getOrNull()
-            ?.items?.filterIsInstance<SongItem>()
-        return items?.firstOrNull()?.toMediaMetadata()
+        YouTube.search(query, YouTube.SearchFilter.FILTER_SONG).getOrNull()
+            ?.items?.filterIsInstance<SongItem>()?.firstOrNull()
+            ?.let { return it.toMediaMetadata() }
+        // Resilience: many real tracks (live takes, regional/video-only uploads) never surface under
+        // the SONG filter, so they'd be silently dropped. Retry the broader VIDEO search before
+        // giving up — those results are still playable SongItems — which cuts the AI-playlist drop
+        // rate. Secondary, so it only runs when the primary SONG search found nothing.
+        return YouTube.search(query, YouTube.SearchFilter.FILTER_VIDEO).getOrNull()
+            ?.items?.filterIsInstance<SongItem>()?.firstOrNull()?.toMediaMetadata()
     }
 }

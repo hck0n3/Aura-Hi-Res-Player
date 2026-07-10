@@ -36,16 +36,44 @@ object AiPlaylistGenerator {
         model: String,
         onResolveProgress: (done: Int, total: Int) -> Unit = { _, _ -> },
     ): kotlin.Result<Result> {
-        val spec = AiPlaylistService.generate(prompt, count, provider, apiKey, baseUrl, model)
+        // Over-generate then take N: SongResolver silently drops tracks with no YouTube match, so
+        // asking for exactly N returns fewer than N (BUG: asked 20, got 14). Pad the AI ask by ~1.5×
+        // — AiPlaylistService scales the prompt count AND the token budget with requestCount, so a
+        // larger list isn't truncated mid-JSON (e.g. 20→30 tracks ≈ 6512 tokens, under the 8192 cap).
+        val target = count
+        val requestCount = (count * 3 + 1) / 2
+        val spec = AiPlaylistService.generate(prompt, requestCount, provider, apiKey, baseUrl, model)
             .getOrElse { return kotlin.Result.failure(it) }
 
         val resolvedSongs = ArrayList<MediaMetadata>(spec.tracks.size)
-        spec.tracks.forEachIndexed { index, track ->
+        // Short-circuit: stop resolving as soon as we have `target` distinct songs so we don't waste
+        // network calls resolving the rest of the padded list. Progress reflects the user's request.
+        for (track in spec.tracks) {
             SongResolver.resolve(database, track.title, track.artist)?.let { resolvedSongs += it }
-            onResolveProgress(index + 1, spec.tracks.size)
+            val resolvedCount = resolvedSongs.distinctBy { it.id }.size
+            onResolveProgress(resolvedCount.coerceAtMost(target), target)
+            if (resolvedCount >= target) break
         }
 
-        val ordered = resolvedSongs.distinctBy { it.id }
+        var ordered = resolvedSongs.distinctBy { it.id }.take(target)
+        // If padding still fell short, ask ONCE more for just the missing songs, excluding the ones
+        // already chosen so the AI doesn't repeat them. Best-effort: silently skip on any failure.
+        if (ordered.size < target) {
+            val missing = target - ordered.size
+            val exclude = ordered.joinToString(", ") { it.title }
+            val topUpPrompt = "$prompt. NO incluyas ninguna de estas canciones ya elegidas: $exclude"
+            AiPlaylistService.generate(topUpPrompt, (missing * 3 + 1) / 2, provider, apiKey, baseUrl, model)
+                .getOrNull()?.let { extra ->
+                    for (track in extra.tracks) {
+                        SongResolver.resolve(database, track.title, track.artist)?.let { resolvedSongs += it }
+                        val resolvedCount = resolvedSongs.distinctBy { it.id }.size
+                        onResolveProgress(resolvedCount.coerceAtMost(target), target)
+                        if (resolvedCount >= target) break
+                    }
+                    ordered = resolvedSongs.distinctBy { it.id }.take(target)
+                }
+        }
+
         if (ordered.isEmpty()) {
             return kotlin.Result.failure(EmptyResultException())
         }
@@ -76,7 +104,7 @@ object AiPlaylistGenerator {
             Result(
                 playlistId = playlist.id,
                 name = name,
-                total = spec.tracks.size,
+                total = target,
                 resolved = ordered.size,
             ),
         )
