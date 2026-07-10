@@ -1846,36 +1846,15 @@ fun BottomSheetPlayer(
             // immersive video — there the title is ABOVE the video and the toggle is at its bottom-right.
             if (!immersiveVideo) {
             Spacer(Modifier.height(2.dp))
-            // YT-Music-style compact rating: icon-only thumb DOWN at the far LEFT and thumb UP at the
-            // far RIGHT of the title/artist block. This row is OUTSIDE the useNewPlayerDesign branch,
-            // so one change covers both player designs. Active state = filled circle using the existing
-            // liked color pattern (container textButtonColor / content iconButtonColor, same as the
-            // old "Me gusta" chip); dislike state comes live from DislikeStore via PlayerConnection.
-            val liked = currentSong?.song?.liked == true
-            val disliked by playerConnection.currentSongDisliked.collectAsState()
+            // Title + artist row (shared by both player designs — this block is OUTSIDE the
+            // useNewPlayerDesign branch). Like/dislike are no longer flanking the title; they live in the
+            // YT-Music divided like/dislike pill in the action-chip row below.
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = PlayerHorizontalPadding),
             ) {
-                IconButton(
-                    onClick = { playerConnection.toggleDislikeCurrentSong() },
-                    colors = IconButtonDefaults.iconButtonColors(
-                        containerColor = if (disliked) textButtonColor else Color.Transparent,
-                        contentColor = if (disliked) iconButtonColor else TextBackgroundColor,
-                    ),
-                    modifier = Modifier
-                        .size(38.dp)
-                        .tvFocusable(isTvOrCar, RoundedCornerShape(50)),
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.thumb_down),
-                        contentDescription = stringResource(R.string.action_dislike),
-                        modifier = Modifier.size(24.dp),
-                    )
-                }
-                Spacer(Modifier.width(4.dp))
                 Column(modifier = Modifier.weight(1f)) {
                 AnimatedContent(
                     targetState = mediaMetadata.title,
@@ -1946,27 +1925,6 @@ fun BottomSheetPlayer(
                     )
                 }
                 }
-                // Thumb UP at the far RIGHT of the title block (YT Music layout). thumb_up_like is the
-                // thumb-up glyph already used by the comment sheet; liked state fills the button with
-                // the existing liked color pattern. Tap routes through the untouched toggleLike path
-                // (DAO upsert, no re-normalization).
-                Spacer(Modifier.width(4.dp))
-                IconButton(
-                    onClick = playerConnection::toggleLike,
-                    colors = IconButtonDefaults.iconButtonColors(
-                        containerColor = if (liked) textButtonColor else Color.Transparent,
-                        contentColor = if (liked) iconButtonColor else TextBackgroundColor,
-                    ),
-                    modifier = Modifier
-                        .size(38.dp)
-                        .tvFocusable(isTvOrCar, RoundedCornerShape(50)),
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.thumb_up_like),
-                        contentDescription = stringResource(R.string.action_like),
-                        modifier = Modifier.size(24.dp),
-                    )
-                }
                 // Audio↔video toggle at the END of the song title (per request). Hidden in High-Performance Mode
                 // on phones (audio only), BUT shown on TV/car even in perf mode — the user asked to be able to
                 // switch to video on the big screen on demand (the video track is resolution-capped by device tier).
@@ -2020,8 +1978,24 @@ fun BottomSheetPlayer(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    // Like/dislike intentionally NOT here anymore — they are the compact icon buttons
-                    // flanking the song title above (YT Music layout), shared by both player designs.
+                    // YT-Music-style divided like/dislike pill: ONE rounded container split into a LEFT
+                    // like half and a RIGHT dislike half with a subtle divider. The active half fills/tints
+                    // (liked → up half; disliked → down half); neutral = both outline. Shared by both player
+                    // designs (this row is outside the useNewPlayerDesign branch). Taps route through the
+                    // untouched toggleLike / toggleDislikeCurrentSong paths (no audio re-leveling).
+                    val liked = currentSong?.song?.liked == true
+                    val disliked by playerConnection.currentSongDisliked.collectAsState()
+                    PlayerLikeDislikePill(
+                        liked = liked,
+                        disliked = disliked,
+                        activeColor = textButtonColor,
+                        activeContentColor = iconButtonColor,
+                        container = chipBg,
+                        onToggleLike = playerConnection::toggleLike,
+                        onToggleDislike = { playerConnection.toggleDislikeCurrentSong() },
+                        likeContentDescription = stringResource(R.string.action_like),
+                        dislikeContentDescription = stringResource(R.string.action_dislike),
+                    )
                     PlayerActionChip("Agregar", textButtonColor, chipBg, { showChoosePlaylistDialog = true }) {
                         Icon(painterResource(R.drawable.playlist_add), null, tint = textButtonColor, modifier = Modifier.size(20.dp))
                     }
@@ -3549,6 +3523,75 @@ private fun PlayerActionChip(
             fontWeight = FontWeight.Medium,
             maxLines = 1,
         )
+    }
+}
+
+/**
+ * YouTube-Music-style divided like/dislike pill. ONE rounded container split into two tappable halves —
+ * LEFT = like (thumb up), RIGHT = dislike (thumb down) — separated by a subtle vertical divider. The active
+ * half fills with [activeColor] (icon in [activeContentColor]); a neutral half stays transparent over
+ * [container] with the icon outlined in [activeColor]. Compact height matches [PlayerActionChip]. Each half
+ * routes straight through the caller's toggle callback — no audio re-leveling happens here.
+ */
+@Composable
+private fun PlayerLikeDislikePill(
+    liked: Boolean,
+    disliked: Boolean,
+    activeColor: Color,
+    activeContentColor: Color,
+    container: Color,
+    onToggleLike: () -> Unit,
+    onToggleDislike: () -> Unit,
+    likeContentDescription: String,
+    dislikeContentDescription: String,
+) {
+    val isTvOrCar = iad1tya.echo.music.ui.utils.rememberIsTvOrCar()
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        // Parent clip rounds the outer corners of BOTH filled halves; each half butts flat against the divider.
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .background(container),
+    ) {
+        // LEFT half — LIKE (filled when liked).
+        Box(
+            modifier = Modifier
+                .background(if (liked) activeColor else Color.Transparent)
+                .tvFocusable(isTvOrCar)
+                .clickable(onClick = onToggleLike)
+                .padding(start = 14.dp, end = 11.dp, top = 9.dp, bottom = 9.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.thumb_up_like),
+                contentDescription = likeContentDescription,
+                tint = if (liked) activeContentColor else activeColor,
+                modifier = Modifier.size(20.dp),
+            )
+        }
+        // Subtle divider between the two halves.
+        Box(
+            modifier = Modifier
+                .width(1.dp)
+                .height(20.dp)
+                .background(activeColor.copy(alpha = 0.25f)),
+        )
+        // RIGHT half — DISLIKE (filled when disliked).
+        Box(
+            modifier = Modifier
+                .background(if (disliked) activeColor else Color.Transparent)
+                .tvFocusable(isTvOrCar)
+                .clickable(onClick = onToggleDislike)
+                .padding(start = 11.dp, end = 14.dp, top = 9.dp, bottom = 9.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.thumb_down),
+                contentDescription = dislikeContentDescription,
+                tint = if (disliked) activeContentColor else activeColor,
+                modifier = Modifier.size(20.dp),
+            )
+        }
     }
 }
 

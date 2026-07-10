@@ -4945,6 +4945,14 @@ class MusicService :
             releaseInstantVideoPlayer("live position outside pre-buffered window")
             return false
         }
+        // MED (shuffle order): the instant path rebuilds the queue in TIMELINE order (addMediaItems around
+        // the current period), which does NOT carry the live shuffle order. With shuffle ON, skip the fast
+        // path entirely and let the normal swapToVideo path — which keeps the running player and its shuffle
+        // order intact — handle the toggle instead.
+        if (old.shuffleModeEnabled) {
+            releaseInstantVideoPlayer("shuffle enabled — preserve order via normal path")
+            return false
+        }
         var committed = false
         return try {
             // ---- PRE-COMMIT (old player untouched; a throw here falls back with zero side effects) ----
@@ -4969,6 +4977,12 @@ class MusicService :
             videoModeMediaId = id
             videoModeOriginalUri = state.originalAudioUri
             videoModeIsMuxedPodcast = false
+
+            // HIGH fix: unconditionally re-assert the CURRENT Safe Volume state onto the pre-player right
+            // before publish (mirrors the per-track re-assert at ~line 2801). This guarantees the published
+            // player is level-identical to the running one at the swap instant — never a mid-song level jump
+            // even if lastAppliedGain / the Safe Volume toggle changed between pre-prepare and this swap.
+            playerEqProcessors[pre]?.applySafeVolume(safeVolumeEnabledHint, if (safeVolumeEnabledHint) lastAppliedGain else 1f)
 
             // ---- COMMIT: publish (mirrors performCrossfadeSwap's swap block) ----
             committed = true
@@ -5907,8 +5921,15 @@ class MusicService :
         // KILL SWITCH for the instant audio→video dual-player swap (pre-prepared secondary publish).
         // Flip to false to disable the whole feature at runtime: every hook becomes a no-op and the
         // audio pipeline / normal swapToVideo path are byte-identical to the pre-feature behaviour.
+        //
+        // GATED OFF for the public release: instant dual-player swap gated off pending on-device audio
+        // verification (review flagged a possible mid-song level jump + LoadControl starvation). With this
+        // false, scheduleInstantVideoPrepare / maybePrepareInstantVideoSwap / tryInstantVideoSwap all early-
+        // return, so NO speculative pre-player is ever created (no wasted buffering) and toggleVideoMode
+        // falls to the byte-identical swapToVideo path. The safe connection warm-up
+        // (maybeWarmVideoConnection) is independent of this flag and stays ACTIVE.
         @Volatile
-        var INSTANT_VIDEO_SWAP_ENABLED = true
+        var INSTANT_VIDEO_SWAP_ENABLED = false
         // Delay before pre-preparing after a track transition / video exit, so the speculative player never
         // competes with the running track's own startup buffering (750 ms floor + rebuffer window).
         private const val INSTANT_VIDEO_PREPARE_DELAY_MS = 2500L
