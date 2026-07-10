@@ -761,7 +761,8 @@ class MainActivity : ComponentActivity() {
 
                 val isLandscape = configuration.containerDpSize.width > configuration.containerDpSize.height
 
-                val showRail = isLandscape && !inSearchScreen
+                // Ambient Mode is a full-screen lean-back view: never overlay the landscape rail on it.
+                val showRail = isLandscape && !inSearchScreen && currentRoute != "ambient_mode"
 
                 // Manual override for the Spotify split: the user can force the wide layout on. Combined with the
                 // real width so the persistent browse now-playing panel shows either on a genuinely wide screen
@@ -1245,7 +1246,7 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
 
-                            if (!showRail && currentRoute != "update" && currentRoute != "listen_together/chat") {
+                            if (!showRail && currentRoute != "update" && currentRoute != "listen_together/chat" && currentRoute != "ambient_mode") {
                                 Box {
                                     BottomSheetPlayer(
                                         state = playerBottomSheetState,
@@ -1308,7 +1309,7 @@ class MainActivity : ComponentActivity() {
                                     )
                                 }
                             } else {
-                                if (currentRoute != "update" && currentRoute != "listen_together/chat") {
+                                if (currentRoute != "update" && currentRoute != "listen_together/chat" && currentRoute != "ambient_mode") {
                                     // Two-pane: on a genuinely wide screen the persistent right NowPlayingSidePanel
                                     // is the now-playing surface, so fade the redundant bottom mini-player out while
                                     // it's collapsed — alpha follows the sheet progress (0 = invisible when collapsed,

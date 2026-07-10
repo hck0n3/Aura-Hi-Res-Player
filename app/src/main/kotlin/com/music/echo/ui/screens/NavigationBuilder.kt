@@ -63,6 +63,7 @@ import iad1tya.echo.music.utils.rememberPreference
 import iad1tya.echo.music.echomusic.changelog.ChangelogScreen
 import iad1tya.echo.music.echomusic.commitscreen.CommitScreen
 import iad1tya.echo.music.ui.screens.equalizer.axion.AxionEqScreen
+import iad1tya.echo.music.ui.screens.ambient.AmbientModeScreen
 
 @OptIn(ExperimentalMaterial3Api::class)
 fun NavGraphBuilder.navigationBuilder(
@@ -519,5 +520,10 @@ fun NavGraphBuilder.navigationBuilder(
     }
     composable("settings/commits") {
         CommitScreen(navController, scrollBehavior)
+    }
+
+    // 0.6.92 Modo Ambiente — full-screen, landscape, lean-back now-playing view.
+    composable("ambient_mode") {
+        AmbientModeScreen(navController)
     }
 }

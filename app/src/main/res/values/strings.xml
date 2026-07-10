@@ -550,4 +550,8 @@
     <!-- 0.6.92 Historial de actividad -->
     <string name="activity_history">Listening Summary</string>
     <string name="total_listening_time">Total Listening Time</string>
+
+    <!-- 0.6.92 Modo Ambiente -->
+    <string name="ambient_mode">Ambient Mode</string>
+    <string name="ambient_mode_desc">Full-screen lean-back view with an animated glow</string>
 </resources>
