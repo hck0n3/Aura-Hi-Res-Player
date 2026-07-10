@@ -16,6 +16,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import com.music.innertube.YouTube
@@ -52,6 +54,20 @@ class SuggestionsViewModel @Inject constructor(
 
     private val _isManualLoading = MutableStateFlow(false)
     val isManualLoading: StateFlow<Boolean> = _isManualLoading
+
+    // Pre-resolution cache for videoId-less suggestions (Apple/charts scrapes). Keyed by
+    // normalize(title)+"|"+normalize(artist); value is the resolved YouTube videoId. Filled in the
+    // BACKGROUND when the tab loads (see prewarm) so a later tap plays INSTANTLY from the cache
+    // instead of doing a search round-trip at tap time. Only successful resolutions are stored (no
+    // failure sentinel), so a transient network miss during prewarm just falls back to on-tap search.
+    // ConcurrentHashMap: prewarm workers write from several coroutines while taps read concurrently.
+    private val resolvedIds = java.util.concurrent.ConcurrentHashMap<String, String>()
+    // Bounds so pre-resolution never becomes a heat/battery/network hog: resolve at most this many
+    // visible items, at most this many searches at once. Do NOT fire 100 searches.
+    private val prewarmMax = 15
+    private val prewarmConcurrency = 3
+
+    private fun cacheKey(title: String, artist: String) = normalize(title) + "|" + normalize(artist)
 
     fun refresh(countryCode: String = "system", force: Boolean = false) {
         val resolvedCode = if (countryCode == "system") {
@@ -194,6 +210,56 @@ class SuggestionsViewModel @Inject constructor(
         return ytNorm.contains(sgNorm) || sgNorm.contains(ytNorm)
     }
 
+    /** The exact search + best-match used at tap time, isolated so a background pre-resolve produces a
+     *  BYTE-IDENTICAL videoId (same infinite-radio seed). Returns the id, or null on failure/no-match. */
+    private suspend fun resolveVideoId(title: String, artist: String): String? {
+        val songs = YouTube.search("$title $artist", YouTube.SearchFilter.FILTER_SONG)
+            .getOrNull()?.items?.filterIsInstance<SongItem>() ?: return null
+        return (songs.firstOrNull { s ->
+            normalize(s.title) == normalize(title) &&
+            s.artists.any { a -> artistMatches(a.name, artist) }
+        } ?: songs.firstOrNull { s ->
+            titleMatches(s.title, title) &&
+            s.artists.any { a -> artistMatches(a.name, artist) }
+        })?.id
+    }
+
+    /** Pre-resolve the videoIds of the VISIBLE videoId-less suggestions in the background, so a tap
+     *  later plays instantly from [resolvedIds] instead of searching at tap time. Fire-and-forget:
+     *  the caller (a LaunchedEffect in the tab) does not block on it, and because it is a suspend fn
+     *  driven by that LaunchedEffect its work is CANCELLED when the tab leaves composition or the
+     *  visible set changes (no leak, bounded heat/battery). Skips items that already carry a videoId
+     *  (YouTube charts) or are already cached; caps the count ([prewarmMax]) and the concurrency
+     *  ([prewarmConcurrency]) so it never fans out into 100 searches. */
+    suspend fun prewarm(items: List<SuggestionTrack>) {
+        val pending = items
+            .asSequence()
+            .filter { it.videoId == null }                              // charts items are already instant
+            .filter { resolvedIds[cacheKey(it.title, it.artist)] == null } // don't re-resolve cached
+            .distinctBy { cacheKey(it.title, it.artist) }
+            .take(prewarmMax)
+            .toList()
+        if (pending.isEmpty()) return
+        withContext(Dispatchers.IO) {
+            val gate = Semaphore(prewarmConcurrency)
+            coroutineScope {
+                pending.forEach { item ->
+                    launch {
+                        gate.withPermit {
+                            val key = cacheKey(item.title, item.artist)
+                            if (resolvedIds[key] != null) return@withPermit
+                            try {
+                                resolveVideoId(item.title, item.artist)?.let { resolvedIds[key] = it }
+                            } catch (e: Exception) {
+                                Log.e("SuggestionsViewModel", "prewarm resolve failed", e)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // Surfaces a brief message on the main thread. Tap handlers used to swallow both search failures
     // (flaky network) and no-match cases silently, so a tap did nothing with zero feedback (P36).
     private suspend fun showToast(resId: Int) {
@@ -208,6 +274,15 @@ class SuggestionsViewModel @Inject constructor(
             if (track.videoId != null) {
                 withContext(Dispatchers.Main) {
                     playerConnection?.playQueue(YouTubeQueue(WatchEndpoint(videoId = track.videoId)))
+                }
+                return@launch
+            }
+            // Pre-resolved in the background when the tab loaded? Play INSTANTLY from the cache — no
+            // search round-trip at tap time. Same best-match id as the on-tap search would produce.
+            val key = cacheKey(track.title, track.artist)
+            resolvedIds[key]?.let { cachedId ->
+                withContext(Dispatchers.Main) {
+                    playerConnection?.playQueue(YouTubeQueue(WatchEndpoint(videoId = cachedId)))
                 }
                 return@launch
             }
@@ -231,6 +306,7 @@ class SuggestionsViewModel @Inject constructor(
                 }
 
                 if (bestMatch != null) {
+                    resolvedIds[key] = bestMatch.id // cache so any later tap on this item is instant
                     withContext(Dispatchers.Main) {
                         playerConnection?.playQueue(YouTubeQueue(WatchEndpoint(videoId = bestMatch.id)))
                     }
@@ -288,12 +364,20 @@ class SuggestionsViewModel @Inject constructor(
 
     fun playVideo(video: SuggestionTrack, playerConnection: PlayerConnection?) {
         viewModelScope.launch(Dispatchers.IO) {
+            // Pre-resolved in the background when the tab loaded? Play INSTANTLY from the cache.
+            val key = cacheKey(video.title, video.artist)
+            resolvedIds[key]?.let { cachedId ->
+                withContext(Dispatchers.Main) {
+                    playerConnection?.playQueue(YouTubeQueue(WatchEndpoint(videoId = cachedId)))
+                }
+                return@launch
+            }
             val query = "${video.title} ${video.artist}"
             YouTube.search(query, YouTube.SearchFilter.FILTER_SONG)
                 .onSuccess { searchResult ->
                     val songs = searchResult.items.filterIsInstance<SongItem>()
 
-                    
+
                     // BOTH title AND artist must match (no artist-agnostic / first-result fallback), so a
                     // tap plays THAT song, never a same-title cover or a different track by the artist.
                     // Compared NORMALIZED with a BIDIRECTIONAL contains fallback (see playTrack).
@@ -307,6 +391,7 @@ class SuggestionsViewModel @Inject constructor(
                     }
 
                     if (bestMatch != null) {
+                        resolvedIds[key] = bestMatch.id // cache so any later tap on this item is instant
                         withContext(Dispatchers.Main) {
                             playerConnection?.playQueue(YouTubeQueue(WatchEndpoint(videoId = bestMatch.id)))
                         }
