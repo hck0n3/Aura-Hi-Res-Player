@@ -18,6 +18,7 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import com.music.innertube.YouTube
@@ -60,6 +61,13 @@ class SongPreviewController(
     private var resolveJob: Job? = null
     private var mainWasPlaying = false
 
+    /**
+     * Session cache of resolved preview stream URLs: videoId -> (streamUrl, expiry epoch ms).
+     * Re-previewing the same song (tap again, or toggle back and forth between rows) skips the whole
+     * resolution pipeline and plays instantly. Expiry uses YouTube's own `streamExpiresInSeconds`.
+     */
+    private val urlCache = HashMap<String, Pair<String, Long>>()
+
     /** Tap handler: same song toggles it off; a different song starts a new preview. */
     fun toggle(videoId: String) {
         if (currentPreviewId == videoId) {
@@ -75,13 +83,21 @@ class SongPreviewController(
         teardown(resumeMain = false)
 
         currentPreviewId = videoId
-        isLoading = true
         // Preserve the remembered state across a preview→preview swap: the main player is already paused
         // by us (onRequestMainPause returns false), so only capture a fresh value when nothing was active.
         mainWasPlaying = onRequestMainPause() || mainWasPlaying
 
+        // Cache hit (unexpired): skip the whole resolution pipeline + loading spinner and play instantly.
+        val cached = urlCache[videoId]?.takeIf { it.second > System.currentTimeMillis() }
+        if (cached != null) {
+            isLoading = false
+            playUrl(cached.first)
+            return
+        }
+
+        isLoading = true
         resolveJob = scope.launch {
-            val url = withContext(Dispatchers.IO) {
+            val data = withContext(Dispatchers.IO) {
                 runCatching {
                     val cm = context.getSystemService<ConnectivityManager>() ?: return@runCatching null
                     YTPlayerUtils.playerResponseForPlayback(
@@ -89,7 +105,7 @@ class SongPreviewController(
                         audioQuality = AudioQuality.OPUS,
                         connectivityManager = cm,
                         context = context,
-                    ).getOrNull()?.streamUrl
+                    ).getOrNull()
                 }.getOrNull()
             }
 
@@ -97,17 +113,25 @@ class SongPreviewController(
             if (currentPreviewId != videoId) return@launch
 
             isLoading = false
+            val url = data?.streamUrl
             if (url.isNullOrBlank()) {
                 // Resolution failed: no-op, resume the main player.
                 stop()
                 return@launch
             }
 
-            val player = getOrCreatePlayer()
-            player.setMediaItem(MediaItem.fromUri(url))
-            player.prepare()
-            player.playWhenReady = true
+            // Cache for instant re-preview this session, keyed to YouTube's own stream expiry.
+            urlCache[videoId] = url to (System.currentTimeMillis() + data.streamExpiresInSeconds * 1000L)
+            playUrl(url)
         }
+    }
+
+    /** Feed a resolved URL into the (lazily-created, reused) preview player and start immediately. */
+    private fun playUrl(url: String) {
+        val player = getOrCreatePlayer()
+        player.setMediaItem(MediaItem.fromUri(url))
+        player.prepare()
+        player.playWhenReady = true
     }
 
     /** Stop the current preview and resume the main player if it was playing. */
@@ -184,8 +208,24 @@ class SongPreviewController(
             DefaultDataSource.Factory(context, OkHttpDataSource.Factory(okHttpClient)),
         )
 
+        // PREVIEW-ONLY LoadControl (never the main/shared player's): start playback after only ~300ms of
+        // audio is buffered instead of media3's default 2.5s, so a tapped preview begins almost instantly.
+        // This is a throwaway preview stream, so the thin start buffer is fine and never touches the main
+        // audio chain / crossfade.
+        val loadControl = DefaultLoadControl.Builder()
+            .setBufferDurationsMs(
+                DefaultLoadControl.DEFAULT_MIN_BUFFER_MS,
+                DefaultLoadControl.DEFAULT_MAX_BUFFER_MS,
+                // bufferForPlaybackMs: ~300ms before the preview starts (default is 2500ms).
+                300,
+                // bufferForPlaybackAfterRebufferMs: ~1s to resume after a stall (default is 5000ms).
+                1000,
+            )
+            .build()
+
         return ExoPlayer.Builder(context)
             .setMediaSourceFactory(mediaSourceFactory)
+            .setLoadControl(loadControl)
             .build()
             .apply {
                 setAudioAttributes(

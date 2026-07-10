@@ -155,6 +155,11 @@ object AiPlaylistService {
             // 0.7: enough variety for song picks, but tighter than 0.8 so the strict-JSON output drifts less.
             put("temperature", 0.7)
             put("max_tokens", maxTokens)
+            // Keyless fallbacks (Pollinations "openai", some Workers AI models) route to REASONING models
+            // that otherwise burn the whole token budget on hidden reasoning and return null content
+            // (finish_reason "length") → "servicio ocupado". "low" makes them emit the JSON in ~5s.
+            // Harmless for non-reasoning models and BYO-key OpenAI-compatible providers ignore unknown fields.
+            put("reasoning_effort", "low")
         }
 
         var attempt = 0
@@ -193,16 +198,25 @@ object AiPlaylistService {
                     continue
                 }
 
-                val content = JSONObject(responseBody)
+                val message = JSONObject(responseBody)
                     .optJSONArray("choices")
                     ?.optJSONObject(0)
                     ?.optJSONObject("message")
-                    ?.optString("content")
-                    ?.trim()
+
+                val content = message?.optString("content")?.trim()
 
                 if (!content.isNullOrBlank()) {
                     return AiPlaylistParser.parse(content, count)
                 }
+
+                // Reasoning models sometimes leave content null but emit the JSON inside "reasoning"
+                // (finish_reason "length"). AiPlaylistParser extracts the {...} substring, so passing
+                // the reasoning text as a fallback content lets the request still recover.
+                val reasoning = message?.optString("reasoning")?.trim()
+                if (!reasoning.isNullOrBlank()) {
+                    return AiPlaylistParser.parse(reasoning, count)
+                }
+
                 lastError = "Empty AI response"
             } catch (e: Exception) {
                 if (attempt == maxRetries - 1) {

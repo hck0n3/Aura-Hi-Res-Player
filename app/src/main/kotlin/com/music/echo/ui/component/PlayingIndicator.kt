@@ -17,9 +17,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -29,8 +26,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.media3.common.Player
-import iad1tya.echo.music.LocalPlayerConnection
 import iad1tya.echo.music.R
 import iad1tya.echo.music.constants.ThumbnailCornerRadius
 import kotlinx.coroutines.delay
@@ -94,13 +89,9 @@ fun PlayingIndicatorBox(
     playWhenReady: Boolean,
     color: Color = Color.White,
 ) {
-    // Animate the bars only once the audio is actually playing (STATE_READY), not while the track is
-    // still buffering — so the "playing" animation begins exactly when the song begins. While the
-    // active track is loading/paused we show the play icon instead.
-    val playerConnection = LocalPlayerConnection.current
-    val playbackState by (playerConnection?.playbackState?.collectAsState() ?: remember { mutableStateOf(Player.STATE_IDLE) })
-    val actuallyPlaying = playWhenReady && playbackState == Player.STATE_READY
-
+    // Show the animated bars the moment the item becomes the active/playing item (isActive gates the
+    // wrapper's visibility, playWhenReady selects bars vs. the play icon). The animation only exists
+    // while composed — i.e. only when active AND playing — so it stops on pause/stop and off-screen.
     AnimatedVisibility(
         visible = isActive,
         enter = fadeIn(tween(500)),
@@ -110,7 +101,7 @@ fun PlayingIndicatorBox(
             contentAlignment = Alignment.Center,
             modifier = modifier,
         ) {
-            if (actuallyPlaying) {
+            if (playWhenReady) {
                 PlayingIndicator(
                     color = color,
                     modifier = Modifier.height(24.dp),

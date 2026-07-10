@@ -49,6 +49,10 @@ import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 
+/** How many suggestions the footer's "Suggested Songs" section shows — the fill target that decides
+ *  whether the instant cache-only batch needs a background network top-up. */
+private const val FOOTER_SUGGESTIONS = 5
+
 @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
 @HiltViewModel
 class LocalPlaylistViewModel
@@ -123,20 +127,21 @@ constructor(
             .distinctUntilChanged { old, new -> old.toSet() == new.toSet() }
             .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
-    /** Last accepted refresh tap — taps within 800ms of it are ignored (spam guard). */
+    /** Last accepted refresh tap — a SMALL debounce (only double-fire protection). The visible list
+     *  now swaps instantly (cache-only Phase A), so this no longer needs to cover a network window. */
     private var lastRefreshTapMs = 0L
 
     private val _isRefreshingSuggestions = MutableStateFlow(false)
 
-    /** True from an accepted refresh tap until the recomputed batch emits — the refresh button
-     *  disables itself on this so taps can't pile up while a batch is still loading. */
+    /** True ONLY while the background network top-up (Phase B) is in flight — never during the instant
+     *  cache-only swap. Drives just the refresh button's spinner/disable; the list already updated. */
     val isRefreshingSuggestions: StateFlow<Boolean> = _isRefreshingSuggestions
 
     fun refreshSuggestions() {
         val now = System.currentTimeMillis()
-        if (now - lastRefreshTapMs < 800) return
+        // Small debounce: reject only a rapid double-fire; a single tap swaps the list instantly.
+        if (now - lastRefreshTapMs < 300) return
         lastRefreshTapMs = now
-        _isRefreshingSuggestions.value = true
         suggestionsRefresh.value = suggestionsRefresh.value + 1
     }
 
@@ -161,8 +166,47 @@ constructor(
         combine(playlistSongIds, suggestionsRefresh) { ids, nonce -> ids to nonce }
             .flatMapLatest { (ids, nonce) ->
                 flow {
-                    emit(computeSuggestions(ids, limit = 20, seed = nonce))
-                    _isRefreshingSuggestions.value = false
+                    // Snapshot the refresh flag BEFORE Phase A runs — Phase A is recordShown=false so it
+                    // won't latch lastAppliedNonce, keeping this accurate for the branch below.
+                    val wasRefresh = nonce > lastAppliedNonce
+
+                    // ── Phase A — INSTANT swap: local DB relatedSongs ∪ already-cached online only, ZERO
+                    // network. Emits right away so the footer's 5 change with no round-trip wait. Does not
+                    // record the batch as shown / latch the nonce yet (that decision is made below).
+                    val instant = computeSuggestions(
+                        ids,
+                        limit = 20,
+                        seed = nonce,
+                        forceNetwork = false,
+                        recordShown = false,
+                    )
+                    emit(instant)
+
+                    if (wasRefresh) {
+                        if (lastComputeRelatednessCount < FOOTER_SUGGESTIONS) {
+                            // ── Phase B — BACKGROUND top-up: the cached relatedness pool couldn't fill the
+                            // footer's 5 on its own (quickPicks padded it), so hit the existing bounded
+                            // (≤3) network fetch and re-emit when it arrives. The spinner shows ONLY here.
+                            _isRefreshingSuggestions.value = true
+                            try {
+                                val topped = computeSuggestions(
+                                    ids,
+                                    limit = 20,
+                                    seed = nonce,
+                                    forceNetwork = true,
+                                    recordShown = true,
+                                )
+                                emit(topped)
+                            } finally {
+                                _isRefreshingSuggestions.value = false
+                            }
+                        } else {
+                            // Cache filled the footer — the instant list is final. Record it as shown so
+                            // infinite-no-repeat advances, and latch the nonce so a following per-'+'-add
+                            // recompute stays stable (same-nonce → isRefresh=false).
+                            recordBatchShown(instant.map { it.id }, nonce)
+                        }
+                    }
                 }
             }
             .flowOn(Dispatchers.IO)
@@ -316,6 +360,13 @@ constructor(
      *  Starts at -1 so the very first compute (nonce 0) counts as a refresh and records its batch. */
     private var lastAppliedNonce = -1
 
+    /** Size of the last compute's RELATEDNESS pool (candidates chosen from local+cache related songs,
+     *  BEFORE the quickPicks backfill pads the batch). The two-phase flow reads this after the instant
+     *  cache-only pass to decide if a background network top-up is needed: if the cached pool alone
+     *  couldn't fill the footer's 5, quickPicks padding is standing in and Phase B fetches real ones.
+     *  Only written from the (serialized) suggestions flow. */
+    private var lastComputeRelatednessCount = 0
+
     /** Online related-songs memo, one entry per seed id — recomputes never re-hit the network for a
      *  seed already fetched. Bounded, access-ordered LRU (64 seeds) so a long session hopping across
      *  playlists can't grow it without bound; evicting a seed only costs a potential re-fetch.
@@ -375,6 +426,13 @@ constructor(
         songIds: List<String>,
         limit: Int,
         seed: Int = 0,
+        // When non-null, OVERRIDES the network-permission heuristic: false = local DB + already-cached
+        // online only (the instant Phase A, zero round-trips); true = allow the ≤3 related fetches
+        // (the background Phase B top-up). null keeps today's per-add/first-load heuristic untouched.
+        forceNetwork: Boolean? = null,
+        // When false, the batch is NOT recorded as shown and the nonce is NOT latched — the two-phase
+        // flow records the batch the user actually keeps (instant if it fills, else the topped-up one).
+        recordShown: Boolean = true,
     ): List<Song> {
         if (songIds.isEmpty()) return emptyList()
         // Explicit refresh (nonce bumped) vs. id-set recompute (a song was added): only a refresh may
@@ -403,11 +461,12 @@ constructor(
         // recomputes deterministic), but the NETWORK is hit only on an explicit refresh or when the
         // local pool can't fill [limit] by itself — per-add recomputes are pure-local + cache.
         // Fetches run in parallel and fail soft (offline-safe).
-        val allowNetwork = isRefresh || localPoolSize < limit
+        val allowNetwork = forceNetwork ?: (isRefresh || localPoolSize < limit)
         val onlineSeeds = seedSongs.take(3)
         // HARD per-tap network bound: at most 3 related-fetch attempts per compute, SHARED between
         // this base layer and the expansion pass in step 6 (cache hits are free and don't count).
-        var networkBudget = 3
+        // Zero when the network is disallowed (Phase A / per-add) so step 6b never fetches either.
+        var networkBudget = if (allowNetwork) 3 else 0
         if (allowNetwork) {
             // Count only seeds that will REALLY hit the network: not cached AND not known-empty
             // (in usedOnlineSeeds without a cache entry = an earlier fetch SUCCEEDED with zero
@@ -545,8 +604,11 @@ constructor(
                 val expandedFresh = ranked.filter { it !in shownSuggestionIds }
                 if (expandedFresh.size > fresh.size) {
                     fresh = expandedFresh
-                } else {
-                    // 6c. Expansion yielded nothing new — recycle fallback.
+                } else if (allowNetwork) {
+                    // 6c. Network expansion yielded nothing new — recycle fallback so the section never
+                    // goes empty. SKIPPED on the cache-only instant pass (Phase A, allowNetwork=false):
+                    // the following background top-up may still find fresh songs, so don't wipe the
+                    // no-repeat memory prematurely.
                     shownSuggestionIds.clear()
                 }
             }
@@ -575,6 +637,9 @@ constructor(
             }
         }
         val chosen = (head + overflow).take(limit).toMutableList()
+        // Remember how many came from RELATEDNESS (before the quickPicks pad) — the two-phase flow
+        // uses this to decide whether the instant cache-only batch needs a network top-up.
+        lastComputeRelatednessCount = chosen.size
 
         // 7. Recently-played backfill (quickPicks) if relatedness alone couldn't fill the batch.
         if (chosen.size < limit) {
@@ -592,23 +657,30 @@ constructor(
         val result = chosen.mapNotNull { id ->
             localById[id] ?: onlineById[id]?.let { resolveOnlineSong(it) }
         }
-        // Record the batch as "shown" (and latch the nonce) ONLY for explicit refreshes — same-nonce
-        // recomputes must not feed the exclusion memory or the next refresh would skip too much.
-        if (isRefresh) {
-            shownSuggestionIds += result.map { it.id }
-            // Cap the session memory at the ~1000 most-recent shown ids (LinkedHashSet insertion
-            // order ≈ recency; order only matters for recycling): trimmed old ids simply become
-            // suggestable again, which the recycle fallback tolerates by design.
-            if (shownSuggestionIds.size > 1000) {
-                val iterator = shownSuggestionIds.iterator()
-                repeat(shownSuggestionIds.size - 1000) {
-                    iterator.next()
-                    iterator.remove()
-                }
-            }
-            lastAppliedNonce = seed
+        // Record the batch as "shown" (and latch the nonce) ONLY for explicit refreshes AND only when
+        // this compute is the one the user keeps (recordShown) — same-nonce recomputes must not feed
+        // the exclusion memory, and the instant Phase A defers recording to the flow so a following
+        // network top-up records the batch actually shown.
+        if (isRefresh && recordShown) {
+            recordBatchShown(result.map { it.id }, seed)
         }
         return result
+    }
+
+    /** Record a suggestion batch as shown (feeding infinite-no-repeat) and latch its nonce. Capped at
+     *  the ~1000 most-recent shown ids (LinkedHashSet insertion order ≈ recency; order only matters for
+     *  recycling): trimmed old ids simply become suggestable again, which the recycle fallback tolerates
+     *  by design. Only called from the (serialized) suggestions flow. */
+    private fun recordBatchShown(resultIds: List<String>, nonce: Int) {
+        shownSuggestionIds += resultIds
+        if (shownSuggestionIds.size > 1000) {
+            val iterator = shownSuggestionIds.iterator()
+            repeat(shownSuggestionIds.size - 1000) {
+                iterator.next()
+                iterator.remove()
+            }
+        }
+        lastAppliedNonce = nonce
     }
 
     /** Raw online-related candidates for one seed (YouTube's own relatedness). No DB writes here —
