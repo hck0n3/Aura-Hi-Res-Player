@@ -316,10 +316,27 @@ constructor(
      *  Starts at -1 so the very first compute (nonce 0) counts as a refresh and records its batch. */
     private var lastAppliedNonce = -1
 
-    /** Online related-songs memo, one entry per seed id for the ViewModel lifetime — recomputes never
-     *  re-hit the network for a seed already fetched. Failed/empty fetches are NOT cached so a later
-     *  explicit refresh can retry them (offline → online recovery). */
-    private val onlineRelatedCache = ConcurrentHashMap<String, List<SongItem>>()
+    /** Online related-songs memo, one entry per seed id — recomputes never re-hit the network for a
+     *  seed already fetched. Bounded, access-ordered LRU (64 seeds) so a long session hopping across
+     *  playlists can't grow it without bound; evicting a seed only costs a potential re-fetch.
+     *  FAILED fetches are NOT cached (nor recorded in [usedOnlineSeeds]) so a later explicit refresh
+     *  retries them (offline → online recovery); successful-but-EMPTY fetches are not cached either
+     *  but ARE in [usedOnlineSeeds] — the engine treats those as known-empty and never re-spends
+     *  network on them. Synchronized wrapper because parallel fetch coroutines write it; NEVER
+     *  iterate it directly — snapshot under `synchronized(onlineRelatedCache)` first. */
+    private val onlineRelatedCache: MutableMap<String, List<SongItem>> =
+        java.util.Collections.synchronizedMap(
+            object : LinkedHashMap<String, List<SongItem>>(16, 0.75f, true) {
+                override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, List<SongItem>>): Boolean {
+                    val evict = size > 64
+                    // Keep the invariant "in usedOnlineSeeds but NOT cached == fetch succeeded EMPTY":
+                    // an evicted seed had results, so drop it from usedOnlineSeeds too — if rotation
+                    // lands on it again it re-fetches instead of being mistaken for known-empty.
+                    if (evict) usedOnlineSeeds.remove(eldest.key)
+                    return evict
+                }
+            },
+        )
 
     /** Ids added to the playlist through this ViewModel this session — extra exclusion guard while
      *  the Room id-set flow re-emits. ConcurrentHashMap-backed set: written from add paths, iterated
@@ -392,8 +409,14 @@ constructor(
         // this base layer and the expansion pass in step 6 (cache hits are free and don't count).
         var networkBudget = 3
         if (allowNetwork) {
-            networkBudget = (networkBudget - onlineSeeds.count { !onlineRelatedCache.containsKey(it) })
-                .coerceAtLeast(0)
+            // Count only seeds that will REALLY hit the network: not cached AND not known-empty
+            // (in usedOnlineSeeds without a cache entry = an earlier fetch SUCCEEDED with zero
+            // results — re-fetching those would burn the tap budget for nothing).
+            networkBudget = (
+                networkBudget - onlineSeeds.count {
+                    !onlineRelatedCache.containsKey(it) && it !in usedOnlineSeeds
+                }
+            ).coerceAtLeast(0)
         }
         val onlineBySeed: List<Pair<String, List<SongItem>>> = coroutineScope {
             onlineSeeds.map { sid ->
@@ -401,6 +424,9 @@ constructor(
                     val cached = onlineRelatedCache[sid]
                     val items = when {
                         cached != null -> cached
+                        // Known-empty: an earlier fetch this session SUCCEEDED with no results
+                        // (empty results aren't cached) — don't re-spend network on it.
+                        sid in usedOnlineSeeds -> emptyList()
                         allowNetwork ->
                             runCatching { onlineRelatedItems(sid) }
                                 .onSuccess { usedOnlineSeeds += sid }
@@ -479,7 +505,12 @@ constructor(
             var fresh = ranked.filter { it !in shownSuggestionIds }
             if (fresh.size < limit) {
                 // 6a. Cache-wide blend — free candidates from seeds fetched on earlier taps.
-                onlineRelatedCache.forEach { (sid, items) ->
+                // Snapshot under the wrapper's lock: the LRU map is a synchronizedMap and parallel
+                // fetch coroutines mutate it, so direct iteration could throw CME.
+                val cacheSnapshot = synchronized(onlineRelatedCache) {
+                    onlineRelatedCache.entries.map { it.key to it.value }
+                }
+                cacheSnapshot.forEach { (sid, items) ->
                     items.forEach { offerOnline(sid, it) }
                 }
                 // 6b. Bounded network expansion with never-used seeds.
@@ -565,6 +596,16 @@ constructor(
         // recomputes must not feed the exclusion memory or the next refresh would skip too much.
         if (isRefresh) {
             shownSuggestionIds += result.map { it.id }
+            // Cap the session memory at the ~1000 most-recent shown ids (LinkedHashSet insertion
+            // order ≈ recency; order only matters for recycling): trimmed old ids simply become
+            // suggestable again, which the recycle fallback tolerates by design.
+            if (shownSuggestionIds.size > 1000) {
+                val iterator = shownSuggestionIds.iterator()
+                repeat(shownSuggestionIds.size - 1000) {
+                    iterator.next()
+                    iterator.remove()
+                }
+            }
             lastAppliedNonce = seed
         }
         return result
