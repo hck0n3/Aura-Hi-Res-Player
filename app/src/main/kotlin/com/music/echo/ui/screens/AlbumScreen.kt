@@ -131,6 +131,7 @@ import iad1tya.echo.music.ui.utils.fadingEdge
 import iad1tya.echo.music.ui.utils.rememberIsTvOrCar
 import iad1tya.echo.music.ui.utils.tvFocusable
 import iad1tya.echo.music.ui.player.CanvasArtworkPlayer
+import iad1tya.echo.music.utils.likedFirst
 import iad1tya.echo.music.utils.listItemShape
 import iad1tya.echo.music.utils.rememberPreference
 import iad1tya.echo.music.viewmodels.AlbumViewModel
@@ -180,7 +181,8 @@ fun AlbumScreen(
         if (hideVideoSongs) {
             songs = songs.filter { !it.song.isVideo }
         }
-        songs
+        // Final display step: pin liked songs to the top (stable — album order preserved within groups).
+        songs.likedFirst()
     }
 
     var inSelectMode by rememberSaveable { mutableStateOf(false) }
@@ -749,8 +751,13 @@ fun AlbumScreen(
                                         playerConnection.togglePlayPause()
                                     } else {
                                         playerConnection.service.getAutomix(playlistId)
+                                        // Build the album-radio queue from the DISPLAYED (liked-first,
+                                        // filtered) list so the tapped index maps to the right song.
                                         playerConnection.playQueue(
-                                            LocalAlbumRadio(albumWithSongs, startIndex = index),
+                                            LocalAlbumRadio(
+                                                albumWithSongs.copy(songs = filteredSongs),
+                                                startIndex = index,
+                                            ),
                                         )
                                     }
                                 },

@@ -45,9 +45,17 @@ constructor(
             if (album?.description != null) {
                 description.value = album.description
             }
+            // Retry a transient/throttled cold first fetch (YouTube throttles or cancels the very first
+            // network call), mirroring ArtistViewModel. Without this, a throttled cold entry showed an
+            // empty album until the user backed out and re-entered ("needs multiple entries to show
+            // content"). Room already persists the song list; the only gap was this single un-retried fetch.
+            var attempt = 0
+            var loaded = false
+            while (!loaded && attempt < 3) {
             YouTube
                 .album(albumId, withSongs = !hasSongs)
                 .onSuccess {
+                    loaded = true
                     playlistId.value = it.album.playlistId
                     otherVersions.value = it.otherVersions
                     releasesForYou.value = it.releasesForYou
@@ -108,17 +116,29 @@ constructor(
                             }
                         }
                     }
-                }.onFailure {
-                    reportException(it)
-                    if (it.message?.contains("NOT_FOUND") == true) {
+                }.onFailure { err ->
+                    if (err.message?.contains("NOT_FOUND") == true) {
+                        // Album is genuinely gone: terminal, so stop retrying and delete the cached copy.
+                        loaded = true
+                        reportException(err)
                         val albumToDelete = album?.album
                         if (albumToDelete != null) {
                             database.query {
                                 delete(albumToDelete)
                             }
                         }
+                    } else if (attempt >= 2) {
+                        // Generic/transient failure (throttle/cancel): report only after retries are
+                        // exhausted, and crucially do NOT delete or blank the cached album — a cold
+                        // throttled fetch must never wipe an album Room already has.
+                        reportException(err)
                     }
                 }
+            if (!loaded) {
+                attempt++
+                if (attempt < 3) kotlinx.coroutines.delay(700L * attempt)
+            }
+            }
         }
     }
 }

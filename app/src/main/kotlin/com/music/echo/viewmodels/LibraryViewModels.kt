@@ -47,6 +47,7 @@ import iad1tya.echo.music.extensions.toEnum
 import iad1tya.echo.music.playback.DownloadUtil
 import iad1tya.echo.music.utils.SyncUtils
 import iad1tya.echo.music.utils.dataStore
+import iad1tya.echo.music.utils.likedFirst
 import iad1tya.echo.music.utils.reportException
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -91,7 +92,7 @@ constructor(
             .flatMapLatest { (filterSort, exportedSongIds, hideConfig) ->
                 val (filter, sortType, descending) = filterSort
                 val (hideExplicit, hideVideoSongs) = hideConfig
-                when (filter) {
+                (when (filter) {
                     SongFilter.LIBRARY -> database.songs(sortType, descending).map { it.filterExplicit(hideExplicit).filterVideoSongs(hideVideoSongs) }
                     SongFilter.LIKED -> database.likedSongs(sortType, descending).map { it.filterExplicit(hideExplicit).filterVideoSongs(hideVideoSongs) }
                     SongFilter.DOWNLOADED -> database.downloadedSongs(sortType, descending).map { it.filterExplicit(hideExplicit).filterVideoSongs(hideVideoSongs) }
@@ -100,7 +101,10 @@ constructor(
                         val ids = exportedSongIds.split(",").filter { it.isNotBlank() }
                         database.getSongsByIdsFlow(ids).map { it.filterExplicit(hideExplicit).filterVideoSongs(hideVideoSongs) }
                     }
-                }
+                    // Final display step: pin liked songs to the top across every filter (stable — the
+                    // user's chosen sort order is preserved within the liked and non-liked groups). For the
+                    // LIKED filter this is a harmless no-op since every row is already liked.
+                }).map { it.likedFirst() }
             }
             // Collapse the burst of emissions Room fires while a sync writes block after block: conflate
             // keeps only the latest list when Compose is still recomposing the previous one, so we don't
