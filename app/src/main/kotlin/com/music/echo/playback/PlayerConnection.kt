@@ -353,6 +353,20 @@ class PlayerConnection(
         }
     }
 
+    /**
+     * Set (or clear) the active Home MOOD that biases the infinite radio's seed. Non-null [params] makes the
+     * next radio seed/append come from that mood's Home feed instead of the last song (still taste/relatedness
+     * ordered); null restores last-song seeding. Delegates to [MusicService.setActiveMood]. Called by the Home
+     * mood UI.
+     */
+    fun setActiveMood(params: String?, title: String?) {
+        try {
+            service.setActiveMood(params, title)
+        } catch (e: Exception) {
+            Timber.tag(TAG).e(e, "Error in setActiveMood")
+        }
+    }
+
     fun toggleMute() {
         service.toggleMute()
     }

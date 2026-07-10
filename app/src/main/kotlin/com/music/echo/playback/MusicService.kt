@@ -292,6 +292,9 @@ class MusicService :
     private var crossfadeTriggerJob: Job? = null
     // Builds + buffers the incoming player a few seconds BEFORE the fade so the transition has no gap.
     private var crossfadePreloadJob: Job? = null
+    // Waits (bounded) for the incoming player to reach STATE_READY at position 0 before the fade actually
+    // swaps, so a LATE-ARMED / not-yet-buffered secondary never fades in half-buffered (clipped first ms).
+    private var crossfadeReadyJob: Job? = null
 
     private val secondaryPlayerListener = object : Player.Listener {
         override fun onPlayerError(error: PlaybackException) {
@@ -511,6 +514,20 @@ class MusicService :
     // by your taste and to drop "No me gusta". Rebuilt at most every few minutes.
     @Volatile private var cachedTaste: iad1tya.echo.music.reco.TasteProfile? = null
     @Volatile private var cachedTasteAt: Long = 0L
+
+    // Bounded, cached set of song ids the user has RECENTLY PLAYED (from the on-device event history), so the
+    // infinite radio doesn't re-append songs already heard days/weeks ago — the last ~60 in-session transitions
+    // in [recentRadioIds] can't see that far back. One DB read every few minutes; O(1) membership at append
+    // time (no per-append DB hit, no heat). Refreshed on the same ~5-min TTL as [cachedTaste].
+    @Volatile private var cachedPlayedIds: Set<String>? = null
+    @Volatile private var cachedPlayedIdsAt: Long = 0L
+
+    // Active "mood" (a Home mood chip the user tapped). When set, the infinite radio SEEDS from the mood
+    // (YouTube.home(params = moodParams) sections' songs) instead of the last song — still passed through
+    // orderedByTaste() so the relatedness/taste ordering invariant is preserved. Null → last-song seeding
+    // (exactly today's behavior). Set via setActiveMood(); read on the radio-seed path only.
+    @Volatile private var activeMoodParams: String? = null
+    @Volatile private var activeMoodTitle: String? = null
 
     
     private var originalQueueSize: Int = 0
@@ -2001,6 +2018,19 @@ class MusicService :
         }
     }
 
+    /**
+     * Set (or clear) the ACTIVE MOOD that biases the infinite radio's seed. When [params] is non-null, the
+     * next time the radio needs to seed/append ([startRadioSeamlessly]) it seeds from the mood's Home feed
+     * (YouTube.home(params)) instead of the last song — still ordered by [orderedByTaste] so relatedness/taste
+     * is preserved. Pass null to restore last-song seeding (exactly today's behavior). Cheap: stores two
+     * @Volatile fields; the network fetch only happens on the next actual seed. Called from the Home mood UI
+     * via PlayerConnection.setActiveMood.
+     */
+    fun setActiveMood(params: String?, title: String?) {
+        activeMoodParams = params
+        activeMoodTitle = title
+    }
+
     fun startRadioSeamlessly() {
 
         if (!playerInitialized.value) {
@@ -2120,13 +2150,43 @@ class MusicService :
                 ok
             }.getOrDefault(false)
 
+            // Source 0 — ACTIVE MOOD. When the user has selected a Home mood, seed the infinite radio from that
+            // mood's Home feed (YouTube.home(params)) instead of the last song. The songs still flow through
+            // orderedByTaste() (relatedness/taste order + recently-played exclusion) so the invariant holds. The
+            // mood pool is finite, so we point currentQueue at EmptyQueue: when this batch nears its end the
+            // last-item radio-seed net re-invokes startRadioSeamlessly → tryMood() again → a fresh mood batch,
+            // keeping it endless AND all-mood, one bounded home() fetch per re-seed. Null mood → returns false →
+            // falls through to today's last-song seeding unchanged.
+            suspend fun tryMood(): Boolean = runCatching {
+                val moodParams = activeMoodParams ?: return@runCatching false
+                val page = withContext(Dispatchers.IO) {
+                    YouTube.home(params = moodParams).getOrNull()
+                } ?: return@runCatching false
+                val items = page.sections
+                    .flatMap { it.items }
+                    .filterIsInstance<SongItem>()
+                    .distinctBy { it.id }
+                    .filter { it.id != currentMediaId }
+                    .map { it.toMediaItem() }
+                    .filterExplicit(dataStore.get(HideExplicitKey, false))
+                    .filterVideoSongs(dataStore.get(HideVideoSongsKey, false))
+                val ok = appendSeed(items)
+                if (ok) {
+                    activeMoodTitle?.let { queueTitle = it }
+                    // Finite pool → no pagination from a stale last-song queue; the end-of-queue net re-seeds the mood.
+                    currentQueue = EmptyQueue
+                }
+                ok
+            }.getOrDefault(false)
+
             try {
-                // Radio first, then related. If a transient hiccup left us empty, wait briefly and try once more —
-                // so a momentary network blip at the exact end-of-queue moment never permanently stops the music.
-                var appended = tryRadio() || tryRelated()
+                // Mood (if active) first, then radio, then related. If a transient hiccup left us empty, wait
+                // briefly and try once more — so a momentary network blip at the exact end-of-queue moment never
+                // permanently stops the music.
+                var appended = tryMood() || tryRadio() || tryRelated()
                 if (!appended) {
                     kotlinx.coroutines.delay(2500)
-                    appended = tryRadio() || tryRelated()
+                    appended = tryMood() || tryRadio() || tryRelated()
                 }
                 // Autoplay chips: the seed just landed (appendSeed ran) → refresh the queue-footer
                 // suggestions for THIS seed. Bounded: no-ops if this seed's chips are already loaded.
@@ -2334,6 +2394,24 @@ class MusicService :
     }
 
     /**
+     * Bounded, cached set of song ids the user has RECENTLY PLAYED (on-device event history). Used by
+     * [orderedByTaste] to exclude already-heard songs from the primary radio pool so the infinite queue stops
+     * replaying songs heard days/weeks ago (which the last-~60 in-session [recentRadioIds] can't see). One DB
+     * read every ~5 min (same TTL as [tasteProfile]); membership is O(1) at append time — no per-append DB hit.
+     */
+    private suspend fun recentlyPlayedIds(): Set<String> {
+        val now = System.currentTimeMillis()
+        cachedPlayedIds?.let { if (now - cachedPlayedIdsAt < 5 * 60_000L) return it }
+        val ids = runCatching {
+            withContext(Dispatchers.IO) { database.recentEventsWithSong(600).first() }
+                .mapTo(HashSet<String>()) { it.song.id }
+        }.getOrDefault(emptySet())
+        cachedPlayedIds = ids
+        cachedPlayedIdsAt = now
+        return ids
+    }
+
+    /**
      * Order "what plays next" so it still FEELS like a continuation of the LAST song. The incoming list is
      * already in YouTube's relatedness order (most-related-to-the-seed first); we KEEP that as the backbone and
      * let taste only NUDGE a song up/down a few spots, instead of fully re-sorting by taste — which scrambled the
@@ -2348,26 +2426,31 @@ class MusicService :
             m.id !in disliked.songs && m.artists.none { it.id != null && it.id in disliked.artists }
         }
         val p = tasteProfile() // may be null (no taste yet) → pure relatedness order, still recency/dislike-filtered
-        // Songs heard in the last ~60 transitions get pushed to the BOTTOM (soft demotion, not dropped) so the
-        // radio stops replaying what just played, yet can still fall back to them rather than dead-ending.
+        // "Already heard" now has TWO memories: the last ~60 in-session transitions ([recentRadioIds]) AND the
+        // broader on-device listening history ([recentlyPlayedIds], cached ~5 min). A song in EITHER is excluded
+        // from the primary radio pool and kept only as a fallback TAIL — so the infinite queue stops resurfacing
+        // songs the user heard days/weeks ago, yet can never dead-end (heard items remain as a last resort, same
+        // safety philosophy as the old +1000 soft penalty). YouTube relatedness ORDER is preserved WITHIN each
+        // bucket: the per-item sort key keeps `index` (relatedness rank) as its dominant term.
         val recentSnapshot = synchronized(recentRadioIds) { HashSet(recentRadioIds) }
+        val playedHistory = recentlyPlayedIds()
         val rnd = java.util.Random()
         // Precompute the sort key ONCE per item: calling rnd inside the comparator would make it inconsistent
         // between comparisons and crash TimSort ("Comparison method violates contract").
-        return filtered
-            .mapIndexed { index, mi ->
-                val m = mi.metadata
-                val taste = if (m == null || p == null) 0.0 else p.scoreNames(m.artists.map { it.name }, m.title)
-                // Lower key = earlier. `index` (relatedness rank) DOMINATES; taste shifts a song by only a few
-                // spots (~4 per taste point) and a small jitter adds variety — relatedness stays the backbone.
-                // A big +1000 recency penalty sinks just-played songs beneath every fresh one without removing them.
-                val jitter = if (p == null) 0.0 else rnd.nextDouble() * 1.5
-                val recencyPenalty = if (m != null && m.id in recentSnapshot) 1000.0 else 0.0
-                val key = index.toDouble() - taste * 4.0 + jitter + recencyPenalty
-                mi to key
-            }
-            .sortedBy { it.second }
-            .map { it.first }
+        val keyed = filtered.mapIndexed { index, mi ->
+            val m = mi.metadata
+            val taste = if (m == null || p == null) 0.0 else p.scoreNames(m.artists.map { it.name }, m.title)
+            // Lower key = earlier. `index` (relatedness rank) DOMINATES; taste shifts a song by only a few
+            // spots (~4 per taste point) and a small jitter adds variety — relatedness stays the backbone.
+            val jitter = if (p == null) 0.0 else rnd.nextDouble() * 1.5
+            val key = index.toDouble() - taste * 4.0 + jitter
+            val heard = m != null && (m.id in recentSnapshot || m.id in playedHistory)
+            Triple(mi, key, heard)
+        }
+        val unheard = keyed.filterNot { it.third }.sortedBy { it.second }.map { it.first }
+        // No fresh candidates left? Fall back to the ordered already-heard tail rather than dead-ending.
+        val heardTail = keyed.filter { it.third }.sortedBy { it.second }.map { it.first }
+        return unheard + heardTail
     }
 
     fun getAutomixAlbum(albumId: String) {
@@ -5373,7 +5456,8 @@ class MusicService :
         crossfadeJob?.cancel()
         crossfadeTriggerJob?.cancel()
         crossfadePreloadJob?.cancel()
-        secondaryPlayer?.let { 
+        crossfadeReadyJob?.cancel()
+        secondaryPlayer?.let {
             playerNormProcessors.remove(it)
             playerLimiterProcessors.remove(it)
             playerEqProcessors.remove(it)?.let { eq -> equalizerService.removeAudioProcessor(eq) }
@@ -5546,6 +5630,8 @@ class MusicService :
         crossfadeTriggerJob = null
         crossfadePreloadJob?.cancel()
         crossfadePreloadJob = null
+        crossfadeReadyJob?.cancel()
+        crossfadeReadyJob = null
         // Release any incoming player we preloaded for a transition that's no longer happening (user
         // skipped, seeked, queue changed) so we never leak a second ExoPlayer.
         if (!isCrossfading) {
@@ -5649,10 +5735,49 @@ class MusicService :
             prepareSecondaryPlayer(targetIndex)
         }
         val secPlayer = secondaryPlayer ?: return
+
+        // START-CLIP FIX: never fade in a half-buffered incoming player. On the normal preloaded path the
+        // secondary is already STATE_READY (buffered at position 0) with the full ~12 s lead, so we swap
+        // immediately — byte-identical to before. On the LATE-ARMED path (radio just appended the next item,
+        // a near-end seek, or the streamed duration arrived late) the secondary was built with ~0 ms buffered;
+        // flipping playWhenReady and swapping NOW left the incoming still resolving its URL / buffering while
+        // the OUTGOING player — capped to its current item — hit STATE_ENDED, so the join went silent and the
+        // new song's first moment was clipped. Instead, wait (bounded) for STATE_READY, THEN swap + fade from a
+        // clean position 0. If it can't ready within the bound, fall through to media3's single-player
+        // auto-advance (a clean hard cut) rather than a clipped pop-in. Curve/duration untouched.
+        if (secPlayer.playbackState == Player.STATE_READY) {
+            beginCrossfadeSwap(secPlayer, savedShuffleEnabled)
+            return
+        }
+        val targetMediaId = player.currentMediaItem?.mediaId
+        crossfadeReadyJob?.cancel()
+        crossfadeReadyJob = scope.launch {
+            var waited = 0L
+            while (isActive && secPlayer.playbackState != Player.STATE_READY &&
+                waited < CROSSFADE_READY_TIMEOUT_MS
+            ) {
+                delay(50)
+                waited += 50
+            }
+            // Abort if the world moved on while we waited (user skipped/paused, a new crossfade armed, the
+            // current track changed, or this secondary was already released) — never swap a stale transition.
+            if (!isActive || isCrossfading || secondaryPlayer !== secPlayer ||
+                !player.isPlaying || player.currentMediaItem?.mediaId != targetMediaId
+            ) return@launch
+            if (secPlayer.playbackState == Player.STATE_READY) {
+                beginCrossfadeSwap(secPlayer, savedShuffleEnabled)
+            }
+            // else: not ready within the bound → leave the single-player path to hard-cut cleanly (no swap).
+        }
+    }
+
+    /** Flip the (already-READY) incoming player on and run the swap + fade. Extracted so both the fast path
+     *  and the bounded ready-wait in [startCrossfade] share one swap site. */
+    private fun beginCrossfadeSwap(secPlayer: ExoPlayer, savedShuffleEnabled: Boolean) {
+        if (isCrossfading) return
         secPlayer.playWhenReady = true
 
         performCrossfadeSwap()
-
 
         if (savedShuffleEnabled) {
             val shufflePlaylistFirst = dataStore.get(ShufflePlaylistFirstKey, false)
@@ -5917,6 +6042,10 @@ class MusicService :
         private const val DEAD_END_RECHECK_MS = 45_000L
         // How early (ms before the fade) to build + buffer the incoming player so the crossfade has no gap.
         private const val CROSSFADE_PRELOAD_LEAD_MS = 12000L
+        // Max time to wait for a LATE-ARMED / not-yet-buffered incoming player to reach STATE_READY before the
+        // fade swaps. The outgoing has ~crossfadeDuration of runway from the trigger, so this stays well within
+        // it; if READY isn't reached in time, we fall back to a clean single-player hard cut (no clipped pop-in).
+        private const val CROSSFADE_READY_TIMEOUT_MS = 2500L
 
         // KILL SWITCH for the instant audio→video dual-player swap (pre-prepared secondary publish).
         // Flip to false to disable the whole feature at runtime: every hook becomes a no-op and the
