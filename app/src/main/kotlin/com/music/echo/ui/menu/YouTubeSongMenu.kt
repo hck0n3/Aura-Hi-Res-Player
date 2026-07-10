@@ -128,21 +128,18 @@ fun YouTubeSongMenu(
         mutableStateOf(false)  
     }  
 
-    AddToPlaylistDialog(  
-        isVisible = showChoosePlaylistDialog,  
-        onGetSong = { playlist ->  
-            database.withTransaction {  
-                insert(song.toMediaMetadata())  
-            }  
-            coroutineScope.launch(Dispatchers.IO) {  
-                playlist.playlist.browseId?.let { browseId ->  
-                    YouTube.addToPlaylist(browseId, song.id)  
-                }  
-            }  
-            listOf(song.id)  
-        },  
-        onDismiss = { showChoosePlaylistDialog = false }  
-    )  
+    // Remote sync is NOT done here: AddToPlaylistDialog itself pushes the returned ids to the synced
+    // playlist's browseId — adding here too sent the song TWICE to the remote playlist.
+    AddToPlaylistDialog(
+        isVisible = showChoosePlaylistDialog,
+        onGetSong = { _ ->
+            database.withTransaction {
+                insert(song.toMediaMetadata())
+            }
+            listOf(song.id)
+        },
+        onDismiss = { showChoosePlaylistDialog = false }
+    )
 
     var showSelectArtistDialog by rememberSaveable {  
         mutableStateOf(false)  

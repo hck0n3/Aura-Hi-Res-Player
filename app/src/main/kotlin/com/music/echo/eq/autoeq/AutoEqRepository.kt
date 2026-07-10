@@ -2,6 +2,8 @@ package iad1tya.echo.music.eq.autoeq
 
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import timber.log.Timber
 import java.io.File
@@ -36,10 +38,12 @@ class AutoEqRepository(private val context: Context) {
     private val truncatedRegex = Regex(""""truncated"\s*:\s*true""")
 
     /**
-     * Load order: fresh filesDir cache → bundled asset (instant, no network) → stale cache → network.
+     * Load order: downloaded filesDir cache (fresh OR stale) → bundled asset → network. A downloaded
+     * cache — even past its TTL — is always at least as new as the install-time asset snapshot, so it
+     * must never LOSE to the asset (the screen background-refreshes a stale index anyway).
      * With [forceRefresh] the network is tried first; on failure (or a truncated tree) the previous
      * cache/asset is kept. Callers should only force-refresh in the background or on user request —
-     * the non-forced path never blocks first render on the network when the asset is present.
+     * the non-forced path never blocks first render on the network when a cache/asset is present.
      */
     suspend fun getIndex(forceRefresh: Boolean = false): List<AutoEqEntry> = withContext(Dispatchers.IO) {
         migrateLegacyCache()
@@ -50,9 +54,8 @@ class AutoEqRepository(private val context: Context) {
                     ?: return@withContext emptyList()
             }
         } else {
-            readCacheOrNull(requireFresh = true)
+            readCacheOrNull(requireFresh = false)
                 ?: readBundledAssetOrNull()
-                ?: readCacheOrNull(requireFresh = false)
                 ?: runCatching { downloadIndexTsv() }.getOrElse {
                     Timber.tag("AUTOEQ").w(it, "Index download failed and no cache/asset available")
                     return@withContext emptyList()
@@ -104,7 +107,9 @@ class AutoEqRepository(private val context: Context) {
     private fun isFresh(f: File): Boolean =
         System.currentTimeMillis() - f.lastModified() < 30L * 24 * 60 * 60 * 1000
 
-    private fun downloadIndexTsv(): String {
+    // Serialized under [refreshMutex]: an automatic background refresh and a user-forced one landing
+    // together would otherwise download the multi-MB tree twice AND interleave their cache writes.
+    private suspend fun downloadIndexTsv(): String = refreshMutex.withLock {
         val json = httpGet(
             "https://api.github.com/repos/jaakkopasanen/AutoEq/git/trees/master?recursive=1"
         )
@@ -122,9 +127,22 @@ class AutoEqRepository(private val context: Context) {
             .toList()
         if (entries.isEmpty()) error("git tree response yielded no models; keeping previous index")
         val tsv = entries.joinToString("\n") { "${it.name}\t${it.source}\t${it.path}" }
-        runCatching { cacheFile.writeText(tsv) }
+        // Atomic publish: write a temp file, then rename over the real one. A direct writeText
+        // interrupted mid-write (crash/kill) left a TRUNCATED index that looked fresh for 30 days.
+        runCatching {
+            val tmp = File(cacheFile.parentFile, cacheFile.name + ".tmp")
+            tmp.writeText(tsv)
+            if (!tmp.renameTo(cacheFile)) {
+                // Some filesystems refuse to rename over an existing file — clear the target and retry.
+                cacheFile.delete()
+                if (!tmp.renameTo(cacheFile)) {
+                    tmp.delete()
+                    error("could not move temp index into place")
+                }
+            }
+        }.onFailure { Timber.tag("AUTOEQ").w(it, "AutoEq index cache write failed") }
         Timber.tag("AUTOEQ").i("AutoEq index built: ${entries.size} models")
-        return tsv
+        return@withLock tsv
     }
 
     /** Downloads and parses one model's ParametricEQ profile. */
@@ -168,5 +186,9 @@ class AutoEqRepository(private val context: Context) {
 
     private companion object {
         const val ASSET_NAME = "autoeq_index.tsv"
+
+        // Companion-level so refreshes are serialized even across repository instances (the screen
+        // creates one per composition — auto refresh from an old instance must not race a manual one).
+        val refreshMutex = Mutex()
     }
 }

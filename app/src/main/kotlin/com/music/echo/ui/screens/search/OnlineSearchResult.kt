@@ -95,6 +95,7 @@ import iad1tya.echo.music.R
 import iad1tya.echo.music.constants.MiniPlayerBottomSpacing
 import iad1tya.echo.music.constants.MiniPlayerHeight
 import iad1tya.echo.music.constants.NavigationBarHeight
+import iad1tya.echo.music.constants.HideVideoSongsKey
 import iad1tya.echo.music.constants.PauseSearchHistoryKey
 import iad1tya.echo.music.db.entities.SearchHistory
 import iad1tya.echo.music.models.toMediaMetadata
@@ -140,6 +141,7 @@ fun OnlineSearchResult(
     var isSearchFocused by remember { mutableStateOf(false) }
 
     val pauseSearchHistory by rememberPreference(PauseSearchHistoryKey, defaultValue = false)
+    val hideVideoSongs by rememberPreference(HideVideoSongsKey, defaultValue = false)
 
     BackHandler(enabled = isSearchFocused) {
         isSearchFocused = false
@@ -271,6 +273,8 @@ fun OnlineSearchResult(
                 else -> false
             },
             isPlaying = isPlaying,
+            // Video results keep their native 16:9 artwork instead of a squeezed square.
+            thumbnailRatio = if (item is SongItem && item.isVideoSong) 16f / 9 else 1f,
             shape = listItemShape(index, size),
             trailingContent = {
                 IconButton(
@@ -413,14 +417,16 @@ fun OnlineSearchResult(
             ) {
             ChipsRow(
                 chips = listOf(
-                    // YouTube Music only — no "Videos" filter (the app is for music, not YT videos).
                     null to stringResource(R.string.filter_all),
                     FILTER_SONG to stringResource(R.string.filter_songs),
+                    // Explicit Videos filter: the ViewModel deliberately skips the hide-videos
+                    // preference for this chip — asking for videos always shows them.
+                    FILTER_VIDEO to stringResource(R.string.filter_videos),
                     FILTER_ALBUM to stringResource(R.string.filter_albums),
                     FILTER_ARTIST to stringResource(R.string.filter_artists),
                     FILTER_COMMUNITY_PLAYLIST to stringResource(R.string.filter_community_playlists),
                     FILTER_FEATURED_PLAYLIST to stringResource(R.string.filter_featured_playlists),
-                    FILTER_PODCAST_EPISODE to "Podcasts",
+                    FILTER_PODCAST_EPISODE to stringResource(R.string.podcasts),
                 ),
                 currentValue = searchFilter,
                 onValueUpdate = {
@@ -453,9 +459,10 @@ fun OnlineSearchResult(
                             }
                         }
                         ?.forEach { summary ->
-                        // Drop YouTube video results (and any section left empty) — music only.
+                        // Videos in the "All" tab follow the user's hide-videos preference (default =
+                        // show) instead of being dropped unconditionally; also drop sections left empty.
                         val musicItems = summary.items.filterNot {
-                            it is com.music.innertube.models.SongItem && it.isVideoSong
+                            hideVideoSongs && it is com.music.innertube.models.SongItem && it.isVideoSong
                         }
                         if (musicItems.isEmpty()) return@forEach
                         item {
@@ -476,7 +483,7 @@ fun OnlineSearchResult(
                     // Universal search: podcasts (Apple/RSS) alongside the music results.
                     val podcasts = viewModel.podcastResults
                     if (podcasts.isNotEmpty()) {
-                        item(key = "podcasts_title") { NavigationTitle("Podcasts") }
+                        item(key = "podcasts_title") { NavigationTitle(stringResource(R.string.podcasts)) }
                         items(podcasts, key = { "podcast/${it.id}" }) { show ->
                             androidx.compose.foundation.layout.Row(
                                 verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,

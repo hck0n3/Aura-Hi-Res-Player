@@ -108,16 +108,23 @@ fun PlayingIndicatorBox(
         // no animation while the track is still buffering and the play icon at STATE_ENDED, so the
         // infinite bar animation never runs when nothing is audible (battery/heat rule). Fallback
         // STATE_READY (no player connection in scope) trusts [playWhenReady] alone.
+        // While CASTING the LOCAL player sits idle although the cast device is audibly playing, so the
+        // STATE_READY gate must not suppress the bars: [playWhenReady] is already cast-aware in callers
+        // (isEffectivelyPlaying = castIsPlaying while casting), so trust it alone in that case.
         val playerConnection = LocalPlayerConnection.current
         val playbackState by (
             playerConnection?.playbackState?.collectAsState()
                 ?: remember { mutableStateOf(Player.STATE_READY) }
             )
+        val isCasting by (
+            playerConnection?.service?.castConnectionHandler?.isCasting?.collectAsState()
+                ?: remember { mutableStateOf(false) }
+            )
         Box(
             contentAlignment = Alignment.Center,
             modifier = modifier,
         ) {
-            if (playWhenReady && playbackState == Player.STATE_READY) {
+            if (playWhenReady && (playbackState == Player.STATE_READY || isCasting)) {
                 PlayingIndicator(
                     color = color,
                     modifier = Modifier.height(24.dp),

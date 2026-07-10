@@ -1079,6 +1079,9 @@ fun YouTubeListItem(
     },
     shape: Shape = RectangleShape,
     drawHighlight: Boolean = true,
+    // 16:9 widens video-song rows (e.g. the search results' Videos items); 1f keeps every existing
+    // caller's square thumbnail untouched.
+    thumbnailRatio: Float = 1f,
 ) {
     val swipeEnabled by rememberPreference(SwipeToSongKey, defaultValue = false)
 
@@ -1099,9 +1102,11 @@ fun YouTubeListItem(
                     isSelected = isSelected,
                     isActive = isActive,
                     isPlaying = isPlaying,
+                    thumbnailRatio = thumbnailRatio,
                     shape = if (item is ArtistItem) CircleShape else RoundedCornerShape(ThumbnailCornerRadius),
                     modifier = Modifier
-                        .size(ListThumbnailSize)
+                        .height(ListThumbnailSize)
+                        .width(ListThumbnailSize * thumbnailRatio)
                         .then(
                             if (onThumbnailClick != null) Modifier.clickable(onClick = onThumbnailClick)
                             else Modifier
@@ -1438,31 +1443,17 @@ fun LocalThumbnail(
             modifier = Modifier.fillMaxSize()
         )
 
-        AnimatedVisibility(
-            visible = isActive,
-            enter = fadeIn(tween(500)),
-            exit = fadeOut(tween(500))
-        ) {
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.4f), shape)
-            ) {
-                if (isPlaying) {
-                    PlayingIndicator(
-                        color = Color.White,
-                        modifier = Modifier.height(24.dp)
-                    )
-                } else {
-                    Icon(
-                        painter = painterResource(R.drawable.play),
-                        contentDescription = null,
-                        tint = Color.White
-                    )
-                }
-            }
-        }
+        // Same gate as ItemThumbnail: PlayingIndicatorBox adds the STATE_READY/casting check, so the
+        // infinite bar animation never runs while the track is merely BUFFERING (heat/battery rule) —
+        // the previous inline copy animated on isPlaying alone.
+        PlayingIndicatorBox(
+            isActive = isActive,
+            playWhenReady = isPlaying,
+            color = Color.White,
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.4f), shape)
+        )
 
         if (showCenterPlay) {
             AnimatedVisibility(

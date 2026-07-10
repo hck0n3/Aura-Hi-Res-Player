@@ -58,7 +58,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -95,7 +94,6 @@ import com.music.shazamkit.models.RecognitionResult
 import com.music.shazamkit.models.RecognitionStatus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -109,7 +107,6 @@ fun RecognitionScreen(
     val playerConnection = LocalPlayerConnection.current
     val syncUtils = LocalSyncUtils.current
     val suggestionsViewModel: SuggestionsViewModel = hiltViewModel()
-    val coroutineScope = rememberCoroutineScope()
 
 
     // Only reset when no session is live — otherwise entering the screen mid-recognition
@@ -203,8 +200,13 @@ fun RecognitionScreen(
     val successResult = (recognitionStatus as? RecognitionStatus.Success)?.result
     LaunchedEffect(successResult?.trackId) {
         val result = successResult ?: return@LaunchedEffect
-        if (resolvedTrackId == result.trackId) return@LaunchedEffect
-        resolvedTrackId = result.trackId
+        // Reuse the cache only for a COMPLETED resolve of this trackId. The id is latched after the
+        // search finishes (success or failure), never before: latching up-front meant a cancelled
+        // resolve (key change mid-search, e.g. Try Again) permanently blocked re-resolving the same
+        // track — Like/Add stuck on an infinite spinner.
+        if (resolvedTrackId == result.trackId && (resolvedSong != null || resolveFailed)) {
+            return@LaunchedEffect
+        }
         resolvedSong = null
         resolveFailed = false
         val match = withContext(Dispatchers.IO) {
@@ -212,12 +214,15 @@ fun RecognitionScreen(
                 .getOrNull()
                 ?.items
                 ?.filterIsInstance<SongItem>()
-                ?.let { songs -> bestSongMatch(songs, result) }
+                .orEmpty()
+                .let { songs -> bestSongMatch(songs, result) }
         }
         if (match != null) {
             resolvedSong = match
+            resolvedTrackId = result.trackId
         } else {
             resolveFailed = true
+            resolvedTrackId = result.trackId
             Toast.makeText(context, R.string.recognition_resolve_failed, Toast.LENGTH_SHORT).show()
         }
     }
@@ -246,21 +251,18 @@ fun RecognitionScreen(
 
     var showChoosePlaylistDialog by rememberSaveable { mutableStateOf(false) }
 
-    // Mirrors YouTubeSongMenu's AddToPlaylistDialog wiring.
+    // Mirrors YouTubeSongMenu's AddToPlaylistDialog wiring. Remote sync is NOT done here: the dialog
+    // itself pushes the returned ids to the synced playlist's browseId (AddToPlaylistDialog) — adding
+    // here too sent the song TWICE to the remote playlist.
     AddToPlaylistDialog(
         isVisible = showChoosePlaylistDialog,
-        onGetSong = { playlist ->
+        onGetSong = { _ ->
             val songItem = resolvedSong
             if (songItem == null) {
                 emptyList()
             } else {
                 database.withTransaction {
                     insert(songItem.toMediaMetadata())
-                }
-                coroutineScope.launch(Dispatchers.IO) {
-                    playlist.playlist.browseId?.let { browseId ->
-                        YouTube.addToPlaylist(browseId, songItem.id)
-                    }
                 }
                 listOf(songItem.id)
             }
@@ -564,9 +566,15 @@ private fun artistMatches(ytArtistName: String, recognizedArtist: String): Boole
     return recNorm.contains(ytNorm) || ytNorm.contains(recNorm)
 }
 
-private fun bestSongMatch(songs: List<SongItem>, result: RecognitionResult): SongItem? =
-    // Shazam already gave us the exact video id: trust it above the name heuristics.
-    result.youtubeVideoId?.let { id -> songs.firstOrNull { it.id == id } }
+private suspend fun bestSongMatch(songs: List<SongItem>, result: RecognitionResult): SongItem? =
+    // Shazam already gave us the exact video id: trust it above the name heuristics. If it isn't in
+    // the FILTER_SONG results (video-only upload, regional variant…), resolve that exact id directly
+    // so Like/Add persist EXACTLY the item the Play button plays — the name heuristics below could
+    // otherwise pick a DIFFERENT track. Heuristics stay as fallback when the id resolve fails.
+    result.youtubeVideoId?.let { id ->
+        songs.firstOrNull { it.id == id }
+            ?: YouTube.queue(videoIds = listOf(id)).getOrNull()?.firstOrNull()
+    }
         ?: songs.firstOrNull { s ->
             s.title.equals(result.title, ignoreCase = true) &&
                 s.artists.any { a -> artistMatches(a.name, result.artist) }
