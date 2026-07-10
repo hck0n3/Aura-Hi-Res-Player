@@ -151,6 +151,14 @@ class ArtistViewModel @Inject constructor(
                         }
                     }
             }
+            // Capture any already-resolved "Aparece en" (appears-on) section from this session's cached
+            // page or the page just seeded from disk, BEFORE the live fetch below overwrites
+            // artistPage/pageCache. If present, the appears-on job reuses it verbatim and SKIPS the ~80
+            // YouTube guest searches entirely — so those searches run at most once per artist (per session,
+            // and per cache TTL once persisted), never again on revisits.
+            val cachedAppearsOn: com.music.innertube.pages.ArtistSection? =
+                artistPage?.sections?.find { it.title.equals("Aparece en", ignoreCase = true) }
+                    ?: pageCache[artistId]?.sections?.find { it.title.equals("Aparece en", ignoreCase = true) }
             // Retry transient failures (YouTube throttling) so the screen doesn't get stuck on the spinner,
             // which forced the user to leave and re-enter the artist several times.
             var attempt = 0
@@ -197,56 +205,71 @@ class ArtistViewModel @Inject constructor(
 
                     // "Aparece en" (Appears on), like Spotify: albums where this artist is a guest. Built
                     // from iTunes guest credits + a parallel YouTube lookup, appended as its own section.
+                    // Cache-first: once resolved, the section is written back into pageCache + disk, so a
+                    // later visit (this session, or a cold restart within the cache TTL) reuses it and skips
+                    // the ~80 guest YouTube searches entirely. Those searches run at most ONCE per artist —
+                    // not on every revisit, which was cooking battery/network and risking throttling.
                     launch(Dispatchers.IO) {
                         val artistName = page.artist?.title ?: return@launch
-                        val norm = iad1tya.echo.music.utils.iTunesDiscography::normalizeTitle
-                        // Cap at 40 (covers virtually all real collaborations) with GENTLE concurrency:
-                        // resolving the full uncapped iTunes list (100+ items) with high concurrency flooded
-                        // YouTube and made the whole app's responses slower. 40 keeps it complete enough
-                        // without hammering the network.
-                        val guest = iad1tya.echo.music.utils.iTunesDiscography
-                            .fetchAppearsOn(artistName, "us")
-                            .take(40)
-                        if (guest.isEmpty()) return@launch
-                        val sem = Semaphore(1)
-                        val found = coroutineScope {
-                            guest.map { (title, primary) ->
-                                async {
-                                    sem.withPermit {
-                                        val target = norm(title)
-                                        fun matches(t: String) =
-                                            t == target || (target.length >= 4 && (t.contains(target) || target.contains(t)))
-                                        // As a full album/collection...
-                                        val album = YouTube.search("$primary $title", YouTube.SearchFilter.FILTER_ALBUM)
-                                            .getOrNull()?.items
-                                            ?.filterIsInstance<com.music.innertube.models.AlbumItem>()
-                                            ?.firstOrNull { matches(norm(it.title)) }
-                                        if (album != null) return@withPermit album as com.music.innertube.models.YTItem
-                                        // ...otherwise as a collab/feat single (most collaborations are songs).
-                                        val song = YouTube.search("$primary $title", YouTube.SearchFilter.FILTER_SONG)
-                                            .getOrNull()?.items
-                                            ?.filterIsInstance<com.music.innertube.models.SongItem>()
-                                            ?.firstOrNull { s ->
-                                                matches(norm(s.title)) &&
-                                                    s.artists.any { it.name.contains(artistName, ignoreCase = true) }
-                                            }
-                                        song as? com.music.innertube.models.YTItem
+                        val items: List<com.music.innertube.models.YTItem> = if (cachedAppearsOn != null) {
+                            // Already resolved on a previous visit — reuse verbatim, zero new searches.
+                            // (Re-apply the hide-explicit filter in case the preference changed since.)
+                            cachedAppearsOn.items.filter { !hideExplicit || !it.explicit }
+                        } else {
+                            val norm = iad1tya.echo.music.utils.iTunesDiscography::normalizeTitle
+                            // Cap at 40 (covers virtually all real collaborations) with GENTLE concurrency:
+                            // resolving the full uncapped iTunes list (100+ items) with high concurrency flooded
+                            // YouTube and made the whole app's responses slower. 40 keeps it complete enough
+                            // without hammering the network.
+                            val guest = iad1tya.echo.music.utils.iTunesDiscography
+                                .fetchAppearsOn(artistName, "us")
+                                .take(40)
+                            if (guest.isEmpty()) return@launch
+                            val sem = Semaphore(1)
+                            val found = coroutineScope {
+                                guest.map { (title, primary) ->
+                                    async {
+                                        sem.withPermit {
+                                            val target = norm(title)
+                                            fun matches(t: String) =
+                                                t == target || (target.length >= 4 && (t.contains(target) || target.contains(t)))
+                                            // As a full album/collection...
+                                            val album = YouTube.search("$primary $title", YouTube.SearchFilter.FILTER_ALBUM)
+                                                .getOrNull()?.items
+                                                ?.filterIsInstance<com.music.innertube.models.AlbumItem>()
+                                                ?.firstOrNull { matches(norm(it.title)) }
+                                            if (album != null) return@withPermit album as com.music.innertube.models.YTItem
+                                            // ...otherwise as a collab/feat single (most collaborations are songs).
+                                            val song = YouTube.search("$primary $title", YouTube.SearchFilter.FILTER_SONG)
+                                                .getOrNull()?.items
+                                                ?.filterIsInstance<com.music.innertube.models.SongItem>()
+                                                ?.firstOrNull { s ->
+                                                    matches(norm(s.title)) &&
+                                                        s.artists.any { it.name.contains(artistName, ignoreCase = true) }
+                                                }
+                                            song as? com.music.innertube.models.YTItem
+                                        }
                                     }
-                                }
-                            }.awaitAll().filterNotNull()
+                                }.awaitAll().filterNotNull()
+                            }
+                            found.distinctBy { it.id }.filter { !hideExplicit || !it.explicit }
                         }
-                        val items = found.distinctBy { it.id }.filter { !hideExplicit || !it.explicit }
                         if (items.isEmpty()) return@launch
                         withContext(Dispatchers.Main) {
                             val current = artistPage ?: return@withContext
                             if (current.sections.any { it.title.equals("Aparece en", ignoreCase = true) }) return@withContext
-                            artistPage = current.copy(
+                            val updated = current.copy(
                                 sections = current.sections + com.music.innertube.pages.ArtistSection(
                                     title = "Aparece en",
                                     items = items,
                                     moreEndpoint = null,
                                 ),
                             )
+                            artistPage = updated
+                            // Write the resolved page back so revisits reuse the appears-on section instantly:
+                            // pageCache for this session, disk (ArtistPageCache) for cold restarts within TTL.
+                            pageCache[artistId] = updated
+                            launch { ArtistPageCache.save(context, artistId, updated) }
                         }
                     }
 
