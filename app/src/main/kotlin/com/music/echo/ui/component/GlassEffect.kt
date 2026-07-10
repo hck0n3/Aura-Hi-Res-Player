@@ -66,6 +66,14 @@ data class GlassEffectConfig(
             GlassComponent.MINI_PLAYER -> miniPlayerEnabled
             GlassComponent.NAV_BAR -> navBarEnabled
         }
+
+    /**
+     * True when at least one per-component switch is on. With all three off no glass
+     * surface can render, so backdrop recording (the full-screen layer in
+     * [iad1tya.echo.music.MainActivity]) can be skipped even if the master switch is on.
+     */
+    val anyComponentEnabled: Boolean
+        get() = playerEnabled || miniPlayerEnabled || navBarEnabled
 }
 
 /** UI surfaces that can individually opt in or out of the liquid glass effect. */

@@ -1487,10 +1487,13 @@ class MainActivity : ComponentActivity() {
                                             slideOutHorizontally { it / 8 } + fadeOut(tween(200))
                                     },
                                     // Record the app content into the glass backdrop ONLY while Liquid
-                                    // Glass is enabled + eligible; the default-OFF path adds no layer work.
+                                    // Glass is enabled + eligible AND at least one per-component surface
+                                    // is on — with all three toggles off nothing samples the backdrop, so
+                                    // don't pay for a full-screen layer re-record. The default-OFF path
+                                    // adds no layer work.
                                     modifier = Modifier
                                         .then(
-                                            if (glassEffectConfig.globalEnabled) {
+                                            if (glassEffectConfig.globalEnabled && glassEffectConfig.anyComponentEnabled) {
                                                 Modifier.layerBackdrop(appBackdrop)
                                             } else {
                                                 Modifier

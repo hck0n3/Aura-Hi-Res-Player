@@ -977,7 +977,12 @@ private fun MiniPlayerColorExtractor(
     val fallbackColor = MaterialTheme.colorScheme.surfaceContainer.toArgb()
 
     LaunchedEffect(mediaMetadata?.id, miniPlayerBackground) {
-        if (miniPlayerBackground == PlayerBackgroundStyle.GRADIENT || miniPlayerBackground == PlayerBackgroundStyle.GLOW_ANIMATED) {
+        // LIQUID_GLASS extracts gradient colors too: they feed the documented degrade path in
+        // MiniPlayerBackgroundLayer (glass gate off / unsupported device -> gradient look).
+        if (miniPlayerBackground == PlayerBackgroundStyle.GRADIENT ||
+            miniPlayerBackground == PlayerBackgroundStyle.GLOW_ANIMATED ||
+            miniPlayerBackground == PlayerBackgroundStyle.LIQUID_GLASS
+        ) {
             val currentMetadata = mediaMetadata
             if (currentMetadata?.thumbnailUrl != null) {
                 withContext(Dispatchers.IO) {
