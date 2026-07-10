@@ -77,6 +77,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.ContainedLoadingIndicator
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ThumbDown
+import androidx.compose.material.icons.filled.ThumbUp
+import androidx.compose.material.icons.outlined.ThumbDown
+import androidx.compose.material.icons.outlined.ThumbUp
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledIconButton
@@ -3563,7 +3568,7 @@ private fun PlayerLikeDislikePill(
             contentAlignment = Alignment.Center,
         ) {
             Icon(
-                painter = painterResource(R.drawable.thumb_up_like),
+                imageVector = if (liked) Icons.Filled.ThumbUp else Icons.Outlined.ThumbUp,
                 contentDescription = likeContentDescription,
                 tint = if (liked) activeContentColor else activeColor,
                 modifier = Modifier.size(20.dp),
@@ -3586,7 +3591,7 @@ private fun PlayerLikeDislikePill(
             contentAlignment = Alignment.Center,
         ) {
             Icon(
-                painter = painterResource(R.drawable.thumb_down),
+                imageVector = if (disliked) Icons.Filled.ThumbDown else Icons.Outlined.ThumbDown,
                 contentDescription = dislikeContentDescription,
                 tint = if (disliked) activeContentColor else activeColor,
                 modifier = Modifier.size(20.dp),

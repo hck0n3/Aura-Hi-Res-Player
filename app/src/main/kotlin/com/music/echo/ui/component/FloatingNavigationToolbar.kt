@@ -136,6 +136,8 @@ fun FloatingNavigationToolbar(
                 floatingActionButton = {
                     FloatingToolbarQuickActions(
                         pureBlack = pureBlack,
+                        useGlass = useGlass,
+                        glassConfig = glassConfig,
                         onShuffleClick = onShuffleClick,
                         shuffleIconRes = shuffleIconRes,
                         shuffleContentDescription = shuffleContentDescription,
@@ -162,6 +164,8 @@ fun FloatingNavigationToolbar(
                 floatingActionButton = {
                     FloatingToolbarFabAction(
                         pureBlack = pureBlack,
+                        useGlass = useGlass,
+                        glassConfig = glassConfig,
                         onClick = onFabClick,
                         iconRes = fabIconRes,
                         contentDescription = fabContentDescription,
@@ -269,6 +273,8 @@ private fun ToolbarItemsContainer(
 @Composable
 private fun FloatingToolbarQuickActions(
     pureBlack: Boolean,
+    useGlass: Boolean,
+    glassConfig: GlassEffectConfig,
     onShuffleClick: (() -> Unit)?,
     shuffleIconRes: Int?,
     shuffleContentDescription: String,
@@ -276,6 +282,10 @@ private fun FloatingToolbarQuickActions(
     musicRecognitionContentDescription: String,
 ) {
     val isTvOrCar = rememberIsTvOrCar()
+    // When the glass nav-bar surface is active, each FAB becomes its own backdrop-sampling glass
+    // circle (transparent container + liquidGlass) so it matches the toolbar pill; otherwise it keeps
+    // the exact solid VibrantFloatingActionButton look.
+    val fabContainerColor = if (useGlass) Color.Transparent else floatingToolbarFabContainerColor(pureBlack = pureBlack)
     Row(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -283,9 +293,11 @@ private fun FloatingToolbarQuickActions(
         if (onShuffleClick != null && shuffleIconRes != null) {
             FloatingToolbarDefaults.VibrantFloatingActionButton(
                 onClick = onShuffleClick,
-                modifier = Modifier.tvFocusable(isTvOrCar, CircleShape, scaleFocused = 1f),
+                modifier = Modifier
+                    .tvFocusable(isTvOrCar, CircleShape, scaleFocused = 1f)
+                    .then(if (useGlass) Modifier.liquidGlass(config = glassConfig, shape = CircleShape) else Modifier),
                 shape = CircleShape,
-                containerColor = floatingToolbarFabContainerColor(pureBlack = pureBlack),
+                containerColor = fabContainerColor,
                 contentColor = floatingToolbarFabContentColor(pureBlack = pureBlack),
             ) {
                 Icon(
@@ -299,9 +311,11 @@ private fun FloatingToolbarQuickActions(
         if (onMusicRecognitionClick != null) {
             FloatingToolbarDefaults.VibrantFloatingActionButton(
                 onClick = onMusicRecognitionClick,
-                modifier = Modifier.tvFocusable(isTvOrCar, CircleShape, scaleFocused = 1f),
+                modifier = Modifier
+                    .tvFocusable(isTvOrCar, CircleShape, scaleFocused = 1f)
+                    .then(if (useGlass) Modifier.liquidGlass(config = glassConfig, shape = CircleShape) else Modifier),
                 shape = CircleShape,
-                containerColor = floatingToolbarFabContainerColor(pureBlack = pureBlack),
+                containerColor = fabContainerColor,
                 contentColor = floatingToolbarFabContentColor(pureBlack = pureBlack),
             ) {
                 Icon(
@@ -316,16 +330,22 @@ private fun FloatingToolbarQuickActions(
 @Composable
 private fun FloatingToolbarFabAction(
     pureBlack: Boolean,
+    useGlass: Boolean,
+    glassConfig: GlassEffectConfig,
     onClick: (() -> Unit)?,
     iconRes: Int?,
     contentDescription: String,
 ) {
     if (onClick == null || iconRes == null) return
 
+    // On the glass nav bar this create FAB becomes a backdrop-sampling glass circle (transparent
+    // container + liquidGlass); otherwise it keeps the exact solid VibrantFloatingActionButton look.
     FloatingToolbarDefaults.VibrantFloatingActionButton(
         onClick = onClick,
-        modifier = Modifier.tvFocusable(rememberIsTvOrCar(), CircleShape, scaleFocused = 1f),
-        containerColor = floatingToolbarFabContainerColor(pureBlack = pureBlack),
+        modifier = Modifier
+            .tvFocusable(rememberIsTvOrCar(), CircleShape, scaleFocused = 1f)
+            .then(if (useGlass) Modifier.liquidGlass(config = glassConfig, shape = CircleShape) else Modifier),
+        containerColor = if (useGlass) Color.Transparent else floatingToolbarFabContainerColor(pureBlack = pureBlack),
         contentColor = floatingToolbarFabContentColor(pureBlack = pureBlack),
     ) {
         Icon(
