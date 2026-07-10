@@ -1,30 +1,31 @@
-# Aura Hi-Res Player 0.6.84 — Arranque, audio y video más rápidos + Agregar música
+# Aura Hi-Res Player 0.6.85 — Reconocimiento reparado, letras en sincronía y Agregar música pulido
 
-## ➕ Nuevo: Agregar música a tus playlists (estilo Apple Music)
-- Al final de tus playlists ahora aparece **"Canciones sugeridas"**: 5 canciones basadas en el contenido de esa playlist, cada una con **preview** (la escuchas sin salir) y un botón **`+`** para agregarla al instante. Un icono de **actualizar** regenera las 5.
-- Debajo, **"Artistas destacados"**: los artistas de tu playlist en círculos; tócalos para ir a su página.
-- Botón **"Agregar música"**: abre una ventana deslizante con **búsqueda global** (todo YouTube Music), **Desde Replay** (lo más escuchado), **Agregado recientemente**, más sugeridas, y **selección múltiple** de tu biblioteca para agregar varias de una vez.
+## 🎙️ Reconocer canción — REPARADO
+- **Vuelve a funcionar el reconocimiento de canciones** (llevaba roto desde 0.6.82 por una actualización interna del motor de reproducción): identifica lo que suena a tu alrededor desde la app, el widget o el mosaico de Ajustes Rápidos.
+- **Cancelar de verdad cancela**, reintentar funciona al instante, y desde el widget/mosaico el reconocimiento **arranca solo** (antes había que tocar dos veces).
+- Sigue escuchando aunque bloquees la pantalla o cambies de app (servicio de micrófono en primer plano).
 
-## 🚀 Arranque en gama baja
-- **Arranca mucho más rápido:** el escaneo de la caché de reproducción ya no bloquea la pantalla al abrir (se hace fuera del hilo principal). Menos "pantalla de carga eterna" en cajas Android TV, car box y tablets de auto.
-- Migraciones de ajustes en una sola escritura, lectura de ajustes sin bloquear, y carga diferida de piezas pesadas al inicio.
+## 🎤 Letras — en sincronía
+- **Corregidas las letras desincronizadas**: el estilo por defecto ya no "inventa" el barrido palabra por palabra cuando la letra solo trae tiempos por línea — ahora ilumina la línea exacta al momento. Cuando la letra sí trae tiempos reales de palabras, el karaoke sigue idéntico.
+- El desenfoque estilo Apple Music en letras ahora viene activado por defecto.
 
-## 🎧 Audio
-- **Corregido el audio acelerado** (tono agudo) en algunas canciones/videos en equipos de gama baja: ahora si el decodificador del equipo falla con ciertos formatos (AAC/HE-AAC), la app usa el decodificador por software para que suene a la velocidad correcta.
-- El sonido **flotante de 32 bits** se mantiene en equipos capaces (ya no se apaga por el Modo Rendimiento).
-- El ecualizador se **re-sincroniza** correctamente al cambiar el formato de audio entre pistas.
+## ➕ Agregar música (estreno pulido)
+- Las secciones de la ventana "Agregar música" ahora se deslizan **en horizontal, por páginas, estilo Apple Music**.
+- **Canciones sugeridas de verdad basadas en tu playlist**: usa hasta 8 canciones de tu lista como semillas (locales + algoritmo de YouTube), rankea por afinidad y limita 2 por artista.
+- **Sugerencias infinitas**: cada toque a actualizar trae 5 canciones nuevas sin repetirse (expande semillas automáticamente).
+- Tocar la **portada** = preview; botón **`+`** al final de cada fila = se agrega al instante (y se marca ✓).
 
-## ⚡ Canciones que arrancan más parejo
-- **Menos espera al iniciar una canción:** la app pre-resuelve las siguientes también en gama baja/TV (antes solo en equipos potentes), guarda mejor y no re-descarga lo ya cacheado.
+## 🤖 Listas con IA — ya sin API key
+- **Crear playlists con una frase ahora funciona sin configurar nada**: la app usa la IA integrada de Aura (con respaldo gratuito automático). Tu propia key sigue siendo opcional para usuarios avanzados.
 
-## 📺 Video que ya no se corta
-- **Corregidos los cortes de video** ("como si fallara el internet"): el video ahora **arranca en una resolución que tu conexión aguanta** (según el ancho de banda) en vez de forzar 1080p siempre, así deja de tartamudear en redes flojas. En TV sigue subiendo hasta 1080p cuando la red lo permite.
+## 📺 Botón de transmitir (Cast)
+- Siempre visible **arriba a la derecha** del reproductor, en todos los modos (letras, canvas, video, horizontal, TV). Y ahora solo busca dispositivos cuando abres el selector (menos batería).
 
-## 🎤 Letras
-- **Ya no cargan la letra de otra canción**, cargan **más rápido** (proveedores en paralelo) y si no hay letra lo dice claro.
+## ✅ Honestidad y legal
+- **"Acerca de" ahora dice exactamente lo que la app hace**: auditamos las 123 funciones anunciadas contra el código y corregimos cada texto (y arreglamos varias de verdad: bypass real de bandas del EQ a 0 dB, el radar reproduce estrenos, el tono de llamada se aplica de verdad).
+- **Términos y condiciones**: se muestran al primer uso (aceptación requerida) y quedan siempre disponibles en Acerca de ▸ Información legal.
 
-## 🎬 Cambio canción → video
-- El **primer cambio a video** ya no tarda >5s en equipos capaces (la URL se resuelve antes).
-
-## ✅ Actualización segura
-- La base de datos se actualiza sola al abrir (sin perder historial, playlists ni descargas). Suscripción, licencia y demo intactos. Sin tocar el crossfade de 9s ni el motor de audio. Auditado contra crashes con varios modelos.
+## 🔧 También
+- Estrenos del radar con botón de reproducción directa.
+- Menos consumo de batería y calor vigilado en todo lo nuevo.
+- Suscripción, licencia, demo, crossfade de 9s y motor de audio: intactos.
