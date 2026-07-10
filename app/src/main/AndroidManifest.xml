@@ -266,6 +266,24 @@
             android:exported="false"
             android:foregroundServiceType="microphone" />
 
+        <!-- Transparent trampoline for the recognition tile: with mic permission it goes straight to the
+             microphone foreground service; otherwise it opens the app to request the permission. -->
+        <activity
+            android:name=".recognition.RecognitionLaunchActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:noHistory="true"
+            android:theme="@style/Theme.Metrolist.Transparent" />
+
+        <!-- Microphone foreground service for in-app/tile recognition: keeps the ~10s listen capturing
+             audio when the app is backgrounded or the screen locks (Android 12+ mutes AudioRecord for
+             cached apps) and shows progress/result in a notification. -->
+        <service
+            android:name=".recognition.RecognitionForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
+
         <!-- Quick Settings tile to start music recognition (Shazam) without opening the app. -->
         <service
             android:name=".widget.RecognitionTileService"

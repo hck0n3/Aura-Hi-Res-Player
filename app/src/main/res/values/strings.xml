@@ -490,4 +490,13 @@
     <string name="search_youtube_music">Search YouTube Music</string>
     <string name="your_library">Your Library</string>
     <string name="add_music_no_results">No results</string>
+
+    <!-- Song recognition foreground-service notification -->
+    <string name="recognition_notification_channel_name">Music recognition</string>
+    <string name="recognition_notification_channel_desc">Shows a notification while identifying a song</string>
+    <string name="recognition_notification_listening">Listening for music…</string>
+    <string name="recognition_notification_processing">Identifying…</string>
+    <string name="recognition_notification_no_match">No match found</string>
+    <string name="recognition_notification_failed">Recognition failed</string>
+    <string name="listen_on_aura">Listen on Aura</string>
 </resources>

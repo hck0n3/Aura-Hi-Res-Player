@@ -4,20 +4,20 @@ import android.app.PendingIntent
 import android.content.Intent
 import android.os.Build
 import android.service.quicksettings.TileService
-import iad1tya.echo.music.MainActivity
+import iad1tya.echo.music.recognition.RecognitionLaunchActivity
 
 /**
- * Quick Settings tile that starts music recognition. It opens the app straight to the Recognition screen,
- * which auto-starts recording + Shazam matching. We launch the activity (not a background microphone
- * foreground service) because Android 14+ heavily restricts starting a mic service from the background —
- * opening the screen is reliable on every Android version.
+ * Quick Settings tile that starts music recognition. It launches the transparent trampoline
+ * (RecognitionLaunchActivity): with the mic permission already granted, recognition runs headless in
+ * the microphone foreground service (live notification, no need to open the app); without it, the app
+ * opens on the Recognition screen with auto-start so a single grant is enough. Starting the mic
+ * service from a user-initiated activity launch is allowed on every Android version (14+ included).
  */
 class RecognitionTileService : TileService() {
     override fun onClick() {
         super.onClick()
-        val intent = Intent(this, MainActivity::class.java).apply {
-            action = MainActivity.ACTION_RECOGNITION
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        val intent = Intent(this, RecognitionLaunchActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             // API 34+: startActivityAndCollapse requires a PendingIntent.

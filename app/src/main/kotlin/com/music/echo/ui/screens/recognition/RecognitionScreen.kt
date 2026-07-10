@@ -3,6 +3,7 @@
 package iad1tya.echo.music.ui.screens.recognition
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -86,55 +87,87 @@ import java.time.LocalDateTime
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RecognitionScreen(
-    navController: NavController
+    navController: NavController,
+    autoStart: Boolean = false
 ) {
     val context = LocalContext.current
     val database = LocalDatabase.current
     val coroutineScope = rememberCoroutineScope()
-    
-    
+
+
+    // Only reset when no session is live — otherwise entering the screen mid-recognition
+    // (e.g. started from the Quick Settings tile) would clobber the Listening/Processing state.
     LaunchedEffect(Unit) {
-        iad1tya.echo.music.recognition.MusicRecognitionService.reset()
-    }
-    
-    
-    DisposableEffect(Unit) {
-        onDispose {
+        if (!iad1tya.echo.music.recognition.MusicRecognitionService.isInProgress()) {
             iad1tya.echo.music.recognition.MusicRecognitionService.reset()
         }
     }
-    
-    
+
+
+    DisposableEffect(Unit) {
+        onDispose {
+            // Leaving the screen mid-recognition is fine: the mic foreground service keeps the session
+            // alive and shows progress in its notification, so don't reset a live session.
+            if (!iad1tya.echo.music.recognition.MusicRecognitionService.isInProgress()) {
+                iad1tya.echo.music.recognition.MusicRecognitionService.reset()
+            }
+        }
+    }
+
+
     val recognitionStatus by iad1tya.echo.music.recognition.MusicRecognitionService.recognitionStatus.collectAsState()
-    
+
     var hasPermission by remember {
         mutableStateOf(
-            ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) 
+            ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO)
                 == PackageManager.PERMISSION_GRANTED
         )
     }
-    
+
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         hasPermission = isGranted
         if (isGranted) {
-            coroutineScope.launch {
-                iad1tya.echo.music.recognition.MusicRecognitionService.recognize(context)
-            }
+            ContextCompat.startForegroundService(
+                context,
+                Intent(context, iad1tya.echo.music.recognition.RecognitionForegroundService::class.java)
+            )
         }
     }
-    
+
     fun startRecognition() {
         if (hasPermission) {
-            coroutineScope.launch {
-                iad1tya.echo.music.recognition.MusicRecognitionService.recognize(context)
-            }
+            // Route through the microphone foreground service so the ~10s listen keeps capturing audio
+            // even if the user backgrounds the app or locks the screen (Android 12+ mutes AudioRecord
+            // for cached apps). The screen keeps rendering states from the shared status flow.
+            ContextCompat.startForegroundService(
+                context,
+                Intent(context, iad1tya.echo.music.recognition.RecognitionForegroundService::class.java)
+            )
         } else {
             permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
         }
     }
-    
+
+    fun cancelRecognition() {
+        // Actually cancel the mic session (not just the UI state): otherwise a zombie ~10s recording
+        // keeps the microphone busy and silently swallows the next attempts.
+        iad1tya.echo.music.recognition.MusicRecognitionService.cancel()
+        context.stopService(
+            Intent(context, iad1tya.echo.music.recognition.RecognitionForegroundService::class.java)
+        )
+    }
+
+    // Auto-start when opened from the Quick Settings tile / widget / a RECOGNITION deep link with
+    // autoStart: begin listening immediately instead of requiring a second tap. If the permission is
+    // missing, request it exactly like the manual tap path does.
+    LaunchedEffect(autoStart) {
+        if (autoStart) {
+            startRecognition()
+        }
+    }
+
     fun resetToReady() {
         iad1tya.echo.music.recognition.MusicRecognitionService.reset()
     }
@@ -212,7 +245,7 @@ fun RecognitionScreen(
                     }
                     is RecognitionStatus.Listening -> {
                         ListeningState(
-                            onCancel = { iad1tya.echo.music.recognition.MusicRecognitionService.reset() }
+                            onCancel = ::cancelRecognition
                         )
                     }
                     is RecognitionStatus.Processing -> {
