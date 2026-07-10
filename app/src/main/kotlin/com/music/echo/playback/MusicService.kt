@@ -3967,14 +3967,33 @@ class MusicService :
      * the live resolve exactly as today. Gated to avoid the documented rate-limit risk (resolving video for
      * every track once hammered YouTube and stalled audio — see onMediaItemTransition prebuild note):
      *   - video mode currently OFF (a toggle-to-video is only possible from audio; when ON the swap already ran),
-     *   - the user has used video at least once THIS session ([userHasUsedVideo], in-memory, resets per process)
-     *     → no wasted resolutions for users who never open video,
-     *   - a genuine YouTube VIDEO song (isVideoSong == true; skips local / http-podcast / audio-only ids).
+     *   - EITHER the user has used video once THIS session ([userHasUsedVideo], in-memory, resets per process)
+     *     — prefetch then runs on ANY device — OR, to cover the session's FIRST toggle, the device is CAPABLE
+     *     (not High-Performance Mode, not LOW/ULTRA tier); weak devices never pay the speculative cipher cost,
+     *   - a genuine YouTube VIDEO song (isVideoSong == true; skips local / http-podcast / audio-only ids), so
+     *     pure audio-only queues never trigger a speculative resolve.
      * Idempotent: no-op if a fresh URL is already cached or a resolve for this id is already in flight
      * (shared [prebuildingIds], keyed by a distinct id from the next-item prebuild so they never collide).
      */
     private fun prefetchCurrentVideoUrl() {
-        if (_videoMode.value || !userHasUsedVideo) return
+        // A toggle-to-video is only possible from audio; when already in video mode the swap has run.
+        if (_videoMode.value) return
+        // FIRST-TOGGLE COVERAGE (capable devices only). Normally we speculatively resolve only AFTER the user
+        // has opened video once this session (userHasUsedVideo). That left the VERY FIRST toggle of a session
+        // paying the full synchronous resolve (applyVideoToCurrent cache-miss → cipher/PoToken/format, seconds)
+        // PLUS the swap re-buffer → the >5s the user reported. So ALSO pre-resolve BEFORE first use — but ONLY
+        // on a CAPABLE device (NOT High-Performance Mode and NOT LOW/ULTRA tier): a weak device must never pay
+        // the speculative cipher cost for a feature it may never open. This is a small metadata/cipher resolve
+        // (NOT the video bytes), so it runs on any network; on a capable device the URL is then ready the moment
+        // the user first taps video. The existing userHasUsedVideo path is preserved (prefetch on ANY device).
+        if (!userHasUsedVideo) {
+            val perfMode = iad1tya.echo.music.utils.PerformanceMode.isOn(this)
+            val tier = iad1tya.echo.music.utils.PerformanceMode.effectiveTier(this)
+            val capable = !perfMode &&
+                tier != iad1tya.echo.music.utils.DeviceTier.LOW &&
+                tier != iad1tya.echo.music.utils.DeviceTier.ULTRA
+            if (!capable) return
+        }
         val id = player.currentMediaItem?.mediaId ?: return
         if (id.isEmpty() || id.isLocalMediaId() || id.startsWith("http", ignoreCase = true)) return
         if (player.currentMetadata?.isVideoSong != true) return
