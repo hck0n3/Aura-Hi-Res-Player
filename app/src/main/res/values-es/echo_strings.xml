@@ -950,4 +950,8 @@
     <!-- Mejorar calidad baja (declip + regeneración de agudos) -->
     <string name="audio_enhance_low_quality">Mejorar calidad baja</string>
     <string name="audio_enhance_low_quality_desc">Suaviza la distorsión por saturación y regenera agudos en canciones de bajo bitrate. Apágalo para temas ya limpios.</string>
+
+    <!-- 0.6.92 Historial de actividad -->
+    <string name="activity_history">Resumen de escucha</string>
+    <string name="total_listening_time">Tiempo total de escucha</string>
 </resources>
