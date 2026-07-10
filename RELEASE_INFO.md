@@ -1,20 +1,28 @@
-# Aura Hi-Res Player 0.6.91 — Cristal en los botones, me gusta más claro y menos "cuelgues" de canciones
+# Aura Hi-Res Player 0.6.92 — La portada vuelve de verdad + Modo Ambiente, scrobbling y más
 
-## 🫧 Botones flotantes con Liquid Glass
-- Los **botones flotantes** (mezclar, micrófono y crear) ahora usan el efecto **Liquid Glass** cuando está activo — a juego con el mini-reproductor y la barra de navegación. En dispositivos donde el cristal no aplica, se ven igual que antes (sin cambios).
+## 🖼️ Portada y carrusel del reproductor — arreglado de raíz
+- **La portada ya no desaparece.** Se encontró la causa real: la portada (y el carrusel para deslizar entre canciones) se dibujaba dentro de un contenedor que colapsaba a tamaño 0 en reproducción normal, por eso desaparecía en muchos dispositivos (a veces sí, a veces no). Ahora se muestra siempre, con cualquier estilo de fondo.
 
-## 👍👎 Me gusta / No me gusta más claro
-- Los pulgares del reproductor ahora empiezan **sin relleno** (contorno). Solo se **rellena el que eliges** — igual que YouTube Music hoy. Ya no parece que "no me gusta" estuviera activado por defecto.
+## 🎠 Carrusel de Inicio ("Para ti") — ya no parpadea vacío
+- El carrusel de "Para ti" a veces salía en blanco porque la lista cambiaba de tamaño justo tras cargar. Ahora se reconstruye limpio y aparece a la primera. *(Si eres usuario nuevo sin historial, "Para ti" tarda en llenarse: se genera a partir de lo que escuchas.)*
 
-## 📡 Menos canciones "colgadas"
-- **Canciones que se quedaban como si no hubiera internet (y nunca cargaban):** ahora se distingue una canción **imposible de reproducir** (bloqueada por región, solo premium, restringida por edad…) de una **caída de red real**.
-  - Si la canción no se puede servir: **falla rápido una vez, avisa el motivo y pasa a la siguiente** — se acabó el bucle infinito.
-  - Si de verdad no hay internet: espera y reintenta con cordura, como antes.
-- Se añadió un **límite de tiempo** a la resolución de YouTube (30 s) para que nunca se quede pensando para siempre, y la **cadena de respaldo** ya no se aborta si el primer cliente falla (más canciones se resuelven al primer intento).
-- **Invitados (sin sesión):** las canciones con restricción de edad ahora intentan una vía sin login en vez de fallar seguro.
+## 🎛️ Botones flotantes
+- Se quitó el botón **aleatorio** de los botones flotantes. Queda solo el **micrófono** (reconocimiento de canciones) con estilo Liquid Glass.
 
-## 🤖 IA sin clave más robusta
-- Las **playlists con IA** ahora funcionan de forma fiable aunque el servidor propio esté caído: si no responde, cae al instante al motor de respaldo (con reintentos) en vez de tardar y fallar.
+## 🌌 Modo Ambiente (nuevo)
+- Nueva vista a **pantalla completa** horizontal: portada grande con un **resplandor animado** de fondo, letra, y pantalla siempre encendida. Ideal para dejar el teléfono a la vista mientras suena la música. Ábrelo desde el menú del reproductor.
+
+## 🎧 Scrobbling: Last.fm + ListenBrainz (nuevo, opcional)
+- Ahora puedes **registrar lo que escuchas** en **Last.fm** y **ListenBrainz**. Es totalmente **opcional**: apagado por defecto y sin actividad alguna hasta que conectas tu cuenta. Actívalo en Ajustes ▸ Scrobbling.
+
+## 🔧 Descifrado de YouTube (nuevo, para soporte)
+- Nueva pantalla en **Ajustes ▸ Reproductor ▸ Avanzado**: muestra cuándo se actualizó el descifrado de YouTube y un botón para **forzar la actualización** si alguna vez la reproducción deja de funcionar. (Aura ya se auto-repara solo; esto es por si acaso.)
+
+## 📊 Resumen de escucha (nuevo)
+- En **Estadísticas**, un nuevo resumen: **tiempo total escuchado** del periodo y de siempre, y cuántas canciones, artistas y álbumes distintos.
+
+## 🎤 Letra estilo Metro
+- El estilo **Metro** ahora respeta tu **tamaño de letra e interlineado** (antes los ignoraba).
 
 ## ✅ Como siempre
-- Suscripción, licencia, demo, crossfade de 9s y motor de audio: intactos. Calor y batería vigilados.
+- Suscripción, licencia, demo, crossfade de 9s y motor de audio: intactos. Calor y batería vigilados (el scrobbling no hace nada si no lo activas).
