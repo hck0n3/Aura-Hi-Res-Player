@@ -63,6 +63,7 @@ fun SettingsScreen(
 
     val accountText = stringResource(R.string.account)
     val accountsText = "Cuentas"
+    val scrobblingText = stringResource(R.string.scrobbling)
     val appearanceText = stringResource(R.string.appearance)
     val playerText = "Ajustes del reproductor"
     val soundText = "Sonido y ecualización"
@@ -137,6 +138,16 @@ fun SettingsScreen(
                         icon = painterResource(R.drawable.account),
                         title = { Text(accountsText) },
                         onClick = { navController.navigate("settings/accounts") }
+                    )
+                )
+            }
+            if (scrobblingText.lowercase().contains(searchLower)) {
+                add(
+                    Material3SettingsItem(
+                        icon = painterResource(R.drawable.ic_lastfm),
+                        title = { Text(scrobblingText) },
+                        description = { Text("Last.fm & ListenBrainz") },
+                        onClick = { navController.navigate("settings/lastfm") }
                     )
                 )
             }

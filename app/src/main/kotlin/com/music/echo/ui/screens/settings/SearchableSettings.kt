@@ -25,6 +25,18 @@ fun getAllSearchableSettings(): List<Triple<String, String, String>> {
             Triple("Cerrar sesión", "Cuentas", "settings/accounts"),
             Triple("Conectar", "Cuentas", "settings/accounts"),
             Triple("Importar de Spotify", "Cuentas", "settings/spotify_import"),
+            // --- Scrobbling (settings/lastfm) ---
+            Triple(stringResource(R.string.scrobbling), "Scrobbling", "settings/lastfm"),
+            Triple(stringResource(R.string.lastfm_integration), "Scrobbling", "settings/lastfm"),
+            Triple(stringResource(R.string.enable_scrobbling), "Scrobbling", "settings/lastfm"),
+            Triple(stringResource(R.string.lastfm_now_playing), "Scrobbling", "settings/lastfm"),
+            Triple(stringResource(R.string.last_fm_send_likes), "Scrobbling", "settings/lastfm"),
+            Triple(stringResource(R.string.scrobbling_configuration), "Scrobbling", "settings/lastfm"),
+            Triple(stringResource(R.string.scrobble_min_track_duration), "Scrobbling", "settings/lastfm"),
+            Triple(stringResource(R.string.scrobble_delay_percent), "Scrobbling", "settings/lastfm"),
+            Triple(stringResource(R.string.scrobble_delay_minutes), "Scrobbling", "settings/lastfm"),
+            Triple(stringResource(R.string.listenbrainz_scrobbling), "Scrobbling", "settings/lastfm"),
+            Triple(stringResource(R.string.set_listenbrainz_token), "Scrobbling", "settings/lastfm"),
             // --- Sonido / Rendimiento extras (these screens use hardcoded Spanish titles) ---
             Triple("Ecualizador", "Sonido y ecualización", "settings/sound"),
             Triple("Ecualizador gráfico", "Sonido y ecualización", "settings/equalizer"),

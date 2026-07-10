@@ -512,4 +512,11 @@
     <string name="cipher_applied_configs_count">%1$d configuración(es) autorreparable(s) aplicada(s)</string>
     <string name="cipher_cooldown">Espera %1$s antes de volver a actualizar</string>
     <string name="youtube_decryption_info">Aura mantiene la reproducción de YouTube por sí sola: actualiza el descifrado al abrir la app y se repara automáticamente cuando YouTube cambia su reproductor. Úsalo solo si la reproducción deja de funcionar — al forzar la actualización se obtiene de inmediato la configuración más reciente.</string>
+
+    <!-- 0.6.92 Scrobbling -->
+    <string name="scrobbling">Scrobbling</string>
+    <string name="listenbrainz_scrobbling">ListenBrainz</string>
+    <string name="listenbrainz_scrobbling_description">Envía tus reproducciones a ListenBrainz. Requiere un token de usuario de tu perfil de ListenBrainz.</string>
+    <string name="set_listenbrainz_token">Configurar token de ListenBrainz</string>
+    <string name="listenbrainz_token_set">Token de ListenBrainz configurado</string>
 </resources>

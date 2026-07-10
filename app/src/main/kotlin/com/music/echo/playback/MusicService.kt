@@ -1184,6 +1184,57 @@ class MusicService :
                 }
         }
 
+        // ── Scrobbling (Last.fm + ListenBrainz) ──
+        // Fully OPT-IN and network-only. The manager no-ops unless a provider is enabled AND its credentials
+        // exist (Last.fm session key / ListenBrainz token), so with the defaults (everything OFF) this adds
+        // no background work. This is the ONLY scrobbling wiring added to MusicService; the existing
+        // onSongStart/onSongResume/onSongPause/onSongStop/onPlayerStateChanged call sites are untouched.
+        scrobbleManager = ScrobbleManager(scope).apply {
+            appContext = applicationContext
+        }
+        scope.launch {
+            dataStore.data.map { it[EnableLastFMScrobblingKey] ?: false }.distinctUntilChanged().collect {
+                scrobbleManager?.enableScrobbling = it
+            }
+        }
+        scope.launch {
+            dataStore.data.map { it[LastFMUseNowPlaying] ?: false }.distinctUntilChanged().collect {
+                scrobbleManager?.useNowPlaying = it
+            }
+        }
+        scope.launch {
+            dataStore.data.map { it[iad1tya.echo.music.constants.LastFMUseSendLikes] ?: false }.distinctUntilChanged().collect {
+                scrobbleManager?.useSendLikes = it
+            }
+        }
+        scope.launch {
+            dataStore.data.map { it[iad1tya.echo.music.constants.LastFMSessionKey] }.distinctUntilChanged().collect { sessionKey ->
+                iad1tya.echo.music.utils.lastfm.LastFM.sessionKey = sessionKey?.takeIf { it.isNotBlank() }
+            }
+        }
+        scope.launch {
+            dataStore.data.map { it[ScrobbleMinSongDurationKey] ?: iad1tya.echo.music.utils.lastfm.LastFM.DEFAULT_SCROBBLE_MIN_SONG_DURATION }
+                .distinctUntilChanged().collect { scrobbleManager?.minSongDuration = it }
+        }
+        scope.launch {
+            dataStore.data.map { it[ScrobbleDelayPercentKey] ?: iad1tya.echo.music.utils.lastfm.LastFM.DEFAULT_SCROBBLE_DELAY_PERCENT }
+                .distinctUntilChanged().collect { scrobbleManager?.scrobbleDelayPercent = it }
+        }
+        scope.launch {
+            dataStore.data.map { it[ScrobbleDelaySecondsKey] ?: iad1tya.echo.music.utils.lastfm.LastFM.DEFAULT_SCROBBLE_DELAY_SECONDS }
+                .distinctUntilChanged().collect { scrobbleManager?.scrobbleDelaySeconds = it }
+        }
+        scope.launch {
+            dataStore.data.map { it[iad1tya.echo.music.constants.ListenBrainzEnabledKey] ?: false }.distinctUntilChanged().collect {
+                scrobbleManager?.listenBrainzEnabled = it
+            }
+        }
+        scope.launch {
+            dataStore.data.map { it[iad1tya.echo.music.constants.ListenBrainzTokenKey] ?: "" }.distinctUntilChanged().collect {
+                scrobbleManager?.listenBrainzToken = it
+            }
+        }
+
         combine(playerVolume, isMuted) { volume, muted ->
             if (muted) 0f else volume
         }.collectLatest(scope) {

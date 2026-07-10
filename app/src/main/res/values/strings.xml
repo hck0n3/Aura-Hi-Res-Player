@@ -570,4 +570,11 @@
     <string name="cipher_applied_configs_count">%1$d self-healing configuration(s) applied</string>
     <string name="cipher_cooldown">Please wait %1$s before updating again</string>
     <string name="youtube_decryption_info">Aura keeps YouTube playback working on its own: it refreshes the decryption when you open the app and heals automatically when YouTube rotates its player. Use this only if playback stops working — forcing an update fetches the newest configuration right away.</string>
+
+    <!-- 0.6.92 Scrobbling -->
+    <string name="scrobbling">Scrobbling</string>
+    <string name="listenbrainz_scrobbling">ListenBrainz</string>
+    <string name="listenbrainz_scrobbling_description">Submit your listens to ListenBrainz. Requires a user token from your ListenBrainz profile.</string>
+    <string name="set_listenbrainz_token">Set ListenBrainz token</string>
+    <string name="listenbrainz_token_set">ListenBrainz token set</string>
 </resources>

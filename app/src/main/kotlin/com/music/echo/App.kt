@@ -109,6 +109,14 @@ class App : Application(), SingletonImageLoader.Factory {
         }
         iad1tya.echo.music.utils.AppLogger.plant(this)
 
+        // Scrobbling (Last.fm): load the API credentials once at startup so the settings-screen login and the
+        // ScrobbleManager can talk to Last.fm. Keys come from BuildConfig (embedded, as Last.fm keys are meant
+        // to be). No network happens here — scrobbling stays fully opt-in and only runs once the user connects.
+        iad1tya.echo.music.utils.lastfm.LastFM.initialize(
+            apiKey = iad1tya.echo.music.BuildConfig.LASTFM_API_KEY,
+            secret = iad1tya.echo.music.BuildConfig.LASTFM_SECRET,
+        )
+
 
         applicationScope.launch {
             initializeSettings()
