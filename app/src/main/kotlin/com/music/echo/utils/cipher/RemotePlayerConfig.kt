@@ -196,6 +196,38 @@ object RemotePlayerConfig {
         }
     }
 
+    // ==================== SETTINGS-SCREEN SURFACE (additive, read/trigger only) ====================
+    // These expose the ALREADY-EXISTING self-healing machinery to the "Descifrado de YouTube" settings
+    // screen. They add NO new behaviour: manualRefresh() just runs the same fetch path on demand, and the
+    // two getters only read state that already changes above. The cipher resolution path is untouched.
+
+    /**
+     * User-initiated manual refresh for the "Descifrado de YouTube" settings screen. Performs a real
+     * conditional GET IMMEDIATELY, bypassing the periodic [MIN_REFRESH_INTERVAL_MS] throttle used by
+     * [refresh] (this is an explicit, UI-rate-limited action), while keeping every other guarantee: it is
+     * serialized by the same [refreshMutex], is best-effort, and NEVER throws. It does NOT touch the
+     * reactive [forceRefresh] cooldown.
+     *
+     * @return true if the remote server was reached — a fresh config was applied OR a 304 confirmed the
+     *   current set is already up to date; false on an offline/network failure (existing configs kept).
+     */
+    suspend fun manualRefresh(context: Context): Boolean = withContext(Dispatchers.IO) {
+        refreshMutex.withLock {
+            // fetchAndApply advances lastRefreshAtMs ONLY when the server was reached (a 2xx apply or a
+            // 304), never on an offline/network error — so this before/after check is an accurate
+            // "reached server" signal without changing fetchAndApply.
+            val before = lastRefreshAtMs
+            fetchAndApply(context)
+            lastRefreshAtMs != before
+        }
+    }
+
+    /** Wall-clock ms of the last successful remote contact this process (fresh fetch or 304), or 0 if none yet. */
+    fun lastRefreshTimeMs(): Long = lastRefreshAtMs
+
+    /** Number of self-healing player-config hashes currently applied (remote + cached); 0 if none yet. */
+    fun knownHashCount(): Int = remoteConfigs.size
+
     // ==================== INTERNAL ====================
 
     /** Fetch + parse + apply + rewrite cache. Must be called with [refreshMutex] held. Never throws. */

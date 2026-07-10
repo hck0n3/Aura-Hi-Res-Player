@@ -47,6 +47,7 @@ import iad1tya.echo.music.ui.screens.settings.ContentSettings
 import iad1tya.echo.music.ui.screens.settings.UptimeScreen
 import iad1tya.echo.music.ui.screens.settings.DarkMode
 import iad1tya.echo.music.ui.screens.settings.PlayerSettings
+import iad1tya.echo.music.ui.screens.settings.YoutubeDecryptionSettings
 import iad1tya.echo.music.ui.screens.settings.PrivacySettings
 import iad1tya.echo.music.ui.screens.settings.RomanizationSettings
 import iad1tya.echo.music.ui.screens.settings.SettingsScreen
@@ -371,6 +372,10 @@ fun NavGraphBuilder.navigationBuilder(
     
     composable("settings/player") {
         PlayerSettings(navController, scrollBehavior)
+    }
+
+    composable("settings/youtube_decryption") {
+        YoutubeDecryptionSettings(navController, scrollBehavior)
     }
 
     composable("settings/sound") {
