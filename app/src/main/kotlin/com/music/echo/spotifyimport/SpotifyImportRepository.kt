@@ -195,7 +195,9 @@ class SpotifyImportRepository @Inject constructor(
     suspend fun fetchPlaylistByLink(link: String): SpotifyImportSource.Playlist? =
         withContext(Dispatchers.IO) {
             val playlistId = parseSpotifyPlaylistId(link) ?: return@withContext null
-            ensureAuthenticated()
+            // Public playlists must be readable WITHOUT a Spotify login (this is the whole point of
+            // "import by link"), so use the public-read token path rather than requiring a session.
+            ensurePublicReadToken()
             val playlist = spotifyCallWithTokenRetry { Spotify.playlist(playlistId).getOrThrow() }
             if (playlist.id.isBlank()) null else SpotifyImportSource.Playlist(playlist)
         }
@@ -205,7 +207,11 @@ class SpotifyImportRepository @Inject constructor(
         onProgress: (SpotifyImportProgressUi) -> Unit,
     ): SpotifyImportSummaryUi =
         withContext(Dispatchers.IO) {
-            ensureAuthenticated()
+            // Prefers a real logged-in token (OAuth path unchanged); falls back to an anonymous
+            // web-player token when logged out, so a pasted PUBLIC playlist can still be imported.
+            // Owned-library sources (liked songs / followed artists / saved albums) are never present
+            // in the logged-out link flow, so an anonymous token is sufficient there.
+            ensurePublicReadToken()
             val summaries = ArrayList<SpotifyImportSourceSummaryUi>(sources.size)
 
             sources.forEachIndexed { sourceIndex, source ->
@@ -325,6 +331,37 @@ class SpotifyImportRepository @Inject constructor(
         }
         refreshAccessToken(spDc = spDc, spKey = prefs[SpotifySpKeyKey].orEmpty()).getOrThrow()
     }
+
+    /**
+     * Ensure a bearer token capable of reading PUBLIC playlists. Prefers a real logged-in token
+     * (cached, or refreshed from sp_dc) so the OAuth import path is byte-for-byte unchanged. When the
+     * user is NOT logged in (sp_dc blank) it falls back to an ANONYMOUS web-player token, which can
+     * read public playlists — this is what makes "import by link" work without a Spotify login.
+     */
+    private suspend fun ensurePublicReadToken() {
+        val prefs = context.dataStore.data.first()
+        val token = prefs[SpotifyAccessTokenKey].orEmpty()
+        val expiresAt = prefs[SpotifyAccessTokenExpiresAtKey] ?: 0L
+        if (token.isNotBlank() && expiresAt > System.currentTimeMillis() + TOKEN_EXPIRY_GRACE_MS) {
+            Spotify.accessToken = token
+            return
+        }
+        val spDc = prefs[SpotifySpDcKey].orEmpty()
+        if (spDc.isNotBlank()) {
+            refreshAccessToken(spDc = spDc, spKey = prefs[SpotifySpKeyKey].orEmpty()).getOrThrow()
+            return
+        }
+        refreshAnonymousToken().getOrThrow()
+    }
+
+    /**
+     * Fetch a short-lived anonymous web-player token and keep it IN-MEMORY only (do NOT persist it to
+     * the session keys, or restoreSession() would mistake it for a logged-in Spotify session).
+     */
+    private suspend fun refreshAnonymousToken(): Result<Unit> =
+        SpotifyAuth.fetchAnonymousAccessToken().mapCatching { token ->
+            Spotify.accessToken = token.accessToken
+        }
 
     private suspend fun refreshAccessToken(
         spDc: String,
@@ -476,9 +513,12 @@ class SpotifyImportRepository @Inject constructor(
                 val prefs = context.dataStore.data.first()
                 val spDc = prefs[SpotifySpDcKey].orEmpty()
                 if (spDc.isBlank()) {
-                    throw error
+                    // No login: the public-read path uses a short-lived anonymous token — refresh it
+                    // and retry once so an expired anonymous token mid-import self-heals.
+                    refreshAnonymousToken().getOrThrow()
+                } else {
+                    refreshAccessToken(spDc = spDc, spKey = prefs[SpotifySpKeyKey].orEmpty()).getOrThrow()
                 }
-                refreshAccessToken(spDc = spDc, spKey = prefs[SpotifySpKeyKey].orEmpty()).getOrThrow()
                 block()
             }
 

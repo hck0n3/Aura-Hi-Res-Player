@@ -68,6 +68,30 @@ object SpotifyAuth {
         spDc: String,
         spKey: String = "",
     ): Result<SpotifyInternalToken> = runCatching {
+        val cookieHeader = buildString {
+            append("sp_dc=$spDc")
+            if (spKey.isNotEmpty()) {
+                append("; sp_key=$spKey")
+            }
+        }
+        // Logged-in token: reject an anonymous result (means the sp_dc cookie is invalid/expired).
+        requestToken(cookieHeader = cookieHeader, allowAnonymous = false)
+    }
+
+    /**
+     * Fetches an ANONYMOUS web-player access token (no sp_dc login). This is what the Spotify web
+     * player uses when browsing while logged out, and it is sufficient to read PUBLIC playlists
+     * (metadata + tracks) — enabling "import by link" for public playlists without a Spotify login.
+     * It cannot read the user's own library (liked songs, followed artists, private playlists).
+     */
+    suspend fun fetchAnonymousAccessToken(): Result<SpotifyInternalToken> = runCatching {
+        requestToken(cookieHeader = null, allowAnonymous = true)
+    }
+
+    private suspend fun requestToken(
+        cookieHeader: String?,
+        allowAnonymous: Boolean,
+    ): SpotifyInternalToken {
         val nuance = fetchNuance()
         val serverTimeSec = fetchServerTime()
         val totp = generateTotp(nuance.s, serverTimeSec)
@@ -81,27 +105,22 @@ object SpotifyAuth {
             append("&totpVer=${nuance.v}")
         }
 
-        val cookieHeader = buildString {
-            append("sp_dc=$spDc")
-            if (spKey.isNotEmpty()) {
-                append("; sp_key=$spKey")
-            }
-        }
+        val headers = if (cookieHeader != null) mapOf("Cookie" to cookieHeader) else emptyMap()
 
         val body = withContext(Dispatchers.IO) {
-            httpGet(tokenUrl, mapOf("Cookie" to cookieHeader))
+            httpGet(tokenUrl, headers)
         }
 
         val token = json.decodeFromString<SpotifyInternalToken>(body)
 
-        if (token.isAnonymous || token.accessToken.isBlank()) {
+        if (token.accessToken.isBlank() || (!allowAnonymous && token.isAnonymous)) {
             throw Spotify.SpotifyException(
                 401,
                 "Received anonymous token — sp_dc cookie is invalid or expired",
             )
         }
 
-        token
+        return token
     }
 
     private suspend fun fetchNuance(): Nuance = withContext(Dispatchers.IO) {

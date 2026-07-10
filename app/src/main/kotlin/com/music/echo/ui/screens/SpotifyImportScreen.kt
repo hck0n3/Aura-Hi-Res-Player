@@ -53,12 +53,14 @@ import iad1tya.echo.music.constants.SpotifyAutoSyncFreqDaysKey
 import iad1tya.echo.music.constants.SpotifyAutoSyncSourceIdsKey
 import iad1tya.echo.music.utils.rememberPreference
 import android.net.Uri
+import kotlinx.coroutines.flow.first
 
 @Composable
 fun SpotifyImportScreen(
     navController: NavController,
     spotifyImportViewModel: SpotifyImportViewModel = hiltViewModel(),
     onboarding: Boolean = false,
+    initialLink: String? = null,
 ) {
     val state by spotifyImportViewModel.uiState.collectAsStateWithLifecycle()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
@@ -80,6 +82,17 @@ fun SpotifyImportScreen(
         1 -> "Diaria"
         7 -> "Semanal"
         else -> "Desactivada"
+    }
+
+    // Deep-link entry: a Spotify playlist link pasted from the Library "Import from Spotify" dialog.
+    // Resolve + add it as a selected source (works for PUBLIC playlists even when logged out) reusing
+    // the same addPlaylistByLink flow the in-screen paste dialog uses. Wait for the initial session
+    // restore to settle first so it can't be overwritten by the startup source load.
+    LaunchedEffect(initialLink) {
+        val link = initialLink?.trim().orEmpty()
+        if (link.isEmpty()) return@LaunchedEffect
+        spotifyImportViewModel.uiState.first { !it.isLoading }
+        spotifyImportViewModel.addPlaylistByLink(link, invalidLinkMessage)
     }
 
     Scaffold(
@@ -134,6 +147,15 @@ fun SpotifyImportScreen(
                             icon = painterResource(R.drawable.ic_spotify),
                             enabled = state.progress == null && !state.isLoading,
                             onClick = { showSpotifyLogin = true }
+                        ),
+                        // A PUBLIC playlist link needs no login — offer the paste-link path here too, so
+                        // it matches the About promise and works straight from a logged-out state.
+                        Material3SettingsItem(
+                            title = { Text(stringResource(R.string.spotify_add_by_link)) },
+                            description = { Text(stringResource(R.string.spotify_add_by_link_desc)) },
+                            icon = painterResource(R.drawable.link),
+                            enabled = !state.isLoading && state.progress == null,
+                            onClick = { linkInput = ""; showAddByLinkDialog = true }
                         )
                     )
                 } else {
