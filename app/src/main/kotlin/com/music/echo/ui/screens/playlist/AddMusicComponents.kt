@@ -153,9 +153,12 @@ fun SuggestedSongsSection(
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
             )
+            // ALWAYS clickable — never gated on isRefreshing. The initial auto-load's Phase-B network
+            // top-up used to flip isRefreshing=true and disable the button, so a first tap in that
+            // window was silently eaten (user had to tap twice). refreshSuggestions() already carries a
+            // ~300ms debounce that stops rapid double-fire, so the button can stay live at all times.
             IconButton(
                 onClick = { viewModel.refreshSuggestions() },
-                enabled = !isRefreshing,
             ) {
                 Icon(
                     painter = painterResource(R.drawable.refresh),

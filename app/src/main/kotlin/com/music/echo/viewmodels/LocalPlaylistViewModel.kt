@@ -115,6 +115,14 @@ constructor(
 
                 PlaylistSongSortType.PLAY_TIME -> filteredSongs.sortedBy { it.song.song.totalPlayTime }
             }.reversed(sortDescending && sortType != PlaylistSongSortType.CUSTOM)
+                // Final DISPLAY step for EVERY sort type: pin LIKED songs to the top ("siempre arriba").
+                // sortedBy is STABLE, so order within the liked group and within the rest is preserved
+                // from the sort above. DISPLAY ONLY — stored playlist positions are never touched (the
+                // init reorder block writes positions from the RAW Room order, not this list). The screen
+                // builds BOTH the play queue and its start index from THIS same list (items = songs.map{},
+                // startIndex = songs.indexOfFirst { map.id }), so a tapped row plays the correct song in
+                // the displayed liked-first order.
+                .sortedBy { if (it.song.song.liked) 0 else 1 }
         }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     // ---- Apple-Music-style "Add Music" feature ----------------------------------------------------
@@ -220,8 +228,13 @@ constructor(
                             lastComputeRelatednessCount < SHEET_SUGGESTIONS / 2
                         ) {
                             // ── Phase B — BACKGROUND top-up: hit the existing bounded (≤3) network fetch
-                            // and re-emit when it arrives. The spinner shows ONLY here.
-                            _isRefreshingSuggestions.value = true
+                            // and re-emit when it arrives. The spinner/isRefreshing shows ONLY here, and
+                            // ONLY for a genuine user refresh tap (nonce>0). The INITIAL auto-load runs at
+                            // nonce==0 (wasRefresh is true only because lastAppliedNonce starts at -1); if
+                            // it flipped isRefreshing it would disable the refresh button during first
+                            // open and silently eat the user's first tap. So gate the state on nonce>0.
+                            val showRefreshingState = nonce > 0
+                            if (showRefreshingState) _isRefreshingSuggestions.value = true
                             try {
                                 val topped = computeSuggestions(
                                     ids,
@@ -232,7 +245,7 @@ constructor(
                                 )
                                 emit(topped)
                             } finally {
-                                _isRefreshingSuggestions.value = false
+                                if (showRefreshingState) _isRefreshingSuggestions.value = false
                             }
                         } else {
                             // Cache filled the footer — the instant list is final. Record it as shown so

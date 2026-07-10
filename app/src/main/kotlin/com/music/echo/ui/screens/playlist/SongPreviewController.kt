@@ -31,6 +31,7 @@ import iad1tya.echo.music.utils.YTPlayerUtils
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -62,6 +63,25 @@ class SongPreviewController(
     private var exoPlayer: ExoPlayer? = null
     private var resolveJob: Job? = null
     private var mainWasPlaying = false
+
+    /** One-shot guard so [maybePrewarm] warms the session exactly once per controller. */
+    private var prewarmed = false
+
+    /**
+     * Fire-and-forget, ONCE per controller: warm the poToken WebView + cipher player.js so the very
+     * FIRST preview tap isn't fully cold. A cold session (poToken/cipher/visitorData still spinning up)
+     * is why the first tap used to resolve null → "unavailable" and only the 2nd (now-warm) tap played.
+     * Bounded: single shot, best-effort (both prewarms are internally guarded / never throw), runs off
+     * the main thread and never blocks the tap. Mirrors MusicService's startup warm.
+     */
+    private fun maybePrewarm() {
+        if (prewarmed) return
+        prewarmed = true
+        scope.launch(Dispatchers.IO) {
+            runCatching { YTPlayerUtils.prewarmPoToken() }
+            runCatching { YTPlayerUtils.prewarmCipher() }
+        }
+    }
 
     /** Max entries kept in [urlCache] — a small LRU so a long browsing session can't grow it unbounded. */
     private val URL_CACHE_MAX = 50
@@ -95,6 +115,9 @@ class SongPreviewController(
     }
 
     private fun start(videoId: String) {
+        // Warm poToken/cipher on the first preview so the very first tap isn't fully cold (fire-and-forget).
+        maybePrewarm()
+
         // Stop any in-flight preview but DON'T resume the main player yet — we're immediately starting
         // another preview, so the main player should stay paused across the swap.
         teardown(resumeMain = false)
@@ -119,7 +142,7 @@ class SongPreviewController(
 
         isLoading = true
         resolveJob = scope.launch {
-            val data = withContext(Dispatchers.IO) {
+            suspend fun resolveOnce(): YTPlayerUtils.PlaybackData? = withContext(Dispatchers.IO) {
                 runCatching {
                     val cm = context.getSystemService<ConnectivityManager>() ?: return@runCatching null
                     YTPlayerUtils.playerResponseForPlayback(
@@ -131,13 +154,26 @@ class SongPreviewController(
                 }.getOrNull()
             }
 
+            var data = resolveOnce()
             // The user tapped a different row (or dismissed) while we were resolving — abandon.
             if (currentPreviewId != videoId) return@launch
 
+            // First cold-session resolve can come back null/blank while poToken/cipher/visitorData are
+            // still warming — the exact reason the FIRST tap used to fail and only the 2nd (warm) tap
+            // played. Wait briefly for the just-warmed session, then RETRY ONCE before giving up; only
+            // surface "unavailable" if the warm retry also fails (spinner stays up across the retry).
+            if (data?.streamUrl.isNullOrBlank()) {
+                delay(500)
+                if (currentPreviewId != videoId) return@launch
+                data = resolveOnce()
+                if (currentPreviewId != videoId) return@launch
+            }
+
             isLoading = false
-            val url = data?.streamUrl
+            val resolved = data
+            val url = resolved?.streamUrl
             if (url.isNullOrBlank()) {
-                // Resolution failed (YouTube rotated its player / throttle / region- or age-restriction):
+                // Both attempts failed (YouTube rotated its player / throttle / region- or age-restriction):
                 // tell the user so a failed preview isn't a silent dead tap, then resume the main player.
                 notifyUnavailable()
                 stop()
@@ -147,7 +183,7 @@ class SongPreviewController(
             // Cache for instant re-preview this session, keyed to YouTube's own stream expiry minus a
             // ~60s safety margin so a URL isn't replayed right at the edge of expiring (403 mid-play).
             urlCache[videoId] =
-                url to (System.currentTimeMillis() + data.streamExpiresInSeconds * 1000L - 60_000L)
+                url to (System.currentTimeMillis() + resolved.streamExpiresInSeconds * 1000L - 60_000L)
             playUrl(url)
         }
     }
