@@ -67,6 +67,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TooltipAnchorPosition
@@ -113,6 +114,7 @@ import androidx.navigation.NavController
 import iad1tya.echo.music.LocalListenTogetherManager
 import iad1tya.echo.music.LocalPlayerConnection
 import iad1tya.echo.music.R
+import iad1tya.echo.music.constants.AutoLoadMoreKey
 import iad1tya.echo.music.constants.ListItemHeight
 import iad1tya.echo.music.constants.PlayerBackgroundStyle
 import iad1tya.echo.music.constants.QueueEditLockKey
@@ -126,6 +128,7 @@ import iad1tya.echo.music.models.MediaMetadata
 import iad1tya.echo.music.ui.component.ActionPromptDialog
 import iad1tya.echo.music.ui.component.BottomSheet
 import iad1tya.echo.music.ui.component.BottomSheetState
+import iad1tya.echo.music.ui.component.ChipsRow
 import iad1tya.echo.music.ui.component.LocalBottomSheetPageState
 import iad1tya.echo.music.ui.component.LocalMenuState
 import iad1tya.echo.music.ui.component.MediaMetadataListItem
@@ -691,6 +694,11 @@ fun Queue(
         val queueTitle by playerConnection.queueTitle.collectAsState()
         val queueWindows by playerConnection.queueWindows.collectAsState()
         val automix by playerConnection.service.automixItems.collectAsState()
+        // Autoplay footer state: chips come from the service via PlayerConnection (no network in the UI
+        // layer); the toggle is the SAME pref as Settings → "Auto load more songs", so both stay in sync.
+        val autoplayChips by playerConnection.autoplayChips.collectAsState()
+        val autoplaySelectedChip by playerConnection.autoplaySelectedChip.collectAsState()
+        val (autoLoadMore, onAutoLoadMoreChange) = rememberPreference(AutoLoadMoreKey, defaultValue = true)
         val mutableQueueWindows = remember { mutableStateListOf<Timeline.Window>() }
         val queueLength =
             remember(queueWindows) {
@@ -1321,15 +1329,62 @@ fun Queue(
                         }
                     }
 
-                    if (automix.isNotEmpty()) {
-                        item(key = "automix_divider") {
-
-                            Text(
-                                text = stringResource(R.string.similar_content),
-                                modifier = Modifier.padding(start = 16.dp),
-                            )
+                    // ── Autoplay footer (YT Music parity) — one coherent block pinned at the end of the
+                    //    queue: divider + "Autoplay" header with the AutoLoadMore toggle + steering chips +
+                    //    the automix preview rows ("what autoplay will play next"). Chips/preview are fed by
+                    //    service flows only — no network from the UI layer.
+                    if (!isListenTogetherGuest || automix.isNotEmpty()) {
+                        item(key = "autoplay_header") {
+                            Column(modifier = Modifier.animateItem()) {
+                                HorizontalDivider(
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                                )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier =
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 16.dp),
+                                ) {
+                                    Text(
+                                        text = stringResource(R.string.autoplay_title),
+                                        style = MaterialTheme.typography.titleMedium,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    if (!isListenTogetherGuest) {
+                                        // Same pref as the Settings toggle (AutoLoadMoreKey); Switch is
+                                        // natively focusable — tvFocusable adds the D-pad focus ring.
+                                        Switch(
+                                            checked = autoLoadMore,
+                                            onCheckedChange = onAutoLoadMoreChange,
+                                            modifier =
+                                                Modifier.tvFocusable(
+                                                    iad1tya.echo.music.ui.utils.rememberIsTvOrCar(),
+                                                    CircleShape,
+                                                ),
+                                        )
+                                    }
+                                }
+                            }
                         }
 
+                        // Steering chips: only when autoplay is ON and the service published suggestions.
+                        // ChipsRow is horizontally scrollable and already TV-focusable per chip.
+                        if (!isListenTogetherGuest && autoLoadMore && autoplayChips.isNotEmpty()) {
+                            item(key = "autoplay_chips") {
+                                ChipsRow(
+                                    chips = autoplayChips.map { it to it.label },
+                                    currentValue = autoplaySelectedChip,
+                                    onValueUpdate = { chip ->
+                                        if (chip != null) {
+                                            playerConnection.selectAutoplayChip(chip)
+                                        }
+                                    },
+                                )
+                            }
+                        }
+
+                        // Preview rows: the upcoming auto-tracks (existing automix behavior, unchanged).
                         itemsIndexed(
                             items = automix,
                             key = { _, it -> it.mediaId },

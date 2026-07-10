@@ -132,7 +132,14 @@ import androidx.compose.ui.graphics.toArgb
 import coil3.size.Size as CoilSize
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.input.pointer.util.addPointerInputChange
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitVerticalTouchSlopOrCancellation
+import androidx.compose.foundation.gestures.verticalDrag
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -955,6 +962,13 @@ fun BottomSheetPlayer(
         }
     }
 
+    // Mirror the player sheet's expanded/collapsed state into the service layer so it knows when
+    // the full player UI is actually on screen. state.isExpanded is a derivedStateOf, so reading it
+    // as the key re-launches this effect exactly on expand/collapse (no polling).
+    LaunchedEffect(state.isExpanded) {
+        playerConnection.setPlayerSheetExpanded(state.isExpanded)
+    }
+
     // Video is integrated into the main player now, so the seekbar reads the main player's position
     // natively (no separate video position plumbing, no flicker, native scrubbing).
     LaunchedEffect(playbackState, mediaMetadata?.id) {
@@ -1746,7 +1760,8 @@ fun BottomSheetPlayer(
                                     )
                                 }
                             } else {
-                                // Like/dislike moved next to the song title.
+                                // Nothing up here in audio mode — like/dislike are the compact icon
+                                // buttons flanking the song title row below (YT Music layout).
                                 Spacer(Modifier.size(0.dp))
                             }
                         }
@@ -1826,12 +1841,36 @@ fun BottomSheetPlayer(
             // immersive video — there the title is ABOVE the video and the toggle is at its bottom-right.
             if (!immersiveVideo) {
             Spacer(Modifier.height(2.dp))
+            // YT-Music-style compact rating: icon-only thumb DOWN at the far LEFT and thumb UP at the
+            // far RIGHT of the title/artist block. This row is OUTSIDE the useNewPlayerDesign branch,
+            // so one change covers both player designs. Active state = filled circle using the existing
+            // liked color pattern (container textButtonColor / content iconButtonColor, same as the
+            // old "Me gusta" chip); dislike state comes live from DislikeStore via PlayerConnection.
+            val liked = currentSong?.song?.liked == true
+            val disliked by playerConnection.currentSongDisliked.collectAsState()
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = PlayerHorizontalPadding),
             ) {
+                IconButton(
+                    onClick = { playerConnection.toggleDislikeCurrentSong() },
+                    colors = IconButtonDefaults.iconButtonColors(
+                        containerColor = if (disliked) textButtonColor else Color.Transparent,
+                        contentColor = if (disliked) iconButtonColor else TextBackgroundColor,
+                    ),
+                    modifier = Modifier
+                        .size(38.dp)
+                        .tvFocusable(isTvOrCar, RoundedCornerShape(50)),
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.thumb_down),
+                        contentDescription = "No me gusta",
+                        modifier = Modifier.size(24.dp),
+                    )
+                }
+                Spacer(Modifier.width(4.dp))
                 Column(modifier = Modifier.weight(1f)) {
                 AnimatedContent(
                     targetState = mediaMetadata.title,
@@ -1902,6 +1941,27 @@ fun BottomSheetPlayer(
                     )
                 }
                 }
+                // Thumb UP at the far RIGHT of the title block (YT Music layout). thumb_up_like is the
+                // thumb-up glyph already used by the comment sheet; liked state fills the button with
+                // the existing liked color pattern. Tap routes through the untouched toggleLike path
+                // (DAO upsert, no re-normalization).
+                Spacer(Modifier.width(4.dp))
+                IconButton(
+                    onClick = playerConnection::toggleLike,
+                    colors = IconButtonDefaults.iconButtonColors(
+                        containerColor = if (liked) textButtonColor else Color.Transparent,
+                        contentColor = if (liked) iconButtonColor else TextBackgroundColor,
+                    ),
+                    modifier = Modifier
+                        .size(38.dp)
+                        .tvFocusable(isTvOrCar, RoundedCornerShape(50)),
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.thumb_up_like),
+                        contentDescription = "Me gusta",
+                        modifier = Modifier.size(24.dp),
+                    )
+                }
                 // Audio↔video toggle at the END of the song title (per request). Hidden in High-Performance Mode
                 // on phones (audio only), BUT shown on TV/car even in perf mode — the user asked to be able to
                 // switch to video on the big screen on demand (the video track is resolution-capped by device tier).
@@ -1935,7 +1995,6 @@ fun BottomSheetPlayer(
             // instead of hidden in the "+" menu.
             run {
                 val chipBg = textButtonColor.copy(alpha = 0.18f)
-                val liked = currentSong?.song?.liked == true
                 val mixActive by playerConnection.mixActive.collectAsState()
                 Row(
                     modifier = Modifier
@@ -1956,22 +2015,8 @@ fun BottomSheetPlayer(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    PlayerActionChip(
-                        label = "Me gusta",
-                        tint = if (liked) iconButtonColor else textButtonColor,
-                        container = if (liked) textButtonColor else chipBg,
-                        onClick = playerConnection::toggleLike,
-                    ) {
-                        Icon(
-                            painter = painterResource(if (liked) R.drawable.favorite else R.drawable.favorite_border),
-                            contentDescription = null,
-                            tint = if (liked) iconButtonColor else textButtonColor,
-                            modifier = Modifier.size(20.dp),
-                        )
-                    }
-                    PlayerActionChip("No me gusta", textButtonColor, chipBg, playerConnection::dislikeCurrentSong) {
-                        Icon(painterResource(R.drawable.thumb_down), null, tint = textButtonColor, modifier = Modifier.size(20.dp))
-                    }
+                    // Like/dislike intentionally NOT here anymore — they are the compact icon buttons
+                    // flanking the song title above (YT Music layout), shared by both player designs.
                     PlayerActionChip("Agregar", textButtonColor, chipBg, { showChoosePlaylistDialog = true }) {
                         Icon(painterResource(R.drawable.playlist_add), null, tint = textButtonColor, modifier = Modifier.size(20.dp))
                     }
@@ -3335,7 +3380,39 @@ fun BottomSheetPlayer(
                     Modifier
                         .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal))
                         .padding(bottom = bottomPadding)
-                        .animateContentSize(),
+                        .animateContentSize()
+                        // YT-Music parity: swiping UP anywhere on the player body (artwork + controls)
+                        // drags the queue sheet open, mirroring BottomSheet.kt's own gesture math
+                        // (dispatchRawDelta while dragging + performFling on release, same ±250 velocity
+                        // threshold). Only clearly-vertical UPWARD drags are claimed: the touch-slop
+                        // callback consumes EXCLUSIVELY when overSlop < 0, so
+                        //  - downward drags stay unconsumed and the parent player BottomSheet's own
+                        //    detectVerticalDragGestures still collapses the player,
+                        //  - horizontal artwork swipes (prev/next SwipeGesture) win their own axis slop,
+                        //  - lyrics scroll / seekbar / chip-row scroll sit DEEPER in the tree, so they
+                        //    consume first and this ancestor detector is cancelled.
+                        // Event-driven only (no polling/animation while idle) — heat/battery safe.
+                        .pointerInput(queueSheetState, state) {
+                            awaitEachGesture {
+                                val down = awaitFirstDown(requireUnconsumed = false)
+                                val drag = awaitVerticalTouchSlopOrCancellation(down.id) { change, overSlop ->
+                                    if (overSlop < 0f && state.isExpanded && !isFullScreen && !queueSheetState.isExpanded) {
+                                        change.consume()
+                                        queueSheetState.dispatchRawDelta(overSlop)
+                                    }
+                                }
+                                if (drag != null) {
+                                    val velocityTracker = VelocityTracker()
+                                    velocityTracker.addPointerInputChange(drag)
+                                    verticalDrag(drag.id) { change ->
+                                        velocityTracker.addPointerInputChange(change)
+                                        queueSheetState.dispatchRawDelta(change.positionChange().y)
+                                        change.consume()
+                                    }
+                                    queueSheetState.performFling(-velocityTracker.calculateVelocity().y, null)
+                                }
+                            }
+                        },
                 ) {
                     Box(
                         contentAlignment = Alignment.TopCenter,

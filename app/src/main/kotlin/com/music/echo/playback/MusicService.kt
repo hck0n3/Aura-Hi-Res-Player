@@ -494,6 +494,19 @@ class MusicService :
 
     val automixItems = MutableStateFlow<List<MediaItem>>(emptyList())
 
+    // ---- Autoplay suggestion chips (YT Music queue-footer parity) ----
+    // Chips describing WHERE the infinite autoplay/radio can steer next (default "related to the seed",
+    // plus artist radios and mixes from the seed's related page). Refreshed at most ONCE per seed
+    // (autoplayChipsSeedId cache) right after a radio seed lands — never on a timer, so this adds at most
+    // one bounded network call per seed change. Chips only steer WHICH endpoint feeds the autoplay; the
+    // appended items always flow through orderedByTaste(), so the relatedness-order invariant holds.
+    private val _autoplayChips = MutableStateFlow<List<AutoplayChip>>(emptyList())
+    val autoplayChips: kotlinx.coroutines.flow.StateFlow<List<AutoplayChip>> = _autoplayChips.asStateFlow()
+    private val _autoplaySelectedChip = MutableStateFlow<AutoplayChip?>(null)
+    val autoplaySelectedChip: kotlinx.coroutines.flow.StateFlow<AutoplayChip?> = _autoplaySelectedChip.asStateFlow()
+    // The seed the current chip set was built from — the once-per-seed network bound for the chip refresh.
+    @Volatile private var autoplayChipsSeedId: String? = null
+
     // Cached on-device taste model (see AffinityEngine), used to order what plays next (autoplay/radio)
     // by your taste and to drop "No me gusta". Rebuilt at most every few minutes.
     @Volatile private var cachedTaste: iad1tya.echo.music.reco.TasteProfile? = null
@@ -603,6 +616,19 @@ class MusicService :
         get() = playbackState.userHasUsedVideo
         set(value) { playbackState.userHasUsedVideo = value }
 
+    // PLAYER-EXPANDED SIGNAL — mirrored from the UI (PlayerConnection.setPlayerSheetExpanded), same
+    // pattern as userHasUsedVideo. Used ONLY to gate speculative, user-visible-moment work (the video
+    // connection warm-up below); never read by any playback/audio path.
+    private val playerSheetExpanded: Boolean
+        get() = playbackState.playerSheetExpanded
+
+    /** UI → service: the full-screen player sheet was expanded/collapsed. Expanding is the natural
+     *  "the user may toggle video next" moment, so it also kicks the bounded connection warm-up. */
+    fun setPlayerSheetExpanded(expanded: Boolean) {
+        playbackState.playerSheetExpanded = expanded
+        if (expanded) maybeWarmVideoConnection()
+    }
+
     /**
      * Session cap for SPECULATIVE video-URL prefetches launched BEFORE the user has ever toggled video
      * ([userHasUsedVideo] == false). Without a bound, capable devices would resolve on EVERY video-song
@@ -638,6 +664,88 @@ class MusicService :
     private val videoModeItems = java.util.concurrent.ConcurrentHashMap<String, VideoTrackState>()
     // Ids with a video-URL resolve currently in flight (dedupe; cleared in a finally / on exit).
     private val prebuildingIds = java.util.Collections.synchronizedSet(mutableSetOf<String>())
+
+    // ---- DEBUG-ONLY video-swap latency instrumentation (release builds: dead fields, zero work) ----
+    // Timestamps the audio→video toggle pipeline so the real on-device split (resolve vs network vs
+    // buffer-fill vs decoder-init vs first frame) can be measured before/after optimizations:
+    //   T0 toggle → swapToVideo → onLoadStarted/onLoadCompleted → decoder init → READY → first frame.
+    // Armed in toggleVideoMode, disarmed at onRenderedFirstFrame. Pure Timber logging; NEVER touches
+    // playback, and the AnalyticsListener is only registered on debug builds (see createExoPlayer).
+    @Volatile private var videoSwapT0 = 0L
+    @Volatile private var videoSwapLoadStartLogged = false
+    @Volatile private var videoSwapLoadCompleteLogged = false
+    @Volatile private var videoSwapReadyLogged = false
+
+    private fun videoSwapMark(stage: String) {
+        if (!iad1tya.echo.music.BuildConfig.DEBUG) return
+        val t0 = videoSwapT0
+        if (t0 == 0L) return
+        Timber.tag("VideoSwapPerf").d(
+            "%s +%d ms", stage, android.os.SystemClock.elapsedRealtime() - t0
+        )
+    }
+
+    /** Arm a new measurement window at the toggle (debug builds only; no-op otherwise). */
+    private fun videoSwapMeasureStart() {
+        if (!iad1tya.echo.music.BuildConfig.DEBUG) return
+        videoSwapT0 = android.os.SystemClock.elapsedRealtime()
+        videoSwapLoadStartLogged = false
+        videoSwapLoadCompleteLogged = false
+        videoSwapReadyLogged = false
+        Timber.tag("VideoSwapPerf").d("T0 toggleVideoMode")
+    }
+
+    private val videoSwapDebugListener = object : AnalyticsListener {
+        override fun onLoadStarted(
+            eventTime: AnalyticsListener.EventTime,
+            loadEventInfo: androidx.media3.exoplayer.source.LoadEventInfo,
+            mediaLoadData: androidx.media3.exoplayer.source.MediaLoadData,
+            retryCount: Int,
+        ) {
+            if (videoSwapT0 != 0L && !videoSwapLoadStartLogged) {
+                videoSwapLoadStartLogged = true
+                videoSwapMark("onLoadStarted(first, trackType=${mediaLoadData.trackType})")
+            }
+        }
+
+        override fun onLoadCompleted(
+            eventTime: AnalyticsListener.EventTime,
+            loadEventInfo: androidx.media3.exoplayer.source.LoadEventInfo,
+            mediaLoadData: androidx.media3.exoplayer.source.MediaLoadData,
+        ) {
+            if (videoSwapT0 != 0L && !videoSwapLoadCompleteLogged) {
+                videoSwapLoadCompleteLogged = true
+                videoSwapMark(
+                    "onLoadCompleted(first, ${loadEventInfo.bytesLoaded} B in ${loadEventInfo.loadDurationMs} ms)"
+                )
+            }
+        }
+
+        override fun onVideoDecoderInitialized(
+            eventTime: AnalyticsListener.EventTime,
+            decoderName: String,
+            initializedTimestampMs: Long,
+            initializationDurationMs: Long,
+        ) {
+            videoSwapMark("videoDecoderInitialized($decoderName, ${initializationDurationMs} ms)")
+        }
+
+        override fun onPlaybackStateChanged(eventTime: AnalyticsListener.EventTime, state: Int) {
+            if (state == Player.STATE_READY && videoSwapT0 != 0L && !videoSwapReadyLogged) {
+                videoSwapReadyLogged = true
+                videoSwapMark("STATE_READY")
+            }
+        }
+
+        override fun onRenderedFirstFrame(
+            eventTime: AnalyticsListener.EventTime,
+            output: Any,
+            renderTimeMs: Long,
+        ) {
+            videoSwapMark("renderedFirstFrame — measurement end")
+            videoSwapT0 = 0L
+        }
+    }
 
 
     private var currentMediaIdRetryCount = mutableMapOf<String, Int>()
@@ -1423,6 +1531,10 @@ class MusicService :
                 // play/pause button to "paused" until the swap landed. (Bug A-1)
                 if (!isSecondary) addListener(this@MusicService)
                 addAnalyticsListener(PlaybackStatsListener(false, this@MusicService))
+                // Debug-only video-swap latency probe (see videoSwapDebugListener). Registered on every
+                // player instance so it survives the crossfade publish of a new main player; it only logs
+                // while a measurement window is armed (videoSwapT0 != 0) and is absent on release builds.
+                if (iad1tya.echo.music.BuildConfig.DEBUG) addAnalyticsListener(videoSwapDebugListener)
             }
         // Only the ACTIVE player is published. Publishing the secondary (item-less, paused) made
         // PlayerConnection.updateAttachedPlayer re-read playbackState/playWhenReady from an empty player.
@@ -1757,6 +1869,11 @@ class MusicService :
         playWhenReady: Boolean = true,
     ) {
         _mixActive.value = false  // fresh user-chosen queue → Mix/Radio no longer active
+        // Fresh user queue → the old autoplay chips no longer describe what will play next. Clearing the
+        // seed cache also re-allows one refresh for the NEXT radio seed (still once-per-seed bounded).
+        _autoplayChips.value = emptyList()
+        _autoplaySelectedChip.value = null
+        autoplayChipsSeedId = null
         if (!scope.isActive) scope = CoroutineScope(Dispatchers.Main) + Job()
 
         
@@ -1961,6 +2078,9 @@ class MusicService :
                     kotlinx.coroutines.delay(2500)
                     appended = tryRadio() || tryRelated()
                 }
+                // Autoplay chips: the seed just landed (appendSeed ran) → refresh the queue-footer
+                // suggestions for THIS seed. Bounded: no-ops if this seed's chips are already loaded.
+                if (appended) seedVideoId?.let { refreshAutoplaySuggestions(it) }
                 // Absolute last resort: at a TRUE end-of-queue, never leave the user in silence — replay the queue.
                 if (!appended && resumeAfterSeed && !player.isPlaying && player.mediaItemCount > 0) {
                     Timber.tag(TAG).w("Radio seed yielded nothing; replaying current queue so playback never stops")
@@ -1972,6 +2092,102 @@ class MusicService :
                 radioSeedInFlight = false
                 resumeAfterSeed = false
             }
+        }
+    }
+
+    /**
+     * AUTOPLAY CHIPS (YT Music queue-footer parity) — refresh the suggestion chips for [seedId], the song
+     * the infinite autoplay is currently seeded from. At most ONE network refresh per seed (cached via
+     * [autoplayChipsSeedId]); never on a timer. Fetches the seed's related page (YouTube.next →
+     * relatedEndpoint → YouTube.related) on IO and builds:
+     *   1. the default "related" chip (a radio seeded from the seed song itself),
+     *   2. up to 5 artist-radio chips (artists carrying a ready-made radioEndpoint, disliked filtered out),
+     *   3. mix/playlist chips that carry a radioEndpoint.
+     * Chips only offer WHERE to steer the autoplay; selecting one goes through [selectAutoplayChip],
+     * whose items still flow through orderedByTaste() (relatedness-order invariant).
+     */
+    private fun refreshAutoplaySuggestions(seedId: String) {
+        if (!autoLoadMoreHint) return // chips are part of autoplay; OFF = no speculative fetch at all
+        if (seedId.isEmpty() || seedId.isLocalMediaId() || seedId.startsWith("http", ignoreCase = true)) return
+        if (autoplayChipsSeedId == seedId) return // once per seed
+        autoplayChipsSeedId = seedId
+        scope.launch(SilentHandler) {
+            val disliked = runCatching { dislikeStore.snapshot() }
+                .getOrDefault(iad1tya.echo.music.dislike.DislikeStore.Disliked())
+            val relatedPage = withContext(Dispatchers.IO) {
+                runCatching {
+                    val nextResult = YouTube.next(WatchEndpoint(videoId = seedId)).getOrNull()
+                    nextResult?.relatedEndpoint?.let { YouTube.related(it).getOrNull() }
+                }.getOrNull()
+            }
+            // Seed moved on while we fetched → these chips describe a stale seed; drop them.
+            if (autoplayChipsSeedId != seedId) return@launch
+            val defaultChip = AutoplayChip(
+                label = getString(R.string.autoplay_chip_related),
+                endpoint = WatchEndpoint(videoId = seedId),
+                kind = AutoplayChip.Kind.RELATED,
+            )
+            val artistChips = relatedPage?.artists.orEmpty()
+                .filter { it.id !in disliked.artists }
+                .mapNotNull { artist ->
+                    artist.radioEndpoint?.let { AutoplayChip(artist.title, it, AutoplayChip.Kind.ARTIST) }
+                }
+                .take(5)
+            val mixChips = relatedPage?.playlists.orEmpty()
+                .filter { it.id !in disliked.playlists }
+                .mapNotNull { playlist ->
+                    playlist.radioEndpoint?.let { AutoplayChip(playlist.title, it, AutoplayChip.Kind.MIX) }
+                }
+                .take(5)
+            _autoplayChips.value = listOf(defaultChip) + artistChips + mixChips
+            // A NEW seed resets the steer to the default related chip (the last-song-seeded radio that is
+            // actually playing) — a previously selected artist/mix chip no longer reflects the live queue.
+            _autoplaySelectedChip.value = defaultChip
+        }
+    }
+
+    /**
+     * User tapped an autoplay chip: RE-SEED the autoplay tail from [chip]'s WatchEndpoint, reusing the
+     * exact appendSeed machinery of [startRadioSeamlessly] (drop the tail after the live index, append
+     * `.orderedByTaste()` — relatedness order stays the backbone, taste only nudges, disliked dropped —
+     * mark Mix active, re-arm the crossfade) and re-point [currentQueue] at the primed chip queue so the
+     * onMediaItemTransition pagination continues from the chip's radio. A chip is a TEMPORARY user steer:
+     * nothing here overrides the default last-song seeding of future automatic seeds.
+     */
+    fun selectAutoplayChip(chip: AutoplayChip) {
+        if (!playerInitialized.value) return
+        _autoplaySelectedChip.value = chip
+        val currentMediaId = player.currentMediaItem?.mediaId ?: return
+        scope.launch(SilentHandler) {
+            val chipQueue = YouTubeQueue(endpoint = chip.endpoint)
+            val initialStatus = withContext(Dispatchers.IO) {
+                runCatching {
+                    chipQueue.getInitialStatus()
+                        .filterExplicit(dataStore.get(HideExplicitKey, false))
+                        .filterVideoSongs(dataStore.get(HideVideoSongsKey, false))
+                }.getOrNull()
+            } ?: return@launch
+            val items = initialStatus.items.filter { it.mediaId != currentMediaId }
+            if (items.isEmpty()) return@launch
+            // Same append semantics as appendSeed in startRadioSeamlessly: recompute the index from the
+            // LIVE player at append time, replace only the tail AFTER the current item (the tail is
+            // radio/autoplay content), and keep the current song playing untouched.
+            val liveIndex = player.currentMediaItemIndex
+            val itemCount = player.mediaItemCount
+            if (itemCount > liveIndex + 1) {
+                player.removeMediaItems(liveIndex + 1, itemCount)
+            }
+            player.addMediaItems(liveIndex + 1, items.orderedByTaste())
+            _mixActive.value = true
+            if (initialStatus.title != null) queueTitle = initialStatus.title
+            if (player.shuffleModeEnabled) {
+                val shufflePlaylistFirst = dataStore.get(ShufflePlaylistFirstKey, false)
+                applyShuffleOrder(player.currentMediaItemIndex, player.mediaItemCount, shufflePlaylistFirst)
+            }
+            // getInitialStatus above primed the continuation → hasNextPage() is true and the existing
+            // pagination in onMediaItemTransition keeps loading this chip's radio forever.
+            currentQueue = chipQueue
+            scheduleCrossfade()
         }
     }
 
@@ -2386,6 +2602,30 @@ class MusicService :
                 }
                 if (player.hasNextMediaItem()) {
                     player.seekToNext()
+                }
+            }
+        }
+    }
+
+    /**
+     * Toggleable "No me gusta" for the current song. If the current track is ALREADY disliked, this is an
+     * UNDO: it only removes the id from the [dislikeStore] — no skip, no (un)like, and nothing that could
+     * re-run loudness normalization mid-song. Otherwise it runs the existing [dislikeCurrentSong] body
+     * unchanged (dislike + unlike-if-liked via UPSERT + queue purge + skip).
+     */
+    fun toggleDislikeCurrentSong() {
+        val mediaId = player.currentMediaItem?.mediaId ?: return
+        scope.launch {
+            val alreadyDisliked = runCatching { dislikeStore.snapshot().songs.contains(mediaId) }
+                .getOrDefault(false)
+            if (alreadyDisliked) {
+                runCatching { dislikeStore.undislikeSong(mediaId) }
+            } else {
+                // Only dislike if the SAME track is still current (the snapshot read suspends briefly;
+                // dislikeCurrentSong re-reads the current item, so a track change mid-await must bail
+                // rather than dislike the wrong song).
+                if (player.currentMediaItem?.mediaId == mediaId) {
+                    dislikeCurrentSong()
                 }
             }
         }
@@ -2844,6 +3084,9 @@ class MusicService :
             !player.hasNextMediaItem() &&  // shuffle/repeat-aware "on the last item to PLAY" (not a raw timeline index)
             !(disableLoadMoreWhenRepeatAllHint && player.repeatMode == REPEAT_MODE_ALL)
         ) {
+            // Autoplay chips: this last-item moment is the seed of the upcoming radio — surface the
+            // suggestion chips for it right away (once-per-seed cached; local/http ids no-op inside).
+            player.currentMediaItem?.mediaId?.let { refreshAutoplaySuggestions(it) }
             startRadioSeamlessly()
         }
 
@@ -3788,6 +4031,7 @@ class MusicService :
             exitVideoMode()
         } else {
             userHasUsedVideo = true
+            videoSwapMeasureStart() // debug-only latency probe: T0 = the audio→video toggle
             _videoMode.value = true
             applyVideoToCurrent()
             // Also pre-build the NEXT item now so the FIRST auto-advance is already seamless (no track change
@@ -3841,7 +4085,11 @@ class MusicService :
 
         _videoUrl.value = null  // spinner while resolving
         val cached = videoUrlCache[id]?.takeIf { it.second > System.currentTimeMillis() }?.first
-        if (!cached.isNullOrEmpty()) { swapToVideo(id, cached); return }
+        if (!cached.isNullOrEmpty()) {
+            videoSwapMark("applyVideoToCurrent: URL cache HIT")
+            swapToVideo(id, cached); return
+        }
+        videoSwapMark("applyVideoToCurrent: URL cache MISS → live resolve")
         scope.launch(Dispatchers.IO) {
             val maxH = videoModeMaxHeight
             var result = runCatching { YTPlayerUtils.videoStreamUrlDiag(id, connectivityManager, maxH) }
@@ -3872,6 +4120,7 @@ class MusicService :
     /** Swap the current item's source URI to [url] (the muxed stream) so the factory builds a video source
      * rendered on the main player. Keeps position + play state. */
     private fun swapToVideo(id: String, url: String, isMuxed: Boolean = false) {
+        videoSwapMark("swapToVideo entry")
         val idx = player.currentMediaItemIndex
         val item = player.currentMediaItem ?: return
         if (item.mediaId != id) return
@@ -4081,6 +4330,11 @@ class MusicService :
                 // Same TTL as the on-demand resolve → applyVideoToCurrent's cache read accepts it as fresh.
                 if (!resolved.isNullOrEmpty()) {
                     videoUrlCache[id] = resolved to (System.currentTimeMillis() + 5 * 60 * 1000L)
+                    // If the user is looking at the expanded player right now, also warm the connection
+                    // (fully re-gated inside: unmetered + capable + video song + once per URL).
+                    if (playerSheetExpanded) {
+                        withContext(Dispatchers.Main) { maybeWarmVideoConnection() }
+                    }
                 }
             } finally {
                 prebuildingIds.remove(id)
@@ -4334,8 +4588,10 @@ class MusicService :
     // User-Agent for googlevideo URLs (they 403 without it). No app cache (avoids colliding with the
     // audio cache and re-streams cleanly on seek). This is the fix that makes video render on the MAIN
     // player (feeding the video URL through the normal audio data source never worked).
-    private val videoDataSourceFactory: DataSource.Factory by lazy {
-        val ok = okhttp3.OkHttpClient.Builder()
+    // The OkHttpClient is held separately so maybeWarmVideoConnection can pre-open the SAME pooled
+    // TCP+TLS connection the swap will use (OkHttp reuses pooled connections per host).
+    private val videoOkHttpClient: okhttp3.OkHttpClient by lazy {
+        okhttp3.OkHttpClient.Builder()
             .proxy(com.music.innertube.YouTube.proxy)
             .addInterceptor { chain ->
                 val req = chain.request()
@@ -4355,7 +4611,64 @@ class MusicService :
                 chain.proceed(req.newBuilder().header("User-Agent", agent).build())
             }
             .build()
-        DefaultDataSource.Factory(this, androidx.media3.datasource.okhttp.OkHttpDataSource.Factory(ok))
+    }
+
+    private val videoDataSourceFactory: DataSource.Factory by lazy {
+        DefaultDataSource.Factory(
+            this,
+            androidx.media3.datasource.okhttp.OkHttpDataSource.Factory(videoOkHttpClient)
+        )
+    }
+
+    // Video URLs whose googlevideo connection we've already warmed this session (once per exact URL —
+    // a rotated/expired URL is a new host/params and may warm again). Bounded by the once-per-URL set;
+    // there is no timer and no retry loop.
+    private val warmedVideoUrls = java.util.Collections.synchronizedSet(mutableSetOf<String>())
+
+    /**
+     * VIDEO-SWAP CONNECTION WARM-UP (safe core of the "instant video toggle" work). When the user is
+     * looking at the expanded player over a video song whose video URL is already resolved, pre-open the
+     * TCP+TLS connection to its googlevideo host with a single 1-byte Range request through
+     * [videoOkHttpClient] — the SAME pooled client the swap's data source uses — so a subsequent toggle
+     * skips the cold-connection cost (~200-500 ms of the observed swap latency). It transfers ONE byte,
+     * runs at most once per URL, and never touches the player/audio graph.
+     *
+     * HARD GATES (all must hold — heat/battery rule: speculative network only on unmetered + capable):
+     * player sheet EXPANDED, video mode OFF, no crossfade swap in flight, current track is a video song,
+     * URL already in [videoUrlCache] (we never resolve here), network UNMETERED, device capable
+     * (no High-Performance Mode, tier not LOW/ULTRA). Must be called on the main thread (player access).
+     */
+    private fun maybeWarmVideoConnection() {
+        if (!playerSheetExpanded) return
+        if (_videoMode.value) return
+        if (isCrossfading) return
+        if (!playerInitialized.value) return
+        val id = player.currentMediaItem?.mediaId ?: return
+        if (id.isEmpty() || id.isLocalMediaId() || id.startsWith("http", ignoreCase = true)) return
+        if (player.currentMetadata?.isVideoSong != true) return
+        val url = videoUrlCache[id]?.takeIf { it.second > System.currentTimeMillis() }?.first ?: return
+        if (url in warmedVideoUrls) return
+        if (runCatching { connectivityManager.isActiveNetworkMetered }.getOrDefault(true)) return
+        val perfMode = iad1tya.echo.music.utils.PerformanceMode.isOn(this)
+        val tier = iad1tya.echo.music.utils.PerformanceMode.effectiveTier(this)
+        if (perfMode ||
+            tier == iad1tya.echo.music.utils.DeviceTier.LOW ||
+            tier == iad1tya.echo.music.utils.DeviceTier.ULTRA
+        ) return
+        if (!warmedVideoUrls.add(url)) return // raced by another caller — already warming
+        scope.launch(Dispatchers.IO) {
+            runCatching {
+                val request = okhttp3.Request.Builder()
+                    .url(url)
+                    .header("Range", "bytes=0-0")
+                    .build()
+                videoOkHttpClient.newCall(request).execute().use { it.body?.bytes() }
+                Timber.tag(TAG).d("Video connection warmed for $id")
+            }.onFailure {
+                // Allow one later re-attempt for this URL (e.g. transient DNS blip).
+                warmedVideoUrls.remove(url)
+            }
+        }
     }
 
     // Video mode is INTEGRATED into the main player: the current track's source is swapped to its muxed
@@ -5343,4 +5656,18 @@ class MusicService :
             }
         }
     }
+}
+
+/**
+ * One autoplay suggestion chip for the queue's Autoplay footer (YT Music parity). [label] is what the
+ * chip shows (localized for the default related chip; artist/mix names come from YouTube as-is),
+ * [endpoint] is the WatchEndpoint the autoplay is re-seeded from when the chip is selected, and [kind]
+ * distinguishes the default related chip from artist radios and mixes/playlists.
+ */
+data class AutoplayChip(
+    val label: String,
+    val endpoint: WatchEndpoint,
+    val kind: Kind,
+) {
+    enum class Kind { RELATED, ARTIST, MIX }
 }

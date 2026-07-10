@@ -63,6 +63,7 @@ fun NowPlayingSidePanel(
     val canSkipPrevious by playerConnection.canSkipPrevious.collectAsState()
     val currentSong by playerConnection.currentSong.collectAsState(initial = null)
     val liked = currentSong?.song?.liked == true
+    val disliked by playerConnection.currentSongDisliked.collectAsState()
     val isTvOrCar = rememberIsTvOrCar()
 
     var sliderPosition by remember { mutableStateOf<Long?>(null) }
@@ -162,12 +163,14 @@ fun NowPlayingSidePanel(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 IconButton(
-                    onClick = { playerConnection.dislikeCurrentSong() },
+                    // Toggle (not one-shot dislike) + live state, parity with the phone player's thumbs.
+                    onClick = { playerConnection.toggleDislikeCurrentSong() },
                     modifier = Modifier.tvFocusable(isTvOrCar),
                 ) {
                     Icon(
                         painterResource(R.drawable.thumb_down),
                         contentDescription = "No me gusta",
+                        tint = if (disliked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.size(22.dp),
                     )
                 }
