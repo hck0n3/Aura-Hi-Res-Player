@@ -1,8 +1,11 @@
 package iad1tya.echo.music.ui.screens.playlist
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -12,7 +15,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyHorizontalGrid
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.lazy.grid.itemsIndexed as gridItemsIndexed
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.BottomSheetDefaults
@@ -38,12 +46,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.music.innertube.models.SongItem
 import iad1tya.echo.music.R
+import iad1tya.echo.music.constants.ListItemHeight
 import iad1tya.echo.music.db.entities.Song
 import iad1tya.echo.music.ui.component.SongListItem
 import iad1tya.echo.music.ui.component.YouTubeListItem
+import iad1tya.echo.music.ui.utils.SnapLayoutInfoProvider
+import iad1tya.echo.music.ui.utils.tvFocusRestorer
 import iad1tya.echo.music.utils.listItemShape
 import iad1tya.echo.music.viewmodels.LocalPlaylistViewModel
 
@@ -126,7 +138,12 @@ fun AddMusicSheet(
                     .padding(horizontal = 16.dp, vertical = 4.dp),
             )
 
-            Box(modifier = Modifier.weight(1f)) {
+            BoxWithConstraints(modifier = Modifier.weight(1f)) {
+                // Apple-Music-style paging: each carousel "page" is a column of stacked rows sized to
+                // ~90% of the sheet width on phones (two pages side by side on wide/TV layouts) — the
+                // same width formula + snap idiom as the Home screen carousels.
+                val pageWidthFactor = if (maxWidth * 0.475f >= 320.dp) 0.475f else 0.9f
+                val pageWidth = maxWidth * pageWidthFactor
                 LazyColumn(
                     modifier = Modifier.fillMaxHeight(),
                     contentPadding = PaddingValues(bottom = 24.dp),
@@ -176,28 +193,34 @@ fun AddMusicSheet(
                         }
                     } else {
                         // --- Suggested ---
-                        localSongSection(
+                        pagedSongSection(
                             title = suggestedTitle,
                             songs = suggested,
                             keyPrefix = "sug",
+                            pageWidth = pageWidth,
+                            pageWidthFactor = pageWidthFactor,
                             previewController = previewController,
                             addedIds = addedIds,
                             onAdd = { song -> viewModel.addLocalSongs(listOf(song.id)) { addedIds.add(song.id) } },
                         )
                         // --- From Replay ---
-                        localSongSection(
+                        pagedSongSection(
                             title = replayTitle,
                             songs = replaySongs,
                             keyPrefix = "replay",
+                            pageWidth = pageWidth,
+                            pageWidthFactor = pageWidthFactor,
                             previewController = previewController,
                             addedIds = addedIds,
                             onAdd = { song -> viewModel.addLocalSongs(listOf(song.id)) { addedIds.add(song.id) } },
                         )
                         // --- Recently Added ---
-                        localSongSection(
+                        pagedSongSection(
                             title = recentTitle,
                             songs = recentlyAdded,
                             keyPrefix = "recent",
+                            pageWidth = pageWidth,
+                            pageWidthFactor = pageWidthFactor,
                             previewController = previewController,
                             addedIds = addedIds,
                             onAdd = { song -> viewModel.addLocalSongs(listOf(song.id)) { addedIds.add(song.id) } },
@@ -263,11 +286,19 @@ fun AddMusicSheet(
     }
 }
 
-/** A section title header + a "+"-per-row local-song list, added to a LazyColumn scope. */
-private fun androidx.compose.foundation.lazy.LazyListScope.localSongSection(
+/**
+ * A section title header + an Apple-Music-style HORIZONTAL carousel of local-song rows: pages of up
+ * to 4 stacked rows, each page [pageWidth] wide, snapping page by page (same LazyHorizontalGrid +
+ * SnapLayoutInfoProvider + tvFocusRestorer idiom as the Home screen carousels, so D-pad focus works).
+ * Per-row semantics are unchanged: row/artwork tap = preview, trailing "+" = instant add.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+private fun androidx.compose.foundation.lazy.LazyListScope.pagedSongSection(
     title: String,
     songs: List<Song>,
     keyPrefix: String,
+    pageWidth: Dp,
+    pageWidthFactor: Float,
     previewController: SongPreviewController,
     addedIds: List<String>,
     onAdd: (Song) -> Unit,
@@ -276,24 +307,47 @@ private fun androidx.compose.foundation.lazy.LazyListScope.localSongSection(
     item(key = "$keyPrefix-header") {
         SectionHeader(title)
     }
-    itemsIndexed(songs, key = { _, it -> "$keyPrefix-${it.id}" }) { index, song ->
-        SongListItem(
-            song = song,
-            isActive = previewController.currentPreviewId == song.id,
-            isPlaying = previewController.currentPreviewId == song.id && !previewController.isLoading,
-            showDownloadIcon = false,
-            shape = listItemShape(index = index, count = songs.size),
-            trailingContent = {
-                AddOrAddedButton(
-                    added = song.id in addedIds,
-                    onAdd = { onAdd(song) },
-                )
-            },
-            onThumbnailClick = { previewController.toggle(song.id) },
+    item(key = "$keyPrefix-carousel") {
+        val gridState = rememberLazyGridState()
+        val snapLayoutInfoProvider = remember(gridState, pageWidthFactor) {
+            SnapLayoutInfoProvider(
+                lazyGridState = gridState,
+                positionInLayout = { layoutSize, itemSize ->
+                    (layoutSize * pageWidthFactor / 2f - itemSize / 2f)
+                },
+            )
+        }
+        val rows = minOf(4, songs.size)
+        LazyHorizontalGrid(
+            state = gridState,
+            rows = GridCells.Fixed(rows),
+            flingBehavior = rememberSnapFlingBehavior(snapLayoutInfoProvider),
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable { previewController.toggle(song.id) },
-        )
+                .height(ListItemHeight * rows)
+                .tvFocusRestorer(),
+        ) {
+            gridItemsIndexed(songs, key = { _, it -> "$keyPrefix-${it.id}" }) { index, song ->
+                SongListItem(
+                    song = song,
+                    isActive = previewController.currentPreviewId == song.id,
+                    isPlaying = previewController.currentPreviewId == song.id && !previewController.isLoading,
+                    showDownloadIcon = false,
+                    isSwipeable = false,
+                    shape = listItemShape(index = index % rows, count = rows),
+                    trailingContent = {
+                        AddOrAddedButton(
+                            added = song.id in addedIds,
+                            onAdd = { onAdd(song) },
+                        )
+                    },
+                    onThumbnailClick = { previewController.toggle(song.id) },
+                    modifier = Modifier
+                        .width(pageWidth)
+                        .clickable { previewController.toggle(song.id) },
+                )
+            }
+        }
     }
 }
 
