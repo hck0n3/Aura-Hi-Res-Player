@@ -415,6 +415,8 @@
     <string name="ai_playlist_resolved_count">%1$d de %2$d canciones añadidas</string>
     <string name="ai_playlist_error_generic">No se pudo generar la playlist. Inténtalo de nuevo.</string>
     <string name="ai_playlist_error_no_api_key">Configura primero una clave de IA en Ajustes de IA.</string>
+    <string name="ai_playlist_error_unavailable">El servicio de IA está ocupado o no disponible. Inténtalo de nuevo en un momento.</string>
+    <string name="ai_key_optional_hint">Opcional: usa tu propia clave/modelo; sin clave, Aura usa su IA integrada.</string>
     <string name="ai_playlist_error_unsupported_provider">Este proveedor no es compatible. Elige un proveedor de chat (OpenRouter, OpenAI, Gemini…) en Ajustes de IA.</string>
     <string name="ai_playlist_error_no_tracks">No se encontraron canciones para esa idea. Prueba otra descripción.</string>
     <string name="ai_playlist_open_ai_settings">Abrir Ajustes de IA</string>

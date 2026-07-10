@@ -45,8 +45,9 @@ import iad1tya.echo.music.viewmodels.AiPlaylistViewModel
 
 /**
  * Dialog for the "Lista AI" feature: the user types an idea and picks how many songs; the AI builds
- * a track list which is resolved against the catalog into a new local playlist. Reuses the AI
- * provider/key the user already configured for lyric translation (BYO key).
+ * a track list which is resolved against the catalog into a new local playlist. Works without any
+ * setup (Aura's built-in keyless AI); a user-configured provider/key (shared with lyric
+ * translation) acts as an override.
  */
 @Composable
 fun AiPlaylistDialog(
@@ -184,12 +185,13 @@ private fun BusyRow(text: String) {
 }
 
 private fun showsSettingsAction(cause: Throwable): Boolean =
-    cause is AiPlaylistService.MissingApiKeyException ||
+    // Unavailable still offers AI settings subtly: power users can set their own key as an override.
+    cause is AiPlaylistService.AiServiceUnavailableException ||
         cause is AiPlaylistService.UnsupportedProviderException
 
 private fun errorMessage(context: Context, cause: Throwable): String = when (cause) {
-    is AiPlaylistService.MissingApiKeyException ->
-        context.getString(R.string.ai_playlist_error_no_api_key)
+    is AiPlaylistService.AiServiceUnavailableException ->
+        context.getString(R.string.ai_playlist_error_unavailable)
 
     is AiPlaylistService.UnsupportedProviderException ->
         context.getString(R.string.ai_playlist_error_unsupported_provider)

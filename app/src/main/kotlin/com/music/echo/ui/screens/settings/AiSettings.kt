@@ -485,12 +485,14 @@ fun AiSettings(
                         Material3SettingsItem(
                             icon = painterResource(R.drawable.key),
                             title = { Text(stringResource(R.string.ai_api_key)) },
-                            description = { 
+                            description = {
                                 Text(
-                                    if (openRouterApiKey.isNotEmpty()) 
+                                    if (openRouterApiKey.isNotEmpty())
                                         "•".repeat(minOf(openRouterApiKey.length, 8))
-                                    else 
-                                        stringResource(R.string.not_set)
+                                    else
+                                        // AI Playlists work without a key (Aura's built-in keyless AI);
+                                        // a key is only an override, so say "optional" instead of "not set".
+                                        stringResource(R.string.ai_key_optional_hint)
                                 )
                             },
                             onClick = { showApiKeyDialog = true }
