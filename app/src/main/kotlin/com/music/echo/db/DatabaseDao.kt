@@ -183,6 +183,11 @@ interface DatabaseDao {
     @Query("SELECT COUNT(1) FROM song WHERE liked")
     fun likedSongsCount(): Flow<Int>
 
+    // Lean SELECT-only projection of just the liked song ids, so online surfaces (which carry no local
+    // `liked` flag on their SongItems) can cross-reference and pin liked songs to the top.
+    @Query("SELECT id FROM song WHERE liked")
+    fun likedSongIds(): Flow<List<String>>
+
     @Transaction
     @Query("SELECT song.* FROM song JOIN song_album_map ON song.id = song_album_map.songId WHERE song_album_map.albumId = :albumId")
     fun albumSongs(albumId: String): Flow<List<Song>>

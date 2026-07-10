@@ -22,7 +22,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -37,7 +40,25 @@ class OnlinePlaylistViewModel @Inject constructor(
     private val playlistId = savedStateHandle.get<String>("playlistId")!!
 
     val playlist = MutableStateFlow<PlaylistItem?>(null)
-    val playlistSongs = MutableStateFlow<List<SongItem>>(emptyList())
+
+    // Raw playlist order as returned by YouTube (relatedness order). The public [playlistSongs] pins the
+    // user's liked songs to the top; keeping the raw list separate lets continuations append cleanly.
+    private val _rawSongs = MutableStateFlow<List<SongItem>>(emptyList())
+
+    // Ids of songs the user has liked locally. Online SongItems carry no local `liked` flag, so we
+    // cross-reference the DB to pin liked items to the top. Updates live as the user likes/unlikes.
+    private val likedIds = database.likedSongIds()
+        .map { it.toHashSet() }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, HashSet())
+
+    // Displayed list: liked songs pinned to the top, YouTube relatedness order preserved within each
+    // group (sortedBy is stable). The screen builds both the row list AND the play queue from this, so
+    // the tapped index stays aligned after the re-sort.
+    val playlistSongs: StateFlow<List<SongItem>> =
+        combine(_rawSongs, likedIds) { songs, liked ->
+            songs.sortedBy { if (it.id in liked) 0 else 1 }
+        }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
     val relatedItems = MutableStateFlow<List<YTItem>>(emptyList())
 
     private val _isLoading = MutableStateFlow(true)
@@ -71,7 +92,7 @@ class OnlinePlaylistViewModel @Inject constructor(
             YouTube.playlist(playlistId)
                 .onSuccess { playlistPage ->
                     playlist.value = playlistPage.playlist
-                    playlistSongs.value = applySongFilters(playlistPage.songs)
+                    _rawSongs.value = applySongFilters(playlistPage.songs)
                     relatedItems.value = playlistPage.related ?: emptyList()
                     continuation = playlistPage.songsContinuation
                     _isLoading.value = false
@@ -102,9 +123,9 @@ class OnlinePlaylistViewModel @Inject constructor(
 
                 YouTube.playlistContinuation(currentProactiveToken)
                     .onSuccess { playlistContinuationPage ->
-                        val currentSongs = playlistSongs.value.toMutableList()
+                        val currentSongs = _rawSongs.value.toMutableList()
                         currentSongs.addAll(playlistContinuationPage.songs)
-                        playlistSongs.value = applySongFilters(currentSongs)
+                        _rawSongs.value = applySongFilters(currentSongs)
                         currentProactiveToken = playlistContinuationPage.continuation
                         
                         this@OnlinePlaylistViewModel.continuation = currentProactiveToken 
@@ -128,9 +149,9 @@ class OnlinePlaylistViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             YouTube.playlistContinuation(tokenForManualLoad)
                 .onSuccess { playlistContinuationPage ->
-                    val currentSongs = playlistSongs.value.toMutableList()
+                    val currentSongs = _rawSongs.value.toMutableList()
                     currentSongs.addAll(playlistContinuationPage.songs)
-                    playlistSongs.value = applySongFilters(currentSongs)
+                    _rawSongs.value = applySongFilters(currentSongs)
                     continuation = playlistContinuationPage.continuation
                 }.onFailure { throwable ->
                     reportException(throwable)
