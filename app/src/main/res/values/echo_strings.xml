@@ -578,6 +578,14 @@
     <string name="ringtone_saved_select_in_settings">\"%1$s\" added to system ringtones. Please select it from settings.</string>
     <string name="ringtone_grant_write_settings">Grant permission</string>
 
+    <!-- Terms & Conditions -->
+    <string name="terms_title">Terms &amp; Conditions</string>
+    <string name="terms_accept">Accept and continue</string>
+    <string name="terms_exit">Exit</string>
+    <string name="terms_about_entry">Terms &amp; Conditions / Legal information</string>
+    <string name="terms_about_entry_desc">The terms you accepted when you started using the app; the current version is always available here</string>
+    <string name="terms_accepted_on">Accepted on %1$s (terms v%2$d)</string>
+
     <!-- Hardcoded strings -->
     <string name="found_in_settings_content">Found in Settings &gt; Content</string>
     <string name="plays">plays</string>

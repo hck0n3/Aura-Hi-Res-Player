@@ -4,6 +4,7 @@ package iad1tya.echo.music.ui.screens.settings
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
@@ -170,6 +171,59 @@ fun AboutScreen(
                     FeatureList(EXTRAS_FEATURES)
                 }
             }
+            item {
+                AboutSectionCard(title = "Información legal") {
+                    LegalTermsRow(onClick = { navController.navigate("settings/terms") })
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Ajustes ▸ Acerca de ▸ "Términos y condiciones": opens the read-only Terms screen (the same full
+ * text the user accepted on first launch — clause 17.3 promises it is always available here).
+ */
+@Composable
+private fun LegalTermsRow(onClick: () -> Unit) {
+    val tint = MaterialTheme.colorScheme.primary
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Surface(
+            modifier = Modifier.size(42.dp),
+            shape = RoundedCornerShape(14.dp),
+            color = tint.copy(alpha = 0.10f),
+        ) {
+            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                Icon(
+                    painter = painterResource(R.drawable.info),
+                    contentDescription = null,
+                    modifier = Modifier.size(22.dp),
+                    tint = tint,
+                )
+            }
+        }
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.terms_about_entry),
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = stringResource(R.string.terms_about_entry_desc),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }

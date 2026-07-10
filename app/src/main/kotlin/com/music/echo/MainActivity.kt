@@ -503,13 +503,18 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            LicenseGate {
-                echomusicApp(
-                    playerConnection = playerConnection,
-                    database = database,
-                    downloadUtil = downloadUtil,
-                    syncUtils = syncUtils,
-                )
+            // Terms & Conditions gate OUTSIDE the license gate: until the user accepts the current
+            // TermsInfo.TERMS_VERSION, the acceptance screen renders INSTEAD of everything else
+            // (license flow included, untouched behind it). Re-appears only when the version bumps.
+            iad1tya.echo.music.legal.TermsGate {
+                LicenseGate {
+                    echomusicApp(
+                        playerConnection = playerConnection,
+                        database = database,
+                        downloadUtil = downloadUtil,
+                        syncUtils = syncUtils,
+                    )
+                }
             }
         }
     }

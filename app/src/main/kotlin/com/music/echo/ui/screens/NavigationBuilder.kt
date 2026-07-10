@@ -442,6 +442,10 @@ fun NavGraphBuilder.navigationBuilder(
         AboutScreen(navController, scrollBehavior)
     }
 
+    composable("settings/terms") {
+        iad1tya.echo.music.legal.TermsScreen(navController, scrollBehavior)
+    }
+
     composable("settings/logs") {
         LogsScreen(navController, scrollBehavior)
     }

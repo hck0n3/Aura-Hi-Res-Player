@@ -903,3 +903,16 @@ val JrDialogueAmountKey = floatPreferencesKey("jr_dsp_dialogue_amount")
 // "non-music" parts of music videos) are auto-skipped during playback via the community SponsorBlock API.
 // Deliberately does NOT skip intro/outro/preview so real song intros/outros are never cut.
 val SponsorBlockEnabledKey = booleanPreferencesKey("sponsorblock_enabled")
+
+// ── Terms & Conditions ──
+// Explicit user acceptance of the in-app legal terms (legal/TermsInfo.TERMS_VERSION).
+// NEVER seed these keys from App.kt migrations: acceptance must be a real user action
+// (an auto-seeded acceptance is legally worthless and contradicts clause 1 of the terms).
+// Int compared against the TERMS_VERSION constant, so bumping the constant re-shows the
+// blocking acceptance screen automatically (no fresh key needed — that rule is for forced
+// boolean seed migrations).
+val TermsAcceptedVersionKey = intPreferencesKey("termsAcceptedVersion")
+// Epoch millis of the moment the user tapped "Aceptar y continuar" (audit trail).
+val TermsAcceptedAtKey = longPreferencesKey("termsAcceptedAtMillis")
+// App versionCode the user was running when they accepted (audit trail).
+val TermsAcceptedAppVersionKey = intPreferencesKey("termsAcceptedAppVersionCode")
