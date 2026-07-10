@@ -76,7 +76,7 @@ fun WelcomeDialog(
                     WelcomeFeatureRow(
                         iconRes = R.drawable.music_note,
                         title = "Música ilimitada",
-                        subtitle = "Todo el catálogo de YouTube Music, sin anuncios"
+                        subtitle = "Todo el catálogo de YouTube Music, sin anuncios; reproductor estilo YouTube Music con pulgares Me gusta / No me gusta junto al título, cola al deslizar hacia arriba y reproducción automática con chips al final de la cola"
                     )
                     WelcomeDivider()
                     WelcomeFeatureRow(
@@ -112,7 +112,7 @@ fun WelcomeDialog(
                     WelcomeFeatureRow(
                         iconRes = R.drawable.download,
                         title = "Modo sin conexión",
-                        subtitle = "Descarga canciones y playlists para escucharlas offline"
+                        subtitle = "Descarga canciones y playlists para escucharlas offline; el interruptor de la barra superior cambia entre online/offline con un toque"
                     )
                     WelcomeDivider()
                     WelcomeFeatureRow(
@@ -148,7 +148,7 @@ fun WelcomeDialog(
                     WelcomeFeatureRow(
                         iconRes = R.drawable.discover_tune,
                         title = "Recomendaciones con IA",
-                        subtitle = "Inicio, radio y mezclas que aprenden de tus gustos y de toda tu biblioteca importada (en el dispositivo); al acabar una lista la música sigue sola con temas similares, el modo aleatorio no repite hasta agotar, y crea listas con una frase"
+                        subtitle = "Inicio, radio y mezclas que aprenden de tus gustos y de toda tu biblioteca importada (en el dispositivo); Inicio con 'Reproducido recientemente', 'Nuevos lanzamientos', 'Mix diario 1/2/3' y un mix según la hora del día; al acabar una lista la música sigue sola con temas similares, el modo aleatorio no repite hasta agotar, y crea listas con una frase"
                     )
                     WelcomeDivider()
                     WelcomeFeatureRow(
@@ -166,7 +166,7 @@ fun WelcomeDialog(
                     WelcomeFeatureRow(
                         iconRes = R.drawable.mic,
                         title = "Reconocer canción y buscar por voz",
-                        subtitle = "Identifica lo que suena a tu alrededor (desde la app, el widget o Ajustes Rápidos) y busca hablando, también en Android TV"
+                        subtitle = "Identifica lo que suena a tu alrededor (desde la app, el widget o Ajustes Rápidos) — el resultado se reproduce directamente y puedes marcarlo favorito o agregarlo a una playlist ahí mismo — y busca hablando, también en Android TV; la búsqueda suma un filtro 'Videos'"
                     )
                     WelcomeDivider()
                     WelcomeFeatureRow(

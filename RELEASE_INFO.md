@@ -1,31 +1,44 @@
-# Aura Hi-Res Player 0.6.86 — Reconocimiento reparado, letras en sincronía y Agregar música pulido
+# Aura Hi-Res Player 0.6.87 — Estilo YouTube Music, Inicio renovado y arreglos por todos lados
 
-## 🎙️ Reconocer canción — REPARADO
-- **Vuelve a funcionar el reconocimiento de canciones** (llevaba roto desde 0.6.82 por una actualización interna del motor de reproducción): identifica lo que suena a tu alrededor desde la app, el widget o el mosaico de Ajustes Rápidos.
-- **Cancelar de verdad cancela**, reintentar funciona al instante, y desde el widget/mosaico el reconocimiento **arranca solo** (antes había que tocar dos veces).
-- Sigue escuchando aunque bloquees la pantalla o cambies de app (servicio de micrófono en primer plano).
+## 🎛️ Reproductor estilo YouTube Music
+- **Me gusta / No me gusta compactos** (pulgares) junto al título, como YouTube Music — el "No me gusta" ahora es conmutable y se refleja en el botón.
+- **Desliza hacia arriba** en el reproductor y aparece la cola, estilo YouTube Music.
+- **Reproducción automática al final de la cola**: interruptor + **chips deslizables** para dirigir lo que sigue (relacionado, artistas, mixes) — tal cual YouTube Music, usando sus propias sugerencias.
+- **Cambio música↔video más rápido**: conexión pre-calentada cuando el reproductor está abierto (solo wifi y equipos capaces).
 
-## 🎤 Letras — en sincronía
-- **Corregidas las letras desincronizadas**: el estilo por defecto ya no "inventa" el barrido palabra por palabra cuando la letra solo trae tiempos por línea — ahora ilumina la línea exacta al momento. Cuando la letra sí trae tiempos reales de palabras, el karaoke sigue idéntico.
-- El desenfoque estilo Apple Music en letras ahora viene activado por defecto.
+## 🏠 Inicio renovado (contenido)
+- **Orden fijo de secciones** por defecto (el aleatorio queda opcional en Ajustes).
+- Nueva fila **"Reproducido recientemente"** (cronológica de verdad) arriba del todo.
+- Nueva sección **"Nuevos lanzamientos"**.
+- **"Mix diario 1/2/3"** estilo Spotify (antes era un solo carrusel).
+- **Mix de la mañana/tarde/noche** según la hora.
+- Menos repetición: Marcación rápida, Para ti y Seguir escuchando ya no muestran las mismas portadas.
+- Textos corregidos para todos los idiomas.
 
-## ➕ Agregar música (estreno pulido)
-- Las secciones de la ventana "Agregar música" ahora se deslizan **en horizontal, por páginas, estilo Apple Music**.
-- **Canciones sugeridas de verdad basadas en tu playlist**: usa hasta 8 canciones de tu lista como semillas (locales + algoritmo de YouTube), rankea por afinidad y limita 2 por artista.
-- **Sugerencias infinitas**: cada toque a actualizar trae 5 canciones nuevas sin repetirse (expande semillas automáticamente).
-- Tocar la **portada** = preview; botón **`+`** al final de cada fila = se agrega al instante (y se marca ✓).
+## 📴 Modo sin conexión a un toque
+- El botón de estadísticas de la barra superior ahora es el **interruptor de Modo sin conexión**: cada toque cambia entre online/offline y te avisa el estado. (Estadísticas sigue en Ajustes.)
 
-## 🤖 Listas con IA — ya sin API key
-- **Crear playlists con una frase ahora funciona sin configurar nada**: la app usa la IA integrada de Aura (con respaldo gratuito automático). Tu propia key sigue siendo opcional para usuarios avanzados.
+## 🔍 Búsqueda con filtro de Videos
+- Nuevo chip **"Videos"** en la búsqueda (como YouTube Music), miniaturas panorámicas para videos, y la pestaña "Todos" ahora respeta tu preferencia de ocultar videos.
 
-## 📺 Botón de transmitir (Cast)
-- Siempre visible **arriba a la derecha** del reproductor, en todos los modos (letras, canvas, video, horizontal, TV). Y ahora solo busca dispositivos cuando abres el selector (menos batería).
+## 🎙️ Reconocedor: reproduce y guarda
+- **"Reproducir con Aura" ahora reproduce la canción de verdad** (antes solo la buscaba) + botones de **favorito** y **agregar a playlist** ahí mismo.
 
-## ✅ Honestidad y legal
-- **"Acerca de" ahora dice exactamente lo que la app hace**: auditamos las 123 funciones anunciadas contra el código y corregimos cada texto (y arreglamos varias de verdad: bypass real de bandas del EQ a 0 dB, el radar reproduce estrenos, el tono de llamada se aplica de verdad).
-- **Términos y condiciones**: se muestran al primer uso (aceptación requerida) y quedan siempre disponibles en Acerca de ▸ Información legal.
+## 🔔 Tono de llamada arreglado
+- **Adiós al "connection reset"**: descarga por rangos con reanudación, usa la copia ya descargada si existe (instantáneo), y solo baja lo que el recorte necesita.
 
-## 🔧 También
-- Estrenos del radar con botón de reproducción directa.
-- Menos consumo de batería y calor vigilado en todo lo nuevo.
-- Suscripción, licencia, demo, crossfade de 9s y motor de audio: intactos.
+## 🎧 Auto-EQ instantáneo
+- El catálogo de +5000 auriculares ahora **abre al instante** (índice incluido en la app; la actualización corre en segundo plano).
+
+## ➕ Playlists más listas
+- Al **agregar a playlist**, las listas a las que agregaste contenido recientemente aparecen **primero**.
+- Vista previa de canciones sugeridas **más rápida** y el botón actualizar responde **al instante**.
+
+## 🤖 Listas con IA — arreglado de verdad
+- Se corrigió el "servicio ocupado": la IA integrada ahora responde en segundos.
+
+## 🛡️ Blindaje interno (del upstream v5.2.5)
+- Sin fugas de memoria en la generación de tokens, escrituras atómicas del caché del reproductor, protección contra cambios de reloj del sistema, y **auto-reparación del streaming sin reiniciar la app** cuando YouTube rota su reproductor.
+
+## ✅ Como siempre
+- Suscripción, licencia, demo, crossfade de 9s y motor de audio: intactos. Calor y batería vigilados en todo lo nuevo.
