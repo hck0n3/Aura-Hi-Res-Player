@@ -421,4 +421,13 @@
     <string name="ai_playlist_settings_title">Lista AI</string>
     <string name="ai_playlist_enabled_title">Lista por texto</string>
     <string name="ai_playlist_enabled_desc">Mostrar el botón Lista AI en tu biblioteca</string>
+    <string name="add_music">Agregar música</string>
+    <string name="suggested_songs">Canciones sugeridas</string>
+    <string name="featured_artists">Artistas destacados</string>
+    <string name="from_replay">Desde Replay</string>
+    <string name="recently_added">Agregado recientemente</string>
+    <string name="refresh">Actualizar</string>
+    <string name="add_selected">Agregar (%1$d)</string>
+    <string name="search_youtube_music">Buscar en YouTube Music</string>
+    <string name="your_library">Tu biblioteca</string>
 </resources>
