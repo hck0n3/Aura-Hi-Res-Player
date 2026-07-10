@@ -22,7 +22,10 @@ data class RingtoneUiState(
     val statusMessage: String = "",
     val isComplete: Boolean = false,
     val isSuccess: Boolean = false,
-    val ringtoneUri: Uri? = null
+    val ringtoneUri: Uri? = null,
+    // True only when RingtoneHelper could really set the default ringtone (WRITE_SETTINGS held).
+    // When false after a success, the dialog offers the WRITE_SETTINGS grant + picker fallback.
+    val appliedDirectly: Boolean = false
 )
 
 class RingtoneViewModel : ViewModel() {
@@ -81,13 +84,14 @@ class RingtoneViewModel : ViewModel() {
                         it.copy(progress = progress, statusMessage = message)
                     }
                 },
-                onComplete = { success, message, uri ->
+                onComplete = { success, message, uri, appliedDirectly ->
                     _uiState.update {
                         it.copy(
                             isComplete = true,
                             isSuccess = success,
                             statusMessage = message,
-                            ringtoneUri = uri
+                            ringtoneUri = uri,
+                            appliedDirectly = appliedDirectly
                         )
                     }
                 }

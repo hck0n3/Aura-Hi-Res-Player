@@ -648,11 +648,10 @@ fun YouTubeSongMenu(
                             )
                         },
                         onClick = {
-                            if (ringtoneViewModel.hasSettingsPermission(context)) {
-                                ringtoneViewModel.showTrimmer(song.id, song.title, song.artists.joinToString { it.name }, song.duration ?: 0)
-                            } else {
-                                ringtoneViewModel.requestSettingsPermission(context)
-                            }
+                            // Always open the trimmer: WRITE_SETTINGS only gates the optional
+                            // direct-apply step inside RingtoneHelper.downloadAndTrimAsRingtone;
+                            // the success dialog offers the grant when it wasn't held.
+                            ringtoneViewModel.showTrimmer(song.id, song.title, song.artists.joinToString { it.name }, song.duration ?: 0)
                             onDismiss()
                         }
                     )

@@ -163,8 +163,9 @@ fun ReleaseRadarScreen(
                     // completo"). Radar rows are albums/releases (playId = album browseId, no direct song),
                     // so resolve the album's audio playlist and play the WHOLE release as its own queue —
                     // same album-radio path AlbumScreen/NewReleaseScreen use. The row body keeps opening
-                    // the album page.
-                    IconButton(
+                    // the album page. Legacy rows can have a blank playId (same guard as
+                    // HomeViewModel.getNewFromArtists) — no button for those.
+                    if (item.playId.isNotBlank()) IconButton(
                         onClick = {
                             coroutineScope.launch(Dispatchers.IO) {
                                 YouTube.album(item.playId)

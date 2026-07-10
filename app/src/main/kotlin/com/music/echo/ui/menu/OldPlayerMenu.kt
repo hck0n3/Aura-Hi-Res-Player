@@ -656,8 +656,9 @@ fun OldPlayerMenu(
 
         item { Spacer(modifier = Modifier.height(12.dp)) }
 
-        // Set as Ringtone: requests WRITE_SETTINGS if needed, else opens the trimmer (RingtoneViewModel/Helper
-        // downloads the stream for online tracks, so it works without a pre-downloaded local file).
+        // Set as Ringtone: always opens the trimmer (RingtoneViewModel/Helper downloads the stream for
+        // online tracks, so it works without a pre-downloaded local file). WRITE_SETTINGS is only needed
+        // for the optional direct-apply step; the success dialog offers the grant when it wasn't held.
         item {
             Material3MenuGroup(
                 items = listOf(
@@ -671,16 +672,12 @@ fun OldPlayerMenu(
                             )
                         },
                         onClick = {
-                            if (ringtoneViewModel.hasSettingsPermission(context)) {
-                                ringtoneViewModel.showTrimmer(
-                                    mediaMetadata.id,
-                                    mediaMetadata.title,
-                                    mediaMetadata.artists.joinToString { it.name },
-                                    mediaMetadata.duration
-                                )
-                            } else {
-                                ringtoneViewModel.requestSettingsPermission(context)
-                            }
+                            ringtoneViewModel.showTrimmer(
+                                mediaMetadata.id,
+                                mediaMetadata.title,
+                                mediaMetadata.artists.joinToString { it.name },
+                                mediaMetadata.duration
+                            )
                             onDismiss()
                         }
                     )

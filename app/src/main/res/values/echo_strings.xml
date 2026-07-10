@@ -569,11 +569,14 @@
     <string name="eq_preset_jr_treble">Treble+</string>
     <string name="eq_preset_jr_classical">Classical</string>
 
-    <!-- Crossfeed & Spectrum Visualizer (Aura Hi-Res Player features) -->
+    <!-- Crossfeed (Aura Hi-Res Player feature) -->
     <string name="crossfeed">Crossfeed</string>
     <string name="crossfeed_desc">Blend channels slightly for a natural headphone soundstage</string>
-    <string name="spectrum_visualizer">Spectrum visualizer</string>
-    <string name="spectrum_visualizer_desc">Show real-time frequency bars in the player</string>
+
+    <!-- Ringtone flow -->
+    <string name="ringtone_set_directly">\"%1$s\" is now your ringtone.</string>
+    <string name="ringtone_saved_select_in_settings">\"%1$s\" added to system ringtones. Please select it from settings.</string>
+    <string name="ringtone_grant_write_settings">Grant permission</string>
 
     <!-- Hardcoded strings -->
     <string name="found_in_settings_content">Found in Settings &gt; Content</string>

@@ -687,16 +687,15 @@ fun PlayerMenu(
                             )
                         },
                         onClick = {
-                            if (ringtoneViewModel.hasSettingsPermission(context)) {
-                                ringtoneViewModel.showTrimmer(
-                                    mediaMetadata.id,
-                                    mediaMetadata.title,
-                                    mediaMetadata.artists.joinToString { it.name },
-                                    mediaMetadata.duration
-                                )
-                            } else {
-                                ringtoneViewModel.requestSettingsPermission(context)
-                            }
+                            // Always open the trimmer: WRITE_SETTINGS only gates the optional
+                            // direct-apply step inside RingtoneHelper.downloadAndTrimAsRingtone;
+                            // the success dialog offers the grant when it wasn't held.
+                            ringtoneViewModel.showTrimmer(
+                                mediaMetadata.id,
+                                mediaMetadata.title,
+                                mediaMetadata.artists.joinToString { it.name },
+                                mediaMetadata.duration
+                            )
                             onDismiss()
                         }
                     )

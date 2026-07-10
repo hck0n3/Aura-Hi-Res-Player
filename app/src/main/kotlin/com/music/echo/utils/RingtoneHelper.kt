@@ -15,6 +15,7 @@ import android.os.Environment
 import android.provider.MediaStore
 import android.provider.Settings
 import androidx.core.content.getSystemService
+import iad1tya.echo.music.R
 import iad1tya.echo.music.constants.AudioQuality
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
@@ -50,7 +51,10 @@ object RingtoneHelper {
         startMs: Long,
         endMs: Long,
         onProgress: (Float, String) -> Unit,
-        onComplete: (Boolean, String, Uri?) -> Unit
+        // (success, message, ringtoneUri, appliedDirectly) — appliedDirectly is true only when the
+        // ringtone was really set via RingtoneManager (requires WRITE_SETTINGS); when false the UI
+        // should offer both the picker fallback AND the WRITE_SETTINGS grant action.
+        onComplete: (Boolean, String, Uri?, Boolean) -> Unit
     ) = withContext(Dispatchers.IO) {
         try {
             onProgress(0.05f, "Getting audio stream...")
@@ -58,7 +62,7 @@ object RingtoneHelper {
             val streamUrl = getStreamUrl(context, songId)
             if (streamUrl == null) {
                 withContext(Dispatchers.Main) {
-                    onComplete(false, "Failed to get audio stream", null)
+                    onComplete(false, "Failed to get audio stream", null, false)
                 }
                 return@withContext
             }
@@ -100,7 +104,7 @@ object RingtoneHelper {
 
             if (!tempFile.exists() || tempFile.length() == 0L) {
                 withContext(Dispatchers.Main) {
-                    onComplete(false, "Failed to prepare source file", null)
+                    onComplete(false, "Failed to prepare source file", null, false)
                 }
                 return@withContext
             }
@@ -116,7 +120,7 @@ object RingtoneHelper {
             if (trim == null || trimmedFile == null || !trimmedFile.exists() || trimmedFile.length() == 0L) {
                 trimmedFile?.delete()
                 withContext(Dispatchers.Main) {
-                    onComplete(false, "Failed to process audio or output is empty", null)
+                    onComplete(false, "Failed to process audio or output is empty", null, false)
                 }
                 return@withContext
             }
@@ -208,16 +212,16 @@ object RingtoneHelper {
             withContext(Dispatchers.Main) {
                 onProgress(1f, "Done!")
                 if (appliedDirectly) {
-                    onComplete(true, "\"$title\" quedó establecida como tu tono de llamada.", ringtoneUri)
+                    onComplete(true, context.getString(R.string.ringtone_set_directly, title), ringtoneUri, true)
                 } else {
-                    onComplete(true, "\"$title\" added to system ringtones. Please select it from settings.", ringtoneUri)
+                    onComplete(true, context.getString(R.string.ringtone_saved_select_in_settings, title), ringtoneUri, false)
                 }
             }
 
         } catch (e: Exception) {
             e.printStackTrace()
             withContext(Dispatchers.Main) {
-                onComplete(false, "Error: ${e.message}", null)
+                onComplete(false, "Error: ${e.message}", null, false)
             }
         }
     }

@@ -99,7 +99,7 @@ data class PeqBandDto(
 }
 
 /**
- * 24-band ISO 1/3-octave graphic equalizer view model — desktop JR DSP Pro parity.
+ * 10-band (EqConstants.BAND_COUNT) ISO octave graphic equalizer view model — desktop JR DSP Pro parity.
  * Band gains and pre-amp are kept in dB and pushed to the real biquad chain through
  * [EqualizerService] / [EQProfileRepository].
  */
@@ -170,7 +170,7 @@ class AxionEqViewModel @Inject constructor(
     private val _preamp = MutableStateFlow(prefs.getFloat("preampDb", 0f))
     val preamp = _preamp.asStateFlow()
 
-    // EQ editing mode: GRAPHIC (24-band, default) vs PARAMETRIC (5–8 free PEQ bands). Both curves are
+    // EQ editing mode: GRAPHIC (10-band, EqConstants.BAND_COUNT, default) vs PARAMETRIC (5–8 free PEQ bands). Both curves are
     // kept independently (separate state + prefs keys) so switching modes never loses the other.
     private val _eqMode = MutableStateFlow(
         runCatching { EqMode.valueOf(prefs.getString("eq_mode", "GRAPHIC")!!) }.getOrDefault(EqMode.GRAPHIC)
@@ -365,7 +365,7 @@ class AxionEqViewModel @Inject constructor(
             }.apply()
             setAutoEqActive(true)
         } else {
-            // Loading a saved graphic profile: write the manual 24-band curve as before.
+            // Loading a saved graphic profile: write the manual 10-band (EqConstants.BAND_COUNT) curve as before.
             _bandGains.value = arr
             prefs.edit().apply {
                 arr.forEachIndexed { i, f -> putFloat("band24_$i", f) }
@@ -452,7 +452,7 @@ class AxionEqViewModel @Inject constructor(
             _isDirty.value = true
             applyToService()
         } else {
-            // Graphic profile: positional 24-band load + ensure GRAPHIC mode (switches back from PEQ).
+            // Graphic profile: positional 10-band (EqConstants.BAND_COUNT) load + ensure GRAPHIC mode (switches back from PEQ).
             _eqMode.value = EqMode.GRAPHIC
             prefs.edit().putString("eq_mode", EqMode.GRAPHIC.name).apply()
             val gains = FloatArray(n) { i -> profile.bands.getOrNull(i)?.gain?.toFloat() ?: 0f }

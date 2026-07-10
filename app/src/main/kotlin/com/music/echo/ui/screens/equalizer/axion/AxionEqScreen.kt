@@ -259,10 +259,10 @@ private fun ColumnScope.EqMainContent(
     // Preamp applies to both modes (graphic + parametric) so it stays visible always.
     PreampCard(preamp = preamp, enabled = enabled, onPreampChange = { viewModel.setPreampLive(it) }, onCommit = { viewModel.commit() })
 
-    // Curve preview + factory presets drive/show the 24-band GRAPHIC curve only — hidden in
-    // PARAMETRIC mode where they'd be inaudible and misleading.
+    // Curve preview + factory presets drive/show the 10-band (EqConstants.BAND_COUNT) GRAPHIC curve
+    // only — hidden in PARAMETRIC mode where they'd be inaudible and misleading.
     if (eqMode == EqMode.GRAPHIC) {
-        // Live preview of the overall EQ curve — easier to read the shape than 24 separate sliders.
+        // Live preview of the overall EQ curve — easier to read the shape than 10 separate sliders.
         EqCurvePreview(bandGains = bandGains, enabled = enabled)
 
         FactoryPresetRow(
@@ -294,7 +294,7 @@ private fun ColumnScope.EqMainContent(
         }
     }
 
-    // Mode toggle: Gráfico (24-band, default) vs Paramétrico (5–8 free PEQ bands). Stays enabled while
+    // Mode toggle: Gráfico (10-band, EqConstants.BAND_COUNT, default) vs Paramétrico (5–8 free PEQ bands). Stays enabled while
     // Auto-EQ is active (Auto-EQ is a separate cascaded stage, not a lock).
     EqModeToggle(
         eqMode = eqMode,

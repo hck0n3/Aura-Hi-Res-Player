@@ -5,8 +5,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import iad1tya.echo.music.R
 
 @Composable
 fun RingtoneProgressDialog(
@@ -15,8 +17,12 @@ fun RingtoneProgressDialog(
     statusMessage: String,
     isComplete: Boolean,
     isSuccess: Boolean,
+    // False when the ringtone was saved but could NOT be set as default (no WRITE_SETTINGS):
+    // the dialog then also offers the "grant permission" action.
+    appliedDirectly: Boolean = true,
     onDismiss: () -> Unit,
-    onOpenSettings: () -> Unit
+    onOpenSettings: () -> Unit,
+    onRequestWriteSettings: () -> Unit = {}
 ) {
     if (!isVisible) return
 
@@ -61,12 +67,21 @@ fun RingtoneProgressDialog(
         },
         confirmButton = {
             if (isComplete) {
-                Button(
-                    onClick = {
-                        if (isSuccess) onOpenSettings() else onDismiss()
-                    },
-                ) {
-                    Text(if (isSuccess) "Open Settings" else "Close")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (isSuccess && !appliedDirectly) {
+                        // Ringtone saved but not applied (no WRITE_SETTINGS): offer the grant so the
+                        // NEXT trim can apply directly, alongside the existing picker fallback.
+                        TextButton(onClick = onRequestWriteSettings) {
+                            Text(stringResource(R.string.ringtone_grant_write_settings))
+                        }
+                    }
+                    Button(
+                        onClick = {
+                            if (isSuccess) onOpenSettings() else onDismiss()
+                        },
+                    ) {
+                        Text(if (isSuccess) "Open Settings" else "Close")
+                    }
                 }
             }
         },

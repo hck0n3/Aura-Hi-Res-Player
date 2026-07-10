@@ -776,8 +776,9 @@
     <string name="eq_preset_jr_classical">Clásica</string>
     <string name="crossfeed">Crossfeed</string>
     <string name="crossfeed_desc">Mezcla ligeramente los canales para un escenario sonoro natural en auriculares</string>
-    <string name="spectrum_visualizer">Visualizador de espectro</string>
-    <string name="spectrum_visualizer_desc">Muestra barras de frecuencia en tiempo real en el reproductor</string>
+    <string name="ringtone_set_directly">\"%1$s\" quedó establecida como tu tono de llamada.</string>
+    <string name="ringtone_saved_select_in_settings">\"%1$s\" se guardó en los tonos del sistema. Selecciónala desde los ajustes.</string>
+    <string name="ringtone_grant_write_settings">Conceder permiso</string>
     <string name="found_in_settings_content">Disponible en Ajustes &gt; Contenido</string>
     <string name="plays">reproducciones</string>
     <string name="ai_provider_mistral_help">Visita console.mistral.ai/api-keys</string>

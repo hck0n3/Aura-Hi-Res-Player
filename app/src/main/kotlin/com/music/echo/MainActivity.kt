@@ -1499,8 +1499,10 @@ class MainActivity : ComponentActivity() {
                             statusMessage = ringtoneUiState.statusMessage,
                             isComplete = ringtoneUiState.isComplete,
                             isSuccess = ringtoneUiState.isSuccess,
+                            appliedDirectly = ringtoneUiState.appliedDirectly,
                             onDismiss = { ringtoneViewModel.dismissProgress() },
-                            onOpenSettings = { ringtoneViewModel.openRingtoneSettings(this@MainActivity) }
+                            onOpenSettings = { ringtoneViewModel.openRingtoneSettings(this@MainActivity) },
+                            onRequestWriteSettings = { ringtoneViewModel.requestSettingsPermission(this@MainActivity) }
                         )
                     }
 
