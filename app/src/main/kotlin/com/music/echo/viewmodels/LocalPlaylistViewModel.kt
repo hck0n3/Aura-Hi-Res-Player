@@ -115,14 +115,16 @@ constructor(
 
                 PlaylistSongSortType.PLAY_TIME -> filteredSongs.sortedBy { it.song.song.totalPlayTime }
             }.reversed(sortDescending && sortType != PlaylistSongSortType.CUSTOM)
-                // Final DISPLAY step for EVERY sort type: pin LIKED songs to the top ("siempre arriba").
-                // sortedBy is STABLE, so order within the liked group and within the rest is preserved
-                // from the sort above. DISPLAY ONLY — stored playlist positions are never touched (the
-                // init reorder block writes positions from the RAW Room order, not this list). The screen
-                // builds BOTH the play queue and its start index from THIS same list (items = songs.map{},
-                // startIndex = songs.indexOfFirst { map.id }), so a tapped row plays the correct song in
-                // the displayed liked-first order.
-                .sortedBy { if (it.song.song.liked) 0 else 1 }
+                // Pin LIKED songs to the top ("siempre arriba") — DISPLAY ONLY, stored positions untouched.
+                // sortedBy is STABLE, so order within each group is preserved. The screen builds BOTH the
+                // play queue and its start index from THIS list, so a tapped row plays the correct song.
+                // EXCEPTION: NEVER re-pin in CUSTOM mode — that list is drag-reorderable, and pinning would
+                // make the displayed index diverge from the stored position, so a drag would move the WRONG
+                // song and corrupt the saved order (+ the YouTube sync). CUSTOM keeps the raw position order.
+                .let { list ->
+                    if (sortType == PlaylistSongSortType.CUSTOM) list
+                    else list.sortedBy { if (it.song.song.liked) 0 else 1 }
+                }
         }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     // ---- Apple-Music-style "Add Music" feature ----------------------------------------------------
