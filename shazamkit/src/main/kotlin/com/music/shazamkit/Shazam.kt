@@ -17,11 +17,13 @@ import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -48,6 +50,9 @@ object Shazam {
     private const val CACHE_DURATION_MS = 300000L
     
     private const val MAX_QUEUE_SIZE = 50
+
+    // How long a queued request may wait for completion before failing instead of hanging forever.
+    private const val AWAIT_RESULT_TIMEOUT_MS = 30_000L
 
     // Internal State
     private val activeRequests = AtomicInteger(0)
@@ -215,8 +220,20 @@ object Shazam {
             }
         } finally {
             // Whatever happens, never leave the flag stuck true — that would poison the queue
-            // (nothing would ever drain it again).
-            isProcessingQueue = false
+            // (nothing would ever drain it again). The flag must be cleared INSIDE requestMutex:
+            // clearing it outside raced with enqueueRequest (a request offered between the last
+            // poll() and the assignment saw isProcessingQueue=true, skipped launching a drainer,
+            // and its awaitResult() stranded). If something slipped in, keep the flag set and
+            // relaunch the drain ourselves. NonCancellable so a cancelled drainer still hands over.
+            withContext(NonCancellable) {
+                requestMutex.withLock {
+                    if (requestQueue.isEmpty()) {
+                        isProcessingQueue = false
+                    } else {
+                        scope.launch { processQueue() }
+                    }
+                }
+            }
         }
     }
 
@@ -457,7 +474,15 @@ object Shazam {
         private var isCompleted = false
 
         suspend fun awaitResult(): Result<RecognitionResult> {
+            // Defensive deadline: if the request is never completed (dropped from the queue by a
+            // race or a stuck drainer), fail with a recognizable error instead of hanging the
+            // caller at "Processing…" forever. The message must NOT contain "No match" so the
+            // caller maps it to RecognitionStatus.Error, not NoMatch.
+            val deadline = System.currentTimeMillis() + AWAIT_RESULT_TIMEOUT_MS
             while (!isCompleted) {
+                if (System.currentTimeMillis() >= deadline) {
+                    return Result.failure(Exception("Recognition timed out. Please try again."))
+                }
                 delay(50)
             }
             return result ?: Result.failure(Exception("Result not received"))

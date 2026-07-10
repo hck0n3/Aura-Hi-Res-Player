@@ -280,8 +280,9 @@ class MusicRecognizerWidgetService : Service() {
 
     private fun stopRecognitionAndService() {
         // Cancel the mic session itself too (not just our wrapper job) so the shared status flow
-        // returns to Ready instead of staying stuck on Listening for other observers.
-        MusicRecognitionService.cancel()
+        // returns to Ready instead of staying stuck on Listening for other observers. Passing the
+        // context also stops the recognition mic FGS in case that flow owned the session.
+        MusicRecognitionService.cancel(this)
         recognitionJob?.cancel()
         pulseJob?.cancel()
         saveState(STATE_IDLE)

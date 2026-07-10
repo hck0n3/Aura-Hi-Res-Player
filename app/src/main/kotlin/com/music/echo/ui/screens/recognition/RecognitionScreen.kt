@@ -54,7 +54,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -73,16 +72,11 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
-import iad1tya.echo.music.LocalDatabase
 import iad1tya.echo.music.R
-import iad1tya.echo.music.db.entities.RecognitionHistory
 import iad1tya.echo.music.ui.component.IconButton
 import iad1tya.echo.music.ui.utils.backToMain
 import com.music.shazamkit.models.RecognitionResult
 import com.music.shazamkit.models.RecognitionStatus
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import java.time.LocalDateTime
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -91,15 +85,18 @@ fun RecognitionScreen(
     autoStart: Boolean = false
 ) {
     val context = LocalContext.current
-    val database = LocalDatabase.current
-    val coroutineScope = rememberCoroutineScope()
 
 
     // Only reset when no session is live — otherwise entering the screen mid-recognition
     // (e.g. started from the Quick Settings tile) would clobber the Listening/Processing state.
+    // A retained terminal Success/NoMatch (headless tile/notification flow finished while the app
+    // was closed) must be shown, not clobbered: only clear Ready or a stale Error.
     LaunchedEffect(Unit) {
         if (!iad1tya.echo.music.recognition.MusicRecognitionService.isInProgress()) {
-            iad1tya.echo.music.recognition.MusicRecognitionService.reset()
+            when (iad1tya.echo.music.recognition.MusicRecognitionService.recognitionStatus.value) {
+                is RecognitionStatus.Success, is RecognitionStatus.NoMatch -> Unit
+                else -> iad1tya.echo.music.recognition.MusicRecognitionService.reset()
+            }
         }
     }
 
@@ -152,11 +149,9 @@ fun RecognitionScreen(
 
     fun cancelRecognition() {
         // Actually cancel the mic session (not just the UI state): otherwise a zombie ~10s recording
-        // keeps the microphone busy and silently swallows the next attempts.
-        iad1tya.echo.music.recognition.MusicRecognitionService.cancel()
-        context.stopService(
-            Intent(context, iad1tya.echo.music.recognition.RecognitionForegroundService::class.java)
-        )
+        // keeps the microphone busy and silently swallows the next attempts. Passing the context also
+        // stops the microphone foreground service (and its ongoing notification).
+        iad1tya.echo.music.recognition.MusicRecognitionService.cancel(context)
     }
 
     // Auto-start when opened from the Quick Settings tile / widget / a RECOGNITION deep link with
@@ -172,32 +167,10 @@ fun RecognitionScreen(
         iad1tya.echo.music.recognition.MusicRecognitionService.reset()
     }
 
-    fun saveToHistory(result: RecognitionResult) {
-        coroutineScope.launch(Dispatchers.IO) {
-            database.query {
-                insert(
-                    RecognitionHistory(
-                        trackId = result.trackId,
-                        title = result.title,
-                        artist = result.artist,
-                        album = result.album,
-                        coverArtUrl = result.coverArtUrl,
-                        coverArtHqUrl = result.coverArtHqUrl,
-                        genre = result.genre,
-                        releaseDate = result.releaseDate,
-                        label = result.label,
-                        shazamUrl = result.shazamUrl,
-                        appleMusicUrl = result.appleMusicUrl,
-                        spotifyUrl = result.spotifyUrl,
-                        isrc = result.isrc,
-                        youtubeVideoId = result.youtubeVideoId,
-                        recognizedAt = LocalDateTime.now()
-                    )
-                )
-            }
-        }
-    }
-    
+    // History is saved by RecognitionForegroundService's success branch (single writer — the in-app
+    // flow also runs through that service). Saving here too would duplicate every entry, and a
+    // retained headless Success re-rendered on screen entry would duplicate it again.
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -262,8 +235,7 @@ fun RecognitionScreen(
                             onTryAgain = {
                                 startRecognition()
                             },
-                            onClose = ::resetToReady,
-                            onSaveToHistory = ::saveToHistory
+                            onClose = ::resetToReady
                         )
                     }
                     is RecognitionStatus.NoMatch -> {
@@ -468,14 +440,8 @@ private fun SuccessState(
     result: RecognitionResult,
     onPlayOnApp: (RecognitionResult) -> Unit,
     onTryAgain: () -> Unit,
-    onClose: () -> Unit,
-    onSaveToHistory: (RecognitionResult) -> Unit
+    onClose: () -> Unit
 ) {
-    
-    LaunchedEffect(result) {
-        onSaveToHistory(result)
-    }
-    
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(16.dp),

@@ -192,6 +192,7 @@ import iad1tya.echo.music.playback.MusicService
 import iad1tya.echo.music.playback.MusicService.MusicBinder
 import iad1tya.echo.music.playback.PlayerConnection
 import iad1tya.echo.music.playback.queues.YouTubeQueue
+import iad1tya.echo.music.recognition.RecognitionForegroundService
 import iad1tya.echo.music.ui.component.AppNavigationRail
 import iad1tya.echo.music.ui.component.BottomSheetMenu
 import iad1tya.echo.music.ui.component.BottomSheetPage
@@ -1552,6 +1553,26 @@ class MainActivity : ComponentActivity() {
             intent.action = null
             val autoStart = intent.getBooleanExtra(EXTRA_AUTO_START_RECOGNITION, false)
             intent.removeExtra(EXTRA_AUTO_START_RECOGNITION)
+            // "Listen on Aura" tap on the result notification: the headless flow identified a song and
+            // put it in the intent — open it in search (mirrors the in-app SuccessState's play action)
+            // instead of a bare Recognition screen that may have already forgotten the result.
+            val recognizedTitle = intent.getStringExtra(RecognitionForegroundService.EXTRA_RECOGNITION_TITLE)
+            val recognizedArtist = intent.getStringExtra(RecognitionForegroundService.EXTRA_RECOGNITION_ARTIST)
+            intent.removeExtra(RecognitionForegroundService.EXTRA_RECOGNITION_TRACK_ID)
+            intent.removeExtra(RecognitionForegroundService.EXTRA_RECOGNITION_TITLE)
+            intent.removeExtra(RecognitionForegroundService.EXTRA_RECOGNITION_ARTIST)
+            if (!recognizedTitle.isNullOrBlank()) {
+                val searchQuery = listOfNotNull(
+                    recognizedTitle,
+                    recognizedArtist?.takeIf { it.isNotBlank() },
+                ).joinToString(" ")
+                runCatching {
+                    navController.navigate("search/${URLEncoder.encode(searchQuery, "UTF-8")}") {
+                        launchSingleTop = true
+                    }
+                }
+                return
+            }
             runCatching {
                 navController.navigate(if (autoStart) "recognition?autoStart=true" else "recognition") {
                     launchSingleTop = true

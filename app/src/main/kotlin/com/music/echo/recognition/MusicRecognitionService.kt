@@ -5,6 +5,7 @@ package iad1tya.echo.music.recognition
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.AudioFormat
 import android.media.AudioRecord
@@ -66,10 +67,15 @@ object MusicRecognitionService {
      * Actually cancels the in-flight recognition session (if any) and returns the status to Ready.
      * Unlike reset(), which only changes the UI state, this releases the microphone so an immediate
      * retry works instead of being swallowed by the in-progress guard.
+     *
+     * Pass a [context] to also stop [RecognitionForegroundService]: cancelling only the session
+     * would leave the mic FGS and its ongoing "Listening…" notification orphaned (the FGS also
+     * self-terminates when it observes Ready, but every cancel path should kill it directly too).
      */
-    fun cancel() {
+    fun cancel(context: Context? = null) {
         activeSessionJob?.cancel()
         _recognitionStatus.value = RecognitionStatus.Ready
+        context?.stopService(Intent(context, RecognitionForegroundService::class.java))
     }
 
     @SuppressLint("MissingPermission")

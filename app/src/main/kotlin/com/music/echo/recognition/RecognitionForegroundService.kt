@@ -13,13 +13,20 @@ import android.os.IBinder
 import timber.log.Timber
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import dagger.hilt.EntryPoint
+import dagger.hilt.InstallIn
+import dagger.hilt.android.EntryPointAccessors
+import dagger.hilt.components.SingletonComponent
 import iad1tya.echo.music.MainActivity
 import iad1tya.echo.music.R
+import iad1tya.echo.music.db.DatabaseDao
+import iad1tya.echo.music.db.entities.RecognitionHistory
 import com.music.shazamkit.models.RecognitionResult
 import com.music.shazamkit.models.RecognitionStatus
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
@@ -27,6 +34,13 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.net.HttpURLConnection
 import java.net.URL
+import java.time.LocalDateTime
+
+@EntryPoint
+@InstallIn(SingletonComponent::class)
+interface RecognitionServiceEntryPoint {
+    fun databaseDao(): DatabaseDao
+}
 
 /**
  * Microphone foreground service for song recognition (ported from upstream v5.2.5, Aura-branded).
@@ -123,10 +137,24 @@ class RecognitionForegroundService : Service() {
         statusJob?.cancel()
         statusJob =
             serviceScope.launch {
+                var sessionStarted = false
                 MusicRecognitionService.recognitionStatus.collect { status ->
                     when (status) {
-                        is RecognitionStatus.Ready -> Unit
-                        else -> renderStatus(status)
+                        is RecognitionStatus.Ready ->
+                            // Ready AFTER the session already produced states means it was cancelled
+                            // externally (in-app Cancel, widget stop, session takeover). No terminal
+                            // branch will ever run, so tear down here — otherwise the ongoing
+                            // "Listening…" notification and the microphone FGS stay alive forever.
+                            if (sessionStarted && !terminalStateHandled) {
+                                terminalStateHandled = true
+                                Timber.tag(TAG).d("Session cancelled externally — stopping service")
+                                stopForeground(STOP_FOREGROUND_REMOVE)
+                                stopSelf()
+                            }
+                        else -> {
+                            sessionStarted = true
+                            renderStatus(status)
+                        }
                     }
                 }
             }
@@ -140,6 +168,16 @@ class RecognitionForegroundService : Service() {
                     renderStatus(result)
                 }
             }
+        recognitionJob?.invokeOnCompletion {
+            // The recognition coroutine finished without any terminal state having been rendered
+            // (e.g. cancelled mid-listen by a widget takeover). Never leave the mic FGS orphaned.
+            if (!terminalStateHandled) {
+                terminalStateHandled = true
+                Timber.tag(TAG).d("Recognition ended without terminal state — stopping service")
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                stopSelf()
+            }
+        }
     }
 
     private fun renderStatus(status: RecognitionStatus) {
@@ -183,7 +221,9 @@ class RecognitionForegroundService : Service() {
                     title = getString(R.string.recognize_music),
                     contentText = getString(R.string.recognition_notification_no_match),
                     isTerminal = true,
-                    contentIntent = null,
+                    // Tap opens the Recognition screen (retained NoMatch → "Try again" right there)
+                    // instead of being a dead notification that reacts to nothing.
+                    contentIntent = createRetryPendingIntent(),
                     largeIcon = null,
                     actionIntent = null,
                     actionTitle = null,
@@ -199,7 +239,7 @@ class RecognitionForegroundService : Service() {
                     title = getString(R.string.recognize_music),
                     contentText = getString(R.string.recognition_notification_failed),
                     isTerminal = true,
-                    contentIntent = null,
+                    contentIntent = createRetryPendingIntent(),
                     largeIcon = null,
                     actionIntent = null,
                     actionTitle = null,
@@ -276,6 +316,37 @@ class RecognitionForegroundService : Service() {
         )
 
         serviceScope.launch {
+            // Persist to recognition history here — this service is the single writer for every
+            // FGS-driven recognition (in-app screen included), so headless results (tile /
+            // notification flow with the app closed) are no longer lost. NonCancellable: a
+            // stopService racing this write must not lose the identified song.
+            withContext(NonCancellable + Dispatchers.IO) {
+                runCatching {
+                    EntryPointAccessors.fromApplication(
+                        applicationContext,
+                        RecognitionServiceEntryPoint::class.java,
+                    ).databaseDao().insert(
+                        RecognitionHistory(
+                            trackId = result.trackId,
+                            title = result.title,
+                            artist = result.artist,
+                            album = result.album,
+                            coverArtUrl = result.coverArtUrl,
+                            coverArtHqUrl = result.coverArtHqUrl,
+                            genre = result.genre,
+                            releaseDate = result.releaseDate,
+                            label = result.label,
+                            shazamUrl = result.shazamUrl,
+                            appleMusicUrl = result.appleMusicUrl,
+                            spotifyUrl = result.spotifyUrl,
+                            isrc = result.isrc,
+                            youtubeVideoId = result.youtubeVideoId,
+                            recognizedAt = LocalDateTime.now(),
+                        ),
+                    )
+                }.onFailure { Timber.tag(TAG).w(it, "Failed to save recognition history") }
+            }
+
             val coverUrl = result.coverArtHqUrl ?: result.coverArtUrl
             val coverBitmap =
                 if (coverUrl == null) {
@@ -338,6 +409,22 @@ class RecognitionForegroundService : Service() {
         )
     }
 
+    /** No-match / error notification tap: reopen the Recognition screen, ready to retry. */
+    private fun createRetryPendingIntent(): PendingIntent {
+        val launchIntent =
+            Intent(this, MainActivity::class.java).apply {
+                action = MainActivity.ACTION_RECOGNITION
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            }
+
+        return PendingIntent.getActivity(
+            this,
+            RETRY_PENDING_INTENT_REQUEST_CODE,
+            launchIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+    }
+
     private fun finishWithPersistentResult() {
         Timber.tag(TAG).d("Finishing with persistent notification")
         keepNotificationOnStop = true
@@ -369,6 +456,7 @@ class RecognitionForegroundService : Service() {
         private const val CHANNEL_ID = "recognition_channel"
         private const val NOTIFICATION_ID = 9100
         private const val RESULT_PENDING_INTENT_REQUEST_CODE = 9101
+        private const val RETRY_PENDING_INTENT_REQUEST_CODE = 9102
         private const val TAG = "RecognitionFgService"
         private const val BITMAP_CONNECT_TIMEOUT_MS = 1_200
         private const val BITMAP_READ_TIMEOUT_MS = 1_200
