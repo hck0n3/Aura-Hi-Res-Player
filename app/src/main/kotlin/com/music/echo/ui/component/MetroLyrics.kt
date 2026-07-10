@@ -127,6 +127,10 @@ fun MetroLyricsLine(
     isSelectionModeActive: Boolean,
     isAutoScrollActive: Boolean,
     expressiveAccent: Color,
+    // Honor the user's lyrics text-size / line-spacing sliders (LyricsTextSizeKey / LyricsLineSpacingKey),
+    // like every other lyrics style. Previously hardcoded 36f/1.3 here, so the sliders did nothing in Metro.
+    lyricsTextSize: Float = 36f,
+    lyricsLineSpacing: Float = 1.3f,
     modifier: Modifier = Modifier
 ) {
     val appleMusicLyricsBlur by iad1tya.echo.music.utils.rememberPerfGatedBoolean(AppleMusicLyricsBlurKey, true)
@@ -181,9 +185,6 @@ fun MetroLyricsLine(
         animationSpec = tween(durationMillis = 300),
         label = "lineAlpha"
     )
-
-    val lyricsTextSize = 36f
-    val lyricsLineSpacing = 1.3f
 
     val itemModifier = modifier
         .fillMaxWidth()

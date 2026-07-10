@@ -1051,6 +1051,8 @@ fun Lyrics(
                             distanceFromCurrent = kotlin.math.abs(index - displayedCurrentLineIndex),
                             lyricsTextPosition = lyricsTextPosition,
                             textColor = textColor,
+                            lyricsTextSize = lyricsTextSize,
+                            lyricsLineSpacing = lyricsLineSpacing,
                             showRomanized = currentSong?.romanizeLyrics == true && (
                                     romanizeJapaneseLyrics ||
                                             romanizeKoreanLyrics ||

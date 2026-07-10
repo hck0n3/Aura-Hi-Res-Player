@@ -383,7 +383,14 @@ fun Thumbnail(
     // keeping video mode on) — so there is intentionally no BackHandler here.
 
     Box(
-        modifier = modifier
+        // fillMaxSize is REQUIRED: the only steady-state child below is a matchParentSize Box (the cover +
+        // carousel), which by definition does NOT contribute to this Box's own measured size. Without an
+        // explicit size, in normal audio playback (video spinner / seek overlay absent) this Box has no
+        // size-contributing child and, with minHeight=0 from the parent, collapses to 0×0 — so the
+        // LazyHorizontalGrid gets 0 height and the cover/carousel vanish on most devices. All call sites
+        // pass a parent with a bounded max height (Box(weight(1f)) portrait / landscape), so fillMaxSize is
+        // safe (no unbounded-height risk). Matches upstream, which sizes the cover child directly.
+        modifier = modifier.fillMaxSize()
     ) {
         // The video itself is rendered by the player's IMMERSIVE (portrait) / FULLSCREEN (landscape) branch,
         // NEVER here — so this Thumbnail never attaches a second TextureView to the single player (which would

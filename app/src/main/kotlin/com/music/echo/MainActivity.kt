@@ -1274,9 +1274,9 @@ class MainActivity : ComponentActivity() {
                                         FloatingNavigationToolbar(
                                             items = navigationItems,
                                             pureBlack = pureBlack,
-                                            onShuffleClick = onShuffleClick,
-                                            shuffleIconRes = R.drawable.shuffle,
-                                            shuffleContentDescription = stringResource(R.string.shuffle),
+                                            // Shuffle FAB intentionally removed from the floating toolbar (user request):
+                                            // only the recognition mic FAB is surfaced here (glass-styled). Shuffle params
+                                            // default to null in FloatingNavigationToolbar, so the shuffle FAB never renders.
                                             onMusicRecognitionClick = onMusicRecognitionClick,
                                             musicRecognitionContentDescription = stringResource(R.string.recognition),
                                             isSelected = { screen ->

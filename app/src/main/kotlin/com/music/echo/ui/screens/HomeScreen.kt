@@ -66,6 +66,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -1452,6 +1453,12 @@ fun HomeScreen(
                                     }
                                 } else item(key = "quick_picks_list") {
                                     val distinctQuickPicks = quickPicks.distinctBy { it.id }
+                                    // Re-key on item-count: quickPicksDisplay re-emits a re-filtered list 2-3x after
+                                    // first paint; without this the pageCount changes under a persisted rememberCarouselState
+                                    // and the experimental HorizontalCenteredHeroCarousel lays out BLANK until scrolled
+                                    // (the intermittent empty "Para ti" even for the owner). key() rebuilds a fresh
+                                    // CarouselState on each size change so it always lays out once, cleanly.
+                                    key(distinctQuickPicks.size) {
                                     HorizontalCenteredHeroCarousel(
                                         state = rememberCarouselState { distinctQuickPicks.size },
                                         // Scale the hero item to the REAL panel width (split/wide aware),
@@ -1574,6 +1581,7 @@ fun HomeScreen(
                                                 )
                                             }
                                         }
+                                    }
                                     }
                                 }
                             }
