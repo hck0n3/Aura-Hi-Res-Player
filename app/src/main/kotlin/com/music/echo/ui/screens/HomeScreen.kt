@@ -594,7 +594,8 @@ fun HomeScreen(
     val explorePage by viewModel.explorePage.collectAsState()
     val dailyMixes by viewModel.dailyMixes.collectAsState()
     val recentlyPlayed by viewModel.recentlyPlayed.collectAsState()
-    val timeOfDayMix by viewModel.timeOfDayMix.collectAsState()
+    // Deduped display flow: the raw mix pool overlaps QuickPicks/SpeedDial (see HomeViewModel).
+    val timeOfDayMix by viewModel.timeOfDayMixDisplay.collectAsState()
     val communityPlaylists by viewModel.communityPlaylists.collectAsState()
     val newFromArtists by viewModel.newFromArtists.collectAsState()
     val genreMix by viewModel.genreMix.collectAsState()
@@ -929,8 +930,14 @@ fun HomeScreen(
 
                     HomeSection.QuickPicks -> 0
                     HomeSection.SpeedDial,
-                    HomeSection.NewFromArtists,
-                    is HomeSection.DailyMix -> sectionRandom.nextInt(-200, 400)
+                    HomeSection.NewFromArtists -> sectionRandom.nextInt(-200, 400)
+
+                    // The up-to-3 "Mix diario N" shelves shuffle as ONE group: a single shared weight
+                    // seeded by the group key (per-section ids "daily_mix_N" gave each mix an
+                    // independent weight, rendering them out of order / interleaved), tie-broken by
+                    // index so 1/2/3 stay contiguous and in order wherever the group lands.
+                    is HomeSection.DailyMix ->
+                        Random(randomSeed + "daily_mix".hashCode()).nextInt(-200, 400) - section.index
 
 
 

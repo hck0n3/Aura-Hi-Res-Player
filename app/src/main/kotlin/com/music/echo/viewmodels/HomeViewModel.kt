@@ -331,6 +331,21 @@ class HomeViewModel @Inject constructor(
             }
         }.stateIn(viewModelScope, SharingStarted.Lazily, null)
 
+    /** TimeOfDayMix as displayed: its pool IS quickPicks + forgottenFavorites + keepListening, and the
+     *  shelf renders right under QuickPicks, so the raw mix duplicated the first screenful (worst in
+     *  perf mode, where it's 1 of only 4 shelves). Same pattern + ifEmpty guard as above: excludes
+     *  SpeedDial's visible tiles ∪ the QuickPicks head; total overlap shows the original mix instead
+     *  of emptying the shelf. */
+    val timeOfDayMixDisplay: StateFlow<TimeOfDayMix?> =
+        combine(timeOfDayMix, speedDialVisibleIds, quickPicksDisplay) { mix, sdIds, picks ->
+            if (mix == null) null
+            else {
+                val shownAbove = sdIds + picks.orEmpty().take(10).map { it.id }
+                if (shownAbove.isEmpty()) mix
+                else mix.copy(songs = mix.songs.filterNot { it.id in shownAbove }.ifEmpty { mix.songs })
+            }
+        }.stateIn(viewModelScope, SharingStarted.Lazily, null)
+
     suspend fun getRandomItem(): YTItem? {
         try {
             isRandomizing.value = true
@@ -609,10 +624,13 @@ class HomeViewModel @Inject constructor(
         getQuickPicks()
 
         // "Reproducido recientemente": pure chronological history (latest listen first), one bounded
-        // SELECT. Same empty-guard as every shelf: a transient empty read must not wipe a populated row.
-        val newRecentlyPlayed = runCatching { database.recentlyPlayedSongs(15).first() }
+        // SELECT. Over-fetch then trim so hideVideoSongs filters BEFORE the shelf cap (filtering after
+        // a LIMIT 15 shrank/hid the shelf on video-heavy history). Same empty-guard as every shelf: a
+        // transient empty read must not wipe a populated row.
+        val newRecentlyPlayed = runCatching { database.recentlyPlayedSongs(40).first() }
             .getOrDefault(emptyList())
             .filterVideoSongs(hideVideoSongs)
+            .take(15)
         if (newRecentlyPlayed.isNotEmpty() || recentlyPlayed.value == null) recentlyPlayed.value = newRecentlyPlayed
 
         val newForgotten = database.forgottenFavorites().first()
@@ -1087,6 +1105,11 @@ class HomeViewModel @Inject constructor(
             genreMix.value = restored.genreMix
             allLocalItems.value = restored.allLocalItems
             allYtItems.value = restored.allYtItems
+            // The snapshot can carry a stale time-of-day bucket ("Mix de la mañana" restored at 22:00
+            // and kept indefinitely, since restore skips the auto-reload). Recompute bucket + seed for
+            // the current hour/day from the pools just restored above — pure in-memory reshuffle, no
+            // queries/network. If the restored pool is too small, the guard inside keeps the old mix.
+            buildTimeOfDayMix()
         } else {
             viewModelScope.launch(Dispatchers.IO) {
                 context.dataStore.data
