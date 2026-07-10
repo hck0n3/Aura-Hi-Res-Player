@@ -148,7 +148,7 @@ fun WelcomeDialog(
                     WelcomeFeatureRow(
                         iconRes = R.drawable.discover_tune,
                         title = "Recomendaciones con IA",
-                        subtitle = "Inicio, radio y mezclas que aprenden de tus gustos y de toda tu biblioteca importada (en el dispositivo); Inicio con 'Reproducido recientemente', 'Nuevos lanzamientos', 'Mix diario 1/2/3' y un mix según la hora del día; al acabar una lista la música sigue sola con temas similares, el modo aleatorio no repite hasta agotar, y crea listas con una frase"
+                        subtitle = "Inicio, radio y mezclas que aprenden de tus gustos y de toda tu biblioteca importada (en el dispositivo); Inicio con 'Reproducido recientemente', 'Nuevos lanzamientos', 'Mix diario 1/2/3' y un mix según la hora del día; toca un chip de estado de ánimo y el contenido y la reproducción se sesgan a ese ánimo mientras esté activo; al acabar una lista la música sigue sola con temas similares y la cola infinita no repite lo recién escuchado; y crea listas con una frase, con el número exacto de canciones que pides y respetando el género/idioma/ánimo"
                     )
                     WelcomeDivider()
                     WelcomeFeatureRow(
@@ -166,7 +166,7 @@ fun WelcomeDialog(
                     WelcomeFeatureRow(
                         iconRes = R.drawable.mic,
                         title = "Reconocer canción y buscar por voz",
-                        subtitle = "Identifica lo que suena a tu alrededor (desde la app, el widget o Ajustes Rápidos) — el resultado se reproduce directamente y puedes marcarlo favorito o agregarlo a una playlist ahí mismo — y busca hablando, también en Android TV; la búsqueda suma un filtro 'Videos'"
+                        subtitle = "Identifica lo que suena a tu alrededor con un botón dedicado siempre visible: tócalo y empieza a reconocer al instante (desde la app, el widget o Ajustes Rápidos) — el resultado se reproduce directamente y puedes marcarlo favorito o agregarlo a una playlist ahí mismo — y busca hablando, también en Android TV; la búsqueda suma un filtro 'Videos'"
                     )
                     WelcomeDivider()
                     WelcomeFeatureRow(

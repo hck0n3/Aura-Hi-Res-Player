@@ -1,26 +1,37 @@
-# Aura Hi-Res Player 0.6.88 — Liquid Glass, cola con pestañas y sugerencias precisas
+# Aura Hi-Res Player 0.6.89 — Artista, Inicio y reproducción afinados
 
-## ✨ Liquid Glass (Beta) — nueva personalización
-- Nuevo estilo de **cristal** para el reproductor, mini-reproductor y barra de navegación: fondo profundo desenfocado estilo Apple Music, con controles finos de intensidad.
-- Desactivado por defecto — actívalo en Ajustes ▸ Apariencia. Disponible en equipos capaces (Android 12+, gama media/alta; excluido en TV y Modo Rendimiento para cuidar calor y batería).
-- Textos siempre legibles en tema claro y oscuro.
+## 🎤 Pantalla de artista arreglada
+- **Álbumes / Singles / EP:** ya no aparece el número raro ni el título duplicado, y se quitó el espacio vacío de arriba.
+- **Videos:** ya no se queda cargando para siempre — muestra el contenido o un botón de reintentar.
+- **"Aparece en":** ahora muestra todas las colaboraciones, sin recortar.
+- **"Canciones más escuchadas":** carga a la **primera** vez que entras (antes solo a la segunda).
 
-## 🎛️ Cola con pestañas (estilo YouTube Music)
-- Desliza hacia arriba y la cola ahora tiene **SIGUIENTE / LETRA / RELACIONADOS**: tu cola con arrastrar-y-soltar, la letra sincronizada en vivo, y los relacionados que alimentan la reproducción automática — sin salir del reproductor.
+## 🏠 Inicio y novedades
+- **Marcación rápida:** solo canciones (ya no te manda a artistas ni álbumes).
+- **Radar de novedades:** vuelve a poblarse — verás los estrenos de tus artistas.
+- **Tocar una novedad abre exactamente esa novedad** (en Inicio y en el Radar), la que ves en la portada.
+- **Modo estado de ánimo:** toca un chip de ánimo arriba y el contenido se actualiza al instante; además, **la reproducción se sesga a ese ánimo** mientras el chip esté activo. Al desactivarlo, vuelve a lo normal.
 
-## 👍 Me gusta / No me gusta — un solo botón
-- Pulgar-arriba y pulgar-abajo en **una sola píldora dividida** abajo en los controles, tal cual YouTube Music de hoy. La mitad activa se rellena; el "no me gusta" es conmutable.
+## ▶️ Reproducción
+- **Sin el pequeño corte al inicio** de algunas canciones (el crossfade ahora espera a que la siguiente esté lista antes de mezclar).
+- **La transición se siente igual en todas** las canciones (se corrigieron los saltos inconsistentes; solo hay corte directo donde debe haberlo, como saltar a mano o el modo gapless).
+- **La cola infinita ya no repite** canciones que acabas de escuchar.
 
-## 🔍 Sugerencias precisas (búsqueda)
-- **Tocar una sugerencia reproduce EXACTAMENTE esa canción** (ya no una parecida/cover) — con coincidencia estricta de título y artista, tolerante a apóstrofes y "feat.".
-- **La pestaña Álbum ya funciona con sesión iniciada** (antes solo funcionaba deslogueado): si tu sesión no trae los lanzamientos, se reintenta de forma anónima automáticamente.
-- Errores claros: "sin conexión" vs "no hay lanzamientos", y el botón Reintentar da feedback.
+## 🔎 Búsqueda y sugerencias
+- **Tocar una sugerencia reproduce al instante** (se pre-resuelven en segundo plano las canciones visibles).
 
-## ➕ Canciones sugeridas de playlist
-- Aparecen **más rápido** (indicador de carga real, sin pantallazo en blanco) y el relleno de respaldo ya no diluye las sugerencias reales.
+## 🎙️ Reconocer canción
+- El **botón de reconocer está siempre visible** (un botón dedicado, ya no escondido en el menú ⋯).
+- **Toca y empieza a reconocer** de inmediato.
 
-## 🎬 Video más ágil
-- Preparación adicional del cambio música↔video en segundo plano (solo wifi y equipos capaces). El cambio instantáneo total sigue en pruebas — llegará cuando esté verificado en dispositivo, sin arriesgar tu audio.
+## 🤖 Listas con IA — más precisas
+- Si pides 20 canciones, crea **20** (antes se quedaba corta al no encontrar algunas). Y **respeta el género/idioma/ánimo** que pides (antes se iba a un subgénero distinto).
+
+## 🎧 Importar
+- **Importar listas de Spotify por link:** ahora te pide el enlace (como YouTube) e importa listas públicas, incluso sin iniciar sesión.
+
+## ⚖️ Legal
+- Ajuste del valor de responsabilidad limitada en los Términos y condiciones.
 
 ## ✅ Como siempre
-- Suscripción, licencia, demo, crossfade de 9s y motor de audio: intactos. Calor y batería vigilados (el cristal no se dibuja cuando no está activo).
+- Suscripción, licencia, demo, crossfade de 9s y motor de audio: intactos. Calor y batería vigilados.
