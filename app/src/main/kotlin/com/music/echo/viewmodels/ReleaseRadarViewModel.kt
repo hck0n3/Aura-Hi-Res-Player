@@ -4,7 +4,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import iad1tya.echo.music.db.MusicDatabase
 import iad1tya.echo.music.db.entities.ReleaseRadarItem
-import iad1tya.echo.music.releaseradar.ReleaseRadarWorker
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -19,10 +18,13 @@ constructor(
     private val database: MusicDatabase,
 ) : ViewModel() {
 
-    // Only this week's drop: releases first seen on/after the most recent Friday. Previous weeks' drops
-    // are hidden here and pruned by ReleaseRadarWorker — Spotify Release-Radar style (no endless pile-up).
+    // Read the already-pruned radar table directly (newest first). ReleaseRadarWorker's weekly
+    // wipe/prune already enforces "this week only", so filtering again here by fetchedAt >=
+    // currentWindowStart() was redundant AND emptied the screen whenever the last successful fetch
+    // landed outside the current Friday window (once-per-install seed, or a Doze-deferred worker) —
+    // i.e. the "Release Radar always empty" bug for a user who does follow artists.
     val releases: StateFlow<List<ReleaseRadarItem>> =
-        database.releasesSince(ReleaseRadarWorker.currentWindowStart())
+        database.releasesByDateDesc()
             .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     init {
