@@ -76,7 +76,7 @@ fun WelcomeDialog(
                     WelcomeFeatureRow(
                         iconRes = R.drawable.music_note,
                         title = "Música ilimitada",
-                        subtitle = "Todo el catálogo de YouTube Music, gratis y sin anuncios"
+                        subtitle = "Todo el catálogo de YouTube Music, sin anuncios"
                     )
                     WelcomeDivider()
                     WelcomeFeatureRow(
@@ -87,14 +87,14 @@ fun WelcomeDialog(
                     WelcomeDivider()
                     WelcomeFeatureRow(
                         iconRes = R.drawable.equalizer,
-                        title = "EQ gráfico (24) + paramétrico interactivo (PEQ)",
-                        subtitle = "EQ gráfico de 24 bandas (las que dejes en 0 dB no procesan nada — señal pura) o modo paramétrico interactivo: arrastra puntos en la curva para dar forma al sonido (5-8 bandas, con frecuencia/Q/ganancia exactas para el purista), limitador multibanda anti-distorsión, JR DSP y perfiles AutoEq para +5000 auriculares que bloquean el EQ manual para una corrección perfecta"
+                        title = "EQ gráfico (10) + paramétrico interactivo (PEQ)",
+                        subtitle = "EQ gráfico de 10 bandas (las que dejes en 0 dB no procesan nada — señal pura) o modo paramétrico interactivo: arrastra puntos en la curva para dar forma al sonido (5-8 bandas, con frecuencia/Q/ganancia exactas para el purista), limitador anti-distorsión con headroom automático y perfiles AutoEq para +5000 auriculares que se combinan con tu EQ manual (cascada)"
                     )
                     WelcomeDivider()
                     WelcomeFeatureRow(
                         iconRes = R.drawable.tune,
                         title = "Audio de alta calidad",
-                        subtitle = "Sonido sin pérdida (Qobuz/Saavn), Volumen Seguro activado por defecto (nivela y limita las pistas muy altas), visualizador de espectro y control de tempo/tono"
+                        subtitle = "Sonido sin pérdida (Qobuz, con Saavn como respaldo a 320 kbps), Volumen Seguro activado por defecto (nivela y limita las pistas muy altas) y control de tempo/tono"
                     )
                     WelcomeDivider()
                     WelcomeFeatureRow(
@@ -136,7 +136,7 @@ fun WelcomeDialog(
                     WelcomeFeatureRow(
                         iconRes = R.drawable.speed,
                         title = "Se adapta a tu teléfono",
-                        subtitle = "Detecta la potencia del dispositivo (RAM/CPU) y ajusta los efectos; además el Modo Rendimiento (ULTRA) fuerza el modo más ligero posible para gama baja, Android TV o auto (sin tocar la calidad de audio). El fondo animado se pausa con la app en segundo plano o la pantalla apagada, para no calentar ni gastar batería. En plegables (Z Fold), al desplegar, el ecualizador y los efectos DSP se ven en dos columnas a la vez"
+                        subtitle = "Detecta la potencia del dispositivo (RAM/CPU) y ajusta los efectos; además el Modo Rendimiento (ULTRA) fuerza el modo más ligero posible para gama baja, Android TV o auto (sin tocar la calidad de audio). El fondo animado se pausa con la app en segundo plano o la pantalla apagada, para no calentar ni gastar batería. En plegables (Z Fold), al desplegar, el ecualizador aprovecha todo el ancho de la pantalla"
                     )
                     WelcomeDivider()
                     WelcomeFeatureRow(

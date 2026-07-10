@@ -185,9 +185,33 @@ object RingtoneHelper {
 
             onProgress(0.95f, "Song saved to Ringtones...")
 
+            // Actually APPLY the ringtone: inserting into MediaStore (and even the system picker intent)
+            // never calls RingtoneManager.setActualDefaultRingtoneUri, so on many ROMs nothing got set.
+            // When the app holds WRITE_SETTINGS we set it directly; otherwise the existing picker path
+            // (openRingtoneSettings, offered by the success dialog) stays as the fallback.
+            val appliedDirectly = if (hasSettingsPermission(context)) {
+                try {
+                    RingtoneManager.setActualDefaultRingtoneUri(
+                        context,
+                        RingtoneManager.TYPE_RINGTONE,
+                        ringtoneUri,
+                    )
+                    true
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    false
+                }
+            } else {
+                false
+            }
+
             withContext(Dispatchers.Main) {
                 onProgress(1f, "Done!")
-                onComplete(true, "\"$title\" added to system ringtones. Please select it from settings.", ringtoneUri)
+                if (appliedDirectly) {
+                    onComplete(true, "\"$title\" quedó establecida como tu tono de llamada.", ringtoneUri)
+                } else {
+                    onComplete(true, "\"$title\" added to system ringtones. Please select it from settings.", ringtoneUri)
+                }
             }
 
         } catch (e: Exception) {
@@ -387,11 +411,26 @@ object RingtoneHelper {
         }
     }
 
+    /**
+     * True when the app can modify system settings (WRITE_SETTINGS), which is required to call
+     * [RingtoneManager.setActualDefaultRingtoneUri] and truly apply the ringtone. Previously a stub
+     * that always returned true, which made [requestSettingsPermission] dead code and let callers
+     * assume a permission the app might not hold.
+     */
     fun hasSettingsPermission(context: Context): Boolean {
-        return true
+        return Settings.System.canWrite(context)
     }
 
+    /** Opens the system "modify system settings" grant screen for this app (WRITE_SETTINGS). */
     fun requestSettingsPermission(context: Context) {
-        // Do nothing, permission is no longer requested
+        try {
+            val intent = Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS).apply {
+                data = Uri.parse("package:${context.packageName}")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 }

@@ -27,6 +27,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -39,12 +40,19 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
+import com.music.innertube.YouTube
 import iad1tya.echo.music.LocalPlayerAwareWindowInsets
+import iad1tya.echo.music.LocalPlayerConnection
 import iad1tya.echo.music.ui.utils.tvFocusRestorer
 import iad1tya.echo.music.R
+import iad1tya.echo.music.playback.queues.YouTubeAlbumRadio
 import iad1tya.echo.music.releaseradar.ReleaseRadarWorker
 import iad1tya.echo.music.ui.component.EmptyPlaceholder
+import iad1tya.echo.music.utils.reportException
 import iad1tya.echo.music.viewmodels.ReleaseRadarViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -53,6 +61,8 @@ fun ReleaseRadarScreen(
     viewModel: ReleaseRadarViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
+    val playerConnection = LocalPlayerConnection.current
+    val coroutineScope = rememberCoroutineScope()
     val releases by viewModel.releases.collectAsState()
     val lazyListState = rememberLazyListState()
 
@@ -146,6 +156,41 @@ fun ReleaseRadarScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+
+                    // Explicit PLAY affordance (About promise: "el radar puede reproducir cada estreno
+                    // completo"). Radar rows are albums/releases (playId = album browseId, no direct song),
+                    // so resolve the album's audio playlist and play the WHOLE release as its own queue —
+                    // same album-radio path AlbumScreen/NewReleaseScreen use. The row body keeps opening
+                    // the album page.
+                    IconButton(
+                        onClick = {
+                            coroutineScope.launch(Dispatchers.IO) {
+                                YouTube.album(item.playId)
+                                    .onSuccess { albumPage ->
+                                        withContext(Dispatchers.Main) {
+                                            playerConnection?.playQueue(
+                                                YouTubeAlbumRadio(albumPage.album.playlistId),
+                                            )
+                                        }
+                                    }
+                                    .onFailure { error ->
+                                        reportException(error)
+                                        withContext(Dispatchers.Main) {
+                                            Toast.makeText(
+                                                context,
+                                                context.getString(R.string.error_unknown),
+                                                Toast.LENGTH_SHORT,
+                                            ).show()
+                                        }
+                                    }
+                            }
+                        },
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.play),
+                            contentDescription = stringResource(R.string.play),
                         )
                     }
                 }

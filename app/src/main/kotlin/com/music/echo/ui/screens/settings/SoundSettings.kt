@@ -94,7 +94,7 @@ fun SoundSettings(
                     description = {
                         Text(
                             "Baja los temas muy fuertes a un nivel parejo y agrega un limitador suave, " +
-                                "para que no distorsionen a todo volumen. Apagado = reproducción bit-perfect Hi-Res (por defecto)."
+                                "para que no distorsionen a todo volumen (activado por defecto). Apagado = reproducción bit-perfect Hi-Res."
                         )
                     },
                     trailingContent = {

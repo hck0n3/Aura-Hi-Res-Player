@@ -9,43 +9,61 @@ import org.junit.Test
 class EqConstantsTest {
 
     @Test
-    fun has24FrequenciesAndQ() {
-        assertEquals(24, EqConstants.FREQUENCIES.size)
-        assertEquals(24, EqConstants.FREQUENCY_LABELS.size)
-        assertEquals(20.0, EqConstants.FREQUENCIES.first(), 0.001)
-        assertEquals(20000.0, EqConstants.FREQUENCIES.last(), 0.001)
-        // ISO 1/3-octave centers: index 8 = 315 Hz, index 11 = 1 kHz reference.
-        assertEquals(315.0, EqConstants.FREQUENCIES[8], 0.001)
-        assertEquals(1000.0, EqConstants.FREQUENCIES[11], 0.001)
-        assertEquals(4.318, EqConstants.Q, 0.0001)
+    fun hasTenFrequenciesAndQ() {
+        assertEquals(EqConstants.BAND_COUNT, EqConstants.FREQUENCIES.size)
+        assertEquals(EqConstants.BAND_COUNT, EqConstants.FREQUENCY_LABELS.size)
+        assertEquals(10, EqConstants.BAND_COUNT)
+        assertEquals(31.5, EqConstants.FREQUENCIES.first(), 0.001)
+        assertEquals(16000.0, EqConstants.FREQUENCIES.last(), 0.001)
+        // ISO octave centers: index 3 = 250 Hz, index 5 = 1 kHz reference.
+        assertEquals(250.0, EqConstants.FREQUENCIES[3], 0.001)
+        assertEquals(1000.0, EqConstants.FREQUENCIES[5], 0.001)
+        // Musical octave Q for a 10-band graphic EQ.
+        assertEquals(1.414, EqConstants.Q, 0.0001)
     }
 
     @Test
-    fun everyPresetHas24Gains() {
+    fun everyPresetHasTenGains() {
         FactoryPreset.entries.forEach { preset ->
-            assertEquals("${preset.name} must have 24 gains", 24, preset.gains.size)
+            assertEquals(
+                "${preset.name} must have ${EqConstants.BAND_COUNT} gains",
+                EqConstants.BAND_COUNT,
+                preset.gains.size,
+            )
         }
     }
 
     @Test
-    fun bassBoostCurveMatchesDesktop() {
+    fun subBassRumbleOnlyLiftsTheLowestBands() {
         assertEquals(
-            listOf(6, 5, 4, 3, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0).map { it.toFloat() },
-            FactoryPreset.BASS_BOOST.gains.toList()
+            listOf(6.0f, 3.0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f),
+            FactoryPreset.SUB_BASS_RUMBLE.gains.toList()
         )
     }
 
     @Test
-    fun vocalCurveMatchesDesktop() {
+    fun vocalPresenceCurveMatchesSpec() {
         assertEquals(
-            listOf(-1, -1, 0, 0, 1, 1, 1, 2, 2, 3, 3, 4, 4, 3, 3, 2, 2, 2, 1, 1, 0, 0, 0, 0).map { it.toFloat() },
-            FactoryPreset.VOCAL.gains.toList()
+            listOf(-1.0f, -0.5f, -1.5f, -0.5f, 1.0f, 3.0f, 3.5f, 2.0f, 0.5f, 0f),
+            FactoryPreset.VOCAL_PRESENCE.gains.toList()
         )
     }
 
     @Test
     fun flatIsAllZero() {
-        assertEquals(List(24) { 0f }, FactoryPreset.FLAT.gains.toList())
+        assertEquals(List(10) { 0f }, FactoryPreset.FLAT.gains.toList())
+    }
+
+    @Test
+    fun everyPresetGainStaysWithinRange() {
+        FactoryPreset.entries.forEach { preset ->
+            preset.gains.forEach { gain ->
+                org.junit.Assert.assertTrue(
+                    "${preset.name} gain $gain must be within [${EqConstants.GAIN_MIN}, ${EqConstants.GAIN_MAX}]",
+                    gain in EqConstants.GAIN_MIN..EqConstants.GAIN_MAX,
+                )
+            }
+        }
     }
 
     @Test

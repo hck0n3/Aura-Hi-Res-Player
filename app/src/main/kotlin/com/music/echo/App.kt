@@ -261,7 +261,8 @@ class App : Application(), SingletonImageLoader.Factory {
             settings[iad1tya.echo.music.constants.PlaybackDefaultsV3AppliedKey] != true ||
             settings[iad1tya.echo.music.constants.PlaybackDefaultsV4AppliedKey] != true ||
             settings[iad1tya.echo.music.constants.PlaybackDefaultsV5AppliedKey] != true ||
-            settings[iad1tya.echo.music.constants.CrossfadeDefault9AppliedKey] != true
+            settings[iad1tya.echo.music.constants.CrossfadeDefault9AppliedKey] != true ||
+            settings[iad1tya.echo.music.constants.LyricsBlurDefaultOnV1AppliedKey] != true
         if (batchAPending) {
             runCatching {
                 dataStore.edit { p ->
@@ -276,6 +277,7 @@ class App : Application(), SingletonImageLoader.Factory {
                     applyThemeSystemDefault(p, settings)
                     applyThemeSystemOnlyV2(p, settings)
                     applyPlaybackDefaults(p, settings)
+                    applyLyricsBlurDefaultOnV1(p, settings)
                 }
             }.onFailure { reportException(it) }
         }
@@ -693,6 +695,23 @@ class App : Application(), SingletonImageLoader.Factory {
         // this forced-ON wins on the same launch.
         p[iad1tya.echo.music.constants.SafeVolumeEnabledKey] = true
         p[iad1tya.echo.music.constants.SafeVolumeDefaultOnAppliedKey] = true
+    }
+
+    /**
+     * One-time (V1, FRESH key): seed the standard-layout lyrics blur ON. The default lyric style is
+     * APPLE_V2 (seeded in [applySeedDefaults]), and its Apple-style blur is gated on
+     * [iad1tya.echo.music.constants.LyricsStandardBlurKey] — the always-visible "standard lyrics blur"
+     * toggle in Appearance — which defaults FALSE, so the advertised blur was invisible by default.
+     * A fresh flag key is required (a set flag or versionCode bump alone won't re-run a migration).
+     * One-time only: afterwards the user's own toggle choice sticks.
+     */
+    private fun applyLyricsBlurDefaultOnV1(
+        p: androidx.datastore.preferences.core.MutablePreferences,
+        settings: androidx.datastore.preferences.core.Preferences,
+    ) {
+        if (settings[iad1tya.echo.music.constants.LyricsBlurDefaultOnV1AppliedKey] == true) return
+        p[iad1tya.echo.music.constants.LyricsStandardBlurKey] = true
+        p[iad1tya.echo.music.constants.LyricsBlurDefaultOnV1AppliedKey] = true
     }
 
     private fun applyMiniPlayerDefaultBg(

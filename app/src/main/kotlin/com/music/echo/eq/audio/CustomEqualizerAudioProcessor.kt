@@ -95,8 +95,18 @@ class CustomEqualizerAudioProcessor(private val licenseKey: String = "akloSTZUT1
             // Combine manual bands and auto-correction bands (auto first, then taste — LTI cascade).
             val allBands = profile.autoBands + profile.bands
 
-            // The filter slots (indices into allBands) this profile will enable.
-            val newIndices = allBands.mapIndexedNotNull { i, b -> if (b.enabled) i else null }.toHashSet()
+            // TRUE 0 dB BYPASS: a band at (or within ±0.05 dB of) 0 dB is mathematically flat, so we don't
+            // waste a native filter slot on it — it is treated exactly like a disabled band. This makes a
+            // flat band a REAL bypass (no biquad in the chain) instead of a 0 dB filter that still processes.
+            // NOTE: shelf/peak filters at 0 dB gain are unity, so skipping them is bit-identical in the
+            // steady state; the win is fewer active filters (less CPU, no numeric noise from no-op biquads).
+            fun bandActive(b: iad1tya.echo.music.eq.data.ParametricEQBand): Boolean =
+                b.enabled && kotlin.math.abs(b.gain) >= 0.05
+
+            // The filter slots (indices into allBands) this profile will enable. Flat (≈0 dB) bands are NOT
+            // enabled, so they are excluded here too — the stale-slot clearing below (disableAllBands when a
+            // previously-enabled slot is no longer in newIndices) then also clears a band that moved TO 0 dB.
+            val newIndices = allBands.mapIndexedNotNull { i, b -> if (bandActive(b)) i else null }.toHashSet()
 
             // ATOMICITY (P48): the native bridge has no batch "apply all bands" call — every JNI call takes the
             // shared eqMutex in its OWN short scope and releases it, so the audio thread (processAudio) can run
@@ -113,7 +123,7 @@ class CustomEqualizerAudioProcessor(private val licenseKey: String = "akloSTZUT1
                 disableAllBands(nativePtr)
             }
 
-            val enabledGains = allBands.filter { it.enabled }.map { it.gain }
+            val enabledGains = allBands.filter { bandActive(it) }.map { it.gain }
             // AUTO-HEADROOM with a limiter margin. Only trim the preamp by the positive EQ boost that
             // EXCEEDS what the gentle -3 dBFS limiter can absorb transparently (~2 dB). So small/moderate
             // boosts (most presets) get NO trim → full loudness, the limiter just cleanly rounds their peaks;
@@ -127,7 +137,7 @@ class CustomEqualizerAudioProcessor(private val licenseKey: String = "akloSTZUT1
             setPreamp(nativePtr, effectivePreamp.toFloat())
 
             allBands.forEachIndexed { index, band ->
-                if (band.enabled) {
+                if (bandActive(band)) {
                     val typeCode = when (band.filterType) {
                         FilterType.LSC -> 1  // low shelf
                         FilterType.HSC -> 2  // high shelf

@@ -36,19 +36,18 @@ import iad1tya.echo.music.ui.utils.backToMain
 private data class Feature(val icon: Int, val title: String, val subtitle: String)
 
 private val PLAYBACK_FEATURES = listOf(
-    Feature(R.drawable.play, "Reproducción", "Sin cortes (gapless), transición suave (crossfade) lineal de 10s, normalización de volumen al mismo nivel en todas las canciones y temporizador de apagado"),
+    Feature(R.drawable.play, "Reproducción", "Sin cortes (gapless), transición suave (crossfade) equal-power de 9s, Volumen Seguro que nivela las canciones muy altas (atenúa, con limitador) y temporizador de apagado"),
     Feature(R.drawable.videocam, "Video musical", "Reproduce el videoclip con su sonido dentro del reproductor (cuando está disponible), sigue en video al cambiar de canción; pantalla completa al girar el teléfono, Picture-in-Picture (ventana flotante) y cambio rápido entre audio y video. El audio sigue en segundo plano y con la pantalla apagada"),
-    Feature(R.drawable.graphic_eq, "Sonido y EQ", "Ecualizador gráfico de 24 bandas (las que dejes en 0 dB hacen bypass real — no tocan la señal) o modo paramétrico (PEQ) interactivo: arrastra puntos en la curva de respuesta para dar forma al sonido (5-8 bandas, con frecuencia/Q/ganancia exactas), limitador multibanda anti-distorsión con headroom automático, Auto-EQ por modelo de auricular (+5000) que bloquea el EQ manual para no corromper la corrección, nivelado de volumen (misma sonoridad en todas las canciones) con limitador true-peak, firma Aura, excitador y ancho estéreo"),
+    Feature(R.drawable.graphic_eq, "Sonido y EQ", "Ecualizador gráfico de 10 bandas (las que dejes en 0 dB hacen bypass real — no tocan la señal) o modo paramétrico (PEQ) interactivo: arrastra puntos en la curva de respuesta para dar forma al sonido (5-8 bandas, con frecuencia/Q/ganancia exactas), limitador anti-distorsión con headroom automático y Auto-EQ por modelo de auricular (+5000) que se combina con tu EQ manual (cascada)"),
     Feature(R.drawable.volume_up, "Volumen Seguro", "Activado por defecto: nivela las canciones muy altas a un volumen parejo y protege con un limitador true-peak, para que ninguna pista salte de golpe. Puedes desactivarlo cuando quieras en Ajustes ▸ Sonido"),
-    Feature(R.drawable.tune, "Sonido sin pérdida", "Reproduce en calidad sin pérdida desde Qobuz/Saavn cuando está disponible"),
+    Feature(R.drawable.tune, "Sonido sin pérdida", "Reproduce en calidad sin pérdida desde Qobuz cuando está disponible, con Saavn como respaldo a 320 kbps"),
     Feature(R.drawable.refresh, "Recargar en Opus", "Desde el menú del reproductor, vuelve a cargar el audio de la canción actual en Opus si un stream viene con fallos o quieres refrescarlo"),
-    Feature(R.drawable.auto_awesome, "Mejorar calidad baja", "Reduce la distorsión (declip) y regenera agudos en fuentes de bajo bitrate"),
-    Feature(R.drawable.equalizer, "Visualizador y control", "Visualizador de espectro y control de tempo/tono"),
+    Feature(R.drawable.equalizer, "Control de tempo y tono", "Ajusta la velocidad y el tono de la reproducción de forma independiente desde el menú del reproductor"),
     Feature(R.drawable.lyrics, "Letras", "Sincronizadas (palabra por palabra), con traducción por IA y desenfoque estilo Apple Music"),
-    Feature(R.drawable.queue_music, "Cola", "Cola inteligente y gestión de 'a continuación'; tocar una canción en el top de un artista o en el radar de novedades reproduce toda la lista como cola"),
-    Feature(R.drawable.bluetooth, "Reproducción inteligente", "Pausa al silenciar y reanuda al reconectar Bluetooth; notificación enriquecida estilo Dynamic Island"),
+    Feature(R.drawable.queue_music, "Cola", "Cola inteligente y gestión de 'a continuación'; tocar una canción en el top de un artista reproduce toda la lista como cola, y en el radar de novedades tocar el play de un estreno lo reproduce completo"),
+    Feature(R.drawable.bluetooth, "Reproducción inteligente", "Puede pausar al silenciar y reanudar al reconectar Bluetooth (actívalo en Ajustes ▸ Reproductor); notificación multimedia enriquecida (carátula y controles)"),
     Feature(R.drawable.skip_next, "Saltar partes sin música (SponsorBlock)", "Actívalo en Ajustes ▸ Reproductor y la app salta sola patrocinios, autopromo e interrupciones no musicales usando la base comunitaria SponsorBlock; nunca corta el audio real de la canción (no toca intros/outros)"),
-    Feature(R.drawable.speed, "Rendimiento adaptable y Modo Rendimiento (ULTRA)", "Detecta la gama del dispositivo por sus características (RAM, núcleos), no por la marca, y ajusta calidad/buffers de los efectos. El Modo Rendimiento (ULTRA) es un interruptor maestro que fuerza el modo más ligero posible —ideal en gama baja, Android TV o auto— desactivando lo más pesado (Canvas, visualizador, video del artista) sin tocar la fidelidad de audio; se activa solo en dispositivos de gama baja/TV/coche y puedes conmutarlo en Ajustes. El fondo animado (Canvas) se pausa con la app en segundo plano o la pantalla apagada, para no calentar ni gastar batería de más; en plegables, el ecualizador adopta un layout de dos columnas (EQ + efectos DSP) al desplegar"),
+    Feature(R.drawable.speed, "Rendimiento adaptable y Modo Rendimiento (ULTRA)", "Detecta la gama del dispositivo por sus características (RAM, núcleos), no por la marca, y ajusta calidad/buffers de los efectos. El Modo Rendimiento (ULTRA) es un interruptor maestro que fuerza el modo más ligero posible —ideal en gama baja, Android TV o auto— desactivando lo más pesado (Canvas, video del artista) sin tocar la fidelidad de audio; se activa solo en hardware realmente modesto —incluidos TV boxes y pantallas de auto de gama baja; los TVs potentes conservan la experiencia completa— y puedes conmutarlo en Ajustes. El fondo animado (Canvas) se pausa con la app en segundo plano o la pantalla apagada, para no calentar ni gastar batería de más; en plegables el ecualizador aprovecha el ancho al desplegar"),
 )
 
 private val DISCOVERY_FEATURES = listOf(
@@ -73,7 +72,7 @@ private val LIBRARY_FEATURES = listOf(
     Feature(R.drawable.queue_music, "Podcasts", "Motor propio (Apple/iTunes + RSS) con progreso, fijado, búsqueda universal y reproducción por URL directa; en los podcasts que ofrecen video puedes elegir entre audio y video"),
     Feature(R.drawable.folder_managed, "Medios locales", "Reproduce los archivos de música guardados en el dispositivo"),
     Feature(R.drawable.music_history, "Historial y estadísticas", "Tu historial de escucha y estadísticas detalladas"),
-    Feature(R.drawable.backup, "Copia con Google Drive", "Respalda y restaura tu biblioteca (build con Google Play Services)"),
+    Feature(R.drawable.backup, "Copia de seguridad local", "Exporta e importa tu biblioteca en un archivo local, cuando quieras y sin depender de la nube"),
 )
 
 private val EXTRAS_FEATURES = listOf(
