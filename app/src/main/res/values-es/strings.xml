@@ -5,6 +5,7 @@
     <string name="artists">Artistas</string>
     <string name="albums">Álbumes</string>
     <string name="playlists">Listas de reproducción</string>
+    <string name="podcasts">Podcasts</string>
     <plurals name="n_selected">
         <item quantity="one">%d seleccionada</item>
         <item quantity="many">%d de seleccionadas</item>
@@ -76,6 +77,11 @@
     <string name="downloading">Descargando</string>
     <string name="remove_download">Eliminar descarga</string>
     <string name="import_playlist">Importar lista de reproducción</string>
+    <string name="import_from_spotify">Importar desde Spotify</string>
+    <string name="import_from_youtube">Importar desde YouTube Music</string>
+    <string name="import_youtube_playlist_title">Importar lista de reproducción desde YouTube Music</string>
+    <string name="import_youtube_playlist_hint">Pega abajo el enlace de la lista de reproducción pública de YouTube Music</string>
+    <string name="invalid_playlist_url">El enlace de la lista de reproducción no es válido</string>
     <string name="add_to_playlist">Añadir a lista de reproducción</string>
     <string name="set_as_ringtone">Establecer como tono de llamada</string>
     <string name="do_not_recommend">No recomendar</string>

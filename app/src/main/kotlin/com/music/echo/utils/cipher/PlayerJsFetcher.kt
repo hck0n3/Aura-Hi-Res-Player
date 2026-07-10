@@ -2,6 +2,8 @@ package iad1tya.echo.music.utils.cipher
 
 import com.music.innertube.YouTube
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -141,9 +143,11 @@ object PlayerJsFetcher {
             val ageHours = ageMs / (1000 * 60 * 60)
             Timber.tag(TAG).d("Cache age: ${ageHours}h (TTL: ${CACHE_TTL_MS / (1000 * 60 * 60)}h)")
 
-            // Check TTL
-            if (ageMs > CACHE_TTL_MS) {
-                Timber.tag(TAG).d("Cache expired (hash=$hash, age=${ageHours}h)")
+            // Check TTL. A NEGATIVE age means the wall clock was rolled back past the write time;
+            // without this guard such a cache would count as "valid" forever. Treat it as expired
+            // and refetch.
+            if (ageMs !in 0..CACHE_TTL_MS) {
+                Timber.tag(TAG).d("Cache expired or clock rolled back (hash=$hash, age=${ageHours}h)")
                 return null
             }
 
@@ -167,22 +171,48 @@ object PlayerJsFetcher {
         }
     }
 
-    private fun writeToCache(hash: String, playerJs: String) {
+    // Serializes the whole write path: TWO real concurrent writers exist (the cipher path via
+    // CipherDeobfuscator and the SABR n-transform solver via EjsNTransformSolver), and interleaved
+    // clean+write could otherwise leave a truncated player_*.js that readFromCache accepts as valid.
+    private val cacheWriteMutex = Mutex()
+
+    private suspend fun writeToCache(hash: String, playerJs: String) = cacheWriteMutex.withLock {
         Timber.tag(TAG).d("Writing to cache: hash=$hash, length=${playerJs.length}")
         try {
             val cacheDir = getCacheDir()
 
-            // Clean old cache files
-            val oldFiles = cacheDir.listFiles()?.filter { it.name.startsWith("player_") }
+            // Clean old cache files (also sweeps orphaned *.tmp from a crashed earlier write)
+            val oldFiles = cacheDir.listFiles()?.filter { it.name.startsWith("player_") && it != getCacheFile(hash) }
             Timber.tag(TAG).d("Cleaning ${oldFiles?.size ?: 0} old cache files")
             oldFiles?.forEach { it.delete() }
 
-            getCacheFile(hash).writeText(playerJs)
-            getHashFile().writeText("$hash\n${System.currentTimeMillis()}")
+            // Atomic publish: readers either see the complete new file or the old state, never a
+            // half-written body. The hash/timestamp pointer is written LAST so it can only ever
+            // point at fully-written content.
+            writeAtomic(getCacheFile(hash), playerJs)
+            writeAtomic(getHashFile(), "$hash\n${System.currentTimeMillis()}")
 
             Timber.tag(TAG).d("Cache written successfully")
         } catch (e: Exception) {
             Timber.tag(TAG).e(e, "Error writing cache: ${e.message}")
+        }
+    }
+
+    /**
+     * Write [content] to a sibling temp file and rename it over [file]. rename() within the same
+     * directory is atomic on Android/Linux; if the filesystem still refuses to rename over an
+     * existing file, delete the target and retry, falling back to a direct write as a last resort.
+     */
+    private fun writeAtomic(file: File, content: String) {
+        val tmp = File(file.parentFile, "${file.name}.tmp")
+        tmp.writeText(content)
+        if (!tmp.renameTo(file)) {
+            file.delete()
+            if (!tmp.renameTo(file)) {
+                Timber.tag(TAG).w("Atomic rename failed twice for ${file.name}; falling back to direct write")
+                file.writeText(content)
+                tmp.delete()
+            }
         }
     }
 

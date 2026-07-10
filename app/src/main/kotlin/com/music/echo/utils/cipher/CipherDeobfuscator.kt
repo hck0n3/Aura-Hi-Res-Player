@@ -31,6 +31,12 @@ object CipherDeobfuscator {
     private val rendererRecoveryPolicy = RendererRecoveryPolicy()
     private var cipherWebView: CipherWebView? = null
     private var currentPlayerHash: String? = null
+
+    // The RemotePlayerConfig.configEpoch the current [cipherWebView] was built against. When the
+    // epoch moves (a self-healing config was fetched and applied), the WebView is rebuilt on the
+    // next use so the published fix takes effect WITHOUT an app restart.
+    private var builtConfigEpoch = -1
+
     private val deobfuscateMutex = Mutex()
 
     @Volatile
@@ -271,10 +277,18 @@ object CipherDeobfuscator {
             return null
         }
 
-        if (!forceRefresh && cipherWebView != null) {
-            Timber.tag(TAG).d("Reusing existing CipherWebView (hash=$currentPlayerHash)")
+        // Reuse only while the WebView was built against the CURRENT remote-config epoch: when a
+        // self-healing config lands (startup refresh or reactive forceRefresh below), the epoch
+        // moves and the next use rebuilds the WebView so the fix applies without an app restart.
+        val epochAtStart = RemotePlayerConfig.configEpoch
+        if (!forceRefresh && cipherWebView != null && builtConfigEpoch == epochAtStart) {
+            Timber.tag(TAG).d("Reusing existing CipherWebView (hash=$currentPlayerHash, epoch=$builtConfigEpoch)")
             return cipherWebView
         }
+        if (!forceRefresh && cipherWebView != null) {
+            Timber.tag(TAG).d("Remote config epoch changed ($builtConfigEpoch -> $epochAtStart) — rebuilding cipher WebView")
+        }
+        var builtEpoch = epochAtStart
 
         // Close existing WebView if any
         if (cipherWebView != null) {
@@ -294,27 +308,43 @@ object CipherDeobfuscator {
 
         // Run full analysis for logging - pass the known hash from PlayerJsFetcher
         Timber.tag(TAG).d("Analyzing player JS for cipher functions (knownHash=$hash)...")
-        val analysis = FunctionNameExtractor.analyzePlayerJs(playerJs, knownHash = hash)
+        var analysis = FunctionNameExtractor.analyzePlayerJs(playerJs, knownHash = hash)
 
         if (analysis.sigInfo == null) {
+            // REACTIVE self-healing: no sig pattern matched AND no (hardcoded or remote) config for
+            // this hash — YouTube likely rotated player.js past everything we know. Trigger ONE
+            // immediate remote-config refetch (bounded by a 5-minute cooldown inside forceRefresh)
+            // and re-run the analysis, so a fix the owner just published heals streaming NOW
+            // instead of only after an app restart. Best-effort: on a miss we fail exactly as before.
+            Timber.tag(TAG).w("No cipher config for player hash $hash — trying reactive remote-config refresh")
+            val healed = RemotePlayerConfig.forceRefresh(appContext, hash)
+            if (healed) {
+                builtEpoch = RemotePlayerConfig.configEpoch
+                analysis = FunctionNameExtractor.analyzePlayerJs(playerJs, knownHash = hash)
+            }
+        }
+
+        val sigInfo = analysis.sigInfo
+        if (sigInfo == null) {
             Timber.tag(TAG).e("Could not extract signature function info from player JS")
             return null
         }
 
-        if (analysis.nFuncInfo == null) {
+        val nFuncInfo = analysis.nFuncInfo
+        if (nFuncInfo == null) {
             Timber.tag(TAG).w("Could not extract n-function info from player JS (will try brute-force)")
         }
 
         Timber.tag(TAG).d("Creating CipherWebView...")
-        Timber.tag(TAG).d("  sig: ${analysis.sigInfo.name} (constantArg=${analysis.sigInfo.constantArg}, hardcoded=${analysis.sigInfo.isHardcoded})")
-        Timber.tag(TAG).d("  nFunc: ${analysis.nFuncInfo?.name}[${analysis.nFuncInfo?.arrayIndex}] (hardcoded=${analysis.nFuncInfo?.isHardcoded})")
+        Timber.tag(TAG).d("  sig: ${sigInfo.name} (constantArg=${sigInfo.constantArg}, hardcoded=${sigInfo.isHardcoded})")
+        Timber.tag(TAG).d("  nFunc: ${nFuncInfo?.name}[${nFuncInfo?.arrayIndex}] (hardcoded=${nFuncInfo?.isHardcoded})")
 
         // Create WebView
         val webView = CipherWebView.create(
             context = appContext,
             playerJs = playerJs,
-            sigInfo = analysis.sigInfo,
-            nFuncInfo = analysis.nFuncInfo,
+            sigInfo = sigInfo,
+            nFuncInfo = nFuncInfo,
         )
 
         Timber.tag(TAG).d("CipherWebView created successfully")
@@ -324,6 +354,7 @@ object CipherDeobfuscator {
 
         cipherWebView = webView
         currentPlayerHash = hash
+        builtConfigEpoch = builtEpoch
         return webView
     }
 

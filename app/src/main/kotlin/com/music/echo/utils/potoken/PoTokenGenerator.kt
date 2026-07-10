@@ -86,10 +86,25 @@ class PoTokenGenerator {
                             webPoTokenGenerator!!.isExpired ||
                             webPoTokenSessionId != sessionId
                         if (needsCreate) {
-                            webPoTokenSessionId = sessionId
                             withContext(Dispatchers.Main) { webPoTokenGenerator?.close() }
-                            webPoTokenGenerator = PoTokenWebView.getNewPoTokenGenerator(CipherDeobfuscator.appContext)
-                            webPoTokenStreamingPot = webPoTokenGenerator!!.generatePoToken(webPoTokenSessionId!!)
+                            // Same all-or-nothing discipline as the real path: clear the fields after
+                            // closing the old generator, build into LOCALS, destroy the WebView on a
+                            // mid-flow failure, and assign the fields only after full success.
+                            webPoTokenGenerator = null
+                            webPoTokenStreamingPot = null
+                            webPoTokenSessionId = null
+
+                            val newGenerator = PoTokenWebView.getNewPoTokenGenerator(CipherDeobfuscator.appContext)
+                            val newStreamingPot = try {
+                                newGenerator.generatePoToken(sessionId)
+                            } catch (t: Throwable) {
+                                runCatching { newGenerator.close() }
+                                throw t
+                            }
+
+                            webPoTokenGenerator = newGenerator
+                            webPoTokenStreamingPot = newStreamingPot
+                            webPoTokenSessionId = sessionId
                             Timber.tag(TAG).d("poToken prewarmed for sessionId=${sessionId.take(16)}...")
                         }
                     }
@@ -122,19 +137,36 @@ class PoTokenGenerator {
 
                 if (shouldRecreate) {
                     Timber.tag(TAG).d("Creating new PoTokenWebView (forceRecreate=$forceRecreate)")
-                    webPoTokenSessionId = sessionId
 
                     withContext(Dispatchers.Main) {
                         webPoTokenGenerator?.close()
                     }
+                    // The old generator is closed: clear the fields NOW so a throw mid-creation can
+                    // never leave them pointing at a closed WebView with a stale streaming pot.
+                    webPoTokenGenerator = null
+                    webPoTokenStreamingPot = null
+                    webPoTokenSessionId = null
 
-                    // create a new webPoTokenGenerator
-                    webPoTokenGenerator = PoTokenWebView.getNewPoTokenGenerator(CipherDeobfuscator.appContext)
+                    // Build into LOCALS and assign to the fields only after the FULL flow succeeds:
+                    // if generatePoToken throws mid-flow, the new WebView must be destroyed (not
+                    // leaked) and the session fields must stay consistent (all-or-nothing).
+                    val newGenerator = PoTokenWebView.getNewPoTokenGenerator(CipherDeobfuscator.appContext)
 
                     // The streaming poToken needs to be generated exactly once before generating
                     // any other (player) tokens.
-                    webPoTokenStreamingPot = webPoTokenGenerator!!.generatePoToken(webPoTokenSessionId!!)
-                    Timber.tag(TAG).d("Streaming poToken generated for sessionId=${webPoTokenSessionId?.take(20)}...")
+                    val newStreamingPot = try {
+                        newGenerator.generatePoToken(sessionId)
+                    } catch (t: Throwable) {
+                        // close() is idempotent and self-dispatches to the main thread, so it is safe
+                        // here even when this coroutine is being cancelled (timeout).
+                        runCatching { newGenerator.close() }
+                        throw t
+                    }
+
+                    webPoTokenGenerator = newGenerator
+                    webPoTokenStreamingPot = newStreamingPot
+                    webPoTokenSessionId = sessionId
+                    Timber.tag(TAG).d("Streaming poToken generated for sessionId=${sessionId.take(20)}...")
                 }
 
                 Triple(webPoTokenGenerator!!, webPoTokenStreamingPot!!, shouldRecreate)

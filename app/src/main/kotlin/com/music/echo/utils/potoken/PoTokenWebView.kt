@@ -46,8 +46,15 @@ class PoTokenWebView private constructor(
     @Volatile
     var isDead: Boolean = false
         private set
+    // Keyed by a per-request id, NOT by the identifier/videoId: two concurrent generatePoToken
+    // calls for the SAME videoId would otherwise overwrite each other's continuation (one caller
+    // hangs until timeout, the other may be resumed twice).
     private val poTokenContinuations =
-        Collections.synchronizedMap(ArrayMap<String, Continuation<String>>())
+        Collections.synchronizedMap(ArrayMap<Int, Continuation<String>>())
+    private var nextReqId = 0
+
+    @Synchronized
+    private fun getNextReqId(): Int = ++nextReqId
     private val exceptionHandler = CoroutineExceptionHandler { _, t ->
         onInitializationErrorCloseAndCancel(t)
     }
@@ -235,9 +242,9 @@ class PoTokenWebView private constructor(
             }
         } catch (e: TimeoutCancellationException) {
             // A wedged renderer never calls back; mark dead so the generator recreates it next
-            // time instead of blocking the playback path indefinitely.
+            // time instead of blocking the playback path indefinitely. The pending continuation is
+            // removed by its invokeOnCancellation handler (keyed by reqId).
             isDead = true
-            popPoTokenContinuation(identifier)
             Timber.tag(TAG).e("generatePoToken($identifier) timed out")
             throw PoTokenException("poToken generation timed out")
         }
@@ -247,7 +254,10 @@ class PoTokenWebView private constructor(
         return withContext(Dispatchers.Main) {
             suspendCancellableCoroutine { cont ->
                 Timber.tag(TAG).d("generatePoToken() called with identifier $identifier")
-                addPoTokenEmitter(identifier, cont)
+                val reqId = getNextReqId()
+                addPoTokenEmitter(reqId, cont)
+                // Timeout/cancellation must not leave a dangling continuation in the map.
+                cont.invokeOnCancellation { popPoTokenContinuation(reqId) }
                 // NOTE: obtainPoToken is now async, so we use .then()
                 webView.evaluateJavascript(
                     """try {
@@ -255,12 +265,12 @@ class PoTokenWebView private constructor(
                         u8Identifier = ${stringToU8(identifier)}
                         obtainPoToken(u8Identifier).then(function(poTokenU8) {
                             poTokenU8String = poTokenU8.join(",")
-                            $JS_INTERFACE.onObtainPoTokenResult(identifier, poTokenU8String)
+                            $JS_INTERFACE.onObtainPoTokenResult($reqId, identifier, poTokenU8String)
                         }).catch(function(error) {
-                            $JS_INTERFACE.onObtainPoTokenError(identifier, error + "\n" + (error.stack || ''))
+                            $JS_INTERFACE.onObtainPoTokenError($reqId, identifier, error + "\n" + (error.stack || ''))
                         })
                     } catch (error) {
-                        $JS_INTERFACE.onObtainPoTokenError(identifier, error + "\n" + error.stack)
+                        $JS_INTERFACE.onObtainPoTokenError($reqId, identifier, error + "\n" + error.stack)
                     }""",
                     null
                 )
@@ -273,31 +283,31 @@ class PoTokenWebView private constructor(
      * JavaScript `obtainPoToken()` function.
      */
     @JavascriptInterface
-    fun onObtainPoTokenError(identifier: String, error: String) {
+    fun onObtainPoTokenError(reqId: Int, identifier: String, error: String) {
         if (BuildConfig.DEBUG) {
             Timber.tag(TAG).e("obtainPoToken error from JavaScript: $error")
         }
-        popPoTokenContinuation(identifier)?.resumeWithException(buildExceptionForJsError(error))
+        popPoTokenContinuation(reqId)?.resumeWithException(buildExceptionForJsError(error))
     }
 
     /**
-     * Called by the JavaScript snippet from [generatePoToken] with the original identifier and the
-     * result of the JavaScript `obtainPoToken()` function.
+     * Called by the JavaScript snippet from [generatePoToken] with the request id, the original
+     * identifier and the result of the JavaScript `obtainPoToken()` function.
      */
     @JavascriptInterface
-    fun onObtainPoTokenResult(identifier: String, poTokenU8: String) {
+    fun onObtainPoTokenResult(reqId: Int, identifier: String, poTokenU8: String) {
         // SECURITY: never log the raw token value (before or after decoding) to logcat.
         // Log only the identifier and the length so the credential is not leaked.
         Timber.tag(TAG).d("Generated poToken (before decoding): identifier=$identifier u8Len=${poTokenU8.length}")
         val poToken = try {
             u8ToBase64(poTokenU8)
         } catch (t: Throwable) {
-            popPoTokenContinuation(identifier)?.resumeWithException(t)
+            popPoTokenContinuation(reqId)?.resumeWithException(t)
             return
         }
 
         Timber.tag(TAG).d("Generated poToken: identifier=$identifier ok=${poToken.isNotEmpty()} len=${poToken.length}")
-        popPoTokenContinuation(identifier)?.resume(poToken)
+        popPoTokenContinuation(reqId)?.resume(poToken)
     }
 
     val isExpired: Boolean
@@ -305,15 +315,15 @@ class PoTokenWebView private constructor(
     //endregion
 
     //region Handling multiple emitters
-    private fun addPoTokenEmitter(identifier: String, continuation: Continuation<String>) {
-        poTokenContinuations[identifier] = continuation
+    private fun addPoTokenEmitter(reqId: Int, continuation: Continuation<String>) {
+        poTokenContinuations[reqId] = continuation
     }
 
-    private fun popPoTokenContinuation(identifier: String): Continuation<String>? {
-        return poTokenContinuations.remove(identifier)
+    private fun popPoTokenContinuation(reqId: Int): Continuation<String>? {
+        return poTokenContinuations.remove(reqId)
     }
 
-    private fun popAllPoTokenContinuations(): Map<String, Continuation<String>> {
+    private fun popAllPoTokenContinuations(): Map<Int, Continuation<String>> {
         // Collections.synchronizedMap requires the caller to hold the map's monitor while
         // iterating it (toMap() walks entrySet). Holding it here also makes the copy-then-clear
         // atomic, so no emitter added concurrently is silently dropped.
@@ -405,6 +415,10 @@ class PoTokenWebView private constructor(
             return withContext(Dispatchers.Main) {
                 suspendCancellableCoroutine { cont ->
                     val potWv = PoTokenWebView(context, cont)
+                    // If the caller is cancelled mid-initialization (e.g. the 8s poToken timeout),
+                    // destroy the half-created WebView instead of leaking it. close() is idempotent,
+                    // so a later normal close is harmless.
+                    cont.invokeOnCancellation { potWv.close() }
                     potWv.loadHtmlAndObtainBotguard()
                 }
             }

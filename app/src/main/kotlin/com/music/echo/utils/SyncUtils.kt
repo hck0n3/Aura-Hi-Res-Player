@@ -300,7 +300,11 @@ class SyncUtils @Inject constructor(
 
             val lastSync = context.dataStore.get(LastFullSyncKey, 0L)
             val currentTime = LocalDateTime.now().toEpochSecond(ZoneOffset.UTC)
-            if (lastSync > 0 && (currentTime - lastSync) < SYNC_COOLDOWN) {
+            // A NEGATIVE elapsed means the wall clock was rolled back past the stored lastSync;
+            // without the lower bound that would keep auto-sync blocked indefinitely (elapsed stays
+            // < cooldown until the clock catches up). Treat clock drift as an expired cooldown.
+            val elapsed = currentTime - lastSync
+            if (lastSync > 0 && elapsed in 0 until SYNC_COOLDOWN) {
                 return@launch
             }
 

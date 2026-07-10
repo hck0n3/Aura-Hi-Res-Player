@@ -2,6 +2,8 @@ package iad1tya.echo.music.utils.cipher
 
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -32,6 +34,10 @@ import java.net.URL
  *    works immediately, even offline, on the very next extraction. Call once at startup.
  *  - [refresh]   — suspend, network: fetches the latest configs, merges them in, and rewrites the cache.
  *    Idempotent and throttled (a repeated call within [MIN_REFRESH_INTERVAL_MS] no-ops).
+ *  - [forceRefresh] — suspend, network: REACTIVE self-healing. Called by the cipher path when it hits a
+ *    player hash with no config anywhere; bypasses the 1h throttle but is bounded by a 5-minute cooldown.
+ *  - [configEpoch] — bumped whenever the applied config set changes; the cipher orchestrator uses it to
+ *    rebuild its WebView so a fetched fix applies WITHOUT an app restart.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────────────
  * JSON SCHEMA the owner publishes at [REMOTE_CONFIG_URL]
@@ -75,6 +81,7 @@ object RemotePlayerConfig {
         "https://raw.githubusercontent.com/hck0n3/Aura-Hi-Res-Player/main/player_configs.json"
 
     private const val CACHE_FILE_NAME = "player_configs_cache.json"
+    private const val ETAG_FILE_NAME = "player_configs_cache.etag"
 
     // Guard against pathological downloads: a real config file is a few KB.
     private const val MAX_BODY_BYTES = 512 * 1024
@@ -85,6 +92,10 @@ object RemotePlayerConfig {
     // Idempotent/cheap: a successful refresh is not repeated within this window (per process).
     private const val MIN_REFRESH_INTERVAL_MS = 60L * 60L * 1_000L // 1 hour
 
+    // Bound for the REACTIVE (failure-triggered) refetch: when YouTube rotates to a hash the owner
+    // has not published a fix for yet, the extra network cost is at most one small GET per window.
+    private const val FORCE_REFRESH_COOLDOWN_MS = 5L * 60L * 1_000L // 5 minutes
+
     // Immutable map behind a volatile reference => lock-free, thread-safe reads from configFor().
     // Writes replace the whole reference atomically (last-writer-wins), so readers never see a torn map.
     @Volatile
@@ -94,7 +105,21 @@ object RemotePlayerConfig {
     private var lastRefreshAtMs: Long = 0L
 
     @Volatile
-    private var refreshing: Boolean = false
+    private var lastForcedAttemptMs: Long = 0L
+
+    /**
+     * Monotonic version of the APPLIED config set: bumped every time the in-memory map actually
+     * changes (startup cache load, periodic refresh, or a reactive [forceRefresh]). The cipher
+     * orchestrator records the epoch its WebView was built against and rebuilds when the epoch
+     * moves, so a freshly published fix is applied WITHOUT restarting the app.
+     */
+    @Volatile
+    var configEpoch: Int = 0
+        private set
+
+    // Serializes refresh/forceRefresh (fetch + apply + cache write): with the reactive path there
+    // are now two real writers, and an unserialized cache write could publish a truncated file.
+    private val refreshMutex = Mutex()
 
     /**
      * The merged (remote + cached) config for [hash], or null if none is known remotely.
@@ -116,7 +141,7 @@ object RemotePlayerConfig {
             val body = file.readText()
             val parsed = parseConfigs(body)
             if (parsed.isNotEmpty()) {
-                remoteConfigs = parsed
+                applyConfigs(parsed)
                 Timber.tag(TAG).d("Loaded ${parsed.size} cached remote config(s): ${parsed.keys.joinToString()}")
             }
         } catch (e: Exception) {
@@ -131,43 +156,130 @@ object RemotePlayerConfig {
      * [MIN_REFRESH_INTERVAL_MS]. A failed/empty/malformed fetch keeps whatever was already loaded.
      */
     suspend fun refresh(context: Context) = withContext(Dispatchers.IO) {
-        val now = System.currentTimeMillis()
-        // Cheap/idempotent: skip if we already have configs and refreshed recently, or if one is in flight.
-        if (refreshing) return@withContext
-        if (remoteConfigs.isNotEmpty() && now - lastRefreshAtMs < MIN_REFRESH_INTERVAL_MS) return@withContext
+        refreshMutex.withLock {
+            // Cheap/idempotent: skip if we already have configs and refreshed recently. The lower
+            // bound guards clock rollback: a NEGATIVE elapsed (wall clock moved back past the last
+            // refresh) would otherwise count as "recent" and block refreshing until the clock
+            // catches up — treat drift as stale and refetch instead.
+            val sinceLast = System.currentTimeMillis() - lastRefreshAtMs
+            if (remoteConfigs.isNotEmpty() && sinceLast in 0 until MIN_REFRESH_INTERVAL_MS) return@withLock
+            fetchAndApply(context)
+        }
+    }
 
-        refreshing = true
-        try {
-            val body = httpGet(REMOTE_CONFIG_URL)
-            if (body == null) {
-                Timber.tag(TAG).d("refresh: no body (offline or non-2xx); keeping existing configs")
-                return@withContext
+    /**
+     * REACTIVE self-healing: called by the cipher path when stream resolution hits a player.js
+     * [missingHash] that has NO config anywhere (pattern extraction failed + hardcoded miss +
+     * remote miss) — i.e. YouTube rotated its player. Bypasses the 1-hour throttle so a fix the
+     * owner just published is picked up IMMEDIATELY (today this only healed on app restart), but is
+     * bounded by [FORCE_REFRESH_COOLDOWN_MS] so an unpublished hash costs at most one small GET per
+     * window. Best-effort: never throws.
+     *
+     * @return true if a config for [missingHash] is available after the call.
+     */
+    suspend fun forceRefresh(context: Context, missingHash: String): Boolean = withContext(Dispatchers.IO) {
+        val hash = missingHash.trim().lowercase()
+        if (hash.isBlank()) return@withContext false
+        refreshMutex.withLock {
+            // The config may have arrived via a concurrent startup/periodic refresh while we waited.
+            if (remoteConfigs.containsKey(hash)) return@withLock true
+
+            // Same clock-drift discipline as refresh(): negative elapsed = cooldown expired.
+            val sinceForced = System.currentTimeMillis() - lastForcedAttemptMs
+            if (sinceForced in 0 until FORCE_REFRESH_COOLDOWN_MS) {
+                Timber.tag(TAG).d("forceRefresh($hash) skipped (cooldown)")
+                return@withLock false
             }
-            val parsed = parseConfigs(body)
-            if (parsed.isEmpty()) {
-                Timber.tag(TAG).d("refresh: parsed 0 valid entries; keeping existing configs")
-                return@withContext
-            }
-            // Freshly published set is the source of truth for the remote layer.
-            remoteConfigs = parsed
-            lastRefreshAtMs = now
-            runCatching { cacheFile(context).writeText(body) }
-                .onFailure { Timber.tag(TAG).w(it, "refresh: cache write failed (ignored)") }
-            Timber.tag(TAG).d("refresh: applied ${parsed.size} remote config(s): ${parsed.keys.joinToString()}")
-        } catch (e: Exception) {
-            // Best-effort: any network/parse error leaves the app exactly as-is.
-            Timber.tag(TAG).w(e, "refresh failed (ignored)")
-        } finally {
-            refreshing = false
+            lastForcedAttemptMs = System.currentTimeMillis()
+            fetchAndApply(context)
+            remoteConfigs.containsKey(hash)
         }
     }
 
     // ==================== INTERNAL ====================
 
+    /** Fetch + parse + apply + rewrite cache. Must be called with [refreshMutex] held. Never throws. */
+    private fun fetchAndApply(context: Context) {
+        try {
+            // Conditional GET: send If-None-Match only when we actually hold configs a 304 would
+            // preserve (guards the corner case of a persisted ETag with a lost/corrupt body cache).
+            val etag = if (remoteConfigs.isNotEmpty()) readEtag(context) else null
+            val result = httpGet(REMOTE_CONFIG_URL, etag)
+            if (result == null) {
+                Timber.tag(TAG).d("refresh: no body (offline or non-2xx); keeping existing configs")
+                return
+            }
+            if (result.notModified) {
+                lastRefreshAtMs = System.currentTimeMillis()
+                Timber.tag(TAG).d("refresh: remote configs unchanged (304)")
+                return
+            }
+            val body = result.body ?: return
+            val parsed = parseConfigs(body)
+            if (parsed.isEmpty()) {
+                Timber.tag(TAG).d("refresh: parsed 0 valid entries; keeping existing configs")
+                return
+            }
+            // Freshly published set is the source of truth for the remote layer.
+            applyConfigs(parsed)
+            lastRefreshAtMs = System.currentTimeMillis()
+            runCatching {
+                writeAtomic(cacheFile(context), body)
+                writeEtag(context, result.etag)
+            }.onFailure { Timber.tag(TAG).w(it, "refresh: cache write failed (ignored)") }
+            Timber.tag(TAG).d("refresh: applied ${parsed.size} remote config(s) (epoch=$configEpoch): ${parsed.keys.joinToString()}")
+        } catch (e: Exception) {
+            // Best-effort: any network/parse error leaves the app exactly as-is.
+            Timber.tag(TAG).w(e, "refresh failed (ignored)")
+        }
+    }
+
+    /** Replace the in-memory map; bumps [configEpoch] only when the applied set actually changed. */
+    private fun applyConfigs(parsed: Map<String, FunctionNameExtractor.HardcodedPlayerConfig>) {
+        val changed = parsed != remoteConfigs
+        remoteConfigs = parsed
+        if (changed) configEpoch++
+    }
+
     private fun cacheFile(context: Context): File = File(context.filesDir, CACHE_FILE_NAME)
 
-    /** Best-effort GET. Returns the body (capped) on 2xx, else null. Never throws. */
-    private fun httpGet(urlStr: String): String? {
+    private fun etagFile(context: Context): File = File(context.filesDir, ETAG_FILE_NAME)
+
+    private fun readEtag(context: Context): String? = runCatching {
+        etagFile(context).takeIf { it.exists() }?.readText()?.trim()?.takeIf { it.isNotEmpty() }
+    }.getOrNull()
+
+    private fun writeEtag(context: Context, etag: String?) {
+        runCatching {
+            val file = etagFile(context)
+            if (etag.isNullOrBlank()) file.delete() else writeAtomic(file, etag)
+        }
+    }
+
+    /**
+     * Temp-file + rename publish (rename within one directory is atomic on Android/Linux), with a
+     * delete-and-retry fallback and a direct write as the last resort — a reader never sees a
+     * half-written cache accepted as valid.
+     */
+    private fun writeAtomic(file: File, content: String) {
+        val tmp = File(file.parentFile, "${file.name}.tmp")
+        tmp.writeText(content)
+        if (!tmp.renameTo(file)) {
+            file.delete()
+            if (!tmp.renameTo(file)) {
+                file.writeText(content)
+                tmp.delete()
+            }
+        }
+    }
+
+    private class FetchResult(val body: String?, val etag: String?, val notModified: Boolean)
+
+    /**
+     * Best-effort conditional GET. 2xx => body (capped) + response ETag; 304 => notModified; any
+     * other code or error => null. Never throws.
+     */
+    private fun httpGet(urlStr: String, ifNoneMatch: String?): FetchResult? {
         var conn: HttpURLConnection? = null
         return try {
             conn = (URL(urlStr).openConnection() as HttpURLConnection).apply {
@@ -177,11 +289,16 @@ object RemotePlayerConfig {
                 instanceFollowRedirects = true
                 setRequestProperty("User-Agent", "Aura-Hi-Res-Player")
                 setRequestProperty("Accept", "application/json")
+                if (!ifNoneMatch.isNullOrBlank()) setRequestProperty("If-None-Match", ifNoneMatch)
             }
             val code = conn.responseCode
+            if (code == HttpURLConnection.HTTP_NOT_MODIFIED) {
+                return FetchResult(body = null, etag = ifNoneMatch, notModified = true)
+            }
             if (code !in 200..299) return null
             val body = conn.inputStream.bufferedReader().use { it.readText() }
-            if (body.length > MAX_BODY_BYTES) null else body
+            if (body.length > MAX_BODY_BYTES) null
+            else FetchResult(body = body, etag = conn.getHeaderField("ETag"), notModified = false)
         } catch (e: Exception) {
             null
         } finally {
