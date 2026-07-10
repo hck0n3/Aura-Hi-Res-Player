@@ -238,7 +238,8 @@ class HomeViewModel @Inject constructor(
             keepListening,
             quickPicks
         ) { pinned, keepListening, quick ->
-            val pinnedItems = pinned.map { it.toYTItem() }
+            // Speed Dial must contain ONLY songs — drop any pinned album/artist/playlist entries.
+            val pinnedItems = pinned.mapNotNull { it.toYTItem() as? SongItem }
             val filled = pinnedItems.toMutableList()
             val targetSize = 27
 
@@ -250,20 +251,13 @@ class HomeViewModel @Inject constructor(
                         filled.none { p -> p.id == item.id }
                     }.mapNotNull { item ->
                         when (item) {
+                            // Songs-only: albums/artists are intentionally dropped (else -> null).
                             is Song -> SongItem(
                                 id = item.id,
                                 title = item.title,
                                 artists = item.artists.map { Artist(name = it.name, id = it.id) },
                                 thumbnail = item.thumbnailUrl ?: "",
                                 explicit = false
-                            )
-                            is Album -> AlbumItem(
-                                browseId = item.id,
-                                playlistId = item.album.playlistId ?: "",
-                                title = item.title,
-                                artists = item.artists.map { Artist(name = it.name, id = it.id) },
-                                year = item.album.year,
-                                thumbnail = item.thumbnailUrl ?: ""
                             )
                             else -> null
                         }
@@ -291,7 +285,8 @@ class HomeViewModel @Inject constructor(
                 }
             }
 
-            filled.take(targetSize)
+            // Safety net: nothing non-song can ever reach the Speed Dial shelf.
+            filled.filterIsInstance<SongItem>().take(targetSize)
         }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     // ---- Cross-section dedup (top of the home) -------------------------------------------------
@@ -729,8 +724,13 @@ class HomeViewModel @Inject constructor(
      * (no extra network); each [ReleaseRadarItem] becomes an [AlbumItem] whose tap opens the album page.
      */
     private suspend fun getNewFromArtists() {
+        // Read the already-pruned radar table directly. The weekly wipe/prune in ReleaseRadarWorker
+        // already enforces "this week only", so an extra fetchedAt >= currentWindowStart() filter here
+        // was redundant AND hid a valid drop whenever the last successful fetch landed outside the
+        // current Friday window (once-per-install seed, or a Doze-deferred Friday worker) — the classic
+        // "Release Radar always empty even though I follow artists" bug.
         val releases = runCatching {
-            database.releasesSince(iad1tya.echo.music.releaseradar.ReleaseRadarWorker.currentWindowStart()).first()
+            database.releasesByDateDesc().first()
         }.getOrDefault(emptyList())
         val albums = releases
             .sortedByDescending { it.releaseDate }

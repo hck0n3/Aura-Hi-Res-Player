@@ -353,6 +353,31 @@ class PlayerConnection(
         }
     }
 
+    // ---- MOOD-ACTIVE MODE (feat/0689-home) -------------------------------------------------------
+    // While a Home mood chip is ACTIVE, bias infinite-radio/autoplay toward that mood; clear it
+    // (null, null) on re-tap / back / deactivate. The REAL playback-biasing logic lives in
+    // MusicService.setActiveMood, added by the parallel MusicService-owner branch. On THIS branch that
+    // service method does not exist yet, and MusicService.kt must NOT be edited here (parallel agent owns
+    // it) — so this is a self-contained SEAM that just records the active mood so the Home wiring compiles
+    // and is ready to call.
+    //
+    // >>> MERGE RECONCILE: once MusicService exposes `fun setActiveMood(params: String?, title: String?)`,
+    //     change the body below to a single delegate line: `service.setActiveMood(params, title)`.
+    @Volatile
+    var activeMoodParams: String? = null
+        private set
+
+    @Volatile
+    var activeMoodTitle: String? = null
+        private set
+
+    fun setActiveMood(params: String?, title: String?) {
+        activeMoodParams = params
+        activeMoodTitle = title
+        Timber.tag(TAG).d("setActiveMood(params=$params, title=$title) [seam: pending MusicService.setActiveMood at merge]")
+        // TODO(merge feat/0689-home): service.setActiveMood(params, title)
+    }
+
     fun toggleMute() {
         service.toggleMute()
     }

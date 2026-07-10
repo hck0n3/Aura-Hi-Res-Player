@@ -128,7 +128,13 @@ fun ReleaseRadarScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable {
-                            navController.navigate("album/${item.playId}")
+                            // Open EXACTLY this release by its OWN playId (the AlbumItem/browseId this row
+                            // was built from) so the destination matches the cover shown on the row. Legacy
+                            // rows can carry a blank playId — same guard as the play button below — so we
+                            // never navigate to a broken/generic "album/" route.
+                            if (item.playId.isNotBlank()) {
+                                navController.navigate("album/${item.playId}")
+                            }
                         }
                         .padding(horizontal = 16.dp, vertical = 8.dp),
                 ) {

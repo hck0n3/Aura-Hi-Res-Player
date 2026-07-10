@@ -687,8 +687,23 @@ fun HomeScreen(
 
     if (selectedChip != null) {
         BackHandler {
-            
+
             viewModel.toggleChip(selectedChip)
+        }
+    }
+
+    // MOOD-ACTIVE MODE (feat/0689-home): while a Home mood chip is ACTIVE, bias PLAYBACK (infinite
+    // radio / autoplay) toward that mood; clear the bias whenever no chip is active. Content re-fetch
+    // is already handled in real time by viewModel.toggleChip (it swaps the home sections and restores
+    // on re-tap) — this only adds the playback half. Driven by selectedChip, the single source of truth
+    // toggleChip mutates, so ONE reactive hook covers the activate path AND every deactivate path
+    // (re-tap, the BackHandler above, toggleChip(null), and switching directly to another chip).
+    LaunchedEffect(selectedChip) {
+        val chip = selectedChip
+        if (chip != null) {
+            playerConnection.setActiveMood(params = chip.endpoint?.params, title = chip.title)
+        } else {
+            playerConnection.setActiveMood(null, null)
         }
     }
 
