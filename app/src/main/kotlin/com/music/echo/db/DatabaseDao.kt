@@ -295,6 +295,23 @@ interface DatabaseDao {
     )
     fun quickPicks(now: Long = System.currentTimeMillis()): Flow<List<Song>>
 
+    // Home "Reproducido recientemente": distinct songs ordered by their MOST RECENT play event
+    // (chronological history, no play-count weighting). event.id is the autoincrement PK, so
+    // MAX(id) per songId == the latest listen. SELECT-only — no schema change.
+    @Transaction
+    @Query(
+        """
+        SELECT song.*
+        FROM song
+                 JOIN (SELECT songId, MAX(id) AS lastEventId
+                       FROM event
+                       GROUP BY songId) recent ON song.id = recent.songId
+        ORDER BY recent.lastEventId DESC
+        LIMIT :limit
+    """,
+    )
+    fun recentlyPlayedSongs(limit: Int = 15): Flow<List<Song>>
+
     @Transaction
     @Query(
         """

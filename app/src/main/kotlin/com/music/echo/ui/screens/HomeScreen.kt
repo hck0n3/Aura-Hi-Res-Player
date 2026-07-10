@@ -180,8 +180,13 @@ import iad1tya.echo.music.viewmodels.DailyDiscoverItem
 sealed class HomeSection(val id: String, val baseWeight: Int) {
     data object SpeedDial : HomeSection("speed_dial", 100)
     data object QuickPicks : HomeSection("quick_picks", 90)
-    data object DailyDiscover : HomeSection("daily_discover", 80)
+    // "Mix diario N": the old single DailyDiscover carousel split into up to 3 per-seed mixes.
+    data class DailyMix(val index: Int) : HomeSection("daily_mix_$index", 80)
+    // "Mix de la mañana/tarde/noche": light local row, near QuickPicks.
+    data object TimeOfDayMix : HomeSection("time_of_day_mix", 85)
     data object NewFromArtists : HomeSection("new_from_artists", 65)
+    // "Nuevos lanzamientos": explorePage.newReleaseAlbums (previously fetched but never rendered).
+    data object NewReleases : HomeSection("new_releases", 60)
     data object GenreMix : HomeSection("genre_mix", 45)
     data object KeepListening : HomeSection("keep_listening", 50)
     data object AccountPlaylists : HomeSection("account_playlists", 40)
@@ -578,14 +583,19 @@ fun HomeScreen(
     val isPlaying by playerConnection.isEffectivelyPlaying.collectAsState()
     val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
 
-    val quickPicks by viewModel.quickPicks.collectAsState()
+    // quickPicks / keepListening are collected from the DEDUPED display flows: the raw flows still feed
+    // SpeedDial's backfill, but what the home shows no longer repeats SpeedDial's visible covers.
+    val quickPicks by viewModel.quickPicksDisplay.collectAsState()
     val forgottenFavorites by viewModel.forgottenFavorites.collectAsState()
-    val keepListening by viewModel.keepListening.collectAsState()
+    val keepListening by viewModel.keepListeningDisplay.collectAsState()
     val similarRecommendations by viewModel.similarRecommendations.collectAsState()
     val accountPlaylists by viewModel.accountPlaylists.collectAsState()
     val homePage by viewModel.homePage.collectAsState()
     val explorePage by viewModel.explorePage.collectAsState()
-    val dailyDiscover by viewModel.dailyDiscover.collectAsState()
+    val dailyMixes by viewModel.dailyMixes.collectAsState()
+    val recentlyPlayed by viewModel.recentlyPlayed.collectAsState()
+    // Deduped display flow: the raw mix pool overlaps QuickPicks/SpeedDial (see HomeViewModel).
+    val timeOfDayMix by viewModel.timeOfDayMixDisplay.collectAsState()
     val communityPlaylists by viewModel.communityPlaylists.collectAsState()
     val newFromArtists by viewModel.newFromArtists.collectAsState()
     val genreMix by viewModel.genreMix.collectAsState()
@@ -615,7 +625,9 @@ fun HomeScreen(
     val accountName by viewModel.accountName.collectAsState()
     val accountImageUrl by viewModel.accountImageUrl.collectAsState()
     val innerTubeCookie by rememberPreference(InnerTubeCookieKey, "")
-    val (randomizeHomeOrder) = rememberPreference(RandomizeHomeOrderKey, true)
+    // Fixed logical order is the DEFAULT (false); users who explicitly enabled randomization keep it
+    // (the stored preference wins — only the unset default changed). Matches ContentSettings' default.
+    val (randomizeHomeOrder) = rememberPreference(RandomizeHomeOrderKey, false)
     val (showSpeedDial) = rememberPreference(ShowSpeedDialKey, true)
     val (tasteOnlyHome) = rememberPreference(HomeTasteOnlyKey, true)
     val (homeRichLayout) = rememberPreference(HomeRichLayoutKey, true)
@@ -828,7 +840,8 @@ fun HomeScreen(
         tasteOnlyHome,
         speedDialItems,
         quickPicks,
-        dailyDiscover,
+        dailyMixes,
+        timeOfDayMix,
         keepListening,
         accountPlaylists,
         forgottenFavorites,
@@ -838,18 +851,27 @@ fun HomeScreen(
         similarRecommendations,
         homePage?.sections,
         explorePage?.moodAndGenres,
+        explorePage?.newReleaseAlbums,
         perfOn
     ) {
         val list = mutableListOf<HomeSection>()
 
         if (showSpeedDial && speedDialItems.isNotEmpty()) list.add(HomeSection.SpeedDial)
         if (quickPicks?.isNotEmpty() == true) list.add(HomeSection.QuickPicks)
+        // "Mix de la mañana/tarde/noche" — light local row, only when there's enough history.
+        if (timeOfDayMix?.songs?.isNotEmpty() == true) list.add(HomeSection.TimeOfDayMix)
         // "From the community" is generic (not the user's taste) — hidden in taste-only mode.
         if (!tasteOnlyHome && communityPlaylists?.isNotEmpty() == true) list.add(HomeSection.FromTheCommunity)
-        if (dailyDiscover?.isNotEmpty() == true) list.add(HomeSection.DailyDiscover)
+        // Up to 3 "Mix diario N" shelves, one per seed.
+        dailyMixes?.take(3)?.forEachIndexed { i, mix ->
+            if (mix.items.isNotEmpty()) list.add(HomeSection.DailyMix(i))
+        }
         // "Novedades de tus artistas" IS the user's taste (releases from artists they follow/play) — shown
         // even in taste-only mode (no tasteOnlyHome guard).
         if (newFromArtists?.isNotEmpty() == true) list.add(HomeSection.NewFromArtists)
+        // "Nuevos lanzamientos": the explore feed's new-release albums (generic-ish but musical news) —
+        // only when non-empty; gated off in perf mode below (heavy carousel).
+        if (explorePage?.newReleaseAlbums?.isNotEmpty() == true) list.add(HomeSection.NewReleases)
         if (keepListening?.isNotEmpty() == true) list.add(HomeSection.KeepListening)
         if (accountPlaylists?.isNotEmpty() == true) list.add(HomeSection.AccountPlaylists)
         if (forgottenFavorites?.isNotEmpty() == true) list.add(HomeSection.ForgottenFavorites)
@@ -890,49 +912,61 @@ fun HomeScreen(
                     HomeSection.QuickPicks -> 10000
                     HomeSection.SpeedDial,
                     HomeSection.NewFromArtists,
-                    HomeSection.DailyDiscover -> 500
+                    is HomeSection.DailyMix -> 500
 
+                    HomeSection.TimeOfDayMix,
                     HomeSection.KeepListening,
                     HomeSection.AccountPlaylists,
                     HomeSection.ForgottenFavorites,
                     HomeSection.GenreMix,
+                    HomeSection.NewReleases,
                     HomeSection.FromTheCommunity -> 300
 
-                    else -> 100 
+                    else -> 100
                 }
 
                 val modifier = when (section) {
-                    
-                    
+
+
                     HomeSection.QuickPicks -> 0
                     HomeSection.SpeedDial,
-                    HomeSection.NewFromArtists,
-                    HomeSection.DailyDiscover -> sectionRandom.nextInt(-200, 400)
+                    HomeSection.NewFromArtists -> sectionRandom.nextInt(-200, 400)
 
-                    
-                    
-                    
+                    // The up-to-3 "Mix diario N" shelves shuffle as ONE group: a single shared weight
+                    // seeded by the group key (per-section ids "daily_mix_N" gave each mix an
+                    // independent weight, rendering them out of order / interleaved), tie-broken by
+                    // index so 1/2/3 stay contiguous and in order wherever the group lands.
+                    is HomeSection.DailyMix ->
+                        Random(randomSeed + "daily_mix".hashCode()).nextInt(-200, 400) - section.index
+
+
+
+
+                    HomeSection.TimeOfDayMix,
                     HomeSection.KeepListening,
                     HomeSection.AccountPlaylists,
                     HomeSection.ForgottenFavorites,
                     HomeSection.GenreMix,
+                    HomeSection.NewReleases,
                     HomeSection.FromTheCommunity -> sectionRandom.nextInt(-100, 400)
 
-                    
+
                     else -> sectionRandom.nextInt(-50, 50)
                 }
                 base + modifier
             }
         } else {
-            // Logical reading order: quick access -> for you -> continue -> discover -> your library
-            // -> re-engage -> more like X. Keeping "Seguir escuchando" (a light row) between QuickPicks
-            // (hero) and "Daily Discover" (big carousel) means the two heavy carousels are never adjacent.
-            val defaultOrder = mapOf(
+            // Logical reading order (the stable default): quick access -> for you -> time-of-day mix
+            // (light row) -> daily mixes -> new from your artists -> new releases -> continue -> your
+            // library -> re-engage -> more like X. The light TimeOfDayMix row sits between the QuickPicks
+            // hero and the "Mix diario" carousels so heavy carousels are never adjacent.
+            val defaultOrder = mapOf<HomeSection, Int>(
                 HomeSection.SpeedDial to 1000,
                 HomeSection.QuickPicks to 900,
-                HomeSection.KeepListening to 800,
-                HomeSection.DailyDiscover to 700,
+                HomeSection.TimeOfDayMix to 850,
                 HomeSection.NewFromArtists to 650,
+                HomeSection.NewReleases to 620,
+                HomeSection.KeepListening to 610,
                 HomeSection.AccountPlaylists to 600,
                 HomeSection.ForgottenFavorites to 500,
                 HomeSection.GenreMix to 480,
@@ -942,6 +976,7 @@ fun HomeScreen(
 
             list.sortedByDescending { section ->
                 when(section) {
+                    is HomeSection.DailyMix -> 700 - section.index
                     is HomeSection.SimilarRecommendation -> 400 - section.index
                     is HomeSection.HomePageSection -> 200 - section.index
                     else -> defaultOrder[section] ?: 0
@@ -950,13 +985,15 @@ fun HomeScreen(
         }
 
         // Perf mode (ULTRA): cap the home to a few light shelves so a weak / TV / car GPU doesn't choke
-        // scrolling a long tail of carousels. Keep the two taste carousels that already have dedicated
-        // light LazyRow paths (QuickPicks + DailyDiscover) plus the cheap SpeedDial tiles; drop the rest.
+        // scrolling a long tail of carousels. Keep the taste shelves that have dedicated light LazyRow
+        // paths (QuickPicks + the FIRST daily mix — matching the old DailyDiscover gating) plus the cheap
+        // SpeedDial tiles and the light TimeOfDayMix row; drop the rest (incl. the NewReleases carousel).
         if (perfOn) {
             listOfNotNull(
                 ordered.firstOrNull { it == HomeSection.SpeedDial },
                 ordered.firstOrNull { it == HomeSection.QuickPicks },
-                ordered.firstOrNull { it == HomeSection.DailyDiscover },
+                ordered.firstOrNull { it == HomeSection.TimeOfDayMix },
+                ordered.firstOrNull { it is HomeSection.DailyMix && it.index == 0 },
             )
         } else {
             ordered
@@ -1033,7 +1070,7 @@ fun HomeScreen(
                     item(key = "home_pinned_podcasts") {
                         Column {
                             Text(
-                                text = "Tus podcasts",
+                                text = stringResource(R.string.home_your_podcasts),
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
                                 modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 8.dp),
@@ -1064,6 +1101,80 @@ fun HomeScreen(
                                             overflow = TextOverflow.Ellipsis,
                                         )
                                     }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // "Reproducido recientemente": compact chronological history row, pinned right after the
+                // chips/podcasts and BEFORE SpeedDial (outside homeSections so neither randomization nor
+                // perf mode moves/drops it — it's a light row, fine on weak GPUs).
+                recentlyPlayed?.takeIf { it.isNotEmpty() }?.let { recentSongs ->
+                    item(key = "recently_played_title") {
+                        val recentTitle = stringResource(R.string.home_recently_played)
+                        NavigationTitle(
+                            title = recentTitle,
+                            onPlayAllClick = {
+                                val items = recentSongs.map { it.toMediaMetadata().toMediaItem() }
+                                if (items.isNotEmpty()) {
+                                    playerConnection.playQueue(
+                                        ListQueue(title = recentTitle, items = items)
+                                    )
+                                }
+                            },
+                            modifier = Modifier.animateItem()
+                        )
+                    }
+                    item(key = "recently_played_list") {
+                        val isTvRecent = iad1tya.echo.music.ui.utils.rememberIsTvOrCar()
+                        LazyRow(
+                            contentPadding = PaddingValues(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.animateItem().tvFocusRestorer(),
+                        ) {
+                            items(recentSongs.distinctBy { it.id }, key = { it.id }) { song ->
+                                Column(
+                                    modifier = Modifier.width(96.dp),
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(96.dp)
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .tvFocusable(isTvRecent, RoundedCornerShape(10.dp))
+                                            .combinedClickable(
+                                                onClick = {
+                                                    // Mirror QuickPicks: tap = play (or toggle if it's current).
+                                                    if (song.id == mediaMetadata?.id) playerConnection.togglePlayPause()
+                                                    else playerConnection.playQueue(YouTubeQueue.radio(song.toMediaMetadata()))
+                                                },
+                                                onLongClick = {
+                                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                    menuState.show {
+                                                        SongMenu(
+                                                            originalSong = song,
+                                                            navController = navController,
+                                                            onDismiss = menuState::dismiss,
+                                                        )
+                                                    }
+                                                },
+                                            ),
+                                    ) {
+                                        AsyncImage(
+                                            // Compact row: decode a small thumbnail, not the full-res cover.
+                                            model = song.song.thumbnailUrl?.resize(256, 256),
+                                            contentDescription = null,
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier.fillMaxSize(),
+                                        )
+                                    }
+                                    Spacer(Modifier.height(4.dp))
+                                    Text(
+                                        text = song.title,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
                                 }
                             }
                         }
@@ -1277,13 +1388,14 @@ fun HomeScreen(
                             quickPicks?.takeIf { it.isNotEmpty() }?.let { quickPicks ->
 
                                 item(key = "quick_picks_title") {
+                                    val forYouTitle = stringResource(R.string.home_for_you)
                                     NavigationTitle(
-                                        title = "Para ti",
+                                        title = forYouTitle,
                                         onPlayAllClick = {
                                             val items = quickPicks.map { it.toMediaMetadata().toMediaItem() }
                                             if (items.isNotEmpty()) {
                                                 playerConnection.playQueue(
-                                                    ListQueue(title = "Para ti", items = items)
+                                                    ListQueue(title = forYouTitle, items = items)
                                                 )
                                             }
                                         },
@@ -1486,13 +1598,19 @@ fun HomeScreen(
                                 }
                             }
                         }
-                        HomeSection.DailyDiscover -> {
-                            // Perf mode: skip the experimental multi-browse carousel + its 1200px images.
-                            dailyDiscover?.takeIf { it.isNotEmpty() }?.let { discoverList ->
-                                
-                                item(key = "daily_discover_title") {
-                                    val title = stringResource(R.string.your_daily_discover)
+                        is HomeSection.DailyMix -> {
+                            // Perf mode: only the FIRST mix survives the gate above, rendered via the light path.
+                            dailyMixes?.getOrNull(section.index)?.takeIf { it.items.isNotEmpty() }?.let { mix ->
+                                val discoverList = mix.items
+
+                                item(key = "daily_mix_title_${section.index}") {
+                                    val title = stringResource(R.string.home_daily_mix, section.index + 1)
                                     NavigationTitle(
+                                        // Each mix keeps its own "Porque escuchas X" line as the header label.
+                                        label = stringResource(
+                                            R.string.daily_discover_because_you_listen_to,
+                                            "${mix.seed.title} • ${mix.seed.artists.joinToString(", ") { it.name }}"
+                                        ),
                                         title = title,
                                         onPlayAllClick = {
                                             val queueItems = discoverList.mapNotNull {
@@ -1510,7 +1628,7 @@ fun HomeScreen(
                                         }
                                     )
                                 }
-                                if (perfOn) item(key = "daily_discover_content_light") {
+                                if (perfOn) item(key = "daily_mix_content_light_${section.index}") {
                                     // Perf mode: same daily-mix recommendations as a plain LazyRow of cover cards.
                                     val isTvLight = iad1tya.echo.music.ui.utils.rememberIsTvOrCar()
                                     LazyRow(
@@ -1543,7 +1661,7 @@ fun HomeScreen(
                                             }
                                         }
                                     }
-                                } else item(key = "daily_discover_content") {
+                                } else item(key = "daily_mix_content_${section.index}") {
                                     BoxWithConstraints(
                                         modifier = Modifier
                                             .fillMaxWidth()
@@ -1762,6 +1880,79 @@ fun HomeScreen(
                                             key = { it.id },
                                         ) { item ->
                                             ytGridItem(item, richCardHeight)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        HomeSection.NewReleases -> {
+                            // "Nuevos lanzamientos": the explore feed's new-release albums — fetched since
+                            // forever but never rendered. Reuses the existing new_release_albums string and
+                            // the album grid card. Perf mode never reaches here (gated out above).
+                            explorePage?.newReleaseAlbums?.takeIf { it.isNotEmpty() }?.let { newReleaseAlbums ->
+                                item(key = "new_releases_title") {
+                                    NavigationTitle(
+                                        title = stringResource(R.string.new_release_albums),
+                                        modifier = Modifier.animateItem()
+                                    )
+                                }
+                                item(key = "new_releases_list") {
+                                    LazyRow(
+                                        contentPadding = WindowInsets.systemBars
+                                            .only(WindowInsetsSides.Horizontal)
+                                            .asPaddingValues(),
+                                        modifier = Modifier.animateItem().tvFocusRestorer()
+                                    ) {
+                                        items(
+                                            items = newReleaseAlbums.distinctBy { it.id },
+                                            key = { it.id },
+                                        ) { item ->
+                                            ytGridItem(item, richCardHeight)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        HomeSection.TimeOfDayMix -> {
+                            // "Mix de la mañana/tarde/noche": light local row (same pattern as GenreMix) —
+                            // stays visible in perf mode.
+                            timeOfDayMix?.takeIf { it.songs.isNotEmpty() }?.let { mix ->
+                                item(key = "time_of_day_mix_title") {
+                                    val mixTitle = stringResource(
+                                        when (mix.bucket) {
+                                            0 -> R.string.home_mix_morning
+                                            1 -> R.string.home_mix_afternoon
+                                            else -> R.string.home_mix_night
+                                        }
+                                    )
+                                    NavigationTitle(
+                                        title = mixTitle,
+                                        modifier = Modifier.animateItem(),
+                                        onPlayAllClick = {
+                                            val items = mix.songs.distinctBy { it.id }
+                                                .map { it.toMediaMetadata().toMediaItem() }
+                                            if (items.isNotEmpty()) {
+                                                playerConnection.playQueue(
+                                                    ListQueue(title = mixTitle, items = items)
+                                                )
+                                            }
+                                        }
+                                    )
+                                }
+                                item(key = "time_of_day_mix_list") {
+                                    LazyRow(
+                                        contentPadding = WindowInsets.systemBars
+                                            .only(WindowInsetsSides.Horizontal)
+                                            .asPaddingValues(),
+                                        modifier = Modifier.animateItem().tvFocusRestorer()
+                                    ) {
+                                        items(
+                                            items = mix.songs.distinctBy { it.id },
+                                            key = { it.id },
+                                        ) { song ->
+                                            Box(modifier = Modifier.width(GridThumbnailHeight)) {
+                                                localGridItem(song)
+                                            }
                                         }
                                     }
                                 }
@@ -2214,20 +2405,20 @@ fun HomeScreen(
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
-                            text = "Parece que no tienes conexión a internet.",
+                            text = stringResource(R.string.home_offline_no_internet),
                             style = MaterialTheme.typography.titleMedium,
                             textAlign = TextAlign.Center,
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "Puedes seguir escuchando tu música descargada sin conexión.",
+                            text = stringResource(R.string.home_offline_downloads_hint),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.Center,
                         )
                         Spacer(modifier = Modifier.height(16.dp))
                         Button(onClick = { offlineMode = true }) {
-                            Text("Continuar sin conexión")
+                            Text(stringResource(R.string.home_offline_continue))
                         }
                     }
                 }

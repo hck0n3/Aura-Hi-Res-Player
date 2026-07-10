@@ -28,6 +28,7 @@ import iad1tya.echo.music.constants.InnerTubeCookieKey
 import iad1tya.echo.music.constants.OnboardingArtistsDoneKey
 import iad1tya.echo.music.constants.QuickPicks
 import iad1tya.echo.music.constants.QuickPicksKey
+import iad1tya.echo.music.constants.ShowSpeedDialKey
 import iad1tya.echo.music.db.MusicDatabase
 import iad1tya.echo.music.db.entities.Album
 import iad1tya.echo.music.db.entities.LocalItem
@@ -71,6 +72,18 @@ data class DailyDiscoverItem(
     val relatedEndpoint: BrowseEndpoint?
 )
 
+/** One "Mix diario N" shelf: a single seed song and its taste-picked related recommendations. */
+data class DailyMix(
+    val seed: Song,
+    val items: List<DailyDiscoverItem>
+)
+
+/** "Mix de la mañana / tarde / noche": bucket 0 = morning (5-11h), 1 = afternoon (12-18h), 2 = night. */
+data class TimeOfDayMix(
+    val bucket: Int,
+    val songs: List<Song>
+)
+
 data class CommunityPlaylistItem(
     val playlist: PlaylistItem,
     val songs: List<SongItem>
@@ -96,7 +109,13 @@ class HomeViewModel @Inject constructor(
     }.distinctUntilChanged()
 
     val quickPicks = MutableStateFlow<List<Song>?>(null)
-    val dailyDiscover = MutableStateFlow<List<DailyDiscoverItem>?>(null)
+    // "Mix diario N" (up to 3): the old single Daily Discover carousel split into one shelf per seed,
+    // each keeping its own "Porque escuchas X" line. Same network calls (next+related per seed).
+    val dailyMixes = MutableStateFlow<List<DailyMix>?>(null)
+    // "Reproducido recientemente": strict chronological history (most recent listen first).
+    val recentlyPlayed = MutableStateFlow<List<Song>?>(null)
+    // "Mix de la mañana/tarde/noche": taste pool reshuffled with a time-bucket-stable seed. No network.
+    val timeOfDayMix = MutableStateFlow<TimeOfDayMix?>(null)
     val forgottenFavorites = MutableStateFlow<List<Song>?>(null)
     val keepListening = MutableStateFlow<List<LocalItem>?>(null)
     val similarRecommendations = MutableStateFlow<List<SimilarRecommendation>?>(null)
@@ -275,6 +294,58 @@ class HomeViewModel @Inject constructor(
             filled.take(targetSize)
         }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
+    // ---- Cross-section dedup (top of the home) -------------------------------------------------
+    // SpeedDial back-fills its tiles FROM keepListening + quickPicks, so without this the very same
+    // covers appeared 3 times in the first screenful. The RAW flows (quickPicks / keepListening) are
+    // left untouched — SpeedDial's backfill and getRandomItem still see everything; only what the
+    // Home DISPLAYS is filtered, cheaply, with id Sets.
+
+    private val showSpeedDialFlow = context.dataStore.data
+        .map { it[ShowSpeedDialKey] ?: true }
+        .distinctUntilChanged()
+
+    /** Ids on SpeedDial's first pager page (~the tiles actually visible without swiping). Empty when
+     *  the SpeedDial shelf is disabled, so nothing is deduped against a hidden section. */
+    private val speedDialVisibleIds: StateFlow<Set<String>> =
+        combine(speedDialItems, showSpeedDialFlow) { items, shown ->
+            if (!shown) emptySet()
+            else items.take(SPEED_DIAL_VISIBLE_TILES).map { it.id }.toSet()
+        }.stateIn(viewModelScope, SharingStarted.Lazily, emptySet())
+
+    /** QuickPicks as displayed: excludes songs already visible on SpeedDial. Never empties a populated
+     *  shelf — if dedup would remove everything, the original list is shown instead. */
+    val quickPicksDisplay: StateFlow<List<Song>?> =
+        combine(quickPicks, speedDialVisibleIds) { picks, sdIds ->
+            if (picks == null || sdIds.isEmpty()) picks
+            else picks.filterNot { it.id in sdIds }.ifEmpty { picks }
+        }.stateIn(viewModelScope, SharingStarted.Lazily, null)
+
+    /** KeepListening as displayed: excludes SpeedDial's visible tiles ∪ the QuickPicks head. */
+    val keepListeningDisplay: StateFlow<List<LocalItem>?> =
+        combine(keepListening, speedDialVisibleIds, quickPicksDisplay) { keep, sdIds, picks ->
+            if (keep == null) null
+            else {
+                val shownAbove = sdIds + picks.orEmpty().take(10).map { it.id }
+                if (shownAbove.isEmpty()) keep
+                else keep.filterNot { it.id in shownAbove }.ifEmpty { keep }
+            }
+        }.stateIn(viewModelScope, SharingStarted.Lazily, null)
+
+    /** TimeOfDayMix as displayed: its pool IS quickPicks + forgottenFavorites + keepListening, and the
+     *  shelf renders right under QuickPicks, so the raw mix duplicated the first screenful (worst in
+     *  perf mode, where it's 1 of only 4 shelves). Same pattern + ifEmpty guard as above: excludes
+     *  SpeedDial's visible tiles ∪ the QuickPicks head; total overlap shows the original mix instead
+     *  of emptying the shelf. */
+    val timeOfDayMixDisplay: StateFlow<TimeOfDayMix?> =
+        combine(timeOfDayMix, speedDialVisibleIds, quickPicksDisplay) { mix, sdIds, picks ->
+            if (mix == null) null
+            else {
+                val shownAbove = sdIds + picks.orEmpty().take(10).map { it.id }
+                if (shownAbove.isEmpty()) mix
+                else mix.copy(songs = mix.songs.filterNot { it.id in shownAbove }.ifEmpty { mix.songs })
+            }
+        }.stateIn(viewModelScope, SharingStarted.Lazily, null)
+
     suspend fun getRandomItem(): YTItem? {
         try {
             isRandomizing.value = true
@@ -353,20 +424,24 @@ class HomeViewModel @Inject constructor(
     
     private var isProcessingAccountData = false
 
-    private suspend fun getDailyDiscover() {
+    /**
+     * "Mix diario 1..3" — the old single Daily Discover carousel split into up to 3 per-seed mixes.
+     * Same network shape as before (one next+related fetch per seed, now 3 seeds instead of 5); each
+     * mix takes its seed's top taste-ranked related songs instead of collapsing every seed into one row.
+     */
+    private suspend fun getDailyMixes() {
         val hideVideoSongs = context.dataStore.get(HideVideoSongsKey, false)
         val likedSongs = database.likedSongsByCreateDateAsc().first()
-        // Cold-start: a heavy listener who never taps "like" would otherwise get an EMPTY Daily Discover.
+        // Cold-start: a heavy listener who never taps "like" would otherwise get EMPTY daily mixes.
         // Fall back to their most-played songs (all-time) as seeds so discovery still works from real habits.
         val seedPool = likedSongs.ifEmpty {
             runCatching { database.mostPlayedSongs(0L, limit = 20).first() }.getOrDefault(emptyList())
         }
         if (seedPool.isEmpty()) return
 
-        val seeds = seedPool.distinctBy { it.id }.rankedByTaste().take(5)
+        val seeds = seedPool.distinctBy { it.id }.rankedByTaste().take(3)
 
-        
-        val items = java.util.Collections.synchronizedList(mutableListOf<DailyDiscoverItem>())
+        val mixes = java.util.Collections.synchronizedList(mutableListOf<DailyMix>())
 
         kotlinx.coroutines.coroutineScope {
             seeds.map { seed ->
@@ -381,21 +456,20 @@ class HomeViewModel @Inject constructor(
                                     true
                                 }
 
-                            // Pick the related song that best fits your taste (with a little jitter for
-                            // variety) instead of a random one.
+                            // Keep the related songs that best fit your taste (with a little jitter for
+                            // variety). Precompute the key once per item (rnd inside the comparator
+                            // would crash TimSort).
                             val rndPick = java.util.Random()
-                            val recommendation = recommendations
+                            val picks = recommendations
                                 .filter { it.id != seed.id }
-                                .maxByOrNull { tasteScoreYt(it) + rndPick.nextDouble() * 0.15 }
+                                .distinctBy { it.id }
+                                .map { it to (tasteScoreYt(it) + rndPick.nextDouble() * 0.15) }
+                                .sortedByDescending { it.second }
+                                .take(5)
+                                .map { DailyDiscoverItem(seed = seed, recommendation = it.first, relatedEndpoint = endpoint) }
 
-                            if (recommendation != null) {
-                                items.add(
-                                    DailyDiscoverItem(
-                                        seed = seed,
-                                        recommendation = recommendation,
-                                        relatedEndpoint = endpoint
-                                    )
-                                )
+                            if (picks.isNotEmpty()) {
+                                mixes.add(DailyMix(seed = seed, items = picks))
                             }
                         }
                     }
@@ -403,13 +477,16 @@ class HomeViewModel @Inject constructor(
             }.forEach { it.join() }
         }
 
-        
-        val rnd = java.util.Random()
-        // Precompute the key once per item (rnd inside the comparator would crash TimSort).
-        dailyDiscover.value = items.toList().distinctBy { it.recommendation.id }
-            .map { it to (tasteScoreYt(it.recommendation) + rnd.nextDouble() * 0.2) }
-            .sortedByDescending { it.second }
-            .map { it.first }
+        // Keep the taste-ranked seed order, and dedup ACROSS mixes so the same recommendation never
+        // shows in two "Mix diario" shelves. Never wipe a populated shelf on a transient empty result.
+        val seen = HashSet<String>()
+        val ordered = seeds
+            .mapNotNull { s -> mixes.firstOrNull { it.seed.id == s.id } }
+            .mapNotNull { mix ->
+                val items = mix.items.filter { seen.add(it.recommendation.id) }
+                if (items.isEmpty()) null else mix.copy(items = items)
+            }
+        if (ordered.isNotEmpty() || dailyMixes.value == null) dailyMixes.value = ordered
     }
 
     private suspend fun getQuickPicks() {
@@ -546,6 +623,16 @@ class HomeViewModel @Inject constructor(
 
         getQuickPicks()
 
+        // "Reproducido recientemente": pure chronological history (latest listen first), one bounded
+        // SELECT. Over-fetch then trim so hideVideoSongs filters BEFORE the shelf cap (filtering after
+        // a LIMIT 15 shrank/hid the shelf on video-heavy history). Same empty-guard as every shelf: a
+        // transient empty read must not wipe a populated row.
+        val newRecentlyPlayed = runCatching { database.recentlyPlayedSongs(40).first() }
+            .getOrDefault(emptyList())
+            .filterVideoSongs(hideVideoSongs)
+            .take(15)
+        if (newRecentlyPlayed.isNotEmpty() || recentlyPlayed.value == null) recentlyPlayed.value = newRecentlyPlayed
+
         val newForgotten = database.forgottenFavorites().first()
             .filterVideoSongs(hideVideoSongs).rankedByTaste().take(20)
         if (newForgotten.isNotEmpty() || forgottenFavorites.value == null) forgottenFavorites.value = newForgotten
@@ -563,9 +650,39 @@ class HomeViewModel @Inject constructor(
 
         allLocalItems.value = (quickPicks.value.orEmpty() + forgottenFavorites.value.orEmpty() + keepListening.value.orEmpty())
             .filter { it is Song || it is Album }
+
+        // "Mix de la mañana/tarde/noche": in-memory only (reuses the shelves loaded above). Computed once
+        // per load/refresh — NO clock polling, NO background work (heat/battery rule). The mix is stable
+        // within a time bucket + day (seeded shuffle) and changes between buckets/days on the next load.
+        buildTimeOfDayMix()
         // NOTE: the new taste shelves (getNewFromArtists / getGenreMix) are intentionally NOT called here.
         // They run isolated + guarded in load() so a failure in them can never abort this phase and, worse,
         // skip the network phase that loads the "Similar/Community/Daily Discover/YouTube" carousels.
+    }
+
+    /**
+     * "Mix de la mañana / de la tarde / de la noche" — a LIGHT shelf built from the taste-ranked local
+     * pool the home already computed (quick picks + forgotten favorites + keep-listening songs). No new
+     * queries, no network: just a seeded reshuffle where seed = dayOfYear*10 + timeBucket, so the mix is
+     * stable within a bucket (morning 5-11h / afternoon 12-18h / night otherwise) and rotates between them.
+     */
+    private fun buildTimeOfDayMix() {
+        val pool = (quickPicks.value.orEmpty() +
+            forgottenFavorites.value.orEmpty() +
+            keepListening.value.orEmpty().filterIsInstance<Song>())
+            .distinctBy { it.id }
+        if (pool.size < 4) return // too little history for a meaningful mix — shelf stays hidden
+        val hour = java.time.LocalTime.now().hour
+        val bucket = when (hour) {
+            in 5..11 -> 0  // morning
+            in 12..18 -> 1 // afternoon
+            else -> 2      // night
+        }
+        val seed = (LocalDate.now().dayOfYear * 10 + bucket).toLong()
+        timeOfDayMix.value = TimeOfDayMix(
+            bucket = bucket,
+            songs = pool.shuffled(Random(seed)).take(12),
+        )
     }
 
     /**
@@ -780,7 +897,7 @@ class HomeViewModel @Inject constructor(
         // shown, the rest is cancelled and the refresh spinner clears.
         withTimeoutOrNull(25_000) {
         coroutineScope {
-            launch(Dispatchers.IO) { getDailyDiscover() }
+            launch(Dispatchers.IO) { getDailyMixes() }
             launch(Dispatchers.IO) { getCommunityPlaylists() }
             launch(Dispatchers.IO) { loadSimilarRecommendations() }
             launch(Dispatchers.IO) {
@@ -837,7 +954,9 @@ class HomeViewModel @Inject constructor(
     private fun saveSnapshot() {
         snapshot = HomeSnapshot(
             quickPicks = quickPicks.value,
-            dailyDiscover = dailyDiscover.value,
+            dailyMixes = dailyMixes.value,
+            recentlyPlayed = recentlyPlayed.value,
+            timeOfDayMix = timeOfDayMix.value,
             forgottenFavorites = forgottenFavorites.value,
             keepListening = keepListening.value,
             similarRecommendations = similarRecommendations.value,
@@ -853,6 +972,10 @@ class HomeViewModel @Inject constructor(
     }
 
     companion object {
+        // How many SpeedDial tiles count as "visible" (≈ the first pager page on a phone) for the
+        // cross-section dedup above — cheap approximation, layout-independent.
+        private const val SPEED_DIAL_VISIBLE_TILES = 12
+
         // Process-level snapshot of the loaded home. A recreated ViewModel (returning to the Home tab
         // or resuming the app from the background) restores from this INSTANTLY and does NOT auto-reload
         // — after that, refreshing is manual (pull to refresh). Only a cold app start (fresh process =
@@ -862,7 +985,9 @@ class HomeViewModel @Inject constructor(
 
         private class HomeSnapshot(
             val quickPicks: List<Song>?,
-            val dailyDiscover: List<DailyDiscoverItem>?,
+            val dailyMixes: List<DailyMix>?,
+            val recentlyPlayed: List<Song>?,
+            val timeOfDayMix: TimeOfDayMix?,
             val forgottenFavorites: List<Song>?,
             val keepListening: List<LocalItem>?,
             val similarRecommendations: List<SimilarRecommendation>?,
@@ -966,7 +1091,9 @@ class HomeViewModel @Inject constructor(
             // Returning to Home / resuming the app: restore the already-loaded home instantly and DON'T
             // auto-reload (the user refreshes manually). Only a cold app start loads from scratch.
             quickPicks.value = restored.quickPicks
-            dailyDiscover.value = restored.dailyDiscover
+            dailyMixes.value = restored.dailyMixes
+            recentlyPlayed.value = restored.recentlyPlayed
+            timeOfDayMix.value = restored.timeOfDayMix
             forgottenFavorites.value = restored.forgottenFavorites
             keepListening.value = restored.keepListening
             similarRecommendations.value = restored.similarRecommendations
@@ -978,6 +1105,11 @@ class HomeViewModel @Inject constructor(
             genreMix.value = restored.genreMix
             allLocalItems.value = restored.allLocalItems
             allYtItems.value = restored.allYtItems
+            // The snapshot can carry a stale time-of-day bucket ("Mix de la mañana" restored at 22:00
+            // and kept indefinitely, since restore skips the auto-reload). Recompute bucket + seed for
+            // the current hour/day from the pools just restored above — pure in-memory reshuffle, no
+            // queries/network. If the restored pool is too small, the guard inside keeps the old mix.
+            buildTimeOfDayMix()
         } else {
             viewModelScope.launch(Dispatchers.IO) {
                 context.dataStore.data
