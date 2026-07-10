@@ -154,12 +154,44 @@ class SuggestionsViewModel @Inject constructor(
         }
     }
 
+    /** Normalize a title/artist for matching. Suggestion sources (Apple charts) use typographic
+     *  punctuation — curly ’ quotes, en/em dashes — where YouTube metadata uses straight ASCII, and
+     *  "feat." credits appear on one side only; a strict equals/contains fails on those LEGIT matches
+     *  and taps show "No results" even when result #1 is the right song. Lowercases, straightens
+     *  quotes/dashes, strips "(feat. …)"/"[feat. …]" and trailing "feat. …" credits, collapses
+     *  whitespace. */
+    private fun normalize(s: String): String =
+        s.lowercase()
+            .replace('‘', '\'') // ‘ left single quote
+            .replace('’', '\'') // ’ right single quote (Apple-style apostrophe)
+            .replace('“', '"') // " left double quote
+            .replace('”', '"') // " right double quote
+            .replace('–', '-') // – en dash
+            .replace('—', '-') // — em dash
+            // Parenthesized/bracketed featuring credits: "(feat. X)", "[ft. X]", "(featuring X)".
+            .replace(Regex("""\s*[(\[](?:feat|ft|featuring)\.?\s[^)\]]*[)\]]"""), " ")
+            // Trailing bare featuring credit: "… feat. X".
+            .replace(Regex("""\s+(?:feat|ft|featuring)\.?\s.*$"""), " ")
+            .replace(Regex("""\s+"""), " ")
+            .trim()
+
     // Bidirectional artist match (from upstream Echo-Music): more robust than a one-way contains, so a
-    // suggestion plays the RIGHT song instead of a wrong same-title track by another artist.
+    // suggestion plays the RIGHT song instead of a wrong same-title track by another artist. Compared
+    // NORMALIZED so punctuation variants ("A$AP", curly quotes) don't break legit matches.
     private fun artistMatches(ytArtistName: String, suggestionArtist: String): Boolean {
-        val ytNorm = ytArtistName.trim().lowercase()
-        val apNorm = suggestionArtist.trim().lowercase()
+        val ytNorm = normalize(ytArtistName)
+        val apNorm = normalize(suggestionArtist)
+        if (ytNorm.isEmpty() || apNorm.isEmpty()) return false
         return apNorm.contains(ytNorm) || ytNorm.contains(apNorm)
+    }
+
+    /** Bidirectional normalized title match — either side may carry extra qualifiers the other lacks
+     *  (feat credits already stripped; remaining "(Remastered)"-style tails still match one-way). */
+    private fun titleMatches(ytTitle: String, suggestionTitle: String): Boolean {
+        val ytNorm = normalize(ytTitle)
+        val sgNorm = normalize(suggestionTitle)
+        if (ytNorm.isEmpty() || sgNorm.isEmpty()) return false
+        return ytNorm.contains(sgNorm) || sgNorm.contains(ytNorm)
     }
 
     // Surfaces a brief message on the main thread. Tap handlers used to swallow both search failures
@@ -187,12 +219,14 @@ class SuggestionsViewModel @Inject constructor(
                 // BOTH title AND artist must match. The old artist-agnostic fallbacks (title-only, then
                 // a blind first result) could resolve a cover / remix / any-song, so a "top" tap played
                 // a DIFFERENT song. If nothing matches on both, we show "no results" rather than lie.
+                // Compared NORMALIZED (straight quotes/dashes, feat-credits stripped) and the contains
+                // check is BIDIRECTIONAL, so punctuation variants don't fail a legit tap.
                 val bestMatch = songs.firstOrNull { s ->
-                    s.title.equals(track.title, ignoreCase = true) &&
+                    normalize(s.title) == normalize(track.title) &&
                     s.artists.any { a -> artistMatches(a.name, track.artist) }
                 } ?:
                 songs.firstOrNull { s ->
-                    s.title.contains(track.title, ignoreCase = true) &&
+                    titleMatches(s.title, track.title) &&
                     s.artists.any { a -> artistMatches(a.name, track.artist) }
                 }
 
@@ -262,12 +296,13 @@ class SuggestionsViewModel @Inject constructor(
                     
                     // BOTH title AND artist must match (no artist-agnostic / first-result fallback), so a
                     // tap plays THAT song, never a same-title cover or a different track by the artist.
+                    // Compared NORMALIZED with a BIDIRECTIONAL contains fallback (see playTrack).
                     val bestMatch = songs.firstOrNull { s ->
-                        s.title.equals(video.title, ignoreCase = true) &&
+                        normalize(s.title) == normalize(video.title) &&
                         s.artists.any { a -> artistMatches(a.name, video.artist) }
                     } ?:
                     songs.firstOrNull { s ->
-                        s.title.contains(video.title, ignoreCase = true) &&
+                        titleMatches(s.title, video.title) &&
                         s.artists.any { a -> artistMatches(a.name, video.artist) }
                     }
 

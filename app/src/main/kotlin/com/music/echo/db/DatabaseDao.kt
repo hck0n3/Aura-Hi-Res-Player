@@ -80,6 +80,12 @@ interface DatabaseDao {
     @Query("SELECT * FROM song WHERE inLibrary IS NOT NULL ORDER BY inLibrary")
     fun songsByCreateDateAsc(): Flow<List<Song>>
 
+    // Newest-added library songs with a SQL LIMIT — bounded consumers (e.g. the suggestions library
+    // backfill) must not materialize the WHOLE library (with all @Relation joins) just to take a few.
+    @Transaction
+    @Query("SELECT * FROM song WHERE inLibrary IS NOT NULL ORDER BY inLibrary DESC LIMIT :limit")
+    fun songsByCreateDateDesc(limit: Int): Flow<List<Song>>
+
     @Transaction
     @Query("SELECT * FROM song WHERE inLibrary IS NOT NULL ORDER BY title")
     fun songsByNameAsc(): Flow<List<Song>>

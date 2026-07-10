@@ -707,7 +707,9 @@ fun AlbumsTabContent(
 
     val gridItemSize by rememberEnumPreference(GridItemsSizeKey, GridItemSize.BIG)
 
-    if (isLoading && newReleaseAlbums == null) {
+    // isNullOrEmpty (not == null): after a successful-but-empty load, explorePage is non-null with an
+    // empty album list — Retry must still show the spinner instead of freezing on the empty state.
+    if (isLoading && newReleaseAlbums.isNullOrEmpty()) {
         Box(
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.Center

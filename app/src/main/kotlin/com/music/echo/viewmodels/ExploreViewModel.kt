@@ -33,8 +33,9 @@ constructor(
     // True while the first/most-recent explore fetch is in flight. The UI uses this (instead of
     // "explorePage == null") so a failed load shows an empty/retry state rather than spinning forever.
     val isLoading = MutableStateFlow(true)
-    // True only when the load genuinely FAILED (both the explore call and the new-releases fallback
-    // threw). Lets the "Álbum" tab tell a real error ("couldn't load, check connection") apart from a
+    // True only when the load genuinely FAILED (the new-releases fallback threw — the authoritative
+    // fetch, since it is always attempted whenever the explore page yields no albums shelf). Lets the
+    // "Álbum" tab tell a real error ("couldn't load, check connection") apart from a
     // successful-but-empty shelf ("no new releases right now") — no more one generic message for both.
     val loadFailed = MutableStateFlow(false)
 
@@ -59,15 +60,18 @@ constructor(
 
         if (albums.isEmpty()) {
             // Nothing to publish as albums. Keep any moodAndGenres the explore page did return so the
-            // Explore tab still works, and flag a REAL failure only when BOTH fetches errored (empty but
-            // successful responses are "no releases", not an error).
+            // Explore tab still works. Classify by the FALLBACK's outcome: reaching here means the
+            // fallback was always attempted (albums stayed empty), and explore() "succeeding" without
+            // an albums shelf is the COMMON case (signed-in layout) — so a thrown fallback (offline) is
+            // a real failure even when result.isFailure is false. Only a successful-but-empty fallback
+            // means "no releases right now". (result.isFailure is a defensive default only.)
             if (page != null) {
                 explorePage.value = ExplorePage(
                     newReleaseAlbums = emptyList(),
                     moodAndGenres = page.moodAndGenres,
                 )
             }
-            loadFailed.value = result.isFailure && (fallbackResult?.isFailure ?: true)
+            loadFailed.value = fallbackResult?.isFailure ?: result.isFailure
             isLoading.value = false
             return
         }
