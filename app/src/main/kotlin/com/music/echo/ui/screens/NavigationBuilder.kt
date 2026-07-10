@@ -419,12 +419,16 @@ fun NavGraphBuilder.navigationBuilder(
     // Note: the live sub-route "settings/integrations/listen_together" below is unaffected and stays registered.
 
     composable(
-        route = "settings/spotify_import?onboarding={onboarding}",
-        arguments = listOf(navArgument("onboarding") { type = NavType.BoolType; defaultValue = false }),
+        route = "settings/spotify_import?onboarding={onboarding}&link={link}",
+        arguments = listOf(
+            navArgument("onboarding") { type = NavType.BoolType; defaultValue = false },
+            navArgument("link") { type = NavType.StringType; nullable = true; defaultValue = null },
+        ),
     ) { backStackEntry ->
         SpotifyImportScreen(
             navController,
             onboarding = backStackEntry.arguments?.getBoolean("onboarding") ?: false,
+            initialLink = backStackEntry.arguments?.getString("link"),
         )
     }
 

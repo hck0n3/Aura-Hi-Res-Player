@@ -61,6 +61,7 @@ fun LibraryScreen(navController: NavController) {
 
     var showImportMenu by remember { mutableStateOf(false) }
     var showYoutubeImportDialog by remember { mutableStateOf(false) }
+    var showSpotifyImportDialog by remember { mutableStateOf(false) }
     var showCreatePlaylistDialog by rememberSaveable { mutableStateOf(false) }
     var showAiPlaylistDialog by rememberSaveable { mutableStateOf(false) }
     val (aiPlaylistEnabled) = rememberPreference(AiPlaylistEnabledKey, true)
@@ -214,7 +215,7 @@ fun LibraryScreen(navController: NavController) {
                             text = { Text(stringResource(R.string.import_from_spotify)) },
                             onClick = {
                                 showImportMenu = false
-                                navController.navigate("settings/spotify_import")
+                                showSpotifyImportDialog = true
                             },
                         )
                         DropdownMenuItem(
@@ -260,6 +261,45 @@ fun LibraryScreen(navController: NavController) {
                     ).show()
                 }
                 showYoutubeImportDialog = false
+            },
+        )
+    }
+
+    if (showSpotifyImportDialog) {
+        TextFieldDialog(
+            icon = { Icon(painter = painterResource(R.drawable.link), contentDescription = null) },
+            title = {
+                Column {
+                    Text(text = stringResource(R.string.spotify_add_by_link))
+                    Text(
+                        text = stringResource(R.string.spotify_add_by_link_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
+            },
+            initialTextFieldValue = TextFieldValue(""),
+            autoFocus = true,
+            onDismiss = { showSpotifyImportDialog = false },
+            onDone = { finalUrl ->
+                // Accept a share link, a spotify:playlist:… URI, or a bare 22-char id — the same
+                // references the import path itself parses (authoritative parse/fetch happens there).
+                val isSpotifyPlaylist =
+                    Regex("playlist[:/]([A-Za-z0-9]{22})").containsMatchIn(finalUrl) ||
+                        finalUrl.trim().matches(Regex("[A-Za-z0-9]{22}"))
+                if (isSpotifyPlaylist) {
+                    navController.navigate(
+                        "settings/spotify_import?link=" + android.net.Uri.encode(finalUrl.trim()),
+                    )
+                } else {
+                    android.widget.Toast.makeText(
+                        context,
+                        context.getString(R.string.invalid_playlist_url),
+                        android.widget.Toast.LENGTH_SHORT,
+                    ).show()
+                }
+                showSpotifyImportDialog = false
             },
         )
     }
