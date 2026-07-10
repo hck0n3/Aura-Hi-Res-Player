@@ -546,4 +546,8 @@
     <string name="recognition_notification_failed">Recognition failed</string>
     <string name="recognition_resolve_failed">Song not found on YouTube Music</string>
     <string name="listen_on_aura">Listen on Aura</string>
+
+    <!-- 0.6.92 Historial de actividad -->
+    <string name="activity_history">Listening Summary</string>
+    <string name="total_listening_time">Total Listening Time</string>
 </resources>
