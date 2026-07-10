@@ -355,6 +355,16 @@
     <string name="release_radar_empty">No new releases yet</string>
     <string name="home_new_from_artists">New from your artists</string>
     <string name="home_genre_mix">Your %1$s mix</string>
+    <string name="home_recently_played">Recently played</string>
+    <string name="home_daily_mix">Daily mix %1$d</string>
+    <string name="home_mix_morning">Morning mix</string>
+    <string name="home_mix_afternoon">Afternoon mix</string>
+    <string name="home_mix_night">Night mix</string>
+    <string name="home_your_podcasts">Your podcasts</string>
+    <string name="home_for_you">For you</string>
+    <string name="home_offline_no_internet">Looks like you don\'t have an internet connection.</string>
+    <string name="home_offline_downloads_hint">You can keep listening to your downloaded music offline.</string>
+    <string name="home_offline_continue">Continue offline</string>
     <string name="export_directory_picker_unavailable">This device has no folder picker available</string>
     <string name="sponsorblock_title">Skip non-music segments</string>
     <string name="sponsorblock_description">Auto-skip sponsors, self-promo and non-music parts using the community SponsorBlock database. Never cuts real song audio.</string>

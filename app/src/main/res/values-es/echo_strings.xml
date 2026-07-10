@@ -223,6 +223,16 @@
     <string name="release_radar_empty">Aún no hay novedades</string>
     <string name="home_new_from_artists">Novedades de tus artistas</string>
     <string name="home_genre_mix">Tu mix de %1$s</string>
+    <string name="home_recently_played">Reproducido recientemente</string>
+    <string name="home_daily_mix">Mix diario %1$d</string>
+    <string name="home_mix_morning">Mix de la mañana</string>
+    <string name="home_mix_afternoon">Mix de la tarde</string>
+    <string name="home_mix_night">Mix de la noche</string>
+    <string name="home_your_podcasts">Tus podcasts</string>
+    <string name="home_for_you">Para ti</string>
+    <string name="home_offline_no_internet">Parece que no tienes conexión a internet.</string>
+    <string name="home_offline_downloads_hint">Puedes seguir escuchando tu música descargada sin conexión.</string>
+    <string name="home_offline_continue">Continuar sin conexión</string>
     <string name="export_directory_picker_unavailable">Este dispositivo no tiene selector de carpetas</string>
     <string name="sponsorblock_title">Saltar segmentos sin música</string>
     <string name="sponsorblock_description">Salta patrocinios, autopromoción y partes sin música usando la base comunitaria SponsorBlock. Nunca corta el audio real de la canción.</string>
