@@ -105,7 +105,8 @@ class UpdateDownloadWorker(private val context: Context, workerParams: WorkerPar
                         val progress = (totalBytesRead * 100 / totalLength).toInt()
                         if (progress != lastProgress) {
                             lastProgress = progress
-                            DownloadNotificationManager.updateDownloadProgress(progress, version)
+                            // Single silent progress update per tick: setForeground re-posts the ongoing
+                            // notification (setOnlyAlertOnce), so no per-1% re-alert/heads-up/sound.
                             setProgress(workDataOf("progress" to progress / 100f))
                             runCatching { setForeground(ForegroundInfo(
                                 DownloadNotificationManager.FOREGROUND_NOTIFICATION_ID,

@@ -47,7 +47,7 @@ object DownloadNotificationManager {
             val channel = NotificationChannel(
                 CHANNEL_ID,
                 context.getString(R.string.download_progress_channel),
-                NotificationManager.IMPORTANCE_HIGH
+                NotificationManager.IMPORTANCE_LOW
             ).apply {
                 description = context.getString(R.string.download_progress_description)
                 setShowBadge(false)
@@ -135,12 +135,13 @@ object DownloadNotificationManager {
             .setContentTitle(appContext.getString(R.string.downloading_update))
             .setContentText(appContext.getString(R.string.version_file_size, version, fileSize))
             .setOngoing(true)
+            .setOnlyAlertOnce(true)
             .setStyle(progressStyle)
             .setVisibility(Notification.VISIBILITY_PUBLIC)
             .setCategory(Notification.CATEGORY_PROGRESS)
             .setWhen(System.currentTimeMillis())
 
-        
+
         setRequestPromotedOngoingSafely(builder, true)
         setShortCriticalTextSafely(builder, appContext.getString(R.string.starting))
 
@@ -172,12 +173,13 @@ object DownloadNotificationManager {
             .setContentTitle(appContext.getString(R.string.downloading_update))
             .setContentText(appContext.getString(R.string.version_progress, version, progress))
             .setOngoing(progress < 100)
+            .setOnlyAlertOnce(true)
             .setStyle(progressStyle)
             .setVisibility(Notification.VISIBILITY_PUBLIC)
             .setCategory(Notification.CATEGORY_PROGRESS)
             .setWhen(System.currentTimeMillis())
 
-        
+
         setRequestPromotedOngoingSafely(builder, progress < 100)
         setShortCriticalTextSafely(builder, "$progress%")
 
@@ -276,7 +278,8 @@ object DownloadNotificationManager {
             .setContentText(appContext.getString(R.string.version_file_size, version, fileSize))
             .setProgress(100, 0, false)
             .setOngoing(true)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setOnlyAlertOnce(true)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setCategory(NotificationCompat.CATEGORY_PROGRESS)
             .build()
@@ -291,7 +294,8 @@ object DownloadNotificationManager {
             .setContentText(appContext.getString(R.string.version_progress, version, progress))
             .setProgress(100, progress, false)
             .setOngoing(progress < 100)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setOnlyAlertOnce(true)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setCategory(NotificationCompat.CATEGORY_PROGRESS)
             .build()

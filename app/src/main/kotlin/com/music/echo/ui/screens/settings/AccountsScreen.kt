@@ -102,8 +102,7 @@ fun AccountsScreen(
                             contentDescription = null
                         )
                     }
-                },
-                scrollBehavior = scrollBehavior
+                }
             )
         }
     ) { padding ->
@@ -166,7 +165,8 @@ fun AccountsScreen(
                             }
                         },
                         onClick = {
-                            if (!ytLoggedIn) navController.navigate("login")
+                            if (ytLoggedIn) navController.navigate("settings/ytm_sync")
+                            else navController.navigate("login")
                         }
                     )
                 )
@@ -220,7 +220,7 @@ fun AccountsScreen(
                             }
                         },
                         onClick = {
-                            if (!spotifyLoggedIn) navController.navigate("settings/spotify_import")
+                            navController.navigate("settings/spotify_import")
                         }
                     )
                 )
