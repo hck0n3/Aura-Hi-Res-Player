@@ -162,7 +162,11 @@ object YTPlayerUtils {
         knownArtist: String? = null,
         knownTitle: String? = null,
         knownDurationMs: Long? = null,
-        isDownload: Boolean = false
+        isDownload: Boolean = false,
+        // RINGTONE-ONLY opt-in: pick the SMALLEST audio format instead of the Hi-Res one (the ringtone
+        // trimmer keeps a few seconds anyway, so transfer size matters more than bitrate). Every other
+        // caller keeps the default (false) and its selection is byte-identical to before.
+        preferSmallestAudio: Boolean = false
     ): Result<PlaybackData> {
         val showFallbackToast = context?.let { 
             it.dataStore.data.first()[iad1tya.echo.music.constants.ShowAudioFallbackToastKey] 
@@ -436,13 +440,13 @@ object YTPlayerUtils {
             }
         }
         
-        val firstAttempt = resolvePlaybackData(videoId, playlistId, audioQuality, connectivityManager)
-        
+        val firstAttempt = resolvePlaybackData(videoId, playlistId, audioQuality, connectivityManager, preferSmallestAudio = preferSmallestAudio)
+
         if (firstAttempt.isFailure && YouTube.cookie == null) {
             Timber.tag(TAG).w("Playback failed for guest. Rotating session and retrying...")
             PlaybackLogManager.log(PlaybackLogLevel.BOT, "Playback failed for guest", "Triggering bot detection mitigation (rotating guest session)")
             BotDetectionMitigator.rotateGuestSession()
-            val retryResult = resolvePlaybackData(videoId, playlistId, audioQuality, connectivityManager)
+            val retryResult = resolvePlaybackData(videoId, playlistId, audioQuality, connectivityManager, preferSmallestAudio = preferSmallestAudio)
             retryResult.onSuccess { BotDetectionMitigator.notifyPlaybackSuccess() }
             return retryResult
         }
@@ -458,6 +462,7 @@ object YTPlayerUtils {
         connectivityManager: ConnectivityManager,
         preferVideo: Boolean = false,
         videoMaxHeight: Int? = null,
+        preferSmallestAudio: Boolean = false,
     ): Result<PlaybackData> = runCatching {
         Timber.tag(logTag).d("Fetching player response for videoId: $videoId, playlistId: $playlistId")
         PlaybackLogManager.log(PlaybackLogLevel.INFO, "Resolving playback data", "Video: $videoId")
@@ -675,6 +680,7 @@ object YTPlayerUtils {
                         connectivityManager,
                         preferVideo,
                         videoMaxHeight,
+                        preferSmallestAudio,
                     )
 
                 if (format == null) {
@@ -899,6 +905,7 @@ object YTPlayerUtils {
         connectivityManager: ConnectivityManager,
         preferVideo: Boolean = false,
         videoMaxHeight: Int? = null,
+        preferSmallestAudio: Boolean = false,
     ): PlayerResponse.StreamingData.Format? {
         if (preferVideo) {
             // Video mode resolves an ADAPTIVE VIDEO-ONLY stream (no audio) — MusicService MERGES it with the
@@ -948,6 +955,20 @@ object YTPlayerUtils {
         if (audioPool != null && audioPool.none { it.isOriginal }) {
             Timber.tag(logTag).w("No original audio track (auto-dub region) — using non-dubbed/any fallback")
         }
+
+        // RINGTONE-ONLY (preferSmallestAudio): the trimmer keeps a few seconds, so fetch the smallest
+        // transferable audio stream (e.g. ~50kbps Opus itag 249) instead of the Hi-Res pick. Applied
+        // after the same original/non-dubbed pool selection so region behaviour is identical.
+        if (preferSmallestAudio) {
+            val smallest = audioPool?.minByOrNull { it.bitrate }
+            if (smallest != null) {
+                Timber.tag(logTag).d("Selected SMALLEST format (ringtone): ${smallest.mimeType}, bitrate: ${smallest.bitrate}")
+            } else {
+                Timber.tag(logTag).d("No suitable audio format found (ringtone/smallest)")
+            }
+            return smallest
+        }
+
         val format = audioPool
             ?.maxByOrNull {
                 var score = it.bitrate.toFloat()

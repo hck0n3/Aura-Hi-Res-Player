@@ -995,7 +995,7 @@ class MainActivity : ComponentActivity() {
 
                 val baseBg = if (pureBlack) Color.Black else MaterialTheme.colorScheme.surfaceContainer
 
-                val ringtoneViewModel: RingtoneViewModel = viewModel()
+                val ringtoneViewModel: RingtoneViewModel = hiltViewModel()
                 val ringtoneUiState by ringtoneViewModel.uiState.collectAsState()
 
                 CompositionLocalProvider(

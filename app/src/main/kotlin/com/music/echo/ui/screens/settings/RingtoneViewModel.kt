@@ -4,12 +4,17 @@ import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.media3.datasource.cache.SimpleCache
+import dagger.hilt.android.lifecycle.HiltViewModel
+import iad1tya.echo.music.di.DownloadCache
+import iad1tya.echo.music.di.PlayerCache
 import iad1tya.echo.music.utils.RingtoneHelper
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import javax.inject.Inject
 
 data class RingtoneUiState(
     val showTrimmer: Boolean = false,
@@ -28,7 +33,13 @@ data class RingtoneUiState(
     val appliedDirectly: Boolean = false
 )
 
-class RingtoneViewModel : ViewModel() {
+// Hilt so the media3 caches can be injected: RingtoneHelper serves the trim source from the
+// download/player cache when the song is already fully cached, instead of re-downloading it.
+@HiltViewModel
+class RingtoneViewModel @Inject constructor(
+    @PlayerCache private val playerCache: SimpleCache,
+    @DownloadCache private val downloadCache: SimpleCache,
+) : ViewModel() {
     private val _uiState = MutableStateFlow(RingtoneUiState())
     val uiState: StateFlow<RingtoneUiState> = _uiState.asStateFlow()
 
@@ -79,6 +90,8 @@ class RingtoneViewModel : ViewModel() {
                 artist = artist,
                 startMs = startMs,
                 endMs = endMs,
+                downloadCache = downloadCache,
+                playerCache = playerCache,
                 onProgress = { progress, message ->
                     _uiState.update {
                         it.copy(progress = progress, statusMessage = message)
