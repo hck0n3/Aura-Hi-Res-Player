@@ -196,7 +196,8 @@ class SongPreviewController(
                     true,
                 )
                 repeatMode = Player.REPEAT_MODE_OFF
-                volume = 1f
+                // Approximates Safe Volume headroom so a hot-mastered preview isn't jarringly louder than the just-paused (attenuated) main playback; preview player only, main audio chain untouched.
+                volume = 0.85f
                 // Natural end (song plays to completion) or a playback error (e.g. googlevideo 403) must
                 // stop the preview so the main player is resumed — otherwise it stays paused forever.
                 addListener(object : Player.Listener {

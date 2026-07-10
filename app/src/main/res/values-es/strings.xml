@@ -430,4 +430,5 @@
     <string name="add_selected">Agregar (%1$d)</string>
     <string name="search_youtube_music">Buscar en YouTube Music</string>
     <string name="your_library">Tu biblioteca</string>
+    <string name="add_music_no_results">Sin resultados</string>
 </resources>

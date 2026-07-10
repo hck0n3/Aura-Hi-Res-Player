@@ -603,6 +603,16 @@ class MusicService :
         get() = playbackState.userHasUsedVideo
         set(value) { playbackState.userHasUsedVideo = value }
 
+    /**
+     * Session cap for SPECULATIVE video-URL prefetches launched BEFORE the user has ever toggled video
+     * ([userHasUsedVideo] == false). Without a bound, capable devices would resolve on EVERY video-song
+     * transition — exactly the per-track-change resolving that once hammered YouTube, rate-limited the app
+     * and stalled normal AUDIO (see the onMediaItemTransition prebuild note). The first toggle is usually
+     * early in a session, so a cap of 3 still makes it instant for real video users while keeping
+     * audio-only listeners at <=3 extra resolves per session (in-memory, resets per process).
+     */
+    private var preFirstUseVideoPrefetches = 0
+
     private val _mixActive get() = playbackState.mixActive
     val mixActive: kotlinx.coroutines.flow.StateFlow<Boolean> get() = playbackState.mixActive
 
@@ -4010,7 +4020,10 @@ class MusicService :
      *   - video mode currently OFF (a toggle-to-video is only possible from audio; when ON the swap already ran),
      *   - EITHER the user has used video once THIS session ([userHasUsedVideo], in-memory, resets per process)
      *     — prefetch then runs on ANY device — OR, to cover the session's FIRST toggle, the device is CAPABLE
-     *     (not High-Performance Mode, not LOW/ULTRA tier); weak devices never pay the speculative cipher cost,
+     *     (not High-Performance Mode, not LOW/ULTRA tier) AND fewer than 3 speculative resolves have been
+     *     launched this session ([preFirstUseVideoPrefetches]); weak devices never pay the speculative cipher
+     *     cost, and audio-only listeners are bounded at <=3 extra resolves/session instead of one per
+     *     video-song transition (the fleet-wide traffic pattern behind the old rate-limit incident),
      *   - a genuine YouTube VIDEO song (isVideoSong == true; skips local / http-podcast / audio-only ids), so
      *     pure audio-only queues never trigger a speculative resolve.
      * Idempotent: no-op if a fresh URL is already cached or a resolve for this id is already in flight
@@ -4024,15 +4037,23 @@ class MusicService :
         val id = player.currentMediaItem?.mediaId ?: return
         if (id.isEmpty() || id.isLocalMediaId() || id.startsWith("http", ignoreCase = true)) return
         if (player.currentMetadata?.isVideoSong != true) return
-        // FIRST-TOGGLE COVERAGE (capable devices only). Normally we speculatively resolve only AFTER the user
-        // has opened video once this session (userHasUsedVideo). That left the VERY FIRST toggle of a session
-        // paying the full synchronous resolve (applyVideoToCurrent cache-miss → cipher/PoToken/format, seconds)
-        // PLUS the swap re-buffer → the >5s the user reported. So ALSO pre-resolve BEFORE first use — but ONLY
-        // on a CAPABLE device (NOT High-Performance Mode and NOT LOW/ULTRA tier): a weak device must never pay
-        // the speculative cipher cost for a feature it may never open. This is a small metadata/cipher resolve
-        // (NOT the video bytes), so it runs on any network; on a capable device the URL is then ready the moment
-        // the user first taps video. The existing userHasUsedVideo path is preserved (prefetch on ANY device).
-        if (!userHasUsedVideo) {
+        // FIRST-TOGGLE COVERAGE (capable devices only, CAPPED at 3 resolves/session). Normally we speculatively
+        // resolve only AFTER the user has opened video once this session (userHasUsedVideo). That left the VERY
+        // FIRST toggle of a session paying the full synchronous resolve (applyVideoToCurrent cache-miss →
+        // cipher/PoToken/format, seconds) PLUS the swap re-buffer → the >5s the user reported. So ALSO
+        // pre-resolve BEFORE first use — but ONLY on a CAPABLE device (NOT High-Performance Mode and NOT
+        // LOW/ULTRA tier): a weak device must never pay the speculative cipher cost for a feature it may never
+        // open — and ONLY for the first 3 launched resolves of the session (preFirstUseVideoPrefetches).
+        // The first toggle is usually early in a session, so the cap keeps it instant for real video users
+        // while bounding audio-only listeners at <=3 extra resolves/session — WITHOUT the cap this would be
+        // one resolve per video-song transition, the exact fleet-wide traffic pattern that once rate-limited
+        // the app and stalled normal AUDIO (see the onMediaItemTransition prebuild note). This is a small
+        // metadata/cipher resolve (NOT the video bytes), so it runs on any network; on a capable device the
+        // URL is then ready the moment the user first taps video. Once userHasUsedVideo is true the existing
+        // path is preserved unchanged (prefetch on ANY device, per transition, uncapped).
+        val preFirstUse = !userHasUsedVideo
+        if (preFirstUse) {
+            if (preFirstUseVideoPrefetches >= 3) return
             val perfMode = iad1tya.echo.music.utils.PerformanceMode.isOn(this)
             val tier = iad1tya.echo.music.utils.PerformanceMode.effectiveTier(this)
             val capable = !perfMode &&
@@ -4044,6 +4065,9 @@ class MusicService :
         val cached = videoUrlCache[id]?.takeIf { it.second > System.currentTimeMillis() }?.first
         if (!cached.isNullOrEmpty()) return
         if (!prebuildingIds.add(id)) return // a resolve for this id is already in flight (dedupe)
+        // Count only resolves actually LAUNCHED (past the cache/dedupe checks), so cache hits and in-flight
+        // dupes never burn the pre-first-use budget.
+        if (preFirstUse) preFirstUseVideoPrefetches++
         scope.launch(Dispatchers.IO) {
             try {
                 val maxH = videoModeMaxHeight
