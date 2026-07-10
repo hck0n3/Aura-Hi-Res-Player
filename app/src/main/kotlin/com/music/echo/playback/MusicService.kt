@@ -2156,38 +2156,71 @@ class MusicService :
      */
     fun selectAutoplayChip(chip: AutoplayChip) {
         if (!playerInitialized.value) return
-        _autoplaySelectedChip.value = chip
         val currentMediaId = player.currentMediaItem?.mediaId ?: return
+        // Optimistic highlight so the tap feels instant — but capture the previous steer and REVERT on
+        // every failure path below, so a failed/empty fetch never leaves the UI claiming a steer that
+        // the live queue doesn't reflect. compareAndSet (not plain set) so we never clobber a NEWER
+        // selection (a new seed's refreshAutoplaySuggestions reset, or a second tap) that landed while
+        // this attempt was in flight.
+        val previousChip = _autoplaySelectedChip.value
+        _autoplaySelectedChip.value = chip
+        fun revertChip() { _autoplaySelectedChip.compareAndSet(chip, previousChip) }
         scope.launch(SilentHandler) {
-            val chipQueue = YouTubeQueue(endpoint = chip.endpoint)
-            val initialStatus = withContext(Dispatchers.IO) {
-                runCatching {
-                    chipQueue.getInitialStatus()
-                        .filterExplicit(dataStore.get(HideExplicitKey, false))
-                        .filterVideoSongs(dataStore.get(HideVideoSongsKey, false))
-                }.getOrNull()
-            } ?: return@launch
-            val items = initialStatus.items.filter { it.mediaId != currentMediaId }
-            if (items.isEmpty()) return@launch
-            // Same append semantics as appendSeed in startRadioSeamlessly: recompute the index from the
-            // LIVE player at append time, replace only the tail AFTER the current item (the tail is
-            // radio/autoplay content), and keep the current song playing untouched.
-            val liveIndex = player.currentMediaItemIndex
-            val itemCount = player.mediaItemCount
-            if (itemCount > liveIndex + 1) {
-                player.removeMediaItems(liveIndex + 1, itemCount)
+            // RACE HARDENING: a chip tap can race an in-flight automatic seed (head-start B3 /
+            // STATE_ENDED net) — whichever landed last would silently overwrite the other's tail.
+            // The chip is a direct user action, so it wins: wait (bounded, mirroring
+            // armRadioResumeWatchdog) for the seed to settle, then CLAIM radioSeedInFlight for this
+            // append so any concurrent automatic seed bails on its own guard while the chip re-seeds.
+            var waited = 0L
+            while (radioSeedInFlight && waited < 15_000) {
+                kotlinx.coroutines.delay(250)
+                waited += 250
             }
-            player.addMediaItems(liveIndex + 1, items.orderedByTaste())
-            _mixActive.value = true
-            if (initialStatus.title != null) queueTitle = initialStatus.title
-            if (player.shuffleModeEnabled) {
-                val shufflePlaylistFirst = dataStore.get(ShufflePlaylistFirstKey, false)
-                applyShuffleOrder(player.currentMediaItemIndex, player.mediaItemCount, shufflePlaylistFirst)
+            if (radioSeedInFlight) { // seed hung for 15 s — don't stack a second rewrite on top of it
+                revertChip()
+                return@launch
             }
-            // getInitialStatus above primed the continuation → hasNextPage() is true and the existing
-            // pagination in onMediaItemTransition keeps loading this chip's radio forever.
-            currentQueue = chipQueue
-            scheduleCrossfade()
+            radioSeedInFlight = true
+            var applied = false
+            try {
+                val chipQueue = YouTubeQueue(endpoint = chip.endpoint)
+                val initialStatus = withContext(Dispatchers.IO) {
+                    runCatching {
+                        chipQueue.getInitialStatus()
+                            .filterExplicit(dataStore.get(HideExplicitKey, false))
+                            .filterVideoSongs(dataStore.get(HideVideoSongsKey, false))
+                    }.getOrNull()
+                } ?: return@launch
+                val items = initialStatus.items.filter { it.mediaId != currentMediaId }
+                if (items.isEmpty()) return@launch
+                // Same append semantics as appendSeed in startRadioSeamlessly: recompute the index from the
+                // LIVE player at append time, replace only the tail AFTER the current item (the tail is
+                // radio/autoplay content), and keep the current song playing untouched.
+                val liveIndex = player.currentMediaItemIndex
+                val itemCount = player.mediaItemCount
+                if (itemCount > liveIndex + 1) {
+                    player.removeMediaItems(liveIndex + 1, itemCount)
+                }
+                player.addMediaItems(liveIndex + 1, items.orderedByTaste())
+                _mixActive.value = true
+                if (initialStatus.title != null) queueTitle = initialStatus.title
+                if (player.shuffleModeEnabled) {
+                    val shufflePlaylistFirst = dataStore.get(ShufflePlaylistFirstKey, false)
+                    applyShuffleOrder(player.currentMediaItemIndex, player.mediaItemCount, shufflePlaylistFirst)
+                }
+                // getInitialStatus above primed the continuation → hasNextPage() is true and the existing
+                // pagination in onMediaItemTransition keeps loading this chip's radio forever.
+                currentQueue = chipQueue
+                scheduleCrossfade()
+                applied = true
+            } finally {
+                // Only the claim is released here — resumeAfterSeed belongs to startRadioSeamlessly's
+                // own finally and is NOT touched by the chip path. Any path that did NOT rewrite the
+                // tail (null/empty fetch, exception swallowed by SilentHandler) reverts the highlight
+                // so the chip UI never claims a steer the live queue doesn't reflect.
+                radioSeedInFlight = false
+                if (!applied) revertChip()
+            }
         }
     }
 
@@ -4662,7 +4695,23 @@ class MusicService :
                     .url(url)
                     .header("Range", "bytes=0-0")
                     .build()
-                videoOkHttpClient.newCall(request).execute().use { it.body?.bytes() }
+                videoOkHttpClient.newCall(request).execute().use { response ->
+                    // BOUNDED drain — never body.bytes(): a server that ignores the Range and replies
+                    // 200 would hand us the WHOLE video as one heap ByteArray (OOM + data burn on a
+                    // speculative call). Read at most ~2 KB: a proper 206 to bytes=0-0 is 1 byte and
+                    // hits EOF (body exhausted → connection returns to the pool, which is the whole
+                    // point of the warm-up); anything bigger is abandoned and use{} closes it.
+                    response.body.source().let { source ->
+                        val blackhole = okio.Buffer()
+                        var drained = 0L
+                        while (drained < 2048) {
+                            val read = source.read(blackhole, 1024)
+                            if (read == -1L) break
+                            drained += read
+                            blackhole.clear()
+                        }
+                    }
+                }
                 Timber.tag(TAG).d("Video connection warmed for $id")
             }.onFailure {
                 // Allow one later re-attempt for this URL (e.g. transient DNS blip).
@@ -4930,6 +4979,11 @@ class MusicService :
 
     override fun onDestroy() {
         isRunning = false
+        // The expanded flag lives in the process-wide PlaybackStateManager, which OUTLIVES this
+        // service instance. If the UI died without collapsing (its onDispose reset is best-effort),
+        // a recreated service would inherit "expanded" and keep speculative video warm-ups alive
+        // with no player on screen — reset it here.
+        playbackState.playerSheetExpanded = false
 
         try {
             unregisterReceiver(screenStateReceiver)

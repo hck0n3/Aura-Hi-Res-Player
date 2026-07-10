@@ -185,6 +185,7 @@
     <string name="error_timeout">Tiempo de espera agotado</string>
     <string name="error_unknown">Error desconocido</string>
     <string name="action_like">Me gusta</string>
+    <string name="action_dislike">No me gusta</string>
     <string name="action_like_all">Marcar todo como me gusta</string>
     <string name="action_remove_like">Quitar me gusta</string>
     <string name="action_remove_like_all">Eliminar todos los me gusta</string>

@@ -257,6 +257,7 @@
 
     <!-- Player action -->
     <string name="action_like">Like</string>
+    <string name="action_dislike">Dislike</string>
     <string name="action_like_all">Like all</string>
     <string name="action_remove_like">Remove like</string>
     <string name="action_remove_like_all">Remove all likes</string>

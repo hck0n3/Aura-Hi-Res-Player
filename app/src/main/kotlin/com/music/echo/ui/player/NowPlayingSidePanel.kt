@@ -32,6 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -169,7 +170,7 @@ fun NowPlayingSidePanel(
                 ) {
                     Icon(
                         painterResource(R.drawable.thumb_down),
-                        contentDescription = "No me gusta",
+                        contentDescription = stringResource(R.string.action_dislike),
                         tint = if (disliked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.size(22.dp),
                     )
@@ -208,7 +209,7 @@ fun NowPlayingSidePanel(
                 ) {
                     Icon(
                         painterResource(if (liked) R.drawable.favorite else R.drawable.favorite_border),
-                        contentDescription = "Me gusta",
+                        contentDescription = stringResource(R.string.action_like),
                         tint = if (liked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.size(22.dp),
                     )

@@ -964,9 +964,13 @@ fun BottomSheetPlayer(
 
     // Mirror the player sheet's expanded/collapsed state into the service layer so it knows when
     // the full player UI is actually on screen. state.isExpanded is a derivedStateOf, so reading it
-    // as the key re-launches this effect exactly on expand/collapse (no polling).
-    LaunchedEffect(state.isExpanded) {
+    // as the key re-runs this effect exactly on expand/collapse (no polling). DisposableEffect (not
+    // LaunchedEffect) so leaving composition — activity destroyed, player dismissed — RESETS the
+    // flag: otherwise the service would be stranded thinking the player is still expanded and keep
+    // warming video connections with no UI on screen.
+    DisposableEffect(state.isExpanded) {
         playerConnection.setPlayerSheetExpanded(state.isExpanded)
+        onDispose { playerConnection.setPlayerSheetExpanded(false) }
     }
 
     // Video is integrated into the main player now, so the seekbar reads the main player's position
@@ -1866,7 +1870,7 @@ fun BottomSheetPlayer(
                 ) {
                     Icon(
                         painter = painterResource(R.drawable.thumb_down),
-                        contentDescription = "No me gusta",
+                        contentDescription = stringResource(R.string.action_dislike),
                         modifier = Modifier.size(24.dp),
                     )
                 }
@@ -1958,7 +1962,7 @@ fun BottomSheetPlayer(
                 ) {
                     Icon(
                         painter = painterResource(R.drawable.thumb_up_like),
-                        contentDescription = "Me gusta",
+                        contentDescription = stringResource(R.string.action_like),
                         modifier = Modifier.size(24.dp),
                     )
                 }
