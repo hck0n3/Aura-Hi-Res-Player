@@ -212,12 +212,7 @@ import iad1tya.echo.music.echomusic.AudioDeviceBottomSheet
 import iad1tya.echo.music.ui.component.BottomSheet
 import iad1tya.echo.music.ui.component.BottomSheetState
 import iad1tya.echo.music.ui.component.CastButton
-import iad1tya.echo.music.ui.component.GlassComponent
 import iad1tya.echo.music.ui.component.LocalBottomSheetPageState
-import iad1tya.echo.music.ui.component.LocalGlassEffectConfig
-import iad1tya.echo.music.ui.component.PLAYER_BLUR_MULTIPLIER
-import iad1tya.echo.music.ui.component.isGlassSupported
-import iad1tya.echo.music.ui.component.liquidGlass
 import iad1tya.echo.music.ui.component.LocalMenuState
 import iad1tya.echo.music.ui.component.Lyrics
 import iad1tya.echo.music.ui.component.PlayerSliderTrack
@@ -1511,31 +1506,6 @@ fun BottomSheetPlayer(
                                     )
                                 }
                             }
-                        }
-
-                        // Liquid Glass: when the PLAYER component is active (master switch AND-ed with
-                        // the per-component toggle, plus the RenderEffect gate — the same eligibility
-                        // chain as the mini player and nav bar, so low-end/TV never render it), layer a
-                        // REAL glass surface over the mesh backdrop above: an Apple-Music-style
-                        // deep-blurred material (PLAYER_BLUR_MULTIPLIER x the pill blur) sampling the
-                        // app backdrop, with edge effects off — the highlight rim reads as a stray band
-                        // of light on a full-screen surface. Toggle off / ineligible device -> nothing
-                        // extra renders and the branch stays LIVE_MESH-identical (the intended degrade).
-                        val glassConfig = LocalGlassEffectConfig.current
-                        if (playerBackground == PlayerBackgroundStyle.LIQUID_GLASS &&
-                            glassConfig.isEnabledFor(GlassComponent.PLAYER) &&
-                            isGlassSupported()
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .alpha(backgroundAlpha)
-                                    .liquidGlass(
-                                        config = glassConfig,
-                                        blurRadiusDp = glassConfig.blurRadius * PLAYER_BLUR_MULTIPLIER,
-                                        applyEdgeEffects = false,
-                                    )
-                            )
                         }
                     }
                     PlayerBackgroundStyle.DEFAULT -> {
