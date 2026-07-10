@@ -16,8 +16,18 @@ import java.util.concurrent.TimeUnit
  * Mirrors [OpenRouterService] (OkHttp client, headers, 5xx retries, timeouts): builds the request
  * via [AiPlaylistPrompt] and parses the reply via [AiPlaylistParser].
  *
+ * Provider chain (in priority order):
+ * 1. USER KEY OVERRIDE — if the user configured an API key, their provider/baseUrl/model are used
+ *    exactly as before (BYO key, full control).
+ * 2. AURA WORKER — with no key, the same OpenAI-shape body is POSTed to the owner's Cloudflare
+ *    Worker `/ai` route (Workers AI relay, no Authorization header).
+ * 3. POLLINATIONS — if the Worker fails (non-2xx after retries, network error, or unparseable
+ *    reply), the request falls back to the public keyless endpoint text.pollinations.ai.
+ * If every keyless endpoint fails, [AiServiceUnavailableException] is returned so the UI can show
+ * a friendly "try again" message instead of asking for an API key.
+ *
  * DeepL (not a chat API) and Claude (different `/v1/messages` schema) are intentionally unsupported
- * here; the caller surfaces a "pick a chat provider" message.
+ * for the BYO-key path; the caller surfaces a "pick a chat provider" message.
  */
 object AiPlaylistService {
 
@@ -31,10 +41,30 @@ object AiPlaylistService {
 
     private val UNSUPPORTED_PROVIDERS = setOf("DeepL", "Claude")
 
+    private const val DEFAULT_BASE_URL = "https://openrouter.ai/api/v1/chat/completions"
+
+    /** Owner-hosted Workers AI relay: keyless primary. Shares the license Worker (routes /verify and /demo untouched). */
+    private const val AURA_WORKER_URL = "https://round-math-d64e.toberto4000.workers.dev/ai"
+
+    /** Suggested model for the Worker; the Worker may ignore/override it server-side. */
+    private const val AURA_WORKER_MODEL = "@cf/meta/llama-3.1-8b-instruct"
+
+    /** Public keyless OpenAI-compatible endpoint, used when the Aura Worker is unavailable. */
+    private const val POLLINATIONS_URL = "https://text.pollinations.ai/openai"
+    private const val POLLINATIONS_MODEL = "openai"
+
+    /** Modest per-endpoint retries for the keyless chain so the chained worst case stays bounded. */
+    private const val KEYLESS_MAX_RETRIES = 2
+
     class UnsupportedProviderException(val providerName: String) :
         Exception("Provider not supported for AI playlists: $providerName")
 
+    /** Kept for compatibility; no longer reachable from [generate] (blank key now uses the keyless chain). */
     class MissingApiKeyException : Exception("AI API key is not set")
+
+    /** Every keyless endpoint (Aura Worker + fallback) failed; the user should simply retry later. */
+    class AiServiceUnavailableException(cause: Throwable? = null) :
+        Exception("Keyless AI endpoints are unavailable", cause)
 
     suspend fun generate(
         prompt: String,
@@ -48,12 +78,6 @@ object AiPlaylistService {
         if (prompt.isBlank()) {
             return@withContext Result.failure(IllegalArgumentException("Prompt is empty"))
         }
-        if (provider in UNSUPPORTED_PROVIDERS) {
-            return@withContext Result.failure(UnsupportedProviderException(provider))
-        }
-        if (apiKey.isBlank()) {
-            return@withContext Result.failure(MissingApiKeyException())
-        }
 
         val messages = JSONArray().apply {
             AiPlaylistPrompt.buildMessages(prompt, count).forEach { message ->
@@ -65,30 +89,89 @@ object AiPlaylistService {
                 )
             }
         }
+        // Scale the token budget with the requested count (~80 tok/track + overhead) so a 50-song
+        // request isn't truncated mid-JSON (the old fixed 2048 cut off large playlists → fewer songs).
+        val maxTokens = (count * 80 + 512).coerceIn(1024, 8192)
+
+        // 1. User key override: their provider/baseUrl/model, exactly the pre-existing behavior.
+        if (apiKey.isNotBlank()) {
+            if (provider in UNSUPPORTED_PROVIDERS) {
+                return@withContext Result.failure(UnsupportedProviderException(provider))
+            }
+            return@withContext requestChatCompletion(
+                url = baseUrl.ifBlank { DEFAULT_BASE_URL },
+                apiKey = apiKey,
+                model = model,
+                messages = messages,
+                maxTokens = maxTokens,
+                count = count,
+                maxRetries = maxRetries,
+            )
+        }
+
+        // 2. Aura Worker (keyless primary).
+        val workerResult = requestChatCompletion(
+            url = AURA_WORKER_URL,
+            apiKey = null,
+            model = AURA_WORKER_MODEL,
+            messages = messages,
+            maxTokens = maxTokens,
+            count = count,
+            maxRetries = KEYLESS_MAX_RETRIES,
+        )
+        if (workerResult.isSuccess) return@withContext workerResult
+
+        // 3. Pollinations fallback (keyless).
+        val fallbackResult = requestChatCompletion(
+            url = POLLINATIONS_URL,
+            apiKey = null,
+            model = POLLINATIONS_MODEL,
+            messages = messages,
+            maxTokens = maxTokens,
+            count = count,
+            maxRetries = KEYLESS_MAX_RETRIES,
+        )
+        if (fallbackResult.isSuccess) return@withContext fallbackResult
+
+        Result.failure(AiServiceUnavailableException(fallbackResult.exceptionOrNull()))
+    }
+
+    /**
+     * One OpenAI-compatible chat-completion round trip against [url] with 5xx retries/backoff.
+     * [apiKey] null/blank → no Authorization header (keyless endpoints). Returns the parsed spec.
+     */
+    private suspend fun requestChatCompletion(
+        url: String,
+        apiKey: String?,
+        model: String,
+        messages: JSONArray,
+        maxTokens: Int,
+        count: Int,
+        maxRetries: Int,
+    ): Result<AiPlaylistSpec> {
         val requestJson = JSONObject().apply {
             if (model.isNotBlank()) put("model", model)
             put("messages", messages)
             // 0.7: enough variety for song picks, but tighter than 0.8 so the strict-JSON output drifts less.
             put("temperature", 0.7)
-            // Scale the token budget with the requested count (~80 tok/track + overhead) so a 50-song
-            // request isn't truncated mid-JSON (the old fixed 2048 cut off large playlists → fewer songs).
-            put("max_tokens", (count * 80 + 512).coerceIn(1024, 8192))
+            put("max_tokens", maxTokens)
         }
 
         var attempt = 0
         var lastError: String? = null
         while (attempt < maxRetries) {
             try {
-                val request = Request.Builder()
-                    .url(baseUrl.ifBlank { "https://openrouter.ai/api/v1/chat/completions" })
-                    .addHeader("Authorization", "Bearer ${apiKey.trim()}")
+                val builder = Request.Builder()
+                    .url(url)
                     .addHeader("Content-Type", "application/json")
                     .addHeader("HTTP-Referer", "https://github.com/EchoMusicApp/Echo-Music")
                     .addHeader("X-Title", "echomusic")
                     .post(requestJson.toString().toRequestBody(JSON))
-                    .build()
+                if (!apiKey.isNullOrBlank()) {
+                    builder.addHeader("Authorization", "Bearer ${apiKey.trim()}")
+                }
 
-                val response = client.newCall(request).execute()
+                val response = client.newCall(builder.build()).execute()
                 val responseBody = response.body?.string()
 
                 if (!response.isSuccessful) {
@@ -102,7 +185,7 @@ object AiPlaylistService {
                         JSONObject(responseBody ?: "").optJSONObject("error")?.optString("message")
                     }.getOrNull()?.takeIf { it.isNotBlank() }
                         ?: "HTTP ${response.code}: ${response.message}"
-                    return@withContext Result.failure(Exception(errorMsg))
+                    return Result.failure(Exception(errorMsg))
                 }
 
                 if (responseBody == null) {
@@ -118,18 +201,18 @@ object AiPlaylistService {
                     ?.trim()
 
                 if (!content.isNullOrBlank()) {
-                    return@withContext AiPlaylistParser.parse(content, count)
+                    return AiPlaylistParser.parse(content, count)
                 }
                 lastError = "Empty AI response"
             } catch (e: Exception) {
                 if (attempt == maxRetries - 1) {
-                    return@withContext Result.failure(e)
+                    return Result.failure(e)
                 }
                 lastError = e.message
             }
             attempt++
             delay(1000L * attempt)
         }
-        Result.failure(Exception(lastError ?: "Max retries exceeded"))
+        return Result.failure(Exception(lastError ?: "Max retries exceeded"))
     }
 }
