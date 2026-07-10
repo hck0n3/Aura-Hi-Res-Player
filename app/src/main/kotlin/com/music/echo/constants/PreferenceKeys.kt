@@ -264,6 +264,10 @@ val CrossfadeGaplessKey = booleanPreferencesKey("crossfadeGapless")
 // 3 = Exponential (quick). (Matches CrossfadeMath.getGains + the PlayerSettings labels.)
 val CrossfadeCurveKey = intPreferencesKey("crossfadeCurve")
 
+// 0.6.92 Descifrado de YouTube — wall-clock ms of the last user-initiated cipher refresh, for a light
+// UI cooldown on the "Descifrado de YouTube" settings screen. Does not affect cipher behaviour.
+val CipherManualRefreshAtKey = longPreferencesKey("cipherManualRefreshAtMs")
+
 
 val MaxImageCacheSizeKey = intPreferencesKey("maxImageCacheSize")
 val MaxSongCacheSizeKey = intPreferencesKey("maxSongCacheSize")

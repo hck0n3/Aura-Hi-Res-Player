@@ -496,4 +496,20 @@
     <!-- 0.6.92 Modo Ambiente -->
     <string name="ambient_mode">Modo Ambiente</string>
     <string name="ambient_mode_desc">Vista a pantalla completa con un resplandor animado</string>
+
+    <!-- 0.6.92 Descifrado de YouTube -->
+    <string name="youtube_decryption_settings">Descifrado de YouTube</string>
+    <string name="youtube_decryption_desc">Descifrado autorreparable de las transmisiones de YouTube</string>
+    <string name="force_update_cipher">Forzar actualización del descifrado</string>
+    <string name="force_update_cipher_desc">Obtiene ahora la configuración más reciente del reproductor</string>
+    <string name="cipher_updating">Actualizando el descifrado…</string>
+    <string name="cipher_update_success">Descifrado actualizado (%1$d configuraciones activas)</string>
+    <string name="cipher_update_unchanged">Ya estás al día (sin cambios)</string>
+    <string name="cipher_update_failed">No se pudo actualizar (sin conexión o error de red)</string>
+    <string name="cipher_last_updated">Última actualización</string>
+    <string name="cipher_last_updated_never">Aún nunca (se actualiza al abrir la app)</string>
+    <string name="cipher_applied_configs">Configuraciones activas</string>
+    <string name="cipher_applied_configs_count">%1$d configuración(es) autorreparable(s) aplicada(s)</string>
+    <string name="cipher_cooldown">Espera %1$s antes de volver a actualizar</string>
+    <string name="youtube_decryption_info">Aura mantiene la reproducción de YouTube por sí sola: actualiza el descifrado al abrir la app y se repara automáticamente cuando YouTube cambia su reproductor. Úsalo solo si la reproducción deja de funcionar — al forzar la actualización se obtiene de inmediato la configuración más reciente.</string>
 </resources>

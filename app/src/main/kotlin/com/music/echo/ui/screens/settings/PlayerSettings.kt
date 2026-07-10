@@ -1000,6 +1000,21 @@ fun PlayerSettings(
                 )
             )
         )
+
+        Spacer(modifier = Modifier.height(27.dp))
+
+        Material3SettingsGroup(
+            title = "Avanzado",
+            items = listOf(
+                Material3SettingsItem(
+                    icon = painterResource(R.drawable.lock),
+                    title = { Text(stringResource(R.string.youtube_decryption_settings)) },
+                    description = { Text(stringResource(R.string.youtube_decryption_desc)) },
+                    onClick = { navController.navigate("settings/youtube_decryption") }
+                )
+            )
+        )
+
         Spacer(modifier = Modifier.height(16.dp))
     }
 
