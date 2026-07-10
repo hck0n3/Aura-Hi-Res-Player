@@ -118,7 +118,10 @@ fun FloatingNavigationToolbar(
     } else {
         Modifier
     }
-    val hasOverflowMenu = (onShuffleClick != null && shuffleIconRes != null) || onMusicRecognitionClick != null
+    // Recognition (Shazam-style) is surfaced as a persistent, always-visible mic FAB in the toolbar's
+    // trailing action slot — never buried in an overflow menu — so it's one tap away on every main
+    // screen. Shuffle, when available, sits beside it as a second inline FAB.
+    val hasQuickActions = (onShuffleClick != null && shuffleIconRes != null) || onMusicRecognitionClick != null
     val hasFabAction = onFabClick != null && fabIconRes != null
 
     BoxWithConstraints(
@@ -127,11 +130,11 @@ fun FloatingNavigationToolbar(
     ) {
         val showSelectedLabels = true
 
-        if (hasOverflowMenu) {
+        if (hasQuickActions) {
             HorizontalFloatingToolbar(
                 expanded = true,
                 floatingActionButton = {
-                    FloatingToolbarOverflowMenuButton(
+                    FloatingToolbarQuickActions(
                         pureBlack = pureBlack,
                         onShuffleClick = onShuffleClick,
                         shuffleIconRes = shuffleIconRes,
@@ -264,7 +267,7 @@ private fun ToolbarItemsContainer(
 }
 
 @Composable
-private fun FloatingToolbarOverflowMenuButton(
+private fun FloatingToolbarQuickActions(
     pureBlack: Boolean,
     onShuffleClick: (() -> Unit)?,
     shuffleIconRes: Int?,
@@ -272,84 +275,38 @@ private fun FloatingToolbarOverflowMenuButton(
     onMusicRecognitionClick: (() -> Unit)?,
     musicRecognitionContentDescription: String,
 ) {
-    var menuExpanded by rememberSaveable { mutableStateOf(false) }
-
-    Box {
-        FloatingToolbarDefaults.VibrantFloatingActionButton(
-            onClick = { menuExpanded = !menuExpanded },
-            modifier = Modifier.tvFocusable(rememberIsTvOrCar(), CircleShape, scaleFocused = 1f),
-            shape = CircleShape,
-            containerColor = floatingToolbarFabContainerColor(pureBlack = pureBlack),
-            contentColor = floatingToolbarFabContentColor(pureBlack = pureBlack),
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.more_horiz),
-                contentDescription = stringResource(R.string.more_label),
-            )
-        }
-
-        DropdownMenu(
-            expanded = menuExpanded,
-            onDismissRequest = { menuExpanded = false },
-            shape = RoundedCornerShape(24.dp),
-            containerColor = if (pureBlack) Color.Black.copy(alpha = 0.92f) else MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.96f),
-            tonalElevation = 8.dp,
-        ) {
-            if (onShuffleClick != null && shuffleIconRes != null) {
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.shuffle)) },
-                    onClick = {
-                        menuExpanded = false
-                        onShuffleClick()
-                    },
-                    leadingIcon = {
-                        Surface(
-                            modifier = Modifier.size(40.dp),
-                            shape = CircleShape,
-                            color = floatingToolbarMenuIconContainerColor(pureBlack = pureBlack),
-                            contentColor = floatingToolbarMenuIconContentColor(pureBlack = pureBlack),
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    painter = painterResource(shuffleIconRes),
-                                    contentDescription = shuffleContentDescription.ifEmpty { stringResource(R.string.shuffle) },
-                                )
-                            }
-                        }
-                    },
-                    colors = MenuDefaults.itemColors(
-                        textColor = if (pureBlack) Color.White else MaterialTheme.colorScheme.onSurface,
-                        leadingIconColor = if (pureBlack) Color.White.copy(alpha = 0.82f) else MaterialTheme.colorScheme.onSurfaceVariant,
-                    ),
+    val isTvOrCar = rememberIsTvOrCar()
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (onShuffleClick != null && shuffleIconRes != null) {
+            FloatingToolbarDefaults.VibrantFloatingActionButton(
+                onClick = onShuffleClick,
+                modifier = Modifier.tvFocusable(isTvOrCar, CircleShape, scaleFocused = 1f),
+                shape = CircleShape,
+                containerColor = floatingToolbarFabContainerColor(pureBlack = pureBlack),
+                contentColor = floatingToolbarFabContentColor(pureBlack = pureBlack),
+            ) {
+                Icon(
+                    painter = painterResource(shuffleIconRes),
+                    contentDescription = shuffleContentDescription.ifEmpty { stringResource(R.string.shuffle) },
                 )
             }
+        }
 
-            if (onMusicRecognitionClick != null) {
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.recognition)) },
-                    onClick = {
-                        menuExpanded = false
-                        onMusicRecognitionClick()
-                    },
-                    leadingIcon = {
-                        Surface(
-                            modifier = Modifier.size(40.dp),
-                            shape = CircleShape,
-                            color = floatingToolbarMenuIconContainerColor(pureBlack = pureBlack),
-                            contentColor = floatingToolbarMenuIconContentColor(pureBlack = pureBlack),
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    painter = painterResource(R.drawable.mic),
-                                    contentDescription = musicRecognitionContentDescription.ifEmpty { stringResource(R.string.recognition) },
-                                )
-                            }
-                        }
-                    },
-                    colors = MenuDefaults.itemColors(
-                        textColor = if (pureBlack) Color.White else MaterialTheme.colorScheme.onSurface,
-                        leadingIconColor = if (pureBlack) Color.White.copy(alpha = 0.82f) else MaterialTheme.colorScheme.onSurfaceVariant,
-                    ),
+        // Persistent, always-visible recognition (Shazam-style) mic button — never hidden in an overflow.
+        if (onMusicRecognitionClick != null) {
+            FloatingToolbarDefaults.VibrantFloatingActionButton(
+                onClick = onMusicRecognitionClick,
+                modifier = Modifier.tvFocusable(isTvOrCar, CircleShape, scaleFocused = 1f),
+                shape = CircleShape,
+                containerColor = floatingToolbarFabContainerColor(pureBlack = pureBlack),
+                contentColor = floatingToolbarFabContentColor(pureBlack = pureBlack),
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.mic),
+                    contentDescription = musicRecognitionContentDescription.ifEmpty { stringResource(R.string.recognition) },
                 )
             }
         }
