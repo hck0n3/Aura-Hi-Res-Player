@@ -826,7 +826,9 @@ class MainActivity : ComponentActivity() {
                         if (playerBottomSheetState.isExpanded) {
                             playerBottomSheetState.collapseSoft()
                         }
-                        navController.navigate("recognition") {
+                        // In-app tap starts recognizing immediately (autoStart) — the screen requests the
+                        // mic permission if missing, then begins listening, so no idle second tap is needed.
+                        navController.navigate("recognition?autoStart=true") {
                             launchSingleTop = true
                         }
                     }
@@ -1390,7 +1392,8 @@ class MainActivity : ComponentActivity() {
 
                             val onRailSearchLongClick: () -> Unit = remember(navController) {
                                 {
-                                    navController.navigate("recognition") {
+                                    // In-app entry (nav-rail search long-press): auto-start recognizing.
+                                    navController.navigate("recognition?autoStart=true") {
                                         launchSingleTop = true
                                     }
                                 }
