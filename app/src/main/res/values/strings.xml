@@ -546,4 +546,11 @@
     <string name="recognition_notification_failed">Recognition failed</string>
     <string name="recognition_resolve_failed">Song not found on YouTube Music</string>
     <string name="listen_on_aura">Listen on Aura</string>
+
+    <!-- 0.6.92 Scrobbling -->
+    <string name="scrobbling">Scrobbling</string>
+    <string name="listenbrainz_scrobbling">ListenBrainz</string>
+    <string name="listenbrainz_scrobbling_description">Submit your listens to ListenBrainz. Requires a user token from your ListenBrainz profile.</string>
+    <string name="set_listenbrainz_token">Set ListenBrainz token</string>
+    <string name="listenbrainz_token_set">ListenBrainz token set</string>
 </resources>

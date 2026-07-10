@@ -493,4 +493,11 @@
     <string name="recognition_notification_failed">Error de reconocimiento</string>
     <string name="recognition_resolve_failed">No se encontró la canción en YouTube Music</string>
     <string name="listen_on_aura">Escuchar en Aura</string>
+
+    <!-- 0.6.92 Scrobbling -->
+    <string name="scrobbling">Scrobbling</string>
+    <string name="listenbrainz_scrobbling">ListenBrainz</string>
+    <string name="listenbrainz_scrobbling_description">Envía tus reproducciones a ListenBrainz. Requiere un token de usuario de tu perfil de ListenBrainz.</string>
+    <string name="set_listenbrainz_token">Configurar token de ListenBrainz</string>
+    <string name="listenbrainz_token_set">Token de ListenBrainz configurado</string>
 </resources>

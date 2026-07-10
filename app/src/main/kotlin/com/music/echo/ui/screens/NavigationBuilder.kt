@@ -341,6 +341,10 @@ fun NavGraphBuilder.navigationBuilder(
         AccountsScreen(navController, scrollBehavior)
     }
 
+    composable("settings/lastfm") {
+        iad1tya.echo.music.ui.screens.settings.LastFMSettingsScreen(navController)
+    }
+
     composable("settings/appearance") {
         AppearanceSettings(navController, scrollBehavior, activity, snackbarHostState)
     }

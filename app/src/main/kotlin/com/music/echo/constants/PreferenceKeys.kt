@@ -322,6 +322,11 @@ val ScrobbleDelayPercentKey = floatPreferencesKey("scrobbleDelayPercent")
 val ScrobbleMinSongDurationKey = intPreferencesKey("scrobbleMinSongDuration")
 val ScrobbleDelaySecondsKey = intPreferencesKey("scrobbleDelaySeconds")
 
+// ListenBrainz scrobbling (opt-in, network-only). Default OFF; nothing is submitted unless enabled AND a
+// user token is set. Routed through ScrobbleManager alongside Last.fm so playback wiring stays untouched.
+val ListenBrainzEnabledKey = booleanPreferencesKey("listenBrainzEnabled")
+val ListenBrainzTokenKey = stringPreferencesKey("listenBrainzToken")
+
 val ChipSortTypeKey = stringPreferencesKey("chipSortType")
 val SongSortTypeKey = stringPreferencesKey("songSortType")
 val SongSortDescendingKey = booleanPreferencesKey("songSortDescending")
