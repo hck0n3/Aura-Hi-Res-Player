@@ -46,6 +46,10 @@ import iad1tya.echo.music.ui.component.Material3SettingsItem
 import iad1tya.echo.music.ui.screens.Screens
 import iad1tya.echo.music.ui.utils.backToMain
 import iad1tya.echo.music.echomusic.updater.getUpdateAvailableState
+import iad1tya.echo.music.license.SubscriptionEntryScreen
+import iad1tya.echo.music.license.LicenseManager
+import iad1tya.echo.music.license.LicenseLogic
+import androidx.compose.runtime.remember
 
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -57,6 +61,22 @@ fun SettingsScreen(
     val uriHandler = LocalUriHandler.current
     val context = LocalContext.current
     val isAndroid12OrLater = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+
+    // "Suscríbete ahora / activa tu clave" shortcut: opens the existing (already-audited) subscription
+    // entry screen, which shows BOTH the Gumroad subscribe button AND the license-key field (activating a
+    // key does NOT require tapping subscribe). Surfaced only when a subscription is required and not already
+    // active. This only presents the existing flow — it never touches the license/grace/subscription logic.
+    var showSubscribe by rememberSaveable { mutableStateOf(false) }
+    val subState = remember { LicenseManager.lastResolvedState(context) }
+    val showSubscribeEntry = BuildConfig.REQUIRE_SUBSCRIPTION &&
+        subState != LicenseLogic.AppState.SUBSCRIPTION_ACTIVE
+    if (showSubscribe) {
+        SubscriptionEntryScreen(
+            onActivated = { showSubscribe = false },
+            onBack = { showSubscribe = false },
+        )
+        return
+    }
 
     var searchQuery by rememberSaveable { mutableStateOf("") }
     val searchLower = searchQuery.lowercase()
@@ -78,6 +98,7 @@ fun SettingsScreen(
     val logsText = stringResource(R.string.logs)
     val aboutText = stringResource(R.string.about)
     val updateText = "Aura Hi-Res Update"
+    val subscribeText = "Suscripción Pro"
     val noResultsText = stringResource(R.string.settings_search_no_results, searchQuery)
 
     val scrollState = rememberScrollState()
@@ -132,6 +153,16 @@ fun SettingsScreen(
         )
 
         val itemsList = buildList {
+            if (showSubscribeEntry && subscribeText.lowercase().contains(searchLower)) {
+                add(
+                    Material3SettingsItem(
+                        icon = painterResource(R.drawable.subscribe),
+                        title = { Text(subscribeText) },
+                        description = { Text("Suscríbete o ingresa tu clave de licencia") },
+                        onClick = { showSubscribe = true }
+                    )
+                )
+            }
             if (accountsText.lowercase().contains(searchLower)) {
                 add(
                     Material3SettingsItem(
