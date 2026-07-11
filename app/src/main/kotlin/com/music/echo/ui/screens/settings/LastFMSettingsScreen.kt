@@ -34,6 +34,8 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.collectAsState
+import android.text.format.DateUtils
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -108,6 +110,10 @@ fun LastFMSettingsScreen(
         key = UseLastFmTasteKey,
         defaultValue = false
     )
+    // Live Last.fm taste-sync status for the indicator under the toggle: (fetchedAtMillis, artistCount).
+    // Emits on its own when the daily worker writes a fresh cache, so the user SEES it actually ran.
+    val lastFmTasteStatus by remember { iad1tya.echo.music.reco.LastFmTasteSource.statusFlow(context) }
+        .collectAsState(initial = 0L to 0)
 
     val (scrobbleDelayPercent, onScrobbleDelayPercentChange) = rememberPreference(
         ScrobbleDelayPercentKey,
@@ -396,7 +402,21 @@ fun LastFMSettingsScreen(
                 ),
                 Material3SettingsItem(
                     title = { Text("Mejorar recomendaciones con Last.fm") },
-                    description = { Text("Usa tu historial de Last.fm para afinar tus recomendaciones (tu escucha en Aura siempre manda)") },
+                    description = {
+                        if (useLastFmTaste) {
+                            val (syncedAt, artistCount) = lastFmTasteStatus
+                            Text(
+                                if (syncedAt <= 0L)
+                                    "Aún no sincronizado — se hace al activarlo y una vez al día (necesita conexión)."
+                                else "✓ Última sincronización: " +
+                                    DateUtils.getRelativeTimeSpanString(
+                                        syncedAt, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS
+                                    ) + " · " + artistCount + " artistas de tu historial en uso"
+                            )
+                        } else {
+                            Text("Usa tu historial de Last.fm para afinar tus recomendaciones (tu escucha en Aura siempre manda)")
+                        }
+                    },
                     trailingContent = {
                         Switch(
                             checked = useLastFmTaste,

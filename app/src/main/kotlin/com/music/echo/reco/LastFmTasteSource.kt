@@ -7,6 +7,8 @@ import iad1tya.echo.music.constants.LastFmTasteFetchedAtKey
 import iad1tya.echo.music.utils.dataStore
 import iad1tya.echo.music.utils.get
 import iad1tya.echo.music.utils.lastfm.LastFM
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
@@ -65,6 +67,20 @@ object LastFmTasteSource {
             }
         }
     }
+
+    /**
+     * Live status for the settings indicator: (fetchedAtEpochMillis, cachedArtistCount). `fetchedAt == 0L`
+     * means it has never synced successfully yet. Emits whenever the daily worker writes a fresh cache, so the
+     * settings screen updates on its own once a sync completes.
+     */
+    fun statusFlow(context: Context): Flow<Pair<Long, Int>> =
+        context.dataStore.data.map { prefs ->
+            val at = prefs[LastFmTasteFetchedAtKey] ?: 0L
+            val blob = prefs[LastFmTasteCacheKey] ?: ""
+            val count = if (blob.isBlank()) 0
+            else runCatching { json.decodeFromString(mapSerializer, blob).size }.getOrDefault(0)
+            at to count
+        }
 
     /** The cached Last.fm taste map (lowercased artist name -> weight), or empty if none / it fails to parse. */
     suspend fun cached(context: Context): Map<String, Double> {
