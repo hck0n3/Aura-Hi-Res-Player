@@ -137,8 +137,19 @@ constructor(
                 reportException(e)
                 runCatching { LibraryResult.ofItem(rootMediaItem(), null) }
                     .getOrElse {
+                        // A media-id-only item has null isBrowsable/isPlayable, which LibraryResult.ofItem
+                        // rejects — the fallback must carry real browsable-folder metadata so it can't throw.
                         LibraryResult.ofItem(
-                            MediaItem.Builder().setMediaId(MusicService.ROOT).build(),
+                            MediaItem.Builder()
+                                .setMediaId(MusicService.ROOT)
+                                .setMediaMetadata(
+                                    MediaMetadata.Builder()
+                                        .setIsBrowsable(true)
+                                        .setIsPlayable(false)
+                                        .setMediaType(MediaMetadata.MEDIA_TYPE_FOLDER_MIXED)
+                                        .build(),
+                                )
+                                .build(),
                             null,
                         )
                     }
@@ -973,8 +984,9 @@ constructor(
      *  media3 then parcels every MediaItem across the ~1 MB Binder limit → TransactionTooLargeException on the
      *  binder thread → the service process dies and the app VANISHES from the Android Auto screen ("aparece y
      *  desaparece", worst on large libraries). A car browse list of a few hundred is the practical max anyway,
-     *  so cap the payload well under the Binder limit. */
-    private val maxBrowseItems = 500
+     *  so cap the payload well under the Binder limit (300 × ~1–2 KB/item keeps real headroom; playback still
+     *  reaches every track — onSetMediaItems/shuffle enqueue the full underlying list, uncapped). */
+    private val maxBrowseItems = 300
 
     private fun <T> List<T>.paginate(page: Int, pageSize: Int): List<T> {
         if (page < 0 || pageSize < 1 || isEmpty()) return emptyList()

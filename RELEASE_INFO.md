@@ -1,15 +1,18 @@
-# Aura Hi-Res Player 0.6.101 — Suscríbete desde Ajustes + Recomendaciones con Last.fm
+# Aura Hi-Res Player 0.6.102 — Android Auto ya no desaparece + indicador de Last.fm
 
-## 💳 Suscríbete o activa tu clave desde Ajustes
-- Nuevo acceso **"Suscripción Pro"** al inicio de Ajustes: **suscríbete al instante** sin esperar a que se acaben los días de la demo.
-- En la misma pantalla puedes **ingresar tu clave de licencia** y activarla — **sin tener que tocar el botón de suscribir**. Si acabas de pagar, la app detecta tu clave sola.
-- Solo aparece mientras no tengas la suscripción activa (si ya pagaste, no te estorba).
+## 🚗 Android Auto ya no se cae (sobre todo en Xiaomi/MIUI)
+- Arreglada la causa real de que **la app apareciera y desapareciera** en la pantalla de Android Auto: con bibliotecas grandes, Aura mandaba **toda** la lista de golpe y el sistema **mataba el proceso** (cruzaba el límite interno de 1 MB). Ahora la lista va **acotada** y ya no se cae. Beneficia a **todos**, no solo a Xiaomi.
+- Bajada la resolución de la carátula que se manda a la notificación/Auto (justo estaba en el límite de 1 MB) — la portada dentro de la app **no cambia**.
+- Blindados los puntos de entrada del navegador de Auto para que **nunca fallen** y tumben la lista.
 
-## 🎧 Recomendaciones más afinadas con Last.fm (opcional)
-- Si inicias sesión en **Last.fm**, ahora puedes activar en sus ajustes que Aura use tu **historial de Last.fm** (artistas más escuchados + canciones que amaste) para **afinar tus recomendaciones** — genial si también escuchas música en otras apps que scrobbleas.
-- **Tu escucha dentro de Aura SIEMPRE manda**: Last.fm solo suma como pista secundaria, nunca te vuelve las recomendaciones genéricas.
-- **Sin gasto de batería**: se actualiza una vez al día por WiFi, nunca mientras te recomienda música.
-- Si no lo activas (o no usas Last.fm), **nada cambia**.
+## 🔋 Menos cierres en segundo plano (Xiaomi/MIUI/HyperOS y similares)
+- En teléfonos que **matan apps en segundo plano** (Xiaomi, Redmi, POCO, Oppo, Realme, OnePlus, Vivo, Huawei, Samsung…), Aura ahora te ofrece **una vez** activar lo necesario para que no te corte:
+  - **Permitir batería sin restricción**, y
+  - un atajo a **"Inicio automático"**.
+- Antes esto estaba escondido en Ajustes → Contenido; ahora se te ofrece directo. *(El "Inicio automático" de MIUI no se puede activar solo desde la app — tienes que confirmarlo tú; no existe forma técnica de hacerlo automático.)*
+
+## 🎧 Ves si Last.fm está funcionando
+- Bajo el interruptor de **"Mejorar recomendaciones con Last.fm"** ahora aparece: **"✓ Última sincronización: hace X · N artistas de tu historial en uso"** — así confirmas con tus ojos que de verdad está leyendo tu historial y alimentando la IA. Antes no había forma de saberlo.
 
 ## ✅ Como siempre
-- Suscripción, licencia, demo, crossfade de 9s y motor de audio: intactos. La cola infinita sigue sin repetir. Verificado contra el registro de fallos: sin regresiones.
+- Suscripción, licencia, demo, crossfade de 9s, motor de audio y la cola infinita sin repetir: intactos. Verificado contra el registro de fallos (26 puntos): sin regresiones.

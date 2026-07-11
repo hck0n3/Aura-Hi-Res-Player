@@ -952,6 +952,10 @@ class MainActivity : ComponentActivity() {
                 val (batteryReliabilityPromptShown, setBatteryReliabilityPromptShown) =
                     rememberPreference(iad1tya.echo.music.constants.BatteryReliabilityPromptShownKey, false)
                 var showBatteryReliabilityDialog by remember { mutableStateOf(false) }
+                // Whether a welcome/changelog dialog is due THIS launch (first run or a version bump). Used to
+                // defer the battery prompt to a later launch so it never stacks on welcome/onboarding — more
+                // robust than reading the instantaneous dialog flag (which a fast dismiss could race).
+                val welcomeWillShow = lastOpenedVersionCode < BuildConfig.VERSION_CODE
 
                 LaunchedEffect(lastOpenedVersionCode) {
                     if (lastOpenedVersionCode < BuildConfig.VERSION_CODE) {
@@ -965,7 +969,7 @@ class MainActivity : ComponentActivity() {
                     // the app "aparece y desaparece" in Android Auto. Never stack it on the welcome/onboarding
                     // flow — if a welcome shows this launch, the prompt surfaces on a later one instead.
                     kotlinx.coroutines.delay(1500)
-                    if (!batteryReliabilityPromptShown && !showWelcomeDialog &&
+                    if (!batteryReliabilityPromptShown && !welcomeWillShow && !showWelcomeDialog &&
                         iad1tya.echo.music.utils.BackgroundReliability.isAggressiveOem() &&
                         !iad1tya.echo.music.utils.BackgroundReliability.isIgnoringBatteryOptimizations(this@MainActivity)
                     ) {
