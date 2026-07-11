@@ -76,6 +76,19 @@ constructor(
         // stripped. Dropped during reconciliation UNLESS the artist's genuine iTunes release is itself
         // instrumental (see itunesInstrumental in buildCompleteDiscography).
         private val INSTRUMENTAL = Regex("(?i)\\b(instrumental|karaoke|backing track|playback)\\b")
+
+        // Live / acoustic / unplugged editions are DIFFERENT recordings of the same title (common for the
+        // app's worship/Latin audience: studio + "En Vivo"). They must NOT collapse into the studio album
+        // during dedupe — unlike deluxe/remaster/instrumental, which are the same recording and do collapse.
+        private val LIVE_ACOUSTIC =
+            Regex("(?i)\\b(en\\s*vivo|en\\s*directo|live|directo|unplugged|ac[uú]stico|acoustic|en\\s*concierto)\\b")
+    }
+
+    /** Dedup key: normalized title PLUS a marker so live/acoustic editions stay distinct from the studio
+     *  release (same title, different recording). normalizeTitle strips "en vivo/live", so we re-add it. */
+    private fun reconKey(rawTitle: String): String {
+        val base = iTunesDiscography.normalizeTitle(rawTitle)
+        return if (LIVE_ACOUSTIC.containsMatchIn(rawTitle)) "$base|live" else base
     }
 
     init {
@@ -312,12 +325,17 @@ constructor(
             { albumQualityCache[it.browseId]?.songCount ?: 0 },
         )
 
-        val albumGroups: Map<String, List<AlbumItem>> = (baseAlbums + foundAlbums).groupBy { norm(it.title) }
+        // Group by reconKey so studio and live/acoustic editions of the same title are SEPARATE groups
+        // (each keeps its own winner); iTunes lookups below still use the plain norm.
+        val albumGroups: Map<String, List<AlbumItem>> = (baseAlbums + foundAlbums).groupBy { reconKey(it.title) }
         val playlistByNorm: Map<String, PlaylistItem> = foundPlaylists.associate { it.first to it.second }
         val winnerByNorm = LinkedHashMap<String, YTItem>()
         for ((nt, group) in albumGroups) {
-            val expected = expectedTracks[nt]
-            val allowInstrumental = nt in itunesInstrumental
+            // iTunes expected-count / instrumental / playlist lookups key by the PLAIN norm (iTunes has no
+            // separate live entry), while the group key `nt` may carry the |live marker.
+            val plainNorm = norm(group.first().title)
+            val expected = expectedTracks[plainNorm]
+            val allowInstrumental = plainNorm in itunesInstrumental
             // Drop instrumental/karaoke copies unless iTunes says this release is genuinely instrumental.
             val nonInstr = group.filterNot { !allowInstrumental && INSTRUMENTAL.containsMatchIn(it.title) }
             val hasBase = group.any { it.browseId in baseBrowseIds }
@@ -326,7 +344,8 @@ constructor(
             val pool = if (nonInstr.isNotEmpty()) nonInstr else if (hasBase) group else emptyList()
             val bestAlbum = pool.maxWithOrNull(rank(expected))
             val bestAlbumComplete = bestAlbum != null && isComplete(albumQualityCache[bestAlbum.browseId], expected)
-            val playlist = playlistByNorm[nt]
+            // Only the studio group claims the community-playlist fallback (a live group keeps its album).
+            val playlist = (if (nt.endsWith("|live")) null else playlistByNorm[plainNorm])
                 ?.takeIf { allowInstrumental || !INSTRUMENTAL.containsMatchIn(it.title) }
             val winner: YTItem? = when {
                 bestAlbum != null && bestAlbumComplete -> bestAlbum   // a good, full album wins
@@ -351,7 +370,7 @@ constructor(
         val result = ArrayList<YTItem>()
         for (item in baseItems) {
             if (item is AlbumItem) {
-                val nt = norm(item.title)
+                val nt = reconKey(item.title)
                 if (!emitted.add(nt)) continue
                 result.add(winnerByNorm[nt] ?: item) // fallback: original base item (never make it empty)
             } else {
@@ -428,10 +447,10 @@ constructor(
      */
     private fun mergeDiscography(primary: List<YTItem>, secondary: List<YTItem>): List<YTItem> {
         val ids = primary.mapTo(HashSet()) { it.id }
-        val norms = primary.mapTo(HashSet()) { iTunesDiscography.normalizeTitle(it.title) }
+        val norms = primary.mapTo(HashSet()) { reconKey(it.title) }
         val extras = secondary.filter { item ->
             item.id !in ids &&
-                !(item is AlbumItem && iTunesDiscography.normalizeTitle(item.title) in norms)
+                !(item is AlbumItem && reconKey(item.title) in norms)
         }
         return primary + extras
     }
