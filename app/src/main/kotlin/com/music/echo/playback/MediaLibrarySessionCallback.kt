@@ -49,6 +49,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
@@ -64,7 +65,11 @@ constructor(
     val database: MusicDatabase,
     val downloadUtil: DownloadUtil,
 ) : MediaLibrarySession.Callback {
-    private val scope = CoroutineScope(Dispatchers.Main) + Job()
+    // SupervisorJob (not Job): a single browse request that throws (e.g. a DB read during a restore, or a
+    // network hiccup in onGetChildren) must NOT cancel the whole callback scope — that permanently kills
+    // every future browse → Android Auto gets empty/error and the app flickers in and out. With a
+    // supervisor, one failed request is isolated and the rest keep working.
+    private val scope = CoroutineScope(Dispatchers.Main) + SupervisorJob()
     lateinit var service: MusicService
     var toggleLike: () -> Unit = {}
     var toggleStartRadio: () -> Unit = {}
@@ -138,7 +143,7 @@ constructor(
         params: MediaLibraryService.LibraryParams?,
     ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> =
         scope.future(Dispatchers.IO) {
-            val children =
+            val children = try {
                 when (parentId) {
                     MusicService.ROOT -> rootChildren()
 
@@ -268,6 +273,14 @@ constructor(
                             else -> emptyList()
                         }
                 }
+            } catch (e: Exception) {
+                // A browse request throwing (transient DB state during a restore, a network hiccup) must
+                // degrade to an EMPTY folder — never a failed/cancelled future — so Android Auto stays
+                // connected and repopulates on the next query instead of dropping the app ("aparece y
+                // desaparece"). The SupervisorJob scope already prevents one failure from killing the rest.
+                reportException(e)
+                emptyList()
+            }
 
             LibraryResult.ofItemList(
                 children.paginate(page, pageSize),

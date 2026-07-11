@@ -76,6 +76,10 @@ constructor(
                     val hideExplicit = context.dataStore.get(HideExplicitKey, false)
                     val hideVideoSongs = context.dataStore.get(HideVideoSongsKey, false)
                     title.value = artistItemsPage.title
+                    // Is THIS see-all the Singles/EP section (vs Albums)? Drives which iTunes releases the
+                    // completion targets, so Singles/EPs get completed too (the owner wants ALL of them).
+                    val isSinglesSection =
+                        Regex("(?i)single|sencillo|\\bep\\b").containsMatchIn(artistItemsPage.title ?: "")
                     val baseItems = artistItemsPage.items
                         .distinctBy { it.id }
                         .filterExplicit(hideExplicit)
@@ -87,20 +91,34 @@ constructor(
                     // in the background and publish the full discography in ONE update (not in batches).
                     itemsPage.value = ItemsPage(items = baseItems, continuation = artistItemsPage.continuation)
                     if (baseItems.any { it is AlbumItem }) {
-                        val cacheKey = artistId ?: browseId
+                        // Key by artist AND browse: the same artist's Albums and Singles/EP see-all screens
+                        // share artistId but differ by browseId. Keying by artistId alone made opening one
+                        // section serve the OTHER's cached list (albums showing under Singles).
+                        val cacheKey = "${artistId ?: ""}:$browseId"
                         val cached = completedCache[cacheKey]
                         if (cached != null) {
-                            // Re-opening the same artist: show the full discography instantly.
-                            itemsPage.value =
-                                ItemsPage(items = cached, continuation = artistItemsPage.continuation)
+                            // Re-opening the same section: show the full discography instantly. Merge with
+                            // whatever is already shown and KEEP the live continuation — never rewind paging.
+                            val current = itemsPage.value
+                            itemsPage.value = ItemsPage(
+                                items = (cached + (current?.items ?: emptyList())).distinctBy { it.id },
+                                continuation = current?.continuation ?: artistItemsPage.continuation,
+                            )
                         } else {
                             viewModelScope.launch {
-                                val complete = runCatching { buildCompleteDiscography(baseItems, hideExplicit) }
-                                    .getOrDefault(baseItems)
+                                val complete =
+                                    runCatching { buildCompleteDiscography(baseItems, hideExplicit, isSinglesSection) }
+                                        .getOrDefault(baseItems)
                                 if (complete.size > baseItems.size) {
                                     completedCache[cacheKey] = complete
-                                    itemsPage.value =
-                                        ItemsPage(items = complete, continuation = artistItemsPage.continuation)
+                                    // Merge with whatever the user has scrolled in by now and keep the LIVE
+                                    // continuation, so the completion never overwrites loaded pages or
+                                    // rewinds paging back to page 1.
+                                    val current = itemsPage.value
+                                    itemsPage.value = ItemsPage(
+                                        items = (complete + (current?.items ?: emptyList())).distinctBy { it.id },
+                                        continuation = current?.continuation ?: artistItemsPage.continuation,
+                                    )
                                 }
                             }
                         }
@@ -129,6 +147,7 @@ constructor(
     private suspend fun buildCompleteDiscography(
         baseItems: List<com.music.innertube.models.YTItem>,
         hideExplicit: Boolean,
+        isSinglesSection: Boolean,
     ): List<com.music.innertube.models.YTItem> = coroutineScope {
         val artistName = resolveArtistName() ?: return@coroutineScope baseItems
         val norm = iTunesDiscography::normalizeTitle
@@ -166,7 +185,9 @@ constructor(
         val epOrSingle = Regex("(?i)[-–—]\\s*(ep|single)\\b|\\((?:ep|single)\\)")
         val missing = itunes
             .filter { norm(it).isNotBlank() && norm(it) !in have }
-            .filterNot { epOrSingle.containsMatchIn(it) }
+            // Albums section keeps full albums (excludes EP/Single); the Singles/EP section keeps ONLY
+            // EP/Single releases — so BOTH sections get completed (the owner wants all albums + singles + EPs).
+            .filter { if (isSinglesSection) epOrSingle.containsMatchIn(it) else !epOrSingle.containsMatchIn(it) }
             .distinctBy { norm(it) }
             .take(50)
 

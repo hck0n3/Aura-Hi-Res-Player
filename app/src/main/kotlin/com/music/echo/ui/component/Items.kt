@@ -1104,6 +1104,7 @@ fun YouTubeListItem(
                     isPlaying = isPlaying,
                     thumbnailRatio = thumbnailRatio,
                     shape = if (item is ArtistItem) CircleShape else RoundedCornerShape(ThumbnailCornerRadius),
+                    resize = item !is ArtistItem,
                     modifier = Modifier
                         .height(ListThumbnailSize)
                         .width(ListThumbnailSize * thumbnailRatio)
@@ -1209,6 +1210,7 @@ fun YouTubeGridItem(
             isActive = isActive,
             isPlaying = isPlaying,
             shape = if (item is ArtistItem) CircleShape else RoundedCornerShape(ThumbnailCornerRadius),
+            resize = item !is ArtistItem,
         )
 
         if (item is SongItem && !isActive) {
@@ -1339,7 +1341,11 @@ fun ItemThumbnail(
     modifier: Modifier = Modifier,
     albumIndex: Int? = null,
     isSelected: Boolean = false,
-    thumbnailRatio: Float = 1f
+    thumbnailRatio: Float = 1f,
+    // Artist AVATARS are yt3.ggpht.com "…=s…" URLs; resize() truncates that token at "-s" and produces a
+    // 404 (blank circle) — album/song lh3 covers are fine. Pass resize=false for artists to render raw
+    // (like the working Onboarding "pick artists" screen). Default true keeps album/song behavior.
+    resize: Boolean = true
 ) {
     val cropAlbumArt by rememberPreference(CropAlbumArtKey, false)
     
@@ -1353,7 +1359,7 @@ fun ItemThumbnail(
         if (albumIndex == null) {
             AsyncImage(
                 model = ImageRequest.Builder(LocalContext.current)
-                    .data(thumbnailUrl?.resize(544, 544))
+                    .data(if (resize) thumbnailUrl?.resize(544, 544) else thumbnailUrl)
                     .memoryCachePolicy(coil3.request.CachePolicy.ENABLED)
                     .diskCachePolicy(coil3.request.CachePolicy.ENABLED)
                     .networkCachePolicy(coil3.request.CachePolicy.ENABLED)

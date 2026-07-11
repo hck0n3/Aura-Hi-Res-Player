@@ -89,15 +89,14 @@ class BackupRestoreViewModel @Inject constructor(
         runCatching {
             context.applicationContext.contentResolver.openOutputStream(uri)?.use {
                 it.buffered().zipOutputStream().use { outputStream ->
-                    // 1) settings.preferences_pb — kept RAW (unchanged behavior). We deliberately do NOT
-                    //    strip the cookie/session here: that is a separate decision and the playback-cookie
-                    //    issue is already fixed at validateStatus, so restore preserves the user's login.
-                    (context.filesDir / "datastore" / SETTINGS_FILENAME).inputStream().buffered()
-                        .use { inputStream ->
-                            outputStream.putNextEntry(ZipEntry(SETTINGS_FILENAME))
-                            inputStream.copyTo(outputStream)
-                        }
-                    // 2) song.db — a CONSISTENT snapshot (VACUUM INTO on API 30+, checkpoint(TRUNCATE)+copy
+                    // LIBRARY-ONLY backup (user request: "que solo guarden lo de la biblioteca, para que
+                    // siempre sean funcionales"). We deliberately DO NOT back up settings.preferences_pb —
+                    // it carries the InnerTube session cookie + tokens + app toggles + one-time init guards,
+                    // i.e. NON-library state that made restores fragile (a restored stale cookie broke
+                    // playback; restored init guards suppressed new features). The backup is now just the
+                    // library DB + EQ presets, so a restore is always functional and never touches the
+                    // user's live login/session on the target device.
+                    // 1) song.db — a CONSISTENT snapshot (VACUUM INTO on API 30+, checkpoint(TRUNCATE)+copy
                     //    fallback on API 26-29) so a write racing mid-backup can't produce a torn file.
                     dbSnapshot = snapshotDatabase(context)
                     FileInputStream(dbSnapshot!!.path).use { inputStream ->
@@ -305,19 +304,12 @@ class BackupRestoreViewModel @Inject constructor(
                 }
             }
 
-            // ---- 3b. settings + shared_prefs. If the DB was already closed these must NOT abort the
-            //          restart, so each is best-effort. ----
-            settingsTemp?.let { st ->
-                runCatching {
-                    // Unchanged behavior: overwrite settings.preferences_pb with the backup's copy. This
-                    // PRESERVES the user's session exactly as before (no forced re-login); the stale
-                    // visitorData + any restored proxy are corrected on next launch by
-                    // App.reseedAfterRestoreIfNeeded, which keeps InnerTubeCookie/DataSyncId/account.
-                    (context.filesDir / "datastore" / SETTINGS_FILENAME).outputStream().use { os ->
-                        st.inputStream().use { it.copyTo(os) }
-                    }
-                }.onFailure { Timber.tag("RESTORE").w(it, "settings restore failed (non-fatal)") }
-            }
+            // ---- 3b. shared_prefs only. LIBRARY-ONLY restore: we intentionally do NOT restore
+            //          settings.preferences_pb even if an OLD backup contains it — applying another
+            //          profile's session cookie / tokens / one-time init guards is exactly what made
+            //          restores break ("no reproduce", missing new features). The target device keeps its
+            //          OWN live login; only the library DB + EQ presets are restored. Best-effort so a
+            //          failure never aborts the restart. ----
             if (prefsTemps.isNotEmpty()) {
                 runCatching {
                     // EQ presets etc. live at <dataDir>/shared_prefs/<name>.xml. Overwriting the XML is
