@@ -675,6 +675,10 @@ val AccountChannelHandleKey = stringPreferencesKey("accountChannelHandle")
 val UseLoginForBrowse = booleanPreferencesKey("useLoginForBrowse")
 val LastOpenedVersionCodeKey = intPreferencesKey("lastOpenedVersionCode")
 
+// One-time: whether the proactive background-reliability prompt (battery exemption + autostart) was already
+// offered on an aggressive OEM (MIUI/HyperOS/ColorOS/etc.), so we don't nag. See BackgroundReliability.
+val BatteryReliabilityPromptShownKey = booleanPreferencesKey("batteryReliabilityPromptShown")
+
 val LanguageCodeToName =
     mapOf(
         "af" to "Afrikaans",

@@ -949,9 +949,27 @@ class MainActivity : ComponentActivity() {
                 var showWelcomeDialog by remember { mutableStateOf(false) }
                 val onboardingArtistsDone by rememberPreference(iad1tya.echo.music.constants.OnboardingArtistsDoneKey, false)
 
+                val (batteryReliabilityPromptShown, setBatteryReliabilityPromptShown) =
+                    rememberPreference(iad1tya.echo.music.constants.BatteryReliabilityPromptShownKey, false)
+                var showBatteryReliabilityDialog by remember { mutableStateOf(false) }
+
                 LaunchedEffect(lastOpenedVersionCode) {
                     if (lastOpenedVersionCode < BuildConfig.VERSION_CODE) {
                         showWelcomeDialog = true
+                    }
+                }
+
+                LaunchedEffect(Unit) {
+                    // Proactively offer the battery-exemption + autostart prompt on aggressive OEMs (MIUI/etc.)
+                    // ONCE, since those skins kill the backgrounded media service → background playback stops and
+                    // the app "aparece y desaparece" in Android Auto. Never stack it on the welcome/onboarding
+                    // flow — if a welcome shows this launch, the prompt surfaces on a later one instead.
+                    kotlinx.coroutines.delay(1500)
+                    if (!batteryReliabilityPromptShown && !showWelcomeDialog &&
+                        iad1tya.echo.music.utils.BackgroundReliability.isAggressiveOem() &&
+                        !iad1tya.echo.music.utils.BackgroundReliability.isIgnoringBatteryOptimizations(this@MainActivity)
+                    ) {
+                        showBatteryReliabilityDialog = true
                     }
                 }
 
@@ -1631,6 +1649,26 @@ class MainActivity : ComponentActivity() {
                                     navController.navigate("onboarding_artists")
                                 }
                             }
+                        )
+                    }
+
+                    if (showBatteryReliabilityDialog) {
+                        iad1tya.echo.music.ui.screens.BackgroundReliabilityDialog(
+                            onAllowBattery = {
+                                setBatteryReliabilityPromptShown(true)
+                                showBatteryReliabilityDialog = false
+                                iad1tya.echo.music.utils.BackgroundReliability
+                                    .requestIgnoreBatteryOptimizations(this@MainActivity)
+                            },
+                            onOpenAutostart = {
+                                setBatteryReliabilityPromptShown(true)
+                                showBatteryReliabilityDialog = false
+                                iad1tya.echo.music.utils.BackgroundReliability.openAppDetails(this@MainActivity)
+                            },
+                            onDismiss = {
+                                setBatteryReliabilityPromptShown(true)
+                                showBatteryReliabilityDialog = false
+                            },
                         )
                     }
                 }

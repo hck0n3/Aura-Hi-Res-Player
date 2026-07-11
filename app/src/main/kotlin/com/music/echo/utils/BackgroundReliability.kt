@@ -16,6 +16,22 @@ import androidx.core.content.getSystemService
  */
 object BackgroundReliability {
 
+    /**
+     * OEM skins known to aggressively freeze/kill backgrounded services (which breaks background playback and
+     * makes the app "aparecer y desaparecer" in Android Auto). For these we proactively offer the battery
+     * exemption + autostart shortcut once; on stock Android the OS already keeps a media service alive.
+     */
+    fun isAggressiveOem(): Boolean {
+        val m = Build.MANUFACTURER.lowercase()
+        val b = Build.BRAND.lowercase()
+        return AGGRESSIVE_OEMS.any { m.contains(it) || b.contains(it) }
+    }
+
+    private val AGGRESSIVE_OEMS = listOf(
+        "xiaomi", "redmi", "poco", "huawei", "honor", "oppo", "realme", "oneplus",
+        "vivo", "iqoo", "meizu", "samsung", "asus", "lenovo", "tecno", "infinix", "itel",
+    )
+
     fun isIgnoringBatteryOptimizations(context: Context): Boolean {
         val pm = context.getSystemService<PowerManager>() ?: return true
         return pm.isIgnoringBatteryOptimizations(context.packageName)

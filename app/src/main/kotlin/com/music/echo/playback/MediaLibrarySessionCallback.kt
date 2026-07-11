@@ -128,10 +128,21 @@ constructor(
         params: MediaLibraryService.LibraryParams?,
     ): ListenableFuture<LibraryResult<MediaItem>> =
         Futures.immediateFuture(
-            LibraryResult.ofItem(
-                rootMediaItem(),
-                params.withContentStyleHints(),
-            ),
+            // The root gate is the ONE browse entry not run on the SupervisorJob scope; if it ever throws
+            // (a resource/Bundle failure) the whole tree fails and the app disappears from Android Auto. Never
+            // let it throw — always hand back a valid root, degrading to a bare one as the last resort.
+            try {
+                LibraryResult.ofItem(rootMediaItem(), params.withContentStyleHints())
+            } catch (e: Exception) {
+                reportException(e)
+                runCatching { LibraryResult.ofItem(rootMediaItem(), null) }
+                    .getOrElse {
+                        LibraryResult.ofItem(
+                            MediaItem.Builder().setMediaId(MusicService.ROOT).build(),
+                            null,
+                        )
+                    }
+            },
         )
 
     override fun onGetChildren(
@@ -294,9 +305,16 @@ constructor(
         mediaId: String,
     ): ListenableFuture<LibraryResult<MediaItem>> =
         scope.future(Dispatchers.IO) {
-            getMediaItem(mediaId)?.let {
-                LibraryResult.ofItem(it, null)
-            } ?: LibraryResult.ofError(SessionError.ERROR_UNKNOWN)
+            try {
+                getMediaItem(mediaId)?.let {
+                    LibraryResult.ofItem(it, null)
+                } ?: LibraryResult.ofError(SessionError.ERROR_UNKNOWN)
+            } catch (e: Exception) {
+                // A single item lookup (locale-formatted strings, a null DB row) must never surface as a
+                // failed future that AA reads as a broken tree — degrade to a plain item error.
+                reportException(e)
+                LibraryResult.ofError(SessionError.ERROR_UNKNOWN)
+            }
         }
 
     override fun onSearch(
@@ -950,13 +968,25 @@ constructor(
         }
     }
 
+    /** Hard ceiling on how many items any single browse/search response may carry. Android Auto's legacy
+     *  MediaBrowser bridge subscribes with pageSize == Int.MAX_VALUE, which would return the ENTIRE library;
+     *  media3 then parcels every MediaItem across the ~1 MB Binder limit → TransactionTooLargeException on the
+     *  binder thread → the service process dies and the app VANISHES from the Android Auto screen ("aparece y
+     *  desaparece", worst on large libraries). A car browse list of a few hundred is the practical max anyway,
+     *  so cap the payload well under the Binder limit. */
+    private val maxBrowseItems = 500
+
     private fun <T> List<T>.paginate(page: Int, pageSize: Int): List<T> {
         if (page < 0 || pageSize < 1 || isEmpty()) return emptyList()
-        if (pageSize == Int.MAX_VALUE) return this
+        // No-paging subscription (Android Auto passes Int.MAX_VALUE): return a capped prefix, NEVER the whole
+        // library — otherwise the parceled payload can exceed the Binder limit and kill the service process.
+        if (pageSize == Int.MAX_VALUE) return take(maxBrowseItems)
 
         val fromIndex = page.toLong() * pageSize
         if (fromIndex >= size) return emptyList()
 
+        // Finite pageSize = a real paginating client that owns its page window; slice exactly what it asked for
+        // (clamping here would skip items, since fromIndex advances by the client's pageSize, not ours).
         return subList(fromIndex.toInt(), minOf(fromIndex.toInt() + pageSize, size))
     }
 }

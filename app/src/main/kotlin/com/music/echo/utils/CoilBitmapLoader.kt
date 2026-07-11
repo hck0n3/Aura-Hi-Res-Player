@@ -116,8 +116,11 @@ class CoilBitmapLoader(
         }
 
     private companion object {
-        // Max side (px) for the media-notification/lockscreen artwork so the notification parcel stays
-        // well under the Binder transaction limit. The in-app full-res cover pipeline is unaffected.
-        const val MAX_ARTWORK_PX = 512
+        // Max side (px) for the media-notification/lockscreen/Android-Auto artwork so the metadata parcel stays
+        // well under the ~1 MB Binder transaction limit. 512×512×ARGB_8888 = 1,048,576 B = the ENTIRE Binder
+        // buffer, which on high-density Xiaomi/MIUI panels (where the platform's 320dp downscale doesn't kick
+        // in) can breach it and kill the media service → the app disappears from Android Auto. 384×384×4 ≈
+        // 576 KB leaves safe headroom and is still crisp for a lockscreen/car icon. In-app full-res is unaffected.
+        const val MAX_ARTWORK_PX = 384
     }
 }
