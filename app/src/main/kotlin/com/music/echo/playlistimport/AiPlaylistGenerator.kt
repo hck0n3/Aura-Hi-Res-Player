@@ -9,6 +9,7 @@ import iad1tya.echo.music.db.entities.PlaylistEntity
 import iad1tya.echo.music.db.entities.PlaylistSongMap
 import iad1tya.echo.music.models.MediaMetadata
 import iad1tya.echo.music.models.toMediaMetadata
+import kotlinx.coroutines.withTimeoutOrNull
 import java.time.LocalDateTime
 
 /**
@@ -25,6 +26,13 @@ import java.time.LocalDateTime
 object AiPlaylistGenerator {
 
     private const val MAX_NAME_LENGTH = 40
+
+    /**
+     * Hard ceiling on the whole AI phase (worst case ≈ worker + 4 models × 2 retries). Bounds the
+     * pathological all-timeouts case so the dialog can't spin for minutes holding the modem awake
+     * (battery/heat rule); on timeout we simply treat AI as unavailable and build the non-AI playlist.
+     */
+    private const val AI_BUDGET_MS = 60_000L
 
     data class Result(
         val playlistId: String,
@@ -54,8 +62,11 @@ object AiPlaylistGenerator {
         // Over-generate then take N: SongResolver silently drops tracks with no YouTube match, so asking
         // for exactly N returns fewer than N. Pad the AI ask by ~1.5× (token budget scales with count).
         val requestCount = (count * 3 + 1) / 2
-        val spec = AiPlaylistService.generate(prompt, requestCount, provider, apiKey, baseUrl, model)
-            .getOrNull()
+        // Bound the whole AI phase (AI_BUDGET_MS): on timeout, spec stays null and we build the non-AI
+        // playlist below — so a stuck cascade can't hold the modem for minutes.
+        val spec = withTimeoutOrNull(AI_BUDGET_MS) {
+            AiPlaylistService.generate(prompt, requestCount, provider, apiKey, baseUrl, model).getOrNull()
+        }
 
         var ordered: List<MediaMetadata> = emptyList()
         var aiName: String? = null
