@@ -1,18 +1,14 @@
-# Aura Hi-Res Player 0.6.93 — Tema automático, letra "letra por letra", reconocimiento más fuerte y detalles
+# Aura Hi-Res Player 0.6.94 — Copias de seguridad a prueba de fallos y "no reproduce" resuelto
 
-## 🌗 Tema automático arreglado
-- El tema **automático (seguir al sistema)** ahora **sí cambia claro/oscuro en vivo** cuando cambias el tema del teléfono, sin reiniciar la app. (Se quedaba pegado al tema que tenía al abrir.)
+## ▶️ "No reproduce" tras restaurar — arreglado (para todos)
+- Se corrigió un fallo por el que, tras **restaurar una copia de seguridad**, las canciones dejaban de reproducirse. La causa: la validación de la URL de audio enviaba una cookie de sesión que, si venía vieja o de otra sesión (p. ej. la de la copia), hacía que el servidor rechazara una URL perfectamente válida. Ahora la validación **no manda esa cookie** (igual que la descarga real), así que reproduce bien — y también arregla casos sueltos de "no carga" por una sesión caducada, **sin tener que reiniciar sesión**.
 
-## 🎤 Letra estilo Apple "letra por letra"
-- El estilo **Apple Music V2 (letra por letra)** vuelve a animarse **carácter por carácter** en las canciones con letra por-línea (la mayoría). Antes iluminaba la línea entera de golpe. Las canciones con tiempos por palabra reales siguen con su karaoke exacto, sin retraso.
-
-## 🎧 Reconocimiento de canciones más fiable
-- **Mejor captura de micrófono:** usa una fuente de audio limpia (sin control automático de ganancia ni supresión de ruido) para una huella más precisa.
-- **Reintenta solo:** si no reconoce a la primera, **vuelve a grabar** un fragmento fresco (un poco más largo) y lo intenta otra vez.
-- **A prueba de caídas:** preparado para curarse solo si el servicio de reconocimiento cambia, y para usar un relevo — así una caída puntual no deja la función muerta.
-
-## 🫧 Detalle Liquid Glass
-- El **botón del micrófono** (reconocimiento) con Liquid Glass ya no queda pegado al borde: tiene un pequeño margen para verse mejor.
+## 💾 Copias de seguridad y restauración que **nunca** fallan
+- **Restaurar es seguro:** antes de tocar tu biblioteca, la app **verifica que la copia sea válida** (íntegra y compatible). Si el archivo está dañado o es de una versión más nueva, **te avisa con un mensaje claro y NO toca tus datos** (antes podía dejar la app rota).
+- **Con red de seguridad:** si algo falla a mitad de la restauración, la app **recupera tu base de datos anterior** automáticamente — nunca te quedas con datos a medias.
+- **Tus ajustes de ecualizador vuelven:** las copias ahora **incluyen y restauran tus presets de EQ** y apariencia (antes se perdían al restaurar).
+- **Copia más robusta:** la base de datos se guarda con una **instantánea consistente** (no se corrompe aunque estés escuchando música al hacerla).
+- **Mensajes claros:** ahora distingue entre archivo dañado, versión incompatible y error de lectura.
 
 ## ✅ Como siempre
-- Suscripción, licencia, demo, crossfade de 9s y motor de audio: intactos. Calor y batería vigilados.
+- Suscripción, licencia, demo, crossfade de 9s y motor de audio: intactos. Calor y batería vigilados. La licencia nunca viaja en la copia.
