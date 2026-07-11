@@ -58,13 +58,21 @@ fun resolveAppLanguageTag(context: Context): String =
 fun localeAwareContext(base: Context): Context = try {
     val locale = Locale.forLanguageTag(resolveAppLanguageTag(base))
     Locale.setDefault(locale)
-    val config = Configuration(base.resources.configuration)
+    // Override ONLY the locale (+ TV density). Do NOT copy base.resources.configuration wholesale:
+    // copying it PINS uiMode (night/day), fontScale, orientation, etc. into this wrapped context, so a
+    // LIVE system light↔dark switch was ignored — the app kept the uiMode captured at launch (this is
+    // why "tema automático" didn't follow the phone). MainActivity has configChanges=uiMode so it isn't
+    // recreated on the switch; with the full-config copy the new night bit never reached Compose's
+    // isSystemInDarkTheme(). An EMPTY Configuration overrides only the fields we set; uiMode and the rest
+    // keep following the system live.
+    val config = Configuration()
     config.setLocale(locale)
-    // Android TV: the phone UI looks zoomed/giant on a ~1080p TV panel (few, oversized elements).
-    // Shrink the effective density so more, smaller content fits — closer to a tablet/desktop layout.
+    // Android TV: the phone UI looks zoomed/giant on a ~1080p TV panel. Shrink the effective density so
+    // more, smaller content fits. Only for TV; leaving densityDpi at 0 elsewhere inherits the system value.
     val uiMode = base.getSystemService(Context.UI_MODE_SERVICE) as? android.app.UiModeManager
-    if (uiMode?.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION && config.densityDpi > 0) {
-        config.densityDpi = (config.densityDpi * 0.7f).toInt().coerceAtLeast(120)
+    if (uiMode?.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION) {
+        val baseDensity = base.resources.configuration.densityDpi
+        if (baseDensity > 0) config.densityDpi = (baseDensity * 0.7f).toInt().coerceAtLeast(120)
     }
     base.createConfigurationContext(config)
 } catch (t: Throwable) {
