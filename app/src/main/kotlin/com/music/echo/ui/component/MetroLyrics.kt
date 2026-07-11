@@ -129,7 +129,8 @@ fun MetroLyricsLine(
     expressiveAccent: Color,
     // Honor the user's lyrics text-size / line-spacing sliders (LyricsTextSizeKey / LyricsLineSpacingKey),
     // like every other lyrics style. Previously hardcoded 36f/1.3 here, so the sliders did nothing in Metro.
-    lyricsTextSize: Float = 36f,
+    // Default matches the shared slider default (24f); Metro scales it up ×1.5 below (see metroTextSize).
+    lyricsTextSize: Float = 24f,
     lyricsLineSpacing: Float = 1.3f,
     modifier: Modifier = Modifier
 ) {
@@ -226,11 +227,15 @@ fun MetroLyricsLine(
         }
     }
 
+    // Metro is a large-format karaoke style: it historically rendered at a fixed 36sp while the shared
+    // slider default is 24sp. Scale the user's size ×1.5 so the slider is HONORED (moving it now changes
+    // Metro too) WITHOUT shrinking the default look — 24 * 1.5 = 36, the original Metro baseline.
+    val metroTextSize = lyricsTextSize * 1.5f
     val lyricStyle = TextStyle(
-        fontSize = lyricsTextSize.sp,
+        fontSize = metroTextSize.sp,
         fontWeight = FontWeight.Bold,
         fontStyle = if (entry.isBackground) FontStyle.Italic else FontStyle.Normal,
-        lineHeight = (lyricsTextSize * lyricsLineSpacing).sp,
+        lineHeight = (metroTextSize * lyricsLineSpacing).sp,
         letterSpacing = (-0.5).sp,
         textAlign = agentTextAlign,
         platformStyle = PlatformTextStyle(includeFontPadding = false),

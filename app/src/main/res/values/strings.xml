@@ -566,6 +566,7 @@
     <string name="cipher_update_failed">Could not update (offline or network error)</string>
     <string name="cipher_last_updated">Last updated</string>
     <string name="cipher_last_updated_never">Never yet (updates when you open the app)</string>
+    <string name="cipher_last_updated_cached">Loaded (self-healing active)</string>
     <string name="cipher_applied_configs">Active configurations</string>
     <string name="cipher_applied_configs_count">%1$d self-healing configuration(s) applied</string>
     <string name="cipher_cooldown">Please wait %1$s before updating again</string>

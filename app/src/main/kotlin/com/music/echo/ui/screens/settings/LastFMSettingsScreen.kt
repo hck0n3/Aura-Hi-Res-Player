@@ -52,7 +52,6 @@ import iad1tya.echo.music.R
 import iad1tya.echo.music.constants.EnableLastFMScrobblingKey
 import iad1tya.echo.music.constants.LastFMSessionKey
 import iad1tya.echo.music.constants.LastFMUseNowPlaying
-import iad1tya.echo.music.constants.LastFMUseSendLikes
 import iad1tya.echo.music.constants.LastFMUsernameKey
 import iad1tya.echo.music.constants.ListenBrainzEnabledKey
 import iad1tya.echo.music.constants.ListenBrainzTokenKey
@@ -94,10 +93,6 @@ fun LastFMSettingsScreen(
         defaultValue = false
     )
 
-    val (useSendLikes, onUseSendLikes) = rememberPreference(
-        key = LastFMUseSendLikes,
-        defaultValue = false
-    )
 
     val (lastfmScrobbling, onlastfmScrobblingChange) = rememberPreference(
         key = EnableLastFMScrobblingKey,
@@ -385,29 +380,10 @@ fun LastFMSettingsScreen(
                     },
                     enabled = isLoggedIn && lastfmScrobbling,
                     icon = painterResource(R.drawable.play)
-                ),
-                Material3SettingsItem(
-                    title = { Text(stringResource(R.string.last_fm_send_likes)) },
-                    description = { Text(stringResource(R.string.last_fm_send_likes_description)) },
-                    trailingContent = {
-                        Switch(
-                            checked = useSendLikes,
-                            onCheckedChange = onUseSendLikes,
-                            enabled = isLoggedIn,
-                            thumbContent = {
-                                Icon(
-                                    painter = painterResource(
-                                        id = if (useSendLikes) R.drawable.check else R.drawable.close
-                                    ),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(SwitchDefaults.IconSize),
-                                )
-                            }
-                        )
-                    },
-                    enabled = isLoggedIn,
-                    icon = painterResource(R.drawable.thumb_up_like)
                 )
+                // "Send likes to Last.fm" toggle intentionally omitted for 0.6.92: LastFM.setLoveStatus()
+                // has no call site yet, so the switch would do nothing (anti-placebo — don't ship a control
+                // that lies). Re-add it here once it's wired to the like action.
             )
         )
 

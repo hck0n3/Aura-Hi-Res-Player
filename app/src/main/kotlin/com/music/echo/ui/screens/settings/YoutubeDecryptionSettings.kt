@@ -108,6 +108,10 @@ fun YoutubeDecryptionSettings(
 
     val lastUpdatedText = if (lastUpdated > 0L) {
         SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(lastUpdated))
+    } else if (appliedConfigs > 0) {
+        // lastRefreshTimeMs() is per-process (loadCache doesn't set it), so after a restart it reads 0
+        // even though cached self-healing configs are live. Don't lie with "Never" — say it's loaded.
+        stringResource(R.string.cipher_last_updated_cached)
     } else {
         stringResource(R.string.cipher_last_updated_never)
     }

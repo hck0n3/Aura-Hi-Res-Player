@@ -811,16 +811,8 @@ class MainActivity : ComponentActivity() {
                     expandedBound = maxHeight,
                 )
 
-                val onShuffleClick: (() -> Unit)? = remember(playerConnection, playerBottomSheetState) {
-                    playerConnection?.let { connection ->
-                        {
-                            if (playerBottomSheetState.isExpanded) {
-                                playerBottomSheetState.collapseSoft()
-                            }
-                            connection.player.shuffleModeEnabled = !connection.player.shuffleModeEnabled
-                        }
-                    }
-                }
+                // Shuffle FAB removed from the floating toolbar (0.6.92) — only the recognition mic FAB
+                // is surfaced there now, so the shuffle click handler is no longer wired.
 
                 val onMusicRecognitionClick: (() -> Unit) = remember(navController, playerBottomSheetState) {
                     {

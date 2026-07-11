@@ -508,6 +508,7 @@
     <string name="cipher_update_failed">No se pudo actualizar (sin conexión o error de red)</string>
     <string name="cipher_last_updated">Última actualización</string>
     <string name="cipher_last_updated_never">Aún nunca (se actualiza al abrir la app)</string>
+    <string name="cipher_last_updated_cached">Cargado (auto-reparación activa)</string>
     <string name="cipher_applied_configs">Configuraciones activas</string>
     <string name="cipher_applied_configs_count">%1$d configuración(es) autorreparable(s) aplicada(s)</string>
     <string name="cipher_cooldown">Espera %1$s antes de volver a actualizar</string>
