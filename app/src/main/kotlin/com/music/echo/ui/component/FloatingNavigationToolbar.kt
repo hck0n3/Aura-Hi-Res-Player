@@ -289,6 +289,10 @@ private fun FloatingToolbarQuickActions(
     Row(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
+        // With Liquid Glass the recognition mic FAB is a transparent glass circle that otherwise sits
+        // flush against the trailing edge of the design; give it a little breathing room so it reads
+        // as a separate, framed control instead of hugging the border.
+        modifier = if (useGlass) Modifier.padding(end = 10.dp) else Modifier,
     ) {
         if (onShuffleClick != null && shuffleIconRes != null) {
             FloatingToolbarDefaults.VibrantFloatingActionButton(
