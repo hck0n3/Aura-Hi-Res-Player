@@ -164,7 +164,10 @@ constructor(
         }
         fun titleMatch(ytTitle: String, target: String): Boolean {
             val yt = norm(ytTitle)
-            return yt == target || (target.length >= 4 && (yt.contains(target) || target.contains(yt)))
+            // Short titles (now that singles feed Albums completion) need an EXACT match — a fuzzy substring
+            // would let a single like "Amor" match the album "Lenguaje de Amor". Only titles ≥6 chars use
+            // the fuzzy contains() so genuinely long titles still tolerate minor punctuation/edition diffs.
+            return yt == target || (target.length >= 6 && (yt.contains(target) || target.contains(yt)))
         }
 
         val have = baseAlbums.map { norm(it.title) }.toMutableSet()

@@ -141,15 +141,12 @@ fun YtmSyncScreen(
                         icon = painterResource(R.drawable.sync),
                         title = { Text("Sincronizar todo") },
                         description = { Text("Me gusta, álbumes, artistas, suscripciones, playlists y biblioteca") },
-                        onClick = {
-                            // Belt-and-suspenders for playlists: also enqueue them as their OWN worker (same
-                            // pattern the "Biblioteca" item uses for liked songs) so they get an independent
-                            // ~10-min budget and can never be starved by the album/artist steps in the full
-                            // sync. Additive upsert → no double-run. (The full sync also now runs playlists
-                            // early, but this guarantees it even on huge accounts.)
-                            W.enqueue(context, W.TYPE_PLAYLISTS)
-                            start(W.TYPE_ALL, "Sincronizando todo… (continúa en segundo plano)")
-                        },
+                        // Playlists are de-starved by running them EARLY in the full sync (SyncUtils) + the
+                        // album step no longer re-fetches every album. We deliberately do NOT also enqueue a
+                        // separate TYPE_PLAYLISTS worker here: insert(PlaylistEntity) is not a browseId-upsert
+                        // (random PK), so two playlist syncs racing outside syncChannel could create duplicate
+                        // rows. One ordered full sync is enough and safe.
+                        onClick = { start(W.TYPE_ALL, "Sincronizando todo… (continúa en segundo plano)") },
                     ),
                     Material3SettingsItem(
                         icon = painterResource(R.drawable.favorite),
