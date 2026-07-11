@@ -182,6 +182,10 @@ class BackupRestoreViewModel @Inject constructor(
         var dbTemp: java.io.File? = null
         var settingsTemp: java.io.File? = null
         val prefsTemps = linkedMapOf<String, java.io.File>() // "<name>.xml" -> extracted temp file
+        // Hoisted so the outer onFailure can tell whether the live DB was already CLOSED for the swap.
+        // If a throw escapes AFTER close() (e.g. restartApp itself), onFailure MUST still restart so the
+        // process never keeps running with a closed, unusable database.
+        var dbClosedForRestore = false
         runCatching {
             Timber.tag("RESTORE").i("Starting restore from URI: $uri")
 
@@ -254,7 +258,6 @@ class BackupRestoreViewModel @Inject constructor(
             }
 
             // ---- 3. APPLY. DB first (with rollback); once it's closed we ALWAYS restart. ----
-            var dbClosedForRestore = false
             dbTemp?.let { temp ->
                 val dbPath = database.openHelper.writableDatabase.path
                 val dbFile = java.io.File(dbPath)
@@ -275,6 +278,13 @@ class BackupRestoreViewModel @Inject constructor(
 
                 try {
                     temp.copyTo(dbFile, overwrite = true)
+                    // Guard against a TORN copy (e.g. disk filled mid-write): verify the just-written db
+                    // is intact BEFORE dropping the rollback copy. If it's damaged, treat it exactly like a
+                    // copy failure → roll back to the previous DB, so a partial/corrupt song.db can never
+                    // survive (which would crash Room on next open until clear-data).
+                    if (!dbFileIntegrityOk(dbFile)) {
+                        throw java.io.IOException("Restored DB failed post-copy integrity check")
+                    }
                     bakFile.delete() // success — drop the rollback copy
                     Timber.tag("RESTORE").i("DB overwrite complete")
                 } catch (copyError: Exception) {
@@ -332,10 +342,17 @@ class BackupRestoreViewModel @Inject constructor(
             Timber.tag("RESTORE").i("Restore complete — restarting (dbReplaced=$dbClosedForRestore)")
             restartApp(context)
         }.onFailure { e ->
-            // Everything that reaches here was thrown DURING extraction/validation — i.e. BEFORE the live
-            // DB was ever closed — so the app is still fully usable. Clean up temps + show a CLEAR reason.
             cleanupRestoreTemps(dbTemp, settingsTemp, prefsTemps)
             reportException(e)
+            // If the DB was ALREADY closed for the swap, a throw that reached here (e.g. restartApp itself)
+            // must NOT leave the process alive with a closed DB — force the restart so Room reopens the
+            // restored/rolled-back file. The rollback path already handled disk state before this.
+            if (dbClosedForRestore) {
+                Timber.tag("RESTORE").w(e, "Failure after DB close — forcing restart so the DB reopens")
+                restartApp(context)
+            }
+            // Otherwise it was thrown DURING extraction/validation — BEFORE the live DB was ever closed —
+            // so the app is still fully usable. Clean up temps + show a CLEAR reason.
             Timber.tag("RESTORE").e(e, "Restore rejected before any live data was changed")
             val msg = when (e) {
                 is RestoreException.Incompatible -> context.getString(R.string.restore_failed_incompatible)
@@ -358,6 +375,18 @@ class BackupRestoreViewModel @Inject constructor(
      * ERROR_CODE_PARSING_CONTAINER_MALFORMED on a stale container (the stream is re-resolved anyway).
      * Throws [RestoreException.Corrupt] if the file is truncated/damaged/not a database.
      */
+    /** Best-effort "is this a valid, non-truncated SQLite db" check. Returns false on ANY problem
+     *  (open failure, damaged, integrity != ok) — never throws. Used to catch a torn post-copy db. */
+    private fun dbFileIntegrityOk(file: java.io.File): Boolean = runCatching {
+        android.database.sqlite.SQLiteDatabase.openDatabase(
+            file.path, null, android.database.sqlite.SQLiteDatabase.OPEN_READONLY,
+        ).use { handle ->
+            handle.rawQuery("PRAGMA integrity_check", null).use { c ->
+                c.moveToFirst() && c.getString(0) == "ok"
+            }
+        }
+    }.getOrDefault(false)
+
     private fun validateAndPrepareRestoredDb(file: java.io.File) {
         val db = try {
             android.database.sqlite.SQLiteDatabase.openDatabase(
