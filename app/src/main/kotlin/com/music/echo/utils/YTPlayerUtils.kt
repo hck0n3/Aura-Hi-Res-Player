@@ -1058,10 +1058,12 @@ object YTPlayerUtils {
                 .url(url)
                 .header("User-Agent", YouTubeClient.USER_AGENT_WEB)
 
-            
-            YouTube.cookie?.let { cookie ->
-                requestBuilder.addHeader("Cookie", cookie)
-            }
+            // Do NOT attach YouTube.cookie here. The main resolver client (ANDROID_VR) is loginSupported=false
+            // and the real ExoPlayer byte fetch (OkHttpDataSource) sends NO cookie, so this validation HEAD
+            // must mirror it. Attaching a stale/foreign cookie (e.g. one reinstalled by a backup restore, or an
+            // expired session) makes googlevideo answer 401/403 on the HEAD → a perfectly playable URL is
+            // discarded → all clients exhausted → NO_STREAM → "no reproduce". An invalid cookie here is
+            // strictly worse than none, and the cookie adds nothing to a HEAD on a session-less googlevideo URL.
 
             // Close the Response on every path (.use) — a HEAD still carries a body/connection that
             // otherwise leaks into the pool on each stream validation.
