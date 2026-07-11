@@ -91,18 +91,51 @@ object Shazam {
         }
     }
 
-    private val userAgents = listOf(
-        "Dalvik/2.1.0 (Linux; U; Android 5.0.2; VS980 4G Build/LRX22G)",
-        "Dalvik/1.6.0 (Linux; U; Android 4.4.2; SM-T210 Build/KOT49H)",
-        "Dalvik/2.1.0 (Linux; U; Android 5.1.1; SM-P905V Build/LMY47X)",
-        "Dalvik/2.1.0 (Linux; U; Android 6.0.1; SM-G920F Build/MMB29K)",
-        "Dalvik/2.1.0 (Linux; U; Android 5.0; SM-G900F Build/LRX21T)"
-    )
+    // User-Agents now live in ShazamConfig (self-healing): today's defaults are compiled in, but the
+    // owner can rotate them via the published config without an app update. Falls back to the compiled
+    // defaults if a remote override ever left the list empty.
+    private fun randomUserAgent(): String =
+        ShazamConfig.userAgents.takeIf { it.isNotEmpty() }?.random()
+            ?: ShazamConfig.DEFAULT_USER_AGENTS.random()
 
     private val timezones = listOf(
         "Europe/Paris", "Europe/London", "America/New_York",
         "America/Los_Angeles", "Asia/Tokyo", "Asia/Dubai"
     )
+
+    /** Build the tag URL from the (self-healing) host + path template, substituting the per-request UUIDs. */
+    private fun buildTagUrl(uuid1: String, uuid2: String): String {
+        val host = ShazamConfig.host.trim().ifBlank { ShazamConfig.DEFAULT_HOST }
+        val path = ShazamConfig.pathTemplate.trim()
+            .takeIf { it.contains("{uuid1}") && it.contains("{uuid2}") }
+            ?: ShazamConfig.DEFAULT_PATH_TEMPLATE
+        val resolvedPath = path.replace("{uuid1}", uuid1).replace("{uuid2}", uuid2)
+        // Host is a bare domain by default; tolerate a full scheme in an override.
+        return if (host.startsWith("http")) "$host$resolvedPath" else "https://$host$resolvedPath"
+    }
+
+    /**
+     * Build the Shazam discovery request body. IDENTICAL shape to what the direct path always sent —
+     * the signature algorithm and request format are untouched. Shared by the direct call and the
+     * Aura Worker relay probe so both send byte-identical bodies.
+     */
+    private fun buildRequestBody(signature: String, sampleDurationMs: Long): ShazamRequestJson {
+        val timestamp = System.currentTimeMillis() / 1000
+        return ShazamRequestJson(
+            geolocation = ShazamRequestJson.Geolocation(
+                altitude = Random.nextDouble() * 400 + 100,
+                latitude = Random.nextDouble() * 180 - 90,
+                longitude = Random.nextDouble() * 360 - 180
+            ),
+            signature = ShazamRequestJson.Signature(
+                samplems = sampleDurationMs,
+                timestamp = timestamp,
+                uri = signature
+            ),
+            timestamp = timestamp,
+            timezone = timezones.random()
+        )
+    }
 
     /**
      * Recognize music from audio signature
@@ -118,6 +151,97 @@ object Shazam {
         }
 
         return enqueueRequest(signature, sampleDurationMs)
+    }
+
+    /**
+     * Recognize with a self-healing PROVIDER CASCADE (mirrors the keyless AI chain).
+     *
+     * Order comes from [ShazamConfig.providerOrder] (default: direct → relay):
+     *  1. "direct" — the current keyless amp.shazam.com POST ([recognize], queue + retry/backoff).
+     *  2. "relay"  — the Aura Worker `/recognize` PROBE ([recognizeViaRelay]); proxies the SAME body to
+     *     Shazam from Cloudflare egress, curing a rotation/geo-block that hits the device directly.
+     *
+     * The relay is INERT until the owner deploys the route: an undeployed 404/405 (or any non-2xx)
+     * fast-fails and the cascade moves on — exactly the AI `/ai` probe philosophy, so no retries are
+     * burned on a dead route. A DEFINITIVE "No match" from a real backend short-circuits the cascade
+     * (trying the same Shazam backend via the relay can't help; a fresh re-capture is the right next
+     * step — the caller handles that). When EVERY provider fails with a network/service error, a
+     * friendly Spanish message is returned instead of a raw exception.
+     */
+    suspend fun recognizeWithFallback(
+        signature: String,
+        sampleDurationMs: Long,
+    ): Result<RecognitionResult> {
+        if (!ShazamConfig.enabled) {
+            return Result.failure(Exception("El reconocimiento está desactivado temporalmente. Inténtalo más tarde."))
+        }
+
+        val order = ShazamConfig.providerOrder.takeIf { it.isNotEmpty() } ?: ShazamConfig.DEFAULT_PROVIDER_ORDER
+        var lastError: Throwable? = null
+
+        for (provider in order) {
+            val result = when (provider.trim().lowercase()) {
+                "direct", "shazam" -> recognize(signature, sampleDurationMs)
+                "relay", "worker", "aura" -> recognizeViaRelay(signature, sampleDurationMs)
+                else -> continue // unknown provider name in a published order → skip, don't fail
+            }
+
+            if (result.isSuccess) return result
+
+            val message = result.exceptionOrNull()?.message.orEmpty()
+            // Definitive NoMatch: the backend heard the fingerprint and didn't match it. Another
+            // provider hits the SAME Shazam backend, so it won't help — preserve the NoMatch so the
+            // caller re-captures fresh audio instead of wasting a round trip (battery/heat rule).
+            if (message.contains("No match", ignoreCase = true)) return result
+            lastError = result.exceptionOrNull()
+        }
+
+        // Every provider failed with a network/service error (relay undeployed and/or direct blocked).
+        // Surface a friendly Spanish message; keep the underlying cause on the exception for diagnosis.
+        return Result.failure(
+            Exception(
+                "No se pudo conectar con el servicio de reconocimiento. Revisa tu conexión e inténtalo de nuevo.",
+                lastError,
+            )
+        )
+    }
+
+    /**
+     * PROBE: POST the same Shazam signature body to the Aura Worker `/recognize` relay, which proxies
+     * it to amp.shazam.com from Cloudflare egress and returns Shazam's response verbatim. Reuses the
+     * exact [buildRequestBody] and [toRecognitionResult] as the direct path — no format divergence.
+     *
+     * INERT UNTIL DEPLOYED: any non-2xx (a not-yet-deployed 404/405 included) or a transport error is
+     * a FAST FAILURE — no retries — so the cascade falls through immediately. Harmless with the route
+     * absent; becomes a real fallback the moment the owner deploys it, with no app change.
+     */
+    private suspend fun recognizeViaRelay(
+        signature: String,
+        sampleDurationMs: Long,
+    ): Result<RecognitionResult> {
+        val relayUrl = ShazamConfig.relayUrl.trim().takeIf { it.startsWith("http") }
+            ?: return Result.failure(Exception("Relay disabled"))
+
+        return try {
+            val response = client.post(relayUrl) {
+                header("User-Agent", randomUserAgent())
+                header("Content-Language", "en_US")
+                contentType(ContentType.Application.Json)
+                setBody(buildRequestBody(signature, sampleDurationMs))
+            }
+
+            if (!response.status.isSuccess()) {
+                // 404/405 = route not deployed; anything else = relay/backend hiccup. Either way, fail
+                // fast so the cascade doesn't retry a route that isn't serving recognitions.
+                return Result.failure(Exception("Relay unavailable (${response.status.value})"))
+            }
+
+            val shazamResponse = response.body<ShazamResponseJson>()
+            shazamResponse.toRecognitionResult()?.let { Result.success(it) }
+                ?: Result.failure(Exception("No match found"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
     }
 
     /**
@@ -283,26 +407,12 @@ object Shazam {
         signature: String,
         sampleDurationMs: Long
     ): RecognitionResult {
-        val timestamp = System.currentTimeMillis() / 1000
         val uuid1 = UUID.randomUUID().toString().uppercase()
         val uuid2 = UUID.randomUUID().toString()
 
-        val request = ShazamRequestJson(
-            geolocation = ShazamRequestJson.Geolocation(
-                altitude = Random.nextDouble() * 400 + 100,
-                latitude = Random.nextDouble() * 180 - 90,
-                longitude = Random.nextDouble() * 360 - 180
-            ),
-            signature = ShazamRequestJson.Signature(
-                samplems = sampleDurationMs,
-                timestamp = timestamp,
-                uri = signature
-            ),
-            timestamp = timestamp,
-            timezone = timezones.random()
-        )
+        val request = buildRequestBody(signature, sampleDurationMs)
 
-        val response = client.post("https://amp.shazam.com/discovery/v5/en/US/android/-/tag/$uuid1/$uuid2") {
+        val response = client.post(buildTagUrl(uuid1, uuid2)) {
             parameter("sync", "true")
             parameter("webv3", "true")
             parameter("sampling", "true")
@@ -310,7 +420,7 @@ object Shazam {
             parameter("shazamapiversion", "v3")
             parameter("sharehub", "true")
             parameter("video", "v3")
-            header("User-Agent", userAgents.random())
+            header("User-Agent", randomUserAgent())
             header("Content-Language", "en_US")
             contentType(ContentType.Application.Json)
             setBody(request)

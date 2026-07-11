@@ -144,6 +144,12 @@ class App : Application(), SingletonImageLoader.Factory {
             // JSON cache), so a cached config resolves on the first stream extraction even offline; then refresh.
             iad1tya.echo.music.utils.cipher.RemotePlayerConfig.loadCache(applicationContext)
             iad1tya.echo.music.utils.cipher.RemotePlayerConfig.refresh(applicationContext)
+
+            // Same self-healing pattern for song recognition: load any cached override first (so it's
+            // active on the first recognition even offline), then refresh. Inert until the owner
+            // publishes shazam_recognition_config.json — cures a Shazam rotation with no app update.
+            iad1tya.echo.music.recognition.RemoteRecognitionConfig.loadCache(applicationContext)
+            iad1tya.echo.music.recognition.RemoteRecognitionConfig.refresh(applicationContext)
         }
 
         // Cold-start freeze fix: force the two @PlayerCache/@DownloadCache SimpleCache singletons (via DownloadUtil,
