@@ -197,6 +197,11 @@ class App : Application(), SingletonImageLoader.Factory {
         runCatching { iad1tya.echo.music.releaseradar.ReleaseRadarWorker.seedOnceIfNeeded(this) }
             .onFailure { Timber.e(it, "Failed to seed Release Radar") }
 
+        // Schedule the daily Last.fm taste refresh (opt-in; the worker no-ops unless the toggle is ON and a
+        // Last.fm username exists). Idempotent unique periodic work with UPDATE policy — safe every start.
+        runCatching { iad1tya.echo.music.reco.LastFmTasteWorker.schedule(this) }
+            .onFailure { Timber.e(it, "Failed to schedule Last.fm taste worker") }
+
         // Schedule the weekly app-update check (notifies once per new version when one is found).
         runCatching { iad1tya.echo.music.echomusic.updater.UpdateCheckWorker.schedule(this) }
             .onFailure { Timber.e(it, "Failed to schedule update-check worker") }

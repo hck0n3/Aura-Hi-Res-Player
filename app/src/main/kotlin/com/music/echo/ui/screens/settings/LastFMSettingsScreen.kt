@@ -39,6 +39,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
@@ -58,6 +59,8 @@ import iad1tya.echo.music.constants.ListenBrainzTokenKey
 import iad1tya.echo.music.constants.ScrobbleDelayPercentKey
 import iad1tya.echo.music.constants.ScrobbleDelaySecondsKey
 import iad1tya.echo.music.constants.ScrobbleMinSongDurationKey
+import iad1tya.echo.music.constants.UseLastFmTasteKey
+import iad1tya.echo.music.reco.LastFmTasteWorker
 import iad1tya.echo.music.ui.component.DefaultDialog
 import iad1tya.echo.music.ui.component.IconButton
 import iad1tya.echo.music.ui.component.InfoLabel
@@ -79,6 +82,7 @@ fun LastFMSettingsScreen(
     navController: NavController
 ) {
     val coroutineScope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     var lastfmUsername by rememberPreference(LastFMUsernameKey, "")
     var lastfmSession by rememberPreference(LastFMSessionKey, "")
@@ -96,6 +100,12 @@ fun LastFMSettingsScreen(
 
     val (lastfmScrobbling, onlastfmScrobblingChange) = rememberPreference(
         key = EnableLastFMScrobblingKey,
+        defaultValue = false
+    )
+
+    // SECONDARY, opt-in taste import: feed Last.fm history into the on-device AffinityEngine. Default OFF.
+    val (useLastFmTaste, onUseLastFmTasteChange) = rememberPreference(
+        key = UseLastFmTasteKey,
         defaultValue = false
     )
 
@@ -210,6 +220,9 @@ fun LastFMSettingsScreen(
                                         lastfmUsername = auth.session.name
                                         lastfmSession = auth.session.key
                                         LastFM.sessionKey = auth.session.key
+
+                                        // If the taste toggle is already on, warm the Last.fm taste cache now.
+                                        if (useLastFmTaste) LastFmTasteWorker.runNow(context)
 
                                         coroutineScope.launch(Dispatchers.Main) {
                                             isLoggingIn = false
@@ -380,6 +393,32 @@ fun LastFMSettingsScreen(
                     },
                     enabled = isLoggedIn && lastfmScrobbling,
                     icon = painterResource(R.drawable.play)
+                ),
+                Material3SettingsItem(
+                    title = { Text("Mejorar recomendaciones con Last.fm") },
+                    description = { Text("Usa tu historial de Last.fm para afinar tus recomendaciones (tu escucha en Aura siempre manda)") },
+                    trailingContent = {
+                        Switch(
+                            checked = useLastFmTaste,
+                            onCheckedChange = { checked ->
+                                onUseLastFmTasteChange(checked)
+                                // Warm the cache immediately when turned ON; the daily worker keeps it fresh after.
+                                if (checked) LastFmTasteWorker.runNow(context)
+                            },
+                            enabled = isLoggedIn,
+                            thumbContent = {
+                                Icon(
+                                    painter = painterResource(
+                                        id = if (useLastFmTaste) R.drawable.check else R.drawable.close
+                                    ),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(SwitchDefaults.IconSize),
+                                )
+                            }
+                        )
+                    },
+                    enabled = isLoggedIn,
+                    icon = painterResource(R.drawable.queue_music)
                 )
                 // "Send likes to Last.fm" toggle intentionally omitted for 0.6.92: LastFM.setLoveStatus()
                 // has no call site yet, so the switch would do nothing (anti-placebo — don't ship a control

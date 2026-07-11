@@ -53,6 +53,12 @@ object AffinityEngine {
      *  Home/radio/quick-picks — the "recommendations from artists you follow" the engine previously ignored. */
     private const val FOLLOWED_ARTIST_SEED = 0.6
 
+    /** Max a single artist NAME may gain from the user's Last.fm history (top artists + loved tracks). A
+     *  SECONDARY, opt-in cross-app seed: capped like the library so it can cold-start yet auto-normalizes
+     *  BELOW real local plays once history exists (local stays primary). Merged into byName ONLY — Last.fm
+     *  gives artist names, not YouTube ids, so it never touches maxArtistWeight (computed from byId). */
+    private const val LASTFM_KEY_CAP = 2.0
+
     suspend fun buildProfile(
         events: List<EventWithSong>,
         disliked: DislikeStore.Disliked,
@@ -70,6 +76,11 @@ object AffinityEngine {
         // The user's followed/subscribed artists (bookmarkedAt != null). Seeded as a real taste signal even
         // for artists with no plays and no saved songs, so following an artist actually drives recommendations.
         followedArtists: List<ArtistEntity> = emptyList(),
+        // The user's Last.fm listening history (top artists + loved tracks), keyed by LOWERCASED artist NAME and
+        // pre-weighted by LastFmTasteSource. A SECONDARY, opt-in cross-app signal: merged into byName ONLY and
+        // capped, so it seeds cold-start / cross-app taste but never outranks real local plays. Empty by default
+        // (Last.fm off/absent) => zero behavior change.
+        externalArtistWeights: Map<String, Double> = emptyMap(),
     ): TasteProfile {
         val byId = HashMap<String, Double>()
         val byName = HashMap<String, Double>()
@@ -162,6 +173,12 @@ object AffinityEngine {
                 }
             }
         }
+
+        // Secondary cross-app signal: fold the user's Last.fm history into per-NAME affinity ONLY (Last.fm gives
+        // artist names, not YouTube ids). Capped per key like the library, so maxArtistWeight — computed from
+        // byId ONLY (real local plays) — stays the yardstick: with local history these auto-normalize below it
+        // (local primary); on a cold start they seed. Mirrors the LIBRARY_KEY_CAP merge shape above.
+        externalArtistWeights.forEach { (k, v) -> byName.merge(k, min(v, LASTFM_KEY_CAP), Double::plus) }
 
         val maxW = byId.values.maxOrNull()?.takeIf { it > 0 } ?: 1.0
         val maxG = genre.values.maxOrNull()?.takeIf { it > 0 } ?: 1.0
