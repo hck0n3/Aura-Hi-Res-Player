@@ -185,11 +185,15 @@ constructor(
         val epOrSingle = Regex("(?i)[-–—]\\s*(ep|single)\\b|\\((?:ep|single)\\)")
         val missing = itunes
             .filter { norm(it).isNotBlank() && norm(it) !in have }
-            // Albums section keeps full albums (excludes EP/Single); the Singles/EP section keeps ONLY
-            // EP/Single releases — so BOTH sections get completed (the owner wants all albums + singles + EPs).
-            .filter { if (isSinglesSection) epOrSingle.containsMatchIn(it) else !epOrSingle.containsMatchIn(it) }
+            // Complete the WHOLE iTunes/Apple catalog for the main (Albums) discography — INCLUDING EPs and
+            // singles. iTunes returns most of an artist's releases as "… - Single"/"… - EP" (especially
+            // Latin/regional catalogs) and YouTube Music usually omits them; the old EP/Single exclusion
+            // (regression 866b4c8) left singles-heavy catalogs with nothing to add → nothing published
+            // ("ya estaba y no lo hace"). A dedicated Singles/EP see-all, when it exists, still narrows to
+            // EP/Single only. This restores the iTunes-authoritative completion the owner remembers.
+            .let { list -> if (isSinglesSection) list.filter { epOrSingle.containsMatchIn(it) } else list }
             .distinctBy { norm(it) }
-            .take(50)
+            .take(80)
 
         // 6 concurrent searches (was 10): 10 at once can itself trip YouTube throttling, which then
         // times out individual lookups and silently drops real albums (e.g. "Lenguaje de Amor").

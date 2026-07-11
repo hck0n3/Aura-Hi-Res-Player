@@ -215,6 +215,7 @@ class SpotifyImportRepository @Inject constructor(
             val summaries = ArrayList<SpotifyImportSourceSummaryUi>(sources.size)
 
             sources.forEachIndexed { sourceIndex, source ->
+              try {
                 onProgress(
                     SpotifyImportProgressUi(
                         sourceTitle = source.title,
@@ -297,6 +298,31 @@ class SpotifyImportRepository @Inject constructor(
                         percent = progressPercent(sourceIndex + 1, sources.size, 0, 0),
                     ),
                 )
+              } catch (ce: kotlinx.coroutines.CancellationException) {
+                throw ce
+              } catch (e: Exception) {
+                // Per-source isolation (user: "que nada falle"): a failed source (429 after retries, a
+                // deleted/private playlist, a rotated GQL hash) must NOT abort the whole import and silently
+                // drop every source AFTER it. Report, mark this source failed, and continue to the next.
+                reportException(e)
+                summaries += SpotifyImportSourceSummaryUi(
+                    title = source.title,
+                    totalTracks = 0,
+                    importedTracks = 0,
+                    failedTracks = source.trackCount ?: 0,
+                    accountTotalTracks = source.trackCount,
+                )
+                onProgress(
+                    SpotifyImportProgressUi(
+                        sourceTitle = source.title,
+                        completedSources = sourceIndex + 1,
+                        totalSources = sources.size,
+                        matchedTracks = 0,
+                        totalTracks = 0,
+                        percent = progressPercent(sourceIndex + 1, sources.size, 0, 0),
+                    ),
+                )
+              }
             }
 
             // Follow EVERY artist brought in by the import (also the song artists from imported

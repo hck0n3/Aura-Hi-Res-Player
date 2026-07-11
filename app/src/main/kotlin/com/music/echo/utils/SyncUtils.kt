@@ -457,6 +457,14 @@ class SyncUtils @Inject constructor(
 
             executeSyncLibrarySongs()
 
+            // PLAYLISTS moved up — BEFORE the expensive album re-fetch + artist-image steps. They used to
+            // run LAST, and on real-sized accounts the album/artist loops burned the whole ~10-min worker
+            // budget → the worker was stopped and retried from the top → saved playlists were NEVER reached
+            // ("no me pone nunca las playlists"). Running them early guarantees they complete.
+            executeSyncSavedPlaylists()
+
+            executeSyncAutoSyncPlaylists()
+
             executeSyncUploadedSongs()
 
             executeSyncLikedAlbums()
@@ -464,10 +472,6 @@ class SyncUtils @Inject constructor(
             executeSyncUploadedAlbums()
 
             executeSyncArtistsSubscriptions()
-
-            executeSyncSavedPlaylists()
-
-            executeSyncAutoSyncPlaylists()
 
             updateState { copy(overallStatus = SyncStatus.Completed, currentOperation = "") }
             // C3: stamp the REAL completion time (single source of truth for "last synced X ago"). Reached only
@@ -888,15 +892,21 @@ class SyncUtils @Inject constructor(
                     remoteAlbums.forEach { album ->
                         try {
                             val dbAlbum = database.album(album.id).firstOrNull()
-                            YouTube.album(album.browseId).onSuccess { albumPage ->
-                                if (dbAlbum == null) {
+                            if (dbAlbum == null) {
+                                // NEW album only: fetch the full page + insert. The old code called
+                                // YouTube.album() for EVERY album every run (the dbAlbum==null check gated
+                                // only the write, not the network) → hundreds of round-trips that burned the
+                                // worker budget and starved later steps (notably playlists). Now only the
+                                // missing albums hit the network.
+                                YouTube.album(album.browseId).onSuccess { albumPage ->
                                     database.insert(albumPage)
                                     database.album(album.id).firstOrNull()?.let { newDbAlbum ->
                                         database.update(newDbAlbum.album.localToggleLike())
                                     }
-                                } else if (dbAlbum.album.bookmarkedAt == null) {
-                                    database.update(dbAlbum.album.localToggleLike())
                                 }
+                            } else if (dbAlbum.album.bookmarkedAt == null) {
+                                // Already in the DB — just mark it favorited locally, no network call.
+                                database.update(dbAlbum.album.localToggleLike())
                             }
                         } catch (e: Exception) {
                             // Never swallow coroutine cancellation: doing so let the sync loop keep
@@ -961,16 +971,17 @@ class SyncUtils @Inject constructor(
                     remoteAlbums.forEach { album ->
                         try {
                             val dbAlbum = database.album(album.id).firstOrNull()
-                            YouTube.album(album.browseId).onSuccess { albumPage ->
-                                if (dbAlbum == null) {
+                            if (dbAlbum == null) {
+                                // Only NEW albums hit the network (was: every album, every run → starvation).
+                                YouTube.album(album.browseId).onSuccess { albumPage ->
                                     database.insert(albumPage)
                                     database.album(album.id).firstOrNull()?.let { newDbAlbum ->
                                         database.update(newDbAlbum.album.toggleUploaded())
                                     }
-                                } else if (!dbAlbum.album.isUploaded) {
-                                    database.update(dbAlbum.album.toggleUploaded())
-                                }
-                            }.onFailure { reportException(it) }
+                                }.onFailure { reportException(it) }
+                            } else if (!dbAlbum.album.isUploaded) {
+                                database.update(dbAlbum.album.toggleUploaded())
+                            }
                         } catch (e: Exception) {
                             // Never swallow coroutine cancellation: doing so let the sync loop keep
                             // running after its job was cancelled, blasting through every song and
