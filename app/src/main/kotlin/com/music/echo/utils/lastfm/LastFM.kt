@@ -2,7 +2,9 @@ package iad1tya.echo.music.utils.lastfm
 
 import iad1tya.echo.music.models.lastfm.Authentication
 import iad1tya.echo.music.models.lastfm.LastFmError
+import iad1tya.echo.music.models.lastfm.LovedTracksResponse
 import iad1tya.echo.music.models.lastfm.TokenResponse
+import iad1tya.echo.music.models.lastfm.TopArtistsResponse
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.engine.okhttp.OkHttp
@@ -179,6 +181,62 @@ object LastFM {
             )
             parameter("format", "json")
         }
+    }
+
+    // ── Public UNSIGNED read endpoints (taste import) ───────────────────────────────────────────────────
+    // Plain GET + format=json, NO api_sig / sk: these only READ public listening data and must never touch the
+    // signed write path (scrobble/love/session). Each returns emptyList() on any failure — never throws.
+
+    /**
+     * The user's most-played artists over [period] (public data). Returns (artistName, playcount) pairs.
+     * `playcount` arrives as a JSON string, so non-numeric entries are dropped. emptyList() on any failure.
+     */
+    suspend fun getTopArtists(
+        username: String,
+        limit: Int = 100,
+        period: String = "6month",
+    ): List<Pair<String, Int>> {
+        if (!isInitialized() || username.isBlank()) return emptyList()
+        return runCatching {
+            val body = client.get {
+                userAgent("AuraHiRes (https://github.com/hck0n3)")
+                parameter("method", "user.getTopArtists")
+                parameter("user", username)
+                parameter("api_key", API_KEY)
+                parameter("period", period)
+                parameter("limit", limit.toString())
+                parameter("format", "json")
+            }.bodyAsText()
+            json.decodeFromString<TopArtistsResponse>(body).topartists?.artist.orEmpty()
+                .mapNotNull { a ->
+                    val name = a.name.trim()
+                    val count = a.playcount.trim().toIntOrNull()
+                    if (name.isBlank() || count == null) null else name to count
+                }
+        }.getOrDefault(emptyList())
+    }
+
+    /**
+     * The artists behind the user's loved/❤ tracks (public data). Returns one artist NAME per loved track
+     * (duplicates kept so a frequently-loved artist accumulates weight upstream). emptyList() on any failure.
+     */
+    suspend fun getLovedTracks(
+        username: String,
+        limit: Int = 200,
+    ): List<String> {
+        if (!isInitialized() || username.isBlank()) return emptyList()
+        return runCatching {
+            val body = client.get {
+                userAgent("AuraHiRes (https://github.com/hck0n3)")
+                parameter("method", "user.getLovedTracks")
+                parameter("user", username)
+                parameter("api_key", API_KEY)
+                parameter("limit", limit.toString())
+                parameter("format", "json")
+            }.bodyAsText()
+            json.decodeFromString<LovedTracksResponse>(body).lovedtracks?.track.orEmpty()
+                .mapNotNull { it.artist?.name?.trim()?.takeIf { n -> n.isNotBlank() } }
+        }.getOrDefault(emptyList())
     }
 
     // API keys passed from the app module (loaded from BuildConfig / gradle secrets)

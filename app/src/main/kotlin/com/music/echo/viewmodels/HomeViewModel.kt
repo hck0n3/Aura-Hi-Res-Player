@@ -150,10 +150,16 @@ class HomeViewModel @Inject constructor(
         runCatching {
             val genres = iad1tya.echo.music.reco.GenreCache.snapshot(context)
             val onboarding = iad1tya.echo.music.reco.OnboardingGenres.itunesGenres(context)
+            // SECONDARY, opt-in Last.fm taste seed. Gated: only when the toggle is ON AND a Last.fm username
+            // exists — otherwise emptyMap => zero behavior change. Reads the daily-worker cache only (no network).
+            val lastfm = if (
+                context.dataStore.get(iad1tya.echo.music.constants.UseLastFmTasteKey, false) &&
+                context.dataStore.get(iad1tya.echo.music.constants.LastFMUsernameKey, "").isNotBlank()
+            ) iad1tya.echo.music.reco.LastFmTasteSource.cached(context) else emptyMap()
             // buildProfile is CPU-bound (genre/lane scans over events + library) — run it on Default (not the
             // IO dispatcher this is called on) to free IO threads, matching MusicService.tasteProfile().
             tasteProfile = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
-                iad1tya.echo.music.reco.AffinityEngine.buildProfile(events, disliked, artistGenres = genres, onboardingGenres = onboarding, librarySongs = library, followedArtists = followed)
+                iad1tya.echo.music.reco.AffinityEngine.buildProfile(events, disliked, artistGenres = genres, onboardingGenres = onboarding, librarySongs = library, followedArtists = followed, externalArtistWeights = lastfm)
             }
         }
         // Learn the real genres of your FOLLOWED artists too (not just played ones), so a followed artist's

@@ -322,6 +322,13 @@ val LastFMUseNowPlaying = booleanPreferencesKey("lastfmUseNowPlaying")
 
 val LastFMUseSendLikes = booleanPreferencesKey("lastfmUseSendLikes")
 
+// Last.fm taste import (opt-in, SECONDARY signal). When ON for a logged-in Last.fm user, a daily worker caches
+// the user's Last.fm top artists + loved tracks and the on-device AffinityEngine folds them into per-NAME
+// affinity ONLY as a capped, cross-app seed — real local plays always stay primary. Default OFF => zero change.
+val UseLastFmTasteKey = booleanPreferencesKey("lastfmTasteEnabled")
+val LastFmTasteCacheKey = stringPreferencesKey("lastfmTasteCache")
+val LastFmTasteFetchedAtKey = longPreferencesKey("lastfmTasteFetchedAt")
+
 val ScrobbleDelayPercentKey = floatPreferencesKey("scrobbleDelayPercent")
 val ScrobbleMinSongDurationKey = intPreferencesKey("scrobbleMinSongDuration")
 val ScrobbleDelaySecondsKey = intPreferencesKey("scrobbleDelaySeconds")
