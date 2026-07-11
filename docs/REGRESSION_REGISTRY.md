@@ -1,0 +1,28 @@
+# Registro de regresiones — Aura Hi-Res Player
+
+Objetivo: que **ningún bug reportado se repita**. Cada fix queda aquí con su archivo/línea guardián.
+**Antes de publicar CUALQUIER versión:** revisar esta tabla y verificar (leer/grep el código, no solo compilar) que el diff nuevo NO revierte ni rompe ningún fix. Prestar atención a los archivos compartidos (una función tocada por muchas pantallas es la fuente #1 de regresiones): `MusicService.kt`, `Player.kt`, `App.kt`, `utils/Utils.kt`, `Lyrics.kt`, `YTPlayerUtils.kt`, `BackupRestoreViewModel.kt`, `HomeScreen.kt`, `ArtistItemsViewModel.kt`, `Thumbnail.kt`.
+
+| # | Bug reportado | Causa raíz | Fix (archivo:línea guardián) | Ver. | Estado |
+|---|---|---|---|---|---|
+| 1 | Portada del reproductor no aparece (estilos de fondo) / a veces sí a veces no | `Box(matchParentSize())` sin hijo que aporte tamaño → colapsa a 0×0 | `Thumbnail.kt` Box exterior debe usar `modifier.fillMaxSize()` | 0.6.92 | ✅ |
+| 2 | Carrusel de Inicio "Para ti" parpadea vacío | pageCount cambia bajo un `rememberCarouselState` persistido | `HomeScreen.kt` `key(distinctQuickPicks.size){ HorizontalCenteredHeroCarousel }` | 0.6.92 | ✅ |
+| 3 | Estilo Metro ignora tamaño/interlineado de letra | valores hardcodeados 36f/1.3 | `MetroLyrics.kt` params `lyricsTextSize/lyricsLineSpacing` (×1.5 baseline) | 0.6.92→0.6.93 | ✅ |
+| 4 | Botón aleatorio en flotantes (no querido) | shuffle FAB en el toolbar | `MainActivity.kt` no pasa `onShuffleClick` a FloatingNavigationToolbar | 0.6.92 | ✅ |
+| 5 | IA "ocupada / no disponible" | 429 no reintentado; 1 solo modelo; sin fallback | `AiPlaylistService.kt` (retry 429 + cascada modelos) + `AiPlaylistGenerator.kt` (fallback search/radio) | 0.6.92 | ✅ |
+| 6 | Tema automático no sigue al sistema en vivo | `localeAwareContext` copiaba TODA la Configuration → fijaba uiMode | `utils/Utils.kt` `localeAwareContext` = Configuration vacío + solo setLocale | 0.6.93 | ⚠️ ROMPIÓ Android Auto (#12) |
+| 7 | Letra Apple "letra por letra" no anima (LRC por-línea) | fork bloqueó el barrido fabricado tras `hasRealWordTimings` | `Lyrics.kt` APPLE_V2: fabricar timings char-weighted en el else | 0.6.93 | ✅ |
+| 8 | Reconocimiento no funciona | endpoint Shazam externo + captura con AGC/ruido | `MusicRecognitionService.kt` (VOICE_RECOGNITION + AGC/NS off + re-captura) + config auto-sanable + relay | 0.6.93 | ✅ (endurecer: 404→relay, reset config) |
+| 9 | Botón mic-glass pegado al borde | sin margen en el FAB glass | `FloatingNavigationToolbar.kt` `padding(end=10.dp)` si useGlass | 0.6.93 | ✅ |
+| 10 | "No reproduce" tras restaurar copia | cookie stale del backup entra en `validateStatus` HEAD → 401/403 → descarta URL | `YTPlayerUtils.kt` `validateStatus` NO manda `YouTube.cookie` | 0.6.94 | ✅ |
+| 11 | Restore puede corromper/dejar la app rota | sin validación/rollback; DB podía quedar cerrada | `BackupRestoreViewModel.kt` restore: integrity_check + rollback + restart garantizado + `dbFileIntegrityOk` | 0.6.94 | ✅ |
+| 12 | **Android Auto falla, aparece/desaparece** | SOSPECHA: el fix #6 (localeAwareContext vacío) rompió la detección de car/uiMode en MusicService | pendiente root-cause | — | 🔴 ABIERTO |
+| 13 | **Portadas de artistas sugeridos no cargan** | pendiente root-cause | pendiente | — | 🔴 ABIERTO |
+| 14 | **Discografías incompletas** (albums/singles/EP) | caché con clave `artistId` colisiona Albums↔Singles (debe ser `artistId:browseId`); EP/Single nunca se completan; republish rebobina paginación | `ArtistItemsViewModel.kt:90,166,103` | — | 🔴 ABIERTO |
+
+## Reglas de contenido de las copias de seguridad (usuario)
+- La copia debe guardar **SOLO lo de la biblioteca** (la DB `song.db`): canciones, playlists, likes, artistas, álbumes, historial. **NADA de `settings.preferences_pb`** (cookie/tokens/toggles) para que el restore siempre sea funcional. EQ presets = mantener (contenido del usuario). La licencia (`jr_license`) JAMÁS viaja.
+- Backup = **solo local** (Drive descartado por el usuario).
+
+## Invariantes permanentes (no romper nunca)
+- No romper demo/licencia/suscripción (paquete `license/` + Worker). Crossfade 9s intacto. Superpowered intacto. Branding solo Aura. DB con migraciones (sin wipe). Verificar calor + batería en cada cambio.
