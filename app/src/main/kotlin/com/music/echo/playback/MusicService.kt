@@ -538,8 +538,20 @@ class MusicService :
     /** Recently-played media ids (bounded, most-recent last) so autoplay/radio don't resurface a song you
      *  JUST heard. A soft demotion (not a hard drop) — see [orderedByTaste] — so it can never dead-end the queue. */
     private val recentRadioIds = LinkedHashSet<String>()
+    /** NO-REPEAT — SESSION-WIDE played/queued media ids. Every song we've PLAYED or APPENDED to the infinite
+     *  queue this session lands here (large bounded LRU, ~4000, thread-safe). Unlike [recentRadioIds] (last ~60)
+     *  it spans the WHOLE session, so the radio pagination (Path A) and the re-seed / [orderedByTaste] paths can
+     *  HARD-DROP anything already heard/queued — the infinite queue never repeats a song. */
+    private val sessionPlayedIds: MutableSet<String> = java.util.Collections.synchronizedSet(
+        java.util.Collections.newSetFromMap(
+            object : java.util.LinkedHashMap<String, Boolean>(4096, 0.75f, false) {
+                override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Boolean>?): Boolean = size > 4000
+            }
+        )
+    )
     private fun rememberRecentRadioId(id: String?) {
         if (id.isNullOrBlank()) return
+        sessionPlayedIds.add(id) // NO-REPEAT: session-wide memory of everything actually played
         synchronized(recentRadioIds) {
             recentRadioIds.remove(id) // move-to-most-recent
             recentRadioIds.add(id)
@@ -2059,6 +2071,11 @@ class MusicService :
                 if (playWhenReady) player.play() else player.playWhenReady = false
             }
 
+            // NO-REPEAT: seed the session-wide dedupe with the ENTIRE initial queue so the infinite radio's
+            // pagination / re-seed can never resurface a song that was already part of the queue the user
+            // started from. Records the full list regardless of the preload/normal branch above.
+            sessionPlayedIds.addAll(initialStatus.items.mapNotNull { it.mediaId })
+
             
             if (player.shuffleModeEnabled) {
                 val shufflePlaylistFirst = dataStore.get(ShufflePlaylistFirstKey, false)
@@ -2138,7 +2155,9 @@ class MusicService :
                 if (itemCount > liveIndex + 1) {
                     player.removeMediaItems(liveIndex + 1, itemCount)
                 }
-                player.addMediaItems(liveIndex + 1, items.orderedByTaste())
+                val toAppend = items.orderedByTaste()
+                player.addMediaItems(liveIndex + 1, toAppend)
+                sessionPlayedIds.addAll(toAppend.mapNotNull { it.mediaId }) // NO-REPEAT: record what we appended
                 _mixActive.value = true
                 if (player.shuffleModeEnabled) {
                     val shufflePlaylistFirst = dataStore.get(ShufflePlaylistFirstKey, false)
@@ -2362,7 +2381,9 @@ class MusicService :
                 if (itemCount > liveIndex + 1) {
                     player.removeMediaItems(liveIndex + 1, itemCount)
                 }
-                player.addMediaItems(liveIndex + 1, items.orderedByTaste())
+                val toAppend = items.orderedByTaste()
+                player.addMediaItems(liveIndex + 1, toAppend)
+                sessionPlayedIds.addAll(toAppend.mapNotNull { it.mediaId }) // NO-REPEAT: record what we appended
                 _mixActive.value = true
                 if (initialStatus.title != null) queueTitle = initialStatus.title
                 if (player.shuffleModeEnabled) {
@@ -2495,13 +2516,19 @@ class MusicService :
             // spots (~4 per taste point) and a small jitter adds variety — relatedness stays the backbone.
             val jitter = if (p == null) 0.0 else rnd.nextDouble() * 1.5
             val key = index.toDouble() - taste * 4.0 + jitter
-            val heard = m != null && (m.id in recentSnapshot || m.id in playedHistory)
+            // NO-REPEAT: "heard" is now SESSION-WIDE ([sessionPlayedIds] — everything played OR appended this
+            // session), broadened beyond the last-~60 [recentSnapshot] and the ~5-min DB [playedHistory].
+            val heard = m != null && (m.id in sessionPlayedIds || m.id in recentSnapshot || m.id in playedHistory)
             Triple(mi, key, heard)
         }
         val unheard = keyed.filterNot { it.third }.sortedBy { it.second }.map { it.first }
         // No fresh candidates left? Fall back to the ordered already-heard tail rather than dead-ending.
         val heardTail = keyed.filter { it.third }.sortedBy { it.second }.map { it.first }
-        return unheard + heardTail
+        // NO-REPEAT: when there are ANY unheard candidates, DROP the heard ones entirely (a hard filter, not a
+        // soft tail). Only when everything is already heard do we fall back to the heard tail — the last-resort
+        // "never dead-end / never silence" guarantee. `index` still dominates each bucket's sort (relatedness
+        // order preserved; taste only nudges — we filter, never re-sort).
+        return if (unheard.isNotEmpty()) unheard else heardTail
     }
 
     fun getAutomixAlbum(albumId: String) {
@@ -3277,10 +3304,17 @@ class MusicService :
                         }
                         if (inLane.size >= 2) next = inLane
                     }
+                    // NO-REPEAT (Path A hard dedupe): the primary radio pagination NEVER deduped, so YouTube
+                    // RD… continuations re-surfaced the seed & earlier songs → guaranteed repeats. Hard-drop
+                    // anything already played/queued this session. If this empties the batch we append NOTHING
+                    // (the guard below no-ops) and leave hasNextPage untouched, so the next transition pulls the
+                    // next page; the STATE_ENDED net re-seeds if the pages ever run truly dry. Never a repeat.
+                    next = next.filterNot { it.mediaId in sessionPlayedIds }
                     next
                 }
                 if (player.playbackState != STATE_IDLE && mediaItems.isNotEmpty()) {
                     player.addMediaItems(mediaItems)
+                    sessionPlayedIds.addAll(mediaItems.mapNotNull { it.mediaId }) // NO-REPEAT: record what we appended
                     if (player.shuffleModeEnabled) {
                         val shufflePlaylistFirst = dataStore.get(ShufflePlaylistFirstKey, false)
                         applyShuffleOrder(player.currentMediaItemIndex, player.mediaItemCount, shufflePlaylistFirst)
