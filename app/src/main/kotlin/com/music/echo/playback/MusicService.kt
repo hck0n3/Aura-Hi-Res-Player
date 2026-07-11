@@ -2458,10 +2458,13 @@ class MusicService :
             val onboarding = iad1tya.echo.music.reco.OnboardingGenres.itunesGenres(this@MusicService)
             // SECONDARY, opt-in Last.fm taste seed. Gated: only when the toggle is ON AND a Last.fm username
             // exists — otherwise emptyMap => zero behavior change. Reads the daily-worker cache only (no network).
-            val lastfm = if (
-                dataStore.get(iad1tya.echo.music.constants.UseLastFmTasteKey, false) &&
-                dataStore.get(iad1tya.echo.music.constants.LastFMUsernameKey, "").isNotBlank()
-            ) iad1tya.echo.music.reco.LastFmTasteSource.cached(this@MusicService) else emptyMap()
+            // On IO: the DataStore gate reads + cache read use the runBlocking accessor, so keep them off Main.
+            val lastfm = withContext(Dispatchers.IO) {
+                if (
+                    dataStore.get(iad1tya.echo.music.constants.UseLastFmTasteKey, false) &&
+                    dataStore.get(iad1tya.echo.music.constants.LastFMUsernameKey, "").isNotBlank()
+                ) iad1tya.echo.music.reco.LastFmTasteSource.cached(this@MusicService) else emptyMap()
+            }
             withContext(Dispatchers.Default) {
                 iad1tya.echo.music.reco.AffinityEngine.buildProfile(events, disliked, artistGenres = genres, onboardingGenres = onboarding, librarySongs = library, followedArtists = followed, externalArtistWeights = lastfm)
             }.also {

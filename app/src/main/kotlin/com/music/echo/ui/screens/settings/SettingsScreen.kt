@@ -50,6 +50,7 @@ import iad1tya.echo.music.license.SubscriptionEntryScreen
 import iad1tya.echo.music.license.LicenseManager
 import iad1tya.echo.music.license.LicenseLogic
 import androidx.compose.runtime.remember
+import androidx.activity.compose.BackHandler
 
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -70,6 +71,8 @@ fun SettingsScreen(
     val subState = remember { LicenseManager.lastResolvedState(context) }
     val showSubscribeEntry = BuildConfig.REQUIRE_SUBSCRIPTION &&
         subState != LicenseLogic.AppState.SUBSCRIPTION_ACTIVE
+    // Back while on the subscribe sub-screen returns to the settings list (not out of Settings entirely).
+    BackHandler(showSubscribe) { showSubscribe = false }
     if (showSubscribe) {
         SubscriptionEntryScreen(
             onActivated = { showSubscribe = false },
