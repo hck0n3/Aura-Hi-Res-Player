@@ -521,4 +521,10 @@
     <string name="listenbrainz_scrobbling_description">Envía tus reproducciones a ListenBrainz. Requiere un token de usuario de tu perfil de ListenBrainz.</string>
     <string name="set_listenbrainz_token">Configurar token de ListenBrainz</string>
     <string name="listenbrainz_token_set">Token de ListenBrainz configurado</string>
+
+    <!-- Restore robustness -->
+    <string name="restore_failed_incompatible">Esta copia de seguridad es de una versión más reciente de la app y no se puede restaurar. Actualiza la app e inténtalo de nuevo.</string>
+    <string name="restore_failed_corrupt">El archivo de copia de seguridad está dañado o incompleto y no se puede restaurar. No se ha cambiado nada.</string>
+    <string name="restore_failed_io">No se pudo leer el archivo de copia de seguridad. No se ha cambiado nada.</string>
+    <string name="restore_failed_invalid">Este archivo no es una copia de seguridad válida de Aura.</string>
 </resources>

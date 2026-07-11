@@ -579,4 +579,10 @@
     <string name="listenbrainz_scrobbling_description">Submit your listens to ListenBrainz. Requires a user token from your ListenBrainz profile.</string>
     <string name="set_listenbrainz_token">Set ListenBrainz token</string>
     <string name="listenbrainz_token_set">ListenBrainz token set</string>
+
+    <!-- Restore robustness -->
+    <string name="restore_failed_incompatible">This backup is from a newer version of the app and can\'t be restored. Update the app first, then try again.</string>
+    <string name="restore_failed_corrupt">The backup file is damaged or incomplete and can\'t be restored. Nothing was changed.</string>
+    <string name="restore_failed_io">Couldn\'t read the backup file. Nothing was changed.</string>
+    <string name="restore_failed_invalid">This file isn\'t a valid Aura backup.</string>
 </resources>
