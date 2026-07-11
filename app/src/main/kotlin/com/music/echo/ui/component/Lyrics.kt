@@ -1618,17 +1618,17 @@ fun Lyrics(
                             }
                             Text(text = styledText, fontSize = lyricsTextSize.sp, textAlign = alignment, lineHeight = (lyricsTextSize * lyricsLineSpacing.coerceAtMost(1.3f)).sp)
                         } else if (effectiveAnimationStyle == LyricsAnimationStyle.APPLE_V2) {
-                            // Whether this entry has REAL per-word timings (same gate as EchoMusicLyrics'
-                            // hasRealWordTimings). LINE-synced LRC (the common LrcLib/Kugou case) has NONE —
-                            // fabricating a per-character sweep across the line duration just guesses word
-                            // positions, so the highlight wipes through instrumental pauses and drifts
-                            // against the vocal. Those lines light up WHOLE on activation instead (see
-                            // wholeLineProgress below); real word timings keep the karaoke sweep as-is.
+                            // Whether this entry has REAL per-word timings. When it does, use them for an
+                            // exact karaoke sweep; when it DOESN'T (line-synced LRC — the common LrcLib/Kugou
+                            // case, i.e. MOST songs), fabricate a char-weighted left-to-right sweep so
+                            // APPLE_V2 ("letra por letra") still animates per character instead of flashing
+                            // the whole line. The char render reads live position directly (no tween), so
+                            // there's no lag either way. (Restores the upstream behavior the user expects.)
                             val hasRealWordTimings = remember(item.text, item.words) {
                                 item.words?.isNotEmpty() == true && !isHindi(item.text)
                             }
 
-                            val wordData = remember(item.text, item.words, hasRealWordTimings) {
+                            val wordData = remember(item.text, item.words, hasRealWordTimings, index) {
                                 if (hasRealWordTimings) {
 
                                     item.words!!.map { word ->
@@ -1637,25 +1637,27 @@ fun Lyrics(
                                         Triple(word.text, wordStart, wordEnd)
                                     }
                                 } else {
-                                    // Split for LAYOUT only; the (0,0) timings are never read — every char
-                                    // is driven uniformly by wholeLineProgress, no fabricated sweep.
+                                    // Line-synced LRC: FABRICATE a char-weighted left-to-right sweep across the
+                                    // line's active duration (until the next line, ×0.95) so the highlight moves
+                                    // per character. Each word gets start/end proportional to its char count.
                                     val words = item.text.split(" ").filter { it.isNotEmpty() }
                                     if (words.isEmpty()) {
                                         listOf(Triple(item.text, 0L, 0L))
                                     } else {
-                                        words.map { word -> Triple(word, 0L, 0L) }
+                                        val nextTime = lines.getOrNull(index + 1)?.time
+                                        val activeDur = ((if (nextTime != null) nextTime - item.time else 4000L) * 95 / 100)
+                                            .coerceAtLeast(300L)
+                                        val totalChars = words.sumOf { it.length }.coerceAtLeast(1)
+                                        var acc = 0L
+                                        words.map { word ->
+                                            val wStart = acc
+                                            val wDur = activeDur * word.length / totalChars
+                                            acc += wDur
+                                            Triple(word, wStart, (wStart + wDur).coerceAtLeast(wStart + 50L))
+                                        }
                                     }
                                 }
                             }
-
-                            // Line-only timings: the whole line fills together on activation — a soft
-                            // light-up tween (mirrors EchoMusicLyrics' wholeLineProgress) instead of a
-                            // synthetic left-to-right karaoke wipe.
-                            val wholeLineProgress by animateFloatAsState(
-                                targetValue = if (isActiveLine && !hasRealWordTimings) 1f else 0f,
-                                animationSpec = tween(durationMillis = 350),
-                                label = "appleV2WholeLineFill"
-                            )
 
                             @OptIn(ExperimentalLayoutApi::class)
                             FlowRow(
@@ -1683,9 +1685,6 @@ fun Lyrics(
 
                                             val charProgress = when {
                                                 !isActiveLine -> 0f
-                                                // No real per-word timings (line-synced LRC): light the
-                                                // whole line uniformly — never a fabricated sweep.
-                                                !hasRealWordTimings -> wholeLineProgress
                                                 lineRelTime >= charEnd -> 1f
                                                 lineRelTime < charStart -> 0f
                                                 else -> {
