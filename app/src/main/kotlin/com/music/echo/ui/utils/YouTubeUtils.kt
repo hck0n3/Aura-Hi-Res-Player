@@ -33,9 +33,11 @@ fun String.resize(
 
     
     if (this.contains("yt3.ggpht.com")) {
-        
-        val baseUrl = this.split("=")[0].split("-s")[0]
-        return "$baseUrl=s${width ?: height}"
+        // Artist/channel AVATARS. The old code did split("=")[0].split("-s")[0], and split("-s") chops
+        // the opaque token at any "-s" inside it → a 404 → blank circle (bug: suggested AND local artist
+        // photos didn't load). The token is not safely rewritable, so return the URL RAW — Coil samples
+        // the native avatar down to the (small, circular) target bounds. Fixes every artist-image site.
+        return this
     }
 
     
