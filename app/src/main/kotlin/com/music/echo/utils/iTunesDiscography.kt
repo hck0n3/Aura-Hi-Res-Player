@@ -8,6 +8,7 @@ import io.ktor.client.request.parameter
 import io.ktor.client.statement.bodyAsText
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -59,6 +60,35 @@ object iTunesDiscography {
                 .orEmpty()
         }.onFailure {
             Timber.w("iTunes discography fetch failed for $artistName: ${it.message}")
+        }.getOrDefault(emptyList())
+
+    /**
+     * Album (title, trackCount) released by [artistName] per iTunes (same credit rule as [fetchAlbumTitles],
+     * no extra network — trackCount is already in the search response). trackCount is 0 when iTunes omits it.
+     * Lets the caller detect a TRUNCATED YouTube upload (fewer tracks than iTunes says the release has).
+     */
+    suspend fun fetchAlbumMeta(artistName: String, country: String = "us"): List<Pair<String, Int>> =
+        runCatching {
+            val text = client.get("https://itunes.apple.com/search") {
+                parameter("term", artistName)
+                parameter("entity", "album")
+                parameter("attribute", "artistTerm")
+                parameter("limit", "200")
+                parameter("country", country)
+            }.bodyAsText()
+
+            json.parseToJsonElement(text).jsonObject["results"]?.jsonArray
+                ?.mapNotNull { el ->
+                    val o = el.jsonObject
+                    val resultArtist = o["artistName"]?.jsonPrimitive?.contentOrNull ?: ""
+                    val title = o["collectionName"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+                    val credited = resultArtist.startsWith(artistName, ignoreCase = true) ||
+                        artistName.startsWith(resultArtist, ignoreCase = true)
+                    if (credited) title to (o["trackCount"]?.jsonPrimitive?.intOrNull ?: 0) else null
+                }
+                .orEmpty()
+        }.onFailure {
+            Timber.w("iTunes discography meta fetch failed for $artistName: ${it.message}")
         }.getOrDefault(emptyList())
 
     /**
