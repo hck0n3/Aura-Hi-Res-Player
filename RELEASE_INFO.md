@@ -1,8 +1,12 @@
-# Aura Hi-Res Player 0.6.97 — Restaurar copias ya no cierra la app
+# Aura Hi-Res Player 0.6.98 — Discografías sin álbumes truncados ni duplicados
 
-## 🛡️ Restaurar una copia de seguridad es a prueba de crash
-- Corregido un **cierre inesperado** (`connection is closed`) que podía ocurrir **al restaurar una copia de seguridad**. Al restaurar, la app cierra la base de datos un instante antes de reiniciarse; en ese momento otra parte de la app (el reproductor) podía consultarla y provocar el fallo. Ahora ese caso se maneja como lo que es —benigno, la app se está reiniciando— y **la restauración termina limpia, sin cerrarse**.
-- Recordatorio: las copias guardan **solo tu biblioteca** y el restore **ignora el inicio de sesión** (también en copias viejas), así que restaurar siempre es funcional.
+## 💿 Álbumes completos y sin repetidos en la discografía
+- Arreglado el problema por el que un álbum aparecía **duplicado** (p. ej. una versión **instrumental** y otra "oficial") y a veces la "oficial" venía **truncada** (canciones de segundos, o le faltaban temas).
+- Ahora la discografía:
+  - **Verifica la calidad de cada álbum** (nº de canciones y duración real) y **descarta las versiones truncadas** o de vista previa.
+  - **Se queda con una sola versión** por álbum (la más completa), y **descarta las instrumentales/karaoke** cuando existe la oficial.
+  - **Compara con iTunes/Apple** el número real de canciones, así detecta un álbum al que le faltan temas.
+- Si YouTube solo tiene una versión (aunque no sea perfecta), se muestra igual — nunca se queda vacío.
 
 ## ✅ Como siempre
-- Suscripción, licencia, demo, crossfade de 9s y motor de audio: intactos. Calor y batería vigilados. Verificado contra el registro de fallos: sin regresiones.
+- Suscripción, licencia, demo, crossfade de 9s y motor de audio: intactos. Calor y batería vigilados (las comprobaciones extra van acotadas y en caché). Verificado contra el registro de fallos: sin regresiones.
