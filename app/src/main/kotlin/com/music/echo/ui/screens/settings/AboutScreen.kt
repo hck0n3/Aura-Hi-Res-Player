@@ -39,6 +39,7 @@ private data class Feature(val icon: Int, val title: String, val subtitle: Strin
 private val PLAYBACK_FEATURES = listOf(
     Feature(R.drawable.play, "Reproducción", "Sin cortes (gapless), transición suave (crossfade) equal-power de 9s —igual de fluida en todas las canciones y sin el pequeño corte al inicio (espera a que la siguiente esté lista antes de mezclar); solo hay corte directo donde debe haberlo, como saltar a mano o el modo gapless—, Volumen Seguro que nivela las canciones muy altas (atenúa, con limitador) y temporizador de apagado"),
     Feature(R.drawable.videocam, "Video musical", "Reproduce el videoclip con su sonido dentro del reproductor (cuando está disponible), sigue en video al cambiar de canción; pantalla completa al girar el teléfono, Picture-in-Picture (ventana flotante) y cambio rápido entre audio y video (con conexión pre-calentada al abrir el reproductor, en wifi y equipos capaces). El audio sigue en segundo plano y con la pantalla apagada"),
+    Feature(R.drawable.image, "Modo Ambiente", "Vista a pantalla completa en horizontal: la portada en grande con un resplandor animado de fondo, la letra y la pantalla siempre encendida. Se abre desde el menú del reproductor"),
     Feature(R.drawable.graphic_eq, "Sonido y EQ", "Ecualizador gráfico de 10 bandas (las que dejes en 0 dB hacen bypass real — no tocan la señal) o modo paramétrico (PEQ) interactivo: arrastra puntos en la curva de respuesta para dar forma al sonido (5-8 bandas, con frecuencia/Q/ganancia exactas), limitador anti-distorsión con headroom automático y Auto-EQ por modelo de auricular (+5000, con catálogo que abre al instante) que se combina con tu EQ manual (cascada)"),
     Feature(R.drawable.volume_up, "Volumen Seguro", "Activado por defecto: nivela las canciones muy altas a un volumen parejo y protege con un limitador true-peak, para que ninguna pista salte de golpe. Puedes desactivarlo cuando quieras en Ajustes ▸ Sonido"),
     Feature(R.drawable.tune, "Sonido sin pérdida", "Reproduce en calidad sin pérdida desde Qobuz cuando está disponible, con Saavn como respaldo a 320 kbps"),
@@ -73,13 +74,15 @@ private val LIBRARY_FEATURES = listOf(
     Feature(R.drawable.queue_music, "Podcasts", "Motor propio (Apple/iTunes + RSS) con progreso, fijado, búsqueda universal y reproducción por URL directa; en los podcasts que ofrecen video puedes elegir entre audio y video"),
     Feature(R.drawable.folder_managed, "Medios locales", "Reproduce los archivos de música guardados en el dispositivo"),
     Feature(R.drawable.music_history, "Historial y estadísticas", "Tu historial de escucha y estadísticas detalladas"),
+    Feature(R.drawable.sync, "Scrobbling (Last.fm y ListenBrainz)", "Registra lo que escuchas en Last.fm y ListenBrainz. Totalmente opcional y apagado por defecto: no envía nada hasta que conectas tu cuenta en Ajustes ▸ Scrobbling"),
+    Feature(R.drawable.library_music, "Resumen de escucha", "En Estadísticas: el tiempo total que has escuchado (del periodo y de siempre) y cuántas canciones, artistas y álbumes distintos"),
     Feature(R.drawable.backup, "Copia de seguridad local", "Exporta e importa tu biblioteca en un archivo local, cuando quieras y sin depender de la nube"),
 )
 
 private val EXTRAS_FEATURES = listOf(
     Feature(R.drawable.home_outlined, "Tu inicio a tu gusto", "Elige tus artistas y géneros al empezar; el inicio se llena solo con tus artistas, lo que escuchas y tus favoritos, y YouTube recomienda en base a eso. Secciones en orden fijo (el aleatorio queda opcional en Ajustes), con 'Reproducido recientemente' cronológico arriba del todo, 'Nuevos lanzamientos', 'Mix diario 1/2/3' estilo Spotify y un mix según la hora del día (mañana/tarde/noche). La marcación rápida son solo canciones (ya no te manda a artistas ni álbumes); y al tocar un chip de estado de ánimo el contenido se actualiza al instante y la reproducción se sesga a ese ánimo mientras el chip esté activo (al desactivarlo, vuelve a lo normal)"),
     Feature(R.drawable.group_outlined, "Escuchar juntos", "Escucha sincronizada en tiempo real con amigos"),
-    Feature(R.drawable.palette, "Temas y fondos", "Material You, modo oscuro puro AMOLED, acento dinámico, Canvas animado del artista y del álbum (a pantalla completa al girar el teléfono) y Liquid Glass (Beta): estilo de cristal para reproductor, mini-reproductor, barra de navegación y botones flotantes (mezclar, micrófono, crear) en equipos capaces — desactivado por defecto, actívalo en Ajustes ▸ Apariencia"),
+    Feature(R.drawable.palette, "Temas y fondos", "Material You, modo oscuro puro AMOLED, acento dinámico, Canvas animado del artista y del álbum (a pantalla completa al girar el teléfono) y Liquid Glass (Beta): estilo de cristal para reproductor, mini-reproductor, barra de navegación y el botón flotante (el micrófono de reconocimiento) en equipos capaces — desactivado por defecto, actívalo en Ajustes ▸ Apariencia"),
     Feature(R.drawable.grid_view, "Interfaz dividida (pantallas anchas)", "En tablets, Android TV y plegables desplegados la app adopta un layout dividido estilo Spotify (lista + detalle a la vez) que aprovecha todo el ancho de pantalla"),
     Feature(R.drawable.tune, "Opciones de pantalla", "Escala de densidad, alta tasa de refresco, ocultar miniatura/videos/Shorts y recortar carátula"),
     Feature(R.drawable.manage_search, "Búsqueda de ajustes", "Un buscador en Ajustes localiza cualquier opción por su nombre, sin recorrer menús"),
@@ -89,6 +92,7 @@ private val EXTRAS_FEATURES = listOf(
     Feature(R.drawable.play, "Android Auto y Android TV", "Compatible con Android Auto en el coche y con Android TV (se instala y navega con el control en televisores)"),
     Feature(R.drawable.cast, "Google Cast", "Envía el audio a dispositivos Chromecast (build con Google Play Services)"),
     Feature(R.drawable.notification, "Fiabilidad en segundo plano", "Exención opcional de batería contra apps que matan procesos y reinicio limpio tras iniciar sesión con Google"),
+    Feature(R.drawable.refresh, "Descifrado de YouTube", "En Ajustes ▸ Reproductor ▸ Avanzado ves la última actualización del descifrado y puedes forzarla si la reproducción deja de funcionar"),
     Feature(R.drawable.download, "Actualizaciones", "Auto-actualización sin desinstalar y aviso semanal cuando hay una versión nueva"),
     Feature(R.drawable.auto_awesome, "Suscripción y demo", "Prueba gratis de 3 días y suscripción mensual"),
 )

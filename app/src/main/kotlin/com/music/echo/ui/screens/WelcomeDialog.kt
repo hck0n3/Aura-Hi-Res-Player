@@ -164,6 +164,12 @@ fun WelcomeDialog(
                     )
                     WelcomeDivider()
                     WelcomeFeatureRow(
+                        iconRes = R.drawable.image,
+                        title = "Modo Ambiente",
+                        subtitle = "Vista a pantalla completa en horizontal: portada en grande con resplandor animado, la letra y la pantalla siempre encendida; se abre desde el menú del reproductor"
+                    )
+                    WelcomeDivider()
+                    WelcomeFeatureRow(
                         iconRes = R.drawable.mic,
                         title = "Reconocer canción y buscar por voz",
                         subtitle = "Identifica lo que suena a tu alrededor con un botón dedicado siempre visible: tócalo y empieza a reconocer al instante (desde la app, el widget o Ajustes Rápidos) — el resultado se reproduce directamente y puedes marcarlo favorito o agregarlo a una playlist ahí mismo — y busca hablando, también en Android TV; la búsqueda suma un filtro 'Videos'"
@@ -197,6 +203,18 @@ fun WelcomeDialog(
                         iconRes = R.drawable.account,
                         title = "Cuentas y búsqueda rápida",
                         subtitle = "Un apartado Cuentas reúne YouTube Music y Spotify, con buscadores en Ajustes y en tu Biblioteca (artistas seguidos y canciones)"
+                    )
+                    WelcomeDivider()
+                    WelcomeFeatureRow(
+                        iconRes = R.drawable.sync,
+                        title = "Scrobbling (Last.fm y ListenBrainz)",
+                        subtitle = "Registra lo que escuchas; opcional y apagado por defecto, no envía nada hasta que conectas tu cuenta en Ajustes ▸ Scrobbling"
+                    )
+                    WelcomeDivider()
+                    WelcomeFeatureRow(
+                        iconRes = R.drawable.library_music,
+                        title = "Resumen de escucha",
+                        subtitle = "En Estadísticas: el tiempo total que has escuchado (del periodo y de siempre) y cuántas canciones, artistas y álbumes distintos"
                     )
                     WelcomeDivider()
                     WelcomeFeatureRow(
