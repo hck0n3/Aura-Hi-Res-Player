@@ -55,6 +55,7 @@ constructor(
                         name = it.name,
                         resolved = it.resolved,
                         total = it.total,
+                        generatedWithoutAi = it.generatedWithoutAi,
                     )
                 },
                 onFailure = { AiPlaylistUiState.Error(it) },
@@ -79,6 +80,8 @@ sealed interface AiPlaylistUiState {
         val name: String,
         val resolved: Int,
         val total: Int,
+        /** Playlist built from search/radio because the AI chain was unavailable. */
+        val generatedWithoutAi: Boolean = false,
     ) : AiPlaylistUiState
 
     data class Error(val cause: Throwable) : AiPlaylistUiState

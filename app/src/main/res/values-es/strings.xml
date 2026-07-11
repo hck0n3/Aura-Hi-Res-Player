@@ -459,6 +459,7 @@
     <string name="ai_playlist_generating">Consultando a la IA…</string>
     <string name="ai_playlist_resolving">Buscando canciones %1$d/%2$d…</string>
     <string name="ai_playlist_resolved_count">%1$d de %2$d canciones añadidas</string>
+    <string name="ai_playlist_generated_without_ai">Generada sin IA, a partir de tu descripción. Añade tu propia clave de IA en Ajustes para resultados elegidos con IA.</string>
     <string name="ai_playlist_error_generic">No se pudo generar la playlist. Inténtalo de nuevo.</string>
     <string name="ai_playlist_error_no_api_key">Configura primero una clave de IA en Ajustes de IA.</string>
     <string name="ai_playlist_error_unavailable">El servicio de IA está ocupado o no disponible. Inténtalo de nuevo en un momento.</string>

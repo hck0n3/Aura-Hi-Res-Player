@@ -73,14 +73,22 @@ fun AiPlaylistDialog(
     LaunchedEffect(state) {
         val current = state
         if (current is AiPlaylistUiState.Success) {
+            val baseMsg = context.getString(
+                R.string.ai_playlist_resolved_count,
+                current.resolved,
+                current.total,
+            )
+            // When the AI chain was unavailable we still built a playlist from search/radio — tell the
+            // user honestly (subtle note) instead of ever showing "IA ocupada / no disponible".
+            val msg = if (current.generatedWithoutAi) {
+                baseMsg + "\n" + context.getString(R.string.ai_playlist_generated_without_ai)
+            } else {
+                baseMsg
+            }
             Toast.makeText(
                 context,
-                context.getString(
-                    R.string.ai_playlist_resolved_count,
-                    current.resolved,
-                    current.total,
-                ),
-                Toast.LENGTH_SHORT,
+                msg,
+                if (current.generatedWithoutAi) Toast.LENGTH_LONG else Toast.LENGTH_SHORT,
             ).show()
             val playlistId = current.playlistId
             viewModel.reset()

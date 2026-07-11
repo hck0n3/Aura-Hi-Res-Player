@@ -512,6 +512,7 @@
     <string name="ai_playlist_generating">Asking the AI…</string>
     <string name="ai_playlist_resolving">Finding songs %1$d/%2$d…</string>
     <string name="ai_playlist_resolved_count">%1$d of %2$d songs added</string>
+    <string name="ai_playlist_generated_without_ai">Generated without AI, from your description. Add your own AI key in Settings for AI-picked results.</string>
     <string name="ai_playlist_error_generic">Could not generate the playlist. Please try again.</string>
     <string name="ai_playlist_error_no_api_key">Set up an AI API key first in AI settings.</string>
     <string name="ai_playlist_error_unavailable">The AI service is busy or unavailable. Try again in a moment.</string>

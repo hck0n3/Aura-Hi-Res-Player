@@ -57,16 +57,23 @@ object AiPlaylistService {
 
     /** Public keyless OpenAI-compatible endpoint, used when the Aura Worker is unavailable. */
     private const val POLLINATIONS_URL = "https://text.pollinations.ai/openai"
-    private const val POLLINATIONS_MODEL = "openai"
+
+    /**
+     * Several FREE Pollinations models, tried IN ORDER until one actually returns a usable playlist.
+     * A single busy / rate-limited / empty model no longer sinks the whole request — the chain walks
+     * to the next model. Only if EVERY model fails does the keyless chain give up (and the caller then
+     * builds a non-AI playlist from search/radio). Order = most reliable first.
+     */
+    private val POLLINATIONS_MODELS = listOf("openai", "mistral", "llama", "deepseek")
 
     /** Modest per-endpoint retries for the keyless chain so the chained worst case stays bounded. */
     private const val KEYLESS_MAX_RETRIES = 2
 
     /**
-     * Pollinations is the last keyless hop and flakes (empty content / rate-limit), so it gets one
-     * extra bounded attempt beyond the Worker probe. Still small, to respect the battery/heat budget.
+     * Per-MODEL retries for Pollinations. Kept small (2) because we now try several models in turn, so
+     * total worst-case = models × retries — still bounded, to respect the battery/heat budget.
      */
-    private const val POLLINATIONS_MAX_RETRIES = 3
+    private const val POLLINATIONS_MAX_RETRIES = 2
 
     class UnsupportedProviderException(val providerName: String) :
         Exception("Provider not supported for AI playlists: $providerName")
@@ -136,21 +143,27 @@ object AiPlaylistService {
         )
         if (workerResult.isSuccess) return@withContext workerResult
 
-        // 3. Pollinations fallback (keyless). Bounded retry with short backoff to ride out its
-        // intermittent empty replies / rate-limits before the chain gives up.
-        val fallbackResult = requestChatCompletion(
-            url = POLLINATIONS_URL,
-            apiKey = null,
-            model = POLLINATIONS_MODEL,
-            messages = messages,
-            maxTokens = maxTokens,
-            count = count,
-            maxRetries = POLLINATIONS_MAX_RETRIES,
-            retryEmptyContent = true,
-        )
-        if (fallbackResult.isSuccess) return@withContext fallbackResult
+        // 3. Pollinations fallback (keyless) — try SEVERAL free models in turn until one returns a
+        // usable playlist. A busy/rate-limited/empty model just advances to the next; only if EVERY
+        // model fails does the keyless chain give up. The caller (AiPlaylistGenerator) then builds a
+        // non-AI playlist from search/radio, so the feature never dead-ends on "servicio no disponible".
+        var lastFailure: Throwable? = null
+        for (pollModel in POLLINATIONS_MODELS) {
+            val r = requestChatCompletion(
+                url = POLLINATIONS_URL,
+                apiKey = null,
+                model = pollModel,
+                messages = messages,
+                maxTokens = maxTokens,
+                count = count,
+                maxRetries = POLLINATIONS_MAX_RETRIES,
+                retryEmptyContent = true,
+            )
+            if (r.isSuccess) return@withContext r
+            lastFailure = r.exceptionOrNull()
+        }
 
-        Result.failure(AiServiceUnavailableException(fallbackResult.exceptionOrNull()))
+        Result.failure(AiServiceUnavailableException(lastFailure))
     }
 
     /**
@@ -210,10 +223,17 @@ object AiPlaylistService {
                 val responseBody = response.body?.string()
 
                 if (!response.isSuccessful) {
-                    if (response.code >= 500) {
+                    // Retry rate-limits (429) and 408/425 too, not only 5xx. HTTP 429 is Pollinations'
+                    // single most common failure; the old `>= 500` check treated it as a hard error and
+                    // returned immediately with zero retries — the main cause of the "IA ocupada / no
+                    // disponible" the user keeps seeing. Honor Retry-After when the server sends it
+                    // (capped at 10s so a bad value can't hang the dialog), else jittered backoff.
+                    if (response.code == 429 || response.code == 408 || response.code == 425 || response.code >= 500) {
                         attempt++
                         lastError = "HTTP ${response.code}"
-                        delay(1000L * attempt)
+                        val retryAfterMs = response.header("Retry-After")?.toLongOrNull()?.times(1000L)
+                        val backoffMs = 1000L * attempt + (0L..500L).random()
+                        delay((retryAfterMs ?: backoffMs).coerceAtMost(10_000L))
                         continue
                     }
                     val errorMsg = runCatching {
