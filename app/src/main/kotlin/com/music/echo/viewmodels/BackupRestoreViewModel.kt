@@ -274,8 +274,11 @@ class BackupRestoreViewModel @Inject constructor(
                 // Flows) throw SQLite code 21 "connection is closed" during the copy→restart window. Flag it
                 // so the uncaught handler swallows that BENIGN crash until restore's own restart completes.
                 iad1tya.echo.music.utils.CrashHandler.isRestoring = true
-                database.close()
+                // Mark closed BEFORE close(): if close() itself throws, the outer onFailure must still route
+                // to restartApp (guarded by dbClosedForRestore) — otherwise the process would survive with
+                // isRestoring stuck true, masking genuine code-21 errors for its whole lifetime.
                 dbClosedForRestore = true
+                database.close()
                 walFile.delete()
                 shmFile.delete()
 
