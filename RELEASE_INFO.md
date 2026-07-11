@@ -1,13 +1,10 @@
-# Aura Hi-Res Player 0.6.99 — El inicio de sesión de Last.fm (Scrobbling) ya funciona
+# Aura Hi-Res Player 0.6.100 — La cola infinita ya no repite canciones
 
-## 🎧 Last.fm / Scrobbling arreglado
-- Corregido el error **"invalid parameters"** al iniciar sesión en **Last.fm** desde Ajustes ▸ Scrobbling. La clave de Last.fm de la app viajaba **vacía** en las versiones publicadas (un fallo en cómo se empaquetaba la clave), así que el inicio de sesión fallaba para todos. Ahora la clave se incluye correctamente y **puedes iniciar sesión con tu usuario y contraseña de Last.fm**.
+## 🔁 Cola infinita sin repetidos
+- Arreglado: la reproducción automática (cola infinita) **volvía a poner canciones ya escuchadas**. Ahora la app **recuerda todo lo reproducido en la sesión** y **nunca repite** una canción ya sonada o que ya está en la cola — sigue trayendo música nueva de tu gusto sin repetir.
+- Se mantiene: la transición/crossfade de 9s, el orden por relación (relatedness) con tu gusto por delante, y que **nunca se queda en silencio** (si de verdad se agota, reanuda con lo relacionado como último recurso).
 
-### Cómo activarlo
-1. Crea una cuenta en **last.fm/join** (si no tienes) y confirma el correo.
-2. En Aura: **Ajustes ▸ Scrobbling ▸ Iniciar sesión**.
-3. Escribe tu **usuario de Last.fm** (el usuario, no el correo) y tu contraseña.
-4. Activa **Activar scrobbling**.
+> Próximo paso (en camino): la cola inteligente continuará según el **contexto** — un single sigue del single; al terminar una **playlist** o **álbum** continuará según su contenido (artistas/géneros), no solo la última canción.
 
 ## ✅ Como siempre
-- Suscripción, licencia, demo, crossfade de 9s y motor de audio: intactos. Verificado contra el registro de fallos: sin regresiones.
+- Suscripción, licencia, demo, crossfade de 9s y motor de audio: intactos. Sin red extra (solo filtra lo que ya se descarga). Verificado contra el registro de fallos: sin regresiones.
