@@ -29,6 +29,16 @@ class CrashHandler private constructor(
             Timber.w(throwable, "Swallowed FGS-start-not-allowed in uncaught handler")
             return
         }
+        // During an intentional RESTORE restart, restore() closes the shared Room DB, then copies song.db
+        // and restarts. Other coroutines still collecting Room Flows (the player, screen ViewModels) can hit
+        // the now-closed pool in that window → SQLite code 21 "connection is closed". That is BENIGN — the
+        // process is about to exitProcess and reopen the DB. Swallow it ONLY while isRestoring (so it can
+        // NEVER mask a real DB error in normal operation) and let restore's own restart finish cleanly.
+        if (isRestoring && throwable.isConnectionClosed()) {
+            reportException(throwable)
+            Timber.w(throwable, "Swallowed benign 'connection is closed' during restore restart")
+            return
+        }
         try {
             val crashLog = buildCrashLog(throwable)
             Timber.e(throwable, "App crashed")
@@ -81,8 +91,27 @@ class CrashHandler private constructor(
         }
     }
 
+    /** True only for a benign SQLite "connection is closed" (code 21) anywhere in the cause chain. */
+    private fun Throwable.isConnectionClosed(): Boolean {
+        var t: Throwable? = this
+        var depth = 0
+        while (t != null && depth < 12) {
+            val m = t.message?.lowercase().orEmpty()
+            if (m.contains("connection is closed") || m.contains("error code: 21")) return true
+            t = t.cause
+            depth++
+        }
+        return false
+    }
+
     companion object {
         const val EXTRA_CRASH_LOG = "crash_log"
+
+        // Set true (never reset) by BackupRestoreViewModel just before it closes the shared Room DB for a
+        // restore restart, so the uncaught handler treats the ensuing "connection is closed" as benign.
+        @Volatile
+        @JvmStatic
+        var isRestoring: Boolean = false
 
         fun install(context: Context) {
             val handler = CrashHandler(context.applicationContext)

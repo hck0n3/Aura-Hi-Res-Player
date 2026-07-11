@@ -270,6 +270,10 @@ class BackupRestoreViewModel @Inject constructor(
                 if (dbFile.exists()) dbFile.copyTo(bakFile, overwrite = true)
 
                 Timber.tag("RESTORE").i("Overwriting DB at path: $dbPath")
+                // Closing the shared Room singleton here can make other in-flight coroutines (player/VM Room
+                // Flows) throw SQLite code 21 "connection is closed" during the copy→restart window. Flag it
+                // so the uncaught handler swallows that BENIGN crash until restore's own restart completes.
+                iad1tya.echo.music.utils.CrashHandler.isRestoring = true
                 database.close()
                 dbClosedForRestore = true
                 walFile.delete()
