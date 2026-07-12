@@ -181,6 +181,20 @@ class HomeViewModel @Inject constructor(
                 }
             }
         }
+        // Phase B #5 — learn the SONG-similarity graph of your most-recent liked songs (their YouTube-related
+        // ids) so radio can prefer candidates co-related to MULTIPLE things you liked. WiFi only, best-effort,
+        // bounded (~20), and only alongside the GenreCache enrich above — no new work on the playback path.
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                val likedIds = database.likedSongs(
+                    iad1tya.echo.music.constants.SongSortType.CREATE_DATE,
+                    descending = true,
+                ).first().take(20).map { it.id }
+                if (likedIds.isNotEmpty()) {
+                    iad1tya.echo.music.reco.SongGraphCache.enrich(context, likedIds, onlyWifi = true)
+                }
+            }
+        }
     }
 
     /** Rank songs by taste, with a little jitter so refreshes vary instead of being identical. */
