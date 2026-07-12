@@ -529,7 +529,13 @@ class MusicService :
     @Volatile private var activeMoodParams: String? = null
     @Volatile private var activeMoodTitle: String? = null
 
-    
+    // Phase A #1/#6 — snapshot of the FINITE collection the user started from (album/playlist/multi-song list),
+    // used to multi-seed the infinite radio from the collection's CONTENT (its artist/genre mix) instead of only
+    // the last song. Empty for a directly-started radio (YouTubeQueue) or a single track → falls back to last-song
+    // seeding (unchanged). Reassigned on every playQueue, so a fresh finite queue overwrites any prior pool.
+    @Volatile private var radioSeedPool: List<iad1tya.echo.music.models.MediaMetadata> = emptyList()
+
+
     private var originalQueueSize: Int = 0
     // B5 — anti-repeat shuffle memory: media IDs already played in the current shuffle session. While
     // shuffling, not-yet-played songs are ordered ahead of these, so nothing repeats until the whole pool is
@@ -2076,7 +2082,13 @@ class MusicService :
             // started from. Records the full list regardless of the preload/normal branch above.
             sessionPlayedIds.addAll(initialStatus.items.mapNotNull { it.mediaId })
 
-            
+            // Phase A #1/#6 — multi-seed pool: snapshot the collection's tracks so a later re-seed preserves its
+            // artist/genre mix instead of collapsing to the single last song. Skip pure radios (YouTubeQueue) —
+            // those are already a single-song radio and must keep last-song seeding. Reassigned every playQueue.
+            radioSeedPool = if (queue is iad1tya.echo.music.playback.queues.YouTubeQueue) emptyList()
+                else initialStatus.items.mapNotNull { it.metadata }
+
+
             if (player.shuffleModeEnabled) {
                 val shufflePlaylistFirst = dataStore.get(ShufflePlaylistFirstKey, false)
                 applyShuffleOrder(player.currentMediaItemIndex, player.mediaItemCount, shufflePlaylistFirst)
@@ -2249,14 +2261,79 @@ class MusicService :
                 ok
             }.getOrDefault(false)
 
+            // Source 0.5 — CONTEXT multi-seed. When the user started from an album/playlist/list
+            // (radioSeedPool > 1), seed the infinite radio from a REPRESENTATIVE SAMPLE of that collection (not
+            // just the last song) so the continuation keeps the collection's artist/genre MIX. Picks up to 4
+            // distinct-artist seeds (always incl. the current/last song), fetches each one's YouTube radio page,
+            // round-robin MERGES + dedupes them, then the shared appendSeed() taste-orders + no-repeat-filters +
+            // re-arms crossfade. currentQueue is primed from a seed so the Path A pagination keeps going. Pool <= 1
+            // or empty (a pure radio) → returns false → the last-song tryRadio handles it, unchanged. Bounded
+            // (<= 4 getInitialStatus), off the player thread; only ever runs on a RE-SEED when a finite collection ends.
+            suspend fun tryContextRadio(): Boolean = runCatching {
+                if (radioSeedPool.size <= 1) return@runCatching false
+                val profile = runCatching { tasteProfile() }.getOrNull()
+                // Only online YouTube ids are usable as radio seeds (skip local content:// and direct-URL http).
+                fun iad1tya.echo.music.models.MediaMetadata.ytId(): String? =
+                    id.takeIf { !it.isLocalMediaId() && !it.startsWith("http", ignoreCase = true) }
+                // Distinct primary artist → one representative track, keeping the collection's first-seen order.
+                val byArtist = LinkedHashMap<String, iad1tya.echo.music.models.MediaMetadata>()
+                radioSeedPool.forEach { mm ->
+                    val key = mm.artists.firstOrNull()?.name?.lowercase() ?: return@forEach
+                    if (mm.ytId() != null) byArtist.putIfAbsent(key, mm)
+                }
+                // Prefer higher-taste artists for the (bounded) seed set.
+                val ranked = byArtist.values.sortedByDescending { mm ->
+                    if (profile == null) 0.0 else profile.scoreNames(mm.artists.map { it.name }, mm.title)
+                }
+                // Always include the current/last song's seed first so "more like what just played" is represented.
+                val seeds = (listOfNotNull(seedVideoId) + ranked.mapNotNull { it.ytId() }).distinct().take(4)
+                if (seeds.size < 2) return@runCatching false // nothing multi about it → let tryRadio do last-song
+                // Fetch each seed's radio page (bounded to 12 items each), off the player thread.
+                val perSeed = withContext(Dispatchers.IO) {
+                    seeds.map { sv ->
+                        runCatching {
+                            YouTubeQueue(endpoint = WatchEndpoint(videoId = sv)).getInitialStatus()
+                                .items.filter { it.mediaId != sv && it.mediaId != currentMediaId }.take(12)
+                        }.getOrDefault(emptyList())
+                    }
+                }
+                // Round-robin MERGE so no single seed dominates; dedupe by id.
+                val merged = ArrayList<MediaItem>()
+                val seen = HashSet<String>()
+                var i = 0
+                while (true) {
+                    var added = false
+                    for (lst in perSeed) {
+                        if (i < lst.size) {
+                            val mi = lst[i]
+                            // mediaId is non-null (media3 @NonNull); dedupe directly, no redundant null check.
+                            if (seen.add(mi.mediaId)) { merged.add(mi); added = true }
+                        }
+                    }
+                    if (!added) break
+                    i++
+                }
+                val items = merged
+                    .filterExplicit(dataStore.get(HideExplicitKey, false))
+                    .filterVideoSongs(dataStore.get(HideVideoSongsKey, false))
+                val ok = appendSeed(items) // appendSeed already runs orderedByTaste + records no-repeat + crossfade
+                if (ok) {
+                    // Prime a radio from a seed so the Path A pagination keeps going after this merged batch.
+                    val rq = YouTubeQueue(endpoint = WatchEndpoint(videoId = seeds.first()))
+                    runCatching { withContext(Dispatchers.IO) { rq.getInitialStatus() } }
+                    currentQueue = rq
+                }
+                ok
+            }.getOrDefault(false)
+
             try {
                 // Mood (if active) first, then radio, then related. If a transient hiccup left us empty, wait
                 // briefly and try once more — so a momentary network blip at the exact end-of-queue moment never
                 // permanently stops the music.
-                var appended = tryMood() || tryRadio() || tryRelated()
+                var appended = tryMood() || tryContextRadio() || tryRadio() || tryRelated()
                 if (!appended) {
                     kotlinx.coroutines.delay(2500)
-                    appended = tryMood() || tryRadio() || tryRelated()
+                    appended = tryMood() || tryContextRadio() || tryRadio() || tryRelated()
                 }
                 // Autoplay chips: the seed just landed (appendSeed ran) → refresh the queue-footer
                 // suggestions for THIS seed. Bounded: no-ops if this seed's chips are already loaded.
@@ -2530,7 +2607,9 @@ class MusicService :
             val heard = m != null && (m.id in sessionPlayedIds || m.id in recentSnapshot || m.id in playedHistory)
             Triple(mi, key, heard)
         }
-        val unheard = keyed.filterNot { it.third }.sortedBy { it.second }.map { it.first }
+        // Phase A #3 — artist-diversity: keep the taste/relatedness backbone but avoid back-to-back same-artist
+        // streaks (spacedByArtist). Applied to the UNHEARD pool only (not the heardTail fallback below).
+        val unheard = keyed.filterNot { it.third }.sortedBy { it.second }.map { it.first }.spacedByArtist()
         // No fresh candidates left? Fall back to the ordered already-heard tail rather than dead-ending.
         val heardTail = keyed.filter { it.third }.sortedBy { it.second }.map { it.first }
         // NO-REPEAT: when there are ANY unheard candidates, DROP the heard ones entirely (a hard filter, not a
@@ -2538,6 +2617,29 @@ class MusicService :
         // "never dead-end / never silence" guarantee. `index` still dominates each bucket's sort (relatedness
         // order preserved; taste only nudges — we filter, never re-sort).
         return if (unheard.isNotEmpty()) unheard else heardTail
+    }
+
+    /** Greedy artist-spacing: keep the incoming (taste/relatedness) order as the base, but when the next item
+     *  repeats a primary artist placed in the last 2 slots, skip ahead to the best-ranked item by a different
+     *  artist (fallback: take the head). Preserves the backbone, kills same-artist streaks. */
+    private fun List<MediaItem>.spacedByArtist(): List<MediaItem> {
+        if (size < 3) return this
+        val remaining = ArrayList(this)
+        val out = ArrayList<MediaItem>(size)
+        val recent = ArrayDeque<String>()
+        while (remaining.isNotEmpty()) {
+            var idx = remaining.indexOfFirst { mi ->
+                val a = mi.metadata?.artists?.firstOrNull()?.name?.lowercase()
+                a == null || a !in recent
+            }
+            if (idx < 0) idx = 0
+            val pick = remaining.removeAt(idx)
+            out.add(pick)
+            pick.metadata?.artists?.firstOrNull()?.name?.lowercase()?.let {
+                recent.addLast(it); if (recent.size > 2) recent.removeFirst()
+            }
+        }
+        return out
     }
 
     fun getAutomixAlbum(albumId: String) {
@@ -3319,6 +3421,11 @@ class MusicService :
                     // (the guard below no-ops) and leave hasNextPage untouched, so the next transition pulls the
                     // next page; the STATE_ENDED net re-seeds if the pages ever run truly dry. Never a repeat.
                     next = next.filterNot { it.mediaId in sessionPlayedIds }
+                    // Phase A #2 — route the steady-state continuation through orderedByTaste() too, so it is
+                    // taste-ordered + artist-spaced (spacedByArtist) rather than raw YouTube order. We're inside
+                    // withContext(Dispatchers.IO) so calling the suspend member is fine; it re-dedupes/dislike-
+                    // filters (harmless after the manual filters above) and preserves the relatedness backbone.
+                    next = next.orderedByTaste()
                     next
                 }
                 if (player.playbackState != STATE_IDLE && mediaItems.isNotEmpty()) {
