@@ -515,6 +515,13 @@ class MusicService :
     @Volatile private var cachedTaste: iad1tya.echo.music.reco.TasteProfile? = null
     @Volatile private var cachedTasteAt: Long = 0L
 
+    // Cached co-relatedness counts (see SongGraphCache): candidateId -> how many of the user's liked-song
+    // anchors YouTube says this candidate is related to. Lets the radio prefer songs co-related to MULTIPLE
+    // liked songs (poor-man's collaborative filter). Rebuilt at most every few minutes (same TTL as
+    // [cachedTaste]) — bounded background work, NEVER per-song. Empty graph → empty map → zero behaviour change.
+    @Volatile private var cachedCoRel: Map<String, Int>? = null
+    @Volatile private var cachedCoRelAt: Long = 0L
+
     // Bounded, cached set of song ids the user has RECENTLY PLAYED (from the on-device event history), so the
     // infinite radio doesn't re-append songs already heard days/weeks ago — the last ~60 in-session transitions
     // in [recentRadioIds] can't see that far back. One DB read every few minutes; O(1) membership at append
@@ -2553,6 +2560,35 @@ class MusicService :
     }
 
     /**
+     * Cached co-relatedness map (see [iad1tya.echo.music.reco.SongGraphCache]): candidateId -> how many of the
+     * user's liked-song anchors YouTube says this candidate is related to (0..N). Built by counting, across the
+     * graph's cached anchors, how many of their related-sets contain each candidate id — so a song co-related to
+     * several liked songs scores higher. Rebuilt at most once / 5 min (same cadence as [tasteProfile]) on a
+     * background dispatcher: bounded work, NEVER per-song, never throws. Empty graph (cold start / feature idle)
+     * → empty map → the co-rel term in [orderedByTaste] is a no-op (zero behaviour change).
+     */
+    private suspend fun coRelMap(): Map<String, Int> {
+        val now = System.currentTimeMillis()
+        cachedCoRel?.let { if (now - cachedCoRelAt < 5 * 60_000L) return it }
+        val map = runCatching {
+            withContext(Dispatchers.IO) {
+                val graph = iad1tya.echo.music.reco.SongGraphCache.snapshot(this@MusicService)
+                if (graph.isEmpty()) return@withContext emptyMap<String, Int>()
+                val counts = HashMap<String, Int>()
+                // Anchors = the cached liked-song anchors themselves (bounded ~30). Each anchor's related-set
+                // adds +1 to every id it contains, so counts[x] = number of liked anchors x is co-related to.
+                graph.values.asSequence().take(30).forEach { related ->
+                    related.forEach { rid -> counts.merge(rid, 1, Int::plus) }
+                }
+                counts
+            }
+        }.getOrDefault(emptyMap())
+        cachedCoRel = map
+        cachedCoRelAt = now
+        return map
+    }
+
+    /**
      * Bounded, cached set of song ids the user has RECENTLY PLAYED (on-device event history). Used by
      * [orderedByTaste] to exclude already-heard songs from the primary radio pool so the infinite queue stops
      * replaying songs heard days/weeks ago (which the last-~60 in-session [recentRadioIds] can't see). One DB
@@ -2593,16 +2629,29 @@ class MusicService :
         // bucket: the per-item sort key keeps `index` (relatedness rank) as its dominant term.
         val recentSnapshot = synchronized(recentRadioIds) { HashSet(recentRadioIds) }
         val playedHistory = recentlyPlayedIds()
+        // Phase B #5 — read the cached co-relatedness counts ONCE here (NEVER per item): candidateId -> how many
+        // liked-song anchors YouTube says it's related to. Empty on cold start / until the WiFi-gated graph fills.
+        val coRelCounts = coRelMap()
         val rnd = java.util.Random()
         // Precompute the sort key ONCE per item: calling rnd inside the comparator would make it inconsistent
         // between comparisons and crash TimSort ("Comparison method violates contract").
         val keyed = filtered.mapIndexed { index, mi ->
             val m = mi.metadata
             val taste = if (m == null || p == null) 0.0 else p.scoreNames(m.artists.map { it.name }, m.title)
+            // Phase B #5 — co-relatedness bonus (0..3): a candidate related to several liked songs ranks a few
+            // spots earlier (max ~6, comparable to a strong taste artist). Empty map → 0 → no change.
+            val coRel = if (m == null) 0 else (coRelCounts[m.id] ?: 0).coerceAtMost(3)
+            // Phase B #7 — "Menos de esto" graded feedback: a BOUNDED penalty (~6 spots LATER), NOT a drop. The
+            // hard-dislike sledgehammer (filtered out above) stays untouched and separate. Reuses `disliked`.
+            val soft = if (m != null && (
+                    m.id in disliked.softSongs ||
+                    m.artists.any { (it.id != null && it.id in disliked.softArtists) || it.name.lowercase() in disliked.softArtists }
+                )) 6.0 else 0.0
             // Lower key = earlier. `index` (relatedness rank) DOMINATES; taste shifts a song by only a few
             // spots (~4 per taste point) and a small jitter adds variety — relatedness stays the backbone.
+            // Registry #25: the `index` coefficient and `- taste * 4.0` are UNCHANGED — #5/#7 only ADD terms.
             val jitter = if (p == null) 0.0 else rnd.nextDouble() * 1.5
-            val key = index.toDouble() - taste * 4.0 + jitter
+            val key = index.toDouble() - taste * 4.0 - coRel * 2.0 + soft + jitter
             // NO-REPEAT: "heard" is now SESSION-WIDE ([sessionPlayedIds] — everything played OR appended this
             // session), broadened beyond the last-~60 [recentSnapshot] and the ~5-min DB [playedHistory].
             val heard = m != null && (m.id in sessionPlayedIds || m.id in recentSnapshot || m.id in playedHistory)
@@ -2610,7 +2659,12 @@ class MusicService :
         }
         // Phase A #3 — artist-diversity: keep the taste/relatedness backbone but avoid back-to-back same-artist
         // streaks (spacedByArtist). Applied to the UNHEARD pool only (not the heardTail fallback below).
-        val unheard = keyed.filterNot { it.third }.sortedBy { it.second }.map { it.first }.spacedByArtist()
+        // Phase B #4 — exploration quota: after spacing, reserve ~1-in-5 slots for a FRESH artist (not yet in the
+        // taste profile) so radio isn't pure exploit. In-memory, order- and length-preserving; null profile / no
+        // fresh candidates → identical to today.
+        val unheard = keyed.filterNot { it.third }.sortedBy { it.second }.map { it.first }
+            .spacedByArtist()
+            .withExplorationQuota(p)
         // No fresh candidates left? Fall back to the ordered already-heard tail rather than dead-ending.
         val heardTail = keyed.filter { it.third }.sortedBy { it.second }.map { it.first }
         // NO-REPEAT: when there are ANY unheard candidates, DROP the heard ones entirely (a hard filter, not a
@@ -2639,6 +2693,36 @@ class MusicService :
             pick.metadata?.artists?.firstOrNull()?.name?.lowercase()?.let {
                 recent.addLast(it); if (recent.size > 2) recent.removeFirst()
             }
+        }
+        return out
+    }
+
+    /**
+     * Phase B #4 — exploration quota. Reserve roughly every 5th slot for a "fresh" candidate: one whose primary
+     * artist is NOT already in the taste profile ([iad1tya.echo.music.reco.TasteProfile.isKnownArtist]), so radio
+     * doesn't tunnel into pure exploitation of artists you already know. Never drops or duplicates anything —
+     * output length == input length, and each partition keeps its incoming (taste/relatedness) order. Null profile
+     * (no taste yet), lists under 5, or no fresh/known split → returns the list unchanged (today's behaviour).
+     * In-memory only, no network, no extra cost.
+     */
+    private fun List<MediaItem>.withExplorationQuota(p: iad1tya.echo.music.reco.TasteProfile?): List<MediaItem> {
+        if (p == null || size < 5) return this
+        val known = ArrayList<MediaItem>(size)
+        val fresh = ArrayList<MediaItem>()
+        for (mi in this) {
+            val artist = mi.metadata?.artists?.firstOrNull()?.name
+            if (artist != null && !p.isKnownArtist(artist)) fresh.add(mi) else known.add(mi)
+        }
+        // Nothing to interleave (all known or all fresh) → preserve the existing order exactly.
+        if (fresh.isEmpty() || known.isEmpty()) return this
+        val out = ArrayList<MediaItem>(size)
+        val ki = known.iterator()
+        val fi = fresh.iterator()
+        var pos = 0
+        while (ki.hasNext() || fi.hasNext()) {
+            val takeFresh = pos % 5 == 4 && fi.hasNext()
+            out.add(if (takeFresh) fi.next() else if (ki.hasNext()) ki.next() else fi.next())
+            pos++
         }
         return out
     }

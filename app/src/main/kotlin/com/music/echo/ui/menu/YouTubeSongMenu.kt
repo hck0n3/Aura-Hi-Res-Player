@@ -392,7 +392,31 @@ fun YouTubeSongMenu(
                                 onDismiss()
                             }
                         )
-                    } else null
+                    } else null,
+                    // Phase B #7 — "Menos de esto": graded soft feedback. Mildly demotes similar songs in the
+                    // radio (a bounded penalty in MusicService.orderedByTaste), never a hard block. Separate from
+                    // the hard "No me gusta". Always available (works offline, local preference).
+                    Material3MenuItemData(
+                        title = { Text(text = "Menos de esto") },
+                        description = { Text(text = "Se recomendará menos parecido a esto") },
+                        icon = {
+                            Icon(
+                                painter = painterResource(R.drawable.thumb_down),
+                                contentDescription = null,
+                            )
+                        },
+                        onClick = {
+                            coroutineScope.launch {
+                                iad1tya.echo.music.dislike.DislikeStoreEntryPoint.get(context).softDislikeSong(song.id)
+                            }
+                            android.widget.Toast.makeText(
+                                context,
+                                "Se mostrará menos de esto",
+                                android.widget.Toast.LENGTH_SHORT,
+                            ).show()
+                            onDismiss()
+                        }
+                    )
                 )
             )
         }

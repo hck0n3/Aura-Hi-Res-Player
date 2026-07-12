@@ -232,6 +232,16 @@ class TasteProfile internal constructor(
         return s
     }
 
+    /**
+     * True when [name]'s artist is already part of the taste profile (a positive-weight key in the per-name
+     * affinity map). The exploration quota uses the inverse — an artist we DON'T know — to reserve ~1-in-5
+     * radio slots for discovery, so radio isn't pure exploit. Cold start (empty profile) → nothing is known.
+     */
+    fun isKnownArtist(name: String): Boolean {
+        if (name.isBlank()) return false
+        return (artistWeightByName[name.lowercase()] ?: 0.0) > 0.0
+    }
+
     /** Affinity for the artist's real genre (Latin, Rock, Hip-Hop...), when known via GenreCache. */
     private fun genreScore(artistNames: List<String>): Double {
         if (genreWeight.isEmpty()) return 0.0

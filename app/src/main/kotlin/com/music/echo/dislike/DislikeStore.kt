@@ -27,8 +27,13 @@ class DislikeStore @Inject constructor(
         val artists: Set<String> = emptySet(),
         val albums: Set<String> = emptySet(),
         val playlists: Set<String> = emptySet(),
+        // Graded "Menos de esto" ("show less"): a MILD demotion, not a hard drop. Kept separate from the
+        // hard-dislike sets above so the algorithm can nudge these later without ever removing them.
+        val softSongs: Set<String> = emptySet(),
+        val softArtists: Set<String> = emptySet(),
     ) {
-        val isEmpty: Boolean get() = songs.isEmpty() && artists.isEmpty() && albums.isEmpty() && playlists.isEmpty()
+        val isEmpty: Boolean get() = songs.isEmpty() && artists.isEmpty() && albums.isEmpty() && playlists.isEmpty() &&
+            softSongs.isEmpty() && softArtists.isEmpty()
     }
 
     /** Live disliked sets. */
@@ -45,6 +50,12 @@ class DislikeStore @Inject constructor(
     suspend fun dislikePlaylist(id: String) = mutate { it.copy(playlists = it.playlists + id) }
     suspend fun undislikePlaylist(id: String) = mutate { it.copy(playlists = it.playlists - id) }
 
+    // "Menos de esto" — graded negative feedback (a mild demotion between a weak skip and the hard dislike).
+    suspend fun softDislikeSong(id: String) = mutate { it.copy(softSongs = it.softSongs + id) }
+    suspend fun undoSoftDislikeSong(id: String) = mutate { it.copy(softSongs = it.softSongs - id) }
+    suspend fun softDislikeArtist(id: String) = mutate { it.copy(softArtists = it.softArtists + id) }
+    suspend fun undoSoftDislikeArtist(id: String) = mutate { it.copy(softArtists = it.softArtists - id) }
+
     private suspend fun mutate(block: (Disliked) -> Disliked) {
         context.dataStore.edit { prefs ->
             prefs[DislikedItemsKey] = toJson(block(parse(prefs[DislikedItemsKey])))
@@ -60,6 +71,9 @@ class DislikeStore @Inject constructor(
                 artists = o.optJSONArray("artists").toStringSet(),
                 albums = o.optJSONArray("albums").toStringSet(),
                 playlists = o.optJSONArray("playlists").toStringSet(),
+                // Backward-compatible: old blobs without these keys → optJSONArray returns null → empty set.
+                softSongs = o.optJSONArray("softSongs").toStringSet(),
+                softArtists = o.optJSONArray("softArtists").toStringSet(),
             )
         }.getOrDefault(Disliked())
     }
@@ -69,6 +83,8 @@ class DislikeStore @Inject constructor(
         .put("artists", JSONArray(d.artists.toList()))
         .put("albums", JSONArray(d.albums.toList()))
         .put("playlists", JSONArray(d.playlists.toList()))
+        .put("softSongs", JSONArray(d.softSongs.toList()))
+        .put("softArtists", JSONArray(d.softArtists.toList()))
         .toString()
 
     private fun JSONArray?.toStringSet(): Set<String> {
