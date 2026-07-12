@@ -45,14 +45,15 @@ object SongGraphCache {
      */
     suspend fun enrich(context: Context, anchorSongIds: List<String>, onlyWifi: Boolean) {
         if (onlyWifi && !GenreCache.isWifi(context)) return
-        val pending = anchorSongIds
-            .filter { isYouTubeId(it) && !has(context, it) }
-            .distinct()
-            .take(20)
-        if (pending.isEmpty()) return
+        // [anchorSongIds] is the CURRENT bounded liked set (the caller passes the recent likes). It doubles as
+        // the KEEP set: any cached anchor no longer in it (unliked / aged out of the recent window) is pruned, so
+        // the graph stays bounded to the liked set instead of growing forever.
+        val keep = anchorSongIds.filter { isYouTubeId(it) }.distinct().toSet()
+        if (keep.isEmpty()) return
+        val pending = keep.filter { !has(context, it) }.take(20)
 
         val sem = Semaphore(4)
-        val results = coroutineScope {
+        val results = if (pending.isEmpty()) emptyList() else coroutineScope {
             pending.map { anchor ->
                 async {
                     sem.withPermit {
@@ -70,10 +71,12 @@ object SongGraphCache {
                 }
             }.awaitAll()
         }
-        // Persist ALL results in ONE SharedPreferences commit instead of up to 20 separate apply() fsyncs.
-        // Blank values are still cached as "no relations" so misses aren't refetched.
+        val stale = prefs(context).all.keys - keep
+        if (results.isEmpty() && stale.isEmpty()) return
+        // Persist new entries AND drop stale ones in ONE commit. Blank values stay cached as "no relations".
         prefs(context).edit().also { e ->
             results.forEach { (anchor, ids) -> e.putString(anchor, ids) }
+            stale.forEach { e.remove(it) }
         }.apply()
     }
 }

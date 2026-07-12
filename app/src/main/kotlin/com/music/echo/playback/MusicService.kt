@@ -2575,9 +2575,10 @@ class MusicService :
                 val graph = iad1tya.echo.music.reco.SongGraphCache.snapshot(this@MusicService)
                 if (graph.isEmpty()) return@withContext emptyMap<String, Int>()
                 val counts = HashMap<String, Int>()
-                // Anchors = the cached liked-song anchors themselves (bounded ~30). Each anchor's related-set
-                // adds +1 to every id it contains, so counts[x] = number of liked anchors x is co-related to.
-                graph.values.asSequence().take(30).forEach { related ->
+                // Every cached liked-song anchor's related-set adds +1 to each id it contains, so counts[x] =
+                // number of liked anchors x is co-related to. Uses ALL anchors (deterministic) — the graph is
+                // kept bounded to the recent-liked set by SongGraphCache.enrich's prune, so this stays small.
+                graph.values.forEach { related ->
                     related.forEach { rid -> counts.merge(rid, 1, Int::plus) }
                 }
                 counts
@@ -2647,24 +2648,27 @@ class MusicService :
                     m.id in disliked.softSongs ||
                     m.artists.any { (it.id != null && it.id in disliked.softArtists) || it.name.lowercase() in disliked.softArtists }
                 )) 6.0 else 0.0
-            // Lower key = earlier. `index` (relatedness rank) DOMINATES; taste shifts a song by only a few
-            // spots (~4 per taste point) and a small jitter adds variety — relatedness stays the backbone.
-            // Registry #25: the `index` coefficient and `- taste * 4.0` are UNCHANGED — #5/#7 only ADD terms.
+            // Lower key = earlier. `index` (relatedness rank) DOMINATES; taste/co-rel only NUDGE a song up a few
+            // spots and jitter adds variety — relatedness stays the backbone.
+            // Registry #25: the `index` rank stays dominant and taste's coefficient (4.0) is unchanged. #5 adds a
+            // co-rel pull, #7 a soft push; CAP the combined forward (taste+coRel) pull at 8 so a favorite +
+            // highly-co-related song stays a NUDGE (not a scramble) even on a short ~12-item page.
             val jitter = if (p == null) 0.0 else rnd.nextDouble() * 1.5
-            val key = index.toDouble() - taste * 4.0 - coRel * 2.0 + soft + jitter
+            val pull = (taste * 4.0 + coRel * 2.0).coerceAtMost(8.0)
+            val key = index.toDouble() - pull + soft + jitter
             // NO-REPEAT: "heard" is now SESSION-WIDE ([sessionPlayedIds] — everything played OR appended this
             // session), broadened beyond the last-~60 [recentSnapshot] and the ~5-min DB [playedHistory].
             val heard = m != null && (m.id in sessionPlayedIds || m.id in recentSnapshot || m.id in playedHistory)
             Triple(mi, key, heard)
         }
-        // Phase A #3 — artist-diversity: keep the taste/relatedness backbone but avoid back-to-back same-artist
-        // streaks (spacedByArtist). Applied to the UNHEARD pool only (not the heardTail fallback below).
-        // Phase B #4 — exploration quota: after spacing, reserve ~1-in-5 slots for a FRESH artist (not yet in the
-        // taste profile) so radio isn't pure exploit. In-memory, order- and length-preserving; null profile / no
-        // fresh candidates → identical to today.
+        // Phase B #4 — exploration quota: reserve ~1-in-5 slots for a FRESH artist (not yet in the taste profile)
+        // so radio isn't pure exploit. Runs BEFORE spacing so the final spacedByArtist pass still guarantees no
+        // same-artist streaks. Phase A #3 — artist-diversity: applied LAST to the unheard pool only (not the
+        // heardTail fallback below), so neither taste nor exploration can re-cluster an artist. Both passes are
+        // in-memory, order- and length-preserving; null profile / no fresh → identical to today.
         val unheard = keyed.filterNot { it.third }.sortedBy { it.second }.map { it.first }
-            .spacedByArtist()
             .withExplorationQuota(p)
+            .spacedByArtist()
         // No fresh candidates left? Fall back to the ordered already-heard tail rather than dead-ending.
         val heardTail = keyed.filter { it.third }.sortedBy { it.second }.map { it.first }
         // NO-REPEAT: when there are ANY unheard candidates, DROP the heard ones entirely (a hard filter, not a

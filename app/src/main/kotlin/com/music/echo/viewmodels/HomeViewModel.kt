@@ -186,10 +186,12 @@ class HomeViewModel @Inject constructor(
         // bounded (~20), and only alongside the GenreCache enrich above — no new work on the playback path.
         viewModelScope.launch(Dispatchers.IO) {
             runCatching {
+                // The 50 most-recent liked songs = the graph's bounded anchor/keep set (enrich prunes anything
+                // no longer here, so the graph can't grow forever). Each call fetches only a few uncached ones.
                 val likedIds = database.likedSongs(
                     iad1tya.echo.music.constants.SongSortType.CREATE_DATE,
                     descending = true,
-                ).first().take(20).map { it.id }
+                ).first().take(50).map { it.id }
                 if (likedIds.isNotEmpty()) {
                     iad1tya.echo.music.reco.SongGraphCache.enrich(context, likedIds, onlyWifi = true)
                 }
