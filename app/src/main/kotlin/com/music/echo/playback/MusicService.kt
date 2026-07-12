@@ -2268,7 +2268,8 @@ class MusicService :
             // round-robin MERGES + dedupes them, then the shared appendSeed() taste-orders + no-repeat-filters +
             // re-arms crossfade. currentQueue is primed from a seed so the Path A pagination keeps going. Pool <= 1
             // or empty (a pure radio) → returns false → the last-song tryRadio handles it, unchanged. Bounded
-            // (<= 4 getInitialStatus), off the player thread; only ever runs on a RE-SEED when a finite collection ends.
+            // (<= 4 seed getInitialStatus + 1 prime), off the player thread; only ever runs on a RE-SEED when a
+            // finite collection ends.
             suspend fun tryContextRadio(): Boolean = runCatching {
                 if (radioSeedPool.size <= 1) return@runCatching false
                 val profile = runCatching { tasteProfile() }.getOrNull()
@@ -2302,21 +2303,16 @@ class MusicService :
                         }.getOrDefault(emptyList())
                     }
                 }
-                // Round-robin MERGE so no single seed dominates; dedupe by id.
+                // Round-robin MERGE so no single seed dominates; dedupe by id. Visit EVERY position up to the
+                // longest page (never break early on a no-add pass) so a unique item after an intra-page duplicate
+                // is not stranded. mediaId is non-null (media3 @NonNull).
                 val merged = ArrayList<MediaItem>()
                 val seen = HashSet<String>()
-                var i = 0
-                while (true) {
-                    var added = false
+                val maxSize = perSeed.maxOfOrNull { it.size } ?: 0
+                for (i in 0 until maxSize) {
                     for (lst in perSeed) {
-                        if (i < lst.size) {
-                            val mi = lst[i]
-                            // mediaId is non-null (media3 @NonNull); dedupe directly, no redundant null check.
-                            if (seen.add(mi.mediaId)) { merged.add(mi); added = true }
-                        }
+                        if (i < lst.size && seen.add(lst[i].mediaId)) merged.add(lst[i])
                     }
-                    if (!added) break
-                    i++
                 }
                 val items = merged
                     .filterExplicit(dataStore.get(HideExplicitKey, false))
