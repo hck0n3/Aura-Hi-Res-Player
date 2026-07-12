@@ -2285,9 +2285,14 @@ class MusicService :
                 val ranked = byArtist.values.sortedByDescending { mm ->
                     if (profile == null) 0.0 else profile.scoreNames(mm.artists.map { it.name }, mm.title)
                 }
-                // Always include the current/last song's seed first so "more like what just played" is represented.
-                val seeds = (listOfNotNull(seedVideoId) + ranked.mapNotNull { it.ytId() }).distinct().take(4)
-                if (seeds.size < 2) return@runCatching false // nothing multi about it → let tryRadio do last-song
+                // Seeds (up to 4 distinct ids) that capture the collection's RANGE: the current/last song first
+                // ("more like what just played"), then one representative per DISTINCT ARTIST (taste-ranked — a
+                // multi-artist playlist's mix), then more distinct TRACKS from the pool (so a SINGLE-ARTIST ALBUM
+                // still multi-seeds across its own range instead of collapsing to last-song seeding).
+                val perArtistIds = ranked.mapNotNull { it.ytId() }
+                val poolIds = radioSeedPool.mapNotNull { it.ytId() }
+                val seeds = (listOfNotNull(seedVideoId) + perArtistIds + poolIds).distinct().take(4)
+                if (seeds.size < 2) return@runCatching false // truly one usable track → let tryRadio do last-song
                 // Fetch each seed's radio page (bounded to 12 items each), off the player thread.
                 val perSeed = withContext(Dispatchers.IO) {
                     seeds.map { sv ->
