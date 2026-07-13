@@ -283,6 +283,13 @@ fun Lyrics(
     val openRouterBaseUrl by rememberPreference(OpenRouterBaseUrlKey, "https://openrouter.ai/api/v1/chat/completions")
     val openRouterModel by rememberPreference(OpenRouterModelKey, "google/gemini-2.5-flash-lite")
     val translateLanguage by rememberPreference(TranslateLanguageKey, "en")
+    // When the translate target is still the default "en", use the DEVICE language instead — so a Spanish (etc.)
+    // user's translation actually goes to THEIR language (not a pointless English→English). An explicit non-"en"
+    // target the user picked always wins. Powers both the manual translate and the translate-on-open prompt.
+    val effectiveTranslateTarget = remember(translateLanguage) {
+        if (translateLanguage.equals("en", ignoreCase = true)) java.util.Locale.getDefault().language
+        else translateLanguage
+    }
     val translateMode by rememberPreference(TranslateModeKey, "Literal")
     val deeplFormality by rememberPreference(DeeplFormalityKey, "default")
     // Feature #2: opt-in (default off) — prompt "¿Traducir?" when an English-looking song's lyrics open.
@@ -519,7 +526,7 @@ fun Lyrics(
             LyricsTranslationHelper.loadTranslationsFromDatabase(
                 lyrics = lines,
                 lyricsEntity = lyricsEntity,
-                targetLanguage = translateLanguage,
+                targetLanguage = effectiveTranslateTarget,
                 mode = translateMode
             )
         }
@@ -534,7 +541,7 @@ fun Lyrics(
                 // User configured their own key → their provider/model, EXACTLY as before (unchanged).
                 LyricsTranslationHelper.translateLyrics(
                     lyrics = lines,
-                    targetLanguage = translateLanguage,
+                    targetLanguage = effectiveTranslateTarget,
                     apiKey = openRouterApiKey,
                     baseUrl = openRouterBaseUrl,
                     model = openRouterModel,
@@ -555,7 +562,7 @@ fun Lyrics(
                 // No user key → translate for FREE via the built-in keyless AI (same path AiPlaylistService uses).
                 LyricsTranslationHelper.translateLyrics(
                     lyrics = lines,
-                    targetLanguage = translateLanguage,
+                    targetLanguage = effectiveTranslateTarget,
                     apiKey = "",
                     baseUrl = "",
                     model = "",
@@ -589,7 +596,7 @@ fun Lyrics(
             songId != null &&
             songId !in answeredTranslateSongs &&
             !hasActiveTranslations &&
-            !translateLanguage.equals("en", ignoreCase = true) &&
+            !effectiveTranslateTarget.equals("en", ignoreCase = true) &&
             lyricsLookEnglish(lines)
         ) {
             showTranslatePrompt = true
