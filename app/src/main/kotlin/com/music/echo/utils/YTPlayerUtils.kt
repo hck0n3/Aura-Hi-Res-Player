@@ -91,6 +91,16 @@ object YTPlayerUtils {
         .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
         .build()
 
+    // FIX B2 (#28.1): the validateStatus() HEAD probe gets its OWN short-timeout client so a slow/blocked
+    // candidate URL fails FAST (≈4-5s) instead of stalling start-up all the way to RESOLVE_TIMEOUT_MS (30s).
+    // Shares the connection pool / dns / proxy config of httpClient (newBuilder), only the timeouts differ —
+    // the MAIN streaming client's 15s timeouts (used by the real byte fetch) are left untouched.
+    private val validateHttpClient: OkHttpClient = httpClient.newBuilder()
+        .connectTimeout(4, java.util.concurrent.TimeUnit.SECONDS)
+        .readTimeout(4, java.util.concurrent.TimeUnit.SECONDS)
+        .callTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+        .build()
+
     private val poTokenGenerator = PoTokenGenerator()
 
     /**
@@ -813,7 +823,10 @@ object YTPlayerUtils {
                 }
 
                 if (validateStatus(streamUrl!!)) {
-                    
+                    // FIX B3 (#28.1): SHORT-CIRCUIT — the moment ANY client (including the MAIN client at
+                    // clientIndex == -1, tried FIRST) yields a validated, directly-usable URL we break out of
+                    // the loop and return it immediately, WITHOUT probing the remaining fallback clients. The
+                    // full fallback chain still runs only when the main client fails to validate.
                     Timber.tag(logTag).d("Stream validated successfully with client: ${currentClient.clientName}")
                     PlaybackLogManager.log(PlaybackLogLevel.INFO, "Stream validated", currentClient.clientName)
                     
@@ -1067,7 +1080,8 @@ object YTPlayerUtils {
 
             // Close the Response on every path (.use) — a HEAD still carries a body/connection that
             // otherwise leaks into the pool on each stream validation.
-            httpClient.newCall(requestBuilder.build()).execute().use { response ->
+            // FIX B2: use the SHORT-timeout validation client so a dead/slow candidate fails fast.
+            validateHttpClient.newCall(requestBuilder.build()).execute().use { response ->
                 val isSuccessful = response.isSuccessful
                 Timber.tag(logTag).d("Stream URL validation result: ${if (isSuccessful) "Success" else "Failed"} (${response.code})")
                 return isSuccessful

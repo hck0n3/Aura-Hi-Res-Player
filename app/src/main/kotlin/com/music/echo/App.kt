@@ -311,12 +311,14 @@ class App : Application(), SingletonImageLoader.Factory {
         // so the flag is still never set without the value being applied.
         val batchBPending =
             settings[iad1tya.echo.music.constants.SafeVolumeDefaultOnAppliedKey] != true ||
-            settings[iad1tya.echo.music.constants.InfinitePlaybackForcedOnKey] != true
+            settings[iad1tya.echo.music.constants.InfinitePlaybackForcedOnKey] != true ||
+            settings[iad1tya.echo.music.constants.SessionRefreshedFor104Key] != true
         if (batchBPending) {
             runCatching {
                 dataStore.edit { p ->
                     applySafeVolumeDefaultOn(p, settings)
                     applyInfinitePlaybackOn(p, settings)
+                    applySessionRefreshFor104(p, settings)
                 }
             }.onFailure { reportException(it) }
         }
@@ -716,6 +718,25 @@ class App : Application(), SingletonImageLoader.Factory {
         // this forced-ON wins on the same launch.
         p[iad1tya.echo.music.constants.SafeVolumeEnabledKey] = true
         p[iad1tya.echo.music.constants.SafeVolumeDefaultOnAppliedKey] = true
+    }
+
+    /**
+     * 0.6.104 FIX D (#28.3): one-time on this update, DROP the persisted YouTube session tokens
+     * (visitorData + dataSyncId) so a FRESH one is fetched on next use. A stale/poisoned persisted
+     * visitorData/dataSyncId caused poToken/player 403s for some users ("won't play; clearing app data
+     * fixes it"). Fresh flag key so it runs exactly once (a set flag / versionCode bump alone won't re-run).
+     * PRESERVES InnerTubeCookieKey (the login) — only the browse/session tokens are cleared, mirroring the
+     * post-restore refresh path. Value(s) + flag written atomically in the shared batch-B transaction.
+     */
+    private fun applySessionRefreshFor104(
+        p: androidx.datastore.preferences.core.MutablePreferences,
+        settings: androidx.datastore.preferences.core.Preferences,
+    ) {
+        if (settings[iad1tya.echo.music.constants.SessionRefreshedFor104Key] == true) return
+        p.remove(iad1tya.echo.music.constants.VisitorDataKey)
+        p.remove(iad1tya.echo.music.constants.DataSyncIdKey)
+        // NEVER remove InnerTubeCookieKey — that is the user's login.
+        p[iad1tya.echo.music.constants.SessionRefreshedFor104Key] = true
     }
 
     /**

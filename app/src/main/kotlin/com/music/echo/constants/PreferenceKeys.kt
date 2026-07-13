@@ -669,6 +669,18 @@ enum class SearchSource {
 val VisitorDataKey = stringPreferencesKey("visitorData")
 val DataSyncIdKey = stringPreferencesKey("dataSyncId")
 val InnerTubeCookieKey = stringPreferencesKey("innerTubeCookie")
+
+// 0.6.104 FIX D (#28.3): one-time flag — clear the (possibly stale) visitorData/dataSyncId session tokens
+// ONCE on this update so a fresh session token is fetched, fixing "won't play for some users" caused by a
+// poisoned persisted session. A fresh flag key is required (a set flag / versionCode bump alone won't re-run
+// a one-time migration). Never touches InnerTubeCookieKey (the login).
+val SessionRefreshedFor104Key = booleanPreferencesKey("session_refreshed_for_104")
+
+// 0.6.104 FIX B1 (#28.1): persisted mirror of MusicService.songUrlCache (mediaId -> {url, expireEpochMillis})
+// as a compact JSON blob, LRU-bounded, so a resolved stream URL survives a process restart (app update) and
+// the first play/resume after an update doesn't re-run the full slow resolver. Only NON-expired entries are
+// ever loaded/served.
+val SongUrlCacheBlobKey = stringPreferencesKey("song_url_cache_blob")
 val AccountNameKey = stringPreferencesKey("accountName")
 val AccountEmailKey = stringPreferencesKey("accountEmail")
 val AccountChannelHandleKey = stringPreferencesKey("accountChannelHandle")
