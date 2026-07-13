@@ -595,6 +595,91 @@ class MusicService :
     // the Main thread (quality collector / refetchCurrentInOpus) and an IO coroutine (preloadUpcomingItems).
     private val songUrlCache = java.util.concurrent.ConcurrentHashMap<String, Pair<String, Long>>()
 
+    // FIX A (#27 phantom playback): true after a PERSISTENT-QUEUE RESTORE left the player IDLE with the
+    // restored items + saved seek set but deliberately NOT prepared, so an external media-button PLAY (BT /
+    // headset / car AVRCP / widget) at process start can't cold-start the queue. Cleared the moment the
+    // player is genuinely prepared (leaves STATE_IDLE) — see onPlaybackStateChanged. Only the RESTORE path
+    // defers prepare; a normal user-initiated playQueue still prepares+plays exactly as before.
+    @Volatile private var restoredQueueNeedsPrepare = false
+
+    // FIX B1 (#28.1): LRU cap for the persisted mirror of songUrlCache. The blob is a tiny JSON map written
+    // to DataStore on a resolve and read once on cold start — no polling, negligible battery cost.
+    private val SONG_URL_CACHE_PERSIST_MAX = 300
+
+    /**
+     * FIX B1: authoritative absolute expiry (epoch millis) for a resolved stream URL. Prefers the googlevideo
+     * `expire=` query param (unix SECONDS); falls back to [storedExpireMillis] (already an absolute-millis
+     * value computed at resolve time — e.g. for Saavn/Qobuz URLs that carry no expire param), and to a
+     * conservative now+5h if both are missing/already past. Never throws.
+     */
+    private fun streamUrlExpiryMillis(url: String, storedExpireMillis: Long): Long {
+        val fromUrl = runCatching {
+            Regex("[?&]expire=(\\d+)").find(url)?.groupValues?.getOrNull(1)?.toLongOrNull()?.let { it * 1000L }
+        }.getOrNull()
+        val now = System.currentTimeMillis()
+        return when {
+            fromUrl != null && fromUrl > now -> fromUrl
+            storedExpireMillis > now -> storedExpireMillis
+            else -> now + 5L * 60 * 60 * 1000
+        }
+    }
+
+    /**
+     * FIX B1: persist the (non-expired, LRU-bounded) songUrlCache to DataStore so a resolved stream URL
+     * survives a process restart / app update — the first play/resume after an update then serves the cached
+     * URL instead of re-running the slow resolver. Best-effort, off the main thread; never throws.
+     */
+    private fun persistSongUrlCache() {
+        scope.launch(Dispatchers.IO) {
+            runCatching {
+                val now = System.currentTimeMillis()
+                val entries = songUrlCache.entries
+                    .filter { it.value.second > now }
+                    .sortedByDescending { it.value.second } // freshest-expiring first ≈ most-recent (LRU proxy)
+                    .take(SONG_URL_CACHE_PERSIST_MAX)
+                val json = org.json.JSONObject()
+                for (e in entries) {
+                    json.put(
+                        e.key,
+                        org.json.JSONObject()
+                            .put("u", e.value.first)
+                            .put("e", streamUrlExpiryMillis(e.value.first, e.value.second))
+                    )
+                }
+                dataStore.edit { it[iad1tya.echo.music.constants.SongUrlCacheBlobKey] = json.toString() }
+            }.onFailure { Timber.tag(TAG).d(it, "persistSongUrlCache failed (non-fatal)") }
+        }
+    }
+
+    /**
+     * FIX B1: on cold start, load the persisted songUrlCache. Only NON-expired entries (with a 60s safety
+     * margin) are restored, so we never serve a stale URL; putIfAbsent never clobbers a fresher live resolve.
+     * Best-effort, off the main thread; never throws.
+     */
+    private fun loadPersistedSongUrlCache() {
+        scope.launch(Dispatchers.IO) {
+            runCatching {
+                val blob = dataStore.data.first()[iad1tya.echo.music.constants.SongUrlCacheBlobKey]
+                    ?.takeIf { it.isNotBlank() } ?: return@runCatching
+                val json = org.json.JSONObject(blob)
+                val safeNow = System.currentTimeMillis() + 60_000L
+                val keys = json.keys()
+                var restored = 0
+                while (keys.hasNext()) {
+                    val k = keys.next()
+                    val o = json.optJSONObject(k) ?: continue
+                    val u = o.optString("u", "")
+                    val e = o.optLong("e", 0L)
+                    if (u.isNotEmpty() && e > safeNow) {
+                        songUrlCache.putIfAbsent(k, u to e)
+                        restored++
+                    }
+                }
+                Timber.tag(TAG).d("Restored $restored persisted stream URL(s) from DataStore")
+            }.onFailure { Timber.tag(TAG).d(it, "loadPersistedSongUrlCache failed (non-fatal)") }
+        }
+    }
+
     // synchronizedSet: same multi-thread mutation profile as songUrlCache (loader thread + Main + IO).
     private val bypassCacheForQualityChange = java.util.Collections.synchronizedSet(mutableSetOf<String>())
 
@@ -976,6 +1061,11 @@ class MusicService :
         player.addListener(sleepTimer)
         playerInitialized.value = true
         Timber.tag(TAG).d("Player successfully initialized")
+
+        // FIX B1 (#28.1): rehydrate the in-memory stream-URL cache from DataStore so the first play/resume
+        // after an app-update restart can serve a still-valid resolved URL instead of re-running the slow
+        // resolver. Best-effort, off the main thread; only non-expired entries are restored.
+        loadPersistedSongUrlCache()
 
         // Warm up the poToken WebView shortly after startup so the FIRST song starts faster (the slow
         // botguard/WebView init happens ahead of play time instead of when you press play). Fully guarded;
@@ -1479,6 +1569,11 @@ class MusicService :
                                 playQueue(
                                     queue = restoredQueue,
                                     playWhenReady = false,
+                                    // FIX A (#27): RESTORE — set items + seek but do NOT prepare; leave the
+                                    // player IDLE so a boot-time BT/widget PLAY can't cold-start it. Prepared
+                                    // lazily on the first genuine in-app play (PlayerConnection.play /
+                                    // togglePlayPause / seek all prepare an IDLE player).
+                                    isRestore = true,
                                 )
                             }
                         }
@@ -2010,6 +2105,11 @@ class MusicService :
     fun playQueue(
         queue: Queue,
         playWhenReady: Boolean = true,
+        // FIX A (#27): true ONLY for the persistent-queue restore at process start. When true, the queue's
+        // media items + saved seek are set but the player is left IDLE (NOT prepared), so an external
+        // media-button PLAY at boot can't cold-start it. Any normal caller keeps the default (false) and
+        // prepares+plays exactly as before.
+        isRestore: Boolean = false,
     ) {
         _mixActive.value = false  // fresh user-chosen queue → Mix/Radio no longer active
         // Fresh user queue → the old autoplay chips no longer describe what will play next. Clearing the
@@ -2024,7 +2124,7 @@ class MusicService :
             Timber.tag(TAG).w("playQueue called before player initialization, queuing request")
             scope.launch {
                 playerInitialized.first { it }
-                playQueue(queue, playWhenReady)
+                playQueue(queue, playWhenReady, isRestore)
             }
             return
         }
@@ -2077,11 +2177,22 @@ class MusicService :
                     safeIndex,
                     initialStatus.position,
                 )
-                player.prepare()
-                // Use play() (not just playWhenReady=true) so playback actually starts on the first
-                // try — for direct-URL media (podcasts) setting the flag alone sometimes left it
-                // prepared-but-paused until a manual pause→play.
-                if (playWhenReady) player.play() else player.playWhenReady = false
+                if (isRestore) {
+                    // FIX A (#27): RESTORE — items + seek are now set (so the mini-player / notification /
+                    // Android Auto still show the restored current song and position, populated from the
+                    // media3 timeline), but we deliberately do NOT prepare(). The player stays IDLE, so a
+                    // stray boot-time media-button PLAY (BT/headset/car AVRCP/widget) can't cold-start it.
+                    // A genuine in-app play prepares an IDLE player lazily (PlayerConnection.play /
+                    // togglePlayPause / seekToNext / seekToPrevious). Leave playWhenReady false meanwhile.
+                    player.playWhenReady = false
+                    restoredQueueNeedsPrepare = true
+                } else {
+                    player.prepare()
+                    // Use play() (not just playWhenReady=true) so playback actually starts on the first
+                    // try — for direct-URL media (podcasts) setting the flag alone sometimes left it
+                    // prepared-but-paused until a manual pause→play.
+                    if (playWhenReady) player.play() else player.playWhenReady = false
+                }
             }
 
             // NO-REPEAT: seed the session-wide dedupe with the ENTIRE initial queue so the infinite radio's
@@ -3660,7 +3771,10 @@ class MusicService :
     override fun onPlaybackStateChanged(
         @Player.State playbackState: Int,
     ) {
-        
+        // FIX A (#27): once the player is genuinely prepared (out of IDLE), the restore no longer needs a
+        // lazy prepare — clear the guard so subsequent transport is normal.
+        if (playbackState != Player.STATE_IDLE) restoredQueueNeedsPrepare = false
+
         if (playbackState == Player.STATE_ENDED) {
             val repeatMode = player.repeatMode  // live value; avoids a blocking disk read on the player thread
             if (repeatMode == REPEAT_MODE_ALL && player.mediaItemCount > 0) {
@@ -5012,8 +5126,14 @@ class MusicService :
                         scope.launch(Dispatchers.IO) { recoverSong(mediaId) }
                         return@Factory dataSpec.withUri(it.first.toUri())
                     }
-                    Timber.tag(TAG).w("Ghost cache entry for $mediaId, re-fetching")
-                    playerCache.removeResource(mediaId)
+                    // FIX C (#28.2): cached BYTES are present but we have no fresh stream URL (e.g. after an
+                    // app-update restart, when songUrlCache started empty). Do NOT delete the cached bytes and
+                    // force a full re-download — that was the "ghost cache" churn that made every song slow
+                    // after an update (and why "clear song cache" wrongly seemed to help). Instead KEEP the
+                    // cached bytes and fall through to re-resolve ONLY the URL below; the fresh URI is stored in
+                    // songUrlCache and returned, and the CacheDataSource serves the cached bytes while fetching
+                    // just the missing tail from the refreshed URI.
+                    Timber.tag(TAG).w("Ghost cache entry for $mediaId — keeping cached bytes, re-resolving URL only")
                 }
 
                 songUrlCache[mediaId]?.takeIf { it.second > System.currentTimeMillis() }?.let {
@@ -5154,7 +5274,10 @@ class MusicService :
 
                 songUrlCache[mediaId] =
                     streamUrl to System.currentTimeMillis() + (nonNullPlayback.streamExpiresInSeconds * 1000L)
-                
+                // FIX B1 (#28.1): persist the freshly-resolved URL (whole cache snapshot) so it survives a
+                // restart / app update. Off the main thread; never blocks this resolve.
+                persistSongUrlCache()
+
                 return@Factory dataSpec.withUri(streamUrl.toUri())
             }
         }
@@ -5879,7 +6002,14 @@ class MusicService :
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             MusicWidgetReceiver.ACTION_PLAY_PAUSE -> {
-                if (player.isPlaying) player.pause() else player.play()
+                // FIX A (#27): if the player is IDLE (e.g. a restored-but-unprepared queue at boot), a stray
+                // widget PLAY intent must NOT cold-start playback — do nothing. A genuine in-app play prepares
+                // the IDLE player first (PlayerConnection.play/togglePlayPause). Pause/normal toggle unchanged.
+                if (player.isPlaying) {
+                    player.pause()
+                } else if (player.playbackState != Player.STATE_IDLE) {
+                    player.play()
+                }
                 updateWidgetUI(player.isPlaying)
             }
             MusicWidgetReceiver.ACTION_LIKE -> {
