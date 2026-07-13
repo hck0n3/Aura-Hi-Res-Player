@@ -456,6 +456,10 @@ constructor(
         startPositionMs: Long,
     ): ListenableFuture<MediaItemsWithStartPosition> =
         scope.future {
+            // #27: an explicit controller song selection (e.g. Android Auto browse → tap) is genuine
+            // engagement → drop the phantom-play veto so it actually plays (a stray reconnect PLAY never
+            // reaches onSetMediaItems).
+            if (this@MediaLibrarySessionCallback::service.isInitialized) service.onControllerSelectedItem()
             val defaultResult = MediaItemsWithStartPosition(emptyList(), startIndex, startPositionMs)
             val path = mediaItems.firstOrNull()?.mediaId?.split("/")
                 ?: return@future defaultResult

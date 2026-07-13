@@ -609,6 +609,9 @@ class MusicService :
     @Volatile
     internal var awaitingFirstUserPlay: Boolean = false
         private set
+    // #27: once the user has foregrounded the app this process, a LATE async restore must NOT re-arm the veto
+    // (that race could leave the notification/BT play inert while the app is open). Monotonic; never reset.
+    @Volatile private var userHasForegroundedThisProcess = false
 
     // FIX B1 (#28.1): LRU cap for the persisted mirror of songUrlCache. The blob is a tiny JSON map written
     // to DataStore on a resolve and read once on cold start — no polling, negligible battery cost.
@@ -2197,7 +2200,8 @@ class MusicService :
                     // user genuinely engages (in-app play, opening the app, widget tap, or real playback start).
                     player.prepare()
                     player.playWhenReady = false
-                    awaitingFirstUserPlay = true
+                    // Don't re-arm if the user already foregrounded the app (race: restore runs async after bind).
+                    if (!userHasForegroundedThisProcess) awaitingFirstUserPlay = true
                 } else {
                     player.prepare()
                     // Use play() (not just playWhenReady=true) so playback actually starts on the first
@@ -6057,6 +6061,16 @@ class MusicService :
      * veto and let all external controls (BT/AA/notification/watch) work normally. Called from MainActivity.
      */
     fun onAppForegrounded() {
+        userHasForegroundedThisProcess = true
+        awaitingFirstUserPlay = false
+    }
+
+    /**
+     * #27: an external controller EXPLICITLY selecting a song (e.g. Android Auto browse → tap a track, routed
+     * through onSetMediaItems) is genuine engagement — distinct from a stray reconnect PLAY on the restored
+     * queue — so drop the veto and let it play. A phantom BT reconnect sends a bare PLAY, never onSetMediaItems.
+     */
+    internal fun onControllerSelectedItem() {
         awaitingFirstUserPlay = false
     }
 
