@@ -58,8 +58,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -147,6 +149,7 @@ import iad1tya.echo.music.constants.LyricsRomanizeSerbianKey
 import iad1tya.echo.music.constants.LyricsRomanizeUkrainianKey
 import iad1tya.echo.music.constants.LyricsStandardBlurKey
 import iad1tya.echo.music.constants.LyricsScrollKey
+import iad1tya.echo.music.constants.AskTranslateLyricsOnOpenKey
 import iad1tya.echo.music.constants.LyricsTextPositionKey
 import iad1tya.echo.music.constants.LyricsTextSizeKey
 import iad1tya.echo.music.constants.PlayerBackgroundStyle
@@ -196,6 +199,30 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.time.Duration.Companion.seconds
+
+// Cheap in-memory English detector for the "translate on open" prompt. Fraction of tokens that are
+// common English function words; non-Latin scripts (CJK/Cyrillic/Hindi) yield ~no ASCII tokens → false,
+// Spanish/other Latin languages share few of these → below threshold. False positives only cost a
+// dismissible dialog, false negatives just skip the prompt, so a coarse heuristic is fine.
+private val COMMON_ENGLISH_WORDS = setOf(
+    "the", "you", "and", "is", "my", "to", "of", "me", "in", "it", "a", "i", "that", "was",
+    "for", "on", "with", "be", "this", "have", "are", "not", "your", "we", "all", "so", "at",
+    "but", "do", "don't", "i'm", "love", "like", "just", "know", "when", "she", "he", "her",
+    "they", "what", "up", "out", "get", "got", "can", "never", "time", "one", "now", "if", "no"
+)
+
+private fun lyricsLookEnglish(lines: List<LyricsEntry>): Boolean {
+    val words = lines
+        .asSequence()
+        .map { it.text }
+        .filter { it.isNotBlank() }
+        .flatMap { it.lowercase().split(Regex("[^a-z']+")).asSequence() }
+        .filter { it.isNotBlank() }
+        .toList()
+    if (words.size < 8) return false
+    val hits = words.count { it in COMMON_ENGLISH_WORDS }
+    return hits.toDouble() / words.size >= 0.15
+}
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @SuppressLint("UnusedBoxWithConstraintsScope", "StringFormatInvalid")
@@ -258,7 +285,12 @@ fun Lyrics(
     val translateLanguage by rememberPreference(TranslateLanguageKey, "en")
     val translateMode by rememberPreference(TranslateModeKey, "Literal")
     val deeplFormality by rememberPreference(DeeplFormalityKey, "default")
-    
+    // Feature #2: opt-in (default off) — prompt "¿Traducir?" when an English-looking song's lyrics open.
+    val askTranslateOnOpen by rememberPreference(AskTranslateLyricsOnOpenKey, false)
+    // Per-song, per-session: songIds the user already answered (confirmed or dismissed) so we never nag.
+    val answeredTranslateSongs = remember { mutableStateListOf<String>() }
+    var showTranslatePrompt by remember { mutableStateOf(false) }
+
     val scope = rememberCoroutineScope()
 
     val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
@@ -496,8 +528,10 @@ fun Lyrics(
     
     LaunchedEffect(showLyrics, lines.size) {
         LyricsTranslationHelper.manualTrigger.collect {
+            if (!(showLyrics && lines.isNotEmpty())) return@collect
             val effectiveApiKey = if (aiProvider == "DeepL") deeplApiKey else openRouterApiKey
-            if (showLyrics && lines.isNotEmpty() && effectiveApiKey.isNotBlank()) {
+            if (effectiveApiKey.isNotBlank()) {
+                // User configured their own key → their provider/model, EXACTLY as before (unchanged).
                 LyricsTranslationHelper.translateLyrics(
                     lyrics = lines,
                     targetLanguage = translateLanguage,
@@ -514,8 +548,26 @@ fun Lyrics(
                     songId = currentSong?.id ?: "",
                     database = database
                 )
-            } else if (effectiveApiKey.isBlank()) {
+            } else if (aiProvider == "DeepL") {
+                // DeepL is not part of the keyless chain (needs its own key) → keep the prompt to add one.
                 Toast.makeText(context, context.getString(R.string.ai_api_key_required), Toast.LENGTH_SHORT).show()
+            } else {
+                // No user key → translate for FREE via the built-in keyless AI (same path AiPlaylistService uses).
+                LyricsTranslationHelper.translateLyrics(
+                    lyrics = lines,
+                    targetLanguage = translateLanguage,
+                    apiKey = "",
+                    baseUrl = "",
+                    model = "",
+                    mode = translateMode,
+                    scope = scope,
+                    context = context,
+                    provider = "OpenRouter",
+                    useStreaming = false,
+                    songId = currentSong?.id ?: "",
+                    database = database,
+                    keyless = true
+                )
             }
         }
     }
@@ -525,6 +577,48 @@ fun Lyrics(
         LyricsTranslationHelper.clearTranslationsTrigger.collect {
             lines.forEach { it.translatedTextFlow.value = null }
         }
+    }
+
+    // Feature #2 (Part C): when the lyrics open and look ENGLISH, ask ONCE per song whether to
+    // translate (only if opt-in is ON, target language isn't English, and not already translated).
+    LaunchedEffect(showLyrics, lines.size, currentSong?.id, askTranslateOnOpen, hasActiveTranslations) {
+        val songId = currentSong?.id
+        if (askTranslateOnOpen &&
+            showLyrics &&
+            lines.isNotEmpty() &&
+            songId != null &&
+            songId !in answeredTranslateSongs &&
+            !hasActiveTranslations &&
+            !translateLanguage.equals("en", ignoreCase = true) &&
+            lyricsLookEnglish(lines)
+        ) {
+            showTranslatePrompt = true
+        }
+    }
+
+    if (showTranslatePrompt) {
+        val promptSongId = currentSong?.id
+        AlertDialog(
+            onDismissRequest = {
+                showTranslatePrompt = false
+                promptSongId?.let { if (it !in answeredTranslateSongs) answeredTranslateSongs.add(it) }
+            },
+            title = { Text("¿Traducir la letra?") },
+            text = { Text("Esta canción parece estar en inglés. ¿Quieres traducirla a tu idioma con IA gratuita?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    promptSongId?.let { if (it !in answeredTranslateSongs) answeredTranslateSongs.add(it) }
+                    showTranslatePrompt = false
+                    LyricsTranslationHelper.triggerManualTranslation()
+                }) { Text("Traducir") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    promptSongId?.let { if (it !in answeredTranslateSongs) answeredTranslateSongs.add(it) }
+                    showTranslatePrompt = false
+                }) { Text("No") }
+            }
+        )
     }
 
     
