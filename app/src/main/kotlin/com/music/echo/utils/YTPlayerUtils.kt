@@ -111,7 +111,10 @@ object YTPlayerUtils {
         runCatching {
             if (!MAIN_CLIENT.useWebPoTokens) return@runCatching
             val isLoggedIn = YouTube.cookie != null
-            val sessionId = if (isLoggedIn) YouTube.dataSyncId else YouTube.visitorData
+            // Fallback to visitorData when a logged-in user has a null dataSyncId (e.g. the 0.6.104 migration
+            // wrongly cleared it, and it is only re-derived at login) so playback still resolves instead of
+            // failing with a null session id. Recovers already-broken 0.6.104 users without a re-login.
+            val sessionId = (if (isLoggedIn) YouTube.dataSyncId else YouTube.visitorData) ?: YouTube.visitorData
             if (!sessionId.isNullOrBlank()) poTokenGenerator.prewarm(sessionId)
         }
     }

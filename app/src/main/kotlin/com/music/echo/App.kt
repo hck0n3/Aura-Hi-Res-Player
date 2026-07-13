@@ -735,9 +735,11 @@ class App : Application(), SingletonImageLoader.Factory {
         settings: androidx.datastore.preferences.core.Preferences,
     ) {
         if (settings[iad1tya.echo.music.constants.SessionRefreshedFor104Key] == true) return
+        // Only refresh visitorData — it is re-fetched automatically when null (observeSettingsChanges).
+        // DO NOT clear DataSyncIdKey: it is derived ONLY at login and is NEVER re-fetched, so clearing it left
+        // logged-in users with a null session id → poToken/resolve failed → "no reproduce nada" (0.6.104 P0).
         p.remove(iad1tya.echo.music.constants.VisitorDataKey)
-        p.remove(iad1tya.echo.music.constants.DataSyncIdKey)
-        // NEVER remove InnerTubeCookieKey — that is the user's login.
+        // NEVER remove InnerTubeCookieKey (login) or DataSyncIdKey (login-derived, not re-fetchable).
         p[iad1tya.echo.music.constants.SessionRefreshedFor104Key] = true
     }
 
