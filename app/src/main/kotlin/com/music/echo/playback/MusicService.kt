@@ -600,7 +600,15 @@ class MusicService :
     // headset / car AVRCP / widget) at process start can't cold-start the queue. Cleared the moment the
     // player is genuinely prepared (leaves STATE_IDLE) — see onPlaybackStateChanged. Only the RESTORE path
     // defers prepare; a normal user-initiated playQueue still prepares+plays exactly as before.
-    @Volatile private var restoredQueueNeedsPrepare = false
+    // #27 PHANTOM PLAYBACK: true while a queue was RESTORED this process and the user hasn't genuinely engaged
+    // yet. While true, MediaLibrarySessionCallback.onPlayerCommandRequest VETOES external COMMAND_PLAY_PAUSE
+    // (BT/AVRCP/watch/Android-Auto/notification), so a cold-restored, never-touched queue (restored prepared-
+    // but-paused → media3's Util.handlePlayButtonAction would prepare()+play() it on any external PLAY) can't
+    // cold-start on its own. Direct in-app player calls (PlayerConnection → service.player) bypass the session
+    // callback entirely and are UNAFFECTED. Read by the callback; only mutated inside MusicService.
+    @Volatile
+    internal var awaitingFirstUserPlay: Boolean = false
+        private set
 
     // FIX B1 (#28.1): LRU cap for the persisted mirror of songUrlCache. The blob is a tiny JSON map written
     // to DataStore on a resolve and read once on cold start — no polling, negligible battery cost.
@@ -2111,6 +2119,9 @@ class MusicService :
         // prepares+plays exactly as before.
         isRestore: Boolean = false,
     ) {
+        // #27: a genuine user-initiated playQueue (playWhenReady=true) clears the restore veto so external
+        // controls work normally. A restore calls this with playWhenReady=false and leaves it armed.
+        if (playWhenReady) awaitingFirstUserPlay = false
         _mixActive.value = false  // fresh user-chosen queue → Mix/Radio no longer active
         // Fresh user queue → the old autoplay chips no longer describe what will play next. Clearing the
         // seed cache also re-allows one refresh for the NEXT radio seed (still once-per-seed bounded).
@@ -2178,14 +2189,15 @@ class MusicService :
                     initialStatus.position,
                 )
                 if (isRestore) {
-                    // FIX A (#27): RESTORE — items + seek are now set (so the mini-player / notification /
-                    // Android Auto still show the restored current song and position, populated from the
-                    // media3 timeline), but we deliberately do NOT prepare(). The player stays IDLE, so a
-                    // stray boot-time media-button PLAY (BT/headset/car AVRCP/widget) can't cold-start it.
-                    // A genuine in-app play prepares an IDLE player lazily (PlayerConnection.play /
-                    // togglePlayPause / seekToNext / seekToPrevious). Leave playWhenReady false meanwhile.
+                    // FIX A (#27): RESTORE — prepare the queue (so the mini-player / notification / Android Auto
+                    // show the song + the widget/UI resume works) but leave it PAUSED, and arm
+                    // awaitingFirstUserPlay. The real anti-phantom guard is the onPlayerCommandRequest veto in
+                    // MediaLibrarySessionCallback: while armed, an external PLAY (BT/headset/car/watch/notif)
+                    // is rejected BEFORE media3 can prepare()+play() the restored queue. Cleared the instant the
+                    // user genuinely engages (in-app play, opening the app, widget tap, or real playback start).
+                    player.prepare()
                     player.playWhenReady = false
-                    restoredQueueNeedsPrepare = true
+                    awaitingFirstUserPlay = true
                 } else {
                     player.prepare()
                     // Use play() (not just playWhenReady=true) so playback actually starts on the first
@@ -3771,9 +3783,10 @@ class MusicService :
     override fun onPlaybackStateChanged(
         @Player.State playbackState: Int,
     ) {
-        // FIX A (#27): once the player is genuinely prepared (out of IDLE), the restore no longer needs a
-        // lazy prepare — clear the guard so subsequent transport is normal.
-        if (playbackState != Player.STATE_IDLE) restoredQueueNeedsPrepare = false
+        // #27: do NOT clear awaitingFirstUserPlay here — the restored queue reaches STATE_READY while PAUSED,
+        // so clearing on any non-IDLE state would drop the veto during the restore itself. It is cleared only
+        // on genuine engagement (real playback via EVENT_IS_PLAYING_CHANGED, a genuine playQueue/widget play,
+        // or the app coming to the foreground).
 
         if (playbackState == Player.STATE_ENDED) {
             val repeatMode = player.repeatMode  // live value; avoids a blocking disk read on the player thread
@@ -3912,6 +3925,10 @@ class MusicService :
         if (events.containsAny(Player.EVENT_IS_PLAYING_CHANGED)) {
             updateWidgetUI(player.isPlaying)
             if (player.isPlaying) {
+                // #27: real audio is now playing → the user genuinely engaged (or an allowed control started
+                // it). Drop the restore veto so all external controls work normally from here on. Cleared on
+                // isPlaying (not on STATE_READY, which a cold restore reaches while PAUSED).
+                awaitingFirstUserPlay = false
                 startWidgetUpdates()
             } else {
                 stopWidgetUpdates()
@@ -6002,12 +6019,15 @@ class MusicService :
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             MusicWidgetReceiver.ACTION_PLAY_PAUSE -> {
-                // FIX A (#27): if the player is IDLE (e.g. a restored-but-unprepared queue at boot), a stray
-                // widget PLAY intent must NOT cold-start playback — do nothing. A genuine in-app play prepares
-                // the IDLE player first (PlayerConnection.play/togglePlayPause). Pause/normal toggle unchanged.
                 if (player.isPlaying) {
                     player.pause()
-                } else if (player.playbackState != Player.STATE_IDLE) {
+                } else {
+                    // #27: a home-screen widget tap is a GENUINE user action → allow it to start a restored
+                    // queue (prepare() is a no-op if already prepared) AND drop the veto so external controls
+                    // work normally afterwards. This is a direct player call, so the onPlayerCommandRequest
+                    // veto never applies to it.
+                    if (player.playbackState == Player.STATE_IDLE) player.prepare()
+                    awaitingFirstUserPlay = false
                     player.play()
                 }
                 updateWidgetUI(player.isPlaying)
@@ -6032,6 +6052,14 @@ class MusicService :
     }
 
     
+    /**
+     * #27: the app came to the foreground (user opened it) — genuine engagement, so drop the cold-restore PLAY
+     * veto and let all external controls (BT/AA/notification/watch) work normally. Called from MainActivity.
+     */
+    fun onAppForegrounded() {
+        awaitingFirstUserPlay = false
+    }
+
     private fun updateWidgetUI(isPlaying: Boolean) {
         scope.launch {
             try {

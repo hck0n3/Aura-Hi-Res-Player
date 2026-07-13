@@ -326,7 +326,10 @@ class MainActivity : ComponentActivity() {
                 try {
                     playerConnection = PlayerConnection(this@MainActivity, service, database, lifecycleScope)
                     Timber.tag("MainActivity").d("PlayerConnection created successfully")
-                    
+                    // #27: binding on a cold start = the app is in the foreground → genuine engagement, so drop
+                    // the cold-restore PLAY veto and let external controls (BT/AA/notification/watch) work.
+                    service.service.onAppForegrounded()
+
                     listenTogetherManager.setPlayerConnection(playerConnection)
                 } catch (e: Exception) {
                     Timber.tag("MainActivity").e(e, "Failed to create PlayerConnection")
@@ -354,7 +357,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
-        
+        // #27: app coming to the foreground is genuine engagement → drop the cold-restore PLAY veto so all
+        // external controls work normally (onServiceConnected covers the cold-start bind-after-onStart case).
+        playerConnection?.service?.onAppForegrounded()
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
                 ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1000)

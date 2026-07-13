@@ -93,6 +93,30 @@ constructor(
         )
     }
 
+    /**
+     * #27 PHANTOM PLAYBACK veto. media3 routes EVERY controller-issued player command (Bluetooth/AVRCP/watch/
+     * Android Auto/notification/headset button) through here BEFORE it reaches the player (MediaSessionStub →
+     * MediaSessionImpl.onPlayerCommandRequestOnHandler): a non-RESULT_SUCCESS return makes media3 skip the
+     * player task entirely — it never runs Util.handlePlayButtonAction → prepare()+play(). While a cold-restored
+     * queue hasn't been genuinely engaged this process (service.awaitingFirstUserPlay), we REJECT external PLAY
+     * (COMMAND_PLAY_PAUSE) so the restored-but-paused queue can't be cold-started by a stray/auto PLAY. The
+     * app's OWN in-app play calls the ExoPlayer directly (PlayerConnection → service.player) and NEVER passes
+     * through this callback, so normal playback is unaffected. The flag is cleared the instant the user engages.
+     */
+    override fun onPlayerCommandRequest(
+        session: MediaSession,
+        controller: MediaSession.ControllerInfo,
+        playerCommand: Int,
+    ): Int {
+        if (playerCommand == androidx.media3.common.Player.COMMAND_PLAY_PAUSE &&
+            this::service.isInitialized &&
+            service.awaitingFirstUserPlay
+        ) {
+            return SessionResult.RESULT_ERROR_PERMISSION_DENIED
+        }
+        return super.onPlayerCommandRequest(session, controller, playerCommand)
+    }
+
     override fun onCustomCommand(
         session: MediaSession,
         controller: MediaSession.ControllerInfo,
