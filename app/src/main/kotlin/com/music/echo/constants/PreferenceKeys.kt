@@ -613,6 +613,9 @@ val LyricsRomanizePunjabiKey = booleanPreferencesKey("lyricsRomanizePunjabi")
 val LyricsRomanizeAsMainKey = booleanPreferencesKey("lyricsRomanizeAsMain")
 val LyricsRomanizeCyrillicByLineKey = booleanPreferencesKey("lyricsRomanizeCyrillicByLine")
 val TranslateLyricsKey = booleanPreferencesKey("translateLyrics")
+// Opt-in (default false): when the lyrics of an English-looking song open, prompt "¿Traducir?"
+// and translate via the FREE keyless AI on confirm. Off = no prompt (previous behavior).
+val AskTranslateLyricsOnOpenKey = booleanPreferencesKey("askTranslateLyricsOnOpen")
 // AI text-to-playlist feature toggle (Library → "Lista AI"). Kill-switch, defaults on.
 val AiPlaylistEnabledKey = booleanPreferencesKey("ai_playlist_enabled")
 val OpenRouterApiKey = stringPreferencesKey("openRouterApiKey")

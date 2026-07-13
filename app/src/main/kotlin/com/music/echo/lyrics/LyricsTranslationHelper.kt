@@ -29,6 +29,13 @@ object LyricsTranslationHelper {
     private val _status = MutableStateFlow<TranslationStatus>(TranslationStatus.Idle)
     val status: StateFlow<TranslationStatus> = _status.asStateFlow()
 
+    // FREE keyless translation (no user API key). There is NO embedded OpenRouter key in the app:
+    // AiPlaylistService's "free" path is fully KEYLESS (no Authorization header) against the public
+    // OpenAI-compatible Pollinations endpoint, trying several free models in turn. We reuse the same
+    // endpoint + model cascade here so lyric translation works without the user configuring any key.
+    private const val FREE_KEYLESS_BASE_URL = "https://text.pollinations.ai/openai"
+    private val FREE_KEYLESS_MODELS = listOf("openai", "mistral", "llama", "deepseek")
+
     
     private val _hasActiveTranslations = MutableStateFlow(false)
     val hasActiveTranslations: StateFlow<Boolean> = _hasActiveTranslations.asStateFlow()
@@ -222,6 +229,7 @@ object LyricsTranslationHelper {
         useStreaming: Boolean = true,
         songId: String = "",
         database: MusicDatabase? = null,
+        keyless: Boolean = false,
     ) {
         translationJob?.cancel()
         _status.value = TranslationStatus.Translating
@@ -233,7 +241,9 @@ object LyricsTranslationHelper {
             try {
                 
                 val effectiveApiKey = if (provider == "DeepL") deeplApiKey else apiKey
-                if (effectiveApiKey.isBlank()) {
+                // keyless = FREE built-in AI (no user key needed): skip the "key required" abort and
+                // route through the keyless endpoint/model cascade below. DeepL never runs keyless.
+                if (!keyless && effectiveApiKey.isBlank()) {
                     _status.value = TranslationStatus.Error(context.getString(iad1tya.echo.music.R.string.ai_error_api_key_required))
                     return@launch
                 }
@@ -328,6 +338,26 @@ object LyricsTranslationHelper {
                         model = model,
                         mode = mode,
                     )
+                } else if (keyless) {
+                    // FREE keyless cascade: try each free model against the keyless endpoint (no auth
+                    // header) until one returns a usable translation. Mirrors AiPlaylistService's free
+                    // path; OpenRouterService.translate already retries transient 5xx per model. A busy
+                    // / rate-limited model just advances to the next; only if ALL fail do we surface an
+                    // error (shown as the existing error card — no crash).
+                    Timber.d("Using FREE keyless translation cascade")
+                    var freeResult: Result<List<String>> = Result.failure(Exception("No free model available"))
+                    for (freeModel in FREE_KEYLESS_MODELS) {
+                        freeResult = OpenRouterService.translate(
+                            text = fullText,
+                            targetLanguage = fullLanguageName,
+                            apiKey = "",
+                            baseUrl = FREE_KEYLESS_BASE_URL,
+                            model = freeModel,
+                            mode = mode,
+                        )
+                        if (freeResult.isSuccess) break
+                    }
+                    freeResult
                 } else if (useStreaming && provider != "Custom") {
                     Timber.d("Using streaming for translation with provider: $provider")
                     var translatedLines: List<String>? = null

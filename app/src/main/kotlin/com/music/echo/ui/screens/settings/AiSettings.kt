@@ -37,6 +37,7 @@ import iad1tya.echo.music.LocalPlayerAwareWindowInsets
 import iad1tya.echo.music.R
 import iad1tya.echo.music.constants.AiPlaylistEnabledKey
 import iad1tya.echo.music.constants.AiProviderKey
+import iad1tya.echo.music.constants.AskTranslateLyricsOnOpenKey
 import iad1tya.echo.music.constants.DeeplApiKey
 import iad1tya.echo.music.constants.DeeplFormalityKey
 import iad1tya.echo.music.constants.LanguageCodeToName
@@ -66,6 +67,7 @@ fun AiSettings(
     var translateMode by rememberPreference(TranslateModeKey, "Literal")
     var deeplApiKey by rememberPreference(DeeplApiKey, "")
     var deeplFormality by rememberPreference(DeeplFormalityKey, "default")
+    var askTranslateOnOpen by rememberPreference(AskTranslateLyricsOnOpenKey, false)
 
     val aiProviders = mapOf(
         "OpenRouter" to "https://openrouter.ai/api/v1/chat/completions",
@@ -550,6 +552,22 @@ fun AiSettings(
                         title = { Text(stringResource(R.string.ai_target_language)) },
                         description = { Text(LanguageCodeToName[translateLanguage] ?: translateLanguage) },
                         onClick = { showLanguageDialog = true }
+                    )
+                )
+                add(
+                    Material3SettingsItem(
+                        icon = painterResource(R.drawable.translate),
+                        title = { Text("Preguntar traducir la letra al abrir") },
+                        description = {
+                            Text("Cuando abras la letra de una canción en inglés, Aura te preguntará si quieres traducirla a tu idioma con IA gratuita.")
+                        },
+                        onClick = { askTranslateOnOpen = !askTranslateOnOpen },
+                        trailingContent = {
+                            Switch(
+                                checked = askTranslateOnOpen,
+                                onCheckedChange = { askTranslateOnOpen = it },
+                            )
+                        },
                     )
                 )
             }
