@@ -675,6 +675,9 @@ val InnerTubeCookieKey = stringPreferencesKey("innerTubeCookie")
 // poisoned persisted session. A fresh flag key is required (a set flag / versionCode bump alone won't re-run
 // a one-time migration). Never touches InnerTubeCookieKey (the login).
 val SessionRefreshedFor104Key = booleanPreferencesKey("session_refreshed_for_104")
+// One-time (FRESH key): force the lyric style to Apple Music (APPLE_V2) once on 0.6.104 so it becomes the
+// default for everyone (still toggleable afterwards). Mirrors the SafeVolume default-on migration pattern.
+val LyricsAppleDefaultFor104Key = booleanPreferencesKey("lyrics_apple_default_for_104")
 
 // 0.6.104 FIX B1 (#28.1): persisted mirror of MusicService.songUrlCache (mediaId -> {url, expireEpochMillis})
 // as a compact JSON blob, LRU-bounded, so a resolved stream URL survives a process restart (app update) and

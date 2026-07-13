@@ -312,13 +312,15 @@ class App : Application(), SingletonImageLoader.Factory {
         val batchBPending =
             settings[iad1tya.echo.music.constants.SafeVolumeDefaultOnAppliedKey] != true ||
             settings[iad1tya.echo.music.constants.InfinitePlaybackForcedOnKey] != true ||
-            settings[iad1tya.echo.music.constants.SessionRefreshedFor104Key] != true
+            settings[iad1tya.echo.music.constants.SessionRefreshedFor104Key] != true ||
+            settings[iad1tya.echo.music.constants.LyricsAppleDefaultFor104Key] != true
         if (batchBPending) {
             runCatching {
                 dataStore.edit { p ->
                     applySafeVolumeDefaultOn(p, settings)
                     applyInfinitePlaybackOn(p, settings)
                     applySessionRefreshFor104(p, settings)
+                    applyLyricsAppleDefaultFor104(p, settings)
                 }
             }.onFailure { reportException(it) }
         }
@@ -737,6 +739,21 @@ class App : Application(), SingletonImageLoader.Factory {
         p.remove(iad1tya.echo.music.constants.DataSyncIdKey)
         // NEVER remove InnerTubeCookieKey — that is the user's login.
         p[iad1tya.echo.music.constants.SessionRefreshedFor104Key] = true
+    }
+
+    /**
+     * One-time (FRESH key): make the Apple Music lyric style (APPLE_V2) the default for EVERYONE on 0.6.104
+     * (the user asked for it as the default). Forced once, still user-toggleable afterwards — mirrors the
+     * SafeVolume default-on migration. Value + flag written atomically in the shared batch-B transaction.
+     */
+    private fun applyLyricsAppleDefaultFor104(
+        p: androidx.datastore.preferences.core.MutablePreferences,
+        settings: androidx.datastore.preferences.core.Preferences,
+    ) {
+        if (settings[iad1tya.echo.music.constants.LyricsAppleDefaultFor104Key] == true) return
+        p[iad1tya.echo.music.constants.LyricsAnimationStyleKey] =
+            iad1tya.echo.music.constants.LyricsAnimationStyle.APPLE_V2.name
+        p[iad1tya.echo.music.constants.LyricsAppleDefaultFor104Key] = true
     }
 
     /**

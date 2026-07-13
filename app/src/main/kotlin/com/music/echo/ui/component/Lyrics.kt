@@ -236,7 +236,7 @@ fun Lyrics(
     // like Performance Mode, restoring once cool. Cool/capable device: deviceThrottle == false → byte-identical.
     val deviceThrottle = iad1tya.echo.music.utils.rememberDeviceThrottle()
     val lyricsGlowEffect = iad1tya.echo.music.utils.rememberPerfGatedBoolean(LyricsGlowEffectKey, false).value && !deviceThrottle
-    val lyricsAnimationStyle by rememberEnumPreference(LyricsAnimationStyleKey, LyricsAnimationStyle.echomusic_1)
+    val lyricsAnimationStyle by rememberEnumPreference(LyricsAnimationStyleKey, LyricsAnimationStyle.APPLE_V2)
     val lyricsTextSize by rememberPreference(LyricsTextSizeKey, 24f)
     val lyricsLineSpacing by rememberPreference(LyricsLineSpacingKey, 1.3f)
     val lyricsStandardBlur by rememberPreference(LyricsStandardBlurKey, false)
