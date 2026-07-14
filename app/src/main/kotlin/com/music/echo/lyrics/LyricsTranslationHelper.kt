@@ -13,7 +13,12 @@ import iad1tya.echo.music.db.entities.LyricsEntity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -71,67 +76,56 @@ object LyricsTranslationHelper {
      * failure (empty input, network error, non-200, parse error). Never throws — safe for the keyless
      * branch, where null simply advances to the AI cascade fallback.
      */
+    /** One free Google-Translate request for a single text; returns the concatenated translation or null. */
+    private fun googleTranslateOnce(text: String, tl: String): String? {
+        if (text.isBlank()) return ""
+        return try {
+            val encoded = URLEncoder.encode(text, "UTF-8")
+            val url = "$GOOGLE_TRANSLATE_URL?client=gtx&sl=auto&tl=$tl&dt=t&q=$encoded"
+            val request = Request.Builder().url(url).header("User-Agent", "Mozilla/5.0").get().build()
+            googleTranslateClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return null
+                val body = response.body?.string()
+                if (body.isNullOrBlank()) return null
+                // Shape: [[[ "<translated seg>", "<orig seg>", ...], ...], null, "<detected src>", ...]
+                val segments = JSONArray(body).optJSONArray(0) ?: return null
+                val b = StringBuilder()
+                for (i in 0 until segments.length()) b.append(segments.optJSONArray(i)?.optString(0, "") ?: "")
+                b.toString().ifBlank { null }
+            }
+        } catch (e: Exception) {
+            Timber.w(e, "Google Translate single call failed")
+            null
+        }
+    }
+
     private suspend fun googleTranslateFree(
         lines: List<String>,
         targetLang: String,
     ): List<String>? = withContext(Dispatchers.IO) {
         if (lines.isEmpty()) return@withContext null
-        try {
-            // Google wants a 2-letter code; strip any region suffix (es-ES -> es) just in case.
-            val tl = targetLang.substringBefore('-').lowercase().ifBlank { return@withContext null }
-            val joined = lines.joinToString("\n")
-            val encoded = URLEncoder.encode(joined, "UTF-8")
-            val url = "$GOOGLE_TRANSLATE_URL?client=gtx&sl=auto&tl=$tl&dt=t&q=$encoded"
+        // Google wants a 2-letter code; strip any region suffix (es-ES -> es) just in case.
+        val tl = targetLang.substringBefore('-').lowercase().ifBlank { return@withContext null }
 
-            val request = Request.Builder()
-                .url(url)
-                .header("User-Agent", "Mozilla/5.0")
-                .get()
-                .build()
+        // Fast path: ONE request with the lines joined by '\n' (Google preserves the newlines). Accept it
+        // ONLY if the split lines up 1:1 with the input — otherwise a merged/split line would shift every
+        // subsequent line (blind end-padding is exactly that bug).
+        val batch = googleTranslateOnce(lines.joinToString("\n"), tl)?.split("\n")
+        if (batch != null && batch.size == lines.size) return@withContext batch
 
-            googleTranslateClient.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) return@withContext null
-                val body = response.body?.string()
-                if (body.isNullOrBlank()) return@withContext null
-
-                // Shape: [[[ "<translated seg>", "<orig seg>", ...], ...], null, "<detected src>", ...]
-                val root = JSONArray(body)
-                val segments = root.optJSONArray(0) ?: return@withContext null
-
-                // Reconstruct the full translated text: seg[0] pieces concatenated keep the '\n's.
-                val builder = StringBuilder()
-                for (i in 0 until segments.length()) {
-                    val seg = segments.optJSONArray(i) ?: continue
-                    builder.append(seg.optString(0, ""))
+        // Alignment fallback: translate each line INDIVIDUALLY → guaranteed 1:1 mapping, no line-shift.
+        // Bounded concurrency (thermal/battery gate); a line that fails keeps its original text.
+        val sem = Semaphore(6)
+        val perLine = coroutineScope {
+            lines.map { line ->
+                async {
+                    if (line.isBlank()) "" else (sem.withPermit { googleTranslateOnce(line, tl) } ?: line)
                 }
-                val concatenated = builder.toString()
-                if (concatenated.isBlank()) return@withContext null
-
-                // Primary: split the reconstructed translation on the preserved newlines.
-                var translatedLines = concatenated.split("\n")
-
-                // Fallback: if line boundaries didn't line up but the API returned exactly one
-                // segment per input line, map segments 1:1 instead.
-                if (translatedLines.size != lines.size && segments.length() == lines.size) {
-                    translatedLines = (0 until segments.length()).map {
-                        segments.optJSONArray(it)?.optString(0, "") ?: ""
-                    }
-                }
-
-                // Normalize to exactly lines.size so the caller's index mapping stays 1:1.
-                val normalized = when {
-                    translatedLines.size == lines.size -> translatedLines
-                    translatedLines.size > lines.size -> translatedLines.take(lines.size)
-                    else -> translatedLines.toMutableList().apply {
-                        while (size < lines.size) add("")
-                    }
-                }
-                return@withContext normalized
-            }
-        } catch (e: Exception) {
-            Timber.w(e, "Google Translate free path failed")
-            return@withContext null
+            }.awaitAll()
         }
+        // Every non-blank line came back unchanged/failed → treat as failure so the caller can fall back.
+        if (lines.indices.all { lines[it].isBlank() || perLine[it] == lines[it] }) return@withContext null
+        return@withContext perLine
     }
 
     

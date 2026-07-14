@@ -22,6 +22,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -74,6 +75,7 @@ class OnlinePlaylistViewModel @Inject constructor(
     val dbPlaylist = database.playlistByBrowseId(playlistId)
         .stateIn(viewModelScope, SharingStarted.Lazily, null)
 
+    @Volatile
     var continuation: String? = null
         private set
 
@@ -86,6 +88,7 @@ class OnlinePlaylistViewModel @Inject constructor(
     // True once EVERY page of the playlist has been loaded (continuation exhausted normally, not via an
     // error). Only then is the repaired list cached for the session — a failure-truncated load must be
     // repaired for display but retried (and re-completed) on the next open.
+    @Volatile
     private var reachedEnd = false
 
     companion object {
@@ -248,11 +251,13 @@ class OnlinePlaylistViewModel @Inject constructor(
      * snapshot), so a late page can't be lost and a broken original can't be resurrected. Keeps continuation.
      */
     private fun publishRepaired(repaired: List<SongItem>, snapshot: List<SongItem>) {
-        val liveNow = _rawSongs.value
         val repairedIds = repaired.mapTo(HashSet()) { it.id }
         val snapshotIds = snapshot.mapTo(HashSet()) { it.id }
-        val extras = liveNow.filter { it.id !in repairedIds && it.id !in snapshotIds }
-        _rawSongs.value = if (extras.isEmpty()) repaired else repaired + extras
+        // Atomic read-modify-write so a page appended by a concurrent loadMoreSongs can't be lost.
+        _rawSongs.update { liveNow ->
+            val extras = liveNow.filter { it.id !in repairedIds && it.id !in snapshotIds }
+            if (extras.isEmpty()) repaired else repaired + extras
+        }
     }
 
     fun retry() {
