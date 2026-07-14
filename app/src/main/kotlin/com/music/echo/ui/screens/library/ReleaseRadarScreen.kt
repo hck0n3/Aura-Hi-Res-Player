@@ -66,8 +66,10 @@ fun ReleaseRadarScreen(
     val releases by viewModel.releases.collectAsState()
     val lazyListState = rememberLazyListState()
 
-    // No auto-refresh on open: the radar is a weekly Friday drop (rebuilt by ReleaseRadarWorker). A manual
-    // refresh is still available via the toolbar action below.
+    // Auto-refresh on open is staleness-gated: ReleaseRadarViewModel.init calls
+    // ReleaseRadarWorker.refreshIfStale, which only fires a fetch when the last successful run is older than
+    // 6h (heals a stale list when MIUI reaps the weekly Friday worker). The weekly drop is untouched, and the
+    // toolbar action below is still an explicit manual override.
 
     Scaffold(
         topBar = {

@@ -119,6 +119,11 @@ class ReleaseRadarWorker(
                 if (newCount > 0) postNotification(newCount)
             }
 
+            // Record a successful completion so the on-entry opportunistic refresh (refreshIfStale) can
+            // gate itself: a run that finished — even with no new drop — resets the 6h staleness clock.
+            context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+                .edit().putLong(LAST_RUN_KEY, System.currentTimeMillis()).apply()
+
             Result.success()
         } catch (e: Exception) {
             Timber.tag(TAG).e(e, "Release radar run failed")
@@ -484,6 +489,13 @@ class ReleaseRadarWorker(
         /** One-time initial-seed guard so a fresh install seeds once, not on every launch. */
         private const val SEED_ONCE_KEY = "release_radar_seeded_once"
 
+        /** Epoch-ms timestamp of the last successful worker run; gates the on-entry opportunistic refresh. */
+        const val LAST_RUN_KEY = "release_radar_last_run"
+
+        /** Minimum spacing between opportunistic on-entry refreshes (6h) — keeps network/CPU spam (and
+         *  thus battery/thermal) in check while still healing a stale list when MIUI reaps the weekly worker. */
+        const val AUTO_REFRESH_MIN_INTERVAL_MS = 6 * 60 * 60 * 1000L
+
         // Normalization regexes for strict Spotify→YouTube album matching (see matchSpotifyToYoutubeAlbum).
         /** Combining diacritical marks left after NFD decomposition (é→e). */
         private val DIACRITICS_REGEX = Regex("\\p{M}+")
@@ -544,6 +556,20 @@ class ReleaseRadarWorker(
             if (prefs.getBoolean(SEED_ONCE_KEY, false)) return
             prefs.edit().putBoolean(SEED_ONCE_KEY, true).apply()
             runNow(context)
+        }
+
+        /**
+         * Opportunistic staleness-gated refresh, fired when the user OPENS the Release Radar screen. On MIUI
+         * the weekly Friday worker is frequently reaped, leaving the list stale; this heals it without waiting
+         * for the next drop. Gated by [AUTO_REFRESH_MIN_INTERVAL_MS] (6h) against [LAST_RUN_KEY] so entering
+         * the screen repeatedly can't spam network/CPU. A never-run store (last = 0) refreshes immediately.
+         * Delegates to [runNow], whose [ExistingWorkPolicy.KEEP] coalesces with any in-flight run.
+         */
+        fun refreshIfStale(context: Context) {
+            val prefs = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+            if (System.currentTimeMillis() - prefs.getLong(LAST_RUN_KEY, 0L) >= AUTO_REFRESH_MIN_INTERVAL_MS) {
+                runNow(context)
+            }
         }
 
         /**
