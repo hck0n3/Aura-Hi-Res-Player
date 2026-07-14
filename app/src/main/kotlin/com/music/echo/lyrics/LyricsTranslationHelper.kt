@@ -22,8 +22,15 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import org.json.JSONArray
 import timber.log.Timber
+import java.net.URLEncoder
 import java.util.Locale
+import java.util.concurrent.TimeUnit
 
 object LyricsTranslationHelper {
     private val _status = MutableStateFlow<TranslationStatus>(TranslationStatus.Idle)
@@ -35,6 +42,97 @@ object LyricsTranslationHelper {
     // endpoint + model cascade here so lyric translation works without the user configuring any key.
     private const val FREE_KEYLESS_BASE_URL = "https://text.pollinations.ai/openai"
     private val FREE_KEYLESS_MODELS = listOf("openai", "mistral", "llama", "deepseek")
+
+    // FREE, reliable, keyless lyric translation via Google Translate's public web endpoint.
+    // GET https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=<code>&dt=t&q=<text>
+    // returns HTTP 200 with NO API key. It preserves \n and translates line-by-line, which is ideal for
+    // lyrics. This is the primary keyless path; the old Pollinations AI cascade is only a fallback.
+    private const val GOOGLE_TRANSLATE_URL = "https://translate.googleapis.com/translate_a/single"
+
+    // Overall budget for the whole keyless path so the UI can never hang on "Translating" forever.
+    private const val KEYLESS_TRANSLATE_TIMEOUT_MS = 30_000L
+
+    // Short-timeout client for the Google Translate endpoint (must be fast; never block the UI).
+    private val googleTranslateClient: OkHttpClient by lazy {
+        OkHttpClient.Builder()
+            .connectTimeout(10, TimeUnit.SECONDS)
+            .readTimeout(10, TimeUnit.SECONDS)
+            .writeTimeout(10, TimeUnit.SECONDS)
+            .build()
+    }
+
+    /**
+     * FREE, keyless lyric translation via Google Translate's public endpoint.
+     * Joins [lines] with '\n', URL-encodes them, and asks Google to translate to [targetLang]
+     * (a 2-letter code such as "es"/"en"/"pt"). Google keeps the '\n' boundaries, so we reconstruct
+     * the translated text by concatenating each segment's translated part and re-split on '\n'.
+     *
+     * Returns exactly [lines].size translated strings (padded/truncated as needed), or null on ANY
+     * failure (empty input, network error, non-200, parse error). Never throws — safe for the keyless
+     * branch, where null simply advances to the AI cascade fallback.
+     */
+    private suspend fun googleTranslateFree(
+        lines: List<String>,
+        targetLang: String,
+    ): List<String>? = withContext(Dispatchers.IO) {
+        if (lines.isEmpty()) return@withContext null
+        try {
+            // Google wants a 2-letter code; strip any region suffix (es-ES -> es) just in case.
+            val tl = targetLang.substringBefore('-').lowercase().ifBlank { return@withContext null }
+            val joined = lines.joinToString("\n")
+            val encoded = URLEncoder.encode(joined, "UTF-8")
+            val url = "$GOOGLE_TRANSLATE_URL?client=gtx&sl=auto&tl=$tl&dt=t&q=$encoded"
+
+            val request = Request.Builder()
+                .url(url)
+                .header("User-Agent", "Mozilla/5.0")
+                .get()
+                .build()
+
+            googleTranslateClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@withContext null
+                val body = response.body?.string()
+                if (body.isNullOrBlank()) return@withContext null
+
+                // Shape: [[[ "<translated seg>", "<orig seg>", ...], ...], null, "<detected src>", ...]
+                val root = JSONArray(body)
+                val segments = root.optJSONArray(0) ?: return@withContext null
+
+                // Reconstruct the full translated text: seg[0] pieces concatenated keep the '\n's.
+                val builder = StringBuilder()
+                for (i in 0 until segments.length()) {
+                    val seg = segments.optJSONArray(i) ?: continue
+                    builder.append(seg.optString(0, ""))
+                }
+                val concatenated = builder.toString()
+                if (concatenated.isBlank()) return@withContext null
+
+                // Primary: split the reconstructed translation on the preserved newlines.
+                var translatedLines = concatenated.split("\n")
+
+                // Fallback: if line boundaries didn't line up but the API returned exactly one
+                // segment per input line, map segments 1:1 instead.
+                if (translatedLines.size != lines.size && segments.length() == lines.size) {
+                    translatedLines = (0 until segments.length()).map {
+                        segments.optJSONArray(it)?.optString(0, "") ?: ""
+                    }
+                }
+
+                // Normalize to exactly lines.size so the caller's index mapping stays 1:1.
+                val normalized = when {
+                    translatedLines.size == lines.size -> translatedLines
+                    translatedLines.size > lines.size -> translatedLines.take(lines.size)
+                    else -> translatedLines.toMutableList().apply {
+                        while (size < lines.size) add("")
+                    }
+                }
+                return@withContext normalized
+            }
+        } catch (e: Exception) {
+            Timber.w(e, "Google Translate free path failed")
+            return@withContext null
+        }
+    }
 
     
     private val _hasActiveTranslations = MutableStateFlow(false)
@@ -339,25 +437,50 @@ object LyricsTranslationHelper {
                         mode = mode,
                     )
                 } else if (keyless) {
-                    // FREE keyless cascade: try each free model against the keyless endpoint (no auth
-                    // header) until one returns a usable translation. Mirrors AiPlaylistService's free
-                    // path; OpenRouterService.translate already retries transient 5xx per model. A busy
-                    // / rate-limited model just advances to the next; only if ALL fail do we surface an
-                    // error (shown as the existing error card — no crash).
-                    Timber.d("Using FREE keyless translation cascade")
-                    var freeResult: Result<List<String>> = Result.failure(Exception("No free model available"))
-                    for (freeModel in FREE_KEYLESS_MODELS) {
-                        freeResult = OpenRouterService.translate(
-                            text = fullText,
-                            targetLanguage = fullLanguageName,
-                            apiKey = "",
-                            baseUrl = FREE_KEYLESS_BASE_URL,
-                            model = freeModel,
-                            mode = mode,
-                        )
-                        if (freeResult.isSuccess) break
-                    }
-                    freeResult
+                    // FREE keyless path. Google Translate's public endpoint (no key, HTTP 200) is
+                    // reliable and fast, so it goes FIRST for standard translation. The old Pollinations
+                    // AI cascade — which was DOWN (502) / not deployed (404) and hung on "Translating" —
+                    // is now only a fallback (and still needed for Romanized/Transcribed, which Google's
+                    // dt=t translation cannot do). An overall timeout guarantees the UI never hangs: if
+                    // every provider stalls we surface a clear error card (no crash, no infinite spinner).
+                    Timber.d("Using FREE keyless translation (Google Translate first)")
+                    val standardTranslate = mode != "Romanized" && mode != "Transcribed"
+                    withTimeoutOrNull(KEYLESS_TRANSLATE_TIMEOUT_MS) {
+                        var freeResult: Result<List<String>> =
+                            Result.failure(Exception("No free translation available"))
+
+                        // 1) Google Translate FREE keyless endpoint (reliable, no key).
+                        if (standardTranslate) {
+                            val googleLines = googleTranslateFree(
+                                lines = nonEmptyEntries.map { it.second.text },
+                                targetLang = targetLanguage,
+                            )
+                            if (googleLines != null) {
+                                Timber.d("Google Translate returned ${googleLines.size} lines")
+                                freeResult = Result.success(googleLines)
+                            }
+                        }
+
+                        // 2) Fallback: keyless AI cascade (Pollinations) — used only if Google failed
+                        // or the mode needs AI. Mirrors AiPlaylistService's free path.
+                        if (freeResult.isFailure) {
+                            Timber.d("Falling back to keyless AI cascade")
+                            for (freeModel in FREE_KEYLESS_MODELS) {
+                                freeResult = OpenRouterService.translate(
+                                    text = fullText,
+                                    targetLanguage = fullLanguageName,
+                                    apiKey = "",
+                                    baseUrl = FREE_KEYLESS_BASE_URL,
+                                    model = freeModel,
+                                    mode = mode,
+                                )
+                                if (freeResult.isSuccess) break
+                            }
+                        }
+                        freeResult
+                    } ?: Result.failure(
+                        Exception(context.getString(iad1tya.echo.music.R.string.ai_error_translation_failed)),
+                    )
                 } else if (useStreaming && provider != "Custom") {
                     Timber.d("Using streaming for translation with provider: $provider")
                     var translatedLines: List<String>? = null
