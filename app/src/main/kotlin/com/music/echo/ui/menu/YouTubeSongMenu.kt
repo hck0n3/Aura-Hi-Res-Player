@@ -73,6 +73,7 @@ import iad1tya.echo.music.db.entities.SpeedDialItem
 import iad1tya.echo.music.db.entities.SongEntity
 import iad1tya.echo.music.extensions.toMediaItem
 import iad1tya.echo.music.models.MediaMetadata
+import iad1tya.echo.music.models.rememberResolvedAlbum
 import iad1tya.echo.music.models.toMediaMetadata
 import iad1tya.echo.music.playback.ExoDownloadService
 import iad1tya.echo.music.playback.queues.YouTubeQueue
@@ -115,6 +116,15 @@ fun YouTubeSongMenu(
             MediaMetadata.Artist(id = artist.id, name = artist.name)
         }
     }
+
+    // Recover the album on-demand so "view album" appears even when the search/next renderer omitted it
+    // from the byline (one-shot lookup, only when missing; true videos with no album stay hidden).
+    val resolvedAlbum = rememberResolvedAlbum(
+        songId = song.id,
+        initial = song.album?.let { MediaMetadata.Album(id = it.id, title = it.name) },
+        dbAlbumId = librarySong?.song?.albumId,
+        dbAlbumName = librarySong?.song?.albumName,
+    )
 
     val (enableExportAsMp3) = rememberPreference(key = EnableExportAsMp3Key, defaultValue = false)
     val (exportDirectoryUri) = rememberPreference(key = ExportDirectoryUriKey, defaultValue = "")
@@ -711,11 +721,11 @@ fun YouTubeSongMenu(
                             )
                         )
                     }
-                    song.album?.let { album ->
+                    resolvedAlbum?.let { album ->
                         add(
                             Material3MenuItemData(
                                 title = { Text(text = stringResource(R.string.view_album)) },
-                                description = { Text(text = album.name) },
+                                description = { Text(text = album.title) },
                                 icon = {
                                     Icon(
                                         painter = painterResource(R.drawable.album),

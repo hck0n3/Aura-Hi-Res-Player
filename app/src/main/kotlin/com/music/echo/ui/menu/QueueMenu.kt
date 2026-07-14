@@ -66,6 +66,7 @@ import iad1tya.echo.music.constants.ListItemHeight
 import iad1tya.echo.music.constants.ListThumbnailSize
 import iad1tya.echo.music.extensions.toMediaItem
 import iad1tya.echo.music.models.MediaMetadata
+import iad1tya.echo.music.models.rememberResolvedAlbum
 import iad1tya.echo.music.models.toMediaMetadata
 import iad1tya.echo.music.playback.ExoDownloadService
 import iad1tya.echo.music.playback.queues.YouTubeQueue
@@ -114,6 +115,15 @@ fun QueueMenu(
                 metadataArtist.copy(id = resolvedId)
             }
         }
+
+    // Recover the album on-demand so "view album" appears even when the queue/radio/search renderer
+    // omitted it (one-shot lookup, only when missing; true videos with no album stay hidden).
+    val resolvedAlbum = rememberResolvedAlbum(
+        songId = mediaMetadata.id,
+        initial = mediaMetadata.album,
+        dbAlbumId = librarySong?.song?.albumId,
+        dbAlbumName = librarySong?.song?.albumName,
+    )
 
     var showChoosePlaylistDialog by rememberSaveable {
         mutableStateOf(false)
@@ -470,13 +480,13 @@ fun QueueMenu(
                             )
                         )
                     }
-                    if (mediaMetadata.album != null) {
+                    resolvedAlbum?.let { album ->
                         add(
                             Material3MenuItemData(
                                 title = { Text(text = stringResource(R.string.view_album)) },
                                 description = {
                                     Text(
-                                        text = mediaMetadata.album.title,
+                                        text = album.title,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
@@ -489,7 +499,7 @@ fun QueueMenu(
                                     )
                                 },
                                 onClick = {
-                                    navController.navigate("album/${mediaMetadata.album.id}")
+                                    navController.navigate("album/${album.id}")
                                     playerBottomSheetState.collapseSoft()
                                     onDismiss()
                                 }

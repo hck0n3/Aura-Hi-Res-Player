@@ -209,6 +209,7 @@ import iad1tya.echo.music.extensions.togglePlayPause
 import iad1tya.echo.music.extensions.toggleRepeatMode
 import iad1tya.echo.music.listentogether.RoomRole
 import iad1tya.echo.music.models.MediaMetadata
+import iad1tya.echo.music.models.rememberResolvedAlbum
 import iad1tya.echo.music.playback.ExoDownloadService
 import iad1tya.echo.music.echomusic.getConnectedBluetoothDeviceName
 import iad1tya.echo.music.echomusic.isBuds
@@ -1554,6 +1555,17 @@ fun BottomSheetPlayer(
                 label = "playPauseRoundness",
             )
 
+            // Recover the album on-demand so tapping the title opens the album even when the
+            // queue/radio/search renderer omitted it (one-shot lookup, only when missing; true
+            // videos with no album leave the title inert). Called unconditionally to keep the
+            // composition slot table stable across the immersive-video branch below.
+            val resolvedAlbum = rememberResolvedAlbum(
+                songId = mediaMetadata.id,
+                initial = mediaMetadata.album,
+                dbAlbumId = null,
+                dbAlbumName = null,
+            )
+
             Row(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
@@ -1884,8 +1896,8 @@ fun BottomSheetPlayer(
                                 indication = null,
                                 interactionSource = remember { MutableInteractionSource() },
                                 onClick = {
-                                    if (mediaMetadata.album != null) {
-                                        navController.navigate("album/${mediaMetadata.album.id}")
+                                    resolvedAlbum?.let { album ->
+                                        navController.navigate("album/${album.id}")
                                         state.collapseSoft()
                                     }
                                 },
