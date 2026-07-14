@@ -13,6 +13,7 @@ import com.music.innertube.models.YTItem
 import com.music.innertube.models.filterVideoSongs
 import iad1tya.echo.music.constants.HideVideoSongsKey
 import iad1tya.echo.music.db.MusicDatabase
+import iad1tya.echo.music.utils.PlaylistCompletion
 import iad1tya.echo.music.utils.dataStore
 import iad1tya.echo.music.utils.get
 import iad1tya.echo.music.utils.reportException
@@ -78,6 +79,23 @@ class OnlinePlaylistViewModel @Inject constructor(
 
     private var proactiveLoadJob: Job? = null
 
+    // Background "completion / repair" pass — swaps unplayable tracks for playable equivalents. Kept as its
+    // own job so it can be cancelled/retried independently of paging and never blocks initial display.
+    private var completionJob: Job? = null
+
+    // True once EVERY page of the playlist has been loaded (continuation exhausted normally, not via an
+    // error). Only then is the repaired list cached for the session — a failure-truncated load must be
+    // repaired for display but retried (and re-completed) on the next open.
+    private var reachedEnd = false
+
+    companion object {
+        // Per-playlist session cache of the repaired (completion-driven) song list, keyed by playlistId, so
+        // re-opening the same playlist shows the fully-playable list instantly and never re-runs the repair
+        // network calls. Mirrors ArtistItemsViewModel.completedCache. In-memory only (no Room migration).
+        private val completedCache =
+            java.util.concurrent.ConcurrentHashMap<String, List<SongItem>>()
+    }
+
     init {
         fetchInitialPlaylistData()
     }
@@ -87,7 +105,9 @@ class OnlinePlaylistViewModel @Inject constructor(
             _isLoading.value = true
             _error.value = null
             continuation = null
-            proactiveLoadJob?.cancel() 
+            reachedEnd = false
+            proactiveLoadJob?.cancel()
+            completionJob?.cancel()
 
             YouTube.playlist(playlistId)
                 .onSuccess { playlistPage ->
@@ -96,8 +116,26 @@ class OnlinePlaylistViewModel @Inject constructor(
                     relatedItems.value = playlistPage.related ?: emptyList()
                     continuation = playlistPage.songsContinuation
                     _isLoading.value = false
+
+                    // Instant re-open: a fully-repaired list from earlier this session is the authority and
+                    // needs no more network (the base fetch already gave us metadata/related). It was cached
+                    // only after a COMPLETE load, so it holds every track — stop paging and publish in one
+                    // shot instead of re-completing.
+                    val cached = completedCache[playlistId]
+                    if (cached != null) {
+                        _rawSongs.value = cached
+                        continuation = null
+                        reachedEnd = true
+                        proactiveLoadJob?.cancel()
+                        return@onSuccess
+                    }
+
                     if (continuation != null) {
                         startProactiveBackgroundLoading()
+                    } else {
+                        // Single-page playlist: fully loaded now → repair it in the background, one-shot.
+                        reachedEnd = true
+                        launchPlaylistCompletion()
                     }
                 }.onFailure { throwable ->
                     _error.value = throwable.message?.takeIf { it.isNotBlank() }
@@ -127,14 +165,22 @@ class OnlinePlaylistViewModel @Inject constructor(
                         currentSongs.addAll(playlistContinuationPage.songs)
                         _rawSongs.value = applySongFilters(currentSongs)
                         currentProactiveToken = playlistContinuationPage.continuation
-                        
-                        this@OnlinePlaylistViewModel.continuation = currentProactiveToken 
+
+                        this@OnlinePlaylistViewModel.continuation = currentProactiveToken
                     }.onFailure { throwable ->
                         reportException(throwable)
-                        currentProactiveToken = null 
+                        currentProactiveToken = null
                     }
             }
-            
+
+            // The loop ended. If it was NOT pre-empted by a manual loadMore (which flips _isLoadingMore and
+            // breaks / cancels this job), every page we could load is in → run the ONE background repair
+            // pass over the full list. Cache only when the continuation drained cleanly (a mid-load failure
+            // leaves continuation non-null, so it repairs for display but is not cached → retried next time).
+            if (isActive && !_isLoadingMore.value) {
+                reachedEnd = this@OnlinePlaylistViewModel.continuation == null
+                launchPlaylistCompletion()
+            }
         }
     }
 
@@ -157,12 +203,56 @@ class OnlinePlaylistViewModel @Inject constructor(
                     reportException(throwable)
                 }.also {
                     _isLoadingMore.value = false
-                    
+
                     if (continuation != null && isActive) {
                         startProactiveBackgroundLoading()
+                    } else if (continuation == null && isActive) {
+                        // Manual load drained the last page → nothing left to page. Run the repair pass now,
+                        // since proactive loading won't be (re)started to reach the end.
+                        reachedEnd = true
+                        launchPlaylistCompletion()
                     }
                 }
         }
+    }
+
+    /**
+     * Launch the bounded background repair pass over the CURRENT full song list. Swaps unplayable tracks
+     * (duration == null) for playable equivalents via [PlaylistCompletion], then publishes the repaired list
+     * in ONE shot — never blocking initial display and keeping [continuation] alive. Idempotent: a no-op
+     * repair never overwrites the live list.
+     */
+    private fun launchPlaylistCompletion() {
+        completionJob?.cancel()
+        completionJob = viewModelScope.launch(Dispatchers.IO) {
+            val snapshot = _rawSongs.value
+            if (snapshot.isEmpty()) return@launch
+            val repaired = runCatching { PlaylistCompletion.completePlaylist(snapshot) }
+                .getOrDefault(snapshot)
+            if (repaired !== snapshot && repaired != snapshot) {
+                // Some track was actually swapped: cache (when the load was complete) and publish once.
+                if (reachedEnd) completedCache[playlistId] = repaired
+                publishRepaired(repaired, snapshot)
+            } else if (reachedEnd) {
+                // Nothing needed repair, but the list is final — cache it so re-open is instant and skips
+                // the pass entirely. No publish (the live list is already identical).
+                completedCache[playlistId] = repaired
+            }
+        }
+    }
+
+    /**
+     * Publish [repaired] as the new raw list, merging in any songs the live list gained AFTER [snapshot]
+     * (mirrors the merge discipline in ArtistItemsViewModel). [repaired] is the authority for the tracks it
+     * covers; only genuinely-new live ids are appended (never a swapped-out original — those ids are in the
+     * snapshot), so a late page can't be lost and a broken original can't be resurrected. Keeps continuation.
+     */
+    private fun publishRepaired(repaired: List<SongItem>, snapshot: List<SongItem>) {
+        val liveNow = _rawSongs.value
+        val repairedIds = repaired.mapTo(HashSet()) { it.id }
+        val snapshotIds = snapshot.mapTo(HashSet()) { it.id }
+        val extras = liveNow.filter { it.id !in repairedIds && it.id !in snapshotIds }
+        _rawSongs.value = if (extras.isEmpty()) repaired else repaired + extras
     }
 
     fun retry() {
@@ -183,5 +273,6 @@ class OnlinePlaylistViewModel @Inject constructor(
     override fun onCleared() {
         super.onCleared()
         proactiveLoadJob?.cancel()
+        completionJob?.cancel()
     }
 }
