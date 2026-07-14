@@ -83,6 +83,7 @@ import iad1tya.echo.music.db.entities.SpeedDialItem
 import iad1tya.echo.music.db.entities.PlaylistSong
 import iad1tya.echo.music.db.entities.Song
 import iad1tya.echo.music.extensions.toMediaItem
+import iad1tya.echo.music.models.rememberResolvedAlbum
 import iad1tya.echo.music.models.toMediaMetadata
 import iad1tya.echo.music.playback.ExoDownloadService
 import iad1tya.echo.music.playback.queues.YouTubeQueue
@@ -123,7 +124,16 @@ fun SongMenu(
     val syncUtils = LocalSyncUtils.current
     val listenTogetherManager = LocalListenTogetherManager.current
     val scope = rememberCoroutineScope()
-    
+
+    // Recover the album on-demand so "view album" appears even when this library row was seeded
+    // (radio/queue) without an album id (one-shot lookup, only when missing; true videos stay hidden).
+    val resolvedAlbum = rememberResolvedAlbum(
+        songId = song.id,
+        initial = null,
+        dbAlbumId = song.song.albumId,
+        dbAlbumName = song.song.albumName,
+    )
+
     val (enableExportAsMp3) = rememberPreference(key = EnableExportAsMp3Key, defaultValue = false)
     val (exportDirectoryUri) = rememberPreference(key = ExportDirectoryUriKey, defaultValue = "")
     val (exportingSongIds) = rememberPreference(key = ExportingSongIdsKey, defaultValue = "")
@@ -839,13 +849,13 @@ fun SongMenu(
                             }
                         )
                     )
-                    if (song.song.albumId != null) {
+                    resolvedAlbum?.let { album ->
                         add(
                             Material3MenuItemData(
                                 title = { Text(text = stringResource(R.string.view_album)) },
                                 description = {
-                                    song.song.albumName?.let {
-                                        Text(text = it)
+                                    if (album.title.isNotBlank()) {
+                                        Text(text = album.title)
                                     }
                                 },
                                 icon = {
@@ -856,7 +866,7 @@ fun SongMenu(
                                 },
                                 onClick = {
                                     onDismiss()
-                                    navController.navigate("album/${song.song.albumId}")
+                                    navController.navigate("album/${album.id}")
                                 }
                             )
                         )
