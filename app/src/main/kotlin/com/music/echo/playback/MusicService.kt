@@ -2221,6 +2221,14 @@ class MusicService :
             // those are already a single-song radio and must keep last-song seeding. Reassigned every playQueue.
             radioSeedPool = if (queue is iad1tya.echo.music.playback.queues.YouTubeQueue) emptyList()
                 else initialStatus.items.mapNotNull { it.metadata }
+            // #34 — starting an explicit COLLECTION (playlist/album/list) supersedes any lingering Home-mood
+            // bias: a stale mood chip must NOT hijack the infinite continuation of a playlist ("nada que ver").
+            // A mood the user taps AFTER this (setActiveMood, no playQueue) survives, so the deliberate-mood
+            // case still works.
+            if (queue !is iad1tya.echo.music.playback.queues.YouTubeQueue) {
+                activeMoodParams = null
+                activeMoodTitle = null
+            }
 
 
             if (player.shuffleModeEnabled) {
@@ -2410,9 +2418,22 @@ class MusicService :
                 // Only online YouTube ids are usable as radio seeds (skip local content:// and direct-URL http).
                 fun iad1tya.echo.music.models.MediaMetadata.ytId(): String? =
                     id.takeIf { !it.isLocalMediaId() && !it.startsWith("http", ignoreCase = true) }
-                // Distinct primary artist → one representative track, keeping the collection's first-seen order.
+                // #34 — seed from the LIVE recently-played TAIL (what JUST played), not the play-time first-page
+                // snapshot: for a genre-ordered playlist the tail is the genre the user hears at the end, so the
+                // continuation matches it (radioSeedPool page 1 = the head genre → felt unrelated). Falls back to
+                // radioSeedPool if the timeline read is empty. Safe: runs on the Main-dispatched scope before IO.
+                val liveIdx = player.currentMediaItemIndex
+                val tailPool: List<iad1tya.echo.music.models.MediaMetadata> =
+                    if (liveIdx >= 0) {
+                        (maxOf(0, liveIdx - 24)..liveIdx).mapNotNull {
+                            runCatching { player.getMediaItemAt(it).metadata }.getOrNull()
+                        }
+                    } else emptyList()
+                // Recent-first so the DISTINCT-artist reps come from the END of what was playing, not the start.
+                val contextPool = tailPool.ifEmpty { radioSeedPool }.asReversed()
+                // Distinct primary artist → one representative track (recent-first order).
                 val byArtist = LinkedHashMap<String, iad1tya.echo.music.models.MediaMetadata>()
-                radioSeedPool.forEach { mm ->
+                contextPool.forEach { mm ->
                     val key = mm.artists.firstOrNull()?.name?.lowercase() ?: return@forEach
                     if (mm.ytId() != null) byArtist.putIfAbsent(key, mm)
                 }
@@ -2420,12 +2441,11 @@ class MusicService :
                 val ranked = byArtist.values.sortedByDescending { mm ->
                     if (profile == null) 0.0 else profile.scoreNames(mm.artists.map { it.name }, mm.title)
                 }
-                // Seeds (up to 4 distinct ids) that capture the collection's RANGE: the current/last song first
-                // ("more like what just played"), then one representative per DISTINCT ARTIST (taste-ranked — a
-                // multi-artist playlist's mix), then more distinct TRACKS from the pool (so a SINGLE-ARTIST ALBUM
-                // still multi-seeds across its own range instead of collapsing to last-song seeding).
+                // Seeds (up to 4 distinct ids) that capture the RANGE: the current/last song first ("more like
+                // what just played"), then one representative per DISTINCT ARTIST (recent-first, taste-ranked),
+                // then more distinct recent TRACKS (so a SINGLE-ARTIST ALBUM still multi-seeds across its range).
                 val perArtistIds = ranked.mapNotNull { it.ytId() }
-                val poolIds = radioSeedPool.mapNotNull { it.ytId() }
+                val poolIds = contextPool.mapNotNull { it.ytId() }
                 val seeds = (listOfNotNull(seedVideoId) + perArtistIds + poolIds).distinct().take(4)
                 if (seeds.size < 2) return@runCatching false // truly one usable track → let tryRadio do last-song
                 // Fetch each seed's radio page (bounded to 12 items each), off the player thread.
