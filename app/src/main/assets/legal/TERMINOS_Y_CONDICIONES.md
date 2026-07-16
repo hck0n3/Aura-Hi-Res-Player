@@ -115,17 +115,25 @@ Estos Términos y Condiciones (los "Términos") regulan el uso de la aplicación
 
 11.1. **Datos que permanecen en su dispositivo.** La biblioteca musical, el historial de escucha, las listas de reproducción, las descargas, las preferencias, y los tokens o credenciales de sesión de servicios de terceros se almacenan **localmente en el dispositivo del Usuario**. El Desarrollador no tiene acceso a esos datos.
 
-11.2. **Datos que salen del dispositivo.** Únicamente salen del dispositivo:
+11.2. **La Aplicación no lleva analítica ni rastreo.** La Aplicación **no incluye ningún sistema activo de analítica, rastreo o publicidad**, y **no envía al Desarrollador informes de fallos ni datos de uso**. Los fallos se gestionan **en el propio dispositivo**: la Aplicación muestra una pantalla de error y guarda un registro local que el Usuario puede decidir compartir manualmente.
 
-- (a) las **solicitudes a los servicios de terceros** necesarias para el funcionamiento (búsquedas, streaming, letras, carátulas), que dichos terceros reciben y tratan conforme a **sus propias** políticas de privacidad (incluyendo, por ejemplo, su dirección IP);
-- (b) las **solicitudes de verificación de licencia** al servidor de licencias del Desarrollador (que incluyen la clave de licencia y un identificador técnico necesario para la activación); y
-- (c) en las compilaciones que incluyen servicios de Google (GMS), **informes de fallos y diagnóstico** (por ejemplo, Firebase Crashlytics) destinados exclusivamente a corregir errores.
+Aclaración técnica, por transparencia (el código es público y menciona Firebase): la versión que se publica incluye las bibliotecas de Firebase, pero **Firebase nunca se inicializa**, porque los complementos de Firebase solo se activan si existe un archivo de configuración `google-services.json`, y ese archivo **no existe** ni en el repositorio ni en el proceso de publicación. Sin él, Firebase Analytics y Firebase Crashlytics **no recogen ni transmiten nada**. Además, Firebase Analytics no se invoca en ningún punto del código. Quien compile la Aplicación por su cuenta **sí puede** añadir su propio `google-services.json` y activar Crashlytics **en su propia compilación**; esa no es la versión que distribuye el Desarrollador.
 
-11.3. El Desarrollador **no vende, alquila ni comercializa datos personales del Usuario**, no muestra publicidad y no elabora perfiles publicitarios.
+11.3. **Datos que salen del dispositivo.** Salen del dispositivo:
 
-11.4. **Permisos del dispositivo.** La Aplicación solicita permisos únicamente para funciones concretas: micrófono (reconocimiento de canciones, solo durante el uso activo de esa función), almacenamiento/archivos multimedia (música local y descargas), estado de Bluetooth (comportamiento de reproducción con dispositivos de audio) y notificaciones (controles de reproducción). El Usuario puede denegar o revocar estos permisos desde el sistema; la función asociada dejará de estar disponible.
+- (a) las **solicitudes a los servicios de terceros** necesarias para el funcionamiento (búsquedas, streaming, letras, carátulas), que dichos terceros reciben y tratan conforme a **sus propias** políticas de privacidad (incluyendo, por ejemplo, su dirección IP). Al ser un cliente de YouTube Music, **Google recibe inevitablemente** las solicitudes de reproducción y la dirección IP;
+- (b) las **solicitudes de verificación de licencia y del modo de demostración** al servidor del Desarrollador, que incluyen la **clave de licencia** y un **identificador técnico del dispositivo** (`ANDROID_ID`, o un identificador aleatorio si no está disponible), necesario para activar la licencia en un solo dispositivo y para que borrar los datos de la aplicación no reinicie la demostración. No se usa con fines publicitarios ni de elaboración de perfiles;
+- (c) una **descarga de configuración remota** desde el repositorio público del Desarrollador, cuyo único fin es mantener el funcionamiento del streaming (no contiene datos del Usuario), y la **comprobación de actualizaciones** (activada por defecto, desactivable en los ajustes);
+- (d) consultas puntuales de **metadatos** (por ejemplo, nombres de artista, álbum o canción a proveedores de letras, géneros o carátulas) cuando se usan esas funciones; y
+- (e) **solo si el Usuario activa o utiliza la función correspondiente**: el scrobbling de Last.fm (requiere iniciar sesión), ListenBrainz (desactivado por defecto), la importación de Spotify, SponsorBlock (desactivado por defecto), la **generación de listas con IA** (envía la instrucción escrita por el Usuario y, al modificar una lista, los títulos de sus canciones), la **traducción de letras** (envía el texto de la letra) y el **reconocimiento de canciones** (envía una huella de audio del micrófono, únicamente mientras esa función está en uso).
 
-11.5. El Usuario puede eliminar todos los datos locales desinstalando la Aplicación o borrando sus datos desde los ajustes de Android.
+11.4. Las recomendaciones se calculan **en el dispositivo** a partir del historial local, que **no se sube** al Desarrollador. Para enriquecerlas, la Aplicación realiza consultas limitadas a terceros (nombres de artistas para obtener géneros e identificadores de las canciones marcadas como favoritas para obtener temas relacionados), acotadas en volumen y solo por Wi-Fi.
+
+11.5. El Desarrollador **no vende, alquila ni comercializa datos personales del Usuario**, no muestra publicidad y no elabora perfiles publicitarios.
+
+11.6. **Permisos del dispositivo.** La Aplicación solicita permisos únicamente para funciones concretas: micrófono (reconocimiento de canciones, solo durante el uso activo de esa función), almacenamiento/archivos multimedia (música local y descargas), estado de Bluetooth (comportamiento de reproducción con dispositivos de audio) y notificaciones (controles de reproducción). El Usuario puede denegar o revocar estos permisos desde el sistema; la función asociada dejará de estar disponible.
+
+11.7. El Usuario puede eliminar todos los datos locales desinstalando la Aplicación o borrando sus datos desde los ajustes de Android.
 
 ## 12. Actualizaciones, disponibilidad y cambios en la Aplicación
 

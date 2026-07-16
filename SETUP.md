@@ -38,16 +38,21 @@ sdk.dir=/path/to/your/android/sdk
 - Linux: `/home/username/Android/sdk`
 - Windows: `C:\\Users\\username\\AppData\\Local\\Android\\sdk`
 
-### 3. Configure Firebase (Optional)
+### 3. Configure Firebase (Optional — off by default, and off in the published app)
 
-Firebase is used for analytics and crash reporting. If you want to use these features:
+**The app we publish has no Firebase.** There is no `google-services.json` in this repository, and the release pipeline does not add one, so the Firebase Gradle plugins (`app/build.gradle.kts`, the `hasGoogleServicesConfig` gate) are never applied and Firebase is never initialised — Crashlytics and Analytics collect and send nothing. Firebase Analytics is not referenced anywhere in the code at all; only Crashlytics is wired up, through `CrashReporter` (a no-op in the `foss` flavor, Crashlytics in `gms`).
+
+If **you** want crash reporting **in your own build**, you can opt in:
 
 1. Create a Firebase project at [Firebase Console](https://console.firebase.google.com/)
-2. Add an Android app to your Firebase project
+2. Add an Android app to your Firebase project, using the app's applicationId (`iad1tya.echo.music`)
 3. Download the `google-services.json` file
 4. Place it in the `app/` directory
+5. Build a `gms` variant (e.g. `assembleUniversalGmsRelease`) — the `foss` variant has no crash backend, so it stays a no-op regardless
 
-**Note:** If you skip Firebase setup, the app will still build and run, but analytics and crash reporting will be disabled.
+Adding the file applies the Google Services + Crashlytics plugins, which initialises Firebase: your build will then send crash reports **to your own Firebase project**, and Firebase Analytics will begin its automatic collection even though no code calls it. Do this knowingly — and never commit the file (it is gitignored).
+
+**Note:** If you skip Firebase setup, the app builds and runs normally. This is the default and the shipped configuration.
 
 ### 4. Configure Release Signing (Optional)
 

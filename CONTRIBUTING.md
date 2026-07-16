@@ -89,21 +89,22 @@ We are committed to providing a welcoming and inspiring community for all. We pl
    
    > **IMPORTANT**: Never commit your `local.properties` file to the repository as it contains local configuration specific to your development environment. The `.gitignore` file is configured to exclude this file.
 
-### 2. Firebase Setup (Optional)
+### 2. Firebase Setup (Optional — not used by the published app)
 
-If you want to test Firebase features:
+**Aura Hi-Res Player ships without Firebase.** No `google-services.json` exists in this repository and the release pipeline does not create one, so the Firebase Gradle plugins are never applied (see the `hasGoogleServicesConfig` gate in `app/build.gradle.kts`) and Firebase is never initialised — the published app collects and sends no analytics and no crash reports. Firebase Analytics is never called in code; only Crashlytics is wired up, via `CrashReporter` (no-op in `foss`, Crashlytics in `gms`).
+
+Adding a `google-services.json` is therefore an **opt-in for your own build only**. If you want crash reporting while developing:
 
 1. Create a Firebase project
 2. Add Android apps with package names:
    - `iad1tya.echo.music` (release)
-   - `iad1tya.echo.music.debug` (debug)
-3. Copy the template and configure it with your Firebase credentials:
-   ```bash
-   cp app/google-services.json.template app/google-services.json
-   ```
-4. Edit `app/google-services.json` with your Firebase project details
+   - `iad1tya.echo.music.debug` (debug — the debug build applies a `.debug` applicationIdSuffix)
+3. Download the generated `google-services.json` from the Firebase console and place it at `app/google-services.json`
+4. Build a `gms` variant — `foss` has no crash backend and stays a no-op either way
 
-> **IMPORTANT**: Never commit your actual `google-services.json` file to the repository as it contains sensitive API keys. The `.gitignore` file is configured to exclude this file.
+Be aware this initialises Firebase in your build: Crashlytics will report to **your** project, and Firebase Analytics will start collecting automatically even though no code calls it.
+
+> **IMPORTANT**: Never commit your actual `google-services.json` file to the repository as it contains sensitive API keys. The `.gitignore` file is configured to exclude this file — keep it that way, so the published app stays telemetry-free.
 
 ## Handling Sensitive Information
 
@@ -117,7 +118,7 @@ When contributing to Aura Hi-Res Player, it's crucial to handle sensitive inform
 
 2. **google-services.json**
    - Contains Firebase API keys and project credentials
-   - Use the provided template (`app/google-services.json.template`) instead
+   - Not present in this repository, and not needed to build or run the app — generate your own from the Firebase console only if you deliberately want crash reporting in your own build (see "Firebase Setup" above)
 
 3. **Build outputs**
    - Never commit `.apk`, `.aab`, `.class`, or other build artifacts

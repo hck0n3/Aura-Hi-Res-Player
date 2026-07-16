@@ -50,9 +50,10 @@ The following files contain sensitive information and should never be committed:
 
 Aura Hi-Res Player is committed to user privacy:
 
-- **No personal data collection**: We don't collect personal information
-- **Local storage**: User data is stored locally on the device
-- **Analytics**: We collect minimal usage data and crash reports through Firebase Analytics to improve app stability and enhance the overall user experience.
+- **No analytics, no tracking**: the published app ships no active analytics and sends us no crash reports. The Firebase libraries are linked in the `gms` variant but are never initialised, because the Firebase Gradle plugins only apply when a `google-services.json` is present — and none exists in this repository or in the release pipeline. Firebase Analytics is never called in code either. The `foss` variant has no crash backend at all (its crash reporter is a no-op). A developer who adds their own `google-services.json` to a `gms` build enables Crashlytics in *their own* build only.
+- **Local storage**: your library, listening history, playlists, searches and preferences stay on the device. We have no account system for them.
+- **What we do receive**: license/demo checks send a license key and a device identifier (`ANDROID_ID`, or a random fallback ID) to our license server — required for the subscription. AI playlist prompts and song-recognition fingerprints reach our relay only when you use those features.
+- **What third parties receive**: the app is a YouTube Music client, so YouTube (Google) receives your playback requests and IP. Lyrics, metadata and optional integrations (Last.fm, ListenBrainz, Spotify, SponsorBlock, AI, translation) are documented in [PRIVACY_POLICY.md](PRIVACY_POLICY.md).
 - **Open source**: All code is available for review
 
 ## Contact
