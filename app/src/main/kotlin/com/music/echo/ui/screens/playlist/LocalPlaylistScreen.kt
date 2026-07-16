@@ -121,6 +121,7 @@ import iad1tya.echo.music.LocalPlayerAwareWindowInsets
 import iad1tya.echo.music.LocalPlayerConnection
 import iad1tya.echo.music.LocalSyncUtils
 import iad1tya.echo.music.R
+import iad1tya.echo.music.constants.AiPlaylistEnabledKey
 import iad1tya.echo.music.constants.DarkModeKey
 import iad1tya.echo.music.constants.PlaylistEditLockKey
 import iad1tya.echo.music.constants.PlaylistSongSortDescendingKey
@@ -339,6 +340,27 @@ fun LocalPlaylistScreen(
         }
     }
 
+    // "Editar con IA" — same feature toggle that gates the create-playlist AI FAB in LibraryScreen.
+    val (aiPlaylistEnabled) = rememberPreference(AiPlaylistEnabledKey, true)
+    var showAiModifyDialog by remember { mutableStateOf(false) }
+
+    // Pure-local editable playlists ONLY. A YouTube-synced playlist gets wiped and re-imported by
+    // "Sincronizar" (clearPlaylist + re-insert), so local-only AI edits there would silently vanish.
+    val canAiModify = aiPlaylistEnabled && editable && playlist?.playlist?.browseId == null
+
+    if (showAiModifyDialog && canAiModify) {
+        AiModifyPlaylistDialog(
+            playlistId = viewModel.playlistId,
+            // The list as DISPLAYED, so an instruction about what the user sees lines up.
+            songs = songs,
+            onDismiss = { showAiModifyDialog = false },
+            onOpenAiSettings = {
+                showAiModifyDialog = false
+                navController.navigate("settings/ai")
+            },
+        )
+    }
+
     var showRemoveDownloadDialog by remember {
         mutableStateOf(false)
     }
@@ -543,6 +565,11 @@ fun LocalPlaylistScreen(
                                 onShowEditDialog = { showEditDialog = true },
                                 onShowRemoveDownloadDialog = { showRemoveDownloadDialog = true },
                                 onshowDeletePlaylistDialog = { showDeletePlaylistDialog = true },
+                                onShowAiModifyDialog = if (canAiModify) {
+                                    { showAiModifyDialog = true }
+                                } else {
+                                    null
+                                },
                                 onStartSearch = { isSearching = true },
                                 snackbarHostState = snackbarHostState,
                                 modifier = Modifier.animateItem()
@@ -948,6 +975,8 @@ fun LocalPlaylistHeader(
     onStartSearch: () -> Unit,
     snackbarHostState: SnackbarHostState,
     modifier: Modifier,
+    /** Null hides the "Editar con IA" menu entry (see the gate at the call site). */
+    onShowAiModifyDialog: (() -> Unit)? = null,
 ) {
     val playerConnection = LocalPlayerConnection.current ?: return
     val context = LocalContext.current
@@ -1392,6 +1421,7 @@ fun LocalPlaylistHeader(
                             songs = songs,
                             context = context,
                             downloadState = downloadState,
+                            onAiModify = onShowAiModifyDialog,
                             onEdit = onShowEditDialog,
                             onSync = {
                                 scope.launch(Dispatchers.IO) {
