@@ -5,11 +5,13 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import androidx.core.content.getSystemService
 import iad1tya.echo.music.utils.iTunesDiscography
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withContext
 
 /**
  * On-device cache of "artist -> primary genre" (from iTunes), so the taste engine can reason about real
@@ -47,14 +49,17 @@ object GenreCache {
      * Fill in genres for [artistNames] we don't know yet. Caches a blank for misses so we don't retry.
      * Honours [onlyWifi]; safe to call often (it skips known artists and bounds the work).
      */
-    suspend fun enrich(context: Context, artistNames: List<String>, onlyWifi: Boolean) {
-        if (onlyWifi && !isWifi(context)) return
+    suspend fun enrich(context: Context, artistNames: List<String>, onlyWifi: Boolean) = withContext(Dispatchers.IO) {
+        // withContext(IO) is a self-defence, not a formality: this is reachable from MusicService's scope, which
+        // is Main (the player's looper). The WiFi check is a binder IPC and `has()` can force a synchronous XML
+        // load — neither belongs on the playback thread, whatever the caller passes.
+        if (onlyWifi && !isWifi(context)) return@withContext
         val pending = artistNames
             .map { it.trim() }
             .filter { it.isNotBlank() && !has(context, it.lowercase()) }
             .distinctBy { it.lowercase() }
             .take(40)
-        if (pending.isEmpty()) return
+        if (pending.isEmpty()) return@withContext
 
         val sem = Semaphore(4)
         val results = coroutineScope {
