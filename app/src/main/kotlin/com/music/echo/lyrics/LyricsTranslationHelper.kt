@@ -43,10 +43,16 @@ object LyricsTranslationHelper {
 
     // FREE keyless translation (no user API key). There is NO embedded OpenRouter key in the app:
     // AiPlaylistService's "free" path is fully KEYLESS (no Authorization header) against the public
-    // OpenAI-compatible Pollinations endpoint, trying several free models in turn. We reuse the same
-    // endpoint + model cascade here so lyric translation works without the user configuring any key.
+    // OpenAI-compatible Pollinations endpoint. We reuse the same endpoint here so lyric translation works
+    // without the user configuring any key.
+    //
+    // Only ONE model, not the old listOf("openai", "mistral", "llama", "deepseek"): probed live against
+    // https://text.pollinations.ai/models, the anonymous tier exposes exactly one model (`openai-fast`,
+    // aliased as `openai`); the other three return "Model not found" — they were three guaranteed failed
+    // round-trips pretending to be a fallback. This path is only a FALLBACK anyway: Google Translate above
+    // is the primary keyless translator (#31).
     private const val FREE_KEYLESS_BASE_URL = "https://text.pollinations.ai/openai"
-    private val FREE_KEYLESS_MODELS = listOf("openai", "mistral", "llama", "deepseek")
+    private val FREE_KEYLESS_MODELS = listOf("openai")
 
     // FREE, reliable, keyless lyric translation via Google Translate's public web endpoint.
     // GET https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=<code>&dt=t&q=<text>

@@ -2211,10 +2211,6 @@ class MusicService :
         // #27: a genuine user-initiated playQueue (playWhenReady=true) clears the restore veto so external
         // controls work normally. A restore calls this with playWhenReady=false and leaves it armed.
         if (playWhenReady) awaitingFirstUserPlay = false
-        // A new queue means nothing is in flight any more, so the quality-change survivor has nothing left to
-        // protect — including when the user re-selects the SAME track to A/B a quality change, which is the one
-        // case the id-based collector in onMediaItemTransition can't see.
-        dropQualityPin()
         _mixActive.value = false  // fresh user-chosen queue → Mix/Radio no longer active
         // Fresh user queue → the old autoplay chips no longer describe what will play next. Clearing the
         // seed cache also re-allows one refresh for the NEXT radio seed (still once-per-seed bounded).
@@ -2244,6 +2240,12 @@ class MusicService :
         
         originalQueueSize = 0
         if (queue.preloadItem != null) {
+            // Drop the quality-change survivor HERE, not in playQueue's prologue: the pin protects an IN-FLIGHT
+            // stream, and until this line the old stream is still playing. playQueue is async and can abort
+            // without ever touching the player (empty initial status, getInitialStatus throwing offline —
+            // SilentHandler swallows it), which would have left the still-audible track with its lock deleted
+            // and nothing able to restore it. Only the two sites that actually re-point the player may drop it.
+            dropQualityPin()
             player.setMediaItem(queue.preloadItem!!.toMediaItem())
             player.prepare()
             player.playWhenReady = playWhenReady
@@ -2276,6 +2278,9 @@ class MusicService :
                 )
             } else {
                 val safeIndex = initialStatus.mediaItemIndex.coerceIn(0, (initialStatus.items.size - 1).coerceAtLeast(0))
+                // The other site that genuinely ends the in-flight stream — see the note at the preloadItem
+                // branch above.
+                dropQualityPin()
                 player.setMediaItems(
                     initialStatus.items,
                     safeIndex,
@@ -5489,7 +5494,12 @@ class MusicService :
                     url = streamUrl,
                     expiresAt = System.currentTimeMillis() + (nonNullPlayback.streamExpiresInSeconds * 1000L),
                     delivered = deliveredQuality,
-                    requested = lockedQuality,
+                    // NOT `lockedQuality`: its middle branch IS the cached DELIVERED value, so stamping it here
+                    // would feed a delivered value straight back into the field whose only reader asks "what did
+                    // the user ASK for?" — re-overloading the field this type exists to split. `forceOpus` is
+                    // genuinely the request for this track (and dropping it at cold start is right: a per-session
+                    // refetch must not survive a restart); otherwise the request is the global quality.
+                    requested = if (forceOpus) iad1tya.echo.music.constants.AudioQuality.OPUS else audioQuality,
                 )
                 // FIX B1 (#28.1): persist the freshly-resolved URL (whole cache snapshot) so it survives a
                 // restart / app update. Off the main thread; never blocks this resolve.

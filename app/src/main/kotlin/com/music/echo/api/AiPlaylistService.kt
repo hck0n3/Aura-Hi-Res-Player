@@ -59,12 +59,21 @@ object AiPlaylistService {
     private const val POLLINATIONS_URL = "https://text.pollinations.ai/openai"
 
     /**
-     * Several FREE Pollinations models, tried IN ORDER until one actually returns a usable playlist.
-     * A single busy / rate-limited / empty model no longer sinks the whole request — the chain walks
-     * to the next model. Only if EVERY model fails does the keyless chain give up (and the caller then
-     * builds a non-AI playlist from search/radio). Order = most reliable first.
+     * The FREE Pollinations models, tried IN ORDER until one returns a usable playlist. If every model fails
+     * the keyless chain gives up and the caller builds a non-AI playlist from search/radio, so this never
+     * dead-ends either way.
+     *
+     * This list used to read `listOf("openai", "mistral", "llama", "deepseek")`, which was a FICTION. Probed
+     * live against https://text.pollinations.ai/models: the anonymous (keyless) tier exposes exactly ONE
+     * model — `openai-fast` (GPT-OSS 20B), whose aliases include `openai`. The other three answered
+     * `{"error":"Model not found: <name>. This is our legacy API ..."}`. So the "cascade" was one model tried
+     * four times under three names that do not exist: three guaranteed round-trips burning the 60s budget and
+     * making the AI take LONGER to fail, while looking like redundancy it never had.
+     *
+     * Keep it honest: list only what actually answers. Real redundancy needs a SECOND PROVIDER (the Aura
+     * Worker above), not more names for the same one.
      */
-    private val POLLINATIONS_MODELS = listOf("openai", "mistral", "llama", "deepseek")
+    private val POLLINATIONS_MODELS = listOf("openai")
 
     /** Modest per-endpoint retries for the keyless chain so the chained worst case stays bounded. */
     private const val KEYLESS_MAX_RETRIES = 2
