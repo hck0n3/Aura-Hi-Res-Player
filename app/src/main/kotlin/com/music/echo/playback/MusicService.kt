@@ -593,7 +593,13 @@ class MusicService :
 
     // ConcurrentHashMap: structurally mutated from the ExoPlayer loader thread (ResolvingDataSource resolver),
     // the Main thread (quality collector / refetchCurrentInOpus) and an IO coroutine (preloadUpcomingItems).
-    private val songUrlCache = java.util.concurrent.ConcurrentHashMap<String, Pair<String, Long>>()
+    // Triple = (stream url, absolute expiry epoch-ms, AudioQuality the url was RESOLVED at). The quality rides in
+    // the VALUE, never in the key: #28's per-mediaId lookup shape stays intact (keying it would also force a
+    // parse on read, and a YouTube videoId is base64url — ~16% contain '_', so any '_'-delimited scheme mis-parses).
+    // third == null means UNKNOWN (entry restored from a blob written before "q" existed) — readers must then fall
+    // back to the global audioQuality, never treat it as a pin.
+    private val songUrlCache =
+        java.util.concurrent.ConcurrentHashMap<String, Triple<String, Long, iad1tya.echo.music.constants.AudioQuality?>>()
 
     // FIX A (#27 phantom playback): true after a PERSISTENT-QUEUE RESTORE left the player IDLE with the
     // restored items + saved seek set but deliberately NOT prepared, so an external media-button PLAY (BT /
@@ -650,12 +656,14 @@ class MusicService :
                     .take(SONG_URL_CACHE_PERSIST_MAX)
                 val json = org.json.JSONObject()
                 for (e in entries) {
-                    json.put(
-                        e.key,
-                        org.json.JSONObject()
-                            .put("u", e.value.first)
-                            .put("e", streamUrlExpiryMillis(e.value.first, e.value.second))
-                    )
+                    val o = org.json.JSONObject()
+                        .put("u", e.value.first)
+                        .put("e", streamUrlExpiryMillis(e.value.first, e.value.second))
+                    // "q" = the AudioQuality this URL was resolved at, so a restored entry can't be mistaken for
+                    // one resolved at the CURRENT global quality. Omitted when unknown (itself restored from a
+                    // pre-"q" blob): an absent "q" reads back as null = unknown, not as a pin.
+                    e.value.third?.let { q -> o.put("q", q.name) }
+                    json.put(e.key, o)
                 }
                 dataStore.edit { it[iad1tya.echo.music.constants.SongUrlCacheBlobKey] = json.toString() }
             }.onFailure { Timber.tag(TAG).d(it, "persistSongUrlCache failed (non-fatal)") }
@@ -681,8 +689,15 @@ class MusicService :
                     val o = json.optJSONObject(k) ?: continue
                     val u = o.optString("u", "")
                     val e = o.optLong("e", 0L)
+                    // A blob written before "q" existed has no quality: keep it as null (UNKNOWN) rather than
+                    // guessing. The resolver then falls back to the global audioQuality and the dbFormat container
+                    // guard decides — so an OLD blob still serves its URLs (#28 fast path) and can never pin a
+                    // replay to a stale quality. No migration, no crash: an unparsable name also degrades to null.
+                    val q = o.optString("q", "").takeIf { it.isNotEmpty() }?.let { name ->
+                        iad1tya.echo.music.constants.AudioQuality.entries.find { it.name == name }
+                    }
                     if (u.isNotEmpty() && e > safeNow) {
-                        songUrlCache.putIfAbsent(k, u to e)
+                        songUrlCache.putIfAbsent(k, Triple(u, e, q))
                         restored++
                     }
                 }
@@ -1235,18 +1250,30 @@ class MusicService :
 
                     Timber.tag("MusicService").i("QUALITY CHANGED: $oldQuality -> $newQuality. Will take effect for upcoming songs.")
 
-                    val mediaId = player.currentMediaItem?.mediaId ?: return@collect
-                    val currentUrl = songUrlCache[mediaId]
+                    // NOT `?: return@collect`: changing quality with nothing loaded is the COMMON case (the user is
+                    // sitting in Settings, player empty/idle). Returning early skipped the clear entirely, so every
+                    // URL already resolved this session stayed pinned at the old quality.
+                    val mediaId = player.currentMediaItem?.mediaId
+                    val currentUrl = mediaId?.let { songUrlCache[it] }
 
                     // Clear cache for upcoming songs so they fetch the new quality
                     songUrlCache.clear()
-                    
-                    // Restore the currently playing song's URL so it doesn't break
-                    if (currentUrl != null) {
+
+                    // Restore the currently playing song's URL so it doesn't break. This surviving entry IS the
+                    // mid-song container lock: it carries the quality it was resolved at, so a re-resolve of the
+                    // in-flight track (e.g. a seek past the buffer) keeps its container instead of swapping it
+                    // under the decoder. Every OTHER song is now uncached → next play resolves at the new quality.
+                    if (mediaId != null && currentUrl != null) {
                         songUrlCache[mediaId] = currentUrl
                     }
 
-                    // Re-trigger prefetch to fetch the next songs in the new quality
+                    // Re-persist NOW (#28): the blob is the cross-restart mirror of this map. Without this write the
+                    // DataStore copy kept the OLD-quality URLs and the next cold start re-seeded exactly what we
+                    // just cleared — the quality change silently undone by a restart. Off-main, best-effort.
+                    persistSongUrlCache()
+
+                    // Re-trigger prefetch to fetch the next songs in the new quality. No-op on an empty queue
+                    // (guards on INDEX_UNSET), so this is safe now that a null mediaId reaches here.
                     preloadUpcomingItems()
                 }
         }
@@ -5110,20 +5137,25 @@ class MusicService :
                 }
             }
 
-            // Read Room NOW — BEFORE serving any playerCache/songUrlCache hit — for the locked-quality /
-            // container decisions the fetch below needs AND the container-mismatch guard.
+            // Read Room NOW — BEFORE serving any playerCache/songUrlCache hit — for the container-mismatch guard
+            // below, which decides whether the CACHED BYTES may be served or must be bypassed+refetched.
             val dbFormat = runBlocking(Dispatchers.IO) { database.format(mediaId).firstOrNull() }
 
             // refetchCurrentInOpus() forces this track to Opus, overriding both the global quality and the
-            // "locked" container of the currently-playing track (below).
+            // "locked" quality of the currently-playing track (below).
             val forceOpus = forceOpusForMediaId == mediaId
+            // Mid-song container lock, scoped to the SESSION — deliberately read from songUrlCache, NOT from the
+            // persisted FormatEntity. dbFormat is a DB row that outlives the process, so pinning to it made the
+            // lock permanent: a song first played at OPUS re-pinned to OPUS on every later replay, forever, and
+            // re-upserted the opus row — the container guard below could never fire against it either, since it
+            // was derived from the very row it compares. A live cache entry instead means "this session already
+            // resolved this URL", which is exactly the mid-song case worth protecting: the quality collector
+            // preserves ONLY the playing track's entry when a quality change clears the map, so an in-flight track
+            // keeps its container while every replay finds no entry → falls through to the global quality.
+            val cachedQuality = songUrlCache[mediaId]?.third
             val lockedQuality = when {
                 forceOpus -> iad1tya.echo.music.constants.AudioQuality.OPUS
-                isCurrentlyPlaying && dbFormat != null -> when {
-                    dbFormat.mimeType.contains("flac", ignoreCase = true) -> iad1tya.echo.music.constants.AudioQuality.LOSSLESS
-                    dbFormat.mimeType.contains("mp4", ignoreCase = true) || dbFormat.mimeType.contains("m4a", ignoreCase = true) -> iad1tya.echo.music.constants.AudioQuality.SAAVN
-                    else -> iad1tya.echo.music.constants.AudioQuality.OPUS
-                }
+                isCurrentlyPlaying && cachedQuality != null -> cachedQuality
                 else -> audioQuality
             }
 
@@ -5313,8 +5345,14 @@ class MusicService :
 
                 val streamUrl = nonNullPlayback.streamUrl
 
-                songUrlCache[mediaId] =
-                    streamUrl to System.currentTimeMillis() + (nonNullPlayback.streamExpiresInSeconds * 1000L)
+                // Stamp the quality this URL was ACTUALLY resolved at (lockedQuality — what was passed to
+                // playerResponseForPlayback above), so the mid-song lock and the persisted blob both describe the
+                // real container instead of re-deriving it from a DB row later.
+                songUrlCache[mediaId] = Triple(
+                    streamUrl,
+                    System.currentTimeMillis() + (nonNullPlayback.streamExpiresInSeconds * 1000L),
+                    lockedQuality
+                )
                 // FIX B1 (#28.1): persist the freshly-resolved URL (whole cache snapshot) so it survives a
                 // restart / app update. Off the main thread; never blocks this resolve.
                 persistSongUrlCache()
@@ -6713,9 +6751,12 @@ class MusicService :
                         val dbSong = database.song(mediaId).firstOrNull()
                         val knownArtist = dbSong?.artists?.joinToString(separator = ", ") { artist -> artist.name }?.replace(" - Topic", "")
                         
+                        // Capture the quality ONCE: it is both the resolve argument and the value stamped into the
+                        // cache below, and a concurrent quality change must not make those two disagree.
+                        val resolveQuality = audioQuality
                         val playbackData = iad1tya.echo.music.utils.YTPlayerUtils.playerResponseForPlayback(
                             videoId = mediaId,
-                            audioQuality = audioQuality,
+                            audioQuality = resolveQuality,
                             connectivityManager = connectivityManager,
                             context = this@MusicService,
                             knownArtist = knownArtist,
@@ -6726,7 +6767,9 @@ class MusicService :
                         playbackData.getOrNull()?.let { data ->
                             // Mirror the main resolver's TTL: honour the real stream expiry instead of a
                             // hardcoded 1h (a googlevideo URL can expire sooner and would then 403).
-                            songUrlCache[mediaId] = Pair(data.streamUrl, System.currentTimeMillis() + (data.streamExpiresInSeconds * 1000L))
+                            // Prefetch always resolves at the GLOBAL quality — an upcoming track is never
+                            // container-locked to anything else.
+                            songUrlCache[mediaId] = Triple(data.streamUrl, System.currentTimeMillis() + (data.streamExpiresInSeconds * 1000L), resolveQuality)
                             Timber.tag(TAG).d("Preloaded stream for $mediaId")
 
                             // FIX A: cache the loudness (FormatEntity) for the UPCOMING track NOW, so when it
