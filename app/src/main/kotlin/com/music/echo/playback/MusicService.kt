@@ -6070,12 +6070,36 @@ class MusicService :
             MusicWidgetReceiver.ACTION_UPDATE_WIDGET -> {
                 updateWidgetUI(player.isPlaying)
             }
+            ACTION_CLEAR_SONG_CACHE -> {
+                intent.getStringExtra(EXTRA_SONG_ID)?.takeIf { it.isNotBlank() }?.let { clearSongCache(it) }
+            }
         }
 
         return super.onStartCommand(intent, flags, startId)
     }
 
-    
+    /**
+     * Refetch ("volver a obtener"): drop everything that would let the NEXT play of [songId] serve the OLD
+     * audio. Clearing songUrlCache is the load-bearing half — the resolver returns a cached-URL hit long
+     * before it would re-ask YouTube, so removing the bytes alone changes nothing. The persisted mirror is
+     * rewritten in the same breath or the stale URL simply returns on the next cold start.
+     *
+     * #28 forbids dropping cached BYTES *implicitly* (when we merely lack a URL — the "ghost cache" churn);
+     * this path is the user explicitly asking for a fresh stream, which is the orthogonal case. The per-mediaId
+     * lookup shape and the persistence invariant it protects are untouched.
+     *
+     * Disk work runs off the main thread (onStartCommand is Main); the caches are concurrent, so no lock.
+     */
+    private fun clearSongCache(songId: String) {
+        songUrlCache.remove(songId)
+        persistSongUrlCache()
+        scope.launch(Dispatchers.IO) {
+            runCatching { playerCache.removeResource(songId) }
+                .onFailure { Timber.tag(TAG).d(it, "clearSongCache: playerCache removal failed (non-fatal)") }
+        }
+        Timber.tag(TAG).i("clearSongCache: dropped cached stream URL + bytes for $songId")
+    }
+
     /**
      * #27: the app came to the foreground (user opened it) — genuine engagement, so drop the cold-restore PLAY
      * veto and let all external controls (BT/AA/notification/watch) work normally. Called from MainActivity.
@@ -6599,6 +6623,10 @@ class MusicService :
         const val YOUTUBE_PLAYLIST = "youtube_playlist"
         const val SEARCH = "search"
         const val SHUFFLE_ACTION = "__shuffle__"
+
+        // Refetch: sent by the song menus to drop a song's cached stream URL + bytes (see clearSongCache).
+        const val ACTION_CLEAR_SONG_CACHE = "iad1tya.echo.music.ACTION_CLEAR_SONG_CACHE"
+        const val EXTRA_SONG_ID = "songId"
 
         const val CHANNEL_ID = "music_channel_01"
         const val NOTIFICATION_ID = 888
