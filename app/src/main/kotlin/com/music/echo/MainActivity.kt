@@ -23,6 +23,8 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
+import android.os.SystemClock
+import android.view.HapticFeedbackConstants
 import android.view.View
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
@@ -109,9 +111,15 @@ import com.airbnb.lottie.compose.animateLottieCompositionAsState
 import com.airbnb.lottie.compose.rememberLottieComposition
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.changedToDown
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -159,6 +167,7 @@ import iad1tya.echo.music.constants.DefaultOpenTabKey
 import iad1tya.echo.music.constants.DisableScreenshotKey
 import iad1tya.echo.music.constants.DynamicThemeKey
 import iad1tya.echo.music.constants.EnableHighRefreshRateKey
+import iad1tya.echo.music.constants.GlobalHapticsKey
 import iad1tya.echo.music.constants.FloatingToolbarBottomPadding
 import iad1tya.echo.music.constants.FloatingToolbarHorizontalPadding
 import iad1tya.echo.music.constants.ListenTogetherInTopBarKey
@@ -674,6 +683,11 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        // Global haptics: a single root-level observer covers taps and scrolling app-wide, so the
+        // toggle is honoured everywhere instead of only in the few components that opted in.
+        val (globalHaptics) = rememberPreference(GlobalHapticsKey, defaultValue = true)
+        val rootView = LocalView.current
+
         echomusicTheme(
             darkTheme = useDarkTheme,
             pureBlack = pureBlack,
@@ -683,6 +697,28 @@ class MainActivity : ComponentActivity() {
                 modifier = Modifier
                     .fillMaxSize()
                     .background(if (pureBlack) Color.Black else MaterialTheme.colorScheme.surface)
+                    .pointerInput(globalHaptics) {
+                        if (!globalHaptics) return@pointerInput
+                        // Observe-only on the Initial pass: nothing is ever consumed, so children,
+                        // scrolling and D-pad/TV focus keep the exact behaviour they had before.
+                        // The scroll tick is throttled to 100ms, otherwise a drag would fire a
+                        // haptic per motion event and turn into continuous vibration (battery/heat).
+                        var lastScrollHaptic = 0L
+                        awaitPointerEventScope {
+                            while (true) {
+                                val changes = awaitPointerEvent(PointerEventPass.Initial).changes
+                                if (changes.fastAny { it.changedToDown() }) {
+                                    rootView.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+                                } else if (changes.fastAny { it.pressed && it.positionChange() != Offset.Zero }) {
+                                    val now = SystemClock.uptimeMillis()
+                                    if (now - lastScrollHaptic > SCROLL_HAPTIC_THROTTLE_MS) {
+                                        rootView.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                                        lastScrollHaptic = now
+                                    }
+                                }
+                            }
+                        }
+                    }
             ) {
                 val focusManager = LocalFocusManager.current
                 val density = LocalDensity.current
@@ -1832,6 +1868,10 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
+
+/** Minimum gap between two scroll haptics. Below this a drag fires one tick per motion event,
+ *  which the vibrator renders as a continuous buzz (and burns battery). */
+private const val SCROLL_HAPTIC_THROTTLE_MS = 100L
 
 val LocalDatabase = staticCompositionLocalOf<MusicDatabase> { error("No database provided") }
 val LocalRingtoneViewModel = compositionLocalOf<RingtoneViewModel> { error("No RingtoneViewModel provided") }

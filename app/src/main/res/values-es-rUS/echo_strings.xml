@@ -583,6 +583,8 @@
     <string name="play_all">Reproducir todo</string>
     <string name="enable_high_refresh_rate">Habilitar alta tasa de refresco</string>
     <string name="enable_high_refresh_rate_desc">Obliga a la pantalla a funcionar con la frecuencia de actualización más alta compatible (por ejemplo, 120 Hz)</string>
+    <string name="global_haptics">Respuesta háptica</string>
+    <string name="global_haptics_desc">Vibra al tocar y al desplazarte por toda la app</string>
     <string name="recognition">Reconocimiento</string>
     <string name="recognize_music">Identificar Canción</string>
     <string name="tap_to_recognize">Toca para identificar</string>

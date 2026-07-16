@@ -93,14 +93,13 @@ private fun Material3SettingsItemRow(
     item: Material3SettingsItem,
     compact: Boolean = false
 ) {
-    val hapticOnClick = iad1tya.echo.music.ui.utils.rememberHapticClick { item.onClick?.invoke() }
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .tvFocusableItem(rememberIsTvOrCar())
             .clickable(
                 enabled = item.enabled && item.onClick != null,
-                onClick = hapticOnClick
+                onClick = { item.onClick?.invoke() }
             )
             .padding(
                 horizontal = if (compact) 14.dp else 20.dp, 

@@ -1025,9 +1025,9 @@ fun AppearanceSettings(
                 )
                 add(
                     Material3SettingsItem(
-                        icon = painterResource(R.drawable.speed),
-                        title = { Text("Respuesta háptica") },
-                        description = { Text("Vibra al tocar en toda la app") },
+                        icon = painterResource(R.drawable.vibration),
+                        title = { Text(stringResource(R.string.global_haptics)) },
+                        description = { Text(stringResource(R.string.global_haptics_desc)) },
                         trailingContent = {
                             Switch(
                                 checked = globalHaptics,
