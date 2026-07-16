@@ -98,32 +98,108 @@ object AiPlaylistService {
             return@withContext Result.failure(IllegalArgumentException("Prompt is empty"))
         }
 
-        val messages = JSONArray().apply {
-            AiPlaylistPrompt.buildMessages(prompt, count).forEach { message ->
-                put(
-                    JSONObject().apply {
-                        put("role", message.role)
-                        put("content", message.content)
-                    },
-                )
-            }
-        }
+        val messages = toJsonArray(AiPlaylistPrompt.buildMessages(prompt, count))
         // Scale the token budget with the requested count (~80 tok/track + overhead) so a 50-song
         // request isn't truncated mid-JSON (the old fixed 2048 cut off large playlists → fewer songs).
         val maxTokens = (count * 80 + 512).coerceIn(1024, 8192)
+        // The era the REQUEST implies gates the parser's year check (soft chain-of-verification: the
+        // prompt makes the model commit to a year, this checks it). Null for requests with no era.
+        val era = AiPlaylistParser.eraRange(prompt)
 
+        runChain(
+            messages = messages,
+            maxTokens = maxTokens,
+            provider = provider,
+            apiKey = apiKey,
+            baseUrl = baseUrl,
+            model = model,
+            maxRetries = maxRetries,
+        ) { content -> AiPlaylistParser.parse(content, count, era) }
+    }
+
+    /**
+     * Asks the AI how to EDIT an existing playlist: which positions to remove and which tracks to add.
+     * Runs the exact same provider chain as [generate] (user key → Aura Worker → free Pollinations
+     * models, with the same 429/408/425/5xx + Retry-After retries), so the modify feature inherits the
+     * "never says IA ocupada for a transient blip" behavior for free.
+     *
+     * [currentTracks] is the playlist in display order. Only positional indices cross the wire — see
+     * [AiPlaylistPrompt.buildModifyMessages]. Unlike [generate] there is NO non-AI fallback: if the
+     * chain fails the caller must no-op, because a wrong edit to the user's playlist is worse than none.
+     */
+    suspend fun modify(
+        currentTracks: List<TrackQuery>,
+        prompt: String,
+        provider: String,
+        apiKey: String,
+        baseUrl: String,
+        model: String,
+        maxRetries: Int = 3,
+    ): Result<AiPlaylistEdit> = withContext(Dispatchers.IO) {
+        if (prompt.isBlank()) {
+            return@withContext Result.failure(IllegalArgumentException("Prompt is empty"))
+        }
+        if (currentTracks.isEmpty()) {
+            return@withContext Result.failure(IllegalArgumentException("Playlist is empty"))
+        }
+
+        val messages = toJsonArray(AiPlaylistPrompt.buildModifyMessages(currentTracks, prompt))
+        // Only the tracks actually shown to the model can be referenced by an index, so the parser
+        // validates against the SAME capped count the prompt printed.
+        val visibleCount = currentTracks.size.coerceAtMost(AiPlaylistPrompt.MAX_MODIFY_TRACKS)
+        // The reply is small (a few indices + a few additions); the playlist itself is INPUT tokens.
+        val maxTokens = (visibleCount * 8 + 1024).coerceIn(1024, 8192)
+
+        runChain(
+            messages = messages,
+            maxTokens = maxTokens,
+            provider = provider,
+            apiKey = apiKey,
+            baseUrl = baseUrl,
+            model = model,
+            maxRetries = maxRetries,
+        ) { content -> AiPlaylistParser.parseEdit(content, visibleCount) }
+    }
+
+    private fun toJsonArray(messages: List<ChatMessage>): JSONArray = JSONArray().apply {
+        messages.forEach { message ->
+            put(
+                JSONObject().apply {
+                    put("role", message.role)
+                    put("content", message.content)
+                },
+            )
+        }
+    }
+
+    /**
+     * THE provider chain, shared by [generate] and [modify] so the two can never drift apart:
+     * user key → Aura Worker probe → free Pollinations models. [parse] turns a successful completion's
+     * text into the caller's result type; everything else (ordering, retries, fast-fail rules) is
+     * identical for both features.
+     */
+    private suspend fun <T> runChain(
+        messages: JSONArray,
+        maxTokens: Int,
+        provider: String,
+        apiKey: String,
+        baseUrl: String,
+        model: String,
+        maxRetries: Int,
+        parse: (String) -> Result<T>,
+    ): Result<T> {
         // 1. User key override: their provider/baseUrl/model, exactly the pre-existing behavior.
         if (apiKey.isNotBlank()) {
             if (provider in UNSUPPORTED_PROVIDERS) {
-                return@withContext Result.failure(UnsupportedProviderException(provider))
+                return Result.failure(UnsupportedProviderException(provider))
             }
-            return@withContext requestChatCompletion(
+            return requestChatCompletion(
                 url = baseUrl.ifBlank { DEFAULT_BASE_URL },
                 apiKey = apiKey,
                 model = model,
                 messages = messages,
                 maxTokens = maxTokens,
-                count = count,
+                parse = parse,
                 maxRetries = maxRetries,
             )
         }
@@ -137,16 +213,17 @@ object AiPlaylistService {
             model = AURA_WORKER_MODEL,
             messages = messages,
             maxTokens = maxTokens,
-            count = count,
+            parse = parse,
             maxRetries = KEYLESS_MAX_RETRIES,
             retryEmptyContent = false,
         )
-        if (workerResult.isSuccess) return@withContext workerResult
+        if (workerResult.isSuccess) return workerResult
 
         // 3. Pollinations fallback (keyless) — try SEVERAL free models in turn until one returns a
         // usable playlist. A busy/rate-limited/empty model just advances to the next; only if EVERY
-        // model fails does the keyless chain give up. The caller (AiPlaylistGenerator) then builds a
-        // non-AI playlist from search/radio, so the feature never dead-ends on "servicio no disponible".
+        // model fails does the keyless chain give up. For generation the caller (AiPlaylistGenerator)
+        // then builds a non-AI playlist from search/radio, so the feature never dead-ends on
+        // "servicio no disponible"; for modification the caller no-ops instead (never guesses an edit).
         var lastFailure: Throwable? = null
         for (pollModel in POLLINATIONS_MODELS) {
             val r = requestChatCompletion(
@@ -155,15 +232,15 @@ object AiPlaylistService {
                 model = pollModel,
                 messages = messages,
                 maxTokens = maxTokens,
-                count = count,
+                parse = parse,
                 maxRetries = POLLINATIONS_MAX_RETRIES,
                 retryEmptyContent = true,
             )
-            if (r.isSuccess) return@withContext r
+            if (r.isSuccess) return r
             lastFailure = r.exceptionOrNull()
         }
 
-        Result.failure(AiServiceUnavailableException(lastFailure))
+        return Result.failure(AiServiceUnavailableException(lastFailure))
     }
 
     /**
@@ -179,16 +256,16 @@ object AiPlaylistService {
      * A genuine 5xx is retried regardless of this flag, since it signals a deployed-but-hiccuping
      * endpoint; a 4xx (incl. the not-yet-deployed 404) always fails fast as before.
      */
-    private suspend fun requestChatCompletion(
+    private suspend fun <T> requestChatCompletion(
         url: String,
         apiKey: String?,
         model: String,
         messages: JSONArray,
         maxTokens: Int,
-        count: Int,
+        parse: (String) -> Result<T>,
         maxRetries: Int,
         retryEmptyContent: Boolean = true,
-    ): Result<AiPlaylistSpec> {
+    ): Result<T> {
         val requestJson = JSONObject().apply {
             if (model.isNotBlank()) put("model", model)
             put("messages", messages)
@@ -261,7 +338,7 @@ object AiPlaylistService {
                 val content = message?.optString("content")?.trim()
 
                 if (!content.isNullOrBlank()) {
-                    return AiPlaylistParser.parse(content, count)
+                    return parse(content)
                 }
 
                 // Reasoning models sometimes leave content null but emit the JSON inside "reasoning"
@@ -272,7 +349,7 @@ object AiPlaylistService {
                 // "Empty AI response" instead so the retry loop keeps going.
                 val reasoning = message?.optString("reasoning")?.trim()
                 if (!reasoning.isNullOrBlank()) {
-                    val parsed = AiPlaylistParser.parse(reasoning, count)
+                    val parsed = parse(reasoning)
                     if (parsed.isSuccess) {
                         return parsed
                     }

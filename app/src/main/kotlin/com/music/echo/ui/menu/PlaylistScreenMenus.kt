@@ -35,7 +35,9 @@ fun LocalPlaylistMenu(
     onDelete: () -> Unit,
     onDownload: () -> Unit,
     onQueue: () -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    /** Null hides "Editar con IA" (feature toggled off, or a playlist it doesn't apply to). */
+    onAiModify: (() -> Unit)? = null,
 ) {
     val listenTogetherManager = LocalListenTogetherManager.current
     val isGuest = listenTogetherManager?.isInRoom == true && !listenTogetherManager.isHost
@@ -105,7 +107,26 @@ fun LocalPlaylistMenu(
             )
         )
 
-        
+        onAiModify?.let { aiModify ->
+            add(
+                Material3MenuItemData(
+                    title = { Text(stringResource(R.string.ai_modify_playlist_title)) },
+                    description = { Text(stringResource(R.string.ai_modify_playlist_desc)) },
+                    icon = {
+                        Icon(
+                            painter = painterResource(R.drawable.auto_awesome),
+                            contentDescription = null
+                        )
+                    },
+                    onClick = {
+                        aiModify()
+                        onDismiss()
+                    }
+                )
+            )
+        }
+
+
         if (isYouTubePlaylist) {
             add(
                 Material3MenuItemData(

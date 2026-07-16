@@ -31,8 +31,10 @@ object AiPlaylistGenerator {
      * Hard ceiling on the whole AI phase (worst case ≈ worker + 4 models × 2 retries). Bounds the
      * pathological all-timeouts case so the dialog can't spin for minutes holding the modem awake
      * (battery/heat rule); on timeout we simply treat AI as unavailable and build the non-AI playlist.
+     *
+     * Shared with [AiPlaylistPlaylistModifier], which bounds its own AI phase with the same budget.
      */
-    private const val AI_BUDGET_MS = 60_000L
+    internal const val AI_BUDGET_MS = 60_000L
 
     data class Result(
         val playlistId: String,
