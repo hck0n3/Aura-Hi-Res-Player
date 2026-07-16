@@ -725,6 +725,13 @@ class MusicService :
     // otherwise pins to the DB format's container). Cleared once a different track becomes current.
     @Volatile private var forceOpusForMediaId: String? = null
 
+    // The one entry the quality collector keeps alive when the user changes quality mid-song: it is the
+    // container lock for THAT track only (swapping its container under the decoder mid-stream would break it).
+    // Tracked so it can be dropped once a different track is current — otherwise it stays pinned to the OLD
+    // quality for the rest of the session (the URL TTL is ~5h), and a replay silently re-pins to it, which is
+    // the very bug the quality fix exists to kill.
+    @Volatile private var qualityPinnedMediaId: String? = null
+
     // Video mode is INTEGRATED into the main player (one engine). videoMode = sticky on/off intent;
     // videoUrl = resolved muxed URL of the current video track (null while resolving → UI spinner).
     // videoModeMediaId = the track whose source is currently the video stream; videoModeOriginalUri
@@ -1276,6 +1283,9 @@ class MusicService :
                     // under the decoder. Every OTHER song is now uncached → next play resolves at the new quality.
                     if (mediaId != null && currentUrl != null) {
                         songUrlCache[mediaId] = currentUrl
+                        qualityPinnedMediaId = mediaId
+                    } else {
+                        qualityPinnedMediaId = null
                     }
 
                     // Re-persist NOW (#28): the blob is the cross-restart mirror of this map. Without this write the
@@ -3542,6 +3552,18 @@ class MusicService :
         if (forceOpusForMediaId != null && mediaItem != null && mediaItem.mediaId != forceOpusForMediaId) {
             forceOpusForMediaId = null
         }
+        // Same idea for the quality-change survivor: its only job was to protect the container of the track that
+        // was in flight. Once a different track is current, drop it so a replay resolves at the NEW quality.
+        // Deliberately NOT cleared in performCrossfadeSwap (that path skips this callback): the crossfade logic
+        // is off-limits, and the outgoing track is fully buffered at fade time anyway — the next transition
+        // collects it, one track later at worst.
+        qualityPinnedMediaId?.let { pinned ->
+            if (mediaItem != null && mediaItem.mediaId != pinned) {
+                songUrlCache.remove(pinned)
+                qualityPinnedMediaId = null
+                persistSongUrlCache()
+            }
+        }
         // SponsorBlock: fetch skippable non-music segments for the NEW track (YouTube ids only; local songs
         // have long content:// ids and are skipped). Stale responses are ignored inside the manager.
         if (sponsorBlockEnabled) {
@@ -3696,16 +3718,17 @@ class MusicService :
                     // Keep the lane: if what's playing is clearly in a lane, prefer same-lane songs —
                     // but only enforce it when there are enough, so playback never dead-ends.
                     //
-                    // Two DIFFERENT strictnesses, because the two lane signals have opposite blind spots:
-                    //  - CHRISTIAN comes from keywords over the track's own text, so it needs no cache and an
+                    // Two DIFFERENT strictnesses, keyed on the lane's SIGNAL ORIGIN — never on its value:
+                    //  - KEYWORD-derived CHRISTIAN reads the track's own text, so it needs no cache and an
                     //    unknown candidate is, in practice, secular -> keep the ORIGINAL strict "must match".
-                    //  - A genre lane comes from GenreCache, which is only enriched with artists from YOUR
-                    //    library (HomeViewModel), so a brand-new radio artist is unknown by construction.
-                    //    Requiring a match there would drop every unknown candidate and collapse autoplay onto
-                    //    library artists (repetitive, no discovery). So we only drop candidates whose genre we
-                    //    KNOW and know to be different; unknown stays eligible.
+                    //  - Anything derived from GenreCache (INCLUDING a "Christian & Gospel" artist) must be soft:
+                    //    the cache is only enriched with artists from YOUR library (HomeViewModel), so a new radio
+                    //    artist is unknown BY CONSTRUCTION. Strictness there would drop every unknown candidate and
+                    //    collapse autoplay onto library artists (repetitive, no discovery). So we only drop
+                    //    candidates whose genre we KNOW and know to be different; unknown stays eligible.
                     if (currentLane != null) {
-                        val strictLane = currentLane == iad1tya.echo.music.reco.GenreLane.CHRISTIAN
+                        val strictLane = currentLane == iad1tya.echo.music.reco.GenreLane.CHRISTIAN &&
+                            iad1tya.echo.music.reco.GenreLane.isKeywordChristian(curTitle, curArtist, curAlbum)
                         val inLane = next.filter { mi ->
                             val lane = iad1tya.echo.music.reco.GenreLane.laneOfTrack(
                                 genres,
@@ -5408,13 +5431,21 @@ class MusicService :
 
                 val streamUrl = nonNullPlayback.streamUrl
 
-                // Stamp the quality this URL was ACTUALLY resolved at (lockedQuality — what was passed to
-                // playerResponseForPlayback above), so the mid-song lock and the persisted blob both describe the
-                // real container instead of re-deriving it from a DB row later.
+                // Stamp the quality that was DELIVERED, derived from the response with the SAME predicate the
+                // container guard uses (isFinalLossless/isFinalSaavn) — NEVER `lockedQuality`, which is only what
+                // we ASKED for. Fallback is routine (LOSSLESS -> Qobuz fails -> Saavn fails -> Opus), so stamping
+                // the request would make this entry disagree with the FormatEntity describing the same stream:
+                // the guard would then see a container mismatch for the very track that is playing, purge its
+                // cached bytes and re-resolve on every re-open — #28 all over again, on a loop.
+                val deliveredQuality = when {
+                    isFinalLossless -> iad1tya.echo.music.constants.AudioQuality.LOSSLESS
+                    isFinalSaavn -> iad1tya.echo.music.constants.AudioQuality.SAAVN
+                    else -> iad1tya.echo.music.constants.AudioQuality.OPUS
+                }
                 songUrlCache[mediaId] = Triple(
                     streamUrl,
                     System.currentTimeMillis() + (nonNullPlayback.streamExpiresInSeconds * 1000L),
-                    lockedQuality
+                    deliveredQuality
                 )
                 // FIX B1 (#28.1): persist the freshly-resolved URL (whole cache snapshot) so it survives a
                 // restart / app update. Off the main thread; never blocks this resolve.
@@ -6864,9 +6895,17 @@ class MusicService :
                         playbackData.getOrNull()?.let { data ->
                             // Mirror the main resolver's TTL: honour the real stream expiry instead of a
                             // hardcoded 1h (a googlevideo URL can expire sooner and would then 403).
-                            // Prefetch always resolves at the GLOBAL quality — an upcoming track is never
-                            // container-locked to anything else.
-                            songUrlCache[mediaId] = Triple(data.streamUrl, System.currentTimeMillis() + (data.streamExpiresInSeconds * 1000L), resolveQuality)
+                            // Prefetch always REQUESTS the global quality, but stamp what was DELIVERED (same
+                            // predicate as the resolver + the container guard): a prefetched track that fell back
+                            // must not carry a wrong pin into the persisted blob or into the guard's comparison.
+                            val preMime = data.format.mimeType
+                            val preQuality = when {
+                                preMime.contains("flac", ignoreCase = true) -> iad1tya.echo.music.constants.AudioQuality.LOSSLESS
+                                preMime.contains("mp4", ignoreCase = true) || preMime.contains("m4a", ignoreCase = true) ->
+                                    iad1tya.echo.music.constants.AudioQuality.SAAVN
+                                else -> iad1tya.echo.music.constants.AudioQuality.OPUS
+                            }
+                            songUrlCache[mediaId] = Triple(data.streamUrl, System.currentTimeMillis() + (data.streamExpiresInSeconds * 1000L), preQuality)
                             Timber.tag(TAG).d("Preloaded stream for $mediaId")
 
                             // FIX A: cache the loudness (FormatEntity) for the UPCOMING track NOW, so when it

@@ -131,6 +131,12 @@ class AiPlaylistParserTest {
         assertNull(AiPlaylistParser.eraRange("boleros tristes"))
     }
 
+    @Test fun aCountIsNotReadAsADecadeEvenWhenADecadeWordIsPresent() {
+        // "década" arms the check, but the only number is the requested COUNT: reading "40" as the
+        // 1940s would drop nearly every generated track and gut the playlist.
+        assertNull(AiPlaylistParser.eraRange("las 40 mejores canciones de la década"))
+    }
+
     // --- edit parsing -----------------------------------------------------------------------
 
     @Test fun parsesEditWithRemovalsAndAdditions() {

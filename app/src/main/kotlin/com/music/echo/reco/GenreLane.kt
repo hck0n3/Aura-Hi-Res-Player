@@ -72,6 +72,19 @@ object GenreLane {
     }
 
     /**
+     * True when [CHRISTIAN] is backed by the KEYWORD classifier (the track's own text) rather than by a cached
+     * genre. Only that origin justifies the caller's strict "must match" filter: keywords need no cache, so an
+     * unknown candidate really is, in practice, secular. A CHRISTIAN lane that came from [GenreCache] (e.g. an
+     * artist iTunes labels "Christian & Gospel") must NOT be strict — the cache only knows library artists, so
+     * strictness there would drop every new radio artist and collapse autoplay onto the library.
+     *
+     * Callers must combine this with the lane itself: a keyword hit on the ARTIST field alone does not make the
+     * lane Christian (see [laneOfTrack] — "Christian Nodal" is Latin).
+     */
+    fun isKeywordChristian(title: String?, artistName: String?, album: String? = null): Boolean =
+        laneOf(title, artistName, album) == CHRISTIAN
+
+    /**
      * Look the artist up in the cache: the full name first (how GenreCache is keyed when we enrich from the
      * library), then the primary artist when the metadata packs several into one string ("A, B", "A feat. B").
      */

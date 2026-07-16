@@ -109,9 +109,12 @@ object AiPlaylistPlaylistModifier {
             .mapNotNull { index -> snapshot.getOrNull(index) }
             .map { Removal(it.map, it.song.song.title, it.song.artists.displayName()) }
 
-        // Skip additions already in the playlist (compared against the FULL list, not the capped
-        // snapshot, so a duplicate can't slip in past the cap).
-        val existingIds = songs.map { it.song.id }.toSet()
+        // Skip additions already in the playlist. Read from the DATABASE, never from [songs]: that is
+        // the screen's list, which the "hide video songs" setting filters — a song hidden from the
+        // screen is still in the playlist, and deduping against the filtered list would let the AI
+        // silently re-add it as a duplicate. This is the dedupe set ONLY; what the AI sees, and the
+        // indices removals map against, deliberately stay the display list.
+        val existingIds = database.playlistSongs(playlistId).first().map { it.map.songId }.toSet()
         val resolved = LinkedHashMap<String, MediaMetadata>()
         val proposed = edit.additions.take(MAX_ADDITIONS)
         // Resolution is network-bound; give it its own bound so a stalled search can't hang the dialog.
@@ -160,13 +163,19 @@ object AiPlaylistPlaylistModifier {
         val removedMapIds = plan.removals.map { it.map.id }.toSet()
         val kept = stored.filter { it.map.id !in removedMapIds }.map { it.map }
 
+        // Re-check the dedupe against the survivors of THIS read, closing the plan→confirm gap: a song
+        // added meanwhile is already here and must not be duplicated. A song this plan removes is not
+        // in `kept`, so re-adding one in the same edit still works.
+        val keptSongIds = kept.map { it.songId }.toSet()
+        val additions = plan.additions.filter { it.id !in keptSongIds }
+
         database.transaction {
             plan.removals.forEach { delete(it.map) }
             // Close the holes the deletions left; only rows that actually move are written.
             kept.forEachIndexed { index, map ->
                 if (map.position != index) update(map.copy(position = index))
             }
-            plan.additions.forEachIndexed { offset, metadata ->
+            additions.forEachIndexed { offset, metadata ->
                 insert(metadata)
                 insert(
                     PlaylistSongMap(

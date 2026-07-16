@@ -101,38 +101,56 @@ object AiPlaylistParser {
     }
 
     /**
+     * One decade, or a run of them ("70 y 80", "60, 70 y 80", "70 a los 90"). A connector run only
+     * ever WIDENS the span (see [eraRange]), so it is read greedily.
+     */
+    private const val DECADE_RUN =
+        """(?:19|20)?\d0(?:\s*(?:,|y|hasta|al|a|-)\s*(?:los\s+)?(?:19|20)?\d0)*"""
+
+    /**
      * Strong "this request is about a decade/era" markers. Only these ARM the year check — a bare
      * number never does, so "los 20 mejores temas" is not read as the 2020s.
+     *
+     * The decade is captured INSIDE the marker (group 1), never rescanned out of the rest of the
+     * prompt: a free-floating two-digit number is almost always the requested COUNT, so
+     * "las 40 mejores canciones de la década" must not be read as the 1940s. A marker word with no
+     * decade attached therefore arms nothing and simply yields no year check at all.
      */
     private val DECADE_MARKERS = listOf(
-        Regex("""\b(?:19|20)\d0'?s\b"""), // 1980s, 1990's
-        Regex("""d[ée]cada"""), // década de los 80, década de 1990
-        Regex("""a[ñn]os\s+\d0"""), // años 80
+        // década de los 80, década de 1990, décadas de los 70 y 80, década del 90
+        Regex("""d[ée]cadas?\s+(?:de[l]?\s+)?(?:los\s+)?($DECADE_RUN)"""),
+        Regex("""a[ñn]os\s+($DECADE_RUN)"""), // años 80
         // "de los 80" — but not "de los 80 mejores", which is a count, not a decade.
-        Regex("""\bde\s+los\s+\d0\b(?!\s+(?:mejores|mejor|primeros|top|canciones|temas|[ée]xitos))"""),
-        Regex("""\b\d0'?s\b"""), // 80s, 90's
+        Regex("""\bde\s+los\s+($DECADE_RUN)\b(?!\s+(?:mejores|mejor|primeros|top|canciones|temas|[ée]xitos))"""),
+        Regex("""\b((?:19|20)?\d0)'?s\b"""), // 1980s, 1990's, 80s, 90's
     )
 
-    private val FOUR_DIGIT_DECADE = Regex("""\b((?:19|20)\d0)'?s?\b""")
-    private val TWO_DIGIT_DECADE = Regex("""\b(\d0)'?s?\b""")
+    /** Pulls the individual decades back out of a [DECADE_RUN] captured by a marker. */
+    private val DECADE_NUMBER = Regex("""(?:19|20)?\d0""")
 
     /**
      * The decade/era a request implies, or null when it implies none (→ no year check at all).
      *
      * Deliberately FAILS OPEN: several decades ("de los 70 y 80") widen into one span instead of
      * narrowing, and an ambiguous number can only ever widen the range. Over-constraining would cost
-     * real songs; a too-wide range simply means the check rarely bites.
+     * real songs; a too-wide range simply means the check rarely bites. No marker, or a marker with
+     * no decade attached to it → null → no year check at all.
      */
     fun eraRange(prompt: String): IntRange? {
         val text = prompt.lowercase()
-        if (DECADE_MARKERS.none { it.containsMatchIn(text) }) return null
-
         val decades = sortedSetOf<Int>()
-        FOUR_DIGIT_DECADE.findAll(text).forEach { decades += it.groupValues[1].toInt() }
-        TWO_DIGIT_DECADE.findAll(text).forEach { match ->
-            // 30..90 → 1930..1990; 00/10/20 → the 2000s/2010s/2020s (the modern reading).
-            val decade = match.groupValues[1].toInt()
-            decades += if (decade >= 30) 1900 + decade else 2000 + decade
+        DECADE_MARKERS.forEach { marker ->
+            marker.findAll(text).forEach { match ->
+                DECADE_NUMBER.findAll(match.groupValues[1]).forEach { number ->
+                    // 1980 as-is; 30..90 → 1930..1990; 00/10/20 → the 2000s/2010s/2020s (the modern reading).
+                    val decade = number.value.toInt()
+                    decades += when {
+                        decade >= 1900 -> decade
+                        decade >= 30 -> 1900 + decade
+                        else -> 2000 + decade
+                    }
+                }
+            }
         }
         if (decades.isEmpty()) return null
         return decades.first()..(decades.last() + 9)
