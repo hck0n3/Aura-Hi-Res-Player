@@ -678,8 +678,15 @@ class MusicService :
     private fun loadPersistedSongUrlCache() {
         scope.launch(Dispatchers.IO) {
             runCatching {
-                val blob = dataStore.data.first()[iad1tya.echo.music.constants.SongUrlCacheBlobKey]
+                val prefs = dataStore.data.first()
+                val blob = prefs[iad1tya.echo.music.constants.SongUrlCacheBlobKey]
                     ?.takeIf { it.isNotBlank() } ?: return@runCatching
+                // The global quality, read from the SAME snapshot as the blob (so it can't race the quality
+                // collector, whose first emit deliberately returns early). Entries stamped with a DIFFERENT
+                // quality are dropped below: without this, changing the quality while the service is dead would
+                // leave the old-quality URLs in the blob and pin every one of those songs to the old quality on
+                // its next play — the very bug this whole change fixes, just through the cold-start door.
+                val globalQuality = prefs[AudioQualityKey].toEnum(iad1tya.echo.music.constants.AudioQuality.OPUS)
                 val json = org.json.JSONObject(blob)
                 val safeNow = System.currentTimeMillis() + 60_000L
                 val keys = json.keys()
@@ -696,6 +703,10 @@ class MusicService :
                     val q = o.optString("q", "").takeIf { it.isNotEmpty() }?.let { name ->
                         iad1tya.echo.music.constants.AudioQuality.entries.find { it.name == name }
                     }
+                    // Drop only what we KNOW was resolved at a quality the user no longer wants. An unknown q
+                    // (pre-"q" blob) is kept on purpose: dropping it would wipe every existing user's cache on
+                    // the upgrade to this version and re-create the exact slow-first-play complaint of #28.
+                    if (q != null && q != globalQuality) continue
                     if (u.isNotEmpty() && e > safeNow) {
                         songUrlCache.putIfAbsent(k, Triple(u, e, q))
                         restored++
