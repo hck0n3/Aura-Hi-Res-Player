@@ -590,6 +590,8 @@
     <string name="tap_to_recognize">Tap para reconocer</string>
     <string name="recognition_history">Historial de reconocimiento</string>
     <string name="enable_high_refresh_rate">Habilitar alta frecuencia de actualización</string>
+    <string name="global_haptics">Respuesta háptica</string>
+    <string name="global_haptics_desc">Vibra al tocar y al desplazarte por toda la app</string>
     <string name="song_title_column">Columna de título de la canción</string>
     <string name="recognition">Reconocimiento</string>
     <string name="recently_converted">Recientemente convertidos</string>

@@ -48,6 +48,7 @@ fun getAllSearchableSettings(): List<Triple<String, String, String>> {
             Triple("Mostrar el panel del reproductor", "Rendimiento", "settings/performance"),
             Triple("Panel del reproductor a la izquierda", "Rendimiento", "settings/performance"),
             // --- Apariencia (settings/appearance) : 99 ---
+            Triple(stringResource(R.string.global_haptics), "Apariencia", "settings/appearance"),
             Triple(stringResource(R.string.lyrics_text_position), "Apariencia", "settings/appearance"),
             Triple(stringResource(R.string.left), "Apariencia", "settings/appearance"),
             Triple(stringResource(R.string.center), "Apariencia", "settings/appearance"),

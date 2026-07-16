@@ -822,6 +822,8 @@
     <string name="play_all">Play all</string>
     <string name="enable_high_refresh_rate">Enable high refresh rate</string>
     <string name="enable_high_refresh_rate_desc">Force the display to run at the highest supported refresh rate (e.g. 120Hz)</string>
+    <string name="global_haptics">Haptic feedback</string>
+    <string name="global_haptics_desc">Vibrate when tapping and scrolling anywhere in the app</string>
 
     <!-- Music Recognition -->
     <string name="recognition">Recognition</string>

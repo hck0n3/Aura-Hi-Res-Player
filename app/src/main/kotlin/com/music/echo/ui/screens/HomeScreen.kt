@@ -2068,8 +2068,10 @@ fun HomeScreen(
                                                 shape = listItemShape(index = index % rows, count = rows),
                                                 trailingContent = {
                                                     IconButton(
+                                                        // No explicit haptic: this is a plain tap, so the root
+                                                        // global-haptics interceptor already ticks it. Firing
+                                                        // LongPress here too would double-buzz a single tap.
                                                         onClick = {
-                                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                                             menuState.show {
                                                                 SongMenu(
                                                                     originalSong = (song ?: originalSong),
