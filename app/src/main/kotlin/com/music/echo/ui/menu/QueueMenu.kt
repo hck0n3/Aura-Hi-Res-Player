@@ -78,6 +78,7 @@ import iad1tya.echo.music.ui.component.MediaMetadataListItem
 import iad1tya.echo.music.ui.component.NewAction
 import iad1tya.echo.music.ui.component.NewActionGrid
 import iad1tya.echo.music.utils.listItemShape
+import iad1tya.echo.music.utils.refetchSongAudio
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
@@ -98,7 +99,8 @@ fun QueueMenu(
     val syncUtils = LocalSyncUtils.current
 
     val librarySong by database.songWithEquivalent(mediaMetadata.id, mediaMetadata.title, mediaMetadata.artists.firstOrNull()?.name).collectAsState(initial = null)
-    val download by LocalDownloadUtil.current.getDownload(mediaMetadata.id)
+    val downloadUtil = LocalDownloadUtil.current
+    val download by downloadUtil.getDownload(mediaMetadata.id)
         .collectAsState(initial = null)
 
     var refetchIconDegree by remember { mutableFloatStateOf(0f) }
@@ -529,6 +531,17 @@ fun QueueMenu(
                             },
                             onClick = {
                                 refetchIconDegree -= 360
+                                // Metadata alone leaves the OLD audio in place — drop the cached stream too.
+                                // Runs even when this track isn't in the library (the update below can't).
+                                refetchSongAudio(
+                                    context = context,
+                                    database = database,
+                                    downloadUtil = downloadUtil,
+                                    songId = mediaMetadata.id,
+                                    songTitle = mediaMetadata.title,
+                                    isDownloaded = download != null,
+                                    isCurrentlyPlaying = playerConnection.mediaMetadata.value?.id == mediaMetadata.id,
+                                )
                                 coroutineScope.launch(Dispatchers.IO) {
                                     YouTube.queue(listOf(mediaMetadata.id)).onSuccess {
                                         val newSong = it.firstOrNull()

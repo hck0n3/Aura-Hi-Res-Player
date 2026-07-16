@@ -1841,6 +1841,11 @@ interface DatabaseDao {
     @Query("DELETE FROM format WHERE id NOT IN (SELECT id FROM song)")
     fun pruneFormats()
 
+    /** Refetch: drop a single stale format row so the next resolve re-stores the real itag/bitrate/loudness
+     *  instead of the container the previous stream happened to have. */
+    @Query("DELETE FROM format WHERE id = :id")
+    fun deleteFormat(id: String)
+
     @Query("DELETE FROM playCount WHERE song NOT IN (SELECT id FROM song)")
     fun prunePlayCounts()
 

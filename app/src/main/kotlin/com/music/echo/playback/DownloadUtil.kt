@@ -74,6 +74,16 @@ constructor(
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    /**
+     * Refetch: drop the memoised stream URL for [songId] so a re-enqueued download RE-RESOLVES instead of
+     * pulling the same stale stream again. This cache is private to the download factory — clearing
+     * MusicService's songUrlCache does not reach it, so a refetch that skipped this would silently
+     * re-download the very bytes the user asked to replace. In-memory only: nothing to persist.
+     */
+    fun invalidateSongUrl(songId: String) {
+        songUrlCache.remove(songId)
+    }
+
     val downloads = MutableStateFlow<Map<String, Download>>(emptyMap())
 
     private val dataSourceFactory =

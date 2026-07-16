@@ -96,6 +96,7 @@ import iad1tya.echo.music.ui.component.NewActionGrid
 import iad1tya.echo.music.ui.component.SongListItem
 import iad1tya.echo.music.ui.component.TextFieldDialog
 import iad1tya.echo.music.utils.listItemShape
+import iad1tya.echo.music.utils.refetchSongAudio
 import iad1tya.echo.music.ui.utils.ShowMediaInfo
 import iad1tya.echo.music.utils.rememberPreference
 import iad1tya.echo.music.viewmodels.CachePlaylistViewModel
@@ -118,7 +119,8 @@ fun SongMenu(
     val playerConnection = LocalPlayerConnection.current ?: return
     val songState = database.song(originalSong.id).collectAsState(initial = originalSong)
     val song = songState.value ?: originalSong
-    val download by LocalDownloadUtil.current.getDownload(originalSong.id)
+    val downloadUtil = LocalDownloadUtil.current
+    val download by downloadUtil.getDownload(originalSong.id)
         .collectAsState(initial = null)
     val coroutineScope = rememberCoroutineScope()
     val syncUtils = LocalSyncUtils.current
@@ -884,6 +886,16 @@ fun SongMenu(
                             },
                             onClick = {
                                 refetchIconDegree -= 360
+                                // Metadata alone leaves the OLD audio in place — drop the cached stream too.
+                                refetchSongAudio(
+                                    context = context,
+                                    database = database,
+                                    downloadUtil = downloadUtil,
+                                    songId = song.id,
+                                    songTitle = song.song.title,
+                                    isDownloaded = download != null,
+                                    isCurrentlyPlaying = playerConnection.mediaMetadata.value?.id == song.id,
+                                )
                                 scope.launch(Dispatchers.IO) {
                                     YouTube.queue(listOf(song.id)).onSuccess {
                                         val newSong = it.firstOrNull()
