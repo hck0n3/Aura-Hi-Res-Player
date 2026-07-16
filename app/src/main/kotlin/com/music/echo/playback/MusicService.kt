@@ -3618,17 +3618,31 @@ class MusicService :
             currentQueue.hasNextPage() &&
             !(disableLoadMoreWhenRepeatAllHint && player.repeatMode == REPEAT_MODE_ALL)
         ) {
-            // Captured on the player thread: the lane of what's currently playing, so autoplay can
-            // stay in the same style instead of drifting (e.g. Christian -> secular).
+            // Captured on the player thread: what's currently playing, so autoplay can stay in the same
+            // style instead of drifting. Title/artist/album are kept SEPARATE (not pre-joined) because the
+            // lane now also needs the primary ARTIST on its own to look up its real genre.
             val curItem = player.currentMediaItem
-            val currentLaneText = listOfNotNull(
-                curItem?.mediaMetadata?.title, curItem?.mediaMetadata?.artist, curItem?.mediaMetadata?.albumTitle,
-            ).joinToString(" ")
+            val curTitle = curItem?.mediaMetadata?.title?.toString()
+            val curArtist = curItem?.mediaMetadata?.artist?.toString()
+            val curAlbum = curItem?.mediaMetadata?.albumTitle?.toString()
             val keepLane = keepGenreLaneHint
             scope.launch(SilentHandler) {
                 val disliked = runCatching { dislikeStore.snapshot() }.getOrDefault(iad1tya.echo.music.dislike.DislikeStore.Disliked())
-                val currentLane = if (keepLane) iad1tya.echo.music.reco.GenreLane.laneOf(currentLaneText) else null
                 val mediaItems = withContext(Dispatchers.IO) {
+                    // The lane is the REAL genre of what's playing (iTunes genre per artist), not a single
+                    // hardcoded style. ONE SharedPreferences read per continuation — never per candidate
+                    // (battery), and none at all when the user turned "keep the style" off.
+                    val genres = if (keepLane) {
+                        runCatching { iad1tya.echo.music.reco.GenreCache.snapshot(this@MusicService) }.getOrDefault(emptyMap())
+                    } else {
+                        emptyMap()
+                    }
+                    // Unknown genre -> null lane -> no enforcement at all.
+                    val currentLane = if (keepLane) {
+                        iad1tya.echo.music.reco.GenreLane.laneOfTrack(genres, curArtist, curTitle, curAlbum)
+                    } else {
+                        null
+                    }
                     var next = currentQueue.nextPage()
                         .filterExplicit(dataStore.get(HideExplicitKey, false))
                         .filterVideoSongs(dataStore.get(HideVideoSongsKey, false))
@@ -3643,9 +3657,10 @@ class MusicService :
                     // but only enforce it when there are enough, so playback never dead-ends.
                     if (currentLane != null) {
                         val inLane = next.filter { mi ->
-                            iad1tya.echo.music.reco.GenreLane.laneOf(
-                                mi.mediaMetadata.title?.toString(),
+                            iad1tya.echo.music.reco.GenreLane.laneOfTrack(
+                                genres,
                                 mi.mediaMetadata.artist?.toString(),
+                                mi.mediaMetadata.title?.toString(),
                                 mi.mediaMetadata.albumTitle?.toString(),
                             ) == currentLane
                         }
