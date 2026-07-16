@@ -212,8 +212,8 @@ object AiPlaylistService {
                 val builder = Request.Builder()
                     .url(url)
                     .addHeader("Content-Type", "application/json")
-                    .addHeader("HTTP-Referer", "https://github.com/EchoMusicApp/Echo-Music")
-                    .addHeader("X-Title", "echomusic")
+                    .addHeader("HTTP-Referer", "https://github.com/hck0n3/Aura-Hi-Res-Player")
+                    .addHeader("X-Title", "Aura Hi-Res Player")
                     .post(requestJson.toString().toRequestBody(JSON))
                 if (!apiKey.isNullOrBlank()) {
                     builder.addHeader("Authorization", "Bearer ${apiKey.trim()}")

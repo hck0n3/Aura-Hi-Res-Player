@@ -3625,6 +3625,8 @@ class MusicService :
             val curTitle = curItem?.mediaMetadata?.title?.toString()
             val curArtist = curItem?.mediaMetadata?.artist?.toString()
             val curAlbum = curItem?.mediaMetadata?.albumTitle?.toString()
+            // The STRUCTURED artist list (not the joined byline) — only this is usable as a genre-cache key.
+            val curArtists = curItem?.metadata?.artists.orEmpty().map { it.name }
             val keepLane = keepGenreLaneHint
             scope.launch(SilentHandler) {
                 val disliked = runCatching { dislikeStore.snapshot() }.getOrDefault(iad1tya.echo.music.dislike.DislikeStore.Disliked())
@@ -3655,14 +3657,25 @@ class MusicService :
                     }
                     // Keep the lane: if what's playing is clearly in a lane, prefer same-lane songs —
                     // but only enforce it when there are enough, so playback never dead-ends.
+                    //
+                    // Two DIFFERENT strictnesses, because the two lane signals have opposite blind spots:
+                    //  - CHRISTIAN comes from keywords over the track's own text, so it needs no cache and an
+                    //    unknown candidate is, in practice, secular -> keep the ORIGINAL strict "must match".
+                    //  - A genre lane comes from GenreCache, which is only enriched with artists from YOUR
+                    //    library (HomeViewModel), so a brand-new radio artist is unknown by construction.
+                    //    Requiring a match there would drop every unknown candidate and collapse autoplay onto
+                    //    library artists (repetitive, no discovery). So we only drop candidates whose genre we
+                    //    KNOW and know to be different; unknown stays eligible.
                     if (currentLane != null) {
+                        val strictLane = currentLane == iad1tya.echo.music.reco.GenreLane.CHRISTIAN
                         val inLane = next.filter { mi ->
-                            iad1tya.echo.music.reco.GenreLane.laneOfTrack(
+                            val lane = iad1tya.echo.music.reco.GenreLane.laneOfTrack(
                                 genres,
                                 mi.mediaMetadata.artist?.toString(),
                                 mi.mediaMetadata.title?.toString(),
                                 mi.mediaMetadata.albumTitle?.toString(),
-                            ) == currentLane
+                            )
+                            if (strictLane) lane == currentLane else lane == null || lane == currentLane
                         }
                         if (inLane.size >= 2) next = inLane
                     }
@@ -3685,6 +3698,30 @@ class MusicService :
                     if (player.shuffleModeEnabled) {
                         val shufflePlaylistFirst = dataStore.get(ShufflePlaylistFirstKey, false)
                         applyShuffleOrder(player.currentMediaItemIndex, player.mediaItemCount, shufflePlaylistFirst)
+                    }
+                }
+                // Learn the genre of the artists autoplay actually surfaces, so the lane above stops being blind
+                // outside the library. Fire-and-forget AFTER the items are queued (never delays playback), WiFi
+                // ONLY, bounded, and misses are cached as "unknown" — so the cost decays to zero as it fills in.
+                //
+                // Dispatchers.IO is NOT optional: `scope` is Main (the player's looper), so without it the WiFi
+                // check (a binder IPC) and every iTunes resumption would run on the playback thread.
+                //
+                // Feed it INDIVIDUAL artist names (mediaMetadata.artist is a ", "-joined byline): iTunes is
+                // queried with attribute=artistTerm, so "Bad Bunny, Chencho Corleone" can only ever MISS — and a
+                // miss is cached forever, so we'd permanently burn a request per collab while never learning
+                // either artist. GenreCache is keyed by ONE artist name, which is what the lane looks up.
+                if (keepLane && mediaItems.isNotEmpty()) {
+                    scope.launch(Dispatchers.IO + SilentHandler) {
+                        val names = (curArtists + mediaItems.flatMap { it.metadata?.artists.orEmpty() }.map { it.name })
+                            .filter { it.isNotBlank() }
+                            .distinct()
+                            .take(GENRE_LEARN_PER_RUN)
+                        if (names.isNotEmpty()) {
+                            runCatching {
+                                iad1tya.echo.music.reco.GenreCache.enrich(this@MusicService, names, onlyWifi = true)
+                            }
+                        }
                     }
                 }
             }
@@ -6606,6 +6643,12 @@ class MusicService :
     }
 
     companion object {
+        /**
+         * How many artists a single autoplay continuation may look a genre up for. Small on purpose: it is
+         * WiFi-only, off the playback path, and misses are cached, so coverage fills in over a few songs
+         * without ever turning the radio into a burst of network work.
+         */
+        private const val GENRE_LEARN_PER_RUN = 12
         const val ROOT = "root"
         const val SONG = "song"
         const val ARTIST = "artist"

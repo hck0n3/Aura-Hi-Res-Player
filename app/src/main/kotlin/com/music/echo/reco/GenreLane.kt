@@ -57,10 +57,18 @@ object GenreLane {
         title: String?,
         album: String? = null,
     ): String? {
+        val cached = if (genres.isEmpty()) null else lookupGenre(genres, artistName)?.let { normalizeGenre(it) }
+        // When the cache KNOWS this artist and knows them NOT to be Christian, the keyword pass must not read
+        // the ARTIST field: "Christian Nodal" and "Cristian Castro" are Latin artists whose NAME contains a
+        // marker, and a false CHRISTIAN lane is the WORST case — it is the strict lane, so it would drop every
+        // Latin candidate. Their TITLES are still scanned, so an actual worship song by them is still caught.
+        if (cached != null && cached != CHRISTIAN) {
+            return laneOf(title, album) ?: cached
+        }
+        // Unknown artist: keywords first — that is exactly what they are for (a Christian track whose artist
+        // has no cached genre yet).
         laneOf(title, artistName, album)?.let { return it }
-        if (genres.isEmpty()) return null
-        val genre = lookupGenre(genres, artistName) ?: return null
-        return normalizeGenre(genre)
+        return cached
     }
 
     /**
