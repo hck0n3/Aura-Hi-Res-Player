@@ -593,13 +593,36 @@ class MusicService :
 
     // ConcurrentHashMap: structurally mutated from the ExoPlayer loader thread (ResolvingDataSource resolver),
     // the Main thread (quality collector / refetchCurrentInOpus) and an IO coroutine (preloadUpcomingItems).
-    // Triple = (stream url, absolute expiry epoch-ms, AudioQuality the url was RESOLVED at). The quality rides in
-    // the VALUE, never in the key: #28's per-mediaId lookup shape stays intact (keying it would also force a
-    // parse on read, and a YouTube videoId is base64url — ~16% contain '_', so any '_'-delimited scheme mis-parses).
-    // third == null means UNKNOWN (entry restored from a blob written before "q" existed) — readers must then fall
-    // back to the global audioQuality, never treat it as a pin.
-    private val songUrlCache =
-        java.util.concurrent.ConcurrentHashMap<String, Triple<String, Long, iad1tya.echo.music.constants.AudioQuality?>>()
+    /**
+     * A resolved stream URL. The quality rides in the VALUE, never in the key: #28's per-mediaId lookup shape
+     * stays intact (keying it would also force a parse on read, and a YouTube videoId is base64url — ~16%
+     * contain '_', so any '_'-delimited scheme mis-parses).
+     *
+     * [delivered] and [requested] are DIFFERENT questions and must not share a field:
+     *  - [delivered] = what actually came back. This is what the container guard compares against `dbFormat`,
+     *    so it MUST be derived from the response with the guard's own predicate. Fallback is routine
+     *    (LOSSLESS -> Qobuz fails -> Saavn fails -> Opus), so it often differs from what we asked for.
+     *  - [requested] = what we asked for. The ONLY thing that can tell a cold start "the user changed quality
+     *    while the service was dead, so this entry is stale". Comparing [delivered] to the global instead would
+     *    throw away every legitimate fallback entry on every restart — i.e. #28's slow first play.
+     *
+     * null = UNKNOWN (an entry restored from a blob written before that field existed). Readers must then fall
+     * back to the global audioQuality and never treat it as a pin.
+     */
+    private data class CachedStream(
+        val url: String,
+        val expiresAt: Long,
+        val delivered: iad1tya.echo.music.constants.AudioQuality? = null,
+        val requested: iad1tya.echo.music.constants.AudioQuality? = null,
+    )
+
+    private val songUrlCache = java.util.concurrent.ConcurrentHashMap<String, CachedStream>()
+
+    /** Reads an [iad1tya.echo.music.constants.AudioQuality] name out of a blob entry; absent/unparsable -> null (UNKNOWN). */
+    private fun org.json.JSONObject.parseQuality(field: String): iad1tya.echo.music.constants.AudioQuality? =
+        optString(field, "").takeIf { it.isNotEmpty() }?.let { name ->
+            iad1tya.echo.music.constants.AudioQuality.entries.find { it.name == name }
+        }
 
     // FIX A (#27 phantom playback): true after a PERSISTENT-QUEUE RESTORE left the player IDLE with the
     // restored items + saved seek set but deliberately NOT prepared, so an external media-button PLAY (BT /
@@ -651,18 +674,19 @@ class MusicService :
             runCatching {
                 val now = System.currentTimeMillis()
                 val entries = songUrlCache.entries
-                    .filter { it.value.second > now }
-                    .sortedByDescending { it.value.second } // freshest-expiring first ≈ most-recent (LRU proxy)
+                    .filter { it.value.expiresAt > now }
+                    .sortedByDescending { it.value.expiresAt } // freshest-expiring first ≈ most-recent (LRU proxy)
                     .take(SONG_URL_CACHE_PERSIST_MAX)
                 val json = org.json.JSONObject()
                 for (e in entries) {
                     val o = org.json.JSONObject()
-                        .put("u", e.value.first)
-                        .put("e", streamUrlExpiryMillis(e.value.first, e.value.second))
-                    // "q" = the AudioQuality this URL was resolved at, so a restored entry can't be mistaken for
-                    // one resolved at the CURRENT global quality. Omitted when unknown (itself restored from a
-                    // pre-"q" blob): an absent "q" reads back as null = unknown, not as a pin.
-                    e.value.third?.let { q -> o.put("q", q.name) }
+                        .put("u", e.value.url)
+                        .put("e", streamUrlExpiryMillis(e.value.url, e.value.expiresAt))
+                    // "q"  = what was DELIVERED (the container guard's input).
+                    // "rq" = what was REQUESTED (staleness only — see [CachedStream]).
+                    // Both omitted when unknown; an absent field reads back as null = unknown, never as a pin.
+                    e.value.delivered?.let { q -> o.put("q", q.name) }
+                    e.value.requested?.let { q -> o.put("rq", q.name) }
                     json.put(e.key, o)
                 }
                 dataStore.edit { it[iad1tya.echo.music.constants.SongUrlCacheBlobKey] = json.toString() }
@@ -682,10 +706,11 @@ class MusicService :
                 val blob = prefs[iad1tya.echo.music.constants.SongUrlCacheBlobKey]
                     ?.takeIf { it.isNotBlank() } ?: return@runCatching
                 // The global quality, read from the SAME snapshot as the blob (so it can't race the quality
-                // collector, whose first emit deliberately returns early). Entries stamped with a DIFFERENT
-                // quality are dropped below: without this, changing the quality while the service is dead would
-                // leave the old-quality URLs in the blob and pin every one of those songs to the old quality on
-                // its next play — the very bug this whole change fixes, just through the cold-start door.
+                // collector, whose first emit deliberately returns early). It is compared ONLY against what was
+                // REQUESTED ("rq"), never against what was delivered: changing the quality while the service is
+                // dead must drop those entries (nothing clears them otherwise), but a fallback entry — requested
+                // LOSSLESS, delivered Opus — is perfectly good and must SURVIVE. Comparing the delivered quality
+                // here would bin nearly every entry a Hi-Res user has on every cold start = #28's slow first play.
                 val globalQuality = prefs[AudioQualityKey].toEnum(iad1tya.echo.music.constants.AudioQuality.OPUS)
                 val json = org.json.JSONObject(blob)
                 val safeNow = System.currentTimeMillis() + 60_000L
@@ -696,19 +721,18 @@ class MusicService :
                     val o = json.optJSONObject(k) ?: continue
                     val u = o.optString("u", "")
                     val e = o.optLong("e", 0L)
-                    // A blob written before "q" existed has no quality: keep it as null (UNKNOWN) rather than
+                    // A blob written by an older version has neither field: keep them null (UNKNOWN) rather than
                     // guessing. The resolver then falls back to the global audioQuality and the dbFormat container
                     // guard decides — so an OLD blob still serves its URLs (#28 fast path) and can never pin a
                     // replay to a stale quality. No migration, no crash: an unparsable name also degrades to null.
-                    val q = o.optString("q", "").takeIf { it.isNotEmpty() }?.let { name ->
-                        iad1tya.echo.music.constants.AudioQuality.entries.find { it.name == name }
-                    }
-                    // Drop only what we KNOW was resolved at a quality the user no longer wants. An unknown q
-                    // (pre-"q" blob) is kept on purpose: dropping it would wipe every existing user's cache on
-                    // the upgrade to this version and re-create the exact slow-first-play complaint of #28.
-                    if (q != null && q != globalQuality) continue
+                    val q = o.parseQuality("q")
+                    val rq = o.parseQuality("rq")
+                    // Drop ONLY what we know was REQUESTED at a quality the user no longer wants. Unknown is kept
+                    // on purpose: dropping it would wipe every existing user's cache on the upgrade to this
+                    // version and re-create the exact slow-first-play complaint of #28.
+                    if (rq != null && rq != globalQuality) continue
                     if (u.isNotEmpty() && e > safeNow) {
-                        songUrlCache.putIfAbsent(k, Triple(u, e, q))
+                        songUrlCache.putIfAbsent(k, CachedStream(u, e, delivered = q, requested = rq))
                         restored++
                     }
                 }
@@ -731,6 +755,20 @@ class MusicService :
     // quality for the rest of the session (the URL TTL is ~5h), and a replay silently re-pins to it, which is
     // the very bug the quality fix exists to kill.
     @Volatile private var qualityPinnedMediaId: String? = null
+
+    /**
+     * Drop the quality-change survivor because a FRESH prepare is starting: the pin protects an IN-FLIGHT
+     * stream, so once nothing is in flight it has nothing left to guard and would only re-pin the track to the
+     * old quality. Keying it on the track id alone would miss exactly the A/B a user does after changing the
+     * quality — re-selecting the SAME song, which media3 re-prepares from scratch.
+     */
+    private fun dropQualityPin() {
+        qualityPinnedMediaId?.let { pinned ->
+            songUrlCache.remove(pinned)
+            qualityPinnedMediaId = null
+            persistSongUrlCache()
+        }
+    }
 
     // Video mode is INTEGRATED into the main player (one engine). videoMode = sticky on/off intent;
     // videoUrl = resolved muxed URL of the current video track (null while resolving → UI spinner).
@@ -2173,6 +2211,10 @@ class MusicService :
         // #27: a genuine user-initiated playQueue (playWhenReady=true) clears the restore veto so external
         // controls work normally. A restore calls this with playWhenReady=false and leaves it armed.
         if (playWhenReady) awaitingFirstUserPlay = false
+        // A new queue means nothing is in flight any more, so the quality-change survivor has nothing left to
+        // protect — including when the user re-selects the SAME track to A/B a quality change, which is the one
+        // case the id-based collector in onMediaItemTransition can't see.
+        dropQualityPin()
         _mixActive.value = false  // fresh user-chosen queue → Mix/Radio no longer active
         // Fresh user queue → the old autoplay chips no longer describe what will play next. Clearing the
         // seed cache also re-allows one refresh for the NEXT radio seed (still once-per-seed bounded).
@@ -3552,11 +3594,10 @@ class MusicService :
         if (forceOpusForMediaId != null && mediaItem != null && mediaItem.mediaId != forceOpusForMediaId) {
             forceOpusForMediaId = null
         }
-        // Same idea for the quality-change survivor: its only job was to protect the container of the track that
-        // was in flight. Once a different track is current, drop it so a replay resolves at the NEW quality.
-        // Deliberately NOT cleared in performCrossfadeSwap (that path skips this callback): the crossfade logic
-        // is off-limits, and the outgoing track is fully buffered at fade time anyway — the next transition
-        // collects it, one track later at worst.
+        // Same idea for the quality-change survivor: its only job was to protect the container of the track whose
+        // stream was IN FLIGHT when the quality changed. Once a different track is current, drop it so a replay
+        // resolves at the NEW quality. (The crossfade path skips this callback and collects the pin in
+        // cleanupCrossfade instead; a fresh prepare of the SAME track drops it in dropQualityPin.)
         qualityPinnedMediaId?.let { pinned ->
             if (mediaItem != null && mediaItem.mediaId != pinned) {
                 songUrlCache.remove(pinned)
@@ -5238,7 +5279,9 @@ class MusicService :
             // resolved this URL", which is exactly the mid-song case worth protecting: the quality collector
             // preserves ONLY the playing track's entry when a quality change clears the map, so an in-flight track
             // keeps its container while every replay finds no entry → falls through to the global quality.
-            val cachedQuality = songUrlCache[mediaId]?.third
+            // DELIVERED, not requested: this value is compared against dbFormat by the guard below, and dbFormat
+            // describes what was actually served.
+            val cachedQuality = songUrlCache[mediaId]?.delivered
             val lockedQuality = when {
                 forceOpus -> iad1tya.echo.music.constants.AudioQuality.OPUS
                 isCurrentlyPlaying && cachedQuality != null -> cachedQuality
@@ -5281,9 +5324,9 @@ class MusicService :
                 }
 
                 if (playerCache.isCached(mediaId, dataSpec.position, CHUNK_LENGTH)) {
-                    songUrlCache[mediaId]?.takeIf { it.second > System.currentTimeMillis() }?.let {
+                    songUrlCache[mediaId]?.takeIf { it.expiresAt > System.currentTimeMillis() }?.let {
                         scope.launch(Dispatchers.IO) { recoverSong(mediaId) }
-                        return@Factory dataSpec.withUri(it.first.toUri())
+                        return@Factory dataSpec.withUri(it.url.toUri())
                     }
                     // FIX C (#28.2): cached BYTES are present but we have no fresh stream URL (e.g. after an
                     // app-update restart, when songUrlCache started empty). Do NOT delete the cached bytes and
@@ -5295,9 +5338,9 @@ class MusicService :
                     Timber.tag(TAG).w("Ghost cache entry for $mediaId — keeping cached bytes, re-resolving URL only")
                 }
 
-                songUrlCache[mediaId]?.takeIf { it.second > System.currentTimeMillis() }?.let {
+                songUrlCache[mediaId]?.takeIf { it.expiresAt > System.currentTimeMillis() }?.let {
                     scope.launch(Dispatchers.IO) { recoverSong(mediaId) }
-                    return@Factory dataSpec.withUri(it.first.toUri())
+                    return@Factory dataSpec.withUri(it.url.toUri())
                 }
             }
 
@@ -5442,10 +5485,11 @@ class MusicService :
                     isFinalSaavn -> iad1tya.echo.music.constants.AudioQuality.SAAVN
                     else -> iad1tya.echo.music.constants.AudioQuality.OPUS
                 }
-                songUrlCache[mediaId] = Triple(
-                    streamUrl,
-                    System.currentTimeMillis() + (nonNullPlayback.streamExpiresInSeconds * 1000L),
-                    deliveredQuality
+                songUrlCache[mediaId] = CachedStream(
+                    url = streamUrl,
+                    expiresAt = System.currentTimeMillis() + (nonNullPlayback.streamExpiresInSeconds * 1000L),
+                    delivered = deliveredQuality,
+                    requested = lockedQuality,
                 )
                 // FIX B1 (#28.1): persist the freshly-resolved URL (whole cache snapshot) so it survives a
                 // restart / app update. Off the main thread; never blocks this resolve.
@@ -6607,6 +6651,14 @@ class MusicService :
         // moves us to the next track via a path that skips onMediaItemTransition, so it must be cleared here.
         _isCrossfading.value = true
         forceOpusForMediaId = null
+        // Bookkeeping only — no fade math, curve or duration is touched here. This callback-skipping path is
+        // also the ONLY writer gap for currentPlayingMediaId (:3548 in onMediaItemTransition is the other, and
+        // the only one): without this, after ANY swap the field still names the OUTGOING track for the whole of
+        // the incoming one, so the resolver's `isCurrentlyPlaying` is false while that track plays. Its single
+        // reader then falls back to the GLOBAL quality, the container guard compares that against a dbFormat
+        // describing a fallback container, mismatches, and purges the playing track's cached bytes on every
+        // re-open. With crossfade ON (the default here) every advance is a swap, so that was permanent.
+        currentPlayingMediaId = nextPlayer.currentMediaItem?.mediaId
         val currentPlayer = player
 
         fadingPlayer = currentPlayer
@@ -6743,6 +6795,17 @@ class MusicService :
         fadingPlayer = null
         isCrossfading = false
         _isCrossfading.value = false // observation-only mirror for the UI; does not alter the swap
+        // Collect the quality-change survivor here rather than at the swap: the fade is over and fadingPlayer is
+        // already stopped/cleared/released above, so dropping its URL entry cannot trigger a re-open. Needed
+        // because performCrossfadeSwap skips onMediaItemTransition, and with crossfade ON every advance is a
+        // swap — so the transition-based collector would never run and the pin would outlive its track.
+        qualityPinnedMediaId?.let { pinned ->
+            if (pinned != player.currentMediaItem?.mediaId) {
+                songUrlCache.remove(pinned)
+                qualityPinnedMediaId = null
+                persistSongUrlCache()
+            }
+        }
         sleepTimer.notifySongTransition()
     }
 
@@ -6905,7 +6968,12 @@ class MusicService :
                                     iad1tya.echo.music.constants.AudioQuality.SAAVN
                                 else -> iad1tya.echo.music.constants.AudioQuality.OPUS
                             }
-                            songUrlCache[mediaId] = Triple(data.streamUrl, System.currentTimeMillis() + (data.streamExpiresInSeconds * 1000L), preQuality)
+                            songUrlCache[mediaId] = CachedStream(
+                                url = data.streamUrl,
+                                expiresAt = System.currentTimeMillis() + (data.streamExpiresInSeconds * 1000L),
+                                delivered = preQuality,
+                                requested = resolveQuality,
+                            )
                             Timber.tag(TAG).d("Preloaded stream for $mediaId")
 
                             // FIX A: cache the loudness (FormatEntity) for the UPCOMING track NOW, so when it
