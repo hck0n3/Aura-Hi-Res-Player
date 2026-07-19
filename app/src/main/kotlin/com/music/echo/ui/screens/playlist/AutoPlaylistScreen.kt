@@ -639,7 +639,7 @@ private fun AutoPlaylistHeader(
         Spacer(Modifier.height(50.dp))
 
         
-        val isTvOrCarCover = iad1tya.echo.music.ui.utils.rememberIsWideScreen()
+        val isTvOrCarCover = iad1tya.echo.music.ui.utils.rememberIsWideLayout()
         Box(
             modifier = Modifier
                 .fillMaxWidth()

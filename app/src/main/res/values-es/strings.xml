@@ -542,4 +542,7 @@
     <string name="restore_failed_corrupt">El archivo de copia de seguridad está dañado o incompleto y no se puede restaurar. No se ha cambiado nada.</string>
     <string name="restore_failed_io">No se pudo leer el archivo de copia de seguridad. No se ha cambiado nada.</string>
     <string name="restore_failed_invalid">Este archivo no es una copia de seguridad válida de Aura.</string>
+    <!-- Pantalla grande / plegables -->
+    <string name="immersive_canvas_on_rotate">Fondo animado a pantalla completa en horizontal</string>
+    <string name="immersive_canvas_on_rotate_desc">Al girar a horizontal, muestra solo el fondo animado y los controles de reproducción. Desactivado por defecto: la interfaz completa (portada, título, progreso y cola) se mantiene en pantalla en cualquier ángulo.</string>
 </resources>

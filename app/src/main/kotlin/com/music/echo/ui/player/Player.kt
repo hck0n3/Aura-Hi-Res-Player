@@ -48,7 +48,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import iad1tya.echo.music.ui.utils.rememberIsWideScreen
+import iad1tya.echo.music.ui.utils.rememberIsWideLayout
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
@@ -317,7 +317,18 @@ fun BottomSheetPlayer(
     // 50ms tick (a transient hasFocus=false must not re-arm the retry). Reset per expansion inside the effect.
     var transportFocusLanded by remember { mutableStateOf(false) }
     // Big screen (TV / tablet / car / unfolded foldable): show the Spotify-style split player (queue | now-playing).
-    val isWideScreen = rememberIsWideScreen()
+    // WIDTH-driven, never orientation-driven — a foldable is used mostly in a near-square PORTRAIT, so gating the
+    // split on landscape (as this file used to) meant the owner's unfolded phone never got it.
+    val isWideLayout = rememberIsWideLayout()
+    // Request a HIGH-RES cover source for the blurred backdrops on any big surface. Deliberately
+    // `isTvOrCar || isWideLayout`: rememberIsTvOrCar() no longer carries a width term, so on a tablet this must
+    // come from the width side or the backdrop would silently drop from 720px back to 100px and look pixelated.
+    val wantsHiResBackdrop = isTvOrCar || isWideLayout
+    // OPT-IN (default false): rotating to landscape with a canvas active replaces the player with a bare
+    // fullscreen canvas. See ImmersiveCanvasOnRotateKey / registry #48 — it used to be unconditional.
+    val immersiveCanvasOnRotate by rememberPreference(
+        iad1tya.echo.music.constants.ImmersiveCanvasOnRotateKey, false,
+    )
     val spectrumVisualizerEnabled = iad1tya.echo.music.utils.rememberPerfGatedBoolean(iad1tya.echo.music.constants.SpectrumVisualizerEnabledKey, false).value && !deviceThrottle
     val (hidePlayerThumbnail, onHidePlayerThumbnailChange) = rememberPreference(HidePlayerThumbnailKey, false)
     val cropAlbumArt by rememberPreference(CropAlbumArtKey, false)
@@ -1076,7 +1087,7 @@ fun BottomSheetPlayer(
                                             // TV/large screen: request a high-res cover so the blurred backdrop
                                             // isn't pixelated on a big display. Phones keep the tiny 100px source
                                             // (and Performance Mode never reaches here — it draws the plain cover).
-                                            .size(if (isTvOrCar) 720 else 100, if (isTvOrCar) 720 else 100)
+                                            .size(if (wantsHiResBackdrop) 720 else 100, if (wantsHiResBackdrop) 720 else 100)
                                             .allowHardware(false)
                                             .build(),
                                         contentDescription = null,
@@ -1302,7 +1313,7 @@ fun BottomSheetPlayer(
                                             .data(thumbnailUrl)
                                             // TV/large screen: high-res source so the blurred Apple-Music backdrop
                                             // stays clean on a big display (phones/Performance Mode unchanged).
-                                            .size(if (isTvOrCar) 720 else 128, if (isTvOrCar) 720 else 128)
+                                            .size(if (wantsHiResBackdrop) 720 else 128, if (wantsHiResBackdrop) 720 else 128)
                                             .allowHardware(false)
                                             .build(),
                                         contentDescription = null,
@@ -1440,7 +1451,7 @@ fun BottomSheetPlayer(
                                     AsyncImage(
                                         model = ImageRequest.Builder(context)
                                             .data(thumbnailUrl)
-                                            .size(if (isTvOrCar) 384 else 128, if (isTvOrCar) 384 else 128)
+                                            .size(if (wantsHiResBackdrop) 384 else 128, if (wantsHiResBackdrop) 384 else 128)
                                             .allowHardware(false)
                                             .build(),
                                         contentDescription = null,
@@ -1456,7 +1467,7 @@ fun BottomSheetPlayer(
                                     AsyncImage(
                                         model = ImageRequest.Builder(context)
                                             .data(thumbnailUrl)
-                                            .size(if (isTvOrCar) 384 else 128, if (isTvOrCar) 384 else 128)
+                                            .size(if (wantsHiResBackdrop) 384 else 128, if (wantsHiResBackdrop) 384 else 128)
                                             .allowHardware(false)
                                             .build(),
                                         contentDescription = null,
@@ -1476,7 +1487,7 @@ fun BottomSheetPlayer(
                                     AsyncImage(
                                         model = ImageRequest.Builder(context)
                                             .data(thumbnailUrl)
-                                            .size(if (isTvOrCar) 384 else 128, if (isTvOrCar) 384 else 128)
+                                            .size(if (wantsHiResBackdrop) 384 else 128, if (wantsHiResBackdrop) 384 else 128)
                                             .allowHardware(false)
                                             .build(),
                                         contentDescription = null,
@@ -3011,9 +3022,16 @@ fun BottomSheetPlayer(
                         }
                     }
                 }
-              } else if (canvasArtwork != null) {
+              } else if (canvasArtwork != null && immersiveCanvasOnRotate && !isWideLayout) {
                 // Rotated + canvas (Apple-Music animated background) → show it FULLSCREEN (the background
                 // canvas already fills the screen behind) with auto-hiding controls (tap toggles them).
+                //
+                // REGISTRY #48: this branch renders ONLY a transport Row that auto-hides after 3.5s — no cover,
+                // title, progress, queue or lyrics — and it used to intercept EVERY landscape rotation whenever a
+                // canvas existed (artist background video defaults ON), so rotating simply ate the entire UI. It
+                // is now (a) OPT-IN via [ImmersiveCanvasOnRotateKey] (default false) so the interface stays put
+                // "sin importar en qué ángulo giro", and (b) never taken on a wide screen, which has ample room
+                // for the real split layout below. The VIDEO branch above keeps its fullscreen behaviour.
                 var lsCanvasControls by remember { mutableStateOf(true) }
                 // Keep the root-pinned CastButton in step with the tap-to-hide controls (clean view).
                 LaunchedEffect(lsCanvasControls) { immersiveControlsVisible = lsCanvasControls }
@@ -3101,7 +3119,7 @@ fun BottomSheetPlayer(
                     val sliderPositionProvider = remember { { currentSliderPosition } }
                     val isExpandedProvider = remember(state) { { state.isExpanded } }
 
-                    if (isWideScreen && !showInlineLyrics) {
+                    if (isWideLayout && !showInlineLyrics) {
                         // Spotify-style WIDE player: live queue on the LEFT, and a BALANCED now-playing pane on the
                         // RIGHT — cover on top, controls centered below it — instead of a huge cover beside a thin
                         // controls column jammed against the screen edge. Only on wide screens; lyrics/phones fall

@@ -1153,7 +1153,7 @@ fun LocalPlaylistHeader(
             }
         }
         
-        val isTvOrCarCover = iad1tya.echo.music.ui.utils.rememberIsWideScreen()
+        val isTvOrCarCover = iad1tya.echo.music.ui.utils.rememberIsWideLayout()
         Box(
             modifier = Modifier
                 .padding(horizontal = 48.dp)

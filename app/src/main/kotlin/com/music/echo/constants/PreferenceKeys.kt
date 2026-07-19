@@ -120,8 +120,16 @@ val LyricsBlurDefaultOnV1AppliedKey = booleanPreferencesKey("lyrics_blur_default
 val AddToPlaylistLastUpdatedDefaultV1AppliedKey =
     booleanPreferencesKey("add_to_playlist_last_updated_default_v1_applied")
 // Manual override: force the wide "Spotify split" layout ON even on a device the app wouldn't auto-detect as
-// big (e.g. a phone/tablet the user WANTS the split on). ORed into rememberIsWideScreen().
+// big (e.g. a phone/tablet the user WANTS the split on). ORed into rememberIsWideLayout() — and it is ALSO
+// the manual escape hatch for rememberIsTvOrCar(), since TV boxes / car head units running plain Android
+// don't report as TV.
 val ForceSplitViewKey = booleanPreferencesKey("force_split_view")
+// Rotating to landscape with the Apple-Music animated canvas active used to REPLACE the whole player with a
+// bare fullscreen canvas + an auto-hiding transport — no cover, title, progress, queue or lyrics (registry
+// #48: "en horizontal se pierde toda la interfaz, solo queda la imagen animada"). That immersive view is now
+// an explicit CHOICE, default OFF, instead of an automatic consequence of rotating. The VIDEO fullscreen
+// path is separate and unaffected.
+val ImmersiveCanvasOnRotateKey = booleanPreferencesKey("immersive_canvas_on_rotate")
 // Which side the persistent now-playing panel sits on in the wide split (some Android-auto users prefer it
 // on the left). false = right (default), true = left.
 val SidePanelOnLeftKey = booleanPreferencesKey("side_panel_on_left")
