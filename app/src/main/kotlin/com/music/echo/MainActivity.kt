@@ -331,6 +331,24 @@ class MainActivity : ComponentActivity() {
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
             if (service is MusicBinder) {
+                // REUSE the existing connection when we rebound to the SAME live service (the normal
+                // background -> foreground round trip: onStop unbinds, onStart rebinds). Building a new one
+                // there was doing real damage: onServiceDisconnected — the ONLY caller of dispose() — is not
+                // invoked on a normal unbind, so the old PlayerConnection stayed registered as a
+                // Player.Listener (leak), AND replacing this mutableStateOf forced a full recomposition of
+                // everything reading it. That recomposition storm is what re-ran PlayerVideoSurface's update
+                // while the TextureView's SurfaceTexture was not yet available — the "leave the app, come
+                // back, video frozen forever" bug. Same service = same player = nothing to rebuild.
+                val existing = playerConnection
+                if (existing != null && existing.service === service.service) {
+                    Timber.tag("MainActivity").d("Rebound to the same service — reusing PlayerConnection")
+                    existing.service.onAppForegrounded()
+                    listenTogetherManager.setPlayerConnection(existing)
+                    return
+                }
+                // A genuinely different service instance (process death / fresh start): the old connection can
+                // never be reused, so release its listeners before dropping it.
+                existing?.dispose()
                 try {
                     playerConnection = PlayerConnection(this@MainActivity, service, database, lifecycleScope)
                     Timber.tag("MainActivity").d("PlayerConnection created successfully")
@@ -702,13 +720,17 @@ class MainActivity : ComponentActivity() {
                         // scrolling and D-pad/TV focus keep the exact behaviour they had before.
                         // The scroll tick is throttled to 100ms, otherwise a drag would fire a
                         // haptic per motion event and turn into continuous vibration (battery/heat).
+                        // It also requires real movement (touch slop): `positionChange() != Zero` alone
+                        // fires on sub-pixel finger jitter while merely HOLDING a control, which is both a
+                        // wrong-feeling buzz and pointless vibrator work.
                         var lastScrollHaptic = 0L
+                        val slop = viewConfiguration.touchSlop
                         awaitPointerEventScope {
                             while (true) {
                                 val changes = awaitPointerEvent(PointerEventPass.Initial).changes
                                 if (changes.fastAny { it.changedToDown() }) {
                                     rootView.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
-                                } else if (changes.fastAny { it.pressed && it.positionChange() != Offset.Zero }) {
+                                } else if (changes.fastAny { it.pressed && it.positionChange().getDistance() > slop }) {
                                     val now = SystemClock.uptimeMillis()
                                     if (now - lastScrollHaptic > SCROLL_HAPTIC_THROTTLE_MS) {
                                         rootView.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)

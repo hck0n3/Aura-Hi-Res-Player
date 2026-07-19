@@ -49,6 +49,23 @@ class EchoMusicWidgetManager @Inject constructor(
     private var cachedAlbumArt: Bitmap? = null
     private var cachedCircularAlbumArt: Bitmap? = null
 
+    /**
+     * True when the user has AT LEAST ONE of our widgets on a home screen. Lets the 1 Hz updater skip its
+     * entire body — binder round trips, RemoteViews building, bitmap work and the playlist widget's Room
+     * queries — for the majority of users who have no widget at all (#55 battery/heat). Cheap: a few
+     * getAppWidgetIds calls, and the caller only probes it every ~30s.
+     */
+    fun hasAnyWidget(): Boolean {
+        val mgr = AppWidgetManager.getInstance(context) ?: return false
+        return runCatching {
+            listOf(
+                MusicWidgetReceiver::class.java,
+                TurntableWidgetReceiver::class.java,
+            ).any { mgr.getAppWidgetIds(ComponentName(context, it)).isNotEmpty() } ||
+                playlistWidgetManager.hasAnyWidget()
+        }.getOrDefault(true) // On any doubt, keep updating — never silently freeze a real widget.
+    }
+
     suspend fun updateWidgets(
         title: String,
         artist: String,

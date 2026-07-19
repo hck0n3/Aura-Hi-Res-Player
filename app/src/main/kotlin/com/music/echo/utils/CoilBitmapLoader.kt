@@ -18,6 +18,7 @@ import com.google.common.util.concurrent.ListenableFuture
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.guava.future
+import kotlinx.coroutines.withTimeoutOrNull
 import timber.log.Timber
 
 class CoilBitmapLoader(
@@ -72,10 +73,29 @@ class CoilBitmapLoader(
 
     override fun loadBitmap(uri: Uri): ListenableFuture<Bitmap> =
         scope.future(Dispatchers.IO) {
+            // #54 — BOUND THE WHOLE LOAD. media3's MediaSessionLegacyStub publishes the metadata with a NULL
+            // bitmap as soon as the track changes and only republishes WITH artwork when this future completes.
+            // Nothing here was bounded (Coil has no timeout; the HTTP fallback alone allows 10s+10s), so on a
+            // slow mobile link the car head unit showed the old thumbnail until the future finally resolved —
+            // the reported "the thumbnail doesn't update until the song is halfway through". A missed cover is
+            // a far smaller problem than a stale one, so cap it and let the next track try again.
+            withTimeoutOrNull(ARTWORK_LOAD_TIMEOUT_MS) {
+                loadBitmapInner(uri)
+            } ?: createFallbackBitmap()
+        }
+
+    private suspend fun loadBitmapInner(uri: Uri): Bitmap {
             // 1) Try Coil (uses the app's image cache).
             val viaCoil = runCatching {
                 val request = ImageRequest.Builder(context)
                     .data(uri)
+                    // Ask for the size we actually USE. Without this Coil decodes at native resolution: the
+                    // session artworkUri is resize(1200,1200) (models/MediaMetadata.kt), i.e. ~5.7 MB as
+                    // ARGB_8888, downloaded and decoded in full only to be scaled to 384 right after. That is
+                    // ~10x the bytes over the air plus three large allocations per track, on a backgrounded and
+                    // throttled process. In-app artwork is unaffected — Thumbnail.kt re-applies its own
+                    // resize(1200,1200) independently.
+                    .size(MAX_ARTWORK_PX)
                     .allowHardware(false)
                     .build()
                 when (val result = context.imageLoader.execute(request)) {
@@ -83,7 +103,7 @@ class CoilBitmapLoader(
                     is ErrorResult -> null
                 }
             }.getOrNull()
-            if (viaCoil != null) return@future viaCoil
+            if (viaCoil != null) return viaCoil
 
             // 2) Fallback: download the bytes directly. Coil can fail to run in the MediaSession
             //    service context (singleton imageLoader / network component not ready), which left
@@ -112,8 +132,8 @@ class CoilBitmapLoader(
                 null
             }
 
-            direct ?: createFallbackBitmap()
-        }
+            return direct ?: createFallbackBitmap()
+    }
 
     private companion object {
         // Max side (px) for the media-notification/lockscreen/Android-Auto artwork so the metadata parcel stays
@@ -122,5 +142,12 @@ class CoilBitmapLoader(
         // in) can breach it and kill the media service → the app disappears from Android Auto. 384×384×4 ≈
         // 576 KB leaves safe headroom and is still crisp for a lockscreen/car icon. In-app full-res is unaffected.
         const val MAX_ARTWORK_PX = 384
+
+        /**
+         * Hard cap on a single artwork load (#54). media3 publishes metadata with a null bitmap immediately
+         * and republishes when this resolves, so an unbounded load means the previous track's cover stays on
+         * screen — worse than briefly showing none.
+         */
+        const val ARTWORK_LOAD_TIMEOUT_MS = 6_000L
     }
 }

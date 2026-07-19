@@ -79,14 +79,26 @@ fun PlayerVideoSurface(
             runCatching { playerConnection.player.setVideoTextureView(tv) }
         }
     }
-    // Re-assert the surface binding on every recomposition/attach. This is the fix for the "video freezes,
-    // audio keeps playing after rotating" bug: rotation swaps the player sheet between its landscape and
-    // portrait branches, which DESTROYS this TextureView and creates a NEW one whose SurfaceTexture isn't
-    // available yet at factory() time. With only the factory bind, the new surface was never re-pointed at
-    // the player once it became available. setVideoTextureView(sameTv) is a no-op in media3 when tv is already
-    // the current one (re-installs media3's own SurfaceTextureListener), so re-asserting here is cheap and safe.
+    // Re-assert the surface binding on recomposition/attach. This is the fix for the "video freezes, audio
+    // keeps playing after rotating" bug: rotation swaps the player sheet between its landscape and portrait
+    // branches, which DESTROYS this TextureView and creates a NEW one whose SurfaceTexture isn't available
+    // yet at factory() time.
+    //
+    // ONLY when the SurfaceTexture is actually AVAILABLE. The previous version re-asserted unconditionally on
+    // the claim that "setVideoTextureView(sameTv) is a no-op when tv is already the current one" — that claim
+    // is FALSE. In media3 1.10.1 ExoPlayerImpl.setVideoTextureView always runs removeSurfaceCallbacks() and
+    // then, if !textureView.isAvailable(), calls setVideoOutputInternal(null) — it actively TEARS DOWN the
+    // video output. Since `update` runs on every recomposition (the lambda is recreated each time, so Compose
+    // always considers it changed), any recomposition landing in a window where the SurfaceTexture is not yet
+    // available blanked the video. The AUDIO renderer needs no surface, so audio kept playing over a frozen
+    // frame — exactly the reported symptom. Gating on isAvailable() keeps the rotation fix (re-attach once the
+    // new surface is live) and drops the only branch that could break it. media3 installs its own
+    // SurfaceTextureListener at factory() time, which handles the not-available -> available transition.
     val update = { tv: android.view.View ->
-        runCatching { playerConnection.player.setVideoTextureView(tv as TextureView) }
+        val textureView = tv as TextureView
+        if (textureView.isAvailable) {
+            runCatching { playerConnection.player.setVideoTextureView(textureView) }
+        }
         Unit
     }
     val onRelease = { tv: android.view.View ->

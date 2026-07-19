@@ -57,6 +57,18 @@ class PlaylistWidgetManager @Inject constructor(
 ) {
     private val imageLoader
         get() = context.imageLoader
+
+    /**
+     * True when at least one playlist widget is placed. Lets the 1 Hz media updater skip this widget's work
+     * entirely — it is the most expensive one, running five Room queries per refresh including an unindexed
+     * most-played scan (#55 battery/heat).
+     */
+    fun hasAnyWidget(): Boolean = runCatching {
+        AppWidgetManager.getInstance(context)
+            .getAppWidgetIds(ComponentName(context, PlaylistWidgetReceiver::class.java))
+            .isNotEmpty()
+    }.getOrDefault(true)
+
     @Volatile
     private var cachedArtworkUri: String? = null
     @Volatile

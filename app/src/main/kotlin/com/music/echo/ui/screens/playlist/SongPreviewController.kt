@@ -38,7 +38,7 @@ import okhttp3.OkHttpClient
 
 /**
  * In-place, NON-disruptive song preview. Plays a song through a DEDICATED short-lived [ExoPlayer]
- * (modeled on [iad1tya.echo.music.ui.player.MusicVideoPlayer] / CanvasArtworkPlayer) WITHOUT ever
+ * (modeled on CanvasArtworkPlayer) WITHOUT ever
  * touching the main player's queue / crossfade.
  *
  * Starting a preview pauses the main player (only if it was playing) and remembers that so it can be

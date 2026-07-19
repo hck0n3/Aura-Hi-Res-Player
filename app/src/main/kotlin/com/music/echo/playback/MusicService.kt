@@ -305,6 +305,7 @@ class MusicService :
             // the native player, or every secondary-player error leaks an ExoPlayer and permanently grows
             // EqualizerService's processor list.
             secondaryPlayer?.let {
+                playerSilenceProcessors.remove(it)
                 playerNormProcessors.remove(it)
                 playerLimiterProcessors.remove(it)
                 playerEqProcessors.remove(it)?.let { eq -> equalizerService.removeAudioProcessor(eq) }
@@ -1737,10 +1738,14 @@ class MusicService :
         }
 
         
+        // #55 (battery/heat): this tick is deliberately NOT gated on isPlaying — a queue edited while paused
+        // must still survive a kill — but saveQueueToDisk() serializes THREE full object graphs with
+        // ObjectOutputStream, and re-running that every 30s for the entire life of the service (paused, screen
+        // off, forever) on an unchanged queue was pure CPU + flash wear. Skip when nothing changed instead.
         scope.launch {
             while (isActive) {
                 delay(30.seconds)
-                if (dataStore.get(PersistentQueueKey, true)) {
+                if (dataStore.get(PersistentQueueKey, true) && queueSignatureChanged()) {
                     saveQueueToDisk()
                 }
             }
@@ -2095,8 +2100,7 @@ class MusicService :
     }
 
     private fun updateNotification() {
-        mediaSession.setCustomLayout(
-            listOf(
+        val customLayout = listOf(
                 CommandButton
                     .Builder()
                     .setDisplayName(
@@ -2146,8 +2150,19 @@ class MusicService :
                     .setSessionCommand(CommandToggleStartRadio)
                     .setEnabled(currentSong.value != null)
                     .build(),
-            ),
         )
+        mediaSession.setCustomLayout(customLayout)
+        // #44 — ALSO push it to the media-notification controller, or the like never updates in Android Auto.
+        // Verified in the media3 1.10.1 bytecode: the GLOBAL setCustomLayout(list) only does
+        // `sessionLegacyStub.customLayout = list` — a field write. The PER-CONTROLLER overload additionally
+        // calls updateLegacySessionPlaybackState(), which is what actually rebuilds and BROADCASTS the
+        // PlaybackStateCompat carrying the custom actions. Android Auto is a LEGACY client and reads the heart
+        // from that PlaybackStateCompat, so with only the global call it kept showing the stale icon until some
+        // PLAYER event (play/pause, track change, seek) republished the state by another route — and a "like"
+        // changes nothing about the player. The phone notification was unaffected because its provider is
+        // re-invoked separately, which is exactly why this looked like an Auto-only bug.
+        // Additive and idempotent; null until that controller connects.
+        mediaSession.mediaNotificationControllerInfo?.let { mediaSession.setCustomLayout(it, customLayout) }
     }
 
     private suspend fun recoverSong(
@@ -3937,6 +3952,28 @@ class MusicService :
         }
     }
 
+    /** Last queue shape written by the periodic saver, so an unchanged queue isn't re-serialized (#55). */
+    @Volatile private var lastQueueSignature: String? = null
+
+    /**
+     * Cheap "did the queue actually change?" probe for the periodic save. Reads a few player fields on Main
+     * (never the item list itself — that would cost as much as the save it is meant to avoid) and compares
+     * against the last saved shape. Returns true on the first call so the initial save always happens.
+     *
+     * Deliberately conservative: it can only ever cause an EXTRA save (harmless), never a missed one, because
+     * every mutation this app makes to the queue changes the count, the index, or the current id.
+     */
+    private suspend fun queueSignatureChanged(): Boolean {
+        val sig = withContext(Dispatchers.Main) {
+            runCatching {
+                "${player.mediaItemCount}:${player.currentMediaItemIndex}:${player.currentMediaItem?.mediaId}"
+            }.getOrNull()
+        } ?: return true
+        if (sig == lastQueueSignature) return false
+        lastQueueSignature = sig
+        return true
+    }
+
     private fun startPeriodicPersist() {
         if (periodicPersistJob?.isActive == true) return
         periodicPersistJob = scope.launch {
@@ -5428,6 +5465,18 @@ class MusicService :
                         playerCache.removeResource(mediaId)
 
                         if (isCurrentlyPlaying) {
+                            // Arm the bypass BEFORE throwing, or this throw LOOPS: it fires ahead of the
+                            // FormatEntity upsert below, so the stale row survives, the next resolve sees the
+                            // same mismatch and throws again — error -> recovery -> re-resolve -> throw.
+                            // With the flag set, the next resolve skips this guard entirely (it is gated on
+                            // !shouldBypassCache), reaches the upsert, and writes the corrected row; :5476 then
+                            // clears the flag. Deliberately NOT deleting the format row instead: that would
+                            // re-run loudness normalization mid-song (registry: "like must not re-normalize").
+                            //
+                            // This path only became reachable for CROSSFADED tracks once performCrossfadeSwap
+                            // started writing currentPlayingMediaId (0.6.108). Before that the stale field made
+                            // isCurrentlyPlaying false here, so the mismatch was purged silently instead.
+                            bypassCacheForQualityChange.add(mediaId)
                             Timber.tag(TAG).e("Format changed mid-stream for $mediaId. Throwing to force player restart.")
                             throw PlaybackException(
                                 "Container format changed mid-stream due to fallback",
@@ -6333,8 +6382,22 @@ class MusicService :
     private fun startWidgetUpdates() {
         widgetUpdateJob?.cancel()
         widgetUpdateJob = scope.launch {
+            // #55 (battery/heat): this used to tick EVERY SECOND for the whole session regardless of whether
+            // the user has any widget on their home screen. Each tick fans out to several binder round trips
+            // (getAppWidgetIds per widget type, getAppWidgetOptions, updateAppWidget parcelling a full
+            // RemoteViews) and the playlist widget additionally runs five Room queries — including an
+            // unindexed most-played scan. For the (majority) of users with NO widget installed that is 100%
+            // waste, once a second, with the screen off. Check once and skip the whole loop.
+            var ticksSinceWidgetProbe = Int.MAX_VALUE
+            var hasWidgets = false
             while (isActive) {
-                if (player.isPlaying) {
+                // Re-probe occasionally (cheap) so adding a widget mid-session still starts updating it.
+                if (ticksSinceWidgetProbe >= WIDGET_PRESENCE_PROBE_TICKS) {
+                    ticksSinceWidgetProbe = 0
+                    hasWidgets = runCatching { widgetManager.hasAnyWidget() }.getOrDefault(true)
+                }
+                ticksSinceWidgetProbe++
+                if (hasWidgets && player.isPlaying) {
                     updateWidgetUI(true)
                 }
                 delay(1000)
@@ -6796,7 +6859,10 @@ class MusicService :
         lastNormalizedHadLoudness = false
         fadingPlayer?.stop()
         fadingPlayer?.clearMediaItems()
-        fadingPlayer?.let { 
+        fadingPlayer?.let {
+            // Bookkeeping only — no fade math touched. Silence was the one map this teardown forgot, so every
+            // crossfade left a dead entry holding a released ExoPlayer for the whole session.
+            playerSilenceProcessors.remove(it)
             playerNormProcessors.remove(it)
             playerLimiterProcessors.remove(it)
             playerEqProcessors.remove(it)?.let { eq -> equalizerService.removeAudioProcessor(eq) }
@@ -6826,6 +6892,9 @@ class MusicService :
          * without ever turning the radio into a burst of network work.
          */
         private const val GENRE_LEARN_PER_RUN = 12
+
+        /** Ticks (~1s each) between "does the user actually have a widget?" probes — see startWidgetUpdates. */
+        private const val WIDGET_PRESENCE_PROBE_TICKS = 30
         const val ROOT = "root"
         const val SONG = "song"
         const val ARTIST = "artist"
