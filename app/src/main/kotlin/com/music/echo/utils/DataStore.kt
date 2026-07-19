@@ -57,12 +57,19 @@ fun <T> rememberPreference(
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
+    // ANR: `context.dataStore[key]` is a runBlocking { data.first() } DataStore read — it goes through
+    // the DataStore actor and waits behind any in-flight edit{}. Left un-remembered it ran on EVERY
+    // recomposition, and with ~560 call sites app-wide (46 on one settings screen alone) a single frame
+    // could stack dozens of blocking disk reads on the main thread. It is only the seed for
+    // collectAsState (the flow below drives every later value), so computing it once per composition is
+    // semantically identical. Keyed like the flow's own remember (no keys) so both stay in lockstep.
+    val initialValue = remember { context.dataStore[key] ?: defaultValue }
     val state =
         remember {
             context.dataStore.data
                 .map { it[key] ?: defaultValue }
                 .distinctUntilChanged()
-        }.collectAsState(context.dataStore[key] ?: defaultValue)
+        }.collectAsState(initialValue)
 
     return remember {
         object : MutableState<T> {
@@ -91,7 +98,8 @@ inline fun <reified T : Enum<T>> rememberEnumPreference(
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
-    val initialValue = context.dataStore[key].toEnum(defaultValue = defaultValue)
+    // Same blocking-read-per-recomposition fix as rememberPreference above.
+    val initialValue = remember { context.dataStore[key].toEnum(defaultValue = defaultValue) }
     val state =
         remember {
             context.dataStore.data
