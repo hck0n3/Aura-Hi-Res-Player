@@ -2877,8 +2877,27 @@ fun BottomSheetPlayer(
             }
         }
 
-        when (LocalConfiguration.current.orientation) {
-            Configuration.ORIENTATION_LANDSCAPE -> {
+        // #47 — the two-pane "Spotify" player is selected by WIDTH, not by orientation.
+        //
+        // Everything needed already existed, but it hung off ORIENTATION_LANDSCAPE, and a foldable is used
+        // mostly OPEN IN PORTRAIT: a near-square ~700x900 window that reports ORIENTATION_PORTRAIT and so fell
+        // through to the phone layout no matter how much room it had. The split branch below is already gated
+        // internally on `isWideLayout`, so routing a wide portrait window here reuses it verbatim — the two
+        // branch BODIES are unchanged, only which one is picked.
+        //
+        // VIDEO IS DELIBERATELY EXCLUDED from the width route. Video has its own orientation-specific paths
+        // (landscape = fullscreen with system bars hidden, portrait = the premium immersive/ambient layout),
+        // and the video surface is the single most regression-prone area in this file (registry #43 — the
+        // freeze traced to the surface lifecycle). Sending wide portrait into the landscape video path would
+        // silently change which surface path runs, for no gain. So video keeps routing by real orientation and
+        // only the NON-video player picks up the width rule.
+        val playerOrientation = LocalConfiguration.current.orientation
+        val isRealLandscape = playerOrientation == Configuration.ORIENTATION_LANDSCAPE
+        val videoUrlNow by playerConnection.videoUrl.collectAsState()
+        val inVideoMode = videoMode && !videoUrlNow.isNullOrEmpty()
+        val useWidePlayer = isRealLandscape || (isWideLayout && !inVideoMode)
+        when {
+            useWidePlayer -> {
               val videoUrlLs by playerConnection.videoUrl.collectAsState()
               if (videoMode && !videoUrlLs.isNullOrEmpty()) {
                 // Rotated + video → FULLSCREEN video with auto-hiding controls (tap toggles them). In PiP

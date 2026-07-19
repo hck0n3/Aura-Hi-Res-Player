@@ -69,6 +69,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.isSpecified
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -101,6 +102,7 @@ import iad1tya.echo.music.canvas.TidalCanvasProvider
 import iad1tya.echo.music.canvas.CanvasArtwork
 import iad1tya.echo.music.extensions.metadata
 import iad1tya.echo.music.ui.utils.resize
+import iad1tya.echo.music.ui.utils.rememberIsWideLayout
 import iad1tya.echo.music.utils.rememberPreference
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -133,13 +135,31 @@ private fun calculateThumbnailDimensions(
     containerHeight: Dp = containerWidth,
     horizontalPadding: Dp = PlayerHorizontalPadding,
     cornerRadius: Dp = ThumbnailCornerRadius,
-    isLandscape: Boolean = false
+    isLandscape: Boolean = false,
+    /**
+     * Upper bound for the ARTWORK only (#50 — "todo lo pone gigante" on an unfolded foldable). Portrait sized
+     * the cover as the FULL container width minus padding with no ceiling, so a ~700-930dp-wide window grew a
+     * ~650-880dp square. [Dp.Unspecified] (the default) keeps the old uncapped behaviour, so ordinary phones
+     * are byte-for-byte unchanged; the caller passes a real value only when [rememberIsWideLayout] is true.
+     *
+     * Only [thumbnailSize] is capped — [itemWidth] stays the full container width, so the horizontal pager's
+     * page size and snapping are untouched and the smaller cover simply centers inside its page.
+     */
+    maxThumbnailSize: Dp = Dp.Unspecified
 ): ThumbnailDimensions {
-    
-    val effectiveSize = if (isLandscape) {
+
+    val rawSize = if (isLandscape) {
         minOf(containerWidth, containerHeight) - (horizontalPadding * 2)
     } else {
         containerWidth - (horizontalPadding * 2)
+    }
+    // `isSpecified`, NOT `!= Dp.Unspecified`: Dp.Unspecified is Dp(Float.NaN), and NaN equality is exactly the
+    // kind of thing that silently flips behaviour depending on how the value class generates equals. Compose
+    // ships isSpecified/isUnspecified for this reason — use them.
+    val effectiveSize = if (maxThumbnailSize.isSpecified) {
+        rawSize.coerceAtMost(maxThumbnailSize)
+    } else {
+        rawSize
     }
     return ThumbnailDimensions(
         itemWidth = containerWidth,
@@ -148,6 +168,13 @@ private fun calculateThumbnailDimensions(
         cornerRadius = cornerRadius * 2
     )
 }
+
+/**
+ * Largest the player artwork is allowed to get on a wide screen (#50). Roughly a comfortable phone-sized
+ * cover; beyond this the square stops being "the album art" and becomes a wall. Deliberately a CAP and not a
+ * scale factor — the complaint was that things get too BIG, so nothing here ever makes the cover larger.
+ */
+private val WIDE_MAX_THUMBNAIL_SIZE = 420.dp
 
 
 @Stable
@@ -273,6 +300,9 @@ fun Thumbnail(
     val playerConnection = LocalPlayerConnection.current ?: return
     val context = LocalContext.current
     val layoutDirection = LocalLayoutDirection.current
+    // #50 — cap the cover on big screens ONLY. Width-based (never [rememberIsTvOrCar]): this is a pure layout
+    // question, and using the D-pad gate here would light the TV focus ring on a wide phone (registry #12/#26).
+    val isWideLayout = rememberIsWideLayout()
 
     
     val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
@@ -469,12 +499,13 @@ fun Thumbnail(
                     }
                 ) {
                     
-                    val dimensions = remember(maxWidth, maxHeight, isLandscape, thumbnailCornerRadius) {
+                    val dimensions = remember(maxWidth, maxHeight, isLandscape, thumbnailCornerRadius, isWideLayout) {
                         calculateThumbnailDimensions(
                             containerWidth = maxWidth,
                             containerHeight = maxHeight,
                             cornerRadius = thumbnailCornerRadius.dp,
-                            isLandscape = isLandscape
+                            isLandscape = isLandscape,
+                            maxThumbnailSize = if (isWideLayout) WIDE_MAX_THUMBNAIL_SIZE else Dp.Unspecified
                         )
                     }
 

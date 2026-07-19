@@ -51,6 +51,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -190,6 +191,7 @@ import iad1tya.echo.music.ui.component.shimmer.TextPlaceholder
 import iad1tya.echo.music.ui.screens.settings.DarkMode
 import iad1tya.echo.music.ui.screens.settings.LyricsPosition
 import iad1tya.echo.music.ui.utils.fadingEdge
+import iad1tya.echo.music.ui.utils.rememberIsWideLayout
 import iad1tya.echo.music.utils.ComposeToImage
 import iad1tya.echo.music.utils.rememberEnumPreference
 import iad1tya.echo.music.utils.rememberPreference
@@ -242,6 +244,10 @@ fun Lyrics(
     val isGuest = listenTogetherManager?.isInRoom == true && !listenTogetherManager.isHost
 
     val lyricsTextPosition by rememberEnumPreference(LyricsTextPositionKey, LyricsPosition.LEFT)
+    // Wide screens (unfolded foldable / tablet / TV) only: cap the lyrics column to a readable measure.
+    // This does NOT touch [lyricsTextPosition] — the user's LEFT/CENTER/RIGHT choice still resolves exactly
+    // as before, just INSIDE the capped column instead of against a ~900dp edge. See [LYRICS_MAX_WIDTH].
+    val isWideLayout = rememberIsWideLayout()
     val changeLyrics by rememberPreference(LyricsClickKey, true)
     val scrollLyrics by rememberPreference(LyricsScrollKey, true)
     val romanizeJapaneseLyrics by rememberPreference(LyricsRomanizeJapaneseKey, true)
@@ -968,6 +974,11 @@ fun Lyrics(
                 .add(WindowInsets(top = maxHeight / 3, bottom = maxHeight / 2))
                 .asPaddingValues(),
             modifier = Modifier
+                // #46/#10 — on a wide screen the lines used to run the FULL window width and, with the
+                // default LEFT alignment, hug the left edge (the parent Box already centers, but the column
+                // was full-bleed so there was nothing to center). Capping the measure makes the block sit in
+                // the middle. No-op below the cap, so phones are byte-for-byte unchanged.
+                .then(if (isWideLayout) Modifier.widthIn(max = LYRICS_MAX_WIDTH) else Modifier)
                 .fadingEdge(vertical = 64.dp)
                 .nestedScroll(remember {
                     object : NestedScrollConnection {
@@ -2465,7 +2476,20 @@ fun Lyrics(
 }
 
 
-private const val echomusic_AUTO_SCROLL_DURATION = 1500L 
+/**
+ * Readable measure for the lyrics column on a wide screen (#46/#10 — "la letra no sale centrada con el
+ * plegable abierto"). Applied ONLY when [rememberIsWideLayout] is true, and only as a `widthIn(max = …)`, so
+ * anything narrower than this is completely unaffected — phones keep their exact current layout.
+ *
+ * Capping the COLUMN, not the text alignment, is what makes this safe: all three lyric renderers
+ * ([echomusicLyricsLine], [MetroLyricsLine] and the built-in line) are ITEM composables inside the single
+ * LazyColumn in [Lyrics] and each resolves [LyricsTextPositionKey] on its own `fillMaxWidth()` item. Shrinking
+ * the column they live in re-centers the whole block while leaving every one of those LEFT/CENTER/RIGHT
+ * resolutions untouched — the user's alignment preference keeps working, just inside a narrower measure.
+ */
+private val LYRICS_MAX_WIDTH = 560.dp
+
+private const val echomusic_AUTO_SCROLL_DURATION = 1500L
 private const val echomusic_INITIAL_SCROLL_DURATION = 1000L 
 private const val echomusic_SEEK_DURATION = 800L 
 private const val echomusic_FAST_SEEK_DURATION = 600L 

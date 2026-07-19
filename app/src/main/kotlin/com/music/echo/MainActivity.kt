@@ -250,7 +250,6 @@ import iad1tya.echo.music.utils.SyncUtils
 import iad1tya.echo.music.utils.dataStore
 import iad1tya.echo.music.utils.get
 import iad1tya.echo.music.utils.rememberEnumPreference
-import iad1tya.echo.music.constants.ForceSplitViewKey
 import iad1tya.echo.music.constants.SidePanelOnLeftKey
 import iad1tya.echo.music.utils.rememberPreference
 import iad1tya.echo.music.utils.reportException
@@ -824,14 +823,23 @@ class MainActivity : ComponentActivity() {
 
                 val isLandscape = configuration.containerDpSize.width > configuration.containerDpSize.height
 
-                // Ambient Mode is a full-screen lean-back view: never overlay the landscape rail on it.
-                val showRail = isLandscape && !inSearchScreen && currentRoute != "ambient_mode"
+                // #47 — the nav rail is a WIDTH decision, not an orientation one. An unfolded foldable is a
+                // near-square PORTRAIT window (~700x900): it reports ORIENTATION_PORTRAIT, so `isLandscape`
+                // was false and it kept the phone's bottom navigation bar even with room for the rail. Read
+                // ONCE here and reuse: this is a pure layout gate ([rememberIsWideLayout], width-only) and
+                // never [rememberIsTvOrCar], which would light the TV/car D-pad ring on a wide phone and
+                // regress Android Auto / TV (registry #12 / #26).
+                val isWideLayout = iad1tya.echo.music.ui.utils.rememberIsWideLayout()
 
-                // Manual override for the Spotify split: the user can force the wide layout on. Combined with the
-                // real width so the persistent browse now-playing panel shows either on a genuinely wide screen
-                // (>=800dp) OR whenever the user forced it — but always requires landscape (a side panel needs
-                // horizontal room; forcing it in portrait would crush the content).
-                val forceSplitView by rememberPreference(ForceSplitViewKey, false)
+                // Ambient Mode is a full-screen lean-back view: never overlay the rail on it.
+                val showRail = (isLandscape || isWideLayout) && !inSearchScreen && currentRoute != "ambient_mode"
+
+                // The persistent browse now-playing panel shows on any genuinely wide window (or when the user
+                // forced the split via ForceSplitViewKey, which [rememberIsWideLayout] already folds in).
+                // It no longer requires LANDSCAPE (#47): a side panel needs horizontal ROOM, not a particular
+                // orientation, and an unfolded foldable has that room in portrait. What actually protects the
+                // content pane from being crushed is the `contentHasRoom` (>= 560dp) guard below — that is the
+                // real invariant, and it stays.
                 val sidePanelOnLeft by rememberPreference(SidePanelOnLeftKey, false)
                 val showNowPlayingPanel by rememberPreference(ShowNowPlayingPanelKey, true)
                 // Flexible split-panel width: ~30% of the REAL current window width, clamped so it never
@@ -848,10 +856,16 @@ class MainActivity : ComponentActivity() {
                 // pane keeps enough room. The width guard is what fixes the small-screen crush (bug 7b); folding
                 // it into showSideNowPlaying (not just the render) keeps the bottom mini-player visible as the
                 // now-playing surface whenever no panel shows. Matches the ring gate otherwise.
+                // NOTE: [isWideLayout] is the value hoisted above, NOT a call here. `forceSplitView ||
+                // rememberIsWideLayout()` short-circuited, so the composable was invoked conditionally — an
+                // unstable call count across recompositions, which is exactly the shape that corrupts Compose's
+                // slot table. [rememberIsWideLayout] already folds in ForceSplitViewKey, so this is equivalent.
+                // The `contentHasRoom` (>= 560dp) guard is preserved untouched: a wide window still refuses to
+                // split when the content pane would end up cramped.
                 val showSideNowPlaying = showRail &&
                     showNowPlayingPanel &&
                     contentHasRoom &&
-                    (forceSplitView || iad1tya.echo.music.ui.utils.rememberIsWideLayout())
+                    isWideLayout
 
                 val navPadding = if (shouldShowNavigationBar && !showRail) {
                     NavigationBarHeight + FloatingToolbarBottomPadding

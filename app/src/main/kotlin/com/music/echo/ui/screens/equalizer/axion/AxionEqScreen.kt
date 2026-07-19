@@ -39,15 +39,13 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Refresh
-import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.text.input.KeyboardType
 import iad1tya.echo.music.R
 import iad1tya.echo.music.eq.data.EqConstants
 import iad1tya.echo.music.eq.data.EqMode
@@ -57,6 +55,7 @@ import iad1tya.echo.music.eq.data.ParametricEQBand
 import iad1tya.echo.music.eq.data.SavedEQProfile
 import iad1tya.echo.music.ui.component.Material3SettingsGroup
 import iad1tya.echo.music.ui.component.Material3SettingsItem
+import iad1tya.echo.music.ui.utils.rememberIsWideLayout
 import iad1tya.echo.music.utils.rememberPreference
 import kotlin.math.abs
 import kotlin.math.cos
@@ -130,84 +129,98 @@ fun AxionEqScreen(
             )
         },
     ) { innerPadding ->
-        // Foldable / large-screen aware: on a WIDE display (e.g. an unfolded Galaxy Z Fold inner
-        // screen) we show the EQ controls and the DSP effect switches side-by-side in two columns so
-        // both are visible without scrolling between them. On a NARROW display (folded / phone) we keep
-        // the original single scrolling column unchanged.
+        // #49 — the EQ has to GROW with the screen instead of being squeezed into a fixed strip.
+        //
+        // This used to fork into a two-column Row above a hardcoded 840dp. That branch was actively WORSE
+        // than the narrow one: its RIGHT column only ever contained `Spacer(height = 60.dp)` (the "DSP effect
+        // switches" its comment promised were never wired up), so on a big screen the EQ was crushed into
+        // half the width with the other half BLANK. Two ways out: fill the right column with real content, or
+        // drop the split for ONE centred column. Chosen: the single column, because (1) filling the second
+        // pane means INVENTING new UI and re-homing controls — new layout, and the request here is sizing;
+        // (2) [EqMainContent] is already a `ColumnScope` extension written for exactly one scrolling column,
+        // so this is its intended contract, not a workaround; (3) it DELETES a whole duplicated code path
+        // rather than adding one. The bands, curve and PEQ graph below now expand into the extra width, which
+        // is what "expand with the screen" actually meant.
+        //
+        // The 840dp literal is gone: the gate is [rememberIsWideLayout] (700dp, the shared breakpoint that
+        // actually fires on an unfolded foldable). It is a LAYOUT gate — never [rememberIsTvOrCar], which
+        // would switch on the TV/car D-pad ring on a wide phone (registry #12/#26).
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-            // Material 'expanded' breakpoint — matches the Z Fold inner display.
-            val wide = maxWidth >= 840.dp
-
-            if (wide) {
-                Row(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
-                    // LEFT: the existing EQ controls, scrolling independently.
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight()
-                            .verticalScroll(rememberScrollState())
-                            .padding(horizontal = 16.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp),
-                    ) {
-                        EqMainContent(
-                            viewModel = viewModel,
-                            enabled = enabled,
-                            graphicEnabled = graphicEnabled,
-                            bandGains = bandGains,
-                            preamp = preamp,
-                            autoEqActive = autoEqActive,
-                            isDirty = isDirty,
-                            customProfiles = customProfiles,
-                            eqMode = eqMode,
-                            peqBands = peqBands,
-                            onSaveClick = { showSaveDialog = true },
-                            onManageClick = { showManageDialog = true },
-                            onDeviceClick = { showDeviceDialog = true },
-                        )
-                    }
-                    // RIGHT: the DSP effect switches (shared DataStore keys with SoundSettings),
-                    // scrolling independently.
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight()
-                            .verticalScroll(rememberScrollState())
-                            .padding(horizontal = 16.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp),
-                    ) {
-                        Spacer(modifier = Modifier.height(60.dp))
-                    }
-                }
-            } else {
-                // NARROW (folded / phone): unchanged single scrolling column.
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .verticalScroll(rememberScrollState())
-                        .padding(innerPadding)
-                        .padding(horizontal = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                ) {
-                    EqMainContent(
-                        viewModel = viewModel,
-                        enabled = enabled,
-                        graphicEnabled = graphicEnabled,
-                        bandGains = bandGains,
-                        preamp = preamp,
-                        autoEqActive = autoEqActive,
-                        isDirty = isDirty,
-                        customProfiles = customProfiles,
-                        eqMode = eqMode,
-                        peqBands = peqBands,
-                        onSaveClick = { showSaveDialog = true },
-                        onManageClick = { showManageDialog = true },
-                        onDeviceClick = { showDeviceDialog = true },
-                    )
-                }
+            val isWideLayout = rememberIsWideLayout()
+            // Cap the readable measure so a ~900dp+ window doesn't stretch every row edge to edge (#50,
+            // "todo lo pone gigante"). Below the cap this is the full width — i.e. phones are unchanged.
+            val contentWidth = if (isWideLayout) maxWidth.coerceAtMost(EQ_MAX_CONTENT_WIDTH) else maxWidth
+            Column(
+                modifier = Modifier
+                    .width(contentWidth)
+                    .align(Alignment.TopCenter)
+                    .fillMaxHeight()
+                    .verticalScroll(rememberScrollState())
+                    .padding(innerPadding)
+                    .padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                EqMainContent(
+                    viewModel = viewModel,
+                    enabled = enabled,
+                    graphicEnabled = graphicEnabled,
+                    bandGains = bandGains,
+                    preamp = preamp,
+                    autoEqActive = autoEqActive,
+                    isDirty = isDirty,
+                    customProfiles = customProfiles,
+                    eqMode = eqMode,
+                    peqBands = peqBands,
+                    onSaveClick = { showSaveDialog = true },
+                    onManageClick = { showManageDialog = true },
+                    onDeviceClick = { showDeviceDialog = true },
+                )
             }
         }
     }
 }
+
+/** Widest the EQ content column is allowed to get before it stops being readable and starts being stretched. */
+private val EQ_MAX_CONTENT_WIDTH = 900.dp
+
+/** Narrow-screen width of one band column — also the FLOOR below which the band row keeps scrolling (#49b). */
+private val BAND_SLIDER_MIN_WIDTH = 46.dp
+
+/** Gap between band columns. */
+private val BAND_SLIDER_SPACING = 2.dp
+
+/** Inner horizontal padding of the band row. */
+private val BAND_ROW_HORIZONTAL_PADDING = 12.dp
+
+/** Slider throw at phone width. Grown by [eqVerticalScale] when the pane is wider. */
+private val BAND_SLIDER_TRAVEL = 200.dp
+
+/** Height of the read-only EQ curve preview at phone width. */
+private val EQ_CURVE_HEIGHT = 130.dp
+
+/** Height of the interactive parametric-EQ graph at phone width. */
+private val PEQ_GRAPH_HEIGHT = 220.dp
+
+/** Hard ceiling on [eqVerticalScale] — the graphs may get roomier, never "gigante" (#50). */
+private const val EQ_VERTICAL_SCALE_MAX = 1.45f
+
+/**
+ * Width at which the graphs are considered "phone sized" and keep their original heights exactly. Anything
+ * narrower than this scales by 1f, so the whole growth path is inert on a normal phone.
+ */
+private val EQ_CURVE_SCALE_BASE_WIDTH = 400.dp
+
+/**
+ * How much taller the EQ's fixed-height elements (band travel, curve preview, PEQ graph) should get for the
+ * width actually available. 1f at or below [base] — so a phone is byte-for-byte unchanged — then grows in
+ * proportion to the extra width and is clamped at [EQ_VERTICAL_SCALE_MAX].
+ *
+ * Deliberately sub-linear in effect: the owner's complaint (#50) is that an unfolded foldable makes everything
+ * GIGANTIC, so this exists to stop the graphs looking like squashed strips next to now-wider content, not to
+ * scale the UI up with the screen.
+ */
+private fun eqVerticalScale(available: Dp, base: Dp): Float =
+    if (available <= base) 1f else (available / base).coerceAtMost(EQ_VERTICAL_SCALE_MAX)
 
 /**
  * The existing EQ controls — enable card, preamp, curve preview + presets, mode toggle, the graphic /
@@ -397,10 +410,14 @@ private fun EqCurvePreview(bandGains: FloatArray, enabled: Boolean) {
         animationSpec = androidx.compose.animation.core.tween(durationMillis = 500)
     )
 
+    // #49(c) — the preview was a flat 130dp at every width, so on a wide pane it read as a squashed letterbox.
+    // Height now follows the measured width via [eqVerticalScale] (clamped, and exactly 130dp on a phone).
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+    val curveHeight = EQ_CURVE_HEIGHT * eqVerticalScale(maxWidth, EQ_CURVE_SCALE_BASE_WIDTH)
     androidx.compose.foundation.Canvas(
         modifier = Modifier
             .fillMaxWidth()
-            .height(130.dp)
+            .height(curveHeight)
             .clip(racra.compose.smooth_corner_rect_library.AbsoluteSmoothCornerShape(24.dp, 60))
             .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.4f))
             .padding(horizontal = 12.dp, vertical = 12.dp),
@@ -469,6 +486,7 @@ private fun EqCurvePreview(bandGains: FloatArray, enabled: Boolean) {
             animatedCurveColor,
             style = androidx.compose.ui.graphics.drawscope.Stroke(width = 3.dp.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round),
         )
+    }
     }
 }
 
@@ -685,26 +703,48 @@ private fun BandEqCard(
     onReset: () -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Box(
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(MaterialTheme.shapes.extraLarge)
                 .background(MaterialTheme.colorScheme.surfaceContainerLow)
                 .padding(vertical = 16.dp),
         ) {
+            // #49(b) — the band row used to be a fixed-width `horizontalScroll` Row: every band was a hard
+            // 46dp Column, so the whole row had a CONSTANT ~502dp intrinsic width and the EQ still scrolled
+            // sideways on a screen with room to spare. When the pane is at least as wide as that intrinsic
+            // width, drop the scroll and let every band take an equal `weight(1f)` share instead, so the
+            // sliders spread across the space. BELOW it nothing changes — same 46dp bands, same scrolling.
+            //
+            // The count is ALWAYS EqConstants.BAND_COUNT (never a literal), so this follows the engine.
+            val bandCount = EqConstants.BAND_COUNT
+            val intrinsicRowWidth =
+                (BAND_SLIDER_MIN_WIDTH * bandCount) +
+                    (BAND_SLIDER_SPACING * (bandCount - 1)) +
+                    (BAND_ROW_HORIZONTAL_PADDING * 2)
+            val canExpand = maxWidth >= intrinsicRowWidth
+            // Taller travel on a big screen: 200dp of throw on a 900dp-wide pane reads as a squashed strip.
+            // Scales off the SAME measured width, and is clamped so it can only ever grow modestly (#50 —
+            // the complaint is that things get too big, so this never runs away).
+            val travel = BAND_SLIDER_TRAVEL * eqVerticalScale(maxWidth, intrinsicRowWidth)
             Row(
                 modifier = Modifier
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                    .then(
+                        if (canExpand) Modifier.fillMaxWidth()
+                        else Modifier.horizontalScroll(rememberScrollState()),
+                    )
+                    .padding(horizontal = BAND_ROW_HORIZONTAL_PADDING),
+                horizontalArrangement = Arrangement.spacedBy(BAND_SLIDER_SPACING),
             ) {
-                for (band in 0 until EqConstants.BAND_COUNT) {
+                for (band in 0 until bandCount) {
                     EqBandSlider(
                         label = EqConstants.FREQUENCY_LABELS[band],
                         value = bandGains.getOrElse(band) { 0f },
                         enabled = enabled,
                         onValueChange = { onBandChange(band, it) },
                         onValueChangeFinished = onBandCommit,
+                        travel = travel,
+                        modifier = if (canExpand) Modifier.weight(1f) else Modifier.width(BAND_SLIDER_MIN_WIDTH),
                     )
                 }
             }
@@ -952,10 +992,14 @@ private fun PeqGraphEditor(
         )
 
         // ── The interactive frequency-response graph ──────────────────────────────────────────────
+        // #49(c) — height follows the measured width (clamped by [eqVerticalScale]); on a wide pane the extra
+        // vertical room also makes the draggable nodes easier to grab. Exactly 220dp at phone width.
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+        val peqGraphHeight = PEQ_GRAPH_HEIGHT * eqVerticalScale(maxWidth, EQ_CURVE_SCALE_BASE_WIDTH)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(220.dp)
+                .height(peqGraphHeight)
                 .clip(MaterialTheme.shapes.large)
                 .background(MaterialTheme.colorScheme.surfaceContainerLowest)
                 .then(if (enabled) Modifier else Modifier.graphicsLayer { alpha = 0.4f }),
@@ -1069,6 +1113,7 @@ private fun PeqGraphEditor(
                     drawCircle(androidx.compose.ui.graphics.Color.White.copy(alpha = 0.85f), radius = r * 0.32f, center = Offset(cx, cy))
                 }
             }
+        }
         }
 
         // ── Selected-band detail panel (Q slider + type + exact values + remove) ──────────────────
@@ -1205,207 +1250,6 @@ private fun formatHz(freq: Double): String =
         "${freq.roundToInt()} Hz"
     }
 
-/**
- * Parametric (PEQ) editor — 5–8 fully user-defined bands. Each band exposes free frequency / Q / gain
- * plus a peak/shelf type selector. Values are pushed live and committed on focus loss / settle.
- *
- * Superseded by [PeqGraphEditor] (the interactive drag-to-shape graph). Kept for reference; not wired
- * into the PARAMETRIC branch any more.
- */
-@Suppress("unused")
-@Composable
-private fun PeqEditorCard(
-    peqBands: List<ParametricEQBand>,
-    enabled: Boolean,
-    onBandChange: (index: Int, freq: Double?, q: Double?, gain: Double?, type: FilterType?) -> Unit,
-    onBandCommit: () -> Unit,
-    onAddBand: () -> Unit,
-    onRemoveBand: (Int) -> Unit,
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(MaterialTheme.shapes.extraLarge)
-            .background(MaterialTheme.colorScheme.surfaceContainerLow)
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        peqBands.forEachIndexed { index, band ->
-            PeqBandRow(
-                index = index,
-                band = band,
-                enabled = enabled,
-                canRemove = enabled && peqBands.size > 5,
-                onFreqChange = { onBandChange(index, it, null, null, null) },
-                onQChange = { onBandChange(index, null, it, null, null) },
-                onGainChange = { onBandChange(index, null, null, it, null) },
-                onTypeChange = { onBandChange(index, null, null, null, it) },
-                onCommit = onBandCommit,
-                onRemove = { onRemoveBand(index) },
-            )
-            if (index < peqBands.lastIndex) {
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-            }
-        }
-        OutlinedButton(
-            onClick = onAddBand,
-            enabled = enabled && peqBands.size < 8,
-            modifier = Modifier.fillMaxWidth(),
-            shape = MaterialTheme.shapes.medium,
-        ) {
-            Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(8.dp))
-            Text("Añadir banda")
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun PeqBandRow(
-    index: Int,
-    band: ParametricEQBand,
-    enabled: Boolean,
-    canRemove: Boolean,
-    onFreqChange: (Double) -> Unit,
-    onQChange: (Double) -> Unit,
-    onGainChange: (Double) -> Unit,
-    onTypeChange: (FilterType) -> Unit,
-    onCommit: () -> Unit,
-    onRemove: () -> Unit,
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Text(
-                text = "Banda ${index + 1}",
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.primary,
-            )
-            androidx.compose.material3.IconButton(
-                onClick = onRemove,
-                enabled = canRemove,
-                modifier = Modifier.size(28.dp),
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.Delete,
-                    contentDescription = "Quitar banda",
-                    tint = if (canRemove) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.outline,
-                    modifier = Modifier.size(18.dp),
-                )
-            }
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            PeqNumberField(
-                label = "Frec (Hz)",
-                value = band.frequency,
-                decimals = 0,
-                enabled = enabled,
-                modifier = Modifier.weight(1f),
-                onValueChange = onFreqChange,
-                onCommit = onCommit,
-            )
-            PeqNumberField(
-                label = "Q",
-                value = band.q,
-                decimals = 2,
-                enabled = enabled,
-                modifier = Modifier.weight(1f),
-                onValueChange = onQChange,
-                onCommit = onCommit,
-            )
-            PeqNumberField(
-                label = "Gan (dB)",
-                value = band.gain,
-                decimals = 1,
-                enabled = enabled,
-                modifier = Modifier.weight(1f),
-                onValueChange = onGainChange,
-                onCommit = onCommit,
-            )
-        }
-        PeqTypeSelector(
-            selected = band.filterType,
-            enabled = enabled,
-            onTypeChange = {
-                onTypeChange(it)
-                onCommit()
-            },
-        )
-    }
-}
-
-/**
- * A numeric [OutlinedTextField] bound to a Double, usable on any locale.
- *
- * - Formatting is locale-fixed ([java.util.Locale.US]) so the decimal separator is always '.', and the
- *   parser normalizes ',' → '.' — on a Spanish locale "0,7" and "0.7" both parse, and we never emit a
- *   comma the parser would then reject.
- * - The buffer is a free editable string (NOT keyed on [value]) so keystrokes are never clobbered and
- *   the live clamp can't snap the text mid-typing (you can type "900" even if intermediate "9" clamps).
- * - While focused, edits push the parsed live value to the VM WITHOUT reformatting/clamping the text.
- *   On focus LOSS the model (already clamped by the VM) is reformatted back into the field and committed.
- * - Blank / "." / "-" (incomplete) input is a no-op — it neither pushes nor crashes.
- */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun PeqNumberField(
-    label: String,
-    value: Double,
-    decimals: Int,
-    enabled: Boolean,
-    modifier: Modifier = Modifier,
-    onValueChange: (Double) -> Unit,
-    onCommit: () -> Unit,
-) {
-    fun fmt(v: Double): String =
-        if (decimals == 0) v.roundToInt().toString()
-        else String.format(java.util.Locale.US, "%.${decimals}f", v)
-
-    var text by remember { mutableStateOf(fmt(value)) }
-    var focused by remember { mutableStateOf(false) }
-
-    // Resync the displayed text from the (clamped) model only while NOT focused, so external updates
-    // (load profile, reset) reflect, but typing is never overwritten.
-    LaunchedEffect(value, focused) {
-        if (!focused) text = fmt(value)
-    }
-
-    OutlinedTextField(
-        value = text,
-        onValueChange = {
-            text = it
-            // Push a LIVE value without reformatting/clamping the displayed text. Incomplete tokens
-            // (blank, lone "." or "-") are intentionally skipped.
-            it.replace(',', '.').toDoubleOrNull()?.let { parsed -> onValueChange(parsed) }
-        },
-        label = { Text(label, style = MaterialTheme.typography.labelSmall) },
-        singleLine = true,
-        enabled = enabled,
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-        textStyle = MaterialTheme.typography.bodyMedium,
-        shape = MaterialTheme.shapes.small,
-        modifier = modifier.onFocusChanged { focus ->
-            if (focus.isFocused) {
-                focused = true
-            } else if (focused) {
-                focused = false
-                // Settle: parse + push final value (VM clamps), persist. The LaunchedEffect above then
-                // resyncs `text` to the freshly-clamped model now that focused == false (avoids using a
-                // stale captured `value` here).
-                text.replace(',', '.').toDoubleOrNull()?.let { parsed -> onValueChange(parsed) }
-                onCommit()
-            }
-        },
-    )
-}
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PeqTypeSelector(
@@ -1434,9 +1278,11 @@ private fun EqBandSlider(
     enabled: Boolean,
     onValueChange: (Float) -> Unit,
     onValueChangeFinished: () -> Unit,
+    modifier: Modifier = Modifier.width(BAND_SLIDER_MIN_WIDTH),
+    travel: Dp = BAND_SLIDER_TRAVEL,
 ) {
     Column(
-        modifier = Modifier.width(46.dp),
+        modifier = modifier,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
@@ -1446,7 +1292,9 @@ private fun EqBandSlider(
             textAlign = TextAlign.Center,
         )
         Spacer(modifier = Modifier.height(4.dp))
-        Box(modifier = Modifier.height(200.dp), contentAlignment = Alignment.Center) {
+        // The vertical slider is a HORIZONTAL Slider rotated -90°, so the Box height and the Slider width are
+        // the SAME dimension (the travel) and must stay in lockstep — hence one `travel` value driving both.
+        Box(modifier = Modifier.height(travel), contentAlignment = Alignment.Center) {
             Slider(
                 value = value,
                 onValueChange = onValueChange,
@@ -1454,7 +1302,7 @@ private fun EqBandSlider(
                 valueRange = EqConstants.GAIN_MIN..EqConstants.GAIN_MAX,
                 enabled = enabled,
                 modifier = Modifier
-                    .width(200.dp)
+                    .width(travel)
                     .layout { measurable, constraints ->
                         val placeable = measurable.measure(
                             constraints.copy(
