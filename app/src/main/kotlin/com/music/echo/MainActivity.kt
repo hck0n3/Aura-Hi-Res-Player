@@ -829,7 +829,7 @@ class MainActivity : ComponentActivity() {
                 val showSideNowPlaying = showRail &&
                     showNowPlayingPanel &&
                     contentHasRoom &&
-                    (forceSplitView || iad1tya.echo.music.ui.utils.rememberIsWideScreen())
+                    (forceSplitView || iad1tya.echo.music.ui.utils.rememberIsWideLayout())
 
                 val navPadding = if (shouldShowNavigationBar && !showRail) {
                     NavigationBarHeight + FloatingToolbarBottomPadding

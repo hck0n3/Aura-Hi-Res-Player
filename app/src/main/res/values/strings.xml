@@ -600,4 +600,7 @@
     <string name="restore_failed_corrupt">The backup file is damaged or incomplete and can\'t be restored. Nothing was changed.</string>
     <string name="restore_failed_io">Couldn\'t read the backup file. Nothing was changed.</string>
     <string name="restore_failed_invalid">This file isn\'t a valid Aura backup.</string>
+    <!-- Large screen / foldable layout -->
+    <string name="immersive_canvas_on_rotate">Full-screen animated background in landscape</string>
+    <string name="immersive_canvas_on_rotate_desc">When you rotate to landscape, show only the animated background and the playback controls. Off by default: the full interface (cover, title, progress and queue) stays on screen at every angle.</string>
 </resources>

@@ -25,17 +25,24 @@ import androidx.compose.ui.node.ModifierNodeElement
 import androidx.compose.ui.node.invalidateDraw
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.window.core.layout.WindowSizeClass
 import iad1tya.echo.music.utils.DeviceForm
 
 /**
- * True on a D-pad / remote context where the TV affordances (focus ring, initial focus, TV layouts) should
- * show. That is: a real Android TV / car head unit, OR the user forced the split, OR a genuinely wide CURRENT
- * window (>= 840dp, the "expanded" width breakpoint — see [rememberIsExpandedWidth]). The wide/forced
- * fallbacks are CRUCIAL: cheap Android-TV BOXES and Chinese car head units run PLAIN Android and do NOT report
- * as TV (no FEATURE_LEANBACK / UI_MODE_TYPE_TELEVISION), so form-factor detection alone left every TV feature
- * dark on them. Harmless on touch tablets — touch raises no focus events, so the ring never actually draws
- * there.
+ * True on a D-pad / remote context where the TV affordances (focus ring, initial focus, TV-only behaviours
+ * like "never auto-hide the transport") should show. That is: a real Android TV / car head unit, OR the user
+ * forced the split. The forced fallback is CRUCIAL: cheap Android-TV BOXES and Chinese car head units run
+ * PLAIN Android and do NOT report as TV (no FEATURE_LEANBACK / UI_MODE_TYPE_TELEVISION), so form-factor
+ * detection alone left every TV feature dark on them — [ForceSplitViewKey] is the manual escape hatch.
+ *
+ * DELIBERATELY NOT width-based. This used to also OR in "window >= 840dp", which conflated two unrelated
+ * things: "this screen is wide enough for a two-pane LAYOUT" and "this device is driven by a REMOTE". They
+ * only coincided because the layout threshold was so high that only TVs/tablets reached it. Lowering the
+ * layout breakpoint to cover unfolded foldables (see [rememberIsWideLayout]) would have switched the D-pad
+ * focus ring, forced initial focus and the TV transport behaviour ON for a phone the moment it got wide —
+ * which is exactly how Android Auto / TV regressions get introduced (registry #12 / #26).
+ *
+ * Use this ONLY for D-pad/remote affordances ([tvFocusable], [tvFocusRestorer], initial focus requests).
+ * For "is there room for a wider layout", use [rememberIsWideLayout].
  */
 @Composable
 fun rememberIsTvOrCar(): Boolean {
@@ -44,40 +51,52 @@ fun rememberIsTvOrCar(): Boolean {
     val forceSplit by iad1tya.echo.music.utils.rememberPreference(
         iad1tya.echo.music.constants.ForceSplitViewKey, false,
     )
-    return deviceTvCar || forceSplit || rememberIsExpandedWidth()
+    return deviceTvCar || forceSplit
 }
 
 /**
  * True on a BIG screen where a wide "Spotify-style" layout fits: TV / car head unit / tablet / car box /
- * unfolded foldable / any large-landscape display. REACTIVE and based on the REAL CURRENT WINDOW width
- * ([rememberIsExpandedWidth] -> [currentWindowAdaptiveInfo]), NOT the physical smallestScreenWidthDp — so
- * folding/unfolding a foldable, entering split-screen / free-form multiwindow, or rotating flips this live
- * without a restart, and a phone-width window on a big display (e.g. a narrow multiwindow pane) correctly
- * stays single pane. Requires the "expanded" >= 840dp width (real room for a rail + content + panel); BELOW
- * that -> single pane, even on a device whose old smallestScreenWidthDp >= 600 used to force the split.
+ * unfolded foldable / any large-landscape display — i.e. the CURRENT window is wide enough for a genuinely
+ * wider LAYOUT (two panes, a nav rail, a capped content column). REACTIVE and based on the REAL CURRENT
+ * WINDOW width ([rememberIsExpandedWidth] -> [currentWindowAdaptiveInfo]), NOT the physical
+ * smallestScreenWidthDp — so folding/unfolding a foldable, entering split-screen / free-form multiwindow, or
+ * rotating flips this live without a restart, and a phone-width window on a big display (e.g. a narrow
+ * multiwindow pane) correctly stays single pane.
  *
- * Distinct from [rememberIsTvOrCar], which gates the D-pad focus RING (only remote-driven TV/car need it).
+ * PURELY a width question — it says NOTHING about the input device, so it never enables the TV/car D-pad ring
+ * (that is [rememberIsTvOrCar]).
+ *
+ * Breakpoint is [WIDE_LAYOUT_BREAKPOINT_DP] (700dp), NOT Material's "expanded" 840dp. 840 was chosen for
+ * tablets and simply never fires on the device this matters most for: an unfolded Galaxy Z Fold is about
+ * 690x829dp, so every foldable stayed in the phone layout no matter how much room it had. 700dp covers
+ * unfolded foldables and small tablets while still excluding ordinary phones in landscape (a large phone is
+ * ~600-690dp wide rotated), so phones are untouched.
+ *
+ * [ForceSplitViewKey] still forces this true — that override is how TV boxes / head units that don't report
+ * their real size get the wide layout.
  */
 @Composable
-fun rememberIsWideScreen(): Boolean {
-    val isTvOrCar = rememberIsTvOrCar()
+fun rememberIsWideLayout(): Boolean {
     val forceSplit by iad1tya.echo.music.utils.rememberPreference(
         iad1tya.echo.music.constants.ForceSplitViewKey, false,
     )
-    return isTvOrCar || forceSplit || rememberIsExpandedWidth()
+    return forceSplit || rememberIsExpandedWidth()
 }
 
+/** Width at/above which the wide two-pane layouts turn on. See [rememberIsWideLayout] for why 700, not 840. */
+const val WIDE_LAYOUT_BREAKPOINT_DP = 700
+
 /**
- * The CURRENT window is at least Material's "expanded" width breakpoint (840dp). Uses
- * [currentWindowAdaptiveInfo] so it reflects the real, orientation-aware, multiwindow-aware WINDOW width —
- * NOT the physical screen (smallestScreenWidthDp) — and recomposes when that width changes (fold/unfold,
- * split-screen resize, rotation). This is the responsive gate that keeps foldables / multiwindow from being
- * forced into the split by a coarse physical-size check.
+ * The CURRENT window is at least [WIDE_LAYOUT_BREAKPOINT_DP] wide. Uses [currentWindowAdaptiveInfo] so it
+ * reflects the real, orientation-aware, multiwindow-aware WINDOW width — NOT the physical screen
+ * (smallestScreenWidthDp) — and recomposes when that width changes (fold/unfold, split-screen resize,
+ * rotation). This is the responsive gate that keeps foldables / multiwindow from being judged by a coarse
+ * physical-size check.
  */
 @Composable
 private fun rememberIsExpandedWidth(): Boolean {
     val windowSizeClass = currentWindowAdaptiveInfo().windowSizeClass
-    return windowSizeClass.isWidthAtLeastBreakpoint(WindowSizeClass.WIDTH_DP_EXPANDED_LOWER_BOUND)
+    return windowSizeClass.isWidthAtLeastBreakpoint(WIDE_LAYOUT_BREAKPOINT_DP)
 }
 
 /**

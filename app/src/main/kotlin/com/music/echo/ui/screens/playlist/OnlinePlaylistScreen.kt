@@ -593,7 +593,7 @@ private fun OnlinePlaylistHeader(
 
     // TV/car (wide landscape): cap the full-bleed blurred header backdrop to a short banner so the header area
     // isn't a giant square; phones/tablets keep the square. The sharp cover below is already capped to 320dp.
-    val isTvHeader = iad1tya.echo.music.ui.utils.rememberIsWideScreen()
+    val isTvHeader = iad1tya.echo.music.ui.utils.rememberIsWideLayout()
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -616,7 +616,7 @@ private fun OnlinePlaylistHeader(
             Spacer(Modifier.height(20.dp)) 
 
             
-            val isTvOrCarCover = iad1tya.echo.music.ui.utils.rememberIsWideScreen()
+            val isTvOrCarCover = iad1tya.echo.music.ui.utils.rememberIsWideLayout()
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
