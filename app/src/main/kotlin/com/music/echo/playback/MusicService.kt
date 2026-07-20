@@ -4659,7 +4659,15 @@ class MusicService :
                 return
             }
             isCacheOrStreamCorruptionError(error) -> {
-                Timber.tag(TAG).d("Cache or stream corruption detected, clearing cache and refreshing URL")
+                // The cached BYTES are what is bad here (CONTAINER_MALFORMED / READ_POSITION_OUT_OF_RANGE),
+                // so they must actually be deleted. This used to call handleExpiredUrlError, which only
+                // drops songUrlCache and deliberately KEEPS the bytes — correct for a 403, wrong for
+                // corruption. It only ever worked because the blanket purge above happened to delete them
+                // first; with that gone, the resolver's "ghost cache entry — keeping cached bytes" path
+                // would re-serve the SAME corrupt data on every retry, so a song that used to hiccup once
+                // and heal would stutter through its 3 retries and get skipped — on every single play.
+                Timber.tag(TAG).d("Cache/stream corruption — deleting the cached bytes and re-resolving")
+                if (mediaId != null) performAggressiveCacheClear(mediaId)
                 handleExpiredUrlError(mediaId)
                 return
             }
@@ -4694,8 +4702,14 @@ class MusicService :
                         handleFinalFailure()
                         return
                     }
+                    // Drop the resolved URL — the comment above says this branch's own diagnosis is "a DEAD
+                    // deciphered URL", and the retry goes through the resolver, which reuses songUrlCache
+                    // while its TTL holds. Without this the bounded retry re-fetches the IDENTICAL dead URL
+                    // three times and then skips a song that a fresh resolve would have played. The BYTES
+                    // stay: a dead URL says nothing about audio already on disk.
+                    songUrlCache.remove(mediaId)
                 }
-                Timber.tag(TAG).d("Connected but network-like error; bounded retry")
+                Timber.tag(TAG).d("Connected but network-like error; bounded retry with a fresh URL")
                 waitOnNetworkError()
                 return
             }
