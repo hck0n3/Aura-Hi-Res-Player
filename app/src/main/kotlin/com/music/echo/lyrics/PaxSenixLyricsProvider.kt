@@ -8,6 +8,7 @@ import iad1tya.echo.music.constants.EnablePaxsenixKey
 import iad1tya.echo.music.utils.dataStore
 import iad1tya.echo.music.utils.get
 import timber.log.Timber
+import kotlin.coroutines.cancellation.CancellationException
 
 object PaxSenixLyricsProvider : LyricsProvider {
     private const val TAG = "PaxSenixProvider"
@@ -50,8 +51,14 @@ object PaxSenixLyricsProvider : LyricsProvider {
         Timber.tag(TAG).d("getAllLyrics called")
         try {
             Paxsenix.getAllLyrics(title, artist, duration, album, callback)
+        } catch (e: CancellationException) {
+            // Song skipped while listing — propagate so the job actually stops.
+            throw e
         } catch (e: Exception) {
-            Timber.tag(TAG).e(e, "Error fetching lyrics from Paxsenix")
+            // Feed the breaker from this path too, so a 403 seen while browsing all providers
+            // mutes Paxsenix for the per-song path as well.
+            LyricsProviderCircuitBreaker.recordFailure(name, e)
+            Timber.tag(TAG).w(e, "Error fetching lyrics from Paxsenix")
         }
     }
 }

@@ -817,7 +817,6 @@ object YouTube {
     }
 
     suspend fun library(browseId: String, tabIndex: Int = 0): Result<LibraryPage> {
-        println("[UPLOAD_DEBUG] library() called with browseId=$browseId, tabIndex=$tabIndex")
         return runCatching {
             val response = innerTube.browse(
                 client = WEB_REMIX,
@@ -826,87 +825,41 @@ object YouTube {
             ).body<BrowseResponse>()
 
             val tabs = response.contents?.singleColumnBrowseResultsRenderer?.tabs
-            println("[UPLOAD_DEBUG] tabs count: ${tabs?.size ?: 0}")
-
-            // Debug: log the structure for uploaded songs browseId
-            if (browseId == "FEmusic_library_privately_owned_tracks") {
-                println("[UPLOAD_DEBUG] Raw response.contents: ${response.contents}")
-                tabs?.forEachIndexed { idx, tab ->
-                    println("[UPLOAD_DEBUG] Tab $idx: tabRenderer.content null? ${tab.tabRenderer.content == null}")
-                    println("[UPLOAD_DEBUG] Tab $idx: sectionListRenderer null? ${tab.tabRenderer.content?.sectionListRenderer == null}")
-                    println("[UPLOAD_DEBUG] Tab $idx: sectionListRenderer.contents size: ${tab.tabRenderer.content?.sectionListRenderer?.contents?.size ?: 0}")
-                    tab.tabRenderer.content?.sectionListRenderer?.contents?.forEachIndexed { cIdx, content ->
-                        println("[UPLOAD_DEBUG] Tab $idx Content $cIdx: gridRenderer=${content.gridRenderer != null}, musicShelfRenderer=${content.musicShelfRenderer != null}")
-                    }
-                }
-            }
-
-            val contents = if (tabs != null && tabs.size >= tabIndex) {
-                tabs[tabIndex].tabRenderer.content?.sectionListRenderer?.contents?.firstOrNull()
-            }
-            else {
-                println("[UPLOAD_DEBUG] No tabs or tabIndex out of range")
-                null
-            }
-
-            println("[UPLOAD_DEBUG] contents null? ${contents == null}")
-            println("[UPLOAD_DEBUG] gridRenderer null? ${contents?.gridRenderer == null}")
-            println("[UPLOAD_DEBUG] musicShelfRenderer null? ${contents?.musicShelfRenderer == null}")
+            // getOrNull, not `tabs.size >= tabIndex`: the old guard let tabIndex == size through
+            // and then indexed it (and `size >= 0` was vacuously true for an empty tab list),
+            // so a library page with fewer tabs than expected threw IndexOutOfBounds.
+            val sectionList = tabs?.getOrNull(tabIndex)?.tabRenderer?.content?.sectionListRenderer
+            val contents = sectionList?.contents?.firstOrNull()
 
             when {
-                contents?.gridRenderer != null -> {
-                    val gridItems = contents.gridRenderer.items
-                    println("[UPLOAD_DEBUG] gridRenderer items count: ${gridItems.size}")
-                    val twoRowItems = gridItems.mapNotNull(GridRenderer.Item::musicTwoRowItemRenderer)
-                    println("[UPLOAD_DEBUG] musicTwoRowItemRenderer count: ${twoRowItems.size}")
-                    val parsedItems = twoRowItems.mapNotNull { LibraryPage.fromMusicTwoRowItemRenderer(it) }
-                    println("[UPLOAD_DEBUG] Successfully parsed items: ${parsedItems.size}")
-                    LibraryPage(
-                        items = parsedItems,
-                        continuation = contents.gridRenderer.continuations?.getContinuation()
-                    )
-                }
+                contents?.gridRenderer != null -> LibraryPage(
+                    items = contents.gridRenderer.items
+                        .mapNotNull(GridRenderer.Item::musicTwoRowItemRenderer)
+                        .mapNotNull { LibraryPage.fromMusicTwoRowItemRenderer(it) },
+                    continuation = contents.gridRenderer.continuations?.getContinuation()
+                )
 
-                else -> { // contents?.musicShelfRenderer != null
-                    val shelfContents = contents?.musicShelfRenderer?.contents
-                    println("[UPLOAD_DEBUG] musicShelfRenderer contents count: ${shelfContents?.size ?: 0}")
-                    if (shelfContents == null) {
-                        println("[UPLOAD_DEBUG] ERROR: musicShelfRenderer contents is null!")
-                        throw IllegalStateException("No content found for browseId=$browseId")
-                    }
-                    val listItemRenderers = shelfContents.mapNotNull(MusicShelfRenderer.Content::musicResponsiveListItemRenderer)
-                    println("[UPLOAD_DEBUG] musicResponsiveListItemRenderer count: ${listItemRenderers.size}")
+                contents?.musicShelfRenderer != null -> LibraryPage(
+                    // A shelf with no rows is a genuinely empty library section (e.g. the account
+                    // has no uploads), not a failure.
+                    items = contents.musicShelfRenderer.contents.orEmpty()
+                        .mapNotNull(MusicShelfRenderer.Content::musicResponsiveListItemRenderer)
+                        .mapNotNull { LibraryPage.fromMusicResponsiveListItemRenderer(it) },
+                    continuation = contents.musicShelfRenderer.continuations?.getContinuation()
+                )
 
-                    listItemRenderers.forEachIndexed { index, renderer ->
-                        println("[UPLOAD_DEBUG] Item $index: isSong=${renderer.isSong}, isArtist=${renderer.isArtist}, isAlbum=${renderer.isAlbum}, isPlaylist=${renderer.isPlaylist}")
-                        println("[UPLOAD_DEBUG] Item $index: playlistItemData=${renderer.playlistItemData}")
-                        println("[UPLOAD_DEBUG] Item $index: flexColumns count=${renderer.flexColumns.size}")
-                        renderer.flexColumns.forEachIndexed { colIdx, col ->
-                            println("[UPLOAD_DEBUG] Item $index flexColumn $colIdx: ${col.musicResponsiveListItemFlexColumnRenderer.text?.runs?.map { it.text }}")
-                        }
-                        println("[UPLOAD_DEBUG] Item $index: thumbnail=${renderer.thumbnail?.musicThumbnailRenderer?.thumbnail}")
-                    }
+                // The requested tab resolved and carried a section list, but no grid/shelf in it:
+                // that is YouTube's empty state for this library section. Report an empty page.
+                sectionList != null -> LibraryPage(items = emptyList(), continuation = null)
 
-                    val parsedItems = listItemRenderers.mapNotNull { renderer ->
-                        val result = LibraryPage.fromMusicResponsiveListItemRenderer(renderer)
-                        if (result == null) {
-                            println("[UPLOAD_DEBUG] Failed to parse renderer: videoId=${renderer.playlistItemData?.videoId}")
-                        }
-                        result
-                    }
-                    println("[UPLOAD_DEBUG] Successfully parsed items: ${parsedItems.size}")
-                    parsedItems.filterIsInstance<SongItem>().forEach { song ->
-                        println("[UPLOAD_DEBUG] Parsed song: id=${song.id}, title=${song.title}, artists=${song.artists.map { it.name }}")
-                    }
-                    LibraryPage(
-                        items = parsedItems,
-                        continuation = contents.musicShelfRenderer.continuations?.getContinuation()
-                    )
-                }
+                // The tab (or the whole browse response) never resolved. Do NOT report this as an
+                // empty library: callers diff the remote list against the local one and un-flag
+                // everything missing from it, so mistaking an expired cookie or a changed response
+                // shape for "you have nothing" would wipe the user's uploaded/liked flags.
+                else -> throw IllegalStateException(
+                    "No content found for browseId=$browseId (tabIndex=$tabIndex, tabs=${tabs?.size ?: 0})"
+                )
             }
-        }.onFailure { e ->
-            println("[UPLOAD_DEBUG] library() EXCEPTION for browseId=$browseId: ${e::class.simpleName}: ${e.message}")
-            e.printStackTrace()
         }
     }
 
@@ -1105,7 +1058,10 @@ object YouTube {
                 else -> null
             }
         } catch (e: Exception) {
-            println("Error converting chart item: ${e.message}\n${Json.encodeToString(renderer)}")
+            // Message only. This used to append Json.encodeToString(renderer), dumping the whole item —
+            // titles, artist names, video ids — into a log that ships in RELEASE and that the user can read
+            // and share from the in-app Logs screen. Same reason the [UPLOAD_DEBUG] dumps were removed.
+            println("Error converting chart item: ${e.message}")
             null
         }
     }
@@ -1152,7 +1108,8 @@ object YouTube {
                 else -> null
             }
         } catch (e: Exception) {
-            println("Error converting two row item: ${e.message}\n${Json.encodeToString(renderer)}")
+            // Message only — see the chart-item converter above; the renderer dump is deliberately gone.
+            println("Error converting two row item: ${e.message}")
             null
         }
     }
@@ -1246,8 +1203,8 @@ object YouTube {
         innerTube.deletePlaylist(WEB_REMIX, playlistId)
     }
 
-    suspend fun player(videoId: String, playlistId: String? = null, client: YouTubeClient, signatureTimestamp: Int? = null, poToken: String? = null): Result<PlayerResponse> = runCatching {
-        innerTube.player(client, videoId, playlistId, signatureTimestamp, poToken).body<PlayerResponse>()
+    suspend fun player(videoId: String, playlistId: String? = null, client: YouTubeClient, signatureTimestamp: Int? = null, poToken: String? = null, noLogin: Boolean = false): Result<PlayerResponse> = runCatching {
+        innerTube.player(client, videoId, playlistId, signatureTimestamp, poToken, noLogin).body<PlayerResponse>()
     }
 
     suspend fun registerPlayback(playlistId: String? = null, playbackTracking: String) = runCatching {

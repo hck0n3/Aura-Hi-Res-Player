@@ -247,9 +247,15 @@ class InnerTube {
         playlistId: String?,
         signatureTimestamp: Int?,
         poToken: String? = null,
+        // Send this ONE request without the login cookie. Mirrors browse(noLogin): a per-call flag, never
+        // a temporary mutation of the shared YouTube.cookie — two concurrent resolves (playback + the
+        // crossfade prefetch) would interleave save/restore and could strand the cookie at null, silently
+        // signing the user out. visitorData is kept: it is anonymous device identity, present for
+        // logged-out sessions too.
+        noLogin: Boolean = false,
     ) = withRetry {
         httpClient.post("player") {
-            ytClient(client, setLogin = true)
+            ytClient(client, setLogin = !noLogin)
             setBody(
                 PlayerBody(
                     context = client.toContext(locale, visitorData, dataSyncId).let {

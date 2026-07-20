@@ -183,6 +183,18 @@ object YTPlayerUtils {
     // Qobuz/Saavn budgets in playerResponseForPlayback are independent and unchanged.
     private const val RESOLVE_TIMEOUT_MS = 30_000L
 
+    /**
+     * playabilityStatus values meaning "YouTube refused because of WHO is asking", as opposed to "this
+     * video does not exist / is region-blocked / is private". Matched on the STRUCTURED status, never on
+     * `reason`: YouTube localises the reason text server-side (the owner's log shows Spanish — "Inicia
+     * sesión", "Es necesario volver a cargar la página"), so string matching would work in one language
+     * and silently fail in every other.
+     */
+    private val AUTH_SHAPED_STATUSES = setOf("LOGIN_REQUIRED", "AGE_CHECK_REQUIRED", "CONTENT_CHECK_REQUIRED")
+
+    /** Set during a resolve when any client returned an auth-shaped status; read right after, same coroutine. */
+    @Volatile private var lastResolveWasAuthShaped = false
+
     suspend fun playerResponseForPlayback(
         videoId: String,
         playlistId: String? = null,
@@ -477,16 +489,19 @@ object YTPlayerUtils {
         // swallows the timeout's CancellationException into a Result.failure, so withTimeoutOrNull returns
         // that failed Result (not null); we detect the swallowed cancellation and remap it to a typed
         // StreamResolutionException so the loader routes it to NO_STREAM (never a network error).
-        suspend fun boundedResolve(): Result<PlaybackData> {
+        suspend fun boundedResolve(noLogin: Boolean = false): Result<PlaybackData> {
             val timeoutReason = "La canción tardó demasiado en resolverse"
             val r = kotlinx.coroutines.withTimeoutOrNull(RESOLVE_TIMEOUT_MS) {
-                resolvePlaybackData(videoId, playlistId, audioQuality, connectivityManager, preferSmallestAudio = preferSmallestAudio)
+                resolvePlaybackData(videoId, playlistId, audioQuality, connectivityManager, preferSmallestAudio = preferSmallestAudio, noLogin = noLogin)
             } ?: return Result.failure(StreamResolutionException(timeoutReason))
             return if (r.exceptionOrNull() is java.util.concurrent.CancellationException) {
                 Result.failure(StreamResolutionException(timeoutReason))
             } else r
         }
 
+        // Reset per resolve: otherwise one age-gated song would mark every later track as auth-shaped and
+        // trigger pointless anonymous retries for the rest of the session.
+        lastResolveWasAuthShaped = false
         val firstAttempt = boundedResolve()
 
         if (firstAttempt.isFailure && YouTube.cookie == null) {
@@ -496,6 +511,38 @@ object YTPlayerUtils {
             val retryResult = boundedResolve()
             retryResult.onSuccess { BotDetectionMitigator.notifyPlaybackSuccess() }
             return retryResult
+        }
+
+        // SIGNED IN and the failure is auth-shaped: retry this ONE song anonymously.
+        //
+        // Recovery used to be gated on `cookie == null` — guests only — so a logged-in user whose cookie had
+        // gone stale had no way back: every track burned the whole 12-client loop up to RESOLVE_TIMEOUT_MS
+        // and surfaced as "song unavailable". Nothing detects a dead cookie on its own (forgetAccount is
+        // manual), so the only escape was signing out and back in by hand.
+        //
+        // The account is NOT touched: `noLogin` is threaded per request (same shape as browse(noLogin)),
+        // never a temporary write to the shared YouTube.cookie — playback and the crossfade prefetch resolve
+        // concurrently, so interleaved save/restore could strand the cookie at null and sign the user out.
+        //
+        // Independent of the cipher/player-rotation path: playabilityStatus is decided server-side before
+        // any signature work, so this survives a correct cipher config.
+        if (firstAttempt.isFailure && YouTube.cookie != null && lastResolveWasAuthShaped) {
+            Timber.tag(TAG).w("Auth-shaped failure while signed in — retrying this song anonymously")
+            PlaybackLogManager.log(
+                PlaybackLogLevel.BOT,
+                "Auth-shaped playback failure while signed in",
+                "Your saved YouTube session looks expired — retrying this song without it",
+            )
+            val anonResult = boundedResolve(noLogin = true)
+            if (anonResult.isSuccess) {
+                Timber.tag(TAG).w("Anonymous retry succeeded — the stored cookie is likely expired")
+                PlaybackLogManager.log(
+                    PlaybackLogLevel.BOT,
+                    "Anonymous retry succeeded",
+                    "Playback recovered without the login cookie; signing in again would restore library-aware results",
+                )
+                return anonResult
+            }
         }
 
         firstAttempt.onSuccess { BotDetectionMitigator.notifyPlaybackSuccess() }
@@ -510,6 +557,10 @@ object YTPlayerUtils {
         preferVideo: Boolean = false,
         videoMaxHeight: Int? = null,
         preferSmallestAudio: Boolean = false,
+        // Resolve this ONE song without the login cookie (stale-session recovery). Threaded down to every
+        // YouTube.player call below rather than mutating the shared YouTube.cookie, which is not safe:
+        // playback and the crossfade prefetch resolve concurrently.
+        noLogin: Boolean = false,
     ): Result<PlaybackData> = runCatching {
         Timber.tag(logTag).d("Fetching player response for videoId: $videoId, playlistId: $playlistId")
         PlaybackLogManager.log(PlaybackLogLevel.INFO, "Resolving playback data", "Video: $videoId")
@@ -562,7 +613,7 @@ object YTPlayerUtils {
                         runCatching {
                             YouTube.player(
                                 videoId, playlistId, METADATA_CLIENT,
-                                signatureTimestamp.timestamp, null
+                                signatureTimestamp.timestamp, null, noLogin = noLogin,
                             ).getOrNull()
                         }.getOrNull()
                     }
@@ -580,12 +631,12 @@ object YTPlayerUtils {
             val main = if (preferVideo) {
                 YouTube.player(
                     videoId, playlistId, VIDEO_CLIENT,
-                    signatureTimestamp.timestamp, null,
+                    signatureTimestamp.timestamp, null, noLogin = noLogin,
                 ).getOrNull()
             } else {
                 YouTube.player(
                     videoId, playlistId, MAIN_CLIENT,
-                    signatureTimestamp.timestamp, poToken?.playerRequestPoToken,
+                    signatureTimestamp.timestamp, poToken?.playerRequestPoToken, noLogin = noLogin,
                 ).getOrNull()
             }
             main to metadataDeferred?.await()
@@ -622,7 +673,7 @@ object YTPlayerUtils {
 
             Timber.tag(logTag).d("Age-restricted detected, using WEB_CREATOR")
             Log.i(TAG, "Age-restricted: using WEB_CREATOR for videoId=$videoId")
-            val creatorResponse = YouTube.player(videoId, playlistId, WEB_CREATOR, null, null).getOrNull()
+            val creatorResponse = YouTube.player(videoId, playlistId, WEB_CREATOR, null, null, noLogin = noLogin).getOrNull()
             if (creatorResponse?.playabilityStatus?.status == "OK") {
                 Timber.tag(logTag).d("WEB_CREATOR works for age-restricted content")
                 mainPlayerResponse = creatorResponse
@@ -634,7 +685,7 @@ object YTPlayerUtils {
             // WITHOUT auth — try it so age restriction isn't a guaranteed dead-end for guests.
             Timber.tag(logTag).d("Age-restricted (guest), trying embedded player TVHTML5_SIMPLY_EMBEDDED_PLAYER")
             Log.i(TAG, "Age-restricted (guest): using TVHTML5_SIMPLY_EMBEDDED_PLAYER for videoId=$videoId")
-            val embedResponse = YouTube.player(videoId, playlistId, TVHTML5_SIMPLY_EMBEDDED_PLAYER, null, null).getOrNull()
+            val embedResponse = YouTube.player(videoId, playlistId, TVHTML5_SIMPLY_EMBEDDED_PLAYER, null, null, noLogin = noLogin).getOrNull()
             if (embedResponse?.playabilityStatus?.status == "OK") {
                 Timber.tag(logTag).d("Embedded player works for age-restricted (guest) content")
                 mainPlayerResponse = embedResponse
@@ -730,7 +781,7 @@ object YTPlayerUtils {
                 
                 val clientSigTimestamp = if (wasOriginallyAgeRestricted) null else signatureTimestamp.timestamp
                 streamPlayerResponse =
-                    YouTube.player(videoId, playlistId, client, clientSigTimestamp, clientPoToken).getOrNull()
+                    YouTube.player(videoId, playlistId, client, clientSigTimestamp, clientPoToken, noLogin = noLogin).getOrNull()
             }
 
             
@@ -873,6 +924,7 @@ object YTPlayerUtils {
                 // Remember the real reason (e.g. region/premium/members) so an all-clients-exhausted
                 // dead-end can tell the user WHY instead of a generic failure.
                 streamPlayerResponse?.playabilityStatus?.reason?.let { lastPlayabilityReason = it }
+                if (status in AUTH_SHAPED_STATUSES) lastResolveWasAuthShaped = true
                 Timber.tag(logTag).d("Player response status not OK: $status, reason: $reason")
                 PlaybackLogManager.log(PlaybackLogLevel.WARNING, "Client failed: ${client.clientName}", "$status: $reason")
                 

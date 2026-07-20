@@ -26,7 +26,7 @@ object SearchPage {
                 ?.text
                 ?.runs
                 ?.splitBySeparator()
-                ?: return null.also { println("[UPLOAD_DEBUG] SearchPage.toYTItem FAILED: secondaryLine is null for renderer: $renderer") }
+                ?: return null
         return when {
             renderer.isSong -> {
                 // Extract library tokens using the new method that properly handles multiple toggle items
@@ -41,7 +41,7 @@ object SearchPage {
                         ?.musicResponsiveListItemFlexColumnRenderer
                         ?.text?.runs?.firstOrNull()
                         ?.navigationEndpoint?.watchEndpoint?.videoId
-                    ?: return null.also { println("[UPLOAD_DEBUG] SearchPage.toYTItem FAILED: id is null for renderer: $renderer") },
+                    ?: return null,
                     title =
                         renderer.flexColumns
                             .firstOrNull()
@@ -56,7 +56,7 @@ object SearchPage {
                                 name = it.text,
                                 id = it.navigationEndpoint?.browseEndpoint?.browseId,
                             )
-                        } ?: return null.also { println("[UPLOAD_DEBUG] SearchPage.toYTItem FAILED: artists is null for renderer: $renderer") },
+                        } ?: return null,
                     album =
                         secondaryLine.getOrNull(1)?.firstOrNull()?.takeIf { it.navigationEndpoint?.browseEndpoint != null }?.let {
                             Album(

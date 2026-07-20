@@ -788,38 +788,23 @@ class SyncUtils @Inject constructor(
     }
 
     private suspend fun executeSyncUploadedSongs() = withContext(Dispatchers.IO) {
-        Timber.d("[UPLOAD_DEBUG] executeSyncUploadedSongs() started")
         if (!isLoggedIn()) {
-            Timber.w("[UPLOAD_DEBUG] Skipping syncUploadedSongs - user not logged in")
+            Timber.w("Skipping syncUploadedSongs - user not logged in")
             return@withContext
         }
-        Timber.d("[UPLOAD_DEBUG] User is logged in, proceeding with sync")
 
         updateState { copy(uploadedSongs = SyncStatus.Syncing, currentOperation = "Syncing uploaded songs") }
 
         withRetry {
-            Timber.d("[UPLOAD_DEBUG] Calling YouTube.library(FEmusic_library_privately_owned_tracks, tabIndex=1)")
-            
             YouTube.library("FEmusic_library_privately_owned_tracks", tabIndex = 1).completed()
         }.onSuccess { result ->
-            Timber.d("[UPLOAD_DEBUG] withRetry succeeded, result isSuccess=${result.isSuccess}")
             result.onSuccess { page ->
                 try {
-                    Timber.d("[UPLOAD_DEBUG] Page received, total items: ${page.items.size}")
-                    page.items.forEachIndexed { index, item ->
-                        Timber.d("[UPLOAD_DEBUG] Page item $index: type=${item::class.simpleName}, id=${(item as? SongItem)?.id ?: "N/A"}")
-                    }
                     val remoteSongs = page.items.filterIsInstance<SongItem>().reversed()
-                    Timber.d("[UPLOAD_DEBUG] Filtered to ${remoteSongs.size} SongItems")
-                    remoteSongs.forEachIndexed { index, song ->
-                        Timber.d("[UPLOAD_DEBUG] Remote song $index: id=${song.id}, title=${song.title}, artists=${song.artists.map { it.name }}")
-                    }
                     val remoteIds = remoteSongs.map { it.id }.toSet()
                     val localSongs = database.uploadedSongsByNameAsc().first()
-                    Timber.d("[UPLOAD_DEBUG] Local uploaded songs count: ${localSongs.size}")
 
                     val songsToRemove = localSongs.filterNot { it.id in remoteIds }
-                    Timber.d("[UPLOAD_DEBUG] Songs to remove from uploaded: ${songsToRemove.size}")
                     batchUpdateSongs(songsToRemove.map { it.song.toggleUploaded() })
 
                     // Decide new/changed in memory (no N+1) and write in batched transactions.
@@ -842,28 +827,30 @@ class SyncUtils @Inject constructor(
                             // running after its job was cancelled, blasting through every song and
                             // flooding logs / pegging the CPU (made playback fail right after a restore).
                             if (e is CancellationException) throw e
-                            Timber.e(e, "[UPLOAD_DEBUG] Failed to process song: ${song.id}")
+                            Timber.e(e, "Failed to process song: ${song.id}")
                         }
                     }
                     batchInsertSongs(insertEntities, insertMeta)
                     batchUpdateSongs(updateEntities)
 
                     updateState { copy(uploadedSongs = SyncStatus.Completed) }
-                    Timber.d("[UPLOAD_DEBUG] Synced ${remoteSongs.size} uploaded songs successfully (${insertEntities.size} new, ${updateEntities.size} updated)")
+                    Timber.d("Synced ${remoteSongs.size} uploaded songs (${insertEntities.size} new, ${updateEntities.size} updated)")
                 } catch (e: Exception) {
                             // Never swallow coroutine cancellation: doing so let the sync loop keep
                             // running after its job was cancelled, blasting through every song and
                             // flooding logs / pegging the CPU (made playback fail right after a restore).
                             if (e is CancellationException) throw e
-                    Timber.e(e, "[UPLOAD_DEBUG] Error processing uploaded songs")
+                    Timber.e(e, "Error processing uploaded songs")
                     updateState { copy(uploadedSongs = SyncStatus.Error(e.message ?: "Unknown error")) }
                 }
             }.onFailure { e ->
-                Timber.e(e, "[UPLOAD_DEBUG] Failed to fetch uploaded songs from YouTube")
+                // Not an error path worth a stack trace: an account with nothing uploaded now comes
+                // back as an empty page, so this only fires when the response shape was unusable.
+                Timber.w("Could not read uploaded songs from YouTube: ${e.message}")
                 updateState { copy(uploadedSongs = SyncStatus.Error(e.message ?: "Unknown error")) }
             }
         }.onFailure { e ->
-            Timber.e(e, "[UPLOAD_DEBUG] Failed to sync uploaded songs after retries")
+            Timber.w("Failed to sync uploaded songs after retries: ${e.message}")
             updateState { copy(uploadedSongs = SyncStatus.Error(e.message ?: "Unknown error")) }
         }
     }
@@ -1002,11 +989,11 @@ class SyncUtils @Inject constructor(
                     updateState { copy(uploadedAlbums = SyncStatus.Error(e.message ?: "Unknown error")) }
                 }
             }.onFailure { e ->
-                Timber.e(e, "Failed to fetch uploaded albums from YouTube")
+                Timber.w("Could not read uploaded albums from YouTube: ${e.message}")
                 updateState { copy(uploadedAlbums = SyncStatus.Error(e.message ?: "Unknown error")) }
             }
         }.onFailure { e ->
-            Timber.e(e, "Failed to sync uploaded albums after retries")
+            Timber.w("Failed to sync uploaded albums after retries: ${e.message}")
             updateState { copy(uploadedAlbums = SyncStatus.Error(e.message ?: "Unknown error")) }
         }
     }

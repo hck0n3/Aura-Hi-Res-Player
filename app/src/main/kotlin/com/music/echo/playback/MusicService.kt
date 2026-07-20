@@ -1105,8 +1105,19 @@ class MusicService :
         // is in the background) so it's logged/reported instead of crashing. (From upstream Echo-Music.)
         setListener(object : Listener {
             override fun onForegroundServiceStartNotAllowedException() {
-                Timber.tag(TAG).e("ForegroundServiceStartNotAllowedException caught by MediaSessionService listener")
-                reportException(Exception("ForegroundServiceStartNotAllowedException caught by MediaSessionService listener"))
+                // Verified against the media3 1.10.1 bytecode: the throw happens INSIDE
+                // MediaNotificationManager.startForeground, BEFORE setForegroundServiceNotification — so
+                // this cycle posts NO notification at all and the service stays backgrounded and reapable.
+                // Catching it avoids the crash, but silently leaves audio playing with no notification and
+                // no transport controls, which then dies whenever the system decides to reclaim it.
+                // Pausing turns that into something the user can see and act on.
+                Timber.tag(TAG).w("Foreground service start refused by the system — pausing instead of playing unmanaged")
+                runCatching {
+                    if (::player.isInitialized && player.playWhenReady) player.pause()
+                }
+                // Deliberately NOT reportException: on Android 12+ this is a routine, expected refusal
+                // (background start without an exemption), not a defect. It was filing a Crashlytics
+                // non-fatal every time — the owner's log shows three in one second from a single event.
             }
         })
 

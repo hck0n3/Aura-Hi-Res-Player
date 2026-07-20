@@ -91,27 +91,19 @@ data class LibraryPage(
                         ?.musicResponsiveListItemFlexColumnRenderer
                         ?.text?.runs?.firstOrNull()
                         ?.navigationEndpoint?.watchEndpoint?.videoId
-                    if (videoId == null) {
-                        println("[UPLOAD_DEBUG] LibraryPage.parse FAILED: videoId is null")
-                        return null
-                    }
+                    if (videoId == null) return null
 
                     val title = renderer.flexColumns.firstOrNull()
                         ?.musicResponsiveListItemFlexColumnRenderer?.text
                         ?.runs?.firstOrNull()?.text
-                    if (title == null) {
-                        println("[UPLOAD_DEBUG] LibraryPage.parse FAILED: title is null for videoId=$videoId")
-                        return null
-                    }
+                    if (title == null) return null
 
                     val artistRuns = renderer.flexColumns.getOrNull(1)?.musicResponsiveListItemFlexColumnRenderer?.text?.runs?.oddElements()
-                    println("[UPLOAD_DEBUG] LibraryPage.parse: videoId=$videoId, title=$title, artistRuns=${artistRuns?.map { "${it.text}(browseId=${it.navigationEndpoint?.browseEndpoint?.browseId})" }}")
 
                     // For uploaded songs, artists may not have browseEndpoint - make it optional
                     val artists = artistRuns?.mapNotNull {
                         val browseId = it.navigationEndpoint?.browseEndpoint?.browseId
                         if (browseId == null) {
-                            println("[UPLOAD_DEBUG] LibraryPage.parse: Artist '${it.text}' has no browseId, using empty string")
                             // For uploaded songs, use empty string for artist ID if not available
                             Artist(name = it.text, id = "")
                         } else {
@@ -120,13 +112,11 @@ data class LibraryPage(
                     } ?: emptyList()
 
                     val albumRun = renderer.flexColumns.getOrNull(2)?.musicResponsiveListItemFlexColumnRenderer?.text?.runs?.firstOrNull()
-                    println("[UPLOAD_DEBUG] LibraryPage.parse: albumRun=${albumRun?.text}, albumBrowseId=${albumRun?.navigationEndpoint?.browseEndpoint?.browseId}")
 
                     // For uploaded songs, album may not have browseEndpoint - make it optional
                     val album = albumRun?.let {
                         val albumBrowseId = it.navigationEndpoint?.browseEndpoint?.browseId
                         if (albumBrowseId == null) {
-                            println("[UPLOAD_DEBUG] LibraryPage.parse: Album '${it.text}' has no browseId, using empty string")
                             Album(name = it.text, id = "")
                         } else {
                             Album(name = it.text, id = albumBrowseId)
@@ -134,12 +124,7 @@ data class LibraryPage(
                     }
 
                     val thumbnailUrl = renderer.thumbnail?.musicThumbnailRenderer?.getThumbnailUrl()
-                    if (thumbnailUrl == null) {
-                        println("[UPLOAD_DEBUG] LibraryPage.parse FAILED: thumbnail is null for videoId=$videoId")
-                        return null
-                    }
-
-                    println("[UPLOAD_DEBUG] LibraryPage.parse SUCCESS: videoId=$videoId, title=$title, artists=${artists.map { it.name }}, album=${album?.name}")
+                    if (thumbnailUrl == null) return null
 
                     SongItem(
                         id = videoId,
@@ -172,10 +157,7 @@ data class LibraryPage(
                         ?.menuNavigationItemRenderer?.navigationEndpoint?.watchPlaylistEndpoint
                 )
 
-                else -> {
-                    println("[UPLOAD_DEBUG] LibraryPage.parse: Not a song or artist, isSong=${renderer.isSong}, isArtist=${renderer.isArtist}")
-                    null
-                }
+                else -> null
             }
         }
 

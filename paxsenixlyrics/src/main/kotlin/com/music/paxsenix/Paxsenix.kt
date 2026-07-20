@@ -8,6 +8,7 @@ import iad1tya.echo.music.betterlyrics.TTMLParser
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.engine.okhttp.OkHttp
+import io.ktor.client.plugins.ClientRequestException
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.plugins.defaultRequest
@@ -23,6 +24,7 @@ import kotlinx.coroutines.selects.select
 import kotlinx.serialization.json.Json
 import timber.log.Timber
 import java.util.Locale
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.math.abs
 
 object Paxsenix {
@@ -109,7 +111,19 @@ object Paxsenix {
         return cleaned.trim()
     }
 
-    private suspend fun search(query: String): List<SearchResult> = runCatching {
+    /**
+     * A search that finds nothing returns an empty list; a search that is *refused* throws.
+     *
+     * The distinction is the whole point. This endpoint sits behind Cloudflare, which answers 403
+     * to blocked IPs with an HTML challenge page. Collapsing that into `emptyList()` made a refusal
+     * indistinguishable from "no such song", so every caller below dutifully retried the next query
+     * variant against a server that had already said no — and the app-side circuit breaker never
+     * saw an HTTP status it could act on. Client errors (4xx) are therefore rethrown untouched:
+     * they short-circuit the remaining variants for this song and carry the status upstream.
+     *
+     * Server errors (5xx) and network failures stay soft — those are transient and worth a retry.
+     */
+    private suspend fun search(query: String): List<SearchResult> = try {
         Timber.d("Searching for: $query")
         val response = httpClient.get("/apple-music/search") {
             parameter("q", query)
@@ -117,7 +131,14 @@ object Paxsenix {
 
         Timber.d("Search results count: ${response.size}")
         response
-    }.getOrElse { e ->
+    } catch (e: ClientRequestException) {
+        // 403 Cloudflare block, 429 rate limit, 401 bad key… asking again cannot change the answer.
+        Timber.w("Search refused with HTTP ${e.response.status.value} for query: $query")
+        throw e
+    } catch (e: CancellationException) {
+        // The user skipped to another song — normal control flow, must not look like a failure.
+        throw e
+    } catch (e: Exception) {
         Timber.e(e, "Search error: ${e.message}")
         emptyList()
     }
@@ -143,12 +164,17 @@ object Paxsenix {
 
         var allResults: List<Pair<SearchResult, Double>> = emptyList()
 
+        // Stop at the first query variant that actually yields candidates. The old loop ran to the
+        // end of the list and leaned on an `isEmpty()` guard, which is only equivalent while
+        // searches succeed — under a Cloudflare block every variant scored empty, so all 2–3 went
+        // out for every song. `search()` now throws on 4xx, so a refusal aborts the rest outright.
         for (query in searchQueries) {
-            if (allResults.isEmpty()) {
-                val searchResults = search(query)
-                if (searchResults.isNotEmpty()) {
-                    allResults = scoreAndFilterResults(searchResults, title, artist, duration)
-                }
+            val searchResults = search(query)
+            if (searchResults.isEmpty()) continue
+            val scored = scoreAndFilterResults(searchResults, title, artist, duration)
+            if (scored.isNotEmpty()) {
+                allResults = scored
+                break
             }
         }
 
