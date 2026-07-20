@@ -3,6 +3,57 @@
 Objetivo: que **ningún bug reportado se repita**. Cada fix queda aquí con su archivo/línea guardián.
 **Antes de publicar CUALQUIER versión:** revisar esta tabla y verificar (leer/grep el código, no solo compilar) que el diff nuevo NO revierte ni rompe ningún fix. Prestar atención a los archivos compartidos (una función tocada por muchas pantallas es la fuente #1 de regresiones): `MusicService.kt`, `Player.kt`, `App.kt`, `utils/Utils.kt`, `Lyrics.kt`, `YTPlayerUtils.kt`, `BackupRestoreViewModel.kt`, `HomeScreen.kt`, `ArtistItemsViewModel.kt`, `Thumbnail.kt`.
 
+---
+
+## ⚠️ LEER ANTES DE TOCAR CÓDIGO — los errores que YA he repetido
+
+Las 73 filas de abajo registran bien, pero **no previenen**: nadie relee una tabla larga antes de cada
+cambio, así que he vuelto a cometer la misma clase de error varias veces. Esto son solo los patrones
+**REINCIDENTES**, con la cuenta real. Si un cambio toca alguno, verificarlo **explícitamente** antes de
+decir que está arreglado.
+
+**1. "Compila y parece correcto" NO es un arreglo. (5 veces)**
+Placebos que llegaron a estar dados por buenos: los plegables (umbral 700 que la API redondeaba a 840 →
+cero efecto), "volver a obtener" (refrescaba metadatos, servía el mismo audio), el Volumen Seguro (la
+mitad que sube se entregaba a un objeto vacío), WorkManager (arreglaba fallos de un proceso que no era
+el de las funciones) y la sesión caducada (placebo por 3 motivos a la vez).
+→ **Trazar todo fix hasta el efecto que el usuario percibe:** ¿ese código se EJECUTA?, ¿en SU dispositivo
+y configuración?, ¿el valor llega hasta lo que produce el efecto?, ¿hay un gate/default que lo anule?
+
+**2. Un guardia debe reclamarse en el MISMO turno del hilo que lo comprueba. (2 veces)**
+`radioSeedInFlight` movido dentro de un `launch` sobre `Dispatchers.Main` no-inmediato → media3 entrega
+todos sus callbacks en un flush síncrono y el guardia no existía para ese flush → doble siembra.
+`lastResolveWasAuthShaped` como campo de `object` → la precarga concurrente lo pisaba.
+→ **Todo flag compartido en un `object`/singleton es sospechoso**: preguntar quién más corre a la vez
+(precarga de cola, crossfade, descargas, export).
+
+**3. Al copiar un patrón existente, copiarlo ENTERO. (2 veces)**
+`player(noLogin)` copió de `browse(noLogin)` el quitar la cookie pero **no** el anular `dataSyncId` → el
+reintento "anónimo" seguía nombrando la cuenta.
+→ **Leer el patrón original completo y listar sus partes** antes de replicarlo.
+
+**4. En este repo, loguear NO es solo logcat. (2 veces)**
+`AppLogger.plant()` corre **sin guard en release** y persiste `>= INFO` a `filesDir/logs/app.log`, el
+archivo que el usuario **comparte** desde Ajustes → Registros. Se colaron 42 volcados con títulos,
+artistas, IDs y cuerpos de respuesta… y en el mismo commit que los quitaba, reañadí uno.
+→ **Antes de loguear una variable: ¿contiene datos del usuario?**
+
+**5. Ante posible PÉRDIDA DE DATOS, poner la barrera también en el CONSUMIDOR.**
+Convertir un `throw` en "lista vacía" hizo que una respuesta ilegible desmarcara toda la biblioteca de
+subidas. El parser puede equivocarse; el consumidor debe negarse a borrar con una lista vacía.
+→ Las copias solo cubren **biblioteca** ⇒ esa pérdida es **irrecuperable**.
+
+**6. Un servicio de terceros hay que SONDEARLO EN VIVO, no leerlo.**
+Clave Last.fm vacía, rotación del cipher, `player_configs` desfasado: el código se veía bien y el
+servicio ya había cambiado. **Si fallan MUCHAS canciones a la vez, mirar el cifrado ANTES que timeouts
+o dispositivo.**
+
+**7. La estrictez de un filtro la decide el ORIGEN de la señal, no su valor.**
+Dos orígenes con fiabilidad opuesta que dan el mismo valor **no son el mismo hecho** (caché de géneros;
+y agrupar `400..499` mezcló "el problema soy yo" con "el problema es este recurso").
+
+---
+
 | # | Bug reportado | Causa raíz | Fix (archivo:línea guardián) | Ver. | Estado |
 |---|---|---|---|---|---|
 | 1 | Portada del reproductor no aparece (estilos de fondo) / a veces sí a veces no | `Box(matchParentSize())` sin hijo que aporte tamaño → colapsa a 0×0 | `Thumbnail.kt` Box exterior debe usar `modifier.fillMaxSize()` | 0.6.92 | ✅ |
