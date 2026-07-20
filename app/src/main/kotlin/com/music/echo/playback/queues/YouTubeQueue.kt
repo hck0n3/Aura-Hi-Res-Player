@@ -17,11 +17,6 @@ class YouTubeQueue(
     private var continuation: String? = null
     private val maxRetries = 3
 
-    private companion object {
-        /** Base backoff between page retries; multiplied by the attempt number. */
-        const val RETRY_BACKOFF_MS = 400L
-    }
-
     override suspend fun getInitialStatus(): Queue.Status {
         return withContext(IO) {
             var lastException: Throwable? = null
@@ -92,7 +87,9 @@ class YouTubeQueue(
     }
 
     companion object {
-        
+        /** Base backoff between page retries; multiplied by the attempt number. */
+        private const val RETRY_BACKOFF_MS = 400L
+
         fun radio(song: MediaMetadata): YouTubeQueue {
             return YouTubeQueue(
                 WatchEndpoint(videoId = song.id),
