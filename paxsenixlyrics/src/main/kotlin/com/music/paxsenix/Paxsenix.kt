@@ -133,7 +133,11 @@ object Paxsenix {
         response
     } catch (e: ClientRequestException) {
         // 403 Cloudflare block, 429 rate limit, 401 bad key… asking again cannot change the answer.
-        Timber.w("Search refused with HTTP ${e.response.status.value} for query: $query")
+        // NO query here: it is "$cleanedTitle $cleanedArtist", and AppLogger plants in RELEASE at >= INFO,
+        // so a Timber.w lands in filesDir/logs/app.log — the file the user reads and shares from the Logs
+        // screen. Logging it would have re-opened the exact leak this change set closed. The status is the
+        // whole signal anyway.
+        Timber.w("Search refused with HTTP ${e.response.status.value}")
         throw e
     } catch (e: CancellationException) {
         // The user skipped to another song — normal control flow, must not look like a failure.

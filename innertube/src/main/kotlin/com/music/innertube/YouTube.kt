@@ -829,7 +829,12 @@ object YouTube {
             // and then indexed it (and `size >= 0` was vacuously true for an empty tab list),
             // so a library page with fewer tabs than expected threw IndexOutOfBounds.
             val sectionList = tabs?.getOrNull(tabIndex)?.tabRenderer?.content?.sectionListRenderer
-            val contents = sectionList?.contents?.firstOrNull()
+            // Scan ALL sections for the data one, not just the first. fetchNewReleaseAlbums already
+            // documents that the payload shelf "isn't always the FIRST section" — a leading header, chip
+            // row or promo section is normal YouTube behaviour, and taking [0] blindly would see no
+            // grid/shelf and report the library as EMPTY.
+            val contents = sectionList?.contents
+                ?.firstOrNull { it.gridRenderer != null || it.musicShelfRenderer != null }
 
             when {
                 contents?.gridRenderer != null -> LibraryPage(
@@ -848,9 +853,14 @@ object YouTube {
                     continuation = contents.musicShelfRenderer.continuations?.getContinuation()
                 )
 
-                // The requested tab resolved and carried a section list, but no grid/shelf in it:
-                // that is YouTube's empty state for this library section. Report an empty page.
-                sectionList != null -> LibraryPage(items = emptyList(), continuation = null)
+                // Empty ONLY when the response positively says "there is nothing here": a section list that
+                // exists and is itself empty. An unrecognised section must NOT be read as empty — the JSON
+                // parser is ignoreUnknownKeys + explicitNulls=false, so ANY renderer this file does not
+                // model (messageRenderer, a "sign in to continue" notifier, a promo shelf, a future layout)
+                // deserializes into a Content with all fields null. Treating that as "you have nothing"
+                // makes callers un-flag the user's entire uploads library. A throw is the safe outcome.
+                sectionList?.contents.isNullOrEmpty() && sectionList != null ->
+                    LibraryPage(items = emptyList(), continuation = null)
 
                 // The tab (or the whole browse response) never resolved. Do NOT report this as an
                 // empty library: callers diff the remote list against the local one and un-flag

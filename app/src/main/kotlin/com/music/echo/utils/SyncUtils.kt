@@ -804,8 +804,19 @@ class SyncUtils @Inject constructor(
                     val remoteIds = remoteSongs.map { it.id }.toSet()
                     val localSongs = database.uploadedSongsByNameAsc().first()
 
-                    val songsToRemove = localSongs.filterNot { it.id in remoteIds }
-                    batchUpdateSongs(songsToRemove.map { it.song.toggleUploaded() })
+                    // NEVER un-flag from an EMPTY remote page while we still hold local uploads. "You have
+                    // no uploads" and "we could not read your uploads" are indistinguishable at this layer,
+                    // and getting it wrong strips the uploaded flag off the user's ENTIRE library — with
+                    // backups covering library data only, that is unrecoverable. Requiring a non-empty
+                    // remote list makes an unreadable response a no-op instead of a wipe; a user who really
+                    // did delete everything upstream just keeps stale flags until a page comes back with
+                    // content, which is the harmless direction to be wrong in.
+                    if (remoteSongs.isNotEmpty()) {
+                        val songsToRemove = localSongs.filterNot { it.id in remoteIds }
+                        batchUpdateSongs(songsToRemove.map { it.song.toggleUploaded() })
+                    } else if (localSongs.isNotEmpty()) {
+                        Timber.w("Uploads sync: remote page empty but ${localSongs.size} local uploads — skipping the un-flag pass")
+                    }
 
                     // Decide new/changed in memory (no N+1) and write in batched transactions.
                     val existing = loadExistingSongs(remoteSongs.map { it.id })
@@ -943,7 +954,12 @@ class SyncUtils @Inject constructor(
                     val remoteIds = remoteAlbums.map { it.id }.toSet()
                     val localAlbums = database.albumsUploadedByNameAsc().first()
 
-                    localAlbums.filterNot { it.id in remoteIds }.forEach { album ->
+                    // Same guard as the uploaded-songs pass: an empty remote page must never un-flag a
+                    // non-empty local set — an unreadable response would otherwise wipe the whole library.
+                    if (remoteAlbums.isEmpty() && localAlbums.isNotEmpty()) {
+                        Timber.w("Uploads sync: remote albums empty but ${localAlbums.size} local — skipping the un-flag pass")
+                    }
+                    (if (remoteAlbums.isEmpty()) emptyList() else localAlbums.filterNot { it.id in remoteIds }).forEach { album ->
                         try {
                             database.update(album.album.toggleUploaded())
                         } catch (e: Exception) {

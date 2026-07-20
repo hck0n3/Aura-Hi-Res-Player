@@ -87,7 +87,12 @@ object LyricsProviderCircuitBreaker {
             // Cancellation is normal control flow (user skipped the song) — never a breaker trip.
             if (current is CancellationException) return null
             val status = (current as? ResponseException)?.response?.status?.value
-            if (status != null) return status.takeIf { it in 400..499 }
+            // ONLY the statuses that are about US, never about the song. A blanket 400..499 muted healthy
+            // providers on a per-song miss: YouTube Subtitles and YouTube Lyrics both run on an
+            // expectSuccess client, and get_transcript answers 4xx for any video with no transcript panel —
+            // so one song without subtitles would have killed that provider for the whole library for 6h.
+            // 400/404/410 describe the resource; 401/403/429 describe the caller.
+            if (status != null) return status.takeIf { it == 401 || it == 403 || it == 429 }
             val next = current.cause
             if (next === current) return null
             current = next

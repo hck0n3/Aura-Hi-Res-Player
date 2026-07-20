@@ -1114,6 +1114,17 @@ class MusicService :
                 Timber.tag(TAG).w("Foreground service start refused by the system — pausing instead of playing unmanaged")
                 runCatching {
                     if (::player.isInitialized && player.playWhenReady) player.pause()
+                    // The crossfade renders through SEPARATE ExoPlayer instances. If the refusal lands
+                    // mid-fade, pausing only the primary leaves the other one audible — the same
+                    // "playing with no notification, no transport, reapable" state, just for ~9s.
+                    // Pause only: no change to the fade timing, curve or swap logic.
+                    secondaryPlayer?.pause()
+                    fadingPlayer?.pause()
+                }.onFailure {
+                    // media3 asserts the application thread on every call. If this listener is ever
+                    // dispatched off the main looper the pause silently would not happen — without this,
+                    // "paused" and "failed to pause" looked identical from the outside.
+                    Timber.tag(TAG).w(it, "Could not pause after the foreground-service refusal")
                 }
                 // Deliberately NOT reportException: on Android 12+ this is a routine, expected refusal
                 // (background start without an exemption), not a defect. It was filing a Crashlytics

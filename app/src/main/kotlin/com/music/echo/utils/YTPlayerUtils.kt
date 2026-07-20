@@ -184,16 +184,24 @@ object YTPlayerUtils {
     private const val RESOLVE_TIMEOUT_MS = 30_000L
 
     /**
-     * playabilityStatus values meaning "YouTube refused because of WHO is asking", as opposed to "this
-     * video does not exist / is region-blocked / is private". Matched on the STRUCTURED status, never on
+     * playabilityStatus values meaning "YouTube refused because our SESSION is bad", as opposed to "this
+     * video does not exist / is region-blocked / is age-gated". Matched on the STRUCTURED status, never on
      * `reason`: YouTube localises the reason text server-side (the owner's log shows Spanish — "Inicia
      * sesión", "Es necesario volver a cargar la página"), so string matching would work in one language
      * and silently fail in every other.
+     *
+     * AGE_CHECK_REQUIRED / CONTENT_CHECK_REQUIRED are deliberately NOT here. Age gating is a property of
+     * the CONTENT, not of a dead cookie, and retrying it anonymously is guaranteed to fail: isLoggedIn is
+     * derived from YouTube.cookie (still set), so the retry re-takes the login-gated WEB_CREATOR branch and
+     * never reaches the guest TVHTML5_SIMPLY_EMBEDDED_PLAYER path that exists for exactly this case. Net
+     * effect would be 60s instead of 30s before the skip — strictly worse than not retrying.
      */
-    private val AUTH_SHAPED_STATUSES = setOf("LOGIN_REQUIRED", "AGE_CHECK_REQUIRED", "CONTENT_CHECK_REQUIRED")
+    private val AUTH_SHAPED_STATUSES = setOf("LOGIN_REQUIRED")
 
-    /** Set during a resolve when any client returned an auth-shaped status; read right after, same coroutine. */
-    @Volatile private var lastResolveWasAuthShaped = false
+    // NOTE: deliberately NOT an object-level field. Resolves overlap — the media3 loader, the queue
+    // PRELOAD loop, downloads, export and preview all resolve concurrently, and a preload's reset would
+    // routinely erase the playing track's result (or vice versa) across a window up to RESOLVE_TIMEOUT_MS.
+    // The flag is created per call and threaded down instead.
 
     suspend fun playerResponseForPlayback(
         videoId: String,
@@ -489,19 +497,19 @@ object YTPlayerUtils {
         // swallows the timeout's CancellationException into a Result.failure, so withTimeoutOrNull returns
         // that failed Result (not null); we detect the swallowed cancellation and remap it to a typed
         // StreamResolutionException so the loader routes it to NO_STREAM (never a network error).
+        // Per-call, not shared: see the note next to AUTH_SHAPED_STATUSES.
+        val authShaped = java.util.concurrent.atomic.AtomicBoolean(false)
         suspend fun boundedResolve(noLogin: Boolean = false): Result<PlaybackData> {
             val timeoutReason = "La canción tardó demasiado en resolverse"
+            authShaped.set(false)
             val r = kotlinx.coroutines.withTimeoutOrNull(RESOLVE_TIMEOUT_MS) {
-                resolvePlaybackData(videoId, playlistId, audioQuality, connectivityManager, preferSmallestAudio = preferSmallestAudio, noLogin = noLogin)
+                resolvePlaybackData(videoId, playlistId, audioQuality, connectivityManager, preferSmallestAudio = preferSmallestAudio, noLogin = noLogin, authShaped = authShaped)
             } ?: return Result.failure(StreamResolutionException(timeoutReason))
             return if (r.exceptionOrNull() is java.util.concurrent.CancellationException) {
                 Result.failure(StreamResolutionException(timeoutReason))
             } else r
         }
 
-        // Reset per resolve: otherwise one age-gated song would mark every later track as auth-shaped and
-        // trigger pointless anonymous retries for the rest of the session.
-        lastResolveWasAuthShaped = false
         val firstAttempt = boundedResolve()
 
         if (firstAttempt.isFailure && YouTube.cookie == null) {
@@ -526,7 +534,7 @@ object YTPlayerUtils {
         //
         // Independent of the cipher/player-rotation path: playabilityStatus is decided server-side before
         // any signature work, so this survives a correct cipher config.
-        if (firstAttempt.isFailure && YouTube.cookie != null && lastResolveWasAuthShaped) {
+        if (firstAttempt.isFailure && YouTube.cookie != null && authShaped.get()) {
             Timber.tag(TAG).w("Auth-shaped failure while signed in — retrying this song anonymously")
             PlaybackLogManager.log(
                 PlaybackLogLevel.BOT,
@@ -561,6 +569,9 @@ object YTPlayerUtils {
         // YouTube.player call below rather than mutating the shared YouTube.cookie, which is not safe:
         // playback and the crossfade prefetch resolve concurrently.
         noLogin: Boolean = false,
+        // Reports back whether any client refused for session reasons. Caller-owned so concurrent
+        // resolves cannot clobber each other.
+        authShaped: java.util.concurrent.atomic.AtomicBoolean? = null,
     ): Result<PlaybackData> = runCatching {
         Timber.tag(logTag).d("Fetching player response for videoId: $videoId, playlistId: $playlistId")
         PlaybackLogManager.log(PlaybackLogLevel.INFO, "Resolving playback data", "Video: $videoId")
@@ -924,7 +935,7 @@ object YTPlayerUtils {
                 // Remember the real reason (e.g. region/premium/members) so an all-clients-exhausted
                 // dead-end can tell the user WHY instead of a generic failure.
                 streamPlayerResponse?.playabilityStatus?.reason?.let { lastPlayabilityReason = it }
-                if (status in AUTH_SHAPED_STATUSES) lastResolveWasAuthShaped = true
+                if (status in AUTH_SHAPED_STATUSES) authShaped?.set(true)
                 Timber.tag(logTag).d("Player response status not OK: $status, reason: $reason")
                 PlaybackLogManager.log(PlaybackLogLevel.WARNING, "Client failed: ${client.clientName}", "$status: $reason")
                 

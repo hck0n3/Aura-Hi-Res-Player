@@ -258,7 +258,13 @@ class InnerTube {
             ytClient(client, setLogin = !noLogin)
             setBody(
                 PlayerBody(
-                    context = client.toContext(locale, visitorData, dataSyncId).let {
+                    // dataSyncId must be dropped too, not just the cookie. toContext puts it in
+                    // user.onBehalfOfUser for every loginSupported client, so keeping it meant the
+                    // "anonymous" retry still named the account — YouTube either rejects that without a
+                    // matching auth header or resolves it against the same dead session, so the recovery
+                    // recovered nothing and only cost a second 30s timeout. browse(noLogin) already nulls
+                    // it; this is the half of that pattern that was missed.
+                    context = client.toContext(locale, visitorData, if (noLogin) null else dataSyncId).let {
                         if (client.isEmbedded) {
                             it.copy(
                                 thirdParty = Context.ThirdParty(
