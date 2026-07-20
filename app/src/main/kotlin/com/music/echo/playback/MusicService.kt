@@ -2253,10 +2253,27 @@ class MusicService :
         currentQueue = queue
         queueTitle = null
         scope.launch { runCatching { tasteProfile() } } // warm the taste cache for smart shuffle / autoplay
+        // Shuffle reset on a NEW queue is intentional when PersistentShuffleAcrossQueues is off.
+        // Two things made it read as "shuffle is broken":
+        //
+        //  1. A RESTORE came through here too. Restoring the persistent queue after the process died is
+        //     the SAME queue coming back, not the user starting a new one — so shuffle was cleared on
+        //     every single app start, which is what made "remember shuffle" a permanent no-op.
+        //
+        //  2. The clear below fires onShuffleModeEnabledChanged(false), which PERSISTS false to
+        //     ShuffleModeKey. So the app's own reset destroyed the user's remembered preference; the
+        //     boot-time read at :1211 could then only ever see false. suppressShuffleModePersist stops
+        //     this programmatic reset from being mistaken for a user action. (The dead
+        //     `previousShuffleEnabled` local that used to sit here was the fingerprint of the
+        //     restore-afterwards line that was never written.)
         val persistShuffleAcrossQueues = dataStore.get(PersistentShuffleAcrossQueuesKey, false)
-        val previousShuffleEnabled = player.shuffleModeEnabled
-        if (!persistShuffleAcrossQueues) {
-            player.shuffleModeEnabled = false
+        if (!persistShuffleAcrossQueues && !isRestore && player.shuffleModeEnabled) {
+            suppressShuffleModePersist = true
+            try {
+                player.shuffleModeEnabled = false
+            } finally {
+                suppressShuffleModePersist = false
+            }
         }
         
         originalQueueSize = 0
@@ -4041,6 +4058,16 @@ class MusicService :
      */
     @Volatile private var queueDirty = true
 
+    /**
+     * True only while playQueue is programmatically clearing shuffle for a NEW queue, so
+     * onShuffleModeEnabledChanged can tell that reset apart from a real user toggle and skip
+     * persisting it. Without this the app's own reset overwrote ShuffleModeKey with false and
+     * "remember shuffle and repeat" could never survive an app restart.
+     *
+     * Written and read on the player/main thread only; @Volatile is belt-and-braces.
+     */
+    @Volatile private var suppressShuffleModePersist = false
+
     private fun startPeriodicPersist() {
         if (periodicPersistJob?.isActive == true) return
         periodicPersistJob = scope.launch {
@@ -4265,7 +4292,9 @@ class MusicService :
         }
 
         
-        if (dataStore.get(RememberShuffleAndRepeatKey, true)) {
+        // Persist the USER's choice only. A programmatic reset (playQueue clearing shuffle for a new
+        // queue) must not overwrite it, or "remember shuffle" can never survive a restart.
+        if (!suppressShuffleModePersist && dataStore.get(RememberShuffleAndRepeatKey, true)) {
             scope.launch {
                 dataStore.edit { settings ->
                     settings[ShuffleModeKey] = shuffleModeEnabled

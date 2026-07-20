@@ -52,11 +52,32 @@ import java.util.Locale
 import javax.inject.Inject
 
 @HiltAndroidApp
-class App : Application(), SingletonImageLoader.Factory {
+class App : Application(), SingletonImageLoader.Factory, androidx.work.Configuration.Provider {
 
     override fun attachBaseContext(base: Context) {
         super.attachBaseContext(localeAwareContext(base))
     }
+
+    /**
+     * WorkManager on-demand initialization fallback.
+     *
+     * Normally WorkManager is booted by androidx.startup's `InitializationProvider` (it IS in the merged
+     * manifest — nothing removes it). But content providers are installed ONLY in the app's default process
+     * and only when the process is not in restricted-backup mode, while [onCreate] runs in EVERY process:
+     * `:crash` (CrashActivity) and `:phoenix` (ProcessPhoenix's restart trampoline). In those processes the
+     * initializer never ran, and `WorkManager.getInstance()` threw
+     * "WorkManager is not initialized properly … your Application does not implement Configuration.Provider",
+     * which [scheduleNonCriticalWork] then swallowed into a log line.
+     *
+     * Implementing this interface is the supported on-demand-initialization path: `getInstance()` can now
+     * initialize itself from any process/state instead of throwing. The configuration is deliberately the
+     * DEFAULT one — identical to what `WorkManagerInitializer` builds — so behaviour in the default process
+     * is bit-for-bit unchanged. NOTE: no custom WorkerFactory here on purpose; this project does NOT depend
+     * on `androidx.hilt:hilt-work` and none of its workers are `@HiltWorker` — they are plain
+     * `CoroutineWorker`s that reach singletons through Hilt `EntryPoints`, so the default factory is correct.
+     */
+    override val workManagerConfiguration: androidx.work.Configuration
+        get() = androidx.work.Configuration.Builder().build()
 
     @Inject
     @ApplicationScope
@@ -188,23 +209,59 @@ class App : Application(), SingletonImageLoader.Factory {
      * safe to call every start. Extracted so perf-mode can defer it off the cold-start critical path (see onCreate).
      */
     private fun scheduleNonCriticalWork() {
+        // Only the default process schedules. `App.onCreate` also runs in `:crash` and `:phoenix`, which are
+        // throwaway processes: they have no androidx.startup provider (see [workManagerConfiguration]) and
+        // they die within seconds. Booting a SECOND WorkManagerImpl there — plain `work-runtime` is not
+        // multi-process aware — would have it contend with the real one on the same Room DB for nothing.
+        // The default process still calls this on every start, so nothing is skipped for the user.
+        if (!isDefaultProcess()) return
+
         // Schedule the weekly Release Radar check (aligned to the next Friday morning).
         // Safe to call every start: it uses a unique periodic work item with UPDATE policy.
         runCatching { iad1tya.echo.music.releaseradar.ReleaseRadarWorker.schedule(this) }
-            .onFailure { Timber.e(it, "Failed to schedule Release Radar worker") }
+            .onFailure { onScheduleFailed(it, "Failed to schedule Release Radar worker") }
         // Seed the radar ONCE per install so a fresh install isn't empty before the first Friday drop.
         // NOT on every launch: the real Release Radar only refreshes weekly (the periodic worker above).
         runCatching { iad1tya.echo.music.releaseradar.ReleaseRadarWorker.seedOnceIfNeeded(this) }
-            .onFailure { Timber.e(it, "Failed to seed Release Radar") }
+            .onFailure { onScheduleFailed(it, "Failed to seed Release Radar") }
 
         // Schedule the daily Last.fm taste refresh (opt-in; the worker no-ops unless the toggle is ON and a
         // Last.fm username exists). Idempotent unique periodic work with UPDATE policy — safe every start.
         runCatching { iad1tya.echo.music.reco.LastFmTasteWorker.schedule(this) }
-            .onFailure { Timber.e(it, "Failed to schedule Last.fm taste worker") }
+            .onFailure { onScheduleFailed(it, "Failed to schedule Last.fm taste worker") }
 
         // Schedule the weekly app-update check (notifies once per new version when one is found).
         runCatching { iad1tya.echo.music.echomusic.updater.UpdateCheckWorker.schedule(this) }
-            .onFailure { Timber.e(it, "Failed to schedule update-check worker") }
+            .onFailure { onScheduleFailed(it, "Failed to schedule update-check worker") }
+    }
+
+    /**
+     * A scheduling failure must never be a silent, permanently-dead feature again. [scheduleNonCriticalWork]
+     * already re-runs on every app start (so the next launch retries by itself — no retry loop is added
+     * here), but a failure used to exist only as a logcat line nobody reads. Route it through
+     * [reportException] as well so it lands in the crash reporter / AppLogger and is actually visible.
+     */
+    private fun onScheduleFailed(t: Throwable, message: String) {
+        Timber.e(t, message)
+        reportException(t)
+    }
+
+    /**
+     * True only in the app's main process. `:crash` (CrashActivity) and `:phoenix` (ProcessPhoenix) run the
+     * same [App] class but are short-lived helpers. Falls back to `/proc/self/cmdline` below API 28, where
+     * [getProcessName] does not exist; if the name cannot be determined we assume the default process, which
+     * preserves the previous (always-schedule) behaviour.
+     */
+    private fun isDefaultProcess(): Boolean {
+        val name =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                runCatching { getProcessName() }.getOrNull()
+            } else {
+                runCatching {
+                    java.io.File("/proc/self/cmdline").readText().trim { it <= ' ' }
+                }.getOrNull()
+            }
+        return name.isNullOrEmpty() || name == packageName
     }
 
     /**
