@@ -4611,12 +4611,31 @@ class MusicService :
             return
         }
 
-        
-        if (mediaId != null) {
-            performAggressiveCacheClear(mediaId)
-        }
+        // NO blanket cache purge here. This used to call performAggressiveCacheClear(mediaId)
+        // UNCONDITIONALLY, before the error was even classified — and that is the most likely cause of
+        // #57 ("las canciones se adelantan, cortan microsegundos y aparecen más adelante, de forma
+        // random").
+        //
+        // The purge does playerCache.removeResource(mediaId): it DELETES the already-downloaded bytes of
+        // the song that is playing RIGHT NOW. media3 then has to re-open the source, and the re-open
+        // flushes the AudioTrack — position follows bytes WRITTEN to the sink, so everything written but
+        // not yet heard is discarded and playback resumes AHEAD of where the user was listening. That is
+        // exactly a micro-cut plus a small forward jump, on any transient error, at random.
+        //
+        // It was also redundant, and in the commonest case actively wrong:
+        //  - handleRangeNotSatisfiableError, handlePageReloadError and handleGenericIOError already call
+        //    performAggressiveCacheClear themselves, so those paths lose nothing;
+        //  - handleExpiredUrlError (403 — the frequent one, and the corruption branch routes here too)
+        //    deliberately clears ONLY songUrlCache + the decryption cache and KEEPS the bytes, because a
+        //    stale URL says nothing about audio already downloaded. The blanket call overrode that
+        //    intent and threw the good bytes away anyway;
+        //  - the offline branch just waits for the network — the bytes are fine, the link is down;
+        //  - isAudioRendererError is a problem with the SINK, not the source;
+        //  - isNetworkRelatedError does a bounded retry, which the purge turned into a full re-download
+        //    on every attempt.
+        // Every branch that genuinely needs a purge performs its own, correctly scoped.
 
-        
+
         when {
             isNoStreamError(error) && isNetworkConnected.value -> {
                 // UNRESOLVABLE SONG dead-end (fix #3): the song genuinely can't be served by any client
