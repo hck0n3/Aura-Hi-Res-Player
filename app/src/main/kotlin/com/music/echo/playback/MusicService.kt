@@ -1745,7 +1745,8 @@ class MusicService :
         scope.launch {
             while (isActive) {
                 delay(30.seconds)
-                if (dataStore.get(PersistentQueueKey, true) && queueSignatureChanged()) {
+                if (dataStore.get(PersistentQueueKey, true) && queueDirty) {
+                    queueDirty = false
                     saveQueueToDisk()
                 }
             }
@@ -2377,14 +2378,20 @@ class MusicService :
         }
         val currentMediaId = currentMediaMetadata.id
 
-        scope.launch(SilentHandler) {
-            // Armed INSIDE the coroutine, not before launching it. Set outside, a launch on an already-cancelled
-            // scope never ran its body — so the `finally` that clears this never ran either and the flag stuck
-            // TRUE for the rest of the process. With it stuck, EVERY re-seed path is silently blocked forever:
-            // the B3 pre-seed, the STATE_ENDED net, the crossfade seed and the autoplay chips all gate on it.
-            // That is a permanent, invisible death of the infinite queue. selectAutoplayChip already does it
-            // this way — this site was the odd one out.
-            radioSeedInFlight = true
+        // Claimed SYNCHRONOUSLY — that is the whole point of the guard. `scope` is the NON-immediate
+        // Dispatchers.Main, so `launch` always posts and the body runs in a LATER main-thread message. Setting
+        // the flag inside the coroutine therefore leaves the guard unclaimed for the rest of the CURRENT
+        // dispatch, and media3's ListenerSet delivers every callback of one player update in a single
+        // synchronous flush: onMediaItemTransition (B3 pre-seed) and onEvents (scheduleCrossfade -> seed) both
+        // see `false` and BOTH fire. The second seed's appendSeed then removes the tail the first just appended,
+        // while sessionPlayedIds has already burned those ids via the #22 no-repeat filter — the batch is lost
+        // for good, and the crossfade gets armed twice against an index the second seed deletes.
+        //
+        // The cancelled-scope leak this used to guard against is handled by invokeOnCompletion below, which
+        // runs even when the coroutine body never starts.
+        radioSeedInFlight = true
+
+        val seedJob = scope.launch(SilentHandler) {
             // Resolve the YouTube videoId to seed the radio from. For a normal online track the mediaId IS the
             // videoId. For a LOCAL library track (content://) or a direct-URL (http) podcast the mediaId is NOT a
             // YouTube id — tryRadio/tryRelated would fail and we'd loop forever on the replay last-resort instead
@@ -2602,29 +2609,31 @@ class MusicService :
                 ok
             }.getOrDefault(false)
 
-            try {
-                // Mood (if active) first, then radio, then related. If a transient hiccup left us empty, wait
-                // briefly and try once more — so a momentary network blip at the exact end-of-queue moment never
-                // permanently stops the music.
-                var appended = tryMood() || tryContextRadio() || tryRadio() || tryRelated()
-                if (!appended) {
-                    kotlinx.coroutines.delay(2500)
-                    appended = tryMood() || tryContextRadio() || tryRadio() || tryRelated()
-                }
-                // Autoplay chips: the seed just landed (appendSeed ran) → refresh the queue-footer
-                // suggestions for THIS seed. Bounded: no-ops if this seed's chips are already loaded.
-                if (appended) seedVideoId?.let { refreshAutoplaySuggestions(it) }
-                // Absolute last resort: at a TRUE end-of-queue, never leave the user in silence — replay the queue.
-                if (!appended && resumeAfterSeed && !player.isPlaying && player.mediaItemCount > 0) {
-                    Timber.tag(TAG).w("Radio seed yielded nothing; replaying current queue so playback never stops")
-                    resumeAfterSeed = false
-                    player.seekTo(0, 0)
-                    player.play()
-                }
-            } finally {
-                radioSeedInFlight = false
-                resumeAfterSeed = false
+            // Mood (if active) first, then radio, then related. If a transient hiccup left us empty, wait
+            // briefly and try once more — so a momentary network blip at the exact end-of-queue moment never
+            // permanently stops the music.
+            var appended = tryMood() || tryContextRadio() || tryRadio() || tryRelated()
+            if (!appended) {
+                kotlinx.coroutines.delay(2500)
+                appended = tryMood() || tryContextRadio() || tryRadio() || tryRelated()
             }
+            // Autoplay chips: the seed just landed (appendSeed ran) → refresh the queue-footer
+            // suggestions for THIS seed. Bounded: no-ops if this seed's chips are already loaded.
+            if (appended) seedVideoId?.let { refreshAutoplaySuggestions(it) }
+            // Absolute last resort: at a TRUE end-of-queue, never leave the user in silence — replay the queue.
+            if (!appended && resumeAfterSeed && !player.isPlaying && player.mediaItemCount > 0) {
+                Timber.tag(TAG).w("Radio seed yielded nothing; replaying current queue so playback never stops")
+                resumeAfterSeed = false
+                player.seekTo(0, 0)
+                player.play()
+            }
+        }
+        // Release the claim from a completion handler rather than a `finally`. invokeOnCompletion fires even
+        // when the coroutine body NEVER RAN (a launch on an already-cancelled scope completes immediately), so
+        // the flag can no longer stick true and silently kill every re-seed path for the rest of the process.
+        seedJob.invokeOnCompletion {
+            radioSeedInFlight = false
+            resumeAfterSeed = false
         }
     }
 
@@ -3618,6 +3627,15 @@ class MusicService :
 
     private var previousMediaItemIndex = C.INDEX_UNSET
 
+    /**
+     * Marks the persistent queue dirty (#55). media3 fires this for EVERY timeline mutation — add, remove and
+     * `moveMediaItem` — which is what makes it a correct trigger where a count/index/id signature was not:
+     * a drag-reorder of upcoming tracks changes none of those three.
+     */
+    override fun onTimelineChanged(timeline: androidx.media3.common.Timeline, reason: Int) {
+        queueDirty = true
+    }
+
     override fun onMediaItemTransition(
         mediaItem: MediaItem?,
         reason: Int,
@@ -3967,27 +3985,18 @@ class MusicService :
         }
     }
 
-    /** Last queue shape written by the periodic saver, so an unchanged queue isn't re-serialized (#55). */
-    @Volatile private var lastQueueSignature: String? = null
-
     /**
-     * Cheap "did the queue actually change?" probe for the periodic save. Reads a few player fields on Main
-     * (never the item list itself — that would cost as much as the save it is meant to avoid) and compares
-     * against the last saved shape. Returns true on the first call so the initial save always happens.
+     * Set whenever the timeline actually changes, cleared by the periodic saver (#55). Starts true so the
+     * first tick always persists.
      *
-     * Deliberately conservative: it can only ever cause an EXTRA save (harmless), never a missed one, because
-     * every mutation this app makes to the queue changes the count, the index, or the current id.
+     * A DIRTY FLAG, not a shape hash. The obvious "count:index:currentId" signature silently misses a
+     * drag-REORDER of upcoming tracks below the current index (`player.moveMediaItem`) — count, index and
+     * current id are all unchanged — as well as remove-one-then-add-one and any in-place replacement. Those
+     * are exactly the edits a user makes while PAUSED, which is the case the un-gated 30s save exists to
+     * protect: reorder the queue, screen off, MIUI reaps the service, order lost. media3 fires
+     * onTimelineChanged for every one of them.
      */
-    private suspend fun queueSignatureChanged(): Boolean {
-        val sig = withContext(Dispatchers.Main) {
-            runCatching {
-                "${player.mediaItemCount}:${player.currentMediaItemIndex}:${player.currentMediaItem?.mediaId}"
-            }.getOrNull()
-        } ?: return true
-        if (sig == lastQueueSignature) return false
-        lastQueueSignature = sig
-        return true
-    }
+    @Volatile private var queueDirty = true
 
     private fun startPeriodicPersist() {
         if (periodicPersistJob?.isActive == true) return
@@ -6498,6 +6507,10 @@ class MusicService :
         // skipped, seeked, queue changed) so we never leak a second ExoPlayer.
         if (!isCrossfading) {
             secondaryPlayer?.let {
+                // Silence too — this is the MOST frequent teardown of the three (it runs whenever a preloaded
+                // incoming player is discarded: skip, seek, queue change), so omitting it here leaked a
+                // HashMap entry keyed by a released ExoPlayer on nearly every user interaction.
+                playerSilenceProcessors.remove(it)
                 playerNormProcessors.remove(it)
                 playerLimiterProcessors.remove(it)
                 playerEqProcessors.remove(it)?.let { eq -> equalizerService.removeAudioProcessor(eq) }

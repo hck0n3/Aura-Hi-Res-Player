@@ -79,9 +79,14 @@ class CoilBitmapLoader(
             // slow mobile link the car head unit showed the old thumbnail until the future finally resolved —
             // the reported "the thumbnail doesn't update until the song is halfway through". A missed cover is
             // a far smaller problem than a stale one, so cap it and let the next track try again.
+            // On timeout FAIL the future — never hand back a placeholder. createFallbackBitmap() is a fully
+            // transparent 64x64, and media3 wraps this loader in a CacheBitmapLoader that memoises the last
+            // (uri -> future) pair: returning the blank would CACHE it for that artwork, so the car head unit
+            // and lockscreen would show an empty box for the whole track. A failed future instead leaves the
+            // previous metadata in place, which is strictly better than painting a blank.
             withTimeoutOrNull(ARTWORK_LOAD_TIMEOUT_MS) {
                 loadBitmapInner(uri)
-            } ?: createFallbackBitmap()
+            } ?: throw java.util.concurrent.TimeoutException("Artwork load exceeded ${ARTWORK_LOAD_TIMEOUT_MS}ms")
         }
 
     private suspend fun loadBitmapInner(uri: Uri): Bitmap {
@@ -147,7 +152,11 @@ class CoilBitmapLoader(
          * Hard cap on a single artwork load (#54). media3 publishes metadata with a null bitmap immediately
          * and republishes when this resolves, so an unbounded load means the previous track's cover stays on
          * screen — worse than briefly showing none.
+         *
+         * Must stay ABOVE the direct-HTTP fallback's own budget (10s connect + 10s read below). At 6s that
+         * fallback was unreachable by construction — the very path that exists for when Coil can't run in the
+         * MediaSession service context could never finish, so it always degraded to a failure.
          */
-        const val ARTWORK_LOAD_TIMEOUT_MS = 6_000L
+        const val ARTWORK_LOAD_TIMEOUT_MS = 22_000L
     }
 }

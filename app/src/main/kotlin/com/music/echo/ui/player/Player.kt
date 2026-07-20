@@ -1956,7 +1956,10 @@ fun BottomSheetPlayer(
                 // Audio↔video toggle at the END of the song title (per request). Hidden in High-Performance Mode
                 // on phones (audio only), BUT shown on TV/car even in perf mode — the user asked to be able to
                 // switch to video on the big screen on demand (the video track is resolution-capped by device tier).
-                if ((!highPerfMode || isTvOrCar) && (mediaMetadata.isVideoSong || !mediaMetadata.podcastVideoUrl.isNullOrEmpty())) {
+                // wantsHiResBackdrop (= isTvOrCar || isWideLayout), not isTvOrCar: this is a FUNCTIONAL gate, and
+                // isTvOrCar no longer carries a width term, so a plain tablet in High-Performance Mode would
+                // otherwise lose the video button it used to have.
+                if ((!highPerfMode || wantsHiResBackdrop) && (mediaMetadata.isVideoSong || !mediaMetadata.podcastVideoUrl.isNullOrEmpty())) {
                     Spacer(Modifier.width(4.dp))
                     // Chip-style (matches the action chips below) and pinned to the right of the title.
                     Box(

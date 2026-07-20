@@ -48,10 +48,19 @@ import iad1tya.echo.music.utils.DeviceForm
 fun rememberIsTvOrCar(): Boolean {
     val context = LocalContext.current
     val deviceTvCar = remember { DeviceForm.isTvOrCar(context) }
+    // Cheap Android-TV BOXES and Chinese head units run PLAIN Android and report neither FEATURE_LEANBACK nor
+    // UI_MODE_TYPE_TELEVISION, so `deviceTvCar` is false on them. The old code caught them with a ">= 840dp"
+    // width term, which is why removing that term (correctly — width says nothing about the INPUT device) would
+    // have gone dark on every D-pad affordance there: initial focus, ~40 tvFocusable rings, the never-auto-hide
+    // transport and the D-pad key wake. The absence of a TOUCHSCREEN is the signal that actually means "driven
+    // by a remote", and unlike width it can never mis-fire on a big phone or an unfolded foldable.
+    val noTouchscreen = remember(context) {
+        !context.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_TOUCHSCREEN)
+    }
     val forceSplit by iad1tya.echo.music.utils.rememberPreference(
         iad1tya.echo.music.constants.ForceSplitViewKey, false,
     )
-    return deviceTvCar || forceSplit
+    return deviceTvCar || noTouchscreen || forceSplit
 }
 
 /**
@@ -66,14 +75,23 @@ fun rememberIsTvOrCar(): Boolean {
  * PURELY a width question — it says NOTHING about the input device, so it never enables the TV/car D-pad ring
  * (that is [rememberIsTvOrCar]).
  *
- * Breakpoint is [WIDE_LAYOUT_BREAKPOINT_DP] (700dp), NOT Material's "expanded" 840dp. 840 was chosen for
- * tablets and simply never fires on the device this matters most for: an unfolded Galaxy Z Fold is about
- * 690x829dp, so every foldable stayed in the phone layout no matter how much room it had. 700dp covers
- * unfolded foldables and small tablets while still excluding ordinary phones in landscape (a large phone is
- * ~600-690dp wide rotated), so phones are untouched.
+ * Breakpoint is [WIDE_LAYOUT_BREAKPOINT_DP] (600dp), measured against the window's REAL width in dp.
  *
- * [ForceSplitViewKey] still forces this true — that override is how TV boxes / head units that don't report
- * their real size get the wide layout.
+ * It must NOT go through `WindowSizeClass.isWidthAtLeastBreakpoint()`: that API only knows the bucket
+ * boundaries **0 / 600 / 840**, so it silently rounds any custom value DOWN to the bucket below. Asking it for
+ * 700 is arithmetically identical to asking for 840 — which is how an earlier attempt at this shipped a
+ * foldable release that did nothing at all: an unfolded Z Fold is ~690x829dp, lands in the 600 bucket, and
+ * `>= 700` stayed false exactly as `>= 840` had. Read the width directly instead.
+ *
+ * 600dp is Material's own "medium" boundary and the classic sw600dp tablet line: ordinary phones in portrait
+ * are ~360-430dp (excluded), while unfolded foldables, tablets and phones in landscape are above it.
+ *
+ * REACTIVE: it reads the CURRENT window, not the physical screen, so folding/unfolding, entering split-screen
+ * or free-form multiwindow, and rotating all flip it live without a restart — and a narrow multiwindow pane on
+ * a big display correctly stays single-pane.
+ *
+ * PURELY a width question — it says NOTHING about the input device, so it never enables the TV/car D-pad ring
+ * (that is [rememberIsTvOrCar]). [ForceSplitViewKey] still forces it true.
  */
 @Composable
 fun rememberIsWideLayout(): Boolean {
@@ -83,20 +101,18 @@ fun rememberIsWideLayout(): Boolean {
     return forceSplit || rememberIsExpandedWidth()
 }
 
-/** Width at/above which the wide two-pane layouts turn on. See [rememberIsWideLayout] for why 700, not 840. */
-const val WIDE_LAYOUT_BREAKPOINT_DP = 700
+/** Window width (dp) at/above which the wide two-pane layouts turn on. See [rememberIsWideLayout]. */
+const val WIDE_LAYOUT_BREAKPOINT_DP = 600
 
 /**
- * The CURRENT window is at least [WIDE_LAYOUT_BREAKPOINT_DP] wide. Uses [currentWindowAdaptiveInfo] so it
- * reflects the real, orientation-aware, multiwindow-aware WINDOW width — NOT the physical screen
- * (smallestScreenWidthDp) — and recomposes when that width changes (fold/unfold, split-screen resize,
- * rotation). This is the responsive gate that keeps foldables / multiwindow from being judged by a coarse
- * physical-size check.
+ * The CURRENT window is at least [WIDE_LAYOUT_BREAKPOINT_DP] dp wide, from the real container size rather than
+ * a bucketed size class (see [rememberIsWideLayout] for why the size-class API cannot express this).
  */
 @Composable
 private fun rememberIsExpandedWidth(): Boolean {
-    val windowSizeClass = currentWindowAdaptiveInfo().windowSizeClass
-    return windowSizeClass.isWidthAtLeastBreakpoint(WIDE_LAYOUT_BREAKPOINT_DP)
+    val widthPx = androidx.compose.ui.platform.LocalWindowInfo.current.containerSize.width
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    return with(density) { widthPx.toDp() } >= WIDE_LAYOUT_BREAKPOINT_DP.dp
 }
 
 /**
