@@ -2376,9 +2376,15 @@ class MusicService :
             return
         }
         val currentMediaId = currentMediaMetadata.id
-        radioSeedInFlight = true
 
         scope.launch(SilentHandler) {
+            // Armed INSIDE the coroutine, not before launching it. Set outside, a launch on an already-cancelled
+            // scope never ran its body — so the `finally` that clears this never ran either and the flag stuck
+            // TRUE for the rest of the process. With it stuck, EVERY re-seed path is silently blocked forever:
+            // the B3 pre-seed, the STATE_ENDED net, the crossfade seed and the autoplay chips all gate on it.
+            // That is a permanent, invisible death of the infinite queue. selectAutoplayChip already does it
+            // this way — this site was the odd one out.
+            radioSeedInFlight = true
             // Resolve the YouTube videoId to seed the radio from. For a normal online track the mediaId IS the
             // videoId. For a LOCAL library track (content://) or a direct-URL (http) podcast the mediaId is NOT a
             // YouTube id — tryRadio/tryRelated would fail and we'd loop forever on the replay last-resort instead
@@ -2416,10 +2422,15 @@ class MusicService :
                 // network fetch), so we never remove items relative to a position that has since moved.
                 val liveIndex = player.currentMediaItemIndex
                 val itemCount = player.mediaItemCount
+                // Order FIRST, then decide. orderedByTaste() can return an EMPTY list (e.g. every candidate is a
+                // hard-disliked artist), and the old order — remove-then-append — truncated the queue to the
+                // current track and appended nothing, leaving the resume seekTo() pointing past the end. Never
+                // destroy the tail before we know we have something to put in its place.
+                val toAppend = items.orderedByTaste()
+                if (toAppend.isEmpty()) return false
                 if (itemCount > liveIndex + 1) {
                     player.removeMediaItems(liveIndex + 1, itemCount)
                 }
-                val toAppend = items.orderedByTaste()
                 player.addMediaItems(liveIndex + 1, toAppend)
                 sessionPlayedIds.addAll(toAppend.mapNotNull { it.mediaId }) // NO-REPEAT: record what we appended
                 _mixActive.value = true
@@ -2720,10 +2731,14 @@ class MusicService :
                 // radio/autoplay content), and keep the current song playing untouched.
                 val liveIndex = player.currentMediaItemIndex
                 val itemCount = player.mediaItemCount
+                // Order FIRST, then decide (same reason as appendSeed): orderedByTaste() can return EMPTY when
+                // every candidate is hard-disliked, and truncating the tail before knowing that leaves the queue
+                // with nothing after the current track.
+                val toAppend = items.orderedByTaste()
+                if (toAppend.isEmpty()) return@launch
                 if (itemCount > liveIndex + 1) {
                     player.removeMediaItems(liveIndex + 1, itemCount)
                 }
-                val toAppend = items.orderedByTaste()
                 player.addMediaItems(liveIndex + 1, toAppend)
                 sessionPlayedIds.addAll(toAppend.mapNotNull { it.mediaId }) // NO-REPEAT: record what we appended
                 _mixActive.value = true
