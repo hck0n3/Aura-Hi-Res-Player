@@ -2077,8 +2077,11 @@ class MusicService :
     }
 
     private fun skipOnError() {
-        
-        consecutivePlaybackErr += 2
+        // ONE per failure, not two. With `+= 2` against MAX_CONSECUTIVE_ERR = 5 the real budget was 2 skips,
+        // so THREE unresolvable songs in a row hard-paused playback. On a slower device — where resolves
+        // routinely hit the 30s timeout and surface as "song unavailable" — that is exactly the reported
+        // "one song plays, the next doesn't, then it just stops". The counter now means what its name says.
+        consecutivePlaybackErr += 1
         val nextWindowIndex = player.nextMediaItemIndex
 
         if (consecutivePlaybackErr <= MAX_CONSECUTIVE_ERR && nextWindowIndex != C.INDEX_UNSET) {

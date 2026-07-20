@@ -243,11 +243,24 @@ fun Lyrics(
     val listenTogetherManager = LocalListenTogetherManager.current
     val isGuest = listenTogetherManager?.isInRoom == true && !listenTogetherManager.isHost
 
-    val lyricsTextPosition by rememberEnumPreference(LyricsTextPositionKey, LyricsPosition.LEFT)
-    // Wide screens (unfolded foldable / tablet / TV) only: cap the lyrics column to a readable measure.
-    // This does NOT touch [lyricsTextPosition] — the user's LEFT/CENTER/RIGHT choice still resolves exactly
-    // as before, just INSIDE the capped column instead of against a ~900dp edge. See [LYRICS_MAX_WIDTH].
+    val storedLyricsTextPosition by rememberEnumPreference(LyricsTextPositionKey, LyricsPosition.LEFT)
+    // Wide screens (unfolded foldable / tablet / TV): cap the lyrics column to a readable measure AND, when
+    // the user never picked an alignment, centre the text.
+    //
+    // Capping alone did NOT fix the report ("las letras no salen centradas cuando el plegable está abierto",
+    // raised twice). The parent Box already centres the COLUMN, but with the default LEFT alignment each
+    // short line still renders hard against that column's leading edge, so on a ~690dp screen the words
+    // visibly sit off to one side — which is what the user actually sees and calls "not centred".
+    //
+    // Only the DEFAULT is overridden: if the setting still holds LEFT (i.e. untouched), a wide screen centres.
+    // An explicit LEFT/RIGHT choice is impossible to distinguish from the default here, so this deliberately
+    // trades that edge case for fixing the reported one — CENTER remains reachable and honoured everywhere.
     val isWideLayout = rememberIsWideLayout()
+    val lyricsTextPosition = if (isWideLayout && storedLyricsTextPosition == LyricsPosition.LEFT) {
+        LyricsPosition.CENTER
+    } else {
+        storedLyricsTextPosition
+    }
     val changeLyrics by rememberPreference(LyricsClickKey, true)
     val scrollLyrics by rememberPreference(LyricsScrollKey, true)
     val romanizeJapaneseLyrics by rememberPreference(LyricsRomanizeJapaneseKey, true)

@@ -14,11 +14,11 @@ import coil3.request.ImageRequest
 import coil3.request.SuccessResult
 import coil3.request.allowHardware
 import coil3.toBitmap
+import iad1tya.echo.music.ui.utils.resize
 import com.google.common.util.concurrent.ListenableFuture
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.guava.future
-import kotlinx.coroutines.withTimeoutOrNull
 import timber.log.Timber
 
 class CoilBitmapLoader(
@@ -30,6 +30,21 @@ class CoilBitmapLoader(
 
     private fun createFallbackBitmap(): Bitmap =
         createBitmap(64, 64)
+
+    /**
+     * Rewrite the artwork URL so the CDN returns a SMALL image, instead of downloading the 1200x1200 one the
+     * session metadata carries and shrinking it locally.
+     *
+     * This is the part that actually helps the "the cover doesn't update until the song is halfway through"
+     * report: on a slow mobile link the cost is the DOWNLOAD, and Coil's `.size()` only bounds the DECODE —
+     * the fetcher requests whatever the URL says. Reuses the app's own [resize] so the per-host rules stay in
+     * one place (googleusercontent gets `=w384-h384`, i.ytimg falls to sddefault, anything else is untouched).
+     */
+    private fun smallArtworkUri(uri: Uri): Any =
+        runCatching {
+            val s = uri.toString()
+            if (s.startsWith("http", ignoreCase = true)) s.resize(MAX_ARTWORK_PX, MAX_ARTWORK_PX) else uri
+        }.getOrDefault(uri)
 
     // Cap the artwork used for the media notification / lockscreen / Android Auto. The full-res cover is
     // 1200x1200 (~5.7 MB as ARGB_8888); handing a bitmap that big to NotificationManager.notify() blows the
@@ -73,33 +88,34 @@ class CoilBitmapLoader(
 
     override fun loadBitmap(uri: Uri): ListenableFuture<Bitmap> =
         scope.future(Dispatchers.IO) {
-            // #54 — BOUND THE WHOLE LOAD. media3's MediaSessionLegacyStub publishes the metadata with a NULL
-            // bitmap as soon as the track changes and only republishes WITH artwork when this future completes.
-            // Nothing here was bounded (Coil has no timeout; the HTTP fallback alone allows 10s+10s), so on a
-            // slow mobile link the car head unit showed the old thumbnail until the future finally resolved —
-            // the reported "the thumbnail doesn't update until the song is halfway through". A missed cover is
-            // a far smaller problem than a stale one, so cap it and let the next track try again.
-            // On timeout FAIL the future — never hand back a placeholder. createFallbackBitmap() is a fully
-            // transparent 64x64, and media3 wraps this loader in a CacheBitmapLoader that memoises the last
-            // (uri -> future) pair: returning the blank would CACHE it for that artwork, so the car head unit
-            // and lockscreen would show an empty box for the whole track. A failed future instead leaves the
-            // previous metadata in place, which is strictly better than painting a blank.
-            withTimeoutOrNull(ARTWORK_LOAD_TIMEOUT_MS) {
-                loadBitmapInner(uri)
-            } ?: throw java.util.concurrent.TimeoutException("Artwork load exceeded ${ARTWORK_LOAD_TIMEOUT_MS}ms")
+            // #54 — media3's MediaSessionLegacyStub publishes the metadata with a NULL bitmap as soon as the
+            // track changes and only republishes WITH artwork when this future completes.
+            // NO overall timeout. An earlier attempt wrapped this in withTimeoutOrNull and threw on expiry;
+            // an audit proved that made things WORSE, three ways:
+            //  1. `runCatching` around the Coil phase below catches Throwable — including the
+            //     TimeoutCancellationException — so the deadline firing did not abort anything: it fell
+            //     through into the blocking fallback, ran it to completion, and THEN discarded a cover it had
+            //     successfully fetched.
+            //  2. That fallback is plain blocking I/O (HttpURLConnection + BitmapFactory) with no suspension
+            //     point, so a coroutine deadline cannot interrupt it regardless.
+            //  3. Failing the future does NOT restore the previous cover: verified in the media3 1.10.1
+            //     bytecode, MediaSessionLegacyStub publishes the new metadata with a NULL bitmap immediately
+            //     and its onFailure only logs. So expiring guaranteed the correct cover NEVER arrived — and a
+            //     head unit that keeps painting its last bitmap then shows exactly the reported stale cover.
+            // Slow is better than never here; the real lever is fetching a smaller image (below), not a cap.
+            loadBitmapInner(uri)
         }
 
     private suspend fun loadBitmapInner(uri: Uri): Bitmap {
             // 1) Try Coil (uses the app's image cache).
             val viaCoil = runCatching {
                 val request = ImageRequest.Builder(context)
-                    .data(uri)
-                    // Ask for the size we actually USE. Without this Coil decodes at native resolution: the
-                    // session artworkUri is resize(1200,1200) (models/MediaMetadata.kt), i.e. ~5.7 MB as
-                    // ARGB_8888, downloaded and decoded in full only to be scaled to 384 right after. That is
-                    // ~10x the bytes over the air plus three large allocations per track, on a backgrounded and
-                    // throttled process. In-app artwork is unaffected — Thumbnail.kt re-applies its own
-                    // resize(1200,1200) independently.
+                    // Ask the CDN for a small image instead of downloading the 1200x1200 one and shrinking it
+                    // here. This is the half that actually helps the reported bug: on a slow car link the
+                    // latency is the DOWNLOAD, and Coil's `.size()` only bounds DECODING — the fetcher GETs
+                    // whatever the URL says. Rewriting the URL is what changes the bytes on the wire.
+                    .data(smallArtworkUri(uri))
+                    // Still cap the decode, for the sources whose URL cannot be rewritten.
                     .size(MAX_ARTWORK_PX)
                     .allowHardware(false)
                     .build()
@@ -117,7 +133,8 @@ class CoilBitmapLoader(
             val direct = runCatching {
                 when (uri.scheme?.lowercase()) {
                     "http", "https" -> {
-                        val conn = (java.net.URL(uri.toString()).openConnection()
+                        // Small URL here too — same reason as the Coil phase above.
+                        val conn = (java.net.URL(smallArtworkUri(uri).toString()).openConnection()
                                 as java.net.HttpURLConnection).apply {
                             connectTimeout = 10_000
                             readTimeout = 10_000
@@ -148,15 +165,5 @@ class CoilBitmapLoader(
         // 576 KB leaves safe headroom and is still crisp for a lockscreen/car icon. In-app full-res is unaffected.
         const val MAX_ARTWORK_PX = 384
 
-        /**
-         * Hard cap on a single artwork load (#54). media3 publishes metadata with a null bitmap immediately
-         * and republishes when this resolves, so an unbounded load means the previous track's cover stays on
-         * screen — worse than briefly showing none.
-         *
-         * Must stay ABOVE the direct-HTTP fallback's own budget (10s connect + 10s read below). At 6s that
-         * fallback was unreachable by construction — the very path that exists for when Coil can't run in the
-         * MediaSession service context could never finish, so it always degraded to a failure.
-         */
-        const val ARTWORK_LOAD_TIMEOUT_MS = 22_000L
     }
 }

@@ -3044,7 +3044,11 @@ fun BottomSheetPlayer(
                         }
                     }
                 }
-              } else if (canvasArtwork != null && immersiveCanvasOnRotate && !isWideLayout) {
+              // No `!isWideLayout` here: with it, the setting was a no-op on exactly the devices it is offered
+              // to (a foldable IS wide), i.e. a translated, user-visible toggle that did nothing — the same
+              // placebo shape this release exists to remove. The opt-in is the gate; it defaults OFF, so the
+              // "interface disappears when I rotate" complaint stays fixed unless the user asks for it.
+              } else if (canvasArtwork != null && immersiveCanvasOnRotate) {
                 // Rotated + canvas (Apple-Music animated background) → show it FULLSCREEN (the background
                 // canvas already fills the screen behind) with auto-hiding controls (tap toggles them).
                 //

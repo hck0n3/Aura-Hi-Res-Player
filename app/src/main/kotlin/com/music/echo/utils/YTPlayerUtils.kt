@@ -528,7 +528,13 @@ object YTPlayerUtils {
 
         
         var poToken: PoTokenResult? = null
-        val sessionId = if (isLoggedIn) YouTube.dataSyncId else YouTube.visitorData
+        // `?: visitorData` is NOT redundant — it is the recovery path for registry #29. dataSyncId is only
+        // ever derived AT LOGIN (unlike visitorData, which is re-fetched), so a logged-in account left with a
+        // null dataSyncId produces sessionId == null, no poToken is generated for any poToken-requiring
+        // client, those clients fail, and the resolve burns its 30s budget hopping between them — surfacing
+        // to the user as "this song is unavailable". prewarmPoToken already had this fallback; the REAL
+        // resolve path did not, which is why the recovery never actually reached anyone.
+        val sessionId = (if (isLoggedIn) YouTube.dataSyncId else YouTube.visitorData) ?: YouTube.visitorData
         if (MAIN_CLIENT.useWebPoTokens && sessionId != null) {
             Timber.tag(logTag).d("Generating PoToken for MAIN_CLIENT with sessionId")
             try {
