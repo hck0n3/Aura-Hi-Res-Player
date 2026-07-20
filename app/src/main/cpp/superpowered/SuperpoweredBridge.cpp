@@ -45,7 +45,14 @@ public:
     // gain (attenuate-only, in (0,1]) + the limiter/soft-clip below, run even when the EQ is off so
     // loud masters are brought toward a reference instead of blasting at full native level.
     bool safeVolumeEnabled = false;
+    // TARGET gain (what Kotlin asked for) and the CURRENT gain actually being applied. They differ only
+    // while ramping — see the Safe Volume stage in processAudio. Stepping straight to a new target is what
+    // makes a mid-song gain change audible as a jump, and now that the gain can BOOST (not just attenuate)
+    // those steps can be +16 dB or more: the sanctioned "real loudness arrived within 8 s" upgrade goes
+    // from the unknown-default attenuation straight to a boosted value, and toggling Safe Volume on is an
+    // instant jump from unity. Ramping makes every one of them inaudible.
     float safeVolumeGain = 1.0f;
+    float safeVolumeGainCurrent = 1.0f;
     // De-esser detector envelope (RMS follower over the sibilance band), for smoother, level-relative
     // detection than the old block-peak binary gate.
     float deEsserEnv = 0.0f;
@@ -172,8 +179,21 @@ Java_iad1tya_echo_music_eq_audio_CustomEqualizerAudioProcessor_setSafeVolume(JNI
 
     std::lock_guard<std::mutex> lock(processor->eqMutex);
     processor->safeVolumeEnabled = (enabled == JNI_TRUE);
-    // Attenuate-only guard: never let Safe Volume ADD gain (it only tames loud tracks).
-    processor->safeVolumeGain = (gainLinear > 0.0f && gainLinear < 1.0f) ? gainLinear : 1.0f;
+    // Safe Volume levels in BOTH directions: attenuate loud masters AND bring quiet tracks up toward the
+    // reference, which is what makes a library play at a consistent volume. This used to clamp to < 1.0,
+    // silently discarding every boost — so the feature only ever turned things DOWN, and a quiet track
+    // stayed quiet forever. (The Kotlin side computed the makeup correctly but handed it to a dead stub
+    // processor, so nothing applied it either; both halves are fixed together.)
+    //
+    // Boosting is safe here because the limiter below runs for Safe Volume too (ceiling -1 dBFS,
+    // threshold -3 dB) and catches the resulting peaks — that is the documented design. The ceiling
+    // matches loudnessMakeupDb's +12 dB cap; anything beyond that is a bug upstream, not a louder track.
+    // CLAMP, never fall back to unity: an out-of-range value must become a bounded gain, not a sudden jump
+    // to 1.0 (that would be an audible level change if the cap upstream ever moves). NaN fails both
+    // comparisons and lands on 1.0, which is the correct safe default.
+    const float kMaxSafeVolumeGain = 4.0f; // +12 dB, matching loudnessMakeupDb's cap
+    processor->safeVolumeGain =
+        (gainLinear > 0.0f) ? ((gainLinear > kMaxSafeVolumeGain) ? kMaxSafeVolumeGain : gainLinear) : 1.0f;
 #endif
 }
 
@@ -236,16 +256,25 @@ Java_iad1tya_echo_music_eq_audio_CustomEqualizerAudioProcessor_processAudio(JNIE
     // Run the DSP block if the EQ is on OR the optional Safe Volume stage is on. When BOTH are off the
     // block is skipped entirely (pure float pass-through) so default playback stays bit-perfect.
     bool runEq = (enabled == JNI_TRUE);
-    bool runChain = runEq || (processor && processor->safeVolumeEnabled);
+    // Also run while Safe Volume is ramping BACK to unity after being switched off — otherwise disabling it
+    // would skip the chain outright and drop the gain in one step, the very jump the ramp exists to avoid.
+    bool runChain = runEq ||
+        (processor && (processor->safeVolumeEnabled || processor->safeVolumeGainCurrent != 1.0f));
     if (runChain && workBuffer && processor) {
         std::lock_guard<std::mutex> lock(processor->eqMutex);
 
-        // FRONT gain = EQ preamp (when EQ on) * Safe-Volume normalization gain (when Safe Volume on).
-        // Both default to 1.0. Preamp at the front is correct — the limiter below (thresholdDb -3) catches
-        // peaks; a positive preamp raises the body audibly. Safe Volume's gain is attenuate-only (<= 1.0),
-        // bringing loud masters down toward a reference so they don't blast at full native level.
+        // FRONT gain = the EQ preamp ONLY. The limiter below (thresholdDb -3) catches its peaks, and a
+        // positive preamp raises the body audibly.
+        //
+        // Safe Volume is deliberately NOT folded in here — it runs as its own stage AFTER the EQ bands
+        // (see below). Putting it at the front compounds with the band gains, and the preamp
+        // auto-headroom in CustomEqualizerAudioProcessor (which trims the preamp by the positive EQ boost
+        // on the premise that the limiter absorbs ~1.5 dB transparently) has no knowledge of it — so a
+        // quiet track's makeup, a preamp and a boost preset would stack straight into the limiter. That
+        // is worst exactly on DYNAMIC masters (classical/jazz/hi-res): low integrated loudness means a
+        // large makeup while peaks already sit near full scale, so the limiter would ride ~10 dB of gain
+        // reduction on every transient — the "saturation / boxy / pumping" complaint on record.
         float frontGain = processor->currentPreampMultiplier;
-        if (processor->safeVolumeEnabled) frontGain *= processor->safeVolumeGain;
         if (frontGain != 1.0f) {
             for (int i = 0; i < num_frames * channels; ++i) {
                 workBuffer[i] *= frontGain;
@@ -292,7 +321,49 @@ Java_iad1tya_echo_music_eq_audio_CustomEqualizerAudioProcessor_processAudio(JNIE
             }
         }
 
-        // Limiter (peak safety) — runs for EQ OR Safe Volume. Stereo only (Superpowered Limiter is stereo).
+        // SAFE VOLUME — its own stage, AFTER the EQ bands and immediately BEFORE the limiter, so the limiter
+        // sees the levelled signal and the EQ's preamp auto-headroom stays valid (nothing it doesn't know
+        // about is added upstream of the bands).
+        //
+        // Levels in BOTH directions: attenuates loud masters and brings quiet ones up toward the reference,
+        // which is what makes a library play at one consistent volume. The makeup side is capped at +3 dB
+        // upstream (loudnessMakeupDb) — deliberately NOT the historical +12, which was validated against a
+        // STATIC tanh knee that cannot pump, whereas the limiter below rides gain with a 0.1 s release.
+        //
+        // Applied through a RAMP, never as a step: the target can change mid-song (the sanctioned
+        // real-loudness-arrived upgrade, or the user toggling Safe Volume), and an instantaneous multiplier
+        // change is exactly the audible level jump this feature exists to avoid.
+        if (processor->safeVolumeEnabled || processor->safeVolumeGainCurrent != 1.0f) {
+            float target = processor->safeVolumeEnabled ? processor->safeVolumeGain : 1.0f;
+            // MONO: never amplify. The limiter below is stereo-only, so a boost here would have nothing but
+            // the 0.95 tanh knee between it and audible distortion — and that knee is a hard clipper above
+            // ~1.5x, not a limiter. ATTENUATION stays allowed (it cannot clip), so a loud mono master is
+            // still tamed; only the makeup is withheld. Stereo — what this player is actually used for —
+            // gets the full two-way levelling.
+            //
+            // NOTE this clamps ONLY the Safe Volume gain. An earlier version clamped the combined FRONT gain,
+            // which silently swallowed the user's EQ preamp on mono (a +3 dB preamp became 0 dB) — a change
+            // to EQ behaviour that was never in scope. Keeping the stages separate makes that impossible.
+            if (channels != 2 && target > 1.0f) target = 1.0f;
+
+            float cur = processor->safeVolumeGainCurrent;
+            if (cur != target) {
+                // ~300 ms one-pole glide at 48 kHz; per-BLOCK so the cost is one lerp, not one per sample.
+                const float kGlide = 0.15f;
+                cur += (target - cur) * kGlide;
+                if (std::abs(target - cur) < 1e-4f) cur = target; // settle exactly, no dangling epsilon
+                processor->safeVolumeGainCurrent = cur;
+            }
+
+            if (cur != 1.0f) {
+                for (int i = 0; i < num_frames * channels; ++i) {
+                    workBuffer[i] *= cur;
+                }
+            }
+        }
+
+        // Limiter (peak safety) — runs for EQ OR Safe Volume. Stereo only (Superpowered Limiter is stereo);
+        // mono relies on the soft-clip knee below, which runs for every channel count.
         if (processor->limiter && processor->limiter->enabled && channels == 2) {
             processor->limiter->process(workBuffer, workBuffer, num_frames);
         }

@@ -48,15 +48,25 @@ fun normalizationMultiplier(
  * over-drives the downstream true-peak limiter — too much makeup makes the limiter reduce gain heavily,
  * which sounds like harmonic saturation / a harsh, "boxy" voice, especially at max volume.
  *
- * Capped at [maxBoostDb] = +12 dB — the configuration the user confirmed sounded best (the v0.0.9
- * setup). The artifacts they later heard (saturation, then pumping) came from the per-download
- * loudness measurement added afterwards, not from this makeup, so that measurement was removed and
- * this stays at +12.
+ * Capped at [maxBoostDb] = **+3 dB**, NOT the historical +12.
+ *
+ * +12 was validated in the v0.0.9 setup against `TruePeakLimiterAudioProcessor`, whose `softLimit` is a
+ * STATIC tanh knee — it saturates but has no time constant, so it physically cannot pump. That processor
+ * is now a dead stub, and the makeup is applied ahead of Superpowered's Limiter instead, which is a
+ * GAIN-RIDING limiter (threshold -3 dB, ceiling -1 dBFS, release 0.1 s). Feeding +12 dB into that on a
+ * dynamic master (YouTube loudnessDb ~ -9, i.e. quiet-but-peaky classical / jazz / hi-res — exactly the
+ * material this player exists for) demands 9-12 dB of gain reduction on every transient, with the
+ * envelope recovering between them: audible pumping, plus flattened macro-dynamics. Loud masters are
+ * unaffected (they get attenuation, makeup = 0), so the artifact would appear ONLY on the best recordings.
+ *
+ * At +3 dB a -1 dBFS master needs ~3 dB of reduction on its rarest peaks only. Raising this safely needs
+ * PEAK data (`makeupDb = min(cap, -1 - truePeakDbFS)`), which requires a peak column on FormatEntity and a
+ * measurement pass — until that exists, this cap is the honest limit.
  */
 fun loudnessMakeupDb(
     loudnessDb: Double?,
     enabled: Boolean,
-    maxBoostDb: Double = 12.0,
+    maxBoostDb: Double = 3.0,
 ): Double {
     if (!enabled || loudnessDb == null) return 0.0
     return (-loudnessDb).coerceIn(0.0, maxBoostDb)

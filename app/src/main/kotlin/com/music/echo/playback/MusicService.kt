@@ -463,7 +463,9 @@ class MusicService :
     @Volatile private var normalizationEnabledHint: Boolean = true
     // Mirror of SafeVolumeEnabledKey for the crossfade pre-level (so the incoming secondary player gets
     // Safe Volume from the first fade-in sample, not only after the swap settles).
-    @Volatile private var safeVolumeEnabledHint: Boolean = false
+    // Initialised TRUE to match SafeVolumeEnabledKey's own default: starting false left a window before the
+    // collector's first emission where a crossfade or instant-video swap would skip priming entirely.
+    @Volatile private var safeVolumeEnabledHint: Boolean = true
     @Volatile private var audioOffloadHint: Boolean = false
 
     // P33 — the player-thread callbacks onMediaItemTransition/onPlaybackStatsReady used to call dataStore.get(),
@@ -3439,25 +3441,47 @@ class MusicService :
                             NormalizationGainAudioProcessor.gain = lastAppliedGain
                             TruePeakLimiterAudioProcessor.loudnessMakeup = lastAppliedMakeup
                             loudnessEnhancer?.enabled = false
-                            // Safe Volume (opt-in): re-assert the attenuate-only gain on the live EQ processor.
-                            playerEqProcessors[player]?.applySafeVolume(safeVol, if (safeVol) lastAppliedGain else 1f)
+                            // Safe Volume (opt-in): re-assert the FULL levelling gain (attenuation x makeup).
+                            playerEqProcessors[player]?.applySafeVolume(
+                                safeVol,
+                                if (safeVol) lastAppliedGain * lastAppliedMakeup else 1f,
+                            )
                         }
                         return@launch
                     }
 
                     withContext(Dispatchers.Main) {
-                        // Two-stage loudness normalization to a reference (TIDAL-style):
-                        //  • attenuate loud masters (≤ 0 dB) here, in 16-bit, clip-free;
-                        //  • boost quiet tracks UP (makeup, ≥ 0 dB) in float inside the true-peak limiter,
-                        //    which catches the resulting peaks → loud + full, no clip.
+                        // Two-stage loudness normalization to a reference (TIDAL-style): attenuate loud
+                        // masters (≤ 0 dB) and boost quiet ones (makeup, ≥ 0 dB). BOTH stages are applied as
+                        // a single front gain in the native float chain, ahead of the true-peak limiter that
+                        // catches the boosted peaks → loud + full, no clip. (The comment here used to say the
+                        // makeup happened "inside the true-peak limiter" — that processor is a dead stub, so
+                        // in practice the boost half never happened at all.)
                         lastAppliedGain = targetGain
                         lastAppliedMakeup = targetMakeup
                         NormalizationGainAudioProcessor.gain = targetGain
                         TruePeakLimiterAudioProcessor.loudnessMakeup = targetMakeup
                         loudnessEnhancer?.enabled = false
-                        // Safe Volume (opt-in): apply the attenuate-only normalization gain to the live EQ
-                        // processor (the only real DSP). Off → unity, keeping bit-perfect playback.
-                        playerEqProcessors[player]?.applySafeVolume(safeVol, if (safeVol) targetGain else 1f)
+                        // Safe Volume (opt-in): apply the FULL two-stage levelling to the live EQ processor —
+                        // the only real DSP. `targetGain` alone is the ATTENUATE half; `targetMakeup` is the
+                        // BOOST half that brings a quiet track up to the reference. The makeup used to be
+                        // handed to TruePeakLimiterAudioProcessor, which is a dead stub, so it was silently
+                        // dropped and Safe Volume could only ever turn things DOWN — a quiet track stayed
+                        // quiet forever and the library never actually levelled. Multiplying is exact here:
+                        // normalizationMultiplier clamps -loudnessDb to [-12, 0] dB and loudnessMakeupDb
+                        // clamps the same value to [0, +3] dB, so their product is one gain of
+                        // clamp(-loudnessDb, -12, +3) dB — attenuation is unchanged, the boost side is
+                        // deliberately modest (see loudnessMakeupDb for why +12 would pump here). The native
+                        // stage ramps to it and the limiter catches the peaks. Off → unity, bit-perfect.
+                        playerEqProcessors[player]?.applySafeVolume(
+                            safeVol,
+                            if (safeVol) targetGain * targetMakeup else 1f,
+                        )
+                        // Keep BOTH players in step: if a fade is running, the other one must move to this
+                        // same gain too, or the blend holds two different levels for the same moment.
+                        secondaryPlayer?.let {
+                            playerEqProcessors[it]?.applySafeVolume(safeVol, if (safeVol) targetGain * targetMakeup else 1f)
+                        }
                         lastNormalizedId = currentMediaId
                         lastNormalizedHadLoudness = hasRealLoudness
 
@@ -3491,7 +3515,15 @@ class MusicService :
                         playerLimiterProcessors[player]?.setInstanceMakeup(null, null)
                         loudnessEnhancer?.enabled = false
                         // Safe Volume off (both normalization and safe-volume off) → unity, bit-perfect.
+                        // The OTHER player too, whichever it is: while a fade is actually running,
+                        // performCrossfadeSwap has already set player = incoming and secondaryPlayer = null,
+                        // and the OUTGOING track lives on fadingPlayer. Clearing only secondaryPlayer was a
+                        // no-op exactly when it mattered — the two players would sit up to 3 dB apart for the
+                        // rest of the blend. Before the swap it is secondaryPlayer that holds the primed gain,
+                        // so cover both; each is null when it doesn't apply.
                         playerEqProcessors[player]?.applySafeVolume(false, 1f)
+                        secondaryPlayer?.let { playerEqProcessors[it]?.applySafeVolume(false, 1f) }
+                        fadingPlayer?.let { playerEqProcessors[it]?.applySafeVolume(false, 1f) }
                         Timber.tag(TAG).d("setupLoudnessEnhancer: normalization disabled - unity gain")
                     }
                     // Reset so RE-ENABLING normalization for the SAME track re-applies. The guard above keys on
@@ -3554,7 +3586,15 @@ class MusicService :
             lastAppliedMakeup = targetMakeup
             NormalizationGainAudioProcessor.gain = targetGain
             TruePeakLimiterAudioProcessor.loudnessMakeup = targetMakeup
-            
+            // Same full levelling gain as the main path, so a measured value can't apply only its
+            // attenuate half. (Currently unreachable — live measurement was deliberately removed after it
+            // caused saturation/pumping — but keeping it correct stops a latent bug if it is ever revived.)
+            // safeVolumeEnabledHint, NOT dataStore.get(): that extension is runBlocking { data.first() } and
+            // this runs on Main — the exact ANR pattern this file documents as a past regression.
+            if (safeVolumeEnabledHint) {
+                playerEqProcessors[player]?.applySafeVolume(true, targetGain * targetMakeup)
+            }
+
             norm.measureThisTrack = false
             measuredAppliedForId = mediaId
             Timber.tag(TAG).i("Measured loudness applied for $mediaId: ${measured}dB")
@@ -5774,7 +5814,9 @@ class MusicService :
             // gain onto the pre-player so the published player is level-identical from its first sample.
             // Norm/limiter need nothing: their processors follow the companion statics, which already hold
             // this same track's values (never re-normalizes — no instanceGain pin, so nothing to clean up).
-            if (safeVolumeEnabledHint) playerEqProcessors[pre]?.applySafeVolume(true, lastAppliedGain)
+            // Full gain (attenuation x makeup) — must match what the main path applied for this same track,
+            // or the published player starts at a different level than the one it replaces.
+            if (safeVolumeEnabledHint) playerEqProcessors[pre]?.applySafeVolume(true, lastAppliedGain * lastAppliedMakeup)
             pre.prepare()
             instantVideoPlayer = pre
             instantVideoPlayerId = id
@@ -5870,7 +5912,10 @@ class MusicService :
             // before publish (mirrors the per-track re-assert at ~line 2801). This guarantees the published
             // player is level-identical to the running one at the swap instant — never a mid-song level jump
             // even if lastAppliedGain / the Safe Volume toggle changed between pre-prepare and this swap.
-            playerEqProcessors[pre]?.applySafeVolume(safeVolumeEnabledHint, if (safeVolumeEnabledHint) lastAppliedGain else 1f)
+            playerEqProcessors[pre]?.applySafeVolume(
+                safeVolumeEnabledHint,
+                if (safeVolumeEnabledHint) lastAppliedGain * lastAppliedMakeup else 1f,
+            )
 
             // ---- COMMIT: publish (mirrors performCrossfadeSwap's swap block) ----
             committed = true
@@ -6700,11 +6745,15 @@ class MusicService :
         if (incomingId != null && (normalizationEnabledHint || safeVolumeEnabledHint)) {
             loudnessHintCache[incomingId]?.let { loudnessDb ->
                 val mult = normalizationMultiplier(loudnessDb, enabled = true)
+                val makeup = dbToLinear(loudnessMakeupDb(loudnessDb, enabled = true))
                 playerNormProcessors[sec]?.instanceGain = mult
-                playerLimiterProcessors[sec]?.setInstanceMakeup(dbToLinear(loudnessMakeupDb(loudnessDb, enabled = true)), null)
+                playerLimiterProcessors[sec]?.setInstanceMakeup(makeup, null)
                 // Prime Safe Volume on the incoming player's live EQ processor so a loud track is attenuated
                 // from the FIRST fade-in sample (else it swells in at full native level, then drops at swap).
-                if (safeVolumeEnabledHint) playerEqProcessors[sec]?.applySafeVolume(true, mult)
+                // MUST be the SAME full gain (attenuation x makeup) the main path applies when this track
+                // becomes current — priming only the attenuate half would make a quiet track fade in lower
+                // than it plays a moment later, i.e. an audible jump at the swap. No fade timing/curve here.
+                if (safeVolumeEnabledHint) playerEqProcessors[sec]?.applySafeVolume(true, mult * makeup)
                 primedSyncGain = true
                 Timber.tag(TAG).d("Crossfade: pre-leveled incoming $incomingId from cache (loudnessDb=$loudnessDb)")
             }
@@ -6735,9 +6784,11 @@ class MusicService :
                     // cleanupCrossfade has cleared it (which would freeze the survivor's normalization).
                     if (secondaryPlayer === sec || (player === sec && isCrossfading)) {
                         val mult = normalizationMultiplier(loudnessDb, enabled = true)
+                        val makeup = dbToLinear(loudnessMakeupDb(loudnessDb, enabled = true))
                         playerNormProcessors[sec]?.instanceGain = mult
-                        playerLimiterProcessors[sec]?.setInstanceMakeup(dbToLinear(loudnessMakeupDb(loudnessDb, enabled = true)), null)
-                        if (safeVolumeEnabledHint) playerEqProcessors[sec]?.applySafeVolume(true, mult)
+                        playerLimiterProcessors[sec]?.setInstanceMakeup(makeup, null)
+                        // Full gain, same as the sync prime above — never only the attenuate half.
+                        if (safeVolumeEnabledHint) playerEqProcessors[sec]?.applySafeVolume(true, mult * makeup)
                     }
                 }
             }

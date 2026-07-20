@@ -51,22 +51,31 @@ class CustomEqualizerAudioProcessor(private val licenseKey: String = "akloSTZUT1
     private external fun processAudio(ptr: Long, inputBuffer: ByteBuffer, outputBuffer: ByteBuffer, numFrames: Int, encoding: Int, channels: Int, enabled: Boolean)
     private external fun releaseSuperpowered(ptr: Long)
 
-    // Optional "Safe Volume" stage (opt-in). Kept so it can be re-applied if the native processor is
-    // re-created on format change (onConfigure). gainLinear is attenuate-only (<= 1.0); 1.0 = no change.
+    // "Safe Volume" stage (ON by default — see SafeVolumeEnabledKey). Kept so it can be re-applied if the
+    // native processor is re-created on format change (onConfigure). gainLinear LEVELS IN BOTH DIRECTIONS:
+    // < 1.0 attenuates a loud master, > 1.0 (up to 4.0 = +12 dB) brings a quiet track up. 1.0 = no change.
+    //
+    // Written and re-read across threads (applySafeVolume from Main, onConfigure from the media3 playback
+    // thread), so BOTH assignments live inside eqApplyLock below. They used to sit outside it: harmless while
+    // the value could only ever be <= 1.0 (a stale restore was momentarily too QUIET, i.e. inaudible), but a
+    // stale restore can now be a +12 dB BOOST — a mid-stream sample-rate change would start the next track
+    // hot into the limiter, an audible burst.
     private var safeVolumeEnabled = false
     private var safeVolumeGain = 1f
 
     /**
      * Enable/disable the Safe Volume stage (per-track loudness normalization + limiter that runs even when
-     * the EQ is off). [gainLinear] is the attenuate-only normalization multiplier for the current track.
+     * the EQ is off). [gainLinear] is the full levelling multiplier for the current track (attenuation x
+     * makeup), clamped native-side to (0, 4.0].
      */
     fun applySafeVolume(enabled: Boolean, gainLinear: Float) {
-        safeVolumeEnabled = enabled
-        safeVolumeGain = gainLinear
-        // Serialize the native check + call under eqApplyLock: onConfigure's sample-rate re-init can call
-        // releaseSuperpowered(nativePtr) and null the pointer mid-stream, so touching nativePtr here without the
-        // lock is a use-after-free race. The audio hot path (queueInput/processAudio) does NOT take this lock.
+        // Serialize the field writes AND the native call under eqApplyLock: onConfigure's sample-rate re-init
+        // can call releaseSuperpowered(nativePtr) and null the pointer mid-stream, so touching nativePtr here
+        // without the lock is a use-after-free race — and onConfigure also RESTORES these two fields, so they
+        // must not be readable half-updated. The audio hot path (queueInput/processAudio) does NOT take it.
         synchronized(eqApplyLock) {
+            safeVolumeEnabled = enabled
+            safeVolumeGain = gainLinear
             if (isInitialized && nativePtr != 0L) {
                 setSafeVolume(nativePtr, enabled, gainLinear)
             }
