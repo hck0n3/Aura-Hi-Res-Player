@@ -1731,6 +1731,24 @@ class MusicService :
                         if (playerState.currentMediaItemIndex < player.mediaItemCount) {
                             player.seekTo(playerState.currentMediaItemIndex, playerState.currentPosition)
                         }
+
+                        // Restore shuffle from the PER-QUEUE snapshot, not from ShuffleModeKey.
+                        //
+                        // ShuffleModeKey stores the user's last TOGGLE, which is deliberately no longer
+                        // overwritten by the programmatic per-queue reset — otherwise the app's own reset
+                        // erased the remembered preference. But that makes it the wrong source here: turn
+                        // shuffle on for playlist A, then start playlist B (correctly un-shuffled), play B in
+                        // order, kill the app — and a boot-time read of ShuffleModeKey would bring B back
+                        // SHUFFLED, which the user never asked for.
+                        //
+                        // playerState already carries the shuffle state of THIS queue (persisted on every
+                        // queue change and every 10s of playback) and was being written and then ignored.
+                        // Setting it here also lands AFTER the queue is populated, so the listener can
+                        // actually build a shuffle order — the boot-time read runs while the player is still
+                        // empty, where onShuffleModeEnabledChanged early-returns on mediaItemCount == 0.
+                        if (dataStore.get(RememberShuffleAndRepeatKey, true)) {
+                            player.shuffleModeEnabled = playerState.shuffleModeEnabled
+                        }
                     }
                 }.onFailure { error ->
                     Timber.tag(TAG).w(error, "Failed to read player state, clearing data")
@@ -2457,7 +2475,12 @@ class MusicService :
                 // destroy the tail before we know we have something to put in its place.
                 val toAppend = items.orderedByTaste()
                 if (toAppend.isEmpty()) return false
-                if (itemCount > liveIndex + 1) {
+                // Truncate the tail ONLY when playing in order. `liveIndex` is a TIMELINE index, but under
+                // shuffle playback follows the shuffle order, so "everything after liveIndex" is an arbitrary
+                // slice — not the played tail. Starting a radio from the middle of a shuffled 50-track queue
+                // would delete ~46 songs the user had not heard yet. In shuffle we only append; the shuffle
+                // order is rebuilt below and the no-repeat filter already stops played tracks coming back.
+                if (!player.shuffleModeEnabled && itemCount > liveIndex + 1) {
                     player.removeMediaItems(liveIndex + 1, itemCount)
                 }
                 player.addMediaItems(liveIndex + 1, toAppend)
@@ -3826,9 +3849,27 @@ class MusicService :
         }
 
         
+        // "Almost at the end" must be measured in PLAYBACK order. mediaItemCount - currentMediaItemIndex is
+        // a TIMELINE distance: under shuffle the current index jumps around, so it read "5 left" on roughly
+        // one transition in ten no matter how much was actually unplayed, paginating early and repeatedly
+        // (network + battery). The three other end-of-queue triggers already use hasNextMediaItem(); this
+        // one site was missed.
+        // Walk the timeline in PLAYBACK order (getNextWindowIndex honours shuffleModeEnabled), counting at
+        // most 6 hops — bounded work on the player thread, and correct with or without shuffle.
+        val remainingInPlaybackOrder = run {
+            val timeline = player.currentTimeline
+            var n = 0
+            var idx = player.currentMediaItemIndex
+            while (n <= 5) {
+                idx = timeline.getNextWindowIndex(idx, Player.REPEAT_MODE_OFF, player.shuffleModeEnabled)
+                if (idx == C.INDEX_UNSET) break
+                n++
+            }
+            n
+        }
         if (autoLoadMoreHint &&
             reason != Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT &&
-            player.mediaItemCount - player.currentMediaItemIndex <= 5 &&
+            remainingInPlaybackOrder <= 5 &&
             currentQueue.hasNextPage() &&
             !(disableLoadMoreWhenRepeatAllHint && player.repeatMode == REPEAT_MODE_ALL)
         ) {
