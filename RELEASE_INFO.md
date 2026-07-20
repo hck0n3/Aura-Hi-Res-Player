@@ -1,18 +1,16 @@
-# Aura Hi-Res Player 0.6.112 — Recuperación de errores más lista: menos re-descargas y menos canciones saltadas
+# Aura Hi-Res Player 0.6.113 — Menos cortes al empezar canción en Lossless, y tres fallos de audio blindados
 
-## 🔁 Ya no se re-descarga la canción entera por cualquier tropiezo
-- Ante **cualquier** error —incluso uno pasajero de red— la app borraba el audio ya descargado de la canción **antes siquiera de saber qué error era**, y tenía que empezar de cero.
-- Ahora solo se borra cuando de verdad hace falta. Menos datos, menos espera y menos trabajo en el hilo principal.
+## 🎵 Menos cortes al empezar canción (en Lossless / Saavn)
+- Cuando pedías **Lossless** y esa calidad no estaba disponible, la app cambiaba de formato y **provocaba un corte a propósito** para reiniciar el reproductor.
+- Ahora, si el corte cae **al empezar la canción**, ya no ocurre.
+- **En Opus esto nunca pasaba** — por eso al cambiar tú a Opus deberían desaparecer.
 
-## 🎵 Menos canciones saltadas por una URL caducada
-- Cuando el enlace de una canción moría, la app **reintentaba tres veces con el mismo enlace muerto** y luego se saltaba la canción — cuando pedir uno nuevo la habría reproducido sin problema.
-- Ahora pide enlace nuevo en el reintento. **El audio ya descargado se conserva**: un enlace viejo no dice nada del audio que ya tienes.
+## 🛡️ Tres puntos donde el audio podía romperse: blindados
+- Si un formato venía sin la etiqueta interna de códec, la app podía **quedarse sin reproducir** esa canción. Corregido en los tres sitios donde pasaba (reproducción, descarga y precarga).
+- Y de paso se cerró un caso en el que un dato incompleto podía hacer que la app **re-descargara la canción en curso una y otra vez**.
 
-## 🔧 Y una canción con datos dañados vuelve a curarse sola
-- Si los datos guardados de una canción se corrompían, se reintentaba **sobre los mismos datos malos** hasta saltarla, en cada reproducción.
-- Ahora se detecta y se descarta ese audio dañado para bajarlo limpio.
-
-## ⚠️ Todavía no arreglado
-- **Cortes de milisegundos que adelantan la canción.** Probé una hipótesis y **era falsa** — lo verifiqué contra el código interno de Android y no era la causa. Sigue abierto, con un candidato nuevo y mejor identificado.
-- **Volumen Seguro** sube como máximo +3 dB. El nivelado completo necesita medir el pico de cada canción.
-- **Plegables:** cuatro mejoras hechas y compiladas, pero **sin probar en un plegable real**.
+## ⚠️ Todavía no arreglado — con honestidad
+- **Los cortes a MITAD de canción siguen abiertos.** Este arreglo solo cubre los del arranque. El de mitad de canción está entendido y documentado, pero **no lo toco hasta poder confirmarlo con un registro real** — llevo dos intentos fallidos con este bug y no voy a arriesgarme a un tercero a ciegas.
+  - Si vuelves a Lossless y te pasa: mándame el registro (Ajustes → Registros) y lo confirmo o lo descarto en el acto.
+- **Volumen Seguro** sube como máximo +3 dB.
+- **Plegables:** cuatro mejoras hechas pero sin probar en un plegable real.
