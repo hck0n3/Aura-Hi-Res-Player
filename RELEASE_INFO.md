@@ -1,26 +1,26 @@
-# Aura Hi-Res Player 0.6.110 — El aleatorio ya se queda encendido, y la música vuelve a sonar
+# Aura Hi-Res Player 0.6.111 — Ya no hay que cerrar sesión, y tus datos dejan de salir en el registro
 
-## 🔴 Lo más importante: por qué muchas canciones decían "no disponible"
-- **YouTube cambió su reproductor** y Aura ya no sabía descifrar los enlaces. Sin eso, **ninguna canción resuelve**.
-- Los tres mensajes que veías —"no está disponible", "tardó demasiado en resolverse" e "inicia sesión para confirmar que no eres un bot"— **eran el mismo fallo**, no tres problemas distintos.
-- **Ya está corregido y no hacía falta actualizar la app**: Aura se auto-repara descargando la nueva configuración. Si la música volvió a sonar antes de instalar esta versión, fue por eso.
+## 🔑 Ya no tienes que cerrar sesión a cada rato
+- Cuando tu sesión de YouTube caducaba, la app **no sabía recuperarse sola**: cada canción se quedaba esperando hasta 30 segundos y luego decía "no disponible". La única salida era cerrar sesión y volver a entrar a mano.
+- Ahora, si detecta que el problema es la sesión, **reintenta esa canción sin ella** y sigue sonando. **Tu cuenta no se toca en ningún momento.**
 
-## 🔀 El aleatorio ya se queda encendido
-- Lo que fallaba **no era el azar**, sino que el modo aleatorio **no podía mantenerse activo**: se apagaba solo al empezar cualquier lista, **y también cada vez que abrías la app**.
-- Peor: ese apagado automático **borraba tu preferencia guardada**, así que "recordar aleatorio" no servía absolutamente de nada.
-- Ahora el aleatorio se recuerda **por cola**: si estabas escuchando una lista en orden, vuelve en orden; si la tenías en aleatorio, vuelve en aleatorio.
-- **Ojo:** el botón de aleatorio está en la **pantalla de la cola** (desliza hacia arriba desde el reproductor), no en el reproductor principal.
+## 🔒 Tus datos ya no salen en el registro que compartes
+- La app escribía en su archivo de registro —el que puedes abrir y compartir desde Ajustes— **títulos de canciones, nombres de artistas, IDs de vídeo y respuestas completas del servidor**.
+- Eran **42 líneas de depuración que se colaban en la versión pública**. Todas eliminadas.
+- A partir de ahora, **si compartes un registro para reportar un fallo, tu biblioteca no va dentro**.
 
-## 💾 Ya no se borran canciones de la cola
-- Empezar una radio a mitad de una cola en aleatorio **podía borrar decenas de canciones que aún no habías escuchado**. Corregido.
+## 💾 Protegida tu biblioteca de subidas
+- Si YouTube devolvía una respuesta que la app no sabía leer, podía interpretarlo como **"no tienes nada subido"** y **quitarle la marca de subido a toda tu biblioteca**. Bastaba con abrir la pantalla de Subidas.
+- Ahora, ante una respuesta que no entiende, **no toca nada**. Y aunque llegara vacía, se niega a desmarcar si tú sí tienes canciones.
 
-## 🔋 Menos consumo con el aleatorio activo
-- Con el aleatorio encendido, la app cargaba más canciones **antes de tiempo y repetidamente** porque medía mal cuánto quedaba por sonar. Ahora lo mide en el orden real de reproducción.
+## 🔔 La música ya no suena "a escondidas"
+- Cuando Android rechazaba arrancar el servicio, la música empezaba **sin notificación ni controles** y el sistema la mataba poco después.
+- Ahora **pausa**, que es algo que puedes ver y decidir. Incluidos los reproductores del fundido entre canciones.
 
-## 🧹 Arranque más limpio
-- Al abrir la app fallaban tres tareas en segundo plano (novedades semanales, Last.fm y buscar actualizaciones) en procesos secundarios. Ya no.
+## 🎤 Letras: menos peticiones inútiles
+- Un proveedor que bloquea a Aura se reintentaba **3 veces por canción, para siempre**. Ahora se detecta y se deja en paz 6 horas.
+- **Las letras nunca dejaron de funcionar** (hay 7 proveedores más), pero se gastaban peticiones y se llenaba el registro de errores.
 
 ## ⚠️ Todavía no arreglado
-- **Si tu sesión de YouTube caduca**, la app no sabe recuperarse sola: hay que cerrar sesión y volver a entrar. El arreglo está identificado pero toca el núcleo de reproducción y **prefiero probarlo antes que arriesgarme**.
-- **Letras:** uno de los proveedores está bloqueando a Aura. Las letras siguen funcionando (hay 7 proveedores más), pero se reintenta más de lo necesario.
 - **Cortes de milisegundos** que adelantan la canción: causa probable identificada, sin confirmar.
+- **Volumen Seguro** sube como máximo +3 dB. El nivelado completo necesita medir el pico de cada canción.
