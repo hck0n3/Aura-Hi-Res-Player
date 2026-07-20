@@ -4575,27 +4575,13 @@ class MusicService :
     }
 
     private fun isCacheOrStreamCorruptionError(error: PlaybackException): Boolean {
-        if (error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED ||
-            error.errorCode == PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE
-        ) return true
-        // Walk the cause chain — the registry's own lesson from the 0.6.91 NO_STREAM blocker
-        // ([[media3-wraps-datasource-exception-deep]]), which this classifier never applied. A
-        // PlaybackException raised inside the RESOLVER is wrapped by Loader$LoadTask into an
-        // UnexpectedLoaderException and surfaces at top level as ERROR_CODE_IO_UNSPECIFIED, so the
-        // format-guard's own CONTAINER_MALFORMED never reached this branch: it fell through to the
-        // generic-IO tail instead, taking a heavier recovery than the one written for it.
-        var cause: Throwable? = error.cause
-        var depth = 0
-        while (cause != null && depth++ < 8) {
-            val code = (cause as? PlaybackException)?.errorCode
-            if (code == PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED ||
-                code == PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE
-            ) return true
-            val next = cause.cause
-            if (next === cause) break
-            cause = next
-        }
-        return false
+        // Top-level code only. Walking the cause chain here was tried and reverted: the format-guard's own
+        // CONTAINER_MALFORMED surfaces at top level as IO_UNSPECIFIED and would route to handleExpiredUrlError
+        // instead of handleGenericIOError — but both do the same purge + re-prepare, so the only real effect
+        // was moving a SimpleCache file-unlink onto the main looper inside onPlayerError (the exact cost
+        // registry #74 flagged). No behaviour gained, a main-thread cost added.
+        return error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED ||
+                error.errorCode == PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE
     }
 
     override fun onPlayerError(error: PlaybackException) {
@@ -5675,24 +5661,28 @@ class MusicService :
                         Timber.tag(TAG).w("Format fallback detected AFTER fetch. Clearing playerCache to prevent mismatch crash.")
                         playerCache.removeResource(mediaId)
 
-                        // Only a period whose extractor is ALREADY COMMITTED can be poisoned by a container
-                        // change. A not-yet-prepared one re-sniffs these very bytes and handles whatever
-                        // container arrives. Verified in the media3 1.10.1 bytecode:
-                        //   BundledExtractorsAdapter.init  -> `if (extractor != null) return;` (offsets
-                        //     20-27): the extractor is sniffed ONCE and cached for the life of the period.
-                        //   ProgressiveMediaPeriod.startLoading -> setLoadPosition() runs only when
-                        //     `prepared` is true (offset 27-30), so the FIRST open of a fresh period is
-                        //     always position 0.
-                        // Hence position != 0 <=> period prepared <=> extractor committed.
+                        // Don't throw when this is the FIRST open of a fresh period (position 0). There the
+                        // extractor has not been sniffed yet, so it re-sniffs these very bytes and handles
+                        // whatever container arrives — the throw is pure harm: a gratuitous fatal error plus
+                        // a re-prepare (one audible cut) at the START of a LOSSLESS/SAAVN track whose fuzzy
+                        // Qobuz/Saavn lookup (a 9s-timeout external search — routine, and nondeterministic
+                        // per attempt) landed on a different container than the persisted row.
                         //
-                        // Throwing at position 0 bought nothing and cost a gratuitous fatal error plus a
-                        // re-prepare — one audible cut — at the START of LOSSLESS/SAAVN tracks whose lookup
-                        // landed on a different container than the persisted row. That is ROUTINE, not rare:
-                        // the Qobuz/Saavn lookup is a fuzzy external search on a 9s timeout, so the same
-                        // track can resolve flac now and Opus ten minutes later. That nondeterminism is
-                        // exactly the reported "de manera random" (registry #57). On OPUS the whole
-                        // fallback roulette is skipped, so the container is deterministic and this cannot
-                        // fire at all — which is the testable prediction that goes with this change.
+                        // From the media3 1.10.1 bytecode: BundledExtractorsAdapter.init sniffs the extractor
+                        // ONCE and caches it for the period's life; ProgressiveMediaPeriod.startLoading gates
+                        // setLoadPosition on `prepared`, so a fresh period's first open is position 0. The
+                        // implication is one-way: position 0 ⇒ (almost always) not-yet-committed. It is NOT a
+                        // biconditional — a prepared, unknown-length/unseekable period can re-open at 0 via
+                        // configureRetry(0,0); that needs !isLengthKnown, unreachable for these
+                        // Content-Length'd streams, and if it ever hit, the mismatched bytes reach the
+                        // committed extractor which raises ParserException → the same fatal recovery we
+                        // produce today. So this only ever degrades to current behaviour, never worse.
+                        //
+                        // HONEST SCOPE (registry #57 stays OPEN): a MID-SONG re-resolve always re-opens at a
+                        // NONZERO offset, so the throw below still fires for every mid-song container flip —
+                        // exactly the "corta microsegundos y aparece más adelante" case. This change only
+                        // removes the cut at track START (the explicitly-tapped-song residue). On OPUS the
+                        // whole fallback roulette is skipped so neither can fire — the testable prediction.
                         //
                         // Falling through instead still repairs everything: playerCache.removeResource above
                         // already dropped the stale-container bytes, and execution reaches the FormatEntity
@@ -5743,12 +5733,11 @@ class MusicService :
                             id = mediaId,
                             itag = format.itag,
                             mimeType = format.mimeType.split(";")[0],
-                            // substringAfter+takeIf, NOT split(...)[1]: a mimeType with no `codecs=`
-                            // parameter (a bare "audio/webm", or anything a future source returns) made this
-                            // throw IndexOutOfBounds INSIDE the resolver — where media3 wraps it as a
-                            // non-retriable UnexpectedLoaderException, i.e. playback dies on that track.
-                            codecs = format.mimeType.substringAfter("codecs=", "")
-                                .takeIf { it.isNotBlank() }?.removeSurrounding("\"") ?: "",
+                            // Derive the codec safely. split("codecs=")[1] threw IndexOutOfBounds for a
+                            // mimeType with no codecs parameter; and an empty codec reads back as OPUS, which
+                            // makes the format guard mis-fire on EVERY open for a LOSSLESS/SAAVN user — the
+                            // #57 mechanism. Fall back to the container, then to the row we already have.
+                            codecs = codecsFromMimeType(format.mimeType, dbFormat?.codecs),
                             bitrate = format.bitrate,
                             sampleRate = format.audioSampleRate,
                             contentLength = format.contentLength ?: 0L,
@@ -7335,12 +7324,11 @@ class MusicService :
                                                 id = mediaId,
                                                 itag = format.itag,
                                                 mimeType = format.mimeType.split(";")[0],
-                                                // substringAfter+takeIf, NOT split(...)[1]: a mimeType with no `codecs=`
-                            // parameter (a bare "audio/webm", or anything a future source returns) made this
-                            // throw IndexOutOfBounds INSIDE the resolver — where media3 wraps it as a
-                            // non-retriable UnexpectedLoaderException, i.e. playback dies on that track.
-                            codecs = format.mimeType.substringAfter("codecs=", "")
-                                .takeIf { it.isNotBlank() }?.removeSurrounding("\"") ?: "",
+                                                // Derive the codec safely. split("codecs=")[1] threw IndexOutOfBounds for a
+                            // mimeType with no codecs parameter; and an empty codec reads back as OPUS, which
+                            // makes the format guard mis-fire on EVERY open for a LOSSLESS/SAAVN user — the
+                            // #57 mechanism. Fall back to the container, then to the row we already have.
+                            codecs = codecsFromMimeType(format.mimeType, existing?.codecs),
                                                 bitrate = format.bitrate,
                                                 sampleRate = format.audioSampleRate,
                                                 contentLength = format.contentLength ?: 0L,

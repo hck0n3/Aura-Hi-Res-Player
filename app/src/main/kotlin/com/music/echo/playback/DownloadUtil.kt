@@ -57,6 +57,27 @@ import java.util.concurrent.Executor
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/**
+ * The `codecs` value to persist for a FormatEntity, derived from the stream mimeType.
+ *
+ * NEVER returns "" when the container is knowable. An empty codec is read by the format-fallback
+ * guard as OPUS (`codecs == "flac"` / `"mp4a.40.2"` both false), so on a LOSSLESS/SAAVN preference it
+ * would look like a mismatch on EVERY open → purge the playing bytes + full re-resolve mid-song, i.e.
+ * exactly the #57 micro-cut this whole line of work is chasing (and registry #40's 33s-stall/loop).
+ * The three call sites used `mimeType.split("codecs=")[1]`, which also threw IndexOutOfBounds for a
+ * mimeType with no codecs parameter. Prefer the explicit codecs= token; else map the container; else
+ * keep the row's previous codec; only "" as a last resort when nothing is knowable.
+ */
+internal fun codecsFromMimeType(mimeType: String, existingCodecs: String? = null): String {
+    mimeType.substringAfter("codecs=", "").takeIf { it.isNotBlank() }?.let { return it.removeSurrounding("\"") }
+    return when {
+        mimeType.contains("flac", ignoreCase = true) -> "flac"
+        mimeType.contains("mp4", ignoreCase = true) || mimeType.contains("m4a", ignoreCase = true) -> "mp4a.40.2"
+        mimeType.contains("webm", ignoreCase = true) || mimeType.contains("opus", ignoreCase = true) -> "opus"
+        else -> existingCodecs ?: ""
+    }
+}
+
 @Singleton
 class DownloadUtil
 @Inject
@@ -146,7 +167,7 @@ constructor(
                         id = mediaId,
                         itag = format.itag,
                         mimeType = format.mimeType.split(";")[0],
-                        codecs = format.mimeType.split("codecs=")[1].removeSurrounding("\""),
+                        codecs = codecsFromMimeType(format.mimeType, existingFmt?.codecs),
                         bitrate = format.bitrate,
                         sampleRate = format.audioSampleRate,
                         contentLength = format.contentLength ?: 0L,
