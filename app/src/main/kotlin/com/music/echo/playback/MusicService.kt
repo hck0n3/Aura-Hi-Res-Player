@@ -3880,14 +3880,24 @@ class MusicService :
         // most 6 hops — bounded work on the player thread, and correct with or without shuffle.
         val remainingInPlaybackOrder = run {
             val timeline = player.currentTimeline
-            var n = 0
             var idx = player.currentMediaItemIndex
-            while (n <= 5) {
-                idx = timeline.getNextWindowIndex(idx, Player.REPEAT_MODE_OFF, player.shuffleModeEnabled)
-                if (idx == C.INDEX_UNSET) break
-                n++
+            // Guard the empty/transition edge: on an empty timeline currentMediaItemIndex is
+            // C.INDEX_UNSET (-1), and getNextWindowIndex(-1, ...) indexes windows[-1] on a length-0
+            // array -> ArrayIndexOutOfBoundsException (length=0; index=-1), which crashed the app from
+            // onMediaItemTransition when a queue emptied (e.g. every track failing to resolve). With no
+            // valid current item there is no "near the end" to measure, so report a large count -> the
+            // autoload gate below is false and we never touch the timeline at -1.
+            if (timeline.isEmpty || idx == C.INDEX_UNSET) {
+                Int.MAX_VALUE
+            } else {
+                var n = 0
+                while (n <= 5) {
+                    idx = timeline.getNextWindowIndex(idx, Player.REPEAT_MODE_OFF, player.shuffleModeEnabled)
+                    if (idx == C.INDEX_UNSET) break
+                    n++
+                }
+                n
             }
-            n
         }
         if (autoLoadMoreHint &&
             reason != Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT &&

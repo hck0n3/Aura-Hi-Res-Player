@@ -42,18 +42,26 @@ fun PlaybackError(
     
     
     
+    // Only text that genuinely names an age check is "age restricted". LOGIN_REQUIRED / 403 /
+    // IO_BAD_HTTP_STATUS were lumped in here too, which mislabeled a rejected/expired stream or a stale
+    // session as "age-restricted" — exactly the wrong hint (it sent a user hunting for an age setting
+    // when the real fix was retry / sign out and back in). Split them.
     val isAgeRestricted = rawErrorMessage.contains("age", ignoreCase = true) ||
-            rawErrorMessage.contains("Sign in to confirm your age", ignoreCase = true) ||
+            rawErrorMessage.contains("confirm your age", ignoreCase = true)
+
+    val isAccessOrSession = !isAgeRestricted && (
             rawErrorMessage.contains("LOGIN_REQUIRED", ignoreCase = true) ||
-            rawErrorMessage.contains("confirm your age", ignoreCase = true) ||
+            rawErrorMessage.contains("bot", ignoreCase = true) ||
             rawErrorMessage.contains("403", ignoreCase = true) ||
             rawErrorMessage.contains("Response code: 403", ignoreCase = true) ||
-            error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS
-    
-    val errorMessage = if (isAgeRestricted) {
-        "This app does not support playing age-restricted songs. We are working on fixing this issue."
-    } else {
-        rawErrorMessage
+            error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS)
+
+    val errorMessage = when {
+        isAgeRestricted ->
+            "This app does not support playing age-restricted songs. We are working on fixing this issue."
+        isAccessOrSession ->
+            "YouTube rejected the request for this song. Check your connection and retry — if it keeps happening, sign out and back in."
+        else -> rawErrorMessage
     }
     
     Column(
