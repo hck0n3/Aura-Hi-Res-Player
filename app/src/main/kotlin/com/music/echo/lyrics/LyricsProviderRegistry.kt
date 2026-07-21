@@ -15,6 +15,7 @@ object LyricsProviderRegistry {
         "Kugou"           to KuGouLyricsProvider,
         "YouTubeSubtitle" to YouTubeSubtitleLyricsProvider,
         "YouTubeMusic"    to YouTubeLyricsProvider,
+        "Unison"          to UnisonLyricsProvider,
     )
 
     val providerNames = providerMap.keys.toList()
@@ -37,9 +38,14 @@ object LyricsProviderRegistry {
         "Kugou",
         "YouTubeSubtitle",
         "YouTubeMusic",
-        // Paxsenix last: its public endpoint 403s / rate-limits often, so it is a
+        // Paxsenix next-to-last: its public endpoint 403s / rate-limits often, so it is a
         // last-resort fallback tried only after the reliable providers.
         "Paxsenix",
+        // Unison DEAD last: its crowd-sourced DB is currently very sparse (404s for most
+        // popular songs), so it is a true final fallback. Being the very last entry also makes
+        // it the LAZY last-resort in LyricsHelper (only started when everything ahead of it is
+        // empty), so it never slows the common path.
+        "Unison",
     )
 
     fun getOrderedProviders(orderString: String): List<LyricsProvider> =
@@ -65,6 +71,7 @@ object LyricsProviderRegistry {
         "Kugou"           -> "KuGou"
         "YouTubeSubtitle" -> "YouTube Subtitle"
         "YouTubeMusic"    -> "YouTube Music"
+        "Unison"          -> "Unison"
         else              -> name
     }
 }

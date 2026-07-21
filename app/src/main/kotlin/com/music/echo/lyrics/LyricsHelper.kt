@@ -92,16 +92,24 @@ constructor(
         // (the user skipping to another song) cancels every in-flight provider fetch: no
         // orphaned network work and no late result that could surface for the wrong song.
         val result = coroutineScope {
-            // The provider sitting LAST in the order is the declared last resort (Paxsenix by
-            // default: its public endpoint 403s behind Cloudflare). Eager `async` made that
-            // ordering cosmetic — the request was already on the wire before the consumption loop
-            // could decide it was not needed, so a permanently-blocked provider was hit for every
-            // single song. CoroutineStart.LAZY makes the demotion real: it is created but not
-            // dispatched, and only starts if every provider ahead of it came back empty.
-            val lastResortIndex = providers.lastIndex.takeIf { providers.size > 1 } ?: -1
+            // Lazy last-resort TAIL. The last two providers in the order (Paxsenix + Unison by
+            // default) are both unreliable: Paxsenix's public endpoint 403s behind Cloudflare, and
+            // Unison's crowd-sourced DB is near-empty (404s for most songs). Neither should be hit
+            // for a song a reliable provider already covers. Eager `async` made the ordering
+            // cosmetic — the request was on the wire before the loop could decide it wasn't needed,
+            // so a blocked/empty provider was hit for every single song. Making only the SINGLE
+            // last provider lazy would demote just Unison and flip Paxsenix back to eager (hammering
+            // Cloudflare again), so the last TWO are lazy. They dispatch only when every provider
+            // ahead of them returned empty, and are then started TOGETHER (below) so the tail still
+            // runs concurrently — awaiting them one-by-one would otherwise serialize their timeouts.
+            val lazyFromIndex = when {
+                providers.size <= 1 -> Int.MAX_VALUE          // nothing to demote
+                providers.size == 2 -> 1                       // only the last is a last resort
+                else -> providers.size - 2                     // last two are last resorts
+            }
             val deferreds = providers.mapIndexed { index, provider ->
                 val startMode =
-                    if (index == lastResortIndex) CoroutineStart.LAZY else CoroutineStart.DEFAULT
+                    if (index >= lazyFromIndex) CoroutineStart.LAZY else CoroutineStart.DEFAULT
                 provider to async(start = startMode) {
                     try {
                         withTimeoutOrNull(PROVIDER_TIMEOUT_MS) {
@@ -123,13 +131,35 @@ constructor(
                 }
             }
 
-            var winner: LyricsWithProvider? = null
-            for ((provider, deferred) in deferreds) {
-                // Reaching a provider means every provider before it already returned empty, so this
-                // is exactly the moment the last-resort provider becomes worth trying. `start()`
-                // is a no-op for the eager ones (already running), and because LAZY is applied to
-                // a SINGLE provider — the last — starting just this one can never serialize a
-                // parallel tail: by the time the loop gets here, there is no tail left.
+            // SYNCED-PREFERENCE (upstream 5.2.7 headline change). A result counts as SYNCED when
+            // its text starts with an LRC timestamp ("[" after trimStart) — i.e. line-timed
+            // lyrics the player can scroll. We still consume providers strictly in PREFERENCE
+            // ORDER, but a non-blank *unsynced* result no longer ends the search: it is only
+            // remembered as `unsyncedFallback`. We keep reading the providers that are ALREADY in
+            // flight (in order) and, the moment one yields SYNCED lyrics, return those instead.
+            // If no synced result ever appears, we fall back to the FIRST non-blank result. This
+            // does NOT regress the synced-first case: a high-priority provider that returns synced
+            // still wins immediately (we break on the first synced hit).
+            var syncedWinner: LyricsWithProvider? = null
+            var unsyncedFallback: LyricsWithProvider? = null
+            for (index in deferreds.indices) {
+                val (provider, deferred) = deferreds[index]
+                // Lazy tail guard: a last-resort provider must only start when EVERYTHING before it
+                // was empty. If we already hold a non-blank result, waking the tail would break that
+                // invariant and slow the common path for no gain (we already have lyrics to show), so
+                // skip the whole lazy tail. The eager providers above are already running, so awaiting
+                // them to hunt for a synced upgrade costs no extra latency or network work.
+                if (index >= lazyFromIndex && (syncedWinner != null || unsyncedFallback != null)) {
+                    continue
+                }
+                // First time we reach the lazy tail with nothing found yet: start ALL remaining lazy
+                // providers at once so the tail runs CONCURRENTLY (awaiting them one-by-one below
+                // would serialize their full timeouts). start() is a no-op for the eager providers
+                // already running. The guard above guarantees this is only reached when every
+                // provider before the tail produced no non-blank result.
+                if (index == lazyFromIndex) {
+                    for (j in index until deferreds.size) deferreds[j].second.start()
+                }
                 deferred.start()
                 val providerResult = try {
                     deferred.await()
@@ -148,16 +178,27 @@ constructor(
                 }
                 val lyrics = providerResult?.getOrNull()
                 if (!lyrics.isNullOrBlank()) {
+                    // A non-blank return is a success for THIS provider regardless of sync state.
                     LyricsProviderCircuitBreaker.recordSuccess(provider.name)
-                    winner = LyricsWithProvider(lyrics, provider.name)
-                    break
+                    val candidate = LyricsWithProvider(lyrics, provider.name)
+                    if (lyrics.trimStart().startsWith("[")) {
+                        // Synced: best possible result, stop scanning immediately.
+                        syncedWinner = candidate
+                        break
+                    } else if (unsyncedFallback == null) {
+                        // First non-blank but unsynced: keep it as the fallback and keep scanning
+                        // the remaining in-flight providers for a synced upgrade.
+                        unsyncedFallback = candidate
+                    }
                 }
             }
-            // Once the in-order winner is decided, stop any providers still in flight. This also
-            // completes any LAZY deferred that was never started, so the enclosing coroutineScope
-            // (which waits on every child) cannot hang on an unstarted coroutine.
+            // Prefer synced; otherwise the first non-blank (unsynced) result.
+            val resolved = syncedWinner ?: unsyncedFallback
+            // Once the winner is decided, stop any providers still in flight. This also completes
+            // any LAZY deferred that was never started, so the enclosing coroutineScope (which
+            // waits on every child) cannot hang on an unstarted coroutine.
             deferreds.forEach { (_, deferred) -> deferred.cancel() }
-            winner ?: LyricsWithProvider(LYRICS_NOT_FOUND, "Unknown")
+            resolved ?: LyricsWithProvider(LYRICS_NOT_FOUND, "Unknown")
         }
 
         if (result.lyrics != LYRICS_NOT_FOUND) {

@@ -30,6 +30,7 @@ include(":artistvideo")
 include(":applecanvas")
 include(":echomusiccanvas")
 include(":paxsenixlyrics")
+include(":unison")
 
 
 // Use a local copy of NewPipe Extractor by uncommenting the lines below.

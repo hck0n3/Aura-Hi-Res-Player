@@ -71,6 +71,7 @@ import iad1tya.echo.music.constants.EnableLrcLibKey
 import iad1tya.echo.music.constants.EnableSimpMusicKey
 import iad1tya.echo.music.constants.EnableYouLyPlusKey
 import iad1tya.echo.music.constants.EnablePaxsenixKey
+import iad1tya.echo.music.constants.UnisonLyricsEnabledKey
 import iad1tya.echo.music.constants.HideExplicitKey
 import iad1tya.echo.music.constants.HideVideoSongsKey
 import iad1tya.echo.music.constants.HideYoutubeShortsKey
@@ -148,6 +149,7 @@ fun ContentSettings(
     val (enableSimpMusic, onEnableSimpMusicChange) = rememberPreference(key = EnableSimpMusicKey, defaultValue = true)
     val (enableYouLyPlus, onEnableYouLyPlusChange) = rememberPreference(key = EnableYouLyPlusKey, defaultValue = true)
     val (enablePaxsenix, onEnablePaxsenixChange) = rememberPreference(key = EnablePaxsenixKey, defaultValue = true)
+    val (enableUnison, onEnableUnisonChange) = rememberPreference(key = UnisonLyricsEnabledKey, defaultValue = true)
     val (lyricsProviderOrder, onLyricsProviderOrderChange) = rememberPreference(
         key = LyricsProviderOrderKey,
         defaultValue = "",
@@ -371,7 +373,7 @@ fun ContentSettings(
     if (showProviderPriorityDialog) {
         val defaultOrder = LyricsProviderRegistry.getDefaultProviderOrder()
         
-        val userToggleable = setOf("YouLyPlus", "Paxsenix", "BetterLyrics", "SimpMusic", "LrcLib", "Kugou")
+        val userToggleable = setOf("YouLyPlus", "Paxsenix", "BetterLyrics", "SimpMusic", "LrcLib", "Kugou", "Unison")
         val enabledProviders = setOfNotNull(
             "LrcLib".takeIf { enableLrclib },
             "Kugou".takeIf { enableKugou },
@@ -379,6 +381,7 @@ fun ContentSettings(
             "SimpMusic".takeIf { enableSimpMusic },
             "YouLyPlus".takeIf { enableYouLyPlus },
             "Paxsenix".takeIf { enablePaxsenix },
+            "Unison".takeIf { enableUnison },
         )
 
         
@@ -1037,6 +1040,27 @@ fun ContentSettings(
                         )
                     },
                     onClick = { onEnablePaxsenixChange(!enablePaxsenix) }
+                ),
+                Material3SettingsItem(
+                    icon = painterResource(R.drawable.lyrics),
+                    title = { Text("Unison") },
+                    description = { Text("Base de letras colaborativa (unison.boidu.dev); ultimo recurso, su catalogo aun es escaso") },
+                    trailingContent = {
+                        Switch(
+                            checked = enableUnison,
+                            onCheckedChange = onEnableUnisonChange,
+                            thumbContent = {
+                                Icon(
+                                    painter = painterResource(
+                                        id = if (enableUnison) R.drawable.check else R.drawable.close
+                                    ),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(SwitchDefaults.IconSize)
+                                )
+                            }
+                        )
+                    },
+                    onClick = { onEnableUnisonChange(!enableUnison) }
                 ),
                 Material3SettingsItem(
                     icon = painterResource(R.drawable.lyrics),
