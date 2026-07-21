@@ -3,6 +3,7 @@
 package iad1tya.echo.music.lyrics
 
 import android.content.Context
+import android.os.SystemClock
 import android.util.LruCache
 import iad1tya.echo.music.constants.LyricsProviderOrderKey
 import iad1tya.echo.music.constants.PreferredLyricsProvider
@@ -131,17 +132,23 @@ constructor(
                 }
             }
 
-            // SYNCED-PREFERENCE (upstream 5.2.7 headline change). A result counts as SYNCED when
-            // its text starts with an LRC timestamp ("[" after trimStart) — i.e. line-timed
-            // lyrics the player can scroll. We still consume providers strictly in PREFERENCE
-            // ORDER, but a non-blank *unsynced* result no longer ends the search: it is only
-            // remembered as `unsyncedFallback`. We keep reading the providers that are ALREADY in
-            // flight (in order) and, the moment one yields SYNCED lyrics, return those instead.
-            // If no synced result ever appears, we fall back to the FIRST non-blank result. This
-            // does NOT regress the synced-first case: a high-priority provider that returns synced
-            // still wins immediately (we break on the first synced hit).
+            // SYNCED-PREFERENCE (upstream 5.2.7 headline change). A result counts as SYNCED when its
+            // first non-blank content is a real LRC timestamp ([mm:ss...]) — line-timed lyrics the
+            // player can scroll. NB: the test requires the DIGITS of a timestamp, not a bare "[" —
+            // otherwise a plaintext lyric that opens with a section header ("[Verse 1]", "[Chorus]")
+            // would be mis-picked as synced and could beat a cleaner higher-priority unsynced result.
+            //
+            // We still consume providers strictly in PREFERENCE ORDER. A non-blank *unsynced* result
+            // no longer ends the search — it is kept as `unsyncedFallback` — and we keep reading the
+            // already-in-flight providers hoping for a synced upgrade. But that hunt is time-BOUNDED:
+            // once we hold a displayable result, a single slow provider must not make a plaintext-only
+            // song wait its full 8s timeout for lyrics we could already show. After the first non-blank
+            // result we give the remaining providers only SYNCED_HUNT_MS to produce synced lyrics, then
+            // return the fallback. The synced-first case is unaffected: a high-priority provider that
+            // returns synced still wins immediately.
             var syncedWinner: LyricsWithProvider? = null
             var unsyncedFallback: LyricsWithProvider? = null
+            var huntDeadlineMs = Long.MAX_VALUE
             for (index in deferreds.indices) {
                 val (provider, deferred) = deferreds[index]
                 // Lazy tail guard: a last-resort provider must only start when EVERYTHING before it
@@ -161,8 +168,20 @@ constructor(
                     for (j in index until deferreds.size) deferreds[j].second.start()
                 }
                 deferred.start()
+                // Once a displayable (unsynced) result is in hand, cap how long we keep hunting for a
+                // synced upgrade. remaining <= 0 means the grace window elapsed — stop and show it.
+                val remainingHuntMs =
+                    if (unsyncedFallback != null) huntDeadlineMs - SystemClock.elapsedRealtime() else Long.MAX_VALUE
+                if (remainingHuntMs <= 0L) break
                 val providerResult = try {
-                    deferred.await()
+                    if (remainingHuntMs == Long.MAX_VALUE) {
+                        deferred.await()
+                    } else {
+                        // A provider that hasn't answered within the grace window is skipped (its own
+                        // 8s timeout and the final cancel() still clean it up). getOrNull-of-null =
+                        // treat as no result this round.
+                        withTimeoutOrNull(remainingHuntMs) { deferred.await() }
+                    }
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -181,14 +200,15 @@ constructor(
                     // A non-blank return is a success for THIS provider regardless of sync state.
                     LyricsProviderCircuitBreaker.recordSuccess(provider.name)
                     val candidate = LyricsWithProvider(lyrics, provider.name)
-                    if (lyrics.trimStart().startsWith("[")) {
+                    if (SYNCED_LINE.containsMatchIn(lyrics.trimStart().take(24))) {
                         // Synced: best possible result, stop scanning immediately.
                         syncedWinner = candidate
                         break
                     } else if (unsyncedFallback == null) {
-                        // First non-blank but unsynced: keep it as the fallback and keep scanning
-                        // the remaining in-flight providers for a synced upgrade.
+                        // First non-blank but unsynced: keep it as the fallback, start the grace
+                        // window, and keep scanning the in-flight providers for a synced upgrade.
                         unsyncedFallback = candidate
+                        huntDeadlineMs = SystemClock.elapsedRealtime() + SYNCED_HUNT_MS
                     }
                 }
             }
@@ -276,6 +296,13 @@ constructor(
         // Per-provider cap. Providers run concurrently, so this bounds a single hung provider
         // without stacking (the old sequential loop could wait this long for EACH provider).
         private const val PROVIDER_TIMEOUT_MS = 8_000L
+        // After the first non-blank (unsynced) result, how long we keep hunting for a SYNCED
+        // upgrade before showing the fallback. Short so a plaintext-only song still appears fast;
+        // long enough that a concurrent provider's synced result usually lands first.
+        private const val SYNCED_HUNT_MS = 1_200L
+        // A result is SYNCED only if its first line is a real LRC timestamp ([m:ss] / [mm:ss...]),
+        // NOT a bare "[" — otherwise "[Verse 1]" plaintext headers would be mistaken for synced.
+        private val SYNCED_LINE = Regex("""^\[\d{1,2}:\d{2}""")
     }
 }
 
