@@ -130,6 +130,7 @@ import iad1tya.echo.music.constants.ScrobbleMinSongDurationKey
 import iad1tya.echo.music.constants.ShowLyricsKey
 import iad1tya.echo.music.constants.ShuffleModeKey
 import iad1tya.echo.music.constants.ShufflePlaylistFirstKey
+import iad1tya.echo.music.constants.EnhancedShuffleKey
 import iad1tya.echo.music.constants.PreventDuplicateTracksInQueueKey
 import iad1tya.echo.music.constants.SimilarContent
 import iad1tya.echo.music.constants.SkipSilenceInstantKey
@@ -141,6 +142,8 @@ import java.net.InetAddress
 import java.net.Inet4Address
 import java.net.Inet6Address
 import iad1tya.echo.music.db.MusicDatabase
+import iad1tya.echo.music.db.entities.EnhancedShuffleContextEntity
+import iad1tya.echo.music.db.entities.EnhancedShufflePlayedEntity
 import iad1tya.echo.music.db.entities.Event
 import iad1tya.echo.music.db.entities.FormatEntity
 import iad1tya.echo.music.db.entities.LyricsEntity
@@ -475,6 +478,10 @@ class MusicService :
     // in the hot paths instead. Initial values equal the DataStore defaults, so behaviour is unchanged.
     @Volatile private var autoLoadMoreHint: Boolean = true
     @Volatile private var disableLoadMoreWhenRepeatAllHint: Boolean = false
+    // Enhanced Shuffle ("Aleatorio mejorado") master switch mirrored for the player-thread callbacks
+    // (onShuffleModeEnabledChanged / onMediaItemTransition) so they read a @Volatile field, never a blocking
+    // DataStore read. Default matches EnhancedShuffleKey's default (ON).
+    @Volatile private var enhancedShuffleHint: Boolean = true
     @Volatile private var keepGenreLaneHint: Boolean = true
     @Volatile private var persistentQueueHint: Boolean = true
     @Volatile private var historyDurationMsHint: Float = 30000f
@@ -551,6 +558,10 @@ class MusicService :
     // shuffling, not-yet-played songs are ordered ahead of these, so nothing repeats until the whole pool is
     // exhausted (then it auto-resets for a new cycle). Reset whenever shuffle is (re)enabled.
     private val shufflePlayedIds = LinkedHashSet<String>()
+    // Enhanced Shuffle: the persistent context id of the CURRENT queue (e.g. "PL:<id>", "LIBRARY"), or null
+    // when the queue has no enhanced memory (raw YT radio, album/artist, etc.) → classic in-memory shuffle.
+    // Set in playQueue from the ListQueue's contextId (carried across restart via PersistQueue.contextId).
+    @Volatile private var shuffleContextId: String? = null
     /** Recently-played media ids (bounded, most-recent last) so autoplay/radio don't resurface a song you
      *  JUST heard. A soft demotion (not a hard drop) — see [orderedByTaste] — so it can never dead-end the queue. */
     private val recentRadioIds = LinkedHashSet<String>()
@@ -1228,6 +1239,7 @@ class MusicService :
         // during onCreate. Same keys, same defaults, same downstream usage — just one read instead of many.
         val prefs = runBlocking { dataStore.data.first() }
         player.repeatMode = prefs[RepeatModeKey] ?: REPEAT_MODE_OFF
+        enhancedShuffleHint = prefs[EnhancedShuffleKey] ?: true
 
 
         if (prefs[RememberShuffleAndRepeatKey] ?: true) {
@@ -1638,6 +1650,7 @@ class MusicService :
             dataStore.data.collect { prefs ->
                 autoLoadMoreHint = prefs[AutoLoadMoreKey] ?: true
                 disableLoadMoreWhenRepeatAllHint = prefs[DisableLoadMoreWhenRepeatAllKey] ?: false
+                enhancedShuffleHint = prefs[EnhancedShuffleKey] ?: true
                 keepGenreLaneHint = prefs[KeepGenreLaneKey] ?: true
                 persistentQueueHint = prefs[PersistentQueueKey] ?: true
                 historyDurationMsHint = (prefs[HistoryDuration]?.times(1000f)) ?: 30000f
@@ -2292,6 +2305,10 @@ class MusicService :
 
         currentQueue = queue
         queueTitle = null
+        // Enhanced Shuffle: adopt this queue's persistent context id (e.g. "PL:<id>", "LIBRARY"). Null for
+        // any non-ListQueue or a ListQueue without a contextId → no persistent memory, classic shuffle. On a
+        // RESTORE the restored ListQueue carries the contextId saved in PersistQueue, so memory resumes.
+        shuffleContextId = (queue as? iad1tya.echo.music.playback.queues.ListQueue)?.contextId
         scope.launch { runCatching { tasteProfile() } } // warm the taste cache for smart shuffle / autoplay
         // Shuffle reset on a NEW queue is intentional when PersistentShuffleAcrossQueues is off.
         // Two things made it read as "shuffle is broken":
@@ -3827,7 +3844,24 @@ class MusicService :
 
         // B5: remember what we've played this shuffle session (consumed by applyShuffleOrder to avoid repeats).
         if (player.shuffleModeEnabled) {
-            (mediaItem?.mediaId ?: player.currentMetadata?.id)?.let { shufflePlayedIds.add(it) }
+            val playedId = (mediaItem?.mediaId ?: player.currentMetadata?.id)
+            playedId?.let { shufflePlayedIds.add(it) }
+            // Enhanced Shuffle: also write this play into the PERSISTENT per-context memory (async, IGNORE on
+            // conflict) and advance the resume cursor. No-op when disabled or the queue has no context.
+            val ctx = shuffleContextId
+            if (enhancedShuffleHint && ctx != null && playedId != null) {
+                val now = System.currentTimeMillis()
+                scope.launch(Dispatchers.IO) {
+                    runCatching {
+                        database.insertEnhancedPlayed(EnhancedShufflePlayedEntity(ctx, playedId, now))
+                        // Ensure the cursor row exists (first play), then move the cursor without touching cycleCount.
+                        database.insertEnhancedContextIgnore(
+                            EnhancedShuffleContextEntity(contextId = ctx, lastSongId = playedId, updatedAt = now)
+                        )
+                        database.updateEnhancedContextCursor(ctx, playedId, 0L, now)
+                    }
+                }
+            }
         }
 
         if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) {
@@ -4038,6 +4072,12 @@ class MusicService :
             // Autoplay chips: this last-item moment is the seed of the upcoming radio — surface the
             // suggestion chips for it right away (once-per-seed cached; local/http ids no-op inside).
             player.currentMediaItem?.mediaId?.let { refreshAutoplaySuggestions(it) }
+            // Enhanced Shuffle: reaching the last item to play while shuffling a context means the whole
+            // context has cycled — reset its persistent memory so the next visit starts a fresh cycle, right
+            // as the infinite radio takes over. Does NOT alter the handoff below (radio still starts).
+            if (enhancedShuffleHint && player.shuffleModeEnabled) {
+                shuffleContextId?.let { onEnhancedContextCycleComplete(it) }
+            }
             startRadioSeamlessly()
         }
 
@@ -4361,7 +4401,36 @@ class MusicService :
             val currentIndex = player.currentMediaItemIndex
             val totalCount = player.mediaItemCount
 
+            // Apply the order NOW (fallback = today's behaviour) so the player never blocks on the DB read.
             applyShuffleOrder(currentIndex, totalCount, shufflePlaylistFirst)
+
+            // Enhanced Shuffle ("Aleatorio mejorado"): if this queue has a persistent context, SEED the
+            // played-set from the on-disk memory (∩ current queue ids, + the current song) and RE-APPLY the
+            // order once loaded, so re-enabling shuffle re-shuffles only the UNPLAYED remainder and never
+            // repeats a song until the whole context has cycled. The DB read is async; if it hasn't finished
+            // the fallback above already plays — we just refine the order when it lands.
+            val ctx = shuffleContextId
+            if (enhancedShuffleHint && ctx != null) {
+                scope.launch(Dispatchers.IO) {
+                    val persisted = runCatching { database.playedSongIdsForContext(ctx) }
+                        .getOrNull()?.toHashSet() ?: return@launch
+                    if (persisted.isEmpty()) return@launch
+                    withContext(Dispatchers.Main) {
+                        // Bail if the world moved on while we were reading (queue/shuffle/context changed).
+                        if (!player.shuffleModeEnabled || shuffleContextId != ctx || player.mediaItemCount == 0) {
+                            return@withContext
+                        }
+                        val queueIds = (0 until player.mediaItemCount).mapNotNull {
+                            runCatching { player.getMediaItemAt(it).mediaId }.getOrNull()
+                        }
+                        val seed = queueIds.filterTo(LinkedHashSet()) { it in persisted }
+                        player.currentMetadata?.id?.let { seed.add(it) }
+                        shufflePlayedIds.clear()
+                        shufflePlayedIds.addAll(seed)
+                        applyShuffleOrder(player.currentMediaItemIndex, player.mediaItemCount, shufflePlaylistFirst)
+                    }
+                }
+            }
         }
 
         
@@ -4395,7 +4464,23 @@ class MusicService :
         }
     }
 
-    
+    /**
+     * Enhanced Shuffle: a context finished a full no-repeat cycle (every song played). Wipe its persistent
+     * played-set so the next cycle re-shuffles from scratch, and bump its cycle counter. Async + guarded; safe
+     * to call more than once for the same completion (the DELETE is idempotent, the counter is advisory only).
+     */
+    private fun onEnhancedContextCycleComplete(contextId: String) {
+        val now = System.currentTimeMillis()
+        scope.launch(Dispatchers.IO) {
+            runCatching {
+                database.clearEnhancedContext(contextId)
+                database.insertEnhancedContextIgnore(EnhancedShuffleContextEntity(contextId = contextId, updatedAt = now))
+                database.incrementEnhancedCycle(contextId, now)
+            }
+        }
+    }
+
+
     private fun applyShuffleOrder(
         currentIndex: Int,
         totalCount: Int,
@@ -4436,6 +4521,9 @@ class MusicService :
                 shufflePlayedIds.clear()
                 player.currentMetadata?.id?.let { shufflePlayedIds.add(it) }
                 playedSnapshot.clear()
+                // Enhanced Shuffle: the whole context cycled → reset its PERSISTENT memory + bump the counter so
+                // the next cycle is fresh (mirrors the in-memory reset above). Async, guarded.
+                shuffleContextId?.takeIf { enhancedShuffleHint }?.let { onEnhancedContextCycleComplete(it) }
             }
             // Smart shuffle: nudge tracks you tend to like toward the front, but keep plenty of randomness
             // (random term dominates) so it still feels shuffled, not a fixed favourites list. With no taste
@@ -6353,6 +6441,23 @@ class MusicService :
             runCatching {
                 filesDir.resolve(PERSISTENT_PLAYER_STATE_FILE).outputStream().use { fos ->
                     ObjectOutputStream(fos).use { it.writeObject(state) }
+                }
+            }
+        }
+        // Enhanced Shuffle: opportunistically checkpoint the resume cursor (last song + position) for the
+        // current context, so coming back to a partially-heard playlist can resume near where it was left.
+        // Captured here on the Main thread; the write is off-thread. Best-effort, guarded, no-op otherwise.
+        val ctx = shuffleContextId
+        if (enhancedShuffleHint && ctx != null && player.shuffleModeEnabled) {
+            val sid = player.currentMetadata?.id
+            val pos = player.currentPosition
+            val now = System.currentTimeMillis()
+            scope.launch(Dispatchers.IO) {
+                runCatching {
+                    database.insertEnhancedContextIgnore(
+                        EnhancedShuffleContextEntity(contextId = ctx, lastSongId = sid, lastPositionMs = pos, updatedAt = now)
+                    )
+                    database.updateEnhancedContextCursor(ctx, sid, pos, now)
                 }
             }
         }

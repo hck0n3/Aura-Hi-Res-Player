@@ -250,6 +250,11 @@ val PersistentQueueKey = booleanPreferencesKey("persistentQueue")
 val PersistentShuffleAcrossQueuesKey = booleanPreferencesKey("persistentShuffleAcrossQueues")
 val RememberShuffleAndRepeatKey = booleanPreferencesKey("rememberShuffleAndRepeat")
 val ShuffleModeKey = booleanPreferencesKey("shuffleMode")
+// Enhanced Shuffle ("Aleatorio mejorado"), default ON. When on, the shuffle button gains PERSISTENT
+// per-context no-repeat memory: within a playlist / the whole library it never repeats a song until every
+// song has played (memory survives restarts, days, and toggling shuffle off/on), then the completed cycle
+// resets and hands off to the infinite radio. Off = classic in-memory shuffle.
+val EnhancedShuffleKey = booleanPreferencesKey("enhanced_shuffle")
 val SkipSilenceKey = booleanPreferencesKey("skipSilence")
 val SkipSilenceInstantKey = booleanPreferencesKey("skipSilenceInstant")
 val AudioNormalizationKey = booleanPreferencesKey("audioNormalization")

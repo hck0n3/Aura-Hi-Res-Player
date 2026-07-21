@@ -51,6 +51,7 @@ import iad1tya.echo.music.constants.KeepScreenOn
 import iad1tya.echo.music.constants.PauseOnMute
 import iad1tya.echo.music.constants.PersistentQueueKey
 import iad1tya.echo.music.constants.PersistentShuffleAcrossQueuesKey
+import iad1tya.echo.music.constants.EnhancedShuffleKey
 import iad1tya.echo.music.constants.PreventDuplicateTracksInQueueKey
 import iad1tya.echo.music.constants.RememberShuffleAndRepeatKey
 import iad1tya.echo.music.constants.ResumeOnBluetoothConnectKey
@@ -180,6 +181,10 @@ fun PlayerSettings(
     val (persistentShuffleAcrossQueues, onPersistentShuffleAcrossQueuesChange) = rememberPreference(
         PersistentShuffleAcrossQueuesKey,
         defaultValue = false
+    )
+    val (enhancedShuffle, onEnhancedShuffleChange) = rememberPreference(
+        EnhancedShuffleKey,
+        defaultValue = true
     )
     val (rememberShuffleAndRepeat, onRememberShuffleAndRepeatChange) = rememberPreference(
         RememberShuffleAndRepeatKey,
@@ -804,6 +809,27 @@ fun PlayerSettings(
                         )
                     },
                     onClick = { similarContentEnabledChange(!similarContentEnabled) }
+                ),
+                Material3SettingsItem(
+                    icon = painterResource(R.drawable.shuffle),
+                    title = { Text("Aleatorio mejorado") },
+                    description = { Text("El aleatorio recuerda qué canciones ya sonaron en cada lista (y en toda la biblioteca) y no repite ninguna hasta haberlas puesto todas. La memoria se mantiene aunque cierres la app o apagues y enciendas el aleatorio. Desactívalo para volver al aleatorio clásico.") },
+                    trailingContent = {
+                        Switch(
+                            checked = enhancedShuffle,
+                            onCheckedChange = onEnhancedShuffleChange,
+                            thumbContent = {
+                                Icon(
+                                    painter = painterResource(
+                                        id = if (enhancedShuffle) R.drawable.check else R.drawable.close
+                                    ),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(SwitchDefaults.IconSize)
+                                )
+                            }
+                        )
+                    },
+                    onClick = { onEnhancedShuffleChange(!enhancedShuffle) }
                 ),
                 Material3SettingsItem(
                     icon = painterResource(R.drawable.shuffle),

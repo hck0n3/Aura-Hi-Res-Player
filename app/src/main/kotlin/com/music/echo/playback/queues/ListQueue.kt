@@ -10,6 +10,10 @@ class ListQueue(
     val items: List<MediaItem>,
     val startIndex: Int = 0,
     val position: Long = 0L,
+    // Enhanced Shuffle context id (e.g. "PL:<id>", "LIBRARY"). Null = no persistent per-context
+    // no-repeat memory for this queue (falls back to the classic in-memory shuffle). Optional so every
+    // existing call site is unaffected.
+    val contextId: String? = null,
 ) : Queue {
     override val preloadItem: MediaMetadata? = null
 

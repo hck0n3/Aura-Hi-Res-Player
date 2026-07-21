@@ -321,6 +321,7 @@ fun LibrarySongsScreen(
                                                 title = context.getString(R.string.queue_all_songs),
                                                 items = filteredSongs.map { it.toMediaItem() },
                                                 startIndex = index,
+                                                contextId = "LIBRARY",
                                             ),
                                         )
                                     }
@@ -393,6 +394,7 @@ fun LibrarySongsScreen(
                                                     title = context.getString(R.string.queue_all_songs),
                                                     items = filteredSongs.map { it.toMediaItem() },
                                                     startIndex = index,
+                                                    contextId = "LIBRARY",
                                                 ),
                                             )
                                         }
@@ -425,6 +427,7 @@ fun LibrarySongsScreen(
                             ListQueue(
                                 title = context.getString(R.string.queue_all_songs),
                                 items = filteredSongs.shuffled().map { it.toMediaItem() },
+                                contextId = "LIBRARY",
                             ),
                         )
                     },
@@ -440,6 +443,7 @@ fun LibrarySongsScreen(
                             ListQueue(
                                 title = context.getString(R.string.queue_all_songs),
                                 items = filteredSongs.shuffled().map { it.toMediaItem() },
+                                contextId = "LIBRARY",
                             ),
                         )
                     },

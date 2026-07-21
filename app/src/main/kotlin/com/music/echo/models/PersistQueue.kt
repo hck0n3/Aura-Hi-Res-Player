@@ -11,7 +11,17 @@ data class PersistQueue(
     val position: Long,
     val queueType: QueueType = QueueType.LIST,
     val queueData: QueueData? = null,
-) : Serializable
+    // Enhanced Shuffle context of this queue (e.g. "PL:<id>", "LIBRARY"); null = no persistent-shuffle
+    // memory for this queue. Optional with a default so it survives across the explicit serialVersionUID.
+    val contextId: String? = null,
+) : Serializable {
+    companion object {
+        // Pinned so future additive fields deserialize old files with defaults instead of throwing
+        // InvalidClassException. (Files written before this UID existed still fail once and are cleared
+        // by clearPersistedQueueFiles — acceptable, and it never happens again after this build.)
+        private const val serialVersionUID: Long = 1L
+    }
+}
 
 sealed class QueueType : Serializable {
     object LIST : QueueType()

@@ -22,6 +22,8 @@ import iad1tya.echo.music.db.daos.SpeedDialDao
 import iad1tya.echo.music.db.entities.AlbumArtistMap
 import iad1tya.echo.music.db.entities.AlbumEntity
 import iad1tya.echo.music.db.entities.ArtistEntity
+import iad1tya.echo.music.db.entities.EnhancedShuffleContextEntity
+import iad1tya.echo.music.db.entities.EnhancedShufflePlayedEntity
 import iad1tya.echo.music.db.entities.Event
 import iad1tya.echo.music.db.entities.FormatEntity
 import iad1tya.echo.music.db.entities.LyricsEntity
@@ -105,14 +107,16 @@ class MusicDatabase(
         PlayCountEntity::class,
         RecognitionHistory::class,
         SpeedDialItem::class,
-        ReleaseRadarItem::class
+        ReleaseRadarItem::class,
+        EnhancedShufflePlayedEntity::class,
+        EnhancedShuffleContextEntity::class
     ],
     views = [
         SortedSongArtistMap::class,
         SortedSongAlbumMap::class,
         PlaylistSongMapPreview::class,
     ],
-    version = 38,
+    version = 39,
     exportSchema = true,
     autoMigrations = [
         AutoMigration(from = 2, to = 3),
@@ -152,6 +156,7 @@ class MusicDatabase(
         // 36 -> 37: pure nullable-column add (format.measuredLoudnessDb REAL, default NULL).
         AutoMigration(from = 36, to = 37),
         // 37 -> 38: additive index on event.timestamp (P39). Handled by MIGRATION_37_38 below.
+        // 38 -> 39: additive Enhanced Shuffle tables. Handled by MIGRATION_38_39 below.
     ],
 )
 @TypeConverters(Converters::class)
@@ -174,6 +179,7 @@ abstract class InternalDatabase : RoomDatabase() {
                         MIGRATION_24_25,
                         MIGRATION_27_28,
                         MIGRATION_37_38,
+                        MIGRATION_38_39,
                     )
 
                     .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
@@ -784,5 +790,31 @@ val MIGRATION_37_38 =
     object : Migration(37, 38) {
         override fun migrate(db: SupportSQLiteDatabase) {
             db.execSQL("CREATE INDEX IF NOT EXISTS `index_event_timestamp` ON `event` (`timestamp`)")
+        }
+    }
+
+// 38 -> 39: Enhanced Shuffle ("Aleatorio mejorado") persistent per-context no-repeat memory. Purely
+// additive: two brand-new tables (no changes to existing tables), so it can never lose user data.
+// The CREATE statements MUST match Room's expected schema for EnhancedShufflePlayedEntity /
+// EnhancedShuffleContextEntity EXACTLY (column names, TEXT/INTEGER affinity, NOT NULL, PK order, and
+// the auto-named contextId index) or Room's startup schema validation fails.
+val MIGRATION_38_39 =
+    object : Migration(38, 39) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `enhanced_shuffle_played` (" +
+                    "`contextId` TEXT NOT NULL, `songId` TEXT NOT NULL, `playedAt` INTEGER NOT NULL, " +
+                    "PRIMARY KEY(`contextId`, `songId`))"
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_enhanced_shuffle_played_contextId` " +
+                    "ON `enhanced_shuffle_played` (`contextId`)"
+            )
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `enhanced_shuffle_context` (" +
+                    "`contextId` TEXT NOT NULL, `lastSongId` TEXT, `lastPositionMs` INTEGER NOT NULL, " +
+                    "`cycleCount` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, " +
+                    "PRIMARY KEY(`contextId`))"
+            )
         }
     }

@@ -24,7 +24,9 @@ fun Queue.toPersistQueue(
             items = items,
             mediaItemIndex = mediaItemIndex,
             position = position,
-            queueType = QueueType.LIST
+            queueType = QueueType.LIST,
+            // Carry the Enhanced Shuffle context across restart so the memory resumes on the same queue.
+            contextId = this.contextId
         )
         is YouTubeQueue -> {
             
@@ -81,7 +83,8 @@ fun PersistQueue.toQueue(): Queue {
             title = title,
             items = items.map { it.toMediaItem() },
             startIndex = mediaItemIndex,
-            position = position
+            position = position,
+            contextId = contextId
         )
         is QueueType.YOUTUBE -> {
             

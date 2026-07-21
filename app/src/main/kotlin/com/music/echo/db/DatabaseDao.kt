@@ -27,6 +27,8 @@ import iad1tya.echo.music.db.entities.Album
 import iad1tya.echo.music.db.entities.AlbumArtistMap
 import iad1tya.echo.music.db.entities.AlbumEntity
 import iad1tya.echo.music.db.entities.AlbumWithSongs
+import iad1tya.echo.music.db.entities.EnhancedShuffleContextEntity
+import iad1tya.echo.music.db.entities.EnhancedShufflePlayedEntity
 import iad1tya.echo.music.db.entities.Artist
 import iad1tya.echo.music.db.entities.ArtistEntity
 import iad1tya.echo.music.db.entities.Event
@@ -1794,6 +1796,42 @@ interface DatabaseDao {
 
     @Query("SELECT COUNT(*) FROM release_radar WHERE seen = 0")
     fun unseenReleaseCount(): Flow<Int>
+
+    // ---- Enhanced Shuffle ("Aleatorio mejorado") persistent per-context no-repeat memory ----
+
+    /** Song ids already played this cycle for [contextId] (persists across restarts / days). */
+    @Query("SELECT songId FROM enhanced_shuffle_played WHERE contextId = :contextId")
+    suspend fun playedSongIdsForContext(contextId: String): List<String>
+
+    /** How many songs of [contextId] have already played this cycle. */
+    @Query("SELECT COUNT(*) FROM enhanced_shuffle_played WHERE contextId = :contextId")
+    suspend fun countPlayedForContext(contextId: String): Int
+
+    /** Record a song as played for a context. IGNORE = a re-play never rewrites the first-played row. */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertEnhancedPlayed(entity: EnhancedShufflePlayedEntity)
+
+    /** Wipe a context's played-set so the next cycle starts fresh (called on cycle completion). */
+    @Query("DELETE FROM enhanced_shuffle_played WHERE contextId = :contextId")
+    suspend fun clearEnhancedContext(contextId: String)
+
+    @Query("SELECT * FROM enhanced_shuffle_context WHERE contextId = :contextId")
+    suspend fun getEnhancedContext(contextId: String): EnhancedShuffleContextEntity?
+
+    @Upsert
+    suspend fun upsertEnhancedContext(entity: EnhancedShuffleContextEntity)
+
+    /** Ensure a context cursor row exists without clobbering an existing one (IGNORE on conflict). */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertEnhancedContextIgnore(entity: EnhancedShuffleContextEntity)
+
+    /** Update just the resume cursor (never touches cycleCount). */
+    @Query("UPDATE enhanced_shuffle_context SET lastSongId = :lastSongId, lastPositionMs = :positionMs, updatedAt = :updatedAt WHERE contextId = :contextId")
+    suspend fun updateEnhancedContextCursor(contextId: String, lastSongId: String?, positionMs: Long, updatedAt: Long)
+
+    /** Cycle completed for a context: bump the counter (played-set cleared separately). */
+    @Query("UPDATE enhanced_shuffle_context SET cycleCount = cycleCount + 1, updatedAt = :updatedAt WHERE contextId = :contextId")
+    suspend fun incrementEnhancedCycle(contextId: String, updatedAt: Long)
 
     @Transaction
     @Query("SELECT * FROM playlist_song_map WHERE songId = :songId")

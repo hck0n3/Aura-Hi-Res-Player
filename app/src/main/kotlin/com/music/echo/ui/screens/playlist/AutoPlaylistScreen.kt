@@ -344,6 +344,7 @@ fun AutoPlaylistScreen(
                                 downloadState = downloadState,
                                 onShowRemoveDownloadDialog = { showRemoveDownloadDialog = true },
                                 menuState = menuState,
+                                contextId = "PL:" + playlistId,
                                 // C1: only the Liked / Uploaded auto-playlists can sync from YT Music, and only
                                 // when signed in. syncLikedSongs/syncUploadedSongs are fire-and-forget on SyncUtils.
                                 onSync = if (isLoggedIn &&
@@ -448,7 +449,8 @@ fun AutoPlaylistScreen(
                                                 ListQueue(
                                                     title = playlist,
                                                     items = songs!!.map { it.toMediaItem() },
-                                                    startIndex = songs!!.indexOfFirst { it.id == song.id }
+                                                    startIndex = songs!!.indexOfFirst { it.id == song.id },
+                                                    contextId = "PL:" + playlistId,
                                                 ),
                                             )
                                         }
@@ -619,6 +621,8 @@ private fun AutoPlaylistHeader(
     onShowRemoveDownloadDialog: () -> Unit,
     menuState: iad1tya.echo.music.ui.component.MenuState,
     onSync: (() -> Unit)? = null,
+    // Enhanced Shuffle context id for this auto-playlist (e.g. "PL:liked"); null = classic shuffle.
+    contextId: String? = null,
     modifier: Modifier = Modifier
 ) {
     val playerConnection = LocalPlayerConnection.current ?: return
@@ -699,6 +703,7 @@ private fun AutoPlaylistHeader(
                         ListQueue(
                             title = name,
                             items = songs.shuffled().map { it.toMediaItem() },
+                            contextId = contextId,
                         ),
                     )
                 },
@@ -739,6 +744,7 @@ private fun AutoPlaylistHeader(
                         ListQueue(
                             title = name,
                             items = songs.map { it.toMediaItem() },
+                            contextId = contextId,
                         ),
                     )
                 },
