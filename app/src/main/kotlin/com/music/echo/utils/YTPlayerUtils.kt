@@ -535,15 +535,24 @@ object YTPlayerUtils {
         // Independent of the cipher/player-rotation path: playabilityStatus is decided server-side before
         // any signature work, so this survives a correct cipher config.
         if (firstAttempt.isFailure && YouTube.cookie != null && authShaped.get()) {
-            Timber.tag(TAG).w("Auth-shaped failure while signed in — retrying this song anonymously")
+            Timber.tag(TAG).w("Auth-shaped failure while signed in — rotating the guest session and retrying anonymously")
             PlaybackLogManager.log(
                 PlaybackLogLevel.BOT,
                 "Auth-shaped playback failure while signed in",
-                "Your saved YouTube session looks expired — retrying this song without it",
+                "Your saved YouTube session looks expired — refreshing an anonymous session and retrying this song",
             )
+            // Rotate the guest session BEFORE the anonymous retry, exactly as the guest branch above does.
+            // The failing signed-in request already fell through login-free clients (MAIN_CLIENT = ANDROID_VR
+            // carries no cookie/poToken), so a plain LOGIN_REQUIRED here usually means YouTube has soft-flagged
+            // the IP / device / visitorData, NOT just the stored cookie — and a plain anonymous retry would
+            // reuse that same flagged visitorData and fail identically. refreshVisitorData() gets a clean
+            // anonymous identity. It touches ONLY visitorData (anonymous device id); the account cookie and
+            // dataSyncId are never written, so the user stays signed in for library-aware calls.
+            runCatching { BotDetectionMitigator.rotateGuestSession() }
             val anonResult = boundedResolve(noLogin = true)
             if (anonResult.isSuccess) {
-                Timber.tag(TAG).w("Anonymous retry succeeded — the stored cookie is likely expired")
+                Timber.tag(TAG).w("Anonymous retry succeeded — the stored cookie or the old guest session was stale")
+                BotDetectionMitigator.notifyPlaybackSuccess()
                 PlaybackLogManager.log(
                     PlaybackLogLevel.BOT,
                     "Anonymous retry succeeded",
@@ -581,8 +590,15 @@ object YTPlayerUtils {
         
         val isUploadedTrack = playlistId == "MLPT" || playlistId?.contains("MLPT") == true
 
-        val isLoggedIn = YouTube.cookie != null
-        Timber.tag(logTag).d("Session authentication status: ${if (isLoggedIn) "Logged in" else "Not logged in"}")
+        // `&& !noLogin` is what makes the anonymous retry ACTUALLY anonymous. Without it this recompute
+        // stayed true on the retry, so the poToken below was minted with the account's dataSyncId (:599)
+        // and the request went out WITHOUT the cookie — a session bound to an account, sent with no auth,
+        // which YouTube rejects as LOGIN_REQUIRED. That is precisely what the owner's Redmi log shows:
+        // "Auth-shaped failure ... retrying anonymously" immediately followed by another LOGIN_REQUIRED.
+        // With this, the whole resolve behaves as a guest on the retry — visitorData poToken, guest client
+        // selection, no logged-in metadata fetch — which is how logged-out playback normally works.
+        val isLoggedIn = YouTube.cookie != null && !noLogin
+        Timber.tag(logTag).d("Session authentication status: ${if (isLoggedIn) "Logged in" else "Not logged in"}${if (noLogin) " (anonymous retry)" else ""}")
 
         
         val signatureTimestamp = getSignatureTimestampOrNull(videoId)
@@ -770,8 +786,13 @@ object YTPlayerUtils {
                 Timber.tag(logTag).d("Trying fallback client ${clientIndex + 1}/${STREAM_FALLBACK_CLIENTS.size}: ${client.clientName}")
                 PlaybackLogManager.log(PlaybackLogLevel.DEBUG, "Trying fallback [${clientIndex + 1}/${STREAM_FALLBACK_CLIENTS.size}]", client.clientName)
 
-                if (client.loginRequired && !isLoggedIn && YouTube.cookie == null) {
-                    
+                // `&& YouTube.cookie == null` dropped: it was redundant — before noLogin, isLoggedIn WAS
+                // (cookie != null), so `!isLoggedIn && cookie == null` reduced to `cookie == null`, i.e.
+                // just `!isLoggedIn`. Now that isLoggedIn also encodes noLogin, keeping the raw cookie check
+                // would WRONGLY try login-required clients on the anonymous retry (global cookie still set),
+                // sending them with no auth → LOGIN_REQUIRED again. `!isLoggedIn` alone is correct in both.
+                if (client.loginRequired && !isLoggedIn) {
+
                     Timber.tag(logTag).d("Skipping client ${client.clientName} - requires login but user is not logged in")
                     continue
                 }
