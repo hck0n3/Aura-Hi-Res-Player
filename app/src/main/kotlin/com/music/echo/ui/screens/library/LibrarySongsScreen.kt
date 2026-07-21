@@ -146,6 +146,12 @@ fun LibrarySongsScreen(
             else list.filter { it.song.title.contains(searchQuery, ignoreCase = true) }
         }
 
+    // Enhanced Shuffle context. Each library TAB (Liked / Library / Uploaded) is a distinct collection, so
+    // each gets its own persistent no-repeat bucket ("LIB:<filter>"). A search-/explicit-filtered SUBSET must
+    // NOT share a tab's bucket — exhausting a 4-song search result would otherwise clear the tab's whole
+    // accumulated memory — so filtered subsets fall back to null = classic in-memory shuffle.
+    val libraryContextId = if (searchQuery.isBlank() && !hideExplicit) "LIB:${filter.name}" else null
+
     // Header sub-blocks are hoisted so the LIST (LazyColumn) and GRID (LazyVerticalGrid) branches
     // render byte-identical filter/search/sort headers — the only difference is the item layout.
     val filterContent = @Composable {
@@ -321,7 +327,7 @@ fun LibrarySongsScreen(
                                                 title = context.getString(R.string.queue_all_songs),
                                                 items = filteredSongs.map { it.toMediaItem() },
                                                 startIndex = index,
-                                                contextId = "LIBRARY",
+                                                contextId = libraryContextId,
                                             ),
                                         )
                                     }
@@ -394,7 +400,7 @@ fun LibrarySongsScreen(
                                                     title = context.getString(R.string.queue_all_songs),
                                                     items = filteredSongs.map { it.toMediaItem() },
                                                     startIndex = index,
-                                                    contextId = "LIBRARY",
+                                                    contextId = libraryContextId,
                                                 ),
                                             )
                                         }
@@ -427,7 +433,7 @@ fun LibrarySongsScreen(
                             ListQueue(
                                 title = context.getString(R.string.queue_all_songs),
                                 items = filteredSongs.shuffled().map { it.toMediaItem() },
-                                contextId = "LIBRARY",
+                                contextId = libraryContextId,
                             ),
                         )
                     },
@@ -443,7 +449,7 @@ fun LibrarySongsScreen(
                             ListQueue(
                                 title = context.getString(R.string.queue_all_songs),
                                 items = filteredSongs.shuffled().map { it.toMediaItem() },
-                                contextId = "LIBRARY",
+                                contextId = libraryContextId,
                             ),
                         )
                     },

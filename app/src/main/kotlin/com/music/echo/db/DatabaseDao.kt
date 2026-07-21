@@ -1833,6 +1833,17 @@ interface DatabaseDao {
     @Query("UPDATE enhanced_shuffle_context SET cycleCount = cycleCount + 1, updatedAt = :updatedAt WHERE contextId = :contextId")
     suspend fun incrementEnhancedCycle(contextId: String, updatedAt: Long)
 
+    /**
+     * Orphan prune: drop enhanced-shuffle memory for "PL:<id>" contexts whose playlist no longer exists
+     * (deleted playlists leave no FK to cascade — these tables are intentionally FK-less). Run once at
+     * startup. "LIB:<tab>" contexts are bounded (a handful of tabs, reset each full cycle) and never orphan.
+     */
+    @Query("DELETE FROM enhanced_shuffle_played WHERE contextId LIKE 'PL:%' AND substr(contextId, 4) NOT IN (SELECT id FROM playlist)")
+    suspend fun pruneOrphanEnhancedPlayed()
+
+    @Query("DELETE FROM enhanced_shuffle_context WHERE contextId LIKE 'PL:%' AND substr(contextId, 4) NOT IN (SELECT id FROM playlist)")
+    suspend fun pruneOrphanEnhancedContext()
+
     @Transaction
     @Query("SELECT * FROM playlist_song_map WHERE songId = :songId")
     fun playlistSongMaps(songId: String): List<PlaylistSongMap>
