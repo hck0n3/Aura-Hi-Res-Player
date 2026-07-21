@@ -1,17 +1,17 @@
-# Aura Hi-Res Player 0.6.115 — Corregido un cierre de la app y el mensaje de error engañoso
+# Aura Hi-Res Player 0.6.116 — Letras sincronizadas primero + nuevo proveedor Unison
 
-## 🛑 Ya no se cierra la app al tocar con la cola vacía
-- Si todas las canciones fallaban al cargar y la cola se quedaba vacía, tocar la pantalla **cerraba la app** de golpe.
-- Era un fallo que introduje yo en una mejora anterior. Corregido.
+## 🎤 Ahora prioriza las letras sincronizadas
+- Antes la app mostraba lo primero que llegara, sincronizado o no.
+- Ahora **prefiere las letras sincronizadas** (las que se resaltan al ritmo de la canción). Si ninguna fuente las tiene, cae a texto plano.
+- Sin volverse lenta: si la primera fuente ya trae sincronizadas, se muestran al instante; y si solo hay texto plano, aparece rápido (no se queda esperando).
 
-## 💬 Mensaje de error honesto (ya no dice "restricción de edad" sin serlo)
-- Cuando YouTube rechazaba una canción, la app decía **"no se pueden reproducir canciones con restricción de edad"** — aunque la canción no tuviera nada de eso.
-- Eso mandaba a buscar un ajuste de edad que no existe, cuando el problema real era otro (sesión o conexión).
-- Ahora el mensaje es **preciso**: si YouTube rechaza la petición, te dice que revises la conexión y, si sigue, cierres sesión y vuelvas a entrar.
+## ➕ Nuevo proveedor de letras: Unison
+- Añadido **Unison** (unison.boidu.dev) — ya tenías los otros 8, ahora están los 9.
+- Se puede activar/desactivar en Ajustes, como los demás.
+- Es un proveedor **colaborativo** y su base aún es pequeña, así que hoy encuentra pocas canciones — por eso va de **último recurso**: no frena a los proveedores fiables, solo se consulta si ninguno tiene la letra. Irá encontrando más a medida que crezca.
 
-## ✅ Confirmado: el descifrado de YouTube está bien
-- El bloqueo de reproducción que hubo estos días **no era el descifrado** (lo verifiqué ejecutando el código real de YouTube).
-- Cuando a alguien no le suena nada aunque cargue el resto, la causa suele ser **una sesión local dañada**: la cura es **reinstalar la app e iniciar sesión de nuevo**.
+## 🔧 Por dentro
+- Al añadir Unison de último, evité que el proveedor Paxsenix volviera a consultarse en cada canción (su servidor bloquea a menudo). Ahora los dos últimos proveedores solo se consultan si de verdad hace falta.
 
 ## Recordatorio de lo abierto
 - **Cortes a mitad de canción** (solo en Lossless/Saavn) — necesito tu registro en esa calidad.
