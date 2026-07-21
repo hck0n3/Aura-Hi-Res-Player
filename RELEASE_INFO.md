@@ -1,17 +1,21 @@
-# Aura Hi-Res Player 0.6.116 — Letras sincronizadas primero + nuevo proveedor Unison
+# Aura Hi-Res Player 0.6.117 — Aleatorio Mejorado (memoria que nunca repite)
 
-## 🎤 Ahora prioriza las letras sincronizadas
-- Antes la app mostraba lo primero que llegara, sincronizado o no.
-- Ahora **prefiere las letras sincronizadas** (las que se resaltan al ritmo de la canción). Si ninguna fuente las tiene, cae a texto plano.
-- Sin volverse lenta: si la primera fuente ya trae sincronizadas, se muestran al instante; y si solo hay texto plano, aparece rápido (no se queda esperando).
+## 🔀 Nuevo: Aleatorio Mejorado
+El modo aleatorio ahora tiene **memoria de verdad**, por lista:
 
-## ➕ Nuevo proveedor de letras: Unison
-- Añadido **Unison** (unison.boidu.dev) — ya tenías los otros 8, ahora están los 9.
-- Se puede activar/desactivar en Ajustes, como los demás.
-- Es un proveedor **colaborativo** y su base aún es pequeña, así que hoy encuentra pocas canciones — por eso va de **último recurso**: no frena a los proveedores fiables, solo se consulta si ninguno tiene la letra. Irá encontrando más a medida que crezca.
+- **Nunca repite** una canción hasta que suenen todas las de esa lista.
+- **Recuerda entre días:** si vuelves a una playlist (o a toda tu biblioteca) mañana o la semana que viene, sigue por donde ibas y no te repite lo que ya oíste ahí.
+- **Recuerda al apagar y encender:** si desactivas el aleatorio y lo vuelves a activar, no olvida qué canciones ya sonaron.
+- **Revuelve de verdad en cada toque:** cada vez que pulsas el botón, vuelve a barajar lo que aún NO ha sonado y continúa desde ahí — no una y otra vez el mismo orden.
+- **Al terminar la lista, la música sigue sola:** cuando ya no queda nada nuevo que barajar, la reproducción continúa con la **radio infinita inteligente** (ya no aleatoria) — como cuando se acaba una cola normal.
+
+Funciona por **cada playlist**, por las listas automáticas (Me gusta, Descargadas, Subidas, Exportadas) y por **toda la biblioteca**. Cada una lleva su propia memoria por separado.
+
+**Viene activado por defecto.** Puedes apagarlo cuando quieras en **Ajustes ▸ Reproductor ▸ "Aleatorio mejorado"** para volver al aleatorio de siempre.
 
 ## 🔧 Por dentro
-- Al añadir Unison de último, evité que el proveedor Paxsenix volviera a consultarse en cada canción (su servidor bloquea a menudo). Ahora los dos últimos proveedores solo se consultan si de verdad hace falta.
+- La memoria se guarda en la base de datos de la app (migración sin pérdida; tu biblioteca queda intacta).
+- El traspaso a la radio infinita ocurre justo cuando se agota lo no-oído, para que nunca se repita ni se quede en silencio.
 
 ## Recordatorio de lo abierto
 - **Cortes a mitad de canción** (solo en Lossless/Saavn) — necesito tu registro en esa calidad.
