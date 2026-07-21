@@ -40,5 +40,19 @@
     "nArrayIndex": null,
     "nConstantArgs": null,
     "nJsExpression": "(function(n){try{var u=new g.yk('https://x.googlevideo.com/videoplayback?n='+n,true);var t=u.get('n');return(t&&t!==n)?t:n;}catch(e){return n;}})(INPUT)"
+  },
+  {
+    "hash": "dfc3d2b2",
+    "signatureTimestamp": 20649,
+    "sigFuncName": "_expr_sig",
+    "sigConstantArg": null,
+    "sigConstantArgs": null,
+    "sigPreprocessFunc": null,
+    "sigPreprocessArgs": null,
+    "sigJsExpression": "OI(35,7321,INPUT)",
+    "nFuncName": "_expr_n",
+    "nArrayIndex": null,
+    "nConstantArgs": null,
+    "nJsExpression": "(function(n){try{var u=new g.uS('https://x.googlevideo.com/videoplayback?n='+n,true);var t=u.get('n');return(t&&t!==n)?t:n;}catch(e){return n;}})(INPUT)"
   }
 ]
