@@ -1,16 +1,17 @@
-# Aura Hi-Res Player 0.6.113 — Menos cortes al empezar canción en Lossless, y tres fallos de audio blindados
+# Aura Hi-Res Player 0.6.114 — Recuperación de sesión de verdad cuando YouTube pide "inicia sesión"
 
-## 🎵 Menos cortes al empezar canción (en Lossless / Saavn)
-- Cuando pedías **Lossless** y esa calidad no estaba disponible, la app cambiaba de formato y **provocaba un corte a propósito** para reiniciar el reproductor.
-- Ahora, si el corte cae **al empezar la canción**, ya no ocurre.
-- **En Opus esto nunca pasaba** — por eso al cambiar tú a Opus deberían desaparecer.
+## 🔑 Cuando tu sesión caduca, la recuperación ahora funciona de verdad
+- En la versión anterior, si YouTube rechazaba tu sesión, la app **intentaba recuperarse pero fallaba igual**: el reintento seguía llevando tu cuenta a medias, y YouTube lo rechazaba otra vez.
+- Ahora el reintento es **realmente anónimo** (como un invitado limpio) y además **refresca la sesión de invitado** antes de reintentar, por si YouTube tenía marcada la anterior.
+- **Tu cuenta no se toca** en ningún momento: sigues con sesión iniciada para tu biblioteca.
 
-## 🛡️ Tres puntos donde el audio podía romperse: blindados
-- Si un formato venía sin la etiqueta interna de códec, la app podía **quedarse sin reproducir** esa canción. Corregido en los tres sitios donde pasaba (reproducción, descarga y precarga).
-- Y de paso se cerró un caso en el que un dato incompleto podía hacer que la app **re-descargara la canción en curso una y otra vez**.
+## ⚠️ Con honestidad sobre el Xiaomi Redmi Note 13 Pro
+- Esta versión arregla dos casos: **cookie caducada** y **sesión de invitado marcada por YouTube**.
+- **Pero si YouTube ha bloqueado tu cuenta o tu conexión directamente**, ninguna app puede saltárselo. En ese caso la cura es **cerrar sesión y volver a entrar** en ese teléfono, o **probar con otra red** (datos en vez de WiFi, o al revés).
+- **Prueba esto primero en el Redmi:** cierra sesión de YouTube y vuelve a entrar. Si era cookie muerta, se arregla al instante.
+- Y si sigue fallando, mándame el registro de ese intento (Ajustes → Registros): las líneas nuevas me dicen exactamente si es recuperable o es un bloqueo de YouTube que no depende de la app.
 
-## ⚠️ Todavía no arreglado — con honestidad
-- **Los cortes a MITAD de canción siguen abiertos.** Este arreglo solo cubre los del arranque. El de mitad de canción está entendido y documentado, pero **no lo toco hasta poder confirmarlo con un registro real** — llevo dos intentos fallidos con este bug y no voy a arriesgarme a un tercero a ciegas.
-  - Si vuelves a Lossless y te pasa: mándame el registro (Ajustes → Registros) y lo confirmo o lo descarto en el acto.
-- **Volumen Seguro** sube como máximo +3 dB.
-- **Plegables:** cuatro mejoras hechas pero sin probar en un plegable real.
+## Recordatorio de lo abierto
+- **Cortes a mitad de canción** (solo en Lossless/Saavn) — necesito tu registro en esa calidad para tocarlo con seguridad.
+- **Volumen Seguro** sube máximo +3 dB.
+- **Plegables:** mejoras hechas, sin probar en un plegable real.
