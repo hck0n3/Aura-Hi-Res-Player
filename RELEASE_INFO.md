@@ -1,21 +1,18 @@
-# Aura Hi-Res Player 0.6.117 — Aleatorio Mejorado (memoria que nunca repite)
+# Aura Hi-Res Player 0.6.118 — Arreglo urgente: la app crasheaba al abrir
 
-## 🔀 Nuevo: Aleatorio Mejorado
-El modo aleatorio ahora tiene **memoria de verdad**, por lista:
+## 🔴 Corregido: crash al abrir tras actualizar a 0.6.117
+La 0.6.117 podía **cerrarse sola nada más abrir** al actualizar: la nueva base de datos del Aleatorio Mejorado se registró en el sitio equivocado, así que al subir de versión la app no encontraba cómo migrar y crasheaba. **Ya está arreglado** — la migración se aplica sin perder nada de tu biblioteca.
 
-- **Nunca repite** una canción hasta que suenen todas las de esa lista.
-- **Recuerda entre días:** si vuelves a una playlist (o a toda tu biblioteca) mañana o la semana que viene, sigue por donde ibas y no te repite lo que ya oíste ahí.
-- **Recuerda al apagar y encender:** si desactivas el aleatorio y lo vuelves a activar, no olvida qué canciones ya sonaron.
-- **Revuelve de verdad en cada toque:** cada vez que pulsas el botón, vuelve a barajar lo que aún NO ha sonado y continúa desde ahí — no una y otra vez el mismo orden.
-- **Al terminar la lista, la música sigue sola:** cuando ya no queda nada nuevo que barajar, la reproducción continúa con la **radio infinita inteligente** (ya no aleatoria) — como cuando se acaba una cola normal.
+Si venías de 0.6.117 y no abría: instala esta y volverá a funcionar (tu biblioteca sigue intacta).
 
-Funciona por **cada playlist**, por las listas automáticas (Me gusta, Descargadas, Subidas, Exportadas) y por **toda la biblioteca**. Cada una lleva su propia memoria por separado.
+## 🔀 Aleatorio Mejorado (sigue disponible)
+El modo aleatorio con **memoria de verdad**, por lista:
+- **Nunca repite** una canción hasta que suenen todas.
+- **Recuerda entre días** por dónde ibas y qué ya oíste; y **al apagar y encender** el aleatorio no lo olvida.
+- **Revuelve de verdad en cada toque** lo que aún NO ha sonado.
+- **Al terminar la lista**, la música sigue sola con la radio infinita inteligente.
 
-**Viene activado por defecto.** Puedes apagarlo cuando quieras en **Ajustes ▸ Reproductor ▸ "Aleatorio mejorado"** para volver al aleatorio de siempre.
-
-## 🔧 Por dentro
-- La memoria se guarda en la base de datos de la app (migración sin pérdida; tu biblioteca queda intacta).
-- El traspaso a la radio infinita ocurre justo cuando se agota lo no-oído, para que nunca se repita ni se quede en silencio.
+Por cada playlist, listas automáticas (Me gusta, Descargadas, Subidas, Exportadas) y toda la biblioteca — cada una con su memoria. Activado por defecto; apágalo en **Ajustes ▸ Reproductor ▸ "Aleatorio mejorado"** para el aleatorio clásico.
 
 ## Recordatorio de lo abierto
 - **Cortes a mitad de canción** (solo en Lossless/Saavn) — necesito tu registro en esa calidad.

@@ -61,6 +61,9 @@ object AppModule {
             // v37->v38: add index on event.timestamp. MUST be here (this is the builder Hilt injects);
             // registering it only on the unused MusicDatabase.newInstance would crash every v37 user on update.
             iad1tya.echo.music.db.MIGRATION_37_38,
+            // v38->v39: Enhanced Shuffle tables. MUST be here too — 0.6.117 registered it ONLY on the dead
+            // MusicDatabase.newInstance builder, so every 38->39 update crashed with "migration not found".
+            iad1tya.echo.music.db.MIGRATION_38_39,
         )
 
         .setJournalMode(androidx.room.RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
