@@ -344,7 +344,7 @@ fun AutoPlaylistScreen(
                                 downloadState = downloadState,
                                 onShowRemoveDownloadDialog = { showRemoveDownloadDialog = true },
                                 menuState = menuState,
-                                contextId = "PL:" + playlistId,
+                                contextId = "AP:" + playlistId,
                                 // C1: only the Liked / Uploaded auto-playlists can sync from YT Music, and only
                                 // when signed in. syncLikedSongs/syncUploadedSongs are fire-and-forget on SyncUtils.
                                 onSync = if (isLoggedIn &&
@@ -450,7 +450,7 @@ fun AutoPlaylistScreen(
                                                     title = playlist,
                                                     items = songs!!.map { it.toMediaItem() },
                                                     startIndex = songs!!.indexOfFirst { it.id == song.id },
-                                                    contextId = "PL:" + playlistId,
+                                                    contextId = "AP:" + playlistId,
                                                 ),
                                             )
                                         }
@@ -621,7 +621,9 @@ private fun AutoPlaylistHeader(
     onShowRemoveDownloadDialog: () -> Unit,
     menuState: iad1tya.echo.music.ui.component.MenuState,
     onSync: (() -> Unit)? = null,
-    // Enhanced Shuffle context id for this auto-playlist (e.g. "PL:liked"); null = classic shuffle.
+    // Enhanced Shuffle context id for this auto-playlist (e.g. "AP:liked"). Distinct "AP:" prefix (vs real
+    // playlists' "PL:") keeps these virtual ids out of the PL:%-orphan prune, so their no-repeat memory persists
+    // forever (liked/downloaded/uploaded/exported are never deleted). null = classic shuffle.
     contextId: String? = null,
     modifier: Modifier = Modifier
 ) {

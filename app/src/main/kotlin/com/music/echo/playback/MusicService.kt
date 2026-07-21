@@ -3883,9 +3883,12 @@ class MusicService :
         // tail still sits ahead — drop the tail and continue into the infinite smart radio here, one lap early.
         // That is exactly the user's "when the list ends, continue with the infinite list, no longer random."
         // Guards mirror the last-item handoff; REPEAT_MODE_OFF only, so repeat-all/one are never interrupted.
+        // AUTO-only: a manual skip/seek onto the last-unplayed song must NOT complete the cycle or hand off — only
+        // natural end-of-track advance empties the pool "for real". (Non-AUTO reset would wipe persistent memory.)
         run {
             val exhaustCtx = shuffleContextId
-            if (autoLoadMoreHint && enhancedShuffleHint && player.shuffleModeEnabled && exhaustCtx != null &&
+            if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO &&
+                autoLoadMoreHint && enhancedShuffleHint && player.shuffleModeEnabled && exhaustCtx != null &&
                 player.playWhenReady && !radioSeedInFlight &&
                 player.repeatMode == Player.REPEAT_MODE_OFF &&
                 player.hasNextMediaItem() &&            // a tail still sits ahead...
