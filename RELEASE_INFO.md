@@ -1,18 +1,12 @@
-# Aura Hi-Res Player 0.6.118 — Arreglo urgente: la app crasheaba al abrir
+# Aura Hi-Res Player 0.6.119 — El Aleatorio Mejorado se ve y se corrige
 
-## 🔴 Corregido: crash al abrir tras actualizar a 0.6.117
-La 0.6.117 podía **cerrarse sola nada más abrir** al actualizar: la nueva base de datos del Aleatorio Mejorado se registró en el sitio equivocado, así que al subir de versión la app no encontraba cómo migrar y crasheaba. **Ya está arreglado** — la migración se aplica sin perder nada de tu biblioteca.
+## 🔴 Corregido: el aleatorio saltaba a la canción equivocada
+Con la transición suave (crossfade) activada, a veces **oías venir la siguiente canción y de pronto saltaba a otra distinta**. Causa: el fundido cambia de canción por un camino interno que no anotaba la canción como "ya reproducida", así que el aleatorio volvía a barajar como si nada hubiera sonado. Ya se anota siempre — el aleatorio continúa con la canción correcta y no repite. (El fundido de 9s no se tocó: mismo sonido de siempre.)
 
-Si venías de 0.6.117 y no abría: instala esta y volverá a funcionar (tu biblioteca sigue intacta).
-
-## 🔀 Aleatorio Mejorado (sigue disponible)
-El modo aleatorio con **memoria de verdad**, por lista:
-- **Nunca repite** una canción hasta que suenen todas.
-- **Recuerda entre días** por dónde ibas y qué ya oíste; y **al apagar y encender** el aleatorio no lo olvida.
-- **Revuelve de verdad en cada toque** lo que aún NO ha sonado.
-- **Al terminar la lista**, la música sigue sola con la radio infinita inteligente.
-
-Por cada playlist, listas automáticas (Me gusta, Descargadas, Subidas, Exportadas) y toda la biblioteca — cada una con su memoria. Activado por defecto; apágalo en **Ajustes ▸ Reproductor ▸ "Aleatorio mejorado"** para el aleatorio clásico.
+## 👁️ Ahora VES que el aleatorio mejorado funciona
+- **Contador en cada lista:** una píldora "🔀 Aleatorio mejorado · X/Y reproducidas" en la playlist, las listas automáticas (Me gusta, Descargadas…) y la biblioteca. Verla = está activo; el número sube según avanzas el ciclo sin repetir.
+- **Canciones ya reproducidas, marcadas:** en la lista se ven **atenuadas y con un ✓** las que ya sonaron en este ciclo del aleatorio. Lo que falta por sonar se ve normal. La que está sonando ahora nunca se atenúa.
+- Todo se actualiza **en vivo** mientras suena la música, y desaparece si apagas el aleatorio mejorado en Ajustes.
 
 ## Recordatorio de lo abierto
 - **Cortes a mitad de canción** (solo en Lossless/Saavn) — necesito tu registro en esa calidad.

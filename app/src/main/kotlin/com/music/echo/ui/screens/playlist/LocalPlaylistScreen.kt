@@ -144,6 +144,8 @@ import iad1tya.echo.music.ui.component.IconButton
 import iad1tya.echo.music.ui.component.LocalMenuState
 import iad1tya.echo.music.ui.component.OverlayEditButton
 import iad1tya.echo.music.ui.component.SongListItem
+import iad1tya.echo.music.ui.component.EnhancedShuffleChip
+import iad1tya.echo.music.ui.component.rememberPlayedShuffleSet
 import iad1tya.echo.music.ui.component.SortHeader
 import iad1tya.echo.music.ui.component.TextFieldDialog
 import iad1tya.echo.music.ui.menu.CustomThumbnailMenu
@@ -188,6 +190,8 @@ fun LocalPlaylistScreen(
 
     val playlist by viewModel.playlist.collectAsState()
     val songs by viewModel.playlistSongs.collectAsState()
+    // Enhanced Shuffle: reactive per-context played-set for the "ya reproducida" dim/check + the X/Y chip.
+    val shufflePlayedSet = rememberPlayedShuffleSet("PL:" + viewModel.playlistId)
     val mutableSongs = remember { mutableStateListOf<PlaylistSong>() }
     val playlistLength =
         remember(songs) {
@@ -700,6 +704,7 @@ fun LocalPlaylistScreen(
                             isActive = song.song.id == mediaMetadata?.id,
                             isPlaying = isPlaying,
                             showInLibraryIcon = true,
+                            playedInShuffle = song.song.id in shufflePlayedSet,
                             shape = listItemShape(
                                 index = index,
                                 count = if (isSearching) filteredSongs.size else mutableSongs.size
@@ -1507,6 +1512,20 @@ fun LocalPlaylistHeader(
                     )
                 }
             }
+        }
+
+        // Enhanced Shuffle: "activo · X/Y reproducidas" pill — visible whenever the feature is ON, so the
+        // user knows this playlist's shuffle carries persistent no-repeat memory and can watch it progress.
+        run {
+            val playedSet = rememberPlayedShuffleSet("PL:" + playlist.playlist.id)
+            val playedCount = remember(playedSet, songs) { songs.count { it.song.id in playedSet } }
+            EnhancedShuffleChip(
+                playedCount = playedCount,
+                total = songs.size,
+                modifier = Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .padding(top = 12.dp),
+            )
         }
 
         Spacer(Modifier.height(24.dp))

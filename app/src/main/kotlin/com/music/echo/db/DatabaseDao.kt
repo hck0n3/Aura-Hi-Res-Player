@@ -1807,6 +1807,14 @@ interface DatabaseDao {
     @Query("SELECT COUNT(*) FROM enhanced_shuffle_played WHERE contextId = :contextId")
     suspend fun countPlayedForContext(contextId: String): Int
 
+    /**
+     * Reactive played-set for [contextId] (UI: per-song "ya reproducida" dim/check + the X/Y counter chip).
+     * Emits a fresh list on every insert (song played) or clear (cycle reset), so the playlist screen updates
+     * live as songs sound. Empty list = nothing played yet / context has no memory.
+     */
+    @Query("SELECT songId FROM enhanced_shuffle_played WHERE contextId = :contextId")
+    fun playedSongIdsForContextFlow(contextId: String): Flow<List<String>>
+
     /** Record a song as played for a context. IGNORE = a re-play never rewrites the first-played row. */
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertEnhancedPlayed(entity: EnhancedShufflePlayedEntity)

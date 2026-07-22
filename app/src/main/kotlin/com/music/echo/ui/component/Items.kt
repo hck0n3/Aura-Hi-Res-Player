@@ -454,6 +454,9 @@ fun SongListItem(
     drawHighlight: Boolean = true,
     shape: Shape = RectangleShape,
     horizontalPadding: Dp = 16.dp,
+    // Enhanced Shuffle ("Aleatorio mejorado"): this song already played in the current no-repeat cycle of the
+    // active context -> dim the row + show a check, so the user sees at a glance what's already sounded.
+    playedInShuffle: Boolean = false,
 ) {
     val swipeEnabled by rememberPreference(SwipeToSongKey, defaultValue = false)
 
@@ -484,8 +487,22 @@ fun SongListItem(
                         )
                 )
             },
-            trailingContent = trailingContent,
-            modifier = modifier,
+            trailingContent = {
+                // "Ya reproducida" marker — suppressed on the ACTIVE row: the currently-sounding song is
+                // technically in the played-set from its first second, but dimming what's playing looks broken.
+                if (playedInShuffle && !isActive) {
+                    androidx.compose.material3.Icon(
+                        painter = painterResource(R.drawable.check),
+                        contentDescription = "Ya reproducida en aleatorio",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier
+                            .padding(end = 4.dp)
+                            .size(16.dp)
+                    )
+                }
+                trailingContent()
+            },
+            modifier = if (playedInShuffle && !isActive) modifier.alpha(0.5f) else modifier,
             isSelected = isSelected,
             isActive = isActive,
             shape = shape,

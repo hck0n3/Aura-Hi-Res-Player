@@ -105,6 +105,8 @@ import iad1tya.echo.music.ui.component.ExpandableText
 import iad1tya.echo.music.ui.component.IconButton
 import iad1tya.echo.music.ui.component.LocalMenuState
 import iad1tya.echo.music.ui.component.SongListItem
+import iad1tya.echo.music.ui.component.EnhancedShuffleChip
+import iad1tya.echo.music.ui.component.rememberPlayedShuffleSet
 import iad1tya.echo.music.ui.component.SortHeader
 import iad1tya.echo.music.ui.menu.AutoPlaylistMenu
 import iad1tya.echo.music.ui.menu.SelectionSongMenu
@@ -169,6 +171,8 @@ fun AutoPlaylistScreen(
         }
 
     val playlistId = viewModel.playlist
+    // Enhanced Shuffle: reactive per-context played-set for the "ya reproducida" dim/check on each row.
+    val shufflePlayedSet = rememberPlayedShuffleSet("AP:" + playlistId)
     val playlistType = when (playlistId) {
         "liked" -> PlaylistType.LIKE
         "downloaded" -> PlaylistType.DOWNLOAD
@@ -409,6 +413,7 @@ fun AutoPlaylistScreen(
                             isActive = song.song.id == mediaMetadata?.id,
                             isPlaying = isPlaying,
                             showInLibraryIcon = true,
+                            playedInShuffle = song.song.id in shufflePlayedSet,
                             shape = listItemShape(index, filteredSongs.size),
                             trailingContent = {
                                 if (inSelectMode) {
@@ -858,6 +863,17 @@ private fun AutoPlaylistHeader(
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
+
+        // Enhanced Shuffle: "activo · X/Y reproducidas" pill (feature-gated inside; hidden when OFF).
+        run {
+            val playedSet = rememberPlayedShuffleSet(contextId)
+            val playedCount = remember(playedSet, songs) { songs.count { it.song.id in playedSet } }
+            EnhancedShuffleChip(
+                playedCount = playedCount,
+                total = songs.size,
+                modifier = Modifier.padding(top = 12.dp),
+            )
+        }
 
         Spacer(Modifier.height(16.dp))
 

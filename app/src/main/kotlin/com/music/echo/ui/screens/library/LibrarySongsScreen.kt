@@ -6,6 +6,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.asPaddingValues
@@ -72,7 +73,10 @@ import iad1tya.echo.music.ui.component.HideOnScrollFAB
 import iad1tya.echo.music.ui.component.LibraryViewToggle
 import iad1tya.echo.music.ui.component.LocalMenuState
 import iad1tya.echo.music.ui.component.SongGridItem
+import androidx.compose.runtime.remember
+import iad1tya.echo.music.ui.component.EnhancedShuffleChip
 import iad1tya.echo.music.ui.component.SongListItem
+import iad1tya.echo.music.ui.component.rememberPlayedShuffleSet
 import iad1tya.echo.music.ui.component.SortHeader
 import iad1tya.echo.music.ui.menu.SongMenu
 import iad1tya.echo.music.utils.listItemShape
@@ -151,6 +155,8 @@ fun LibrarySongsScreen(
     // NOT share a tab's bucket — exhausting a 4-song search result would otherwise clear the tab's whole
     // accumulated memory — so filtered subsets fall back to null = classic in-memory shuffle.
     val libraryContextId = if (searchQuery.isBlank() && !hideExplicit) "LIB:${filter.name}" else null
+    // Enhanced Shuffle: reactive per-tab played-set for the "ya reproducida" dim/check + the X/Y chip.
+    val shufflePlayedSet = rememberPlayedShuffleSet(libraryContextId)
 
     // Header sub-blocks are hoisted so the LIST (LazyColumn) and GRID (LazyVerticalGrid) branches
     // render byte-identical filter/search/sort headers — the only difference is the item layout.
@@ -213,6 +219,7 @@ fun LibrarySongsScreen(
     }
 
     val headerContent = @Composable {
+        Column {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.padding(start = 16.dp),
@@ -248,6 +255,20 @@ fun LibrarySongsScreen(
                 viewType = viewType,
                 onViewTypeChange = { viewType = it },
             )
+        }
+        // Enhanced Shuffle: "activo · X/Y reproducidas" pill for this tab (feature-gated inside).
+        if (libraryContextId != null) {
+            val playedCount = remember(shufflePlayedSet, filteredSongs) {
+                filteredSongs.count { it.id in shufflePlayedSet }
+            }
+            EnhancedShuffleChip(
+                playedCount = playedCount,
+                total = filteredSongs.size,
+                modifier = Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .padding(top = 8.dp, bottom = 4.dp),
+            )
+        }
         }
     }
 
@@ -296,6 +317,7 @@ fun LibrarySongsScreen(
                             showLikedIcon = true,
                             showDownloadIcon = filter != SongFilter.DOWNLOADED,
                             showSize = filter == SongFilter.DOWNLOADED,
+                            playedInShuffle = song.id in shufflePlayedSet,
                             shape = listItemShape(index, filteredSongs.size),
                             trailingContent = {
                                 IconButton(
