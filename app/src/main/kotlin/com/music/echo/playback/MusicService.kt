@@ -7042,6 +7042,24 @@ class MusicService :
         performCrossfadeSwap()
 
         if (savedShuffleEnabled) {
+            // Enhanced Shuffle: the crossfade swap advances the queue via a path that SKIPS
+            // onMediaItemTransition — where B5 + the persistent no-repeat bookkeeping normally record the
+            // just-started song as played. With crossfade ON (every auto-advance is a swap) that recording
+            // NEVER ran, so shufflePlayedIds stayed near-empty and applyShuffleOrder below kept re-shuffling a
+            // pool where nothing was marked played → already-heard songs resurfaced as the "next" song
+            // (reported: the shuffle jumps to a song that isn't the right continuation). Record the song the
+            // swap just made current here, mirroring onMediaItemTransition's B5 block, BEFORE re-applying the
+            // order so played songs correctly sink and the cycle-exhaustion self-reset counts them.
+            val playedId = player.currentMediaItem?.mediaId ?: player.currentMetadata?.id
+            playedId?.let { shufflePlayedIds.add(it) }
+            val ctx = shuffleContextId
+            if (enhancedShuffleHint && ctx != null && playedId != null) {
+                val now = System.currentTimeMillis()
+                scope.launch(enhancedShuffleWriteDispatcher) {
+                    runCatching { database.insertEnhancedPlayed(EnhancedShufflePlayedEntity(ctx, playedId, now)) }
+                }
+            }
+
             val shufflePlaylistFirst = dataStore.get(ShufflePlaylistFirstKey, false)
             applyShuffleOrder(player.currentMediaItemIndex, player.mediaItemCount, shufflePlaylistFirst)
         }
