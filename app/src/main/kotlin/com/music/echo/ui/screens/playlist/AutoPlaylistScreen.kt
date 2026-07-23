@@ -711,6 +711,9 @@ private fun AutoPlaylistHeader(
                             title = name,
                             items = songs.shuffled().map { it.toMediaItem() },
                             contextId = contextId,
+                            // Turn shuffle MODE on so the enhanced no-repeat memory drives the order and
+                            // records plays (pre-shuffling alone bypassed it → replayed played songs).
+                            startShuffled = true,
                         ),
                     )
                 },

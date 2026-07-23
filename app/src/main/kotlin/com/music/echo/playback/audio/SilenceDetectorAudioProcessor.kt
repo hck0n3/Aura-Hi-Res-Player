@@ -29,6 +29,15 @@ class SilenceDetectorAudioProcessor(
     @Volatile
     var instantModeEnabled: Boolean = false
 
+    // TAIL-SILENCE mode: armed by MusicService ONLY during the final stretch of a track (the crossfade
+    // preload window) so a long TRAILING silence triggers the crossfade at the end of the AUDIBLE content
+    // instead of fading pure silence into the next song. Deliberately decoupled from [instantModeEnabled]
+    // (the skip-silence feature stays hardcoded OFF): this mode never skips or alters audio — it only
+    // measures and fires [onLongSilence]. Near-zero cost: detection runs solely while armed (last ~20s of
+    // a track), on the already-hot audio pipeline thread.
+    @Volatile
+    var tailDetectEnabled: Boolean = false
+
     @Volatile
     private var consecutiveSilentFrames: Long = 0
 
@@ -62,7 +71,7 @@ class SilenceDetectorAudioProcessor(
         }
 
         
-        if (instantModeEnabled && sampleRate > 0 && channelCount > 0) {
+        if ((instantModeEnabled || tailDetectEnabled) && sampleRate > 0 && channelCount > 0) {
             detectSilence(inputBuffer)
         } else {
             clearSilenceState()

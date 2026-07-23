@@ -1392,6 +1392,9 @@ fun LocalPlaylistHeader(
                             title = playlist.playlist.name,
                             items = songs.shuffled().map { it.song.toMediaItem() },
                             contextId = "PL:" + playlist.playlist.id,
+                            // Turn shuffle MODE on so the enhanced no-repeat memory drives the order and
+                            // records plays (pre-shuffling alone bypassed it → replayed played songs).
+                            startShuffled = true,
                         )
                     )
                 },

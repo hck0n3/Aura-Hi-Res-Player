@@ -456,6 +456,8 @@ fun LibrarySongsScreen(
                                 title = context.getString(R.string.queue_all_songs),
                                 items = filteredSongs.shuffled().map { it.toMediaItem() },
                                 contextId = libraryContextId,
+                                // Enhanced shuffle: enable shuffle MODE (memory-aware order + recording).
+                                startShuffled = true,
                             ),
                         )
                     },
@@ -472,6 +474,8 @@ fun LibrarySongsScreen(
                                 title = context.getString(R.string.queue_all_songs),
                                 items = filteredSongs.shuffled().map { it.toMediaItem() },
                                 contextId = libraryContextId,
+                                // Enhanced shuffle: enable shuffle MODE (memory-aware order + recording).
+                                startShuffled = true,
                             ),
                         )
                     },

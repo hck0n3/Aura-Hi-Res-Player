@@ -14,6 +14,11 @@ class ListQueue(
     // no-repeat memory for this queue (falls back to the classic in-memory shuffle). Optional so every
     // existing call site is unaffected.
     val contextId: String? = null,
+    // Set by the screens' Shuffle buttons: ask playQueue to turn shuffle MODE on once the items land.
+    // The buttons used to only pre-shuffle the items with shuffle mode OFF, which bypassed the whole
+    // enhanced-shuffle system (no memory-aware order, no played recording → replayed played songs).
+    // Transient intent — deliberately NOT persisted with the queue (restore must not re-force it).
+    val startShuffled: Boolean = false,
 ) : Queue {
     override val preloadItem: MediaMetadata? = null
 

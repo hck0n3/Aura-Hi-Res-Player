@@ -292,6 +292,7 @@ fun PlayerSettings(
             1 -> "Suave (igual potencia)"
             2 -> "Suave larga (curva S)"
             3 -> "Exponencial (rápida)"
+            4 -> "Ascenso (entra rápido, sale lento)"
             else -> "Lineal"
         }
     }
@@ -305,7 +306,7 @@ fun PlayerSettings(
             },
             title = "Estilo de transición",
             current = crossfadeCurve,
-            values = listOf(0, 1, 2, 3),
+            values = listOf(0, 1, 2, 3, 4),
             valueText = { crossfadeCurveName(it) }
         )
     }

@@ -12,6 +12,10 @@ object CrossfadeMath {
      *      both tracks carry the SAME power through the blend — the natural, even crossfade.
      *  2 = Long S-curve: equal-power but eased timing (very gradual in/out).
      *  3 = Exponential (quick): each track dominates its half, snappier handover.
+     *  4 = Asymmetric rise (fast-in / slow-out): the incoming track reaches full level in the first HALF
+     *      of the window while the outgoing decays over the WHOLE window on the equal-power cosine — the
+     *      radio-segue / DJ "natural rise in intensity" shape. It also halves the stretch where both
+     *      vocals are simultaneously loud. Never the default; selectable only.
      */
     fun getGains(curve: Int, p: Float): Pair<Float, Float> {
         val half = (Math.PI / 2.0).toFloat()
@@ -22,6 +26,7 @@ object CrossfadeMath {
                 sin(s * half) to cos(s * half)
             }
             3 -> (p * p) to ((1f - p) * (1f - p))
+            4 -> sin((p * 2f).coerceAtMost(1f) * half) to cos(p * half)
             else -> p to (1f - p)
         }
     }

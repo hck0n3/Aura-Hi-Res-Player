@@ -1839,7 +1839,13 @@ class MusicService :
         equalizerService.addAudioProcessor(eqProcessor)
 
         val silenceProcessor = iad1tya.echo.music.playback.audio.SilenceDetectorAudioProcessor {
-            Timber.tag(TAG).d("Silence skipped")
+            // TAIL-SILENCE → early crossfade. Fires on the audio pipeline thread after ≥2s of continuous
+            // silence, ONLY while tailDetectEnabled (armed exclusively for the CURRENT player during the
+            // final ~21s of a track by crossfadePreloadJob; the secondary/incoming player is never armed).
+            // Meaning: the audible content of the outgoing song has ENDED and only a silent tail remains —
+            // start the fade NOW so the next song enters at the end of the MUSIC, not of the FILE.
+            // (The old lambda was a dead debug log; the skip-silence feature itself remains hardcoded OFF.)
+            scope.launch { onTailSilenceDetected() }
         }
         val normProcessor = iad1tya.echo.music.eq.audio.NormalizationGainAudioProcessor()
         val limiterProcessor = iad1tya.echo.music.eq.audio.TruePeakLimiterAudioProcessor()
@@ -2437,11 +2443,37 @@ class MusicService :
             }
 
 
-            if (player.shuffleModeEnabled) {
+            if ((queue as? iad1tya.echo.music.playback.queues.ListQueue)?.startShuffled == true &&
+                !player.shuffleModeEnabled
+            ) {
+                // Enhanced Shuffle FIX (replay bug, part 2): the screens' Shuffle BUTTONS used to only
+                // pre-shuffle the item list with shuffle MODE off — which bypassed the entire enhanced
+                // system: no memory-aware order, no B5, no played-recording → the button replayed played
+                // songs in every configuration. Turning the mode on HERE — after the items landed — fires
+                // onShuffleModeEnabledChanged with a populated queue, which resets B5, applies the
+                // memory-aware order and seeds the persistent memory. The items are already pre-shuffled,
+                // so the starting song stays random.
+                player.shuffleModeEnabled = true
+            } else if (player.shuffleModeEnabled) {
                 val shufflePlaylistFirst = dataStore.get(ShufflePlaylistFirstKey, false)
+                // B5: fresh anti-repeat session for the NEW queue — without this the set still held the
+                // PREVIOUS queue's ids, falsely sinking any songs the two queues share.
+                shufflePlayedIds.clear()
+                player.currentMetadata?.id?.let { shufflePlayedIds.add(it) }
                 applyShuffleOrder(player.currentMediaItemIndex, player.mediaItemCount, shufflePlaylistFirst)
+                // Enhanced Shuffle FIX (replay bug, part 1): this queue started while shuffle was ALREADY
+                // ON, so onShuffleModeEnabledChanged — the only place the persistent memory was loaded —
+                // never fires (true→true is swallowed by media3). The playlist screen (reading the DB) then
+                // showed songs correctly marked as played while the shuffle ORDER (reading the in-memory
+                // set) treated them as unplayed and REPLAYED them. Seed from the DB here too. This branch
+                // also covers the boot RESTORE (onCreate set shuffle on an empty player, consuming the only
+                // callback; the later per-queue snapshot write is true→true and never re-fires it).
+                val seedCtx = shuffleContextId
+                if (enhancedShuffleHint && seedCtx != null) {
+                    seedEnhancedShuffleFromDb(seedCtx, shufflePlaylistFirst)
+                }
             }
-            
+
             preloadUpcomingItems()
         }
     }
@@ -4450,29 +4482,7 @@ class MusicService :
             // the fallback above already plays — we just refine the order when it lands.
             val ctx = shuffleContextId
             if (enhancedShuffleHint && ctx != null) {
-                scope.launch(Dispatchers.IO) {
-                    val persisted = runCatching { database.playedSongIdsForContext(ctx) }
-                        .getOrNull()?.toHashSet() ?: return@launch
-                    if (persisted.isEmpty()) return@launch
-                    withContext(Dispatchers.Main) {
-                        // Bail if the world moved on while we were reading (queue/shuffle/context changed).
-                        if (!player.shuffleModeEnabled || shuffleContextId != ctx || player.mediaItemCount == 0) {
-                            return@withContext
-                        }
-                        val queueIds = (0 until player.mediaItemCount).mapNotNull {
-                            runCatching { player.getMediaItemAt(it).mediaId }.getOrNull()
-                        }
-                        val seed = queueIds.filterTo(LinkedHashSet()) { it in persisted }
-                        player.currentMetadata?.id?.let { seed.add(it) }
-                        // UNION, never clear: songs the user played/skipped DURING this async DB read were
-                        // already added to shufflePlayedIds by onMediaItemTransition on the Main thread. A
-                        // clear() here would drop them and let them repeat. The enable path (above) already
-                        // cleared the set and seeded the current song, so adding the persisted set is a pure
-                        // union of "played before" + "played during the read window".
-                        shufflePlayedIds.addAll(seed)
-                        applyShuffleOrder(player.currentMediaItemIndex, player.mediaItemCount, shufflePlaylistFirst)
-                    }
-                }
+                seedEnhancedShuffleFromDb(ctx, shufflePlaylistFirst)
             }
         }
 
@@ -4542,6 +4552,41 @@ class MusicService :
         }
     }
 
+
+    /**
+     * Enhanced Shuffle: SEED the in-memory B5 played-set from the PERSISTENT per-context memory (∩ current
+     * queue ids, + the current song) and RE-APPLY the order once loaded. Shared by two callers:
+     *  - onShuffleModeEnabledChanged — shuffle toggled ON for a queue with a context;
+     *  - playQueue — a queue STARTS while shuffle is ALREADY ON. The toggle callback never fires then
+     *    (true→true is not a change), which used to leave the order blind to persisted plays: the UI
+     *    (reading the DB) showed songs as played, yet the ORDER (reading this set) replayed them.
+     * The DB read is async; the current order keeps playing and is refined when the seed lands.
+     */
+    private fun seedEnhancedShuffleFromDb(ctx: String, shufflePlaylistFirst: Boolean) {
+        scope.launch(Dispatchers.IO) {
+            val persisted = runCatching { database.playedSongIdsForContext(ctx) }
+                .getOrNull()?.toHashSet() ?: return@launch
+            if (persisted.isEmpty()) return@launch
+            withContext(Dispatchers.Main) {
+                // Bail if the world moved on while we were reading (queue/shuffle/context changed).
+                if (!player.shuffleModeEnabled || shuffleContextId != ctx || player.mediaItemCount == 0) {
+                    return@withContext
+                }
+                val queueIds = (0 until player.mediaItemCount).mapNotNull {
+                    runCatching { player.getMediaItemAt(it).mediaId }.getOrNull()
+                }
+                val seed = queueIds.filterTo(LinkedHashSet()) { it in persisted }
+                player.currentMetadata?.id?.let { seed.add(it) }
+                // UNION, never clear: songs the user played/skipped DURING this async DB read were
+                // already added to shufflePlayedIds by onMediaItemTransition on the Main thread. A
+                // clear() here would drop them and let them repeat. Each caller has already reset the
+                // set for its own session, so adding the persisted set is a pure union of "played
+                // before" + "played during the read window".
+                shufflePlayedIds.addAll(seed)
+                applyShuffleOrder(player.currentMediaItemIndex, player.mediaItemCount, shufflePlaylistFirst)
+            }
+        }
+    }
 
     private fun applyShuffleOrder(
         currentIndex: Int,
@@ -6890,6 +6935,9 @@ class MusicService :
         crossfadePreloadJob = null
         crossfadeReadyJob?.cancel()
         crossfadeReadyJob = null
+        // Tail-silence detection is only valid inside the fade window this call is about to (re)compute —
+        // disarm on every (re)schedule (track change, seek, queue change) so a stale arm can't fire.
+        playerSilenceProcessors[player]?.tailDetectEnabled = false
         // Release any incoming player we preloaded for a transition that's no longer happening (user
         // skipped, seeked, queue changed) so we never leak a second ExoPlayer.
         if (!isCrossfading) {
@@ -6933,6 +6981,26 @@ class MusicService :
             return
         }
 
+        // Enhanced Shuffle — cycle exhaustion under crossfade. The fade below targets nextMediaItemIndex,
+        // but when EVERY song of this context has already played, that "next" is an already-played tail item
+        // (the re-seeded order is [current, …played tail]) — so the fade would REPLAY old songs forever.
+        // The onMediaItemTransition early-handoff can't cover this: with crossfade ON every auto-advance is
+        // a swap that skips that callback entirely. So detect it HERE, while this song still has time left:
+        // complete the cycle and seed the infinite smart radio NOW. appendSeed() re-applies the shuffle
+        // order (fresh radio songs are unplayed → they sort ahead of the played tail), and since the
+        // preload/trigger jobs below read the target index at FIRE time — not now — the fade then lands on
+        // a fresh radio song. In-memory shufflePlayedIds is deliberately NOT cleared, so the old songs stay
+        // sunk behind the radio items. Exactly the user's "when the list ends, continue with the infinite
+        // list". Guards mirror the early-handoff; REPEAT modes and manual queues are never touched.
+        if (enhancedShuffleHint && player.shuffleModeEnabled && shuffleContextId != null &&
+            player.repeatMode == REPEAT_MODE_OFF && autoLoadMoreHint &&
+            !radioSeedInFlight && isEnhancedContextExhausted()
+        ) {
+            shuffleContextId?.let { onEnhancedContextCycleComplete(it) }
+            shuffleContextId = null
+            startRadioSeamlessly()
+        }
+
         val triggerTime = player.duration - crossfadeDuration.toLong()
         val delayMs = triggerTime - player.currentPosition
         if (delayMs <= 0) return
@@ -6954,6 +7022,15 @@ class MusicService :
                     player.nextMediaItemIndex
                 }
                 prepareSecondaryPlayer(targetIndex)
+                // TAIL-SILENCE: arm the detector for the final stretch (~fade + preload lead) of THIS
+                // track only. If ≥2s of continuous silence occurs from here on, the audible content is
+                // over → onTailSilenceDetected starts the fade at the end of the MUSIC instead of the
+                // FILE (songs with long silent tails used to "fade" silence into the next song, which
+                // reads as no transition at all). Measure-only: never skips or alters audio.
+                playerSilenceProcessors[player]?.let {
+                    it.resetTracking()
+                    it.tailDetectEnabled = true
+                }
             }
         }
 
@@ -6973,8 +7050,33 @@ class MusicService :
         return current.albumTitle != null && current.albumTitle == next.albumTitle
     }
 
+    /**
+     * TAIL-SILENCE handler (Main thread). The CURRENT player's detector — armed exclusively during the
+     * fade-preload window by [scheduleCrossfade]'s preload job — reported ≥2s of continuous silence: the
+     * outgoing song's audible content has ended and only a silent tail remains. Start the crossfade NOW so
+     * the next song enters at the end of the music. Every normal crossfade guard re-runs inside
+     * [startCrossfade] (secondary READY-wait, isCrossfading, etc.); disarms itself so one tail fires at
+     * most one fade. If the world moved on (swap/seek/pause) between the audio-thread fire and this Main
+     * hop, the disarm-on-reschedule or the guards below make it a no-op.
+     */
+    private fun onTailSilenceDetected() {
+        val proc = playerSilenceProcessors[player] ?: return
+        if (!proc.tailDetectEnabled) return
+        proc.tailDetectEnabled = false
+        if (isCrossfading || !crossfadeEnabled || highPerformanceModeHint || _videoMode.value) return
+        if (!player.isPlaying || sleepTimer.pauseWhenSongEnd) return
+        if (crossfadeGapless && isNextItemGapless()) return
+        if (!player.hasNextMediaItem() && player.repeatMode != REPEAT_MODE_ONE) return
+        // The scheduled (file-end-anchored) trigger is superseded by this earlier, music-end-anchored one.
+        crossfadeTriggerJob?.cancel()
+        crossfadeTriggerJob = null
+        startCrossfade()
+    }
+
     private fun startCrossfade() {
         if (isCrossfading) return
+        // Tail detection's job is done the moment any fade actually starts (either path) — disarm.
+        playerSilenceProcessors[player]?.tailDetectEnabled = false
 
         
         
