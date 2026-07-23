@@ -394,7 +394,9 @@ class ListenTogetherClient @Inject constructor(
     private var sessionStartTime: Long = 0
     
     
-    private var pendingAction: PendingAction? = null
+    // @Volatile: written on the caller's thread (createRoom/joinRoom) and read/cleared
+    // from onOpen, which runs on an OkHttp dispatcher thread.
+    @Volatile private var pendingAction: PendingAction? = null
     
     
     private var wakeLock: PowerManager.WakeLock? = null
@@ -549,9 +551,14 @@ class ListenTogetherClient @Inject constructor(
     }
 
     private fun executePendingAction() {
-        val action = pendingAction ?: return
-        pendingAction = null
-        
+        // Atomic take (read + clear in one step): onOpen (OkHttp thread) and the
+        // already-connected check in createRoom()/joinRoom() may both call this;
+        // only one of them may consume the action, or CREATE_ROOM/JOIN_ROOM would
+        // be sent twice.
+        val action = synchronized(this) {
+            pendingAction.also { pendingAction = null }
+        } ?: return
+
         when (action) {
             is PendingAction.CreateRoom -> {
                 log(LogLevel.INFO, "Executing pending create room", action.username)
@@ -1244,11 +1251,18 @@ class ListenTogetherClient @Inject constructor(
         } else {
             log(LogLevel.INFO, "Not connected, queueing create room action")
             pendingAction = PendingAction.CreateRoom(username)
-            if (_connectionState.value == ConnectionState.DISCONNECTED || 
+            if (_connectionState.value == ConnectionState.DISCONNECTED ||
                 _connectionState.value == ConnectionState.ERROR) {
                 connect()
             }
-            
+            // Upstream 5.2.81 fix: if the connection became CONNECTED between the
+            // check above and queueing (onOpen already ran and found no pending
+            // action), nothing would ever flush it — the first click armed the
+            // action and did nothing. Execute it right away in that case; the
+            // atomic take in executePendingAction() prevents a double-send.
+            if (_connectionState.value == ConnectionState.CONNECTED) {
+                executePendingAction()
+            }
         }
     }
 
@@ -1267,11 +1281,16 @@ class ListenTogetherClient @Inject constructor(
         } else {
             log(LogLevel.INFO, "Not connected, queueing join room action")
             pendingAction = PendingAction.JoinRoom(roomCode, username)
-            if (_connectionState.value == ConnectionState.DISCONNECTED || 
+            if (_connectionState.value == ConnectionState.DISCONNECTED ||
                 _connectionState.value == ConnectionState.ERROR) {
                 connect()
             }
-            
+            // Upstream 5.2.81 fix: same TOCTOU close as createRoom() — if we are
+            // already CONNECTED by now, flush the queued action immediately
+            // instead of waiting for an onOpen that will never come.
+            if (_connectionState.value == ConnectionState.CONNECTED) {
+                executePendingAction()
+            }
         }
     }
 
