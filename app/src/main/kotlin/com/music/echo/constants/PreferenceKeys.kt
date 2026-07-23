@@ -633,6 +633,9 @@ val TranslateLyricsKey = booleanPreferencesKey("translateLyrics")
 val AskTranslateLyricsOnOpenKey = booleanPreferencesKey("askTranslateLyricsOnOpen")
 // AI text-to-playlist feature toggle (Library → "Lista AI"). Kill-switch, defaults on.
 val AiPlaylistEnabledKey = booleanPreferencesKey("ai_playlist_enabled")
+// Opt-in (default false): daily worker that rebuilds the ONE persistent "Recomendado para ti (IA)"
+// playlist from the user's listening history (AutoRecoPlaylistWorker). Off = zero network/battery cost.
+val AiRecommendedPlaylistKey = booleanPreferencesKey("aiRecommendedPlaylist")
 val OpenRouterApiKey = stringPreferencesKey("openRouterApiKey")
 val AiProviderKey = stringPreferencesKey("aiProvider")
 val OpenRouterBaseUrlKey = stringPreferencesKey("openRouterBaseUrl")

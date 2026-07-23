@@ -32,6 +32,7 @@ import iad1tya.echo.music.constants.ShowSpeedDialKey
 import iad1tya.echo.music.db.MusicDatabase
 import iad1tya.echo.music.db.entities.Album
 import iad1tya.echo.music.db.entities.LocalItem
+import iad1tya.echo.music.db.entities.Playlist
 import iad1tya.echo.music.db.entities.Song
 import iad1tya.echo.music.db.entities.SpeedDialItem
 import iad1tya.echo.music.extensions.filterVideoSongs
@@ -347,6 +348,22 @@ class HomeViewModel @Inject constructor(
                 else keep.filterNot { it.id in shownAbove }.ifEmpty { keep }
             }
         }.stateIn(viewModelScope, SharingStarted.Lazily, null)
+
+    // ---- "Recomendado para ti (IA)" ------------------------------------------------------------
+    // The ONE persistent AI-recommendations playlist (fixed id), rebuilt daily by the opt-in
+    // AutoRecoPlaylistWorker. Reactive DB flows only — zero network from the Home path; the section
+    // simply doesn't exist until the worker has produced a non-empty playlist.
+
+    /** The playlist entity (carries name + lastUpdateTime for the "Actualizado" header label). */
+    val aiRecommendedPlaylist: StateFlow<Playlist?> =
+        database.playlist(iad1tya.echo.music.reco.AutoRecoPlaylistWorker.PLAYLIST_ID)
+            .stateIn(viewModelScope, SharingStarted.Lazily, null)
+
+    /** Its songs in playlist order (the DAO query already sorts by position). */
+    val aiRecommendedSongs: StateFlow<List<Song>?> =
+        database.playlistSongs(iad1tya.echo.music.reco.AutoRecoPlaylistWorker.PLAYLIST_ID)
+            .map { playlistSongs -> playlistSongs.map { it.song } }
+            .stateIn(viewModelScope, SharingStarted.Lazily, null)
 
     /** TimeOfDayMix as displayed: its pool IS quickPicks + forgottenFavorites + keepListening, and the
      *  shelf renders right under QuickPicks, so the raw mix duplicated the first screenful (worst in

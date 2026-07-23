@@ -148,7 +148,7 @@ fun WelcomeDialog(
                     WelcomeFeatureRow(
                         iconRes = R.drawable.discover_tune,
                         title = "Recomendaciones con IA",
-                        subtitle = "Inicio, radio y mezclas que aprenden de tus gustos y de toda tu biblioteca importada (en el dispositivo); Inicio con 'Reproducido recientemente', 'Nuevos lanzamientos', 'Mix diario 1/2/3' y un mix según la hora del día; toca un chip de estado de ánimo y el contenido y la reproducción se sesgan a ese ánimo mientras esté activo; al acabar una lista la música sigue sola con temas similares y la cola infinita no repite lo recién escuchado; y crea listas con una frase, con el número exacto de canciones que pides y respetando el género/idioma/ánimo"
+                        subtitle = "Inicio, radio y mezclas que aprenden de tus gustos y de toda tu biblioteca importada (en el dispositivo); Inicio con 'Reproducido recientemente', 'Nuevos lanzamientos', 'Mix diario 1/2/3' y un mix según la hora del día; toca un chip de estado de ánimo y el contenido y la reproducción se sesgan a ese ánimo mientras esté activo; al acabar una lista la música sigue sola con temas similares y la cola infinita no repite lo recién escuchado; crea listas con una frase, con el número exacto de canciones que pides y respetando el género/idioma/ánimo; y si lo activas en Ajustes ▸ IA, una playlist 'Recomendado para ti (IA)' persistente en Inicio con canciones nuevas según tu historial, refrescada a diario"
                     )
                     WelcomeDivider()
                     WelcomeFeatureRow(

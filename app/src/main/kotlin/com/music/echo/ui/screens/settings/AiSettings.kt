@@ -2,6 +2,7 @@
 
 package iad1tya.echo.music.ui.screens.settings
 
+import android.widget.Toast
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -28,6 +29,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.TextFieldValue
@@ -37,6 +39,7 @@ import iad1tya.echo.music.LocalPlayerAwareWindowInsets
 import iad1tya.echo.music.R
 import iad1tya.echo.music.constants.AiPlaylistEnabledKey
 import iad1tya.echo.music.constants.AiProviderKey
+import iad1tya.echo.music.constants.AiRecommendedPlaylistKey
 import iad1tya.echo.music.constants.AskTranslateLyricsOnOpenKey
 import iad1tya.echo.music.constants.DeeplApiKey
 import iad1tya.echo.music.constants.DeeplFormalityKey
@@ -46,6 +49,7 @@ import iad1tya.echo.music.constants.OpenRouterBaseUrlKey
 import iad1tya.echo.music.constants.OpenRouterModelKey
 import iad1tya.echo.music.constants.TranslateLanguageKey
 import iad1tya.echo.music.constants.TranslateModeKey
+import iad1tya.echo.music.reco.AutoRecoPlaylistWorker
 import iad1tya.echo.music.ui.component.EnumDialog
 import iad1tya.echo.music.ui.component.Material3SettingsGroup
 import iad1tya.echo.music.ui.component.Material3SettingsItem
@@ -58,7 +62,10 @@ fun AiSettings(
     navController: NavController,
     scrollBehavior: TopAppBarScrollBehavior,
 ) {
+    val context = LocalContext.current
     var aiPlaylistEnabled by rememberPreference(AiPlaylistEnabledKey, true)
+    // Opt-in daily "Recomendado para ti (IA)" playlist (default OFF — zero network/battery until enabled).
+    var aiRecsEnabled by rememberPreference(AiRecommendedPlaylistKey, false)
     var aiProvider by rememberPreference(AiProviderKey, "OpenRouter")
     var openRouterApiKey by rememberPreference(OpenRouterApiKey, "")
     var openRouterBaseUrl by rememberPreference(OpenRouterBaseUrlKey, "https://openrouter.ai/api/v1/chat/completions")
@@ -406,6 +413,58 @@ fun AiSettings(
                             checked = aiPlaylistEnabled,
                             onCheckedChange = { aiPlaylistEnabled = it },
                         )
+                    },
+                ),
+            ),
+        )
+
+        Spacer(modifier = Modifier.height(27.dp))
+
+        // "Recomendado para ti (IA)": opt-in daily worker that keeps ONE persistent playlist of AI
+        // recommendations built from the listening history (see AutoRecoPlaylistWorker). Uses the same
+        // keyless AI chain as "Lista AI" — no key or provider setup required.
+        Material3SettingsGroup(
+            title = "Recomendado para ti (IA)",
+            items = listOf(
+                Material3SettingsItem(
+                    icon = painterResource(R.drawable.auto_awesome),
+                    title = { Text("Playlist \"Recomendado para ti (IA)\"") },
+                    description = {
+                        Text(
+                            "Crea en Inicio una playlist con canciones nuevas según tu historial y la " +
+                                "refresca una vez al día en segundo plano (necesita conexión). Si la IA " +
+                                "no responde, se conserva la última versión buena."
+                        )
+                    },
+                    onClick = {
+                        val newValue = !aiRecsEnabled
+                        aiRecsEnabled = newValue
+                        // Build the playlist right away when turned ON, so the user doesn't wait a day
+                        // for the first refresh (mirrors the Last.fm taste toggle).
+                        if (newValue) AutoRecoPlaylistWorker.runNow(context)
+                    },
+                    trailingContent = {
+                        Switch(
+                            checked = aiRecsEnabled,
+                            onCheckedChange = { checked ->
+                                aiRecsEnabled = checked
+                                if (checked) AutoRecoPlaylistWorker.runNow(context)
+                            },
+                        )
+                    },
+                ),
+                Material3SettingsItem(
+                    icon = painterResource(R.drawable.refresh),
+                    title = { Text("Refrescar ahora") },
+                    description = { Text("Vuelve a generar las recomendaciones en segundo plano.") },
+                    enabled = aiRecsEnabled,
+                    onClick = {
+                        AutoRecoPlaylistWorker.runNow(context)
+                        Toast.makeText(
+                            context,
+                            "Actualizando \"Recomendado para ti (IA)\" en segundo plano…",
+                            Toast.LENGTH_SHORT,
+                        ).show()
                     },
                 ),
             ),
