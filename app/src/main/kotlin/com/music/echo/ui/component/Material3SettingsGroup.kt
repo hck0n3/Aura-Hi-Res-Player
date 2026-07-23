@@ -4,6 +4,7 @@ package iad1tya.echo.music.ui.component
 
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -34,6 +35,7 @@ import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import iad1tya.echo.music.ui.utils.rememberIsTvOrCar
+import iad1tya.echo.music.ui.utils.scrollToOnHighlight
 import iad1tya.echo.music.ui.utils.tvFocusableItem
 
 
@@ -41,6 +43,7 @@ import iad1tya.echo.music.ui.utils.tvFocusableItem
 fun Material3SettingsGroup(
     title: String? = null,
     compact: Boolean = false,
+    scrollState: ScrollState? = null,
     items: List<Material3SettingsItem>
 ) {
     Column(
@@ -76,11 +79,14 @@ fun Material3SettingsGroup(
                         .animateContentSize(),
                     shape = shape,
                     colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                        containerColor = if (item.isHighlighted)
+                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+                        else
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
                     ),
                     elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
                 ) {
-                    Material3SettingsItemRow(item = item, compact = compact)
+                    Material3SettingsItemRow(item = item, compact = compact, scrollState = scrollState)
                 }
             }
         }
@@ -91,7 +97,8 @@ fun Material3SettingsGroup(
 @Composable
 private fun Material3SettingsItemRow(
     item: Material3SettingsItem,
-    compact: Boolean = false
+    compact: Boolean = false,
+    scrollState: ScrollState? = null
 ) {
     Row(
         modifier = Modifier
@@ -101,6 +108,7 @@ private fun Material3SettingsItemRow(
                 enabled = item.enabled && item.onClick != null,
                 onClick = { item.onClick?.invoke() }
             )
+            .then(if (scrollState != null) Modifier.scrollToOnHighlight(scrollState, item.isHighlighted) else Modifier)
             .padding(
                 horizontal = if (compact) 14.dp else 20.dp, 
                 vertical = if (compact) 10.dp else 16.dp
