@@ -73,10 +73,12 @@ class SilenceDetectorAudioProcessor(
         channelCount = inputAudioFormat.channelCount
         encoding = inputAudioFormat.encoding
 
-        // 16-bit int and 32-bit float PCM are both measurable (float is what the sink feeds on the hi-res
-        // path of capable devices — without it the tail detection was silently dead exactly where the
-        // owner listens in Lossless). Anything else self-bypasses: Media3 skips an inactive processor,
-        // matching the other processors in the chain. Measure-only either way — audio is never modified.
+        // 16-bit int and 32-bit float PCM are both measurable. HONEST SCOPE (verified against the media3
+        // 1.10.1 bytecode): DefaultAudioSink only inserts the custom processor chain on the INT pipeline,
+        // AFTER ToInt16Pcm — so in practice this processor always receives 16-bit input, and on the hi-res
+        // FLOAT pipeline (24/32-bit on capable devices) it is not in the chain at all. The float branch
+        // below is future-proofing, reachable only if media3 ever feeds custom processors float input.
+        // Anything else self-bypasses: Media3 skips an inactive processor. Measure-only either way.
         if (encoding != C.ENCODING_PCM_16BIT && encoding != C.ENCODING_PCM_FLOAT) {
             isActive = false
             return AudioProcessor.AudioFormat.NOT_SET
@@ -188,6 +190,11 @@ class SilenceDetectorAudioProcessor(
     fun isCurrentlySilent(): Boolean = inSilence
 
     fun isCurrentlyQuiet(): Boolean = inQuiet
+
+    /** How long the CURRENT uninterrupted silence run has lasted (µs); 0 if not in one. Lets the Main-side
+     *  handler require a LONGER run for fires far from the track's end (mid-song skit/grand-pause safety). */
+    fun silenceDurationUs(): Long =
+        if (sampleRate > 0) (consecutiveSilentFrames * 1_000_000L) / sampleRate else 0L
 
     override fun queueEndOfStream() {
         inputEnded = true

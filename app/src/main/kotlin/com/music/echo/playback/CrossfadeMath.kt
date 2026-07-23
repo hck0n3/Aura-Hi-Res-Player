@@ -14,10 +14,10 @@ object CrossfadeMath {
      *  3 = Exponential (quick): each track dominates its half, snappier handover.
      *  4 = Asymmetric rise (owner-tuned): BOTH directions are gradual — the outgoing decays over the
      *      WHOLE window on a smoothstep-eased equal-power cosine (gentle start, gentle landing), and the
-     *      incoming rises over the first ~60% on a smoothstep-eased sine, so it arrives at full level
-     *      with ZERO slope (no audible "kink" — the previous half-window hard clamp had one). The
-     *      asymmetry (incoming already full while the outgoing is still ~mid-decay) keeps the
-     *      radio-segue "natural rise in intensity" feel. Never the default; selectable only.
+     *      incoming rises over the first ~85% on a smoothstep-eased sine, so it is audibly "making
+     *      itself noticed" for most of the blend and arrives at full level with ZERO slope (no audible
+     *      "kink"). The asymmetry keeps the radio-segue "natural rise in intensity" feel. Never the
+     *      default; selectable only.
      */
     fun getGains(curve: Int, p: Float): Pair<Float, Float> {
         val half = (Math.PI / 2.0).toFloat()
