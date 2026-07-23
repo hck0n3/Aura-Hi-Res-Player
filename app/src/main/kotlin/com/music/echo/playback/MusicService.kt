@@ -1283,7 +1283,7 @@ class MusicService :
         // Repair: a persisted ~0 volume means it was captured mid-crossfade/duck by the old bug (a real
         // "I want silence" never persists as 0 — the user pauses/mutes instead). Treat it as full.
         playerVolume = MutableStateFlow(
-            (prefs[PlayerVolumeKey] ?: 1f).let { if (it < 0.05f) 1f else it.coerceIn(0f, 1f) },
+            (prefs[PlayerVolumeKey] ?: 1f).let { if (it.isNaN() || it < 0.05f) 1f else it.coerceIn(0f, 1f) },
         )
 
         // Cast is initialized lazily on first playback (see initializeCast) — NOT here in onCreate,
@@ -1776,7 +1776,9 @@ class MusicService :
                         
                         
                         // Same repair on queue restore: a near-0 persisted volume = the old capture bug.
-                        playerVolume.value = playerState.volume.let { if (it < 0.05f) 1f else it.coerceIn(0f, 1f) }
+                        // isNaN: coerceIn propagates NaN (every comparison is false), so a corrupt persisted
+                        // volume stuck the player silent/lowered forever — same repair as the boot read.
+                        playerVolume.value = playerState.volume.let { if (it.isNaN() || it < 0.05f) 1f else it.coerceIn(0f, 1f) }
 
                         
                         if (playerState.currentMediaItemIndex < player.mediaItemCount) {
@@ -2248,7 +2250,12 @@ class MusicService :
 
     private suspend fun recoverSong(
         mediaId: String,
-        playbackData: YTPlayerUtils.PlaybackData? = null
+        playbackData: YTPlayerUtils.PlaybackData? = null,
+        // True ONLY when the bytes are served from a user-initiated DOWNLOAD (full or partial hit of the
+        // downloadCache): the user downloaded precisely to avoid network use, so the metadata/related
+        // lookups below must not burn data in the background. Streaming-cache hits stay false — their
+        // related prefetch feeds Mix-from-Playlist / Home and belongs to an online session.
+        isOfflinePlayback: Boolean = false,
     ) {
         val song = database.song(mediaId).first()
         val mediaMetadata = withContext(Dispatchers.Main) {
@@ -2256,9 +2263,12 @@ class MusicService :
         } ?: return
         val duration = song?.song?.duration?.takeIf { it != -1 }
             ?: mediaMetadata.duration.takeIf { it != -1 }
-            ?: (playbackData?.videoDetails ?: YTPlayerUtils.playerResponseForMetadata(mediaId)
-                .getOrNull()?.videoDetails)?.lengthSeconds?.toInt()
-            ?: -1
+            ?: if (isOfflinePlayback) {
+                -1 // downloaded playback: never hit the network just to fill in a duration
+            } else {
+                (playbackData?.videoDetails ?: YTPlayerUtils.playerResponseForMetadata(mediaId)
+                    .getOrNull()?.videoDetails)?.lengthSeconds?.toInt() ?: -1
+            }
         database.query {
             if (song == null) insert(mediaMetadata.copy(duration = duration))
             else {
@@ -2275,7 +2285,7 @@ class MusicService :
                 }
             }
         }
-        if (!database.hasRelatedSongs(mediaId)) {
+        if (!isOfflinePlayback && !database.hasRelatedSongs(mediaId)) {
             val relatedEndpoint =
                 YouTube.next(WatchEndpoint(videoId = mediaId)).getOrNull()?.relatedEndpoint
                     ?: return
@@ -5726,7 +5736,9 @@ class MusicService :
                         if (dataSpec.length >= 0) dataSpec.length else 1
                     )
                 ) {
-                    scope.launch(Dispatchers.IO) { recoverSong(mediaId) }
+                    // Download-served: no background network (duration / related prefetch) — the user
+                    // downloaded this exactly to avoid data use.
+                    scope.launch(Dispatchers.IO) { recoverSong(mediaId, isOfflinePlayback = true) }
                     return@Factory dataSpec
                 }
             }
@@ -5786,7 +5798,8 @@ class MusicService :
                         if (dataSpec.length >= 0) dataSpec.length else 1
                     )
                 ) {
-                    scope.launch(Dispatchers.IO) { recoverSong(mediaId) }
+                    // Partial download served from downloadCache: same offline intent as the full hit above.
+                    scope.launch(Dispatchers.IO) { recoverSong(mediaId, isOfflinePlayback = true) }
                     return@Factory dataSpec
                 }
 
