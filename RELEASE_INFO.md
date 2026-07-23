@@ -1,12 +1,15 @@
-# Aura Hi-Res Player 0.6.119 — El Aleatorio Mejorado se ve y se corrige
+# Aura Hi-Res Player 0.6.120 — El aleatorio ya NO repite + transiciones más musicales
 
-## 🔴 Corregido: el aleatorio saltaba a la canción equivocada
-Con la transición suave (crossfade) activada, a veces **oías venir la siguiente canción y de pronto saltaba a otra distinta**. Causa: el fundido cambia de canción por un camino interno que no anotaba la canción como "ya reproducida", así que el aleatorio volvía a barajar como si nada hubiera sonado. Ya se anota siempre — el aleatorio continúa con la canción correcta y no repite. (El fundido de 9s no se tocó: mismo sonido de siempre.)
+## 🔴 Corregido: el aleatorio repetía canciones que ya sabía reproducidas
+Las marcas ✓ y el contador estaban bien, pero el orden las ignoraba. Eran **tres** caminos rotos, todos arreglados:
+- **Al entrar a una lista con el aleatorio ya encendido**, la memoria guardada nunca se cargaba al orden — la app "sabía" qué habías oído pero barajaba como si nada. Ahora la carga siempre.
+- **El botón "Aleatorio" de las listas ni siquiera encendía el modo aleatorio**: solo revolvía una vez, sin memoria y sin anotar lo reproducido. Ahora el botón activa el aleatorio mejorado de verdad (y la primera canción sigue siendo al azar).
+- **Al agotarse la lista con la transición suave activada**, en vez de continuar con la radio infinita volvía a repetir la playlist. Ahora detecta el fin del ciclo y siembra la radio a tiempo — el fundido aterriza en música nueva.
 
-## 👁️ Ahora VES que el aleatorio mejorado funciona
-- **Contador en cada lista:** una píldora "🔀 Aleatorio mejorado · X/Y reproducidas" en la playlist, las listas automáticas (Me gusta, Descargadas…) y la biblioteca. Verla = está activo; el número sube según avanzas el ciclo sin repetir.
-- **Canciones ya reproducidas, marcadas:** en la lista se ven **atenuadas y con un ✓** las que ya sonaron en este ciclo del aleatorio. Lo que falta por sonar se ve normal. La que está sonando ahora nunca se atenúa.
-- Todo se actualiza **en vivo** mientras suena la música, y desaparece si apagas el aleatorio mejorado en Ajustes.
+## 🎶 Transiciones más agradables (el fundido de 9s que te gusta, intacto)
+- **Canciones con silencios largos al final ya hacen la transición**: la app detecta cuándo terminó la MÚSICA (no el archivo) y arranca el fundido ahí. Se acabó el "se queda callada y luego entra la otra de golpe".
+- **Nuevo estilo de transición opcional "Ascenso"** (Ajustes ▸ Reproductor ▸ Estilo de transición): la canción que entra sube a volumen pleno rápido mientras la que sale baja suave — el estilo de segue de radio/DJ. El estilo por defecto no cambia.
+- Por dentro: 6 pruebas nuevas fijan las matemáticas de las 5 curvas de fundido para que nunca se rompan sin avisar.
 
 ## Recordatorio de lo abierto
 - **Cortes a mitad de canción** (solo en Lossless/Saavn) — necesito tu registro en esa calidad.
