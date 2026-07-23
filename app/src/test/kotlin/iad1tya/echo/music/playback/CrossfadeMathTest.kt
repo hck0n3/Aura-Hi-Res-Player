@@ -65,19 +65,23 @@ class CrossfadeMathTest {
     }
 
     @Test
-    fun `curve 4 asymmetric rise - incoming full by half window, outgoing equal-power over full window`() {
-        // Fast-in: unity from the midpoint on.
-        val (inHalf, _) = CrossfadeMath.getGains(4, 0.5f)
-        assertEquals("incoming must reach full level at p=0.5", 1f, inHalf, 1e-4f)
-        val (inLate, _) = CrossfadeMath.getGains(4, 0.75f)
-        assertEquals("incoming must hold full level after p=0.5", 1f, inLate, 1e-4f)
-        // Slow-out: the outgoing side is the same equal-power cosine as the default curve.
-        for (step in 0..100) {
-            val p = step / 100f
-            val expectedOut = CrossfadeMath.getGains(1, p).second
-            val actualOut = CrossfadeMath.getGains(4, p).second
-            assertEquals("outgoing must match equal-power cosine at p=$p", expectedOut, actualOut, 1e-4f)
-        }
+    fun `curve 4 asymmetric rise - gradual both ways, incoming full by 60 percent with a gentle landing`() {
+        // Incoming reaches full level at p=0.6 and HOLDS it — but arrives gently (zero-slope landing).
+        val (inSixty, _) = CrossfadeMath.getGains(4, 0.6f)
+        assertEquals("incoming must reach full level at p=0.6", 1f, inSixty, 1e-4f)
+        val (inLate, _) = CrossfadeMath.getGains(4, 0.8f)
+        assertEquals("incoming must hold full level after p=0.6", 1f, inLate, 1e-4f)
+        // Gentle landing: just before full, the gain is already within 1% of unity (no hard clamp kink).
+        val (inNearFull, _) = CrossfadeMath.getGains(4, 0.55f)
+        assertTrue("incoming must land smoothly (>=0.99 at p=0.55)", inNearFull >= 0.99f)
+        // Gentle start: the first tenth of the window stays quiet (eased ramp, no abrupt entry).
+        val (inEarly, _) = CrossfadeMath.getGains(4, 0.1f)
+        assertTrue("incoming must start gently (<0.15 at p=0.1)", inEarly < 0.15f)
+        // Outgoing decays gradually across the WHOLE window: gentle at first, ~mid-level mid-window, gone at 1.
+        val outMid = CrossfadeMath.getGains(4, 0.5f).second
+        assertTrue("outgoing must still be audible mid-window (0.5..0.9)", outMid in 0.5f..0.9f)
+        val outEarly = CrossfadeMath.getGains(4, 0.1f).second
+        assertTrue("outgoing must decay gently at the start (>0.95 at p=0.1)", outEarly > 0.95f)
     }
 
     @Test

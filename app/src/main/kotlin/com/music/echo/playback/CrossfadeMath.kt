@@ -12,10 +12,12 @@ object CrossfadeMath {
      *      both tracks carry the SAME power through the blend — the natural, even crossfade.
      *  2 = Long S-curve: equal-power but eased timing (very gradual in/out).
      *  3 = Exponential (quick): each track dominates its half, snappier handover.
-     *  4 = Asymmetric rise (fast-in / slow-out): the incoming track reaches full level in the first HALF
-     *      of the window while the outgoing decays over the WHOLE window on the equal-power cosine — the
-     *      radio-segue / DJ "natural rise in intensity" shape. It also halves the stretch where both
-     *      vocals are simultaneously loud. Never the default; selectable only.
+     *  4 = Asymmetric rise (owner-tuned): BOTH directions are gradual — the outgoing decays over the
+     *      WHOLE window on a smoothstep-eased equal-power cosine (gentle start, gentle landing), and the
+     *      incoming rises over the first ~60% on a smoothstep-eased sine, so it arrives at full level
+     *      with ZERO slope (no audible "kink" — the previous half-window hard clamp had one). The
+     *      asymmetry (incoming already full while the outgoing is still ~mid-decay) keeps the
+     *      radio-segue "natural rise in intensity" feel. Never the default; selectable only.
      */
     fun getGains(curve: Int, p: Float): Pair<Float, Float> {
         val half = (Math.PI / 2.0).toFloat()
@@ -26,7 +28,14 @@ object CrossfadeMath {
                 sin(s * half) to cos(s * half)
             }
             3 -> (p * p) to ((1f - p) * (1f - p))
-            4 -> sin((p * 2f).coerceAtMost(1f) * half) to cos(p * half)
+            4 -> {
+                // Smoothstep easing (3t²−2t³) has zero slope at both ends: the incoming ramp starts
+                // gently AND lands gently at full level; the outgoing decays gently all the way out.
+                val pin = (p / 0.6f).coerceAtMost(1f)
+                val sIn = pin * pin * (3f - 2f * pin)
+                val sOut = p * p * (3f - 2f * p)
+                sin(sIn * half) to cos(sOut * half)
+            }
             else -> p to (1f - p)
         }
     }
