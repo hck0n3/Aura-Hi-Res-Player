@@ -643,11 +643,14 @@ object YouTube {
             setLogin = true
         ).body<BrowseResponse>()
 
+        // Take ONLY the first section: for editable user playlists YouTube appends a
+        // "Recommended" musicShelfRenderer as an extra section in the same continuation,
+        // and flattening every section leaked those suggested songs into synced playlists.
+        // Keep the musicShelfRenderer fallback — needed for LM/liked-songs sync.
         val mainContents: List<MusicShelfRenderer.Content> = response.continuationContents?.sectionListContinuation?.contents
-            ?.mapNotNull { content: SectionListRenderer.Content ->
+            ?.firstOrNull()?.let { content: SectionListRenderer.Content ->
                 content.musicPlaylistShelfRenderer?.contents ?: content.musicShelfRenderer?.contents
             }
-            ?.flatten()
             ?: emptyList()
 
         val shelfContents: List<MusicShelfRenderer.Content> =
