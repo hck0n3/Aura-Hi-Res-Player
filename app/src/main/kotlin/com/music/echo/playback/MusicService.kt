@@ -2457,9 +2457,12 @@ class MusicService :
             } else if (player.shuffleModeEnabled) {
                 val shufflePlaylistFirst = dataStore.get(ShufflePlaylistFirstKey, false)
                 // B5: fresh anti-repeat session for the NEW queue — without this the set still held the
-                // PREVIOUS queue's ids, falsely sinking any songs the two queues share.
-                shufflePlayedIds.clear()
-                player.currentMetadata?.id?.let { shufflePlayedIds.add(it) }
+                // PREVIOUS queue's ids, falsely sinking any songs the two queues share. Gated on the
+                // enhanced setting so classic-shuffle (setting OFF) behavior stays byte-identical.
+                if (enhancedShuffleHint) {
+                    shufflePlayedIds.clear()
+                    player.currentMetadata?.id?.let { shufflePlayedIds.add(it) }
+                }
                 applyShuffleOrder(player.currentMediaItemIndex, player.mediaItemCount, shufflePlaylistFirst)
                 // Enhanced Shuffle FIX (replay bug, part 1): this queue started while shuffle was ALREADY
                 // ON, so onShuffleModeEnabledChanged — the only place the persistent memory was loaded —
@@ -4466,7 +4469,20 @@ class MusicService :
 
             // B5: start a fresh anti-repeat session each time shuffle is enabled; the current song counts as played.
             shufflePlayedIds.clear()
-            player.currentMetadata?.id?.let { shufflePlayedIds.add(it) }
+            player.currentMetadata?.id?.let { cur ->
+                shufflePlayedIds.add(cur)
+                // Enhanced Shuffle: persist the CURRENT song too. Both DB insert sites record the newly-
+                // current item of a LATER transition/swap, so the song playing at enable time (song #1 of a
+                // button-started shuffle) was never written — after a process kill it came back unmarked and
+                // could replay within the same cycle.
+                val enableCtx = shuffleContextId
+                if (enhancedShuffleHint && enableCtx != null) {
+                    val now = System.currentTimeMillis()
+                    scope.launch(enhancedShuffleWriteDispatcher) {
+                        runCatching { database.insertEnhancedPlayed(EnhancedShufflePlayedEntity(enableCtx, cur, now)) }
+                    }
+                }
+            }
 
             val shufflePlaylistFirst = dataStore.get(ShufflePlaylistFirstKey, false)
             val currentIndex = player.currentMediaItemIndex
@@ -4620,7 +4636,10 @@ class MusicService :
             // B5 anti-repeat: which queue items were already played this shuffle session? If EVERY item has
             // been played the pool is exhausted -> start a fresh cycle so shuffle keeps flowing.
             val playedSnapshot = HashSet(shufflePlayedIds)
-            if (playedSnapshot.isNotEmpty() &&
+            // !radioSeedInFlight: a radio seed is about to APPEND unplayed items — an "all played" reading
+            // in that window is premature and the reset would un-sink the played tail right before fresh
+            // songs land (the exhaustion handoffs deliberately keep the set intact through the handoff).
+            if (playedSnapshot.isNotEmpty() && !radioSeedInFlight &&
                 (0 until totalCount).all { i ->
                     runCatching { player.getMediaItemAt(i).mediaId }.getOrNull()?.let { it in playedSnapshot } == true
                 }
@@ -6981,26 +7000,6 @@ class MusicService :
             return
         }
 
-        // Enhanced Shuffle — cycle exhaustion under crossfade. The fade below targets nextMediaItemIndex,
-        // but when EVERY song of this context has already played, that "next" is an already-played tail item
-        // (the re-seeded order is [current, …played tail]) — so the fade would REPLAY old songs forever.
-        // The onMediaItemTransition early-handoff can't cover this: with crossfade ON every auto-advance is
-        // a swap that skips that callback entirely. So detect it HERE, while this song still has time left:
-        // complete the cycle and seed the infinite smart radio NOW. appendSeed() re-applies the shuffle
-        // order (fresh radio songs are unplayed → they sort ahead of the played tail), and since the
-        // preload/trigger jobs below read the target index at FIRE time — not now — the fade then lands on
-        // a fresh radio song. In-memory shufflePlayedIds is deliberately NOT cleared, so the old songs stay
-        // sunk behind the radio items. Exactly the user's "when the list ends, continue with the infinite
-        // list". Guards mirror the early-handoff; REPEAT modes and manual queues are never touched.
-        if (enhancedShuffleHint && player.shuffleModeEnabled && shuffleContextId != null &&
-            player.repeatMode == REPEAT_MODE_OFF && autoLoadMoreHint &&
-            !radioSeedInFlight && isEnhancedContextExhausted()
-        ) {
-            shuffleContextId?.let { onEnhancedContextCycleComplete(it) }
-            shuffleContextId = null
-            startRadioSeamlessly()
-        }
-
         val triggerTime = player.duration - crossfadeDuration.toLong()
         val delayMs = triggerTime - player.currentPosition
         if (delayMs <= 0) return
@@ -7023,10 +7022,13 @@ class MusicService :
                 }
                 prepareSecondaryPlayer(targetIndex)
                 // TAIL-SILENCE: arm the detector for the final stretch (~fade + preload lead) of THIS
-                // track only. If ≥2s of continuous silence occurs from here on, the audible content is
+                // track only. If ≥3.5s of continuous silence occurs from here on, the audible content is
                 // over → onTailSilenceDetected starts the fade at the end of the MUSIC instead of the
                 // FILE (songs with long silent tails used to "fade" silence into the next song, which
                 // reads as no transition at all). Measure-only: never skips or alters audio.
+                // KNOWN SCOPE: the detector self-bypasses on non-16-bit input (hi-res float path) — there
+                // it stays inert and those tracks keep today's file-end-anchored fade. Consistent with the
+                // rest of the bit-perfect chain; extending it to float is a deliberate future decision.
                 playerSilenceProcessors[player]?.let {
                     it.resetTracking()
                     it.tailDetectEnabled = true
@@ -7062,14 +7064,20 @@ class MusicService :
     private fun onTailSilenceDetected() {
         val proc = playerSilenceProcessors[player] ?: return
         if (!proc.tailDetectEnabled) return
+        // Main-hop recheck: if audible content resumed between the audio-thread fire and this hop, that
+        // silence was a mid-tail pause, not the end of the music — keep the detector armed and bail (a
+        // LATER ≥3.5s silence in the window can still fire).
+        if (!proc.isCurrentlySilent()) return
         proc.tailDetectEnabled = false
         if (isCrossfading || !crossfadeEnabled || highPerformanceModeHint || _videoMode.value) return
         if (!player.isPlaying || sleepTimer.pauseWhenSongEnd) return
         if (crossfadeGapless && isNextItemGapless()) return
         if (!player.hasNextMediaItem() && player.repeatMode != REPEAT_MODE_ONE) return
-        // The scheduled (file-end-anchored) trigger is superseded by this earlier, music-end-anchored one.
-        crossfadeTriggerJob?.cancel()
-        crossfadeTriggerJob = null
+        // Deliberately do NOT cancel crossfadeTriggerJob: if this early fade can't actually start (the
+        // secondary misses its READY window, or the user pauses during the bounded wait) the file-end-
+        // anchored trigger must survive as the fallback — cancelling it here left the track with NO fade at
+        // all. If the early fade DOES start, the later trigger no-ops on its own guards (the swap changed
+        // the current mediaId, and isCrossfading blocks re-entry).
         startCrossfade()
     }
 
@@ -7162,8 +7170,28 @@ class MusicService :
                 }
             }
 
-            val shufflePlaylistFirst = dataStore.get(ShufflePlaylistFirstKey, false)
-            applyShuffleOrder(player.currentMediaItemIndex, player.mediaItemCount, shufflePlaylistFirst)
+            // Enhanced Shuffle — cycle exhaustion. The add above may have just COMPLETED the context (this
+            // swap made the last unplayed song current). This is the ONLY place that's knowable in time
+            // under crossfade: the swap path skips onMediaItemTransition (where the early-handoff lives),
+            // and a plain applyShuffleOrder here would run its all-played self-reset SYNCHRONOUSLY — wiping
+            // the memory before any later check could observe the exhaustion (verified: that made a
+            // scheduleCrossfade-time check dead code). A swap is by definition a NATURAL auto-advance, so
+            // the early-handoff's AUTO-only semantics hold. On exhaustion: complete the cycle, detach the
+            // context, seed the infinite radio while this last song still plays, and SKIP this swap's
+            // re-shuffle — the self-reset would un-sink the played tail; appendSeed() re-applies the order
+            // once the radio items land (unplayed radio sorts ahead; the tail stays sunk).
+            val exhaustCtx = shuffleContextId
+            if (enhancedShuffleHint && exhaustCtx != null &&
+                player.repeatMode == REPEAT_MODE_OFF && autoLoadMoreHint &&
+                !radioSeedInFlight && isEnhancedContextExhausted()
+            ) {
+                onEnhancedContextCycleComplete(exhaustCtx)
+                shuffleContextId = null
+                startRadioSeamlessly()
+            } else {
+                val shufflePlaylistFirst = dataStore.get(ShufflePlaylistFirstKey, false)
+                applyShuffleOrder(player.currentMediaItemIndex, player.mediaItemCount, shufflePlaylistFirst)
+            }
         }
     }
 

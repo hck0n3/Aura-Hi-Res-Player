@@ -38,6 +38,12 @@ class SilenceDetectorAudioProcessor(
     @Volatile
     var tailDetectEnabled: Boolean = false
 
+    // TAIL mode requires LONGER silence than instant-skip's 2s default: a genuine end-of-song tail runs many
+    // seconds, while a musical caesura (grand pause before a finale, breakdown gap) is usually shorter —
+    // 3.5s filters most of those from triggering an early fade over a real ending.
+    @Volatile
+    var tailMinSilenceDurationUs: Long = 3_500_000L
+
     @Volatile
     private var consecutiveSilentFrames: Long = 0
 
@@ -102,7 +108,9 @@ class SilenceDetectorAudioProcessor(
             if (framePeak < silenceThreshold) {
                 consecutiveSilentFrames++
                 val silentDurationUs = (consecutiveSilentFrames * 1_000_000L) / sampleRate
-                if (silentDurationUs >= minSilenceDurationUs) {
+                // Instant-skip keeps its constructor threshold; tail-only detection uses the longer one.
+                val requiredUs = if (instantModeEnabled) minSilenceDurationUs else tailMinSilenceDurationUs
+                if (silentDurationUs >= requiredUs) {
                     inSilence = true
                     if (!notifiedThisSilence) {
                         notifiedThisSilence = true
