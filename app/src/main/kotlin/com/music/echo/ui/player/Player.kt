@@ -358,7 +358,11 @@ fun BottomSheetPlayer(
         if (darkTheme == DarkMode.AUTO) isSystemInDarkTheme else darkTheme == DarkMode.ON
     }
 
-    val enableCanvas = iad1tya.echo.music.utils.rememberPerfGatedBoolean(CanvasThumbnailAnimationKey, true).value && !deviceThrottle
+    // DATA SAVER: canvas animations stream artwork/video data — forced OFF while the switch is ON
+    // (the user's CanvasThumbnailAnimationKey pref stays persisted and returns when it goes OFF).
+    val dataSaverEnabled by rememberPreference(key = iad1tya.echo.music.constants.DataSaverEnabledKey, defaultValue = false)
+    val enableCanvasPref = iad1tya.echo.music.utils.rememberPerfGatedBoolean(CanvasThumbnailAnimationKey, true).value && !deviceThrottle
+    val enableCanvas = if (dataSaverEnabled) false else enableCanvasPref
     val showArtistBackgroundVideo = iad1tya.echo.music.utils.rememberPerfGatedBoolean(
         iad1tya.echo.music.constants.ShowArtistBackgroundVideoKey, true
     ).value && !deviceThrottle

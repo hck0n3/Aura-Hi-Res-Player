@@ -282,7 +282,9 @@ fun getAllSearchableSettings(): List<Triple<String, String, String>> {
             Triple(stringResource(R.string.ai_lyrics_translation), "Traducción de letras IA", "settings/ai"),
             Triple("Recomendado para ti (IA)", "Traducción de letras IA", "settings/ai"),
             Triple("Refrescar ahora", "Traducción de letras IA", "settings/ai"),
-            // --- Reproductor (settings/player) : 47 ---
+            // --- Reproductor (settings/player) : 49 ---
+            Triple("Ahorro de datos", "Reproductor", "settings/player"),
+            Triple("Modo ahorro de datos", "Reproductor", "settings/player"),
             Triple(stringResource(R.string.audio_quality), "Reproductor", "settings/player"),
             Triple(stringResource(R.string.download_quality_title), "Reproductor", "settings/player"),
             Triple(stringResource(R.string.crossfade_beta_title), "Reproductor", "settings/player"),

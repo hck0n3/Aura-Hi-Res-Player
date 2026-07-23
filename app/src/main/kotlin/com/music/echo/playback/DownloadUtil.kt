@@ -107,9 +107,14 @@ constructor(
 
     val downloads = MutableStateFlow<Map<String, Download>>(emptyMap())
 
+    // Factory order matters: resolver OUTSIDE, chunker INSIDE. ResolvingDataSource resolves the
+    // stream URL (cipher/PoToken + FormatEntity/SongEntity upserts) ONCE per download, then the
+    // ChunkingDataSource re-opens the RESOLVED googlevideo URL every 5MB via Range headers (the
+    // throttling bypass). Swapping the order would re-run the whole resolution per chunk.
     private val dataSourceFactory =
         ResolvingDataSource.Factory(
-            OkHttpDataSource.Factory(
+            ChunkingDataSourceFactory(
+                OkHttpDataSource.Factory(
                         OkHttpClient.Builder()
                             .dns(object : Dns {
                                 override fun lookup(hostname: String): List<InetAddress> {
@@ -131,6 +136,7 @@ constructor(
                             }
                             .build(),
                     ),
+            ),
         ) { dataSpec ->
             val mediaId = dataSpec.key ?: error("No media id")
 
@@ -212,13 +218,11 @@ constructor(
                 }
             }
 
-            val streamUrl = if (playbackData.isSaavnStream || format.audioQuality == "LOSSLESS") {
-                playbackData.streamUrl
-            } else {
-                playbackData.streamUrl.let {
-                    "${it}&range=0-${format.contentLength ?: 10000000}"
-                }
-            }
+            // Plain URL for ALL qualities. The old &range=0-N URL-param throttling bypass is REPLACED
+            // by the ChunkingDataSource above — the two tricks are mutually exclusive: googlevideo
+            // gives the range= URL param precedence over Range headers, so stacking them would serve
+            // every 5MB chunk from byte 0 (per-chunk prefix re-downloads) and break resume.
+            val streamUrl = playbackData.streamUrl
 
             songUrlCache[mediaId] = streamUrl to playbackData.streamExpiresInSeconds * 1000L
             dataSpec.withUri(streamUrl.toUri())
