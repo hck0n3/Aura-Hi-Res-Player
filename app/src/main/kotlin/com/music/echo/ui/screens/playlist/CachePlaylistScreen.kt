@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -471,11 +472,13 @@ private fun CachePlaylistHeader(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         
+        val isTvOrCarCover = iad1tya.echo.music.ui.utils.rememberIsWideLayout()
         Box(
             modifier = Modifier
                 .padding(horizontal = 48.dp)
                 .padding(bottom = 24.dp)
-                .fillMaxWidth()
+                // TV / car: cap the cover so it doesn't fill the whole screen (parent Column centers it).
+                .then(if (isTvOrCarCover) Modifier.widthIn(max = 320.dp) else Modifier.fillMaxWidth())
                 .aspectRatio(1f)
                 .clip(RoundedCornerShape(8.dp))
         ) {
