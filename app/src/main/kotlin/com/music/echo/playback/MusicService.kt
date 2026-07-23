@@ -731,7 +731,14 @@ class MusicService :
                 // dead must drop those entries (nothing clears them otherwise), but a fallback entry — requested
                 // LOSSLESS, delivered Opus — is perfectly good and must SURVIVE. Comparing the delivered quality
                 // here would bin nearly every entry a Hi-Res user has on every cold start = #28's slow first play.
-                val globalQuality = prefs[AudioQualityKey].toEnum(iad1tya.echo.music.constants.AudioQuality.OPUS)
+                // DATA SAVER: compare against the EFFECTIVE quality (forced Opus while ON), so entries
+                // requested at a higher tier are dropped exactly like after a manual quality change —
+                // otherwise a cached Hi-Res URL would keep serving Hi-Res bytes past the switch.
+                val globalQuality = if (prefs[iad1tya.echo.music.constants.DataSaverEnabledKey] == true) {
+                    iad1tya.echo.music.constants.AudioQuality.OPUS
+                } else {
+                    prefs[AudioQualityKey].toEnum(iad1tya.echo.music.constants.AudioQuality.OPUS)
+                }
                 val json = org.json.JSONObject(blob)
                 val safeNow = System.currentTimeMillis() + 60_000L
                 val keys = json.keys()
@@ -875,6 +882,12 @@ class MusicService :
      * audio-only listeners at <=3 extra resolves per session (in-memory, resets per process).
      */
     private var preFirstUseVideoPrefetches = 0
+
+    // DATA SAVER: cached mirror of DataSaverEnabledKey (collector in onCreate). The speculative-video
+    // gates below run on the main thread, where a blocking dataStore read is not acceptable; @Volatile
+    // because the collector writes from a coroutine. Default false = byte-identical behavior when OFF.
+    @Volatile
+    private var dataSaverEnabled = false
 
     private val _mixActive get() = playbackState.mixActive
     val mixActive: kotlinx.coroutines.flow.StateFlow<Boolean> get() = playbackState.mixActive
@@ -1278,7 +1291,13 @@ class MusicService :
 
         audioManager.registerAudioDeviceCallback(audioDeviceCallback, null)
 
-        audioQuality = prefs[AudioQualityKey].toEnum(iad1tya.echo.music.constants.AudioQuality.OPUS)
+        // DATA SAVER: the eager init must already reflect the forced-Opus effective quality — the
+        // collector below re-asserts it, but a resolve racing the first emit must never go out Hi-Res.
+        audioQuality = if (prefs[iad1tya.echo.music.constants.DataSaverEnabledKey] == true) {
+            iad1tya.echo.music.constants.AudioQuality.OPUS
+        } else {
+            prefs[AudioQualityKey].toEnum(iad1tya.echo.music.constants.AudioQuality.OPUS)
+        }
         ipVersion = prefs[IpVersionKey].toEnum(IpVersion.AUTO)
         // Repair: a persisted ~0 volume means it was captured mid-crossfade/duck by the old bug (a real
         // "I want silence" never persists as 0 — the user pauses/mutes instead). Treat it as full.
@@ -1340,9 +1359,19 @@ class MusicService :
         var isFirstQualityEmit = true
         scope.launch {
             dataStore.data
-                .map { it[AudioQualityKey]?.let { value ->
-                    iad1tya.echo.music.constants.AudioQuality.entries.find { it.name == value }
-                } ?: iad1tya.echo.music.constants.AudioQuality.OPUS }
+                .map { prefs ->
+                    val quality = prefs[AudioQualityKey]?.let { value ->
+                        iad1tya.echo.music.constants.AudioQuality.entries.find { it.name == value }
+                    } ?: iad1tya.echo.music.constants.AudioQuality.OPUS
+                    // DATA SAVER: force Opus while the switch is ON. Only ever downgrades (Opus is the
+                    // lowest tier); the persisted AudioQualityKey is untouched, so the user's chosen
+                    // quality comes back the moment the switch goes OFF.
+                    if (prefs[iad1tya.echo.music.constants.DataSaverEnabledKey] == true) {
+                        iad1tya.echo.music.constants.AudioQuality.OPUS
+                    } else {
+                        quality
+                    }
+                }
                 .distinctUntilChanged()
                 .collect { newQuality ->
                     val oldQuality = audioQuality
@@ -1390,7 +1419,16 @@ class MusicService :
                 }
         }
 
-        
+        // DATA SAVER: keep the main-thread mirror current for the speculative-video gates
+        // (prefetchCurrentVideoUrl / maybeWarmVideoConnection / maybePrepareInstantVideoSwap).
+        scope.launch {
+            dataStore.data
+                .map { it[iad1tya.echo.music.constants.DataSaverEnabledKey] ?: false }
+                .distinctUntilChanged()
+                .collect { dataSaverEnabled = it }
+        }
+
+
         scope.launch {
             dataStore.data
                 .map { it[IpVersionKey]?.toEnum(IpVersion.AUTO) ?: IpVersion.AUTO }
@@ -1490,7 +1528,13 @@ class MusicService :
                 .distinctUntilChanged().collect { scrobbleManager?.scrobbleDelaySeconds = it }
         }
         scope.launch {
-            dataStore.data.map { it[iad1tya.echo.music.constants.ListenBrainzEnabledKey] ?: false }.distinctUntilChanged().collect {
+            // DATA SAVER: ListenBrainz submissions are background network — gated OFF while ON
+            // (the user's ListenBrainzEnabledKey stays persisted and resumes when the switch goes OFF).
+            dataStore.data.map {
+                val listenBrainz = it[iad1tya.echo.music.constants.ListenBrainzEnabledKey] ?: false
+                val dataSaver = it[iad1tya.echo.music.constants.DataSaverEnabledKey] ?: false
+                if (dataSaver) false else listenBrainz
+            }.distinctUntilChanged().collect {
                 scrobbleManager?.listenBrainzEnabled = it
             }
         }
@@ -1519,7 +1563,12 @@ class MusicService :
 
         combine(
             currentMediaMetadata.distinctUntilChangedBy { it?.id },
-            dataStore.data.map { it[ShowLyricsKey] ?: false }.distinctUntilChanged(),
+            // DATA SAVER: no automatic lyrics fetch while ON (manual lookups in the UI still work).
+            dataStore.data.map {
+                val showLyrics = it[ShowLyricsKey] ?: false
+                val dataSaver = it[iad1tya.echo.music.constants.DataSaverEnabledKey] ?: false
+                if (dataSaver) false else showLyrics
+            }.distinctUntilChanged(),
         ) { mediaMetadata, showLyrics ->
             mediaMetadata to showLyrics
         }.collectLatest(scope) { (mediaMetadata, showLyrics) ->
@@ -2372,7 +2421,7 @@ class MusicService :
                 withContext(Dispatchers.IO) {
                     queue.getInitialStatus()
                         .filterExplicit(dataStore.get(HideExplicitKey, false))
-                        .filterVideoSongs(dataStore.get(HideVideoSongsKey, false))
+                        .filterVideoSongs(dataStore.get(HideVideoSongsKey, false) || dataStore.get(iad1tya.echo.music.constants.DataSaverEnabledKey, false))
                 }
             if (queue.preloadItem != null && player.playbackState == STATE_IDLE) return@launch
             if (initialStatus.title != null) {
@@ -2605,7 +2654,7 @@ class MusicService :
                 val initialStatus = withContext(Dispatchers.IO) {
                     radioQueue.getInitialStatus()
                         .filterExplicit(dataStore.get(HideExplicitKey, false))
-                        .filterVideoSongs(dataStore.get(HideVideoSongsKey, false))
+                        .filterVideoSongs(dataStore.get(HideVideoSongsKey, false) || dataStore.get(iad1tya.echo.music.constants.DataSaverEnabledKey, false))
                 }
                 if (initialStatus.title != null) queueTitle = initialStatus.title
                 val items = initialStatus.items.filter { it.mediaId != seed && it.mediaId != currentMediaId }
@@ -2626,7 +2675,7 @@ class MusicService :
                     .filter { it.id != seed && it.id != currentMediaId }
                     .map { it.toMediaItem() }
                     .filterExplicit(dataStore.get(HideExplicitKey, false))
-                    .filterVideoSongs(dataStore.get(HideVideoSongsKey, false))
+                    .filterVideoSongs(dataStore.get(HideVideoSongsKey, false) || dataStore.get(iad1tya.echo.music.constants.DataSaverEnabledKey, false))
                 val ok = appendSeed(items)
                 // CRITICAL for endlessness: the related page is FINITE. Re-point currentQueue at a radio seeded
                 // from the genuine last song AND PRIME it (getInitialStatus sets `continuation`, so hasNextPage()
@@ -2660,7 +2709,7 @@ class MusicService :
                     .filter { it.id != currentMediaId }
                     .map { it.toMediaItem() }
                     .filterExplicit(dataStore.get(HideExplicitKey, false))
-                    .filterVideoSongs(dataStore.get(HideVideoSongsKey, false))
+                    .filterVideoSongs(dataStore.get(HideVideoSongsKey, false) || dataStore.get(iad1tya.echo.music.constants.DataSaverEnabledKey, false))
                 val ok = appendSeed(items)
                 if (ok) {
                     activeMoodTitle?.let { queueTitle = it }
@@ -2737,7 +2786,7 @@ class MusicService :
                 }
                 val items = merged
                     .filterExplicit(dataStore.get(HideExplicitKey, false))
-                    .filterVideoSongs(dataStore.get(HideVideoSongsKey, false))
+                    .filterVideoSongs(dataStore.get(HideVideoSongsKey, false) || dataStore.get(iad1tya.echo.music.constants.DataSaverEnabledKey, false))
                 val ok = appendSeed(items) // appendSeed already runs orderedByTaste + records no-repeat + crossfade
                 if (ok) {
                     // Prime a radio from a seed so the Path A pagination keeps going after this merged batch.
@@ -2869,7 +2918,7 @@ class MusicService :
                     runCatching {
                         chipQueue.getInitialStatus()
                             .filterExplicit(dataStore.get(HideExplicitKey, false))
-                            .filterVideoSongs(dataStore.get(HideVideoSongsKey, false))
+                            .filterVideoSongs(dataStore.get(HideVideoSongsKey, false) || dataStore.get(iad1tya.echo.music.constants.DataSaverEnabledKey, false))
                     }.getOrNull()
                 } ?: return@launch
                 val items = initialStatus.items.filter { it.mediaId != currentMediaId }
@@ -4043,7 +4092,7 @@ class MusicService :
                     }
                     var next = currentQueue.nextPage()
                         .filterExplicit(dataStore.get(HideExplicitKey, false))
-                        .filterVideoSongs(dataStore.get(HideVideoSongsKey, false))
+                        .filterVideoSongs(dataStore.get(HideVideoSongsKey, false) || dataStore.get(iad1tya.echo.music.constants.DataSaverEnabledKey, false))
                     // Never auto-play something the user disliked (the song or a disliked artist).
                     if (!disliked.isEmpty) {
                         next = next.filterNot { mi ->
@@ -5608,6 +5657,8 @@ class MusicService :
     private fun prefetchCurrentVideoUrl() {
         // A toggle-to-video is only possible from audio; when already in video mode the swap has run.
         if (_videoMode.value) return
+        // DATA SAVER: no speculative video-URL resolves — the toggle resolves on demand instead.
+        if (dataSaverEnabled) return
         // Cheap in-memory checks FIRST: bail on a non-video / local / direct-URL track BEFORE paying for the
         // PerformanceMode reads in the first-toggle gate below (those only matter for a genuine video song).
         val id = player.currentMediaItem?.mediaId ?: return
@@ -6072,6 +6123,8 @@ class MusicService :
      */
     private fun maybeWarmVideoConnection() {
         if (!playerSheetExpanded) return
+        // DATA SAVER: no speculative connection warm-up (it transfers real bytes).
+        if (dataSaverEnabled) return
         if (_videoMode.value) return
         if (isCrossfading) return
         if (!playerInitialized.value) return
@@ -6151,6 +6204,8 @@ class MusicService :
      */
     private fun maybePrepareInstantVideoSwap() {
         if (!INSTANT_VIDEO_SWAP_ENABLED) return
+        // DATA SAVER: no speculative pre-prepare (it buffers ~video-bitrate data ahead of any toggle).
+        if (dataSaverEnabled) return
         if (!playerSheetExpanded) return
         if (_videoMode.value) return
         if (!playerInitialized.value) return
@@ -7575,6 +7630,12 @@ class MusicService :
         preloadJob?.cancel()
         preloadJob = scope.launch(kotlinx.coroutines.Dispatchers.IO) {
             if (!dataStore.get(iad1tya.echo.music.constants.PreloadNextSongEnabledKey, true)) return@launch
+            // DATA SAVER: skip the speculative upcoming-track preload entirely — the next track
+            // resolves on demand instead of ahead of time (same shape as the battery-saver skip below).
+            if (dataStore.get(iad1tya.echo.music.constants.DataSaverEnabledKey, false)) {
+                Timber.tag(TAG).d("Preload skipped: data saver is on")
+                return@launch
+            }
             // Battery saver: skip the upcoming-track network preload (up to N parallel stream-URL + loudness +
             // lyrics fetches per transition) when the user has Battery Saver on. Playback is unaffected — the
             // next track just resolves on demand instead of ahead of time. Respects the OS power-save intent.

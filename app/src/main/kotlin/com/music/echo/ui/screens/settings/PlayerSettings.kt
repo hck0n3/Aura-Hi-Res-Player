@@ -145,6 +145,11 @@ fun PlayerSettings(
         defaultValue = true
     )
 
+    val (dataSaverEnabled, onDataSaverEnabledChange) = rememberPreference(
+        key = iad1tya.echo.music.constants.DataSaverEnabledKey,
+        defaultValue = false
+    )
+
     val (sponsorBlockEnabled, onSponsorBlockEnabledChange) = rememberPreference(
         key = SponsorBlockEnabledKey,
         defaultValue = false
@@ -396,6 +401,32 @@ fun PlayerSettings(
                     WindowInsetsSides.Top
                 )
             )
+        )
+
+        Material3SettingsGroup(
+            title = "Ahorro de datos",
+            items = buildList {
+                add(Material3SettingsItem(
+                    icon = painterResource(R.drawable.offline),
+                    title = { Text("Modo ahorro de datos") },
+                    description = {
+                        Text("Fuerza el audio en Opus y desactiva letras automáticas, videos, precarga, canvas y scrobbling para gastar el mínimo de datos")
+                    },
+                    trailingContent = {
+                        Switch(
+                            checked = dataSaverEnabled,
+                            onCheckedChange = onDataSaverEnabledChange,
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = androidx.compose.material3.MaterialTheme.colorScheme.primary,
+                                checkedTrackColor = androidx.compose.material3.MaterialTheme.colorScheme.primaryContainer,
+                                uncheckedThumbColor = androidx.compose.material3.MaterialTheme.colorScheme.outline,
+                                uncheckedTrackColor = androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant
+                            )
+                        )
+                    },
+                    onClick = { onDataSaverEnabledChange(!dataSaverEnabled) }
+                ))
+            }
         )
 
         Material3SettingsGroup(

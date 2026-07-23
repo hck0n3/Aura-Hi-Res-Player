@@ -14,6 +14,11 @@ import java.time.ZoneOffset
 import com.music.innertube.models.IpVersion
 
 val IsFirstRunKey = booleanPreferencesKey("isFirstRun")
+// Data Saver mode (default OFF): one switch that forces Opus audio quality and gates every
+// background data consumer (preload, auto lyrics, video items, speculative video prefetch,
+// canvas animations, scrobbling). It NEVER overrides the user's chosen quality upward — the
+// persisted AudioQualityKey stays untouched and comes back the moment the switch goes OFF.
+val DataSaverEnabledKey = booleanPreferencesKey("dataSaverEnabled")
 // First-run artist onboarding (pick >=3 favourite artists) completed.
 val OnboardingArtistsDoneKey = booleanPreferencesKey("onboardingArtistsDone")
 // Last release tag the weekly update-check worker already notified about (notify once per version).
