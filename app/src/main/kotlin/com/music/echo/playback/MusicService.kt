@@ -2444,7 +2444,11 @@ class MusicService :
 
 
             if ((queue as? iad1tya.echo.music.playback.queues.ListQueue)?.startShuffled == true &&
-                !player.shuffleModeEnabled
+                !player.shuffleModeEnabled &&
+                // Only if this queue is still the LIVE one: with two rapid playQueue calls the first
+                // (slower) fetch could otherwise enable shuffle for a queue the user already replaced —
+                // and the enable-path DB persist would then write song #1 into the WRONG context.
+                currentQueue === queue
             ) {
                 // Enhanced Shuffle FIX (replay bug, part 2): the screens' Shuffle BUTTONS used to only
                 // pre-shuffle the item list with shuffle MODE off — which bypassed the entire enhanced
@@ -7151,6 +7155,17 @@ class MusicService :
 
         performCrossfadeSwap()
 
+        // The fade COMMITTED — kill the file-end-anchored jobs NOW. They deliberately survive the
+        // can't-start paths (secondary missed READY, pause during the bounded wait) as the fallback, but
+        // once the swap really happened they are stale — and under REPEAT_ONE the swapped-in player plays
+        // the SAME mediaId, so the old trigger's mediaId guard would pass after a short (≤8s) fade ended
+        // and audibly RESTART the song mid-play. Cancelling at the commit point closes that hole while
+        // keeping the fallback intact.
+        crossfadeTriggerJob?.cancel()
+        crossfadeTriggerJob = null
+        crossfadePreloadJob?.cancel()
+        crossfadePreloadJob = null
+
         if (savedShuffleEnabled) {
             // Enhanced Shuffle: the crossfade swap advances the queue via a path that SKIPS
             // onMediaItemTransition — where B5 + the persistent no-repeat bookkeeping normally record the
@@ -7181,13 +7196,21 @@ class MusicService :
             // re-shuffle — the self-reset would un-sink the played tail; appendSeed() re-applies the order
             // once the radio items land (unplayed radio sorts ahead; the tail stays sunk).
             val exhaustCtx = shuffleContextId
-            if (enhancedShuffleHint && exhaustCtx != null &&
+            // player.shuffleModeEnabled: LIVE check on top of the captured savedShuffleEnabled — the swap
+            // can run up to 2.5s after capture (READY-wait), and if the user turned shuffle OFF in that
+            // window this destructive branch (memory wipe + radio) must not fire on an un-shuffled queue.
+            if (enhancedShuffleHint && exhaustCtx != null && player.shuffleModeEnabled &&
                 player.repeatMode == REPEAT_MODE_OFF && autoLoadMoreHint &&
                 !radioSeedInFlight && isEnhancedContextExhausted()
             ) {
                 onEnhancedContextCycleComplete(exhaustCtx)
                 shuffleContextId = null
                 startRadioSeamlessly()
+                // KNOWN bounded edge: until appendSeed re-applies the order, the swapped-in player keeps
+                // media3's own random shuffle order — if this LAST song ends before the seed lands (very
+                // short song + slow network) one already-played song may briefly replay, then the radio
+                // takes over (its items sort ahead; the tail stays sunk via the !radioSeedInFlight reset
+                // gate). Accepted: bounded, self-healing, and never silence.
             } else {
                 val shufflePlaylistFirst = dataStore.get(ShufflePlaylistFirstKey, false)
                 applyShuffleOrder(player.currentMediaItemIndex, player.mediaItemCount, shufflePlaylistFirst)
