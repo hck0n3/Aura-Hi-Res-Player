@@ -65,15 +65,19 @@ class CrossfadeMathTest {
     }
 
     @Test
-    fun `curve 4 asymmetric rise - gradual both ways, incoming full by 60 percent with a gentle landing`() {
-        // Incoming reaches full level at p=0.6 and HOLDS it — but arrives gently (zero-slope landing).
-        val (inSixty, _) = CrossfadeMath.getGains(4, 0.6f)
-        assertEquals("incoming must reach full level at p=0.6", 1f, inSixty, 1e-4f)
-        val (inLate, _) = CrossfadeMath.getGains(4, 0.8f)
-        assertEquals("incoming must hold full level after p=0.6", 1f, inLate, 1e-4f)
+    fun `curve 4 asymmetric rise - gradual both ways, rise spans 85 percent with a gentle landing`() {
+        // Incoming reaches full level at p=0.85 and HOLDS it — arriving gently (zero-slope landing).
+        val (inFull, _) = CrossfadeMath.getGains(4, 0.85f)
+        assertEquals("incoming must reach full level at p=0.85", 1f, inFull, 1e-4f)
+        val (inLate, _) = CrossfadeMath.getGains(4, 0.9f)
+        assertEquals("incoming must hold full level after p=0.85", 1f, inLate, 1e-4f)
         // Gentle landing: just before full, the gain is already within 1% of unity (no hard clamp kink).
-        val (inNearFull, _) = CrossfadeMath.getGains(4, 0.55f)
-        assertTrue("incoming must land smoothly (>=0.99 at p=0.55)", inNearFull >= 0.99f)
+        val (inNearFull, _) = CrossfadeMath.getGains(4, 0.8f)
+        assertTrue("incoming must land smoothly (>=0.99 at p=0.8)", inNearFull >= 0.99f)
+        // The rise is AUDIBLE for most of the blend ("se va haciendo notar"): clearly rising mid-window,
+        // neither near-silent nor already-full.
+        val (inMid, _) = CrossfadeMath.getGains(4, 0.5f)
+        assertTrue("incoming must be mid-rise at p=0.5 (0.6..0.95)", inMid in 0.6f..0.95f)
         // Gentle start: the first tenth of the window stays quiet (eased ramp, no abrupt entry).
         val (inEarly, _) = CrossfadeMath.getGains(4, 0.1f)
         assertTrue("incoming must start gently (<0.15 at p=0.1)", inEarly < 0.15f)

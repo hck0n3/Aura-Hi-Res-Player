@@ -52,14 +52,32 @@ class SilenceDetectorAudioProcessor(
 
     private var notifiedThisSilence = false
 
+    // SECOND TIER (tail mode only) — "musical end" / radio-segue detection: the outgoing song entered its
+    // own mastered fade-out or quiet ending (sustained below ~-25 dBFS for ≥2.5s). Firing the crossfade
+    // HERE — while the ending is still audible — is what makes the blend actually HEARD (old one going
+    // down + new one rising over it). Digital silence alone anchors the fade too late on faded endings:
+    // the overlap lands on inaudible tail and the user perceives "no crossfade at all".
+    @Volatile
+    var tailQuietMinDurationUs: Long = 2_500_000L
+
+    @Volatile
+    private var consecutiveQuietFrames: Long = 0
+
+    @Volatile
+    private var inQuiet: Boolean = false
+
+    private var notifiedThisQuiet = false
+
     override fun configure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
         sampleRate = inputAudioFormat.sampleRate
         channelCount = inputAudioFormat.channelCount
         encoding = inputAudioFormat.encoding
 
-        if (encoding != C.ENCODING_PCM_16BIT) {
-            // Self-bypass instead of crashing on a non-16-bit format (defensive): Media3 skips an inactive
-            // processor, matching the other processors in the chain.
+        // 16-bit int and 32-bit float PCM are both measurable (float is what the sink feeds on the hi-res
+        // path of capable devices — without it the tail detection was silently dead exactly where the
+        // owner listens in Lossless). Anything else self-bypasses: Media3 skips an inactive processor,
+        // matching the other processors in the chain. Measure-only either way — audio is never modified.
+        if (encoding != C.ENCODING_PCM_16BIT && encoding != C.ENCODING_PCM_FLOAT) {
             isActive = false
             return AudioProcessor.AudioFormat.NOT_SET
         }
@@ -89,23 +107,31 @@ class SilenceDetectorAudioProcessor(
     }
 
     private fun detectSilence(inputBuffer: ByteBuffer) {
-        
+
         inputBuffer.order(ByteOrder.LITTLE_ENDIAN)
 
-        val frameCount = inputBuffer.remaining() / 2 / channelCount
+        val isFloat = encoding == C.ENCODING_PCM_FLOAT
+        val bytesPerSample = if (isFloat) 4 else 2
+        val frameCount = inputBuffer.remaining() / bytesPerSample / channelCount
         val basePosition = inputBuffer.position()
 
         repeat(frameCount) { frameIndex ->
-            var framePeak = 0
+            // Normalized frame peak in 0..1 so both encodings share the same thresholds.
+            var framePeakNorm = 0f
             repeat(channelCount) { channelIndex ->
-                val sampleIndex = basePosition + (frameIndex * channelCount + channelIndex) * 2
-                val sampleValue = abs(inputBuffer.getShort(sampleIndex).toInt())
-                if (sampleValue > framePeak) {
-                    framePeak = sampleValue
+                val sampleIndex = basePosition + (frameIndex * channelCount + channelIndex) * bytesPerSample
+                val sampleNorm = if (isFloat) {
+                    abs(inputBuffer.getFloat(sampleIndex))
+                } else {
+                    abs(inputBuffer.getShort(sampleIndex).toInt()) / 32768f
+                }
+                if (sampleNorm > framePeakNorm) {
+                    framePeakNorm = sampleNorm
                 }
             }
 
-            if (framePeak < silenceThreshold) {
+            // TIER 1 — true silence (constructor threshold, ~-42 dBFS by default).
+            if (framePeakNorm < silenceThreshold / 32768f) {
                 consecutiveSilentFrames++
                 val silentDurationUs = (consecutiveSilentFrames * 1_000_000L) / sampleRate
                 // Instant-skip keeps its constructor threshold; tail-only detection uses the longer one.
@@ -118,7 +144,30 @@ class SilenceDetectorAudioProcessor(
                     }
                 }
             } else {
-                clearSilenceState()
+                consecutiveSilentFrames = 0
+                inSilence = false
+                notifiedThisSilence = false
+            }
+
+            // TIER 2 — "musical end" (~-25 dBFS), tail mode only: the mastered fade-out / quiet ending.
+            // Independent counters: a frame between the two thresholds breaks the silence run but keeps
+            // the quiet run alive (a fade-out hovers in that band for seconds). Each tier notifies once
+            // per episode through the same callback; the Main-side handler tells them apart via
+            // isCurrentlySilent()/isCurrentlyQuiet() and applies its own position guard to this tier.
+            if (tailDetectEnabled && framePeakNorm < QUIET_THRESHOLD_NORM) {
+                consecutiveQuietFrames++
+                val quietDurationUs = (consecutiveQuietFrames * 1_000_000L) / sampleRate
+                if (quietDurationUs >= tailQuietMinDurationUs) {
+                    inQuiet = true
+                    if (!notifiedThisQuiet) {
+                        notifiedThisQuiet = true
+                        onLongSilence()
+                    }
+                }
+            } else {
+                consecutiveQuietFrames = 0
+                inQuiet = false
+                notifiedThisQuiet = false
             }
         }
     }
@@ -127,6 +176,9 @@ class SilenceDetectorAudioProcessor(
         consecutiveSilentFrames = 0
         inSilence = false
         notifiedThisSilence = false
+        consecutiveQuietFrames = 0
+        inQuiet = false
+        notifiedThisQuiet = false
     }
 
     fun resetTracking() {
@@ -134,6 +186,8 @@ class SilenceDetectorAudioProcessor(
     }
 
     fun isCurrentlySilent(): Boolean = inSilence
+
+    fun isCurrentlyQuiet(): Boolean = inQuiet
 
     override fun queueEndOfStream() {
         inputEnded = true
@@ -174,5 +228,10 @@ class SilenceDetectorAudioProcessor(
 
     companion object {
         private val EMPTY_BUFFER: ByteBuffer = ByteBuffer.allocateDirect(0).order(ByteOrder.nativeOrder())
+
+        // ~-25 dBFS normalized (1843/32768): the radio-automation "musical end" band — mastered fade-outs
+        // and quiet endings live under this level while still being audible. (RadioDJ-style segue practice
+        // uses -15..-28 dB for the mix trigger; -25 is the conservative middle of that range.)
+        private const val QUIET_THRESHOLD_NORM: Float = 1843f / 32768f
     }
 }

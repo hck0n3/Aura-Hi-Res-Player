@@ -31,7 +31,9 @@ object CrossfadeMath {
             4 -> {
                 // Smoothstep easing (3t²−2t³) has zero slope at both ends: the incoming ramp starts
                 // gently AND lands gently at full level; the outgoing decays gently all the way out.
-                val pin = (p / 0.6f).coerceAtMost(1f)
+                // Rise spans ~85% of the window (owner-tuned): the incoming is audibly "making itself
+                // noticed" for most of the blend before settling at full level near the end.
+                val pin = (p / 0.85f).coerceAtMost(1f)
                 val sIn = pin * pin * (3f - 2f * pin)
                 val sOut = p * p * (3f - 2f * p)
                 sin(sIn * half) to cos(sOut * half)

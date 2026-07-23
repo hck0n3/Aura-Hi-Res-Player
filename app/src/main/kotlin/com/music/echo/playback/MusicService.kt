@@ -299,6 +299,13 @@ class MusicService :
     // swaps, so a LATE-ARMED / not-yet-buffered secondary never fades in half-buffered (clipped first ms).
     private var crossfadeReadyJob: Job? = null
 
+    // TAIL-DETECTION jobs (see scheduleCrossfade / onTailSilenceDetected): arms the silence detector for
+    // the final stretch of the current track, and re-checks a too-early "musical end" fire at the moment
+    // the fade would actually be due. Cancelled on every reschedule and at fade commit.
+    private var crossfadeTailArmJob: Job? = null
+
+    private var tailQuietRecheckJob: Job? = null
+
     private val secondaryPlayerListener = object : Player.Listener {
         override fun onPlayerError(error: PlaybackException) {
             Timber.tag(TAG).e(error, "Secondary player error")
@@ -7026,6 +7033,10 @@ class MusicService :
         crossfadePreloadJob = null
         crossfadeReadyJob?.cancel()
         crossfadeReadyJob = null
+        crossfadeTailArmJob?.cancel()
+        crossfadeTailArmJob = null
+        tailQuietRecheckJob?.cancel()
+        tailQuietRecheckJob = null
         // Tail-silence detection is only valid inside the fade window this call is about to (re)compute —
         // disarm on every (re)schedule (track change, seek, queue change) so a stale arm can't fire.
         playerSilenceProcessors[player]?.tailDetectEnabled = false
@@ -7093,14 +7104,29 @@ class MusicService :
                     player.nextMediaItemIndex
                 }
                 prepareSecondaryPlayer(targetIndex)
-                // TAIL-SILENCE: arm the detector for the final stretch (~fade + preload lead) of THIS
-                // track only. If ≥3.5s of continuous silence occurs from here on, the audible content is
-                // over → onTailSilenceDetected starts the fade at the end of the MUSIC instead of the
-                // FILE (songs with long silent tails used to "fade" silence into the next song, which
-                // reads as no transition at all). Measure-only: never skips or alters audio.
-                // KNOWN SCOPE: the detector self-bypasses on non-16-bit input (hi-res float path) — there
-                // it stays inert and those tracks keep today's file-end-anchored fade. Consistent with the
-                // rest of the bit-perfect chain; extending it to float is a deliberate future decision.
+            }
+        }
+
+        // TAIL DETECTION — arm the detector for the final stretch of THIS track (its own job so the
+        // window can be WIDER than the preload lead). Two tiers fire the fade at the end of the MUSIC
+        // instead of the FILE:
+        //  • true silence (≥3.5s under ~-42 dBFS): the audible content is over — long silent tails no
+        //    longer produce a dead gap before the next song;
+        //  • "musical end" (≥2.5s under ~-25 dBFS): the song entered its mastered fade-out / quiet ending
+        //    — the crossfade starts THERE, over a still-audible ending, so the blend (old going down +
+        //    new rising on top) is actually HEARD. Position-guarded in the handler.
+        // Window: last 30s for songs ≥45s (long tails), else the preload lead. Measure-only; works on
+        // 16-bit AND float input (the hi-res path) since the detector's float support.
+        val tailArmDelay = if (player.duration >= 45_000L) {
+            (player.duration - 30_000L - player.currentPosition).coerceAtLeast(0L)
+        } else {
+            preloadDelay
+        }
+        crossfadeTailArmJob = scope.launch {
+            delay(tailArmDelay)
+            if (isActive && !isCrossfading && player.isPlaying &&
+                player.currentMediaItem?.mediaId == targetMediaId
+            ) {
                 playerSilenceProcessors[player]?.let {
                     it.resetTracking()
                     it.tailDetectEnabled = true
@@ -7136,10 +7162,35 @@ class MusicService :
     private fun onTailSilenceDetected() {
         val proc = playerSilenceProcessors[player] ?: return
         if (!proc.tailDetectEnabled) return
+        val silentNow = proc.isCurrentlySilent()
+        val quietNow = proc.isCurrentlyQuiet()
         // Main-hop recheck: if audible content resumed between the audio-thread fire and this hop, that
-        // silence was a mid-tail pause, not the end of the music — keep the detector armed and bail (a
-        // LATER ≥3.5s silence in the window can still fire).
-        if (!proc.isCurrentlySilent()) return
+        // was a mid-tail pause, not the end of the music — keep the detector armed and bail (a LATER
+        // episode in the window can still fire).
+        if (!silentNow && !quietNow) return
+        // TIER GATE — "musical end" (quiet but not silent, ~-25 dBFS) only fires NEAR the real end: the
+        // fade must land where it would soon happen anyway, just anchored to the music instead of the
+        // file. Too early (a quiet bridge 25s out) → schedule a re-check for the moment the fade would be
+        // due; if the ending is STILL quiet then, fire — if the music came back, the live state bails and
+        // the detector stays armed. TRUE silence fires immediately anywhere in the window (nothing
+        // audible remains; every extra second is dead air).
+        if (!silentNow) {
+            // No recheck loop while paused: position is frozen, so a scheduled recheck would just re-arm
+            // itself forever. Bail armed; the file-end trigger remains the fallback after resume.
+            if (!player.isPlaying) return
+            val duration = player.duration
+            if (duration == C.TIME_UNSET) return
+            val remaining = duration - player.currentPosition
+            val fireWindowMs = crossfadeDuration.toLong() + 4_000L
+            if (remaining > fireWindowMs) {
+                tailQuietRecheckJob?.cancel()
+                tailQuietRecheckJob = scope.launch {
+                    delay((remaining - fireWindowMs).coerceAtLeast(250L))
+                    onTailSilenceDetected() // re-evaluates LIVE state; bails if the music resumed
+                }
+                return
+            }
+        }
         proc.tailDetectEnabled = false
         if (isCrossfading || !crossfadeEnabled || highPerformanceModeHint || _videoMode.value) return
         if (!player.isPlaying || sleepTimer.pauseWhenSongEnd) return
@@ -7148,8 +7199,7 @@ class MusicService :
         // Deliberately do NOT cancel crossfadeTriggerJob: if this early fade can't actually start (the
         // secondary misses its READY window, or the user pauses during the bounded wait) the file-end-
         // anchored trigger must survive as the fallback — cancelling it here left the track with NO fade at
-        // all. If the early fade DOES start, the later trigger no-ops on its own guards (the swap changed
-        // the current mediaId, and isCrossfading blocks re-entry).
+        // all. If the early fade DOES start, beginCrossfadeSwap cancels the stale jobs at the commit point.
         startCrossfade()
     }
 
@@ -7233,6 +7283,10 @@ class MusicService :
         crossfadeTriggerJob = null
         crossfadePreloadJob?.cancel()
         crossfadePreloadJob = null
+        crossfadeTailArmJob?.cancel()
+        crossfadeTailArmJob = null
+        tailQuietRecheckJob?.cancel()
+        tailQuietRecheckJob = null
 
         if (savedShuffleEnabled) {
             // Enhanced Shuffle: the crossfade swap advances the queue via a path that SKIPS
