@@ -1,17 +1,13 @@
-# Aura Hi-Res Player 0.6.127 — Tus 4 defaults + cero huecos entre canciones SIEMPRE
+# Aura Hi-Res Player 0.6.128 — Ahora SÍ: entrada suave real al cambiar de canción
 
-## 🎚️ Nueva configuración por defecto (se aplica sola con esta actualización, por orden tuya)
-Al actualizar, la app queda así para todos — una sola vez; después, lo que TÚ cambies en Ajustes manda para siempre:
-- **Transición: 5 segundos**, estilo **Respiro profundo (pausa marcada)** — un respiro audible entre canciones, sin llegar nunca al silencio
-- **Saltar partes sin música (SponsorBlock): ACTIVADO** — patrocinios y autopromos se saltan solos; el audio real jamás se toca
-- **Evitar pistas duplicadas en cola: ACTIVADO** — al agregar a la cola, no entran repetidas
-- **Liquid Glass automático en gama alta**: si tu equipo es de gama alta (y apto: Android 12+, sin Modo Rendimiento, no TV/auto), se activa solo el tema **Liquid Glass** — el interruptor "Activar Liquid Glass" y el fondo del mini-reproductor. En equipos modestos no se toca nada (el vidrio pesa)
+## 🔴 Corregido: los cambios manuales seguían entrando de golpe (tu reporte)
+El fundido del 0.6.126 tenía un bug real: corría con reloj desde el momento del CAMBIO, pero una canción por internet tarda medio segundo o más en resolver y cargar — **el fundido terminaba antes de que sonara el primer sample**, así que el audio real entraba a volumen pleno. De golpe, siempre, en canciones streameadas.
 
-## 🚫 Cero huecos entre canciones — sin importar cuánto silencio traiga la canción
-Antes la vigilancia del "final musical" solo miraba los últimos 30 segundos: una cola de silencio MÁS larga aún dejaba hueco muerto. Ahora:
-- **Se vigila la canción COMPLETA**: en cuanto el audio real termina, la transición dispara — da igual si el silencio dura 10, 40 o 90 segundos.
-- **Protección anti-falso-disparo**: lejos del final se exigen ≥7 segundos de silencio continuo (una pausa dramática o un sketch jamás corta la canción); cerca del final basta menos.
-- Costo en batería: nulo en la práctica.
+Ahora el fundido **espera a que el audio realmente empiece a sonar** y AHÍ hace la subida suave de ~medio segundo. Da igual si la canción tarda en cargar: la entrada siempre es gradual.
+
+- Cubre next/anterior, tocar otra canción de la lista y arrancar otra playlist.
+- Tu volumen queda exacto al terminar, siempre (blindado contra pausas, skips rápidos y el crossfade).
+- El interruptor sigue en Ajustes ▸ Reproductor ▸ "Entrada suave al cambiar de canción".
 
 ## Recordatorio de lo abierto
 - **Cortes a mitad de canción** (solo en Lossless/Saavn) — tu registro ya trae el diagnóstico por etapas: repórtalo cuando pase.

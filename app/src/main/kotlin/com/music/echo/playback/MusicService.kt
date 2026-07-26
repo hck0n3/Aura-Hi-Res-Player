@@ -4162,7 +4162,9 @@ class MusicService :
         // golpe"): a user-initiated switch — next/prev/tapping a song (SEEK) or starting another list
         // (PLAYLIST_CHANGED) — fades the NEW song in over ~400ms instead of slamming to full level.
         // AUTO advances are untouched (the crossfade owns those); a running crossfade is never fought.
-        if (fadeOnManualChangeHint && !isCrossfading && player.playWhenReady &&
+        // NO playWhenReady guard here: on the tap-a-song path this callback can arrive before playQueue
+        // sets playWhenReady, and the fade itself WAITS for real audio anyway (see fadeInOnManualChange).
+        if (fadeOnManualChangeHint && !isCrossfading &&
             (reason == Player.MEDIA_ITEM_TRANSITION_REASON_SEEK ||
                 reason == Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED)
         ) {
@@ -7298,6 +7300,20 @@ class MusicService :
         self = scope.launch {
             try {
                 player.volume = 0f
+                // WAIT for the audio to actually RENDER before ramping (bounded): a manual switch to a
+                // streamed song needs 0.5-3s of resolve+buffer, and a wall-clock ramp from the transition
+                // callback finished into SILENCE — the real audio then entered at full level ("sigue
+                // entrando de golpe", the owner's exact report on 0.6.126). isPlaying == playWhenReady
+                // AND READY == samples flowing; on timeout (paused start, resolve failure) the finally
+                // restores the exact volume — held-at-zero is inaudible in every timeout scenario.
+                var waited = 0L
+                while (isActive && waited < 8_000L &&
+                    !(player.isPlaying && player.playbackState == Player.STATE_READY)
+                ) {
+                    delay(50)
+                    waited += 50
+                }
+                if (!isActive || !player.isPlaying) return@launch
                 val steps = 20
                 val stepTime = 400L / steps
                 for (i in 1..steps) {
