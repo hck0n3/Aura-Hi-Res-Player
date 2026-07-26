@@ -7862,7 +7862,7 @@ class MusicService :
             // Finer steps (~40 ms) so the volume ramp is smooth, not stair-stepped like the old 20 steps.
             val steps = (duration / 40L).toInt().coerceIn(24, 240)
             val stepTime = duration / steps
-            val curve = try { dataStore.get(CrossfadeCurveKey, 7) } catch (e: Exception) { 7 }
+            val curve = try { dataStore.get(CrossfadeCurveKey, 4) } catch (e: Exception) { 4 }
             val startVolume = try { fadingPlayer?.volume ?: 1f } catch(e:Exception) { 1f }
             // Because LUFS Normalization is fixed and active, tracks play at roughly -14 LUFS,
             // leaving massive natural headroom. Thus, two tracks summing during an equal-power crossfade

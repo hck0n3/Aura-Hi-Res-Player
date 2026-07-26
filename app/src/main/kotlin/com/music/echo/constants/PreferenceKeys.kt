@@ -112,6 +112,11 @@ val Defaults0127AppliedKey = booleanPreferencesKey("defaults_0_6_127_applied")
 // the global switch + the mini-player background — once. Evaluated per install on current hardware;
 // the user's later choices win forever after.
 val LiquidGlassHighTierV1AppliedKey = booleanPreferencesKey("liquid_glass_high_tier_v1_applied")
+
+// Owner order (0.6.130): default curve → 4 "Ascenso" — he heard Respiro profundo's BY-DESIGN center
+// valley as an unwanted gap; what he describes (both songs together, one down while the other rises,
+// no space) IS the Ascenso shape. FORCED once; duration stays 5s; user choices win afterwards.
+val Defaults0130CurveAppliedKey = booleanPreferencesKey("defaults_0_6_130_curve_applied")
 // One-time: seed EQ ON + Audiophile preset + preamp 0.0 dB for everyone on this update.
 val EqAudiophileDefaultAppliedKey = booleanPreferencesKey("eq_audiophile_default_applied")
 // One-time (V2, FRESH key): re-apply ALL audio defaults — EQ Audiophile + preamp 0.0, crossfade 9s

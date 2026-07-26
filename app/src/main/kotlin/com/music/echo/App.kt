@@ -345,6 +345,7 @@ class App : Application(), SingletonImageLoader.Factory, androidx.work.Configura
             settings[iad1tya.echo.music.constants.CrossfadeDefault9AppliedKey] != true ||
             settings[iad1tya.echo.music.constants.Defaults0127AppliedKey] != true ||
             settings[iad1tya.echo.music.constants.LiquidGlassHighTierV1AppliedKey] != true ||
+            settings[iad1tya.echo.music.constants.Defaults0130CurveAppliedKey] != true ||
             settings[iad1tya.echo.music.constants.LyricsBlurDefaultOnV1AppliedKey] != true ||
             settings[iad1tya.echo.music.constants.AddToPlaylistLastUpdatedDefaultV1AppliedKey] != true
         if (batchAPending) {
@@ -576,7 +577,7 @@ class App : Application(), SingletonImageLoader.Factory, androidx.work.Configura
             // migrateAudioDefaultsV2 — every crossfade-default writer must agree or ordering undoes it.
             p[iad1tya.echo.music.constants.CrossfadeEnabledKey] = true
             p[iad1tya.echo.music.constants.CrossfadeDurationKey] = 5f
-            p[iad1tya.echo.music.constants.CrossfadeCurveKey] = 7
+            p[iad1tya.echo.music.constants.CrossfadeCurveKey] = 4
             p[iad1tya.echo.music.constants.SkipSilenceKey] = true
             p[iad1tya.echo.music.constants.SkipSilenceInstantKey] = true
 
@@ -702,7 +703,7 @@ class App : Application(), SingletonImageLoader.Factory, androidx.work.Configura
         // seed and migrateAudioDefaultsV2 are aligned to the same values so ordering can't undo it.
         if (settings[iad1tya.echo.music.constants.Defaults0127AppliedKey] != true) {
             p[iad1tya.echo.music.constants.CrossfadeDurationKey] = 5f
-            p[iad1tya.echo.music.constants.CrossfadeCurveKey] = 7
+            p[iad1tya.echo.music.constants.CrossfadeCurveKey] = 4
             p[iad1tya.echo.music.constants.SponsorBlockEnabledKey] = true
             p[iad1tya.echo.music.constants.PreventDuplicateTracksInQueueKey] = true
             p[iad1tya.echo.music.constants.Defaults0127AppliedKey] = true
@@ -727,6 +728,15 @@ class App : Application(), SingletonImageLoader.Factory, androidx.work.Configura
             }
             p[iad1tya.echo.music.constants.LiquidGlassHighTierV1AppliedKey] = true
         }
+
+        // Owner order (0.6.130): the forced Respiro profundo default (0.6.127) has a BY-DESIGN -12dB
+        // center valley that the owner hears as an unwanted gap between songs. His described shape —
+        // both songs audible TOGETHER, outgoing lowering while the incoming rises, no space — is curve
+        // 4 "Ascenso". Forced once; the 5s duration and every other 0.6.127 default stay untouched.
+        if (settings[iad1tya.echo.music.constants.Defaults0130CurveAppliedKey] != true) {
+            p[iad1tya.echo.music.constants.CrossfadeCurveKey] = 4
+            p[iad1tya.echo.music.constants.Defaults0130CurveAppliedKey] = true
+        }
     }
 
     /**
@@ -749,7 +759,7 @@ class App : Application(), SingletonImageLoader.Factory, androidx.work.Configura
                 // Aligned with the CrossfadeRespiro5 forced default (owner order, 0.6.127): this block
                 // runs AFTER batch A on fresh installs, so mismatched values here would silently undo it.
                 p[iad1tya.echo.music.constants.CrossfadeDurationKey] = 5f
-                p[iad1tya.echo.music.constants.CrossfadeCurveKey] = 7
+                p[iad1tya.echo.music.constants.CrossfadeCurveKey] = 4
                 p[iad1tya.echo.music.constants.SafeVolumeEnabledKey] = true
             }
         }.onFailure { reportException(it) }

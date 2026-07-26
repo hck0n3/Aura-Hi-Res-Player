@@ -104,7 +104,7 @@ fun PlayerSettings(
     )
     val (crossfadeCurve, onCrossfadeCurveChange) = rememberPreference(
         CrossfadeCurveKey,
-        defaultValue = 7
+        defaultValue = 4
     )
     val (crossfadeGapless, onCrossfadeGaplessChange) = rememberPreference(
         CrossfadeGaplessKey,

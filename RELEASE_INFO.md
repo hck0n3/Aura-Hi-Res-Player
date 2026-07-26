@@ -1,13 +1,15 @@
-# Aura Hi-Res Player 0.6.129 — Entrada aún MÁS suave al cambiar de canción
+# Aura Hi-Res Player 0.6.130 — Transición por defecto: las dos canciones JUNTAS, sin espacio
 
-## 🎵 Afinado a tu oído: las canciones "explosivas" también entran suaves
-Reportaste que algunas canciones seguían sintiéndose de golpe al cambiarlas a mano — y tenías razón: era culpa de la canción misma (intros que arrancan a todo volumen), y el fundido de ~0.4s se quedaba corto para domarlas.
+## 🎶 Corregido a tu oído: se sentía una pausa entre canciones
+Tenías razón — y era por diseño: el estilo **"Respiro profundo (pausa marcada)"** que quedó por defecto hace exactamente eso: una bajada audible en el centro del cruce. Lo que describes — **las dos canciones sonando JUNTAS, una terminando y bajando mientras la otra empieza subiendo, sin espacio entre ellas** — es la forma del estilo **Ascenso**.
 
-Ahora la entrada manual dura **~0.9 segundos con curva doblemente suavizada**: el primer tramo se mantiene casi imperceptible (bajo -16dB) y sube gradual hasta tu volumen — hasta una intro explosiva entra con gentileza.
+Con esta actualización el estilo por defecto pasa a **Ascenso** (se aplica solo, una vez):
+- La que termina **baja su volumen durante TODO el cruce** — nunca desaparece antes de tiempo.
+- La que entra **empieza bajito ENCIMA de la otra y sube gradual** hasta quedar a volumen pleno.
+- **Cero valle**: en ningún momento del cruce baja el volumen combinado — juntas, no separadas.
+- La duración queda en tus **5 segundos**.
 
-- Sigue esperando a que el audio realmente suene antes de subir (el fix del 0.6.128).
-- Solo cambios manuales; el crossfade automático y tus 9 estilos, intactos.
-- Interruptor en Ajustes ▸ Reproductor ▸ "Entrada suave al cambiar de canción".
+El "Respiro profundo" sigue disponible en Ajustes ▸ Reproductor ▸ Estilo de transición si algún día quieres ese carácter con pausa — junto a los otros 7 estilos.
 
 ## Recordatorio de lo abierto
 - **Cortes a mitad de canción** (solo en Lossless/Saavn) — tu registro ya trae el diagnóstico por etapas: repórtalo cuando pase.
