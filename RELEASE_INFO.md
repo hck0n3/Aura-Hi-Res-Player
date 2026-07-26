@@ -1,13 +1,13 @@
-# Aura Hi-Res Player 0.6.128 — Ahora SÍ: entrada suave real al cambiar de canción
+# Aura Hi-Res Player 0.6.129 — Entrada aún MÁS suave al cambiar de canción
 
-## 🔴 Corregido: los cambios manuales seguían entrando de golpe (tu reporte)
-El fundido del 0.6.126 tenía un bug real: corría con reloj desde el momento del CAMBIO, pero una canción por internet tarda medio segundo o más en resolver y cargar — **el fundido terminaba antes de que sonara el primer sample**, así que el audio real entraba a volumen pleno. De golpe, siempre, en canciones streameadas.
+## 🎵 Afinado a tu oído: las canciones "explosivas" también entran suaves
+Reportaste que algunas canciones seguían sintiéndose de golpe al cambiarlas a mano — y tenías razón: era culpa de la canción misma (intros que arrancan a todo volumen), y el fundido de ~0.4s se quedaba corto para domarlas.
 
-Ahora el fundido **espera a que el audio realmente empiece a sonar** y AHÍ hace la subida suave de ~medio segundo. Da igual si la canción tarda en cargar: la entrada siempre es gradual.
+Ahora la entrada manual dura **~0.9 segundos con curva doblemente suavizada**: el primer tramo se mantiene casi imperceptible (bajo -16dB) y sube gradual hasta tu volumen — hasta una intro explosiva entra con gentileza.
 
-- Cubre next/anterior, tocar otra canción de la lista y arrancar otra playlist.
-- Tu volumen queda exacto al terminar, siempre (blindado contra pausas, skips rápidos y el crossfade).
-- El interruptor sigue en Ajustes ▸ Reproductor ▸ "Entrada suave al cambiar de canción".
+- Sigue esperando a que el audio realmente suene antes de subir (el fix del 0.6.128).
+- Solo cambios manuales; el crossfade automático y tus 9 estilos, intactos.
+- Interruptor en Ajustes ▸ Reproductor ▸ "Entrada suave al cambiar de canción".
 
 ## Recordatorio de lo abierto
 - **Cortes a mitad de canción** (solo en Lossless/Saavn) — tu registro ya trae el diagnóstico por etapas: repórtalo cuando pase.

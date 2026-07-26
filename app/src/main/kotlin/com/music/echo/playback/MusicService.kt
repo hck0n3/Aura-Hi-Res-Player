@@ -7314,12 +7314,16 @@ class MusicService :
                     waited += 50
                 }
                 if (!isActive || !player.isPlaying) return@launch
-                val steps = 20
-                val stepTime = 400L / steps
+                // ~900ms, smoothstep-EASED sine (owner: songs that OPEN at full blast still felt like a
+                // slam at 400ms — the song's own fault, so the ramp must tame it). The eased curve keeps
+                // the first ~20% of the window under -16dB, so even an explosive intro rises gradually.
+                val steps = 30
+                val stepTime = 900L / steps
                 for (i in 1..steps) {
                     if (!isActive || isCrossfading) break
                     val p = i / steps.toFloat()
-                    player.volume = target * kotlin.math.sin(p * (Math.PI / 2.0).toFloat())
+                    val eased = p * p * (3f - 2f * p) // smoothstep: zero-slope start AND landing
+                    player.volume = target * kotlin.math.sin(eased * (Math.PI / 2.0).toFloat())
                     delay(stepTime)
                 }
             } finally {
