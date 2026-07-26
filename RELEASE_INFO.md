@@ -1,14 +1,31 @@
-# Aura Hi-Res Player 0.6.123 — El cruce entre canciones ahora SE OYE
+# Aura Hi-Res Player 0.6.124 — Aleatorio auditado a fondo + Cuentas + Portadas + 9 transiciones
 
-## 🎶 Transición estilo radio (segue) — tu pedido
-Reportaste "no hay cruzado" — y tenías razón: el fundido se anclaba al final del ARCHIVO, y en canciones que terminan bajito o con silencio, el cruce caía sobre una cola inaudible: solo oías entrar la nueva. Ahora:
+## 🔀 Aleatorio: auditoría completa — 8 arreglos (tus repetidas)
+Auditamos TODA la lógica del aleatorio mejorado atacándola por 3 frentes. Lo que se corrigió:
+- **La canción de arranque ya nunca es repetida**: al activar el aleatorio, la primera canción se elegía al azar entre TODAS (a mitad de ciclo, ~50% de probabilidad de arrancar con una ya oída — tu queja exacta). Ahora siempre abre con una que NO has oído, mientras queden.
+- **El menú "⋯ → Aleatorio" ahora sí usa la memoria** (antes barajaba una vez y ya, sin recordar nada — otro de tus caminos).
+- **Lo que escuchas SIN aleatorio también cuenta**: si oyes media playlist en orden y luego activas el aleatorio, ya no te repite esas canciones.
+- Saltar a mano al final de la lista ya no borra la memoria de una playlist a medias.
+- Quitar canciones de la cola ya no dispara un borrado de memoria en falso.
+- Playlists con la misma canción dos veces ya no la suenan doble por ciclo.
+- Cerrar la app ya no resucita la primera canción como "no oída".
+- "Ocultar explícitas" ya no apagaba en silencio la memoria de la biblioteca.
 
-- **El fundido arranca en el final MUSICAL**: cuando la canción que termina entra en su bajada final (su propio fade-out), el cruce empieza AHÍ — la vieja todavía se oye yéndose mientras la nueva empieza bajito encima y va subiendo. Es la técnica de las radios (lo que Apple llama AutoMix).
-- **Canciones con silencios largos al final**: detectadas hasta 30 segundos antes — ya no queda hueco muerto entre canciones; la transición llega siempre.
-- **Protección anti-corte**: una pausa musical a mitad de canción (un silencio de un sketch, una pausa dramática) NO dispara el cambio — lejos del final se exige un silencio mucho más largo para actuar.
-- **Ascenso** afinado otra vez: la subida de la nueva canción ahora ocupa el 85% del fundido — la oyes "haciéndose notar" gradualmente casi todo el cruce, hasta quedar a su volumen pleno.
+## 👤 Cuentas: todas en un solo lugar
+**Last.fm y ListenBrainz** entran al hub de Cuentas junto a YouTube Music y Spotify: ves el estado de cada una, conectas y cierras sesión desde ahí mismo.
 
-Nota honesta: esto funciona en la gran mayoría del contenido (Opus, AAC/Saavn y FLAC 16-bit). En pistas hi-res de 24-bit el sistema de audio del teléfono no deja medir la señal, así que esas conservan el fundido de siempre — si lo notas ahí, dímelo y hago la versión profunda.
+## 🖼️ Portadas de playlists arregladas
+- Si la portada original muere (enlace caducado, archivo purgado), ahora cae a un **mosaico con las carátulas de sus canciones** en vez de quedarse sin imagen.
+- Las portadas personalizadas se guardan en almacenamiento **permanente** (antes Android podía borrarlas).
+- Las playlists de YouTube refrescan su portada al abrirlas.
+
+## 🎚️ 9 estilos de transición — pruébalos todos
+4 nuevos en Ajustes ▸ Reproductor ▸ Estilo de transición:
+- **V (sale, luego entra)** — la vieja se apaga del todo y la nueva nace justo después; nunca se pisan.
+- **Logarítmica (muere de verdad)** — la bajada que el oído percibe como pareja, estilo radio/mastering.
+- **Respiro profundo (pausa marcada)** — un respiro audible entre canciones, sin llegar al silencio.
+- **Ultra suave (ganancia constante)** — la más gentil: suma exacta de volúmenes, arranque y aterrizaje imperceptibles.
+El estilo por defecto no cambia. Elige el que más te guste al oído.
 
 ## Recordatorio de lo abierto
 - **Cortes a mitad de canción** (solo en Lossless/Saavn) — necesito tu registro en esa calidad.
