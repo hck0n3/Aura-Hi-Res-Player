@@ -298,6 +298,10 @@ fun PlayerSettings(
             2 -> "Suave larga (curva S)"
             3 -> "Exponencial (rápida)"
             4 -> "Ascenso (entra rápido, sale lento)"
+            5 -> "V (sale, luego entra)"
+            6 -> "Logarítmica (muere de verdad)"
+            7 -> "Respiro (bajada a la mitad)"
+            8 -> "Ultra suave (ganancia constante)"
             else -> "Lineal"
         }
     }
@@ -311,7 +315,7 @@ fun PlayerSettings(
             },
             title = "Estilo de transición",
             current = crossfadeCurve,
-            values = listOf(0, 1, 2, 3, 4),
+            values = listOf(0, 1, 2, 3, 4, 5, 6, 7, 8),
             valueText = { crossfadeCurveName(it) }
         )
     }
