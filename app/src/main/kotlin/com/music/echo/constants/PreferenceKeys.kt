@@ -102,6 +102,16 @@ val PlaybackDefaultsV5AppliedKey = booleanPreferencesKey("playback_defaults_v5_a
 // v6 (FRESH key): best crossfade default is 9s (equal-power). Re-applies once even for users whose
 // V5/AudioDefaultsV2 flags already landed the old 13s default; only moves users still on that 13s default.
 val CrossfadeDefault9AppliedKey = booleanPreferencesKey("crossfade_default_9_applied")
+
+// Owner order (0.6.127): FORCED once on update (fresh key — a set flag or versionCode bump alone never
+// re-runs a one-time migration): transition 5s + curve 7 "Respiro profundo", SponsorBlock ON, and
+// prevent-duplicate-tracks-in-queue ON. The user's later choices win forever after.
+val Defaults0127AppliedKey = booleanPreferencesKey("defaults_0_6_127_applied")
+
+// Owner order (0.6.127): on HIGH-tier (gama alta) glass-eligible devices, auto-enable Liquid Glass —
+// the global switch + the mini-player background — once. Evaluated per install on current hardware;
+// the user's later choices win forever after.
+val LiquidGlassHighTierV1AppliedKey = booleanPreferencesKey("liquid_glass_high_tier_v1_applied")
 // One-time: seed EQ ON + Audiophile preset + preamp 0.0 dB for everyone on this update.
 val EqAudiophileDefaultAppliedKey = booleanPreferencesKey("eq_audiophile_default_applied")
 // One-time (V2, FRESH key): re-apply ALL audio defaults — EQ Audiophile + preamp 0.0, crossfade 9s

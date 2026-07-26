@@ -100,11 +100,11 @@ fun PlayerSettings(
     )
     val (crossfadeDuration, onCrossfadeDurationChange) = rememberPreference(
         CrossfadeDurationKey,
-        defaultValue = 10f
+        defaultValue = 5f
     )
     val (crossfadeCurve, onCrossfadeCurveChange) = rememberPreference(
         CrossfadeCurveKey,
-        defaultValue = 1
+        defaultValue = 7
     )
     val (crossfadeGapless, onCrossfadeGaplessChange) = rememberPreference(
         CrossfadeGaplessKey,
@@ -157,7 +157,7 @@ fun PlayerSettings(
 
     val (sponsorBlockEnabled, onSponsorBlockEnabledChange) = rememberPreference(
         key = SponsorBlockEnabledKey,
-        defaultValue = false
+        defaultValue = true
     )
 
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -206,7 +206,7 @@ fun PlayerSettings(
     )
     val (preventDuplicateTracksInQueue, onPreventDuplicateTracksInQueueChange) = rememberPreference(
         PreventDuplicateTracksInQueueKey,
-        defaultValue = false
+        defaultValue = true
     )
     val (stopMusicOnTaskClear, onStopMusicOnTaskClearChange) = rememberPreference(
         StopMusicOnTaskClearKey,

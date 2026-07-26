@@ -494,6 +494,10 @@ class MusicService :
     @Volatile private var fadeOnManualChangeHint: Boolean = true
 
     private var manualFadeInJob: Job? = null
+
+    // Which track the tail detector is currently armed for: re-scheduling the SAME track re-arms without
+    // resetting the counters (a reset mid-silence would delay a genuine tail fire); a NEW track resets.
+    private var tailArmedMediaId: String? = null
     @Volatile private var keepGenreLaneHint: Boolean = true
     @Volatile private var persistentQueueHint: Boolean = true
     @Volatile private var historyDurationMsHint: Float = 30000f
@@ -1507,7 +1511,7 @@ class MusicService :
         // immediately fetch segments for the current track.
         scope.launch {
             dataStore.data
-                .map { it[iad1tya.echo.music.constants.SponsorBlockEnabledKey] ?: false }
+                .map { it[iad1tya.echo.music.constants.SponsorBlockEnabledKey] ?: true }
                 .distinctUntilChanged()
                 .collect { enabled ->
                     sponsorBlockEnabled = enabled
@@ -1776,7 +1780,7 @@ class MusicService :
                     // High-Performance Mode disables crossfade: it runs a SECOND ExoPlayer (double decode) per
                     // transition — the biggest CPU/RAM cost left on weak/TV/car devices. Transitions become hard cuts.
                     (prefs[CrossfadeEnabledKey] ?: false) && !(prefs[iad1tya.echo.music.constants.HighPerformanceModeKey] ?: false),
-                    prefs[CrossfadeDurationKey] ?: 10f,
+                    prefs[CrossfadeDurationKey] ?: 5f,
                     prefs[CrossfadeGaplessKey] ?: true
                 )
             },
@@ -3516,7 +3520,7 @@ class MusicService :
         }
 
         
-        if (dataStore.get(PreventDuplicateTracksInQueueKey, false)) {
+        if (dataStore.get(PreventDuplicateTracksInQueueKey, true)) {
             val itemIds = items.map { it.mediaId }.toSet()
             val indicesToRemove = mutableListOf<Int>()
             val currentIndex = player.currentMediaItemIndex
@@ -3597,7 +3601,7 @@ class MusicService :
 
     fun addToQueue(items: List<MediaItem>) {
         
-        if (dataStore.get(PreventDuplicateTracksInQueueKey, false)) {
+        if (dataStore.get(PreventDuplicateTracksInQueueKey, true)) {
             val itemIds = items.map { it.mediaId }.toSet()
             val indicesToRemove = mutableListOf<Int>()
             val currentIndex = player.currentMediaItemIndex
@@ -7406,26 +7410,25 @@ class MusicService :
         //  • "musical end" (≥2.5s under ~-25 dBFS): the song entered its mastered fade-out / quiet ending
         //    — the crossfade starts THERE, over a still-audible ending, so the blend (old going down +
         //    new rising on top) is actually HEARD. Position-guarded in the handler.
-        // Window: last 30s for songs ≥45s (long tails), else the preload lead. Measure-only. HONEST
+        // Window: the WHOLE track (owner order — no silent gap ever; mid-song safety lives in the
+        // handler's position-tiered thresholds). Measure-only. HONEST
         // SCOPE: media3 only feeds custom processors on the 16-bit INT pipeline (Opus/AAC/16-bit FLAC —
         // the vast majority of content); the hi-res FLOAT pipeline (24-bit on capable devices) bypasses
         // the whole custom chain, so those tracks keep the file-end-anchored fade. A sink-level tap
         // (ForwardingAudioSink) is the known follow-up if 24-bit coverage is ever needed.
-        val tailArmDelay = if (player.duration >= 45_000L) {
-            (player.duration - 30_000L - player.currentPosition).coerceAtLeast(0L)
-        } else {
-            preloadDelay
-        }
-        crossfadeTailArmJob = scope.launch {
-            delay(tailArmDelay)
-            if (isActive && !isCrossfading && player.isPlaying &&
-                player.currentMediaItem?.mediaId == targetMediaId
-            ) {
-                playerSilenceProcessors[player]?.let {
-                    it.resetTracking()
-                    it.tailDetectEnabled = true
-                }
+        // WHOLE-TRACK arming (owner order: the transition must fire NO MATTER how many seconds of silence
+        // the song carries — never a dead gap). The position-tiered handler keeps mid-song safety: far from
+        // the end TRUE silence needs ≥7s continuous (a skit/grand-pause can't fire), near the end 3.5s, and
+        // the -25dB "musical end" tier only acts inside (fade+4s). Same-track re-arms preserve counters
+        // (identity check + the processor no longer wipes state on a brief disarm); a new track resets.
+        // Cost: per-frame abs+compare on the already-hot audio thread — trivial vs decode/EQ.
+        playerSilenceProcessors[player]?.let {
+            val armId = player.currentMediaItem?.mediaId
+            if (tailArmedMediaId != armId) {
+                it.resetTracking()
+                tailArmedMediaId = armId
             }
+            it.tailDetectEnabled = true
         }
 
         crossfadeTriggerJob = scope.launch {
@@ -7839,7 +7842,7 @@ class MusicService :
             // Finer steps (~40 ms) so the volume ramp is smooth, not stair-stepped like the old 20 steps.
             val steps = (duration / 40L).toInt().coerceIn(24, 240)
             val stepTime = duration / steps
-            val curve = try { dataStore.get(CrossfadeCurveKey, 1) } catch (e: Exception) { 1 }
+            val curve = try { dataStore.get(CrossfadeCurveKey, 7) } catch (e: Exception) { 7 }
             val startVolume = try { fadingPlayer?.volume ?: 1f } catch(e:Exception) { 1f }
             // Because LUFS Normalization is fixed and active, tracks play at roughly -14 LUFS,
             // leaving massive natural headroom. Thus, two tracks summing during an equal-power crossfade

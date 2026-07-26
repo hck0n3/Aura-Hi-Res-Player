@@ -97,10 +97,12 @@ class SilenceDetectorAudioProcessor(
         }
 
         
+        // NOTE: a disabled window deliberately KEEPS the counters (no clearSilenceState here): the service
+        // briefly disarms/re-arms on every reschedule, and wiping mid-silence progress there would delay a
+        // genuine tail fire. Track boundaries still reset via flush() (seek) and resetTracking() (re-arm
+        // for a NEW track); a loud frame resets naturally inside detectSilence.
         if ((instantModeEnabled || tailDetectEnabled) && sampleRate > 0 && channelCount > 0) {
             detectSilence(inputBuffer)
-        } else {
-            clearSilenceState()
         }
 
         val out = replaceOutputBuffer(inputBuffer.remaining())

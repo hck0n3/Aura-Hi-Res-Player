@@ -343,6 +343,8 @@ class App : Application(), SingletonImageLoader.Factory, androidx.work.Configura
             settings[iad1tya.echo.music.constants.PlaybackDefaultsV4AppliedKey] != true ||
             settings[iad1tya.echo.music.constants.PlaybackDefaultsV5AppliedKey] != true ||
             settings[iad1tya.echo.music.constants.CrossfadeDefault9AppliedKey] != true ||
+            settings[iad1tya.echo.music.constants.Defaults0127AppliedKey] != true ||
+            settings[iad1tya.echo.music.constants.LiquidGlassHighTierV1AppliedKey] != true ||
             settings[iad1tya.echo.music.constants.LyricsBlurDefaultOnV1AppliedKey] != true ||
             settings[iad1tya.echo.music.constants.AddToPlaylistLastUpdatedDefaultV1AppliedKey] != true
         if (batchAPending) {
@@ -569,11 +571,12 @@ class App : Application(), SingletonImageLoader.Factory, androidx.work.Configura
             p[iad1tya.echo.music.constants.HideVideoSongsKey] = false
             p[iad1tya.echo.music.constants.HideYoutubeShortsKey] = true
 
-            // Playback defaults (user request): smooth transition (crossfade) ON at 9s with the EQUAL-POWER
-            // curve (1 = constant loudness, no mid-blend volume dip), skip silence ON and instantly ON.
+            // Playback defaults (owner order, 0.6.127): smooth transition (crossfade) ON at 5s with curve 7
+            // "Respiro profundo (pausa marcada)". Aligned with the CrossfadeRespiro5 forced migration and
+            // migrateAudioDefaultsV2 — every crossfade-default writer must agree or ordering undoes it.
             p[iad1tya.echo.music.constants.CrossfadeEnabledKey] = true
-            p[iad1tya.echo.music.constants.CrossfadeDurationKey] = 9f
-            p[iad1tya.echo.music.constants.CrossfadeCurveKey] = 1
+            p[iad1tya.echo.music.constants.CrossfadeDurationKey] = 5f
+            p[iad1tya.echo.music.constants.CrossfadeCurveKey] = 7
             p[iad1tya.echo.music.constants.SkipSilenceKey] = true
             p[iad1tya.echo.music.constants.SkipSilenceInstantKey] = true
 
@@ -691,6 +694,39 @@ class App : Application(), SingletonImageLoader.Factory, androidx.work.Configura
             }
             p[iad1tya.echo.music.constants.CrossfadeDefault9AppliedKey] = true
         }
+
+        // Owner order (0.6.127): transition = 5s + curve 7 "Respiro profundo (pausa marcada)", FORCED
+        // for EVERYONE once on this update ("sí o sí" — deliberately overwrites prior values; the user
+        // can still change both in Ajustes afterwards and their choice then wins forever). Placed LAST
+        // among the crossfade writers in this batch so it always has the final word; the fresh-install
+        // seed and migrateAudioDefaultsV2 are aligned to the same values so ordering can't undo it.
+        if (settings[iad1tya.echo.music.constants.Defaults0127AppliedKey] != true) {
+            p[iad1tya.echo.music.constants.CrossfadeDurationKey] = 5f
+            p[iad1tya.echo.music.constants.CrossfadeCurveKey] = 7
+            p[iad1tya.echo.music.constants.SponsorBlockEnabledKey] = true
+            p[iad1tya.echo.music.constants.PreventDuplicateTracksInQueueKey] = true
+            p[iad1tya.echo.music.constants.Defaults0127AppliedKey] = true
+        }
+
+        // Owner order (0.6.127): HIGH-tier (gama alta) glass-eligible devices get Liquid Glass ON — the
+        // global "Activar Liquid Glass" switch AND the mini-player background — once per install.
+        // isGlassEligible already encodes the hard safety gates (API 31+, not TV/car, Performance Mode
+        // off, capable tier); we additionally require the HIGH tier per the owner's wording. Evaluated
+        // on this device's current hardware; if not eligible the flag still sets (no re-evaluation churn)
+        // and the user can always enable it by hand in Ajustes ▸ Apariencia ▸ Liquid Glass (Beta).
+        if (settings[iad1tya.echo.music.constants.LiquidGlassHighTierV1AppliedKey] != true) {
+            val glassHigh = runCatching {
+                iad1tya.echo.music.ui.component.isGlassEligible(this@App) &&
+                    iad1tya.echo.music.utils.PerformanceMode.effectiveTier(this@App) ==
+                    iad1tya.echo.music.utils.DeviceTier.HIGH
+            }.getOrDefault(false)
+            if (glassHigh) {
+                p[iad1tya.echo.music.constants.LiquidGlassGlobalEnabledKey] = true
+                p[iad1tya.echo.music.constants.MiniPlayerBackgroundStyleKey] =
+                    iad1tya.echo.music.constants.PlayerBackgroundStyle.LIQUID_GLASS.name
+            }
+            p[iad1tya.echo.music.constants.LiquidGlassHighTierV1AppliedKey] = true
+        }
     }
 
     /**
@@ -710,8 +746,10 @@ class App : Application(), SingletonImageLoader.Factory, androidx.work.Configura
         runCatching {
             dataStore.edit { p ->
                 p[iad1tya.echo.music.constants.CrossfadeEnabledKey] = true
-                p[iad1tya.echo.music.constants.CrossfadeDurationKey] = 9f
-                p[iad1tya.echo.music.constants.CrossfadeCurveKey] = 1
+                // Aligned with the CrossfadeRespiro5 forced default (owner order, 0.6.127): this block
+                // runs AFTER batch A on fresh installs, so mismatched values here would silently undo it.
+                p[iad1tya.echo.music.constants.CrossfadeDurationKey] = 5f
+                p[iad1tya.echo.music.constants.CrossfadeCurveKey] = 7
                 p[iad1tya.echo.music.constants.SafeVolumeEnabledKey] = true
             }
         }.onFailure { reportException(it) }
