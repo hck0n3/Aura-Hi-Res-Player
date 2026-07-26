@@ -704,12 +704,16 @@ private fun AutoPlaylistHeader(
             verticalAlignment = Alignment.CenterVertically
         ) {
             
+            val playedForStart = rememberPlayedShuffleSet(contextId)
             androidx.compose.material3.Button(
                 onClick = {
+                    // UNPLAYED-FIRST start: guarantees the opener is an unheard song while any remain
+                    // (uniform pick started with a repeat P/T of the time — the reported symptom).
+                    val (unheard, heard) = songs.partition { it.id !in playedForStart }
                     playerConnection.playQueue(
                         ListQueue(
                             title = name,
-                            items = songs.shuffled().map { it.toMediaItem() },
+                            items = (unheard.shuffled() + heard.shuffled()).map { it.toMediaItem() },
                             contextId = contextId,
                             // Turn shuffle MODE on so the enhanced no-repeat memory drives the order and
                             // records plays (pre-shuffling alone bypassed it → replayed played songs).

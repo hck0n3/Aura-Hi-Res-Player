@@ -154,7 +154,15 @@ fun LibrarySongsScreen(
     // each gets its own persistent no-repeat bucket ("LIB:<filter>"). A search-/explicit-filtered SUBSET must
     // NOT share a tab's bucket — exhausting a 4-song search result would otherwise clear the tab's whole
     // accumulated memory — so filtered subsets fall back to null = classic in-memory shuffle.
-    val libraryContextId = if (searchQuery.isBlank() && !hideExplicit) "LIB:${filter.name}" else null
+    // hideExplicit gets its own STABLE bucket (":NX") instead of null: it's a persistent global setting,
+    // so nulling the context permanently killed the library's cross-session no-repeat memory for those
+    // users (and hid the chip that would have told them). A transient search still gets null — a filtered
+    // subset exhausting must not wipe the tab's real bucket.
+    val libraryContextId = when {
+        searchQuery.isNotBlank() -> null
+        hideExplicit -> "LIB:${filter.name}:NX"
+        else -> "LIB:${filter.name}"
+    }
     // Enhanced Shuffle: reactive per-tab played-set for the "ya reproducida" dim/check + the X/Y chip.
     val shufflePlayedSet = rememberPlayedShuffleSet(libraryContextId)
 
@@ -454,7 +462,11 @@ fun LibrarySongsScreen(
                         playerConnection.playQueue(
                             ListQueue(
                                 title = context.getString(R.string.queue_all_songs),
-                                items = filteredSongs.shuffled().map { it.toMediaItem() },
+                                // UNPLAYED-FIRST start: the opener must be an unheard song while any
+                                // remain (a uniform pick over the whole tab started with a repeat).
+                                items = filteredSongs.partition { it.id !in shufflePlayedSet }
+                                    .let { (unheard, heard) -> unheard.shuffled() + heard.shuffled() }
+                                    .map { it.toMediaItem() },
                                 contextId = libraryContextId,
                                 // Enhanced shuffle: enable shuffle MODE (memory-aware order + recording).
                                 startShuffled = true,
@@ -472,7 +484,11 @@ fun LibrarySongsScreen(
                         playerConnection.playQueue(
                             ListQueue(
                                 title = context.getString(R.string.queue_all_songs),
-                                items = filteredSongs.shuffled().map { it.toMediaItem() },
+                                // UNPLAYED-FIRST start: the opener must be an unheard song while any
+                                // remain (a uniform pick over the whole tab started with a repeat).
+                                items = filteredSongs.partition { it.id !in shufflePlayedSet }
+                                    .let { (unheard, heard) -> unheard.shuffled() + heard.shuffled() }
+                                    .map { it.toMediaItem() },
                                 contextId = libraryContextId,
                                 // Enhanced shuffle: enable shuffle MODE (memory-aware order + recording).
                                 startShuffled = true,

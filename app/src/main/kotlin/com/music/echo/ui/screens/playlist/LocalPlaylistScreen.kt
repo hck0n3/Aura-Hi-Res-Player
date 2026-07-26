@@ -1385,12 +1385,18 @@ fun LocalPlaylistHeader(
             }
 
             
+            val playedForStart = rememberPlayedShuffleSet("PL:" + playlist.playlist.id)
             TextButton(
                 onClick = {
+                    // UNPLAYED-FIRST start: slot 0 is what actually PLAYS first, and a uniform pick over
+                    // the whole list started with an already-heard song P/T of the time (the owner's
+                    // "repeats when I activate" symptom). Partitioning keeps the full list (the memory-
+                    // aware order re-sorts #2..N anyway) but guarantees an unheard opener while any remain.
+                    val (unheard, heard) = songs.partition { it.song.id !in playedForStart }
                     playerConnection.playQueue(
                         ListQueue(
                             title = playlist.playlist.name,
-                            items = songs.shuffled().map { it.song.toMediaItem() },
+                            items = (unheard.shuffled() + heard.shuffled()).map { it.song.toMediaItem() },
                             contextId = "PL:" + playlist.playlist.id,
                             // Turn shuffle MODE on so the enhanced no-repeat memory drives the order and
                             // records plays (pre-shuffling alone bypassed it → replayed played songs).

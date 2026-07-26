@@ -59,6 +59,7 @@ import iad1tya.echo.music.playback.ExoDownloadService
 import iad1tya.echo.music.playback.queues.ListQueue
 import iad1tya.echo.music.playback.queues.YouTubeQueue
 import iad1tya.echo.music.ui.component.DefaultDialog
+import iad1tya.echo.music.ui.component.rememberPlayedShuffleSet
 import iad1tya.echo.music.ui.component.Material3MenuGroup
 import iad1tya.echo.music.ui.component.Material3MenuItemData
 import iad1tya.echo.music.ui.component.NewAction
@@ -86,6 +87,13 @@ fun PlaylistMenu(
     val playerConnection = LocalPlayerConnection.current ?: return
     val listenTogetherManager = LocalListenTogetherManager.current
     val isGuest = listenTogetherManager?.isInRoom == true && !listenTogetherManager.isHost
+    // Enhanced-shuffle context for this menu's Shuffle action (must match the screens' PL:/AP: scheme).
+    val menuShuffleContextId = if (autoPlaylist == true || downloadPlaylist == true) {
+        "AP:" + playlist.playlist.id
+    } else {
+        "PL:" + playlist.playlist.id
+    }
+    val menuPlayedSet = rememberPlayedShuffleSet(menuShuffleContextId)
     val dbPlaylist by database.playlist(playlist.id).collectAsState(initial = playlist)
     var songs by remember {
         mutableStateOf(emptyList<Song>())
@@ -399,20 +407,16 @@ fun PlaylistMenu(
                             onClick = {
                                 onDismiss()
                                 if (songs.isNotEmpty()) {
+                                    // UNPLAYED-FIRST start: opener must be unheard while any remain.
+                                    val (unheard, heard) = songs.partition { it.id !in menuPlayedSet }
                                     playerConnection.playQueue(
                                         ListQueue(
                                             title = playlist.playlist.name,
-                                            items = songs.shuffled().map(Song::toMediaItem),
+                                            items = (unheard.shuffled() + heard.shuffled()).map(Song::toMediaItem),
                                             // Enhanced shuffle: this menu's Shuffle used to bypass the whole
                                             // no-repeat system (no context, shuffle MODE off) → replayed
-                                            // played songs — the owner's reported path. Real playlists join
-                                            // their PL: memory; auto/download pseudo-playlists use the AP:
-                                            // namespace (excluded from the PL: orphan prune).
-                                            contextId = if (autoPlaylist == true || downloadPlaylist == true) {
-                                                "AP:" + playlist.playlist.id
-                                            } else {
-                                                "PL:" + playlist.playlist.id
-                                            },
+                                            // played songs — the owner's reported path.
+                                            contextId = menuShuffleContextId,
                                             startShuffled = true,
                                         )
                                     )
