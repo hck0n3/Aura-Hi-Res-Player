@@ -453,6 +453,36 @@ class HomeViewModel @Inject constructor(
             }
         }
     }
+
+    /**
+     * Pinned playlists (Speed Dial + the playlist widget, which observes the same table) snapshot a
+     * SINGLE thumbnailUrl at pin time and never refresh it — a playlist pinned while empty, or whose
+     * cover later changed or died, keeps a stale/blank tile forever. On every Home load, re-align
+     * each pinned playlist's stored URL with the playlist's LIVE cover from the DB (custom cover >
+     * first song cover). DB-only, no network; REPLACE insert keeps id/createDate so tile order never
+     * moves. Pins of online playlists that were never saved locally have no DB row to read — their
+     * URL can only rot with YouTube; refreshing those would need a network fetch (deliberately
+     * skipped here, the mosaic fallback in PlaylistThumbnail covers the Library surfaces).
+     */
+    private fun refreshSpeedDialThumbnails() {
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                database.speedDialDao.getAll().first()
+                    .filter { it.type == "PLAYLIST" || it.type == "LOCAL_PLAYLIST" }
+                    .forEach { item ->
+                        val live = database.playlist(item.id).first()
+                            ?: database.playlistByBrowseId(item.id).first()
+                            ?: return@forEach
+                        // Null fresh cover (empty playlist, no songs yet) keeps the stored URL: a
+                        // possibly-alive snapshot beats wiping the tile.
+                        val freshUrl = live.thumbnails.firstOrNull() ?: return@forEach
+                        if (freshUrl != item.thumbnailUrl) {
+                            database.speedDialDao.insert(item.copy(thumbnailUrl = freshUrl))
+                        }
+                    }
+            }.onFailure { reportException(it) }
+        }
+    }
     
     private var lastProcessedCookie: String? = null
     
@@ -1124,7 +1154,10 @@ class HomeViewModel @Inject constructor(
 
     init {
 
-        
+        // Runs on BOTH paths (snapshot restore and cold load): the stale-tile fix must not depend
+        // on which way the home came up.
+        refreshSpeedDialThumbnails()
+
         val restored = snapshot
         if (restored != null) {
             // Returning to Home / resuming the app: restore the already-loaded home instantly and DON'T

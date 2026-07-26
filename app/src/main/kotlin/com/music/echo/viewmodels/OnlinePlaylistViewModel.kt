@@ -27,6 +27,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
@@ -37,7 +38,7 @@ import javax.inject.Inject
 class OnlinePlaylistViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     savedStateHandle: SavedStateHandle,
-    database: MusicDatabase
+    private val database: MusicDatabase
 ) : ViewModel() {
     private val playlistId = savedStateHandle.get<String>("playlistId")!!
 
@@ -119,6 +120,8 @@ class OnlinePlaylistViewModel @Inject constructor(
                     relatedItems.value = playlistPage.related ?: emptyList()
                     continuation = playlistPage.songsContinuation
                     _isLoading.value = false
+
+                    refreshStoredThumbnail(playlistPage.playlist)
 
                     // Instant re-open: a fully-repaired list from earlier this session is the authority and
                     // needs no more network (the base fetch already gave us metadata/related). It was cached
@@ -260,9 +263,35 @@ class OnlinePlaylistViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Saved copies of online playlists capture thumbnailUrl ONCE at save-time and only account sync
+     * (SyncUtils → DatabaseDao.update(entity, item)) ever refreshes it — YT/Spotify auto-mosaic URLs
+     * rot when the playlist's content changes, leaving the Library tile dead for users without
+     * login/ytmSync. Opening the playlist just fetched the fresh URL, so mirror it into the saved
+     * entity. Custom covers (studio_square_thumbnail uploads or local content:// crops) are the
+     * user's explicit choice and must never be overwritten. Queries the DAO directly instead of
+     * [dbPlaylist].value because that StateFlow is Lazily-shared and may not have emitted yet.
+     */
+    private fun refreshStoredThumbnail(remotePlaylist: PlaylistItem) {
+        val newThumbnailUrl = remotePlaylist.thumbnail ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                val saved = database.playlistByBrowseId(playlistId).first() ?: return@launch
+                val current = saved.playlist.thumbnailUrl
+                val isCustomCover = current != null &&
+                    (current.contains("studio_square_thumbnail") || current.contains("content://"))
+                if (!isCustomCover && current != newThumbnailUrl) {
+                    database.query {
+                        update(saved.playlist.copy(thumbnailUrl = newThumbnailUrl))
+                    }
+                }
+            }.onFailure { reportException(it) }
+        }
+    }
+
     fun retry() {
         proactiveLoadJob?.cancel()
-        fetchInitialPlaylistData() 
+        fetchInitialPlaylistData()
     }
 
     private fun applySongFilters(songs: List<SongItem>): List<SongItem> {

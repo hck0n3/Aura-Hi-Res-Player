@@ -1034,7 +1034,12 @@ fun LocalPlaylistHeader(
         ActivityResultContracts.PickVisualMedia()
     ) { uri ->
         uri?.let { sourceUri ->
-            val destFile = java.io.File(context.cacheDir, "playlist_cover_crop_${System.currentTimeMillis()}.jpg")
+            // filesDir, NOT cacheDir: Android purges cacheDir at will, which killed the persisted
+            // content:// URI and left the playlist painting the error logo forever. One stable file
+            // per playlist (overwritten on re-crop; the URI string stays the same, so a same-session
+            // re-change may briefly show coil's cached image — next load reads the fresh bytes).
+            val coversDir = java.io.File(context.filesDir, "playlist_covers").apply { mkdirs() }
+            val destFile = java.io.File(coversDir, "${playlist.id}.jpg")
             val destUri = FileProvider.getUriForFile(context, "${context.packageName}.FileProvider", destFile)
             pendingCropDestUri = destUri
     
