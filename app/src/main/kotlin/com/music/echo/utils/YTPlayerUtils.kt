@@ -783,14 +783,22 @@ object YTPlayerUtils {
         val resolved = kotlinx.coroutines.coroutineScope {
             val metadataDeferred = if (isLoggedIn) {
                 async(kotlinx.coroutines.Dispatchers.IO) {
+                    // The sts wait gets its OWN bounded budget so a cold player.js parse can't consume
+                    // the metadata fetch's 3s window (that starved the side-fetch on first-resolve cold
+                    // starts → watch-history/audioConfig silently fell back to the main response). If the
+                    // sts isn't ready in time the request goes WITHOUT it — InnerTube simply omits
+                    // playbackContext, and the metadata fields we consume don't need signed formats.
+                    // (Raw await, not awaitSts: this parallel wait must not pollute the sts= metric.)
+                    val stsForMeta = if (METADATA_CLIENT.useSignatureTimestamp) {
+                        kotlinx.coroutines.withTimeoutOrNull(2500L) {
+                            runCatching { stsDeferred.await().timestamp }.getOrNull()
+                        }
+                    } else null
                     kotlinx.coroutines.withTimeoutOrNull(3000L) {
                         runCatching {
-                            // METADATA_CLIENT (WEB_REMIX) does send the sts; awaiting INSIDE this 3s-capped,
-                            // optional side-fetch keeps a cold parse off the main resolve's critical path
-                            // (raw await, not awaitSts: this parallel wait must not pollute the sts= metric).
                             YouTube.player(
                                 videoId, playlistId, METADATA_CLIENT,
-                                if (METADATA_CLIENT.useSignatureTimestamp) stsDeferred.await().timestamp else null,
+                                stsForMeta,
                                 null, noLogin = noLogin,
                             ).getOrNull()
                         }.getOrNull()
@@ -1414,7 +1422,11 @@ object YTPlayerUtils {
                     Log.i(TAG, "Age-restricted detected early via NewPipe: videoId=$videoId")
                 } else {
                     Timber.tag(logTag).e(error, "Failed to get signature timestamp")
-                    reportException(error)
+                    // Network-shaped failures (offline start, flaky link) are expected operating
+                    // conditions, not defects — a Crashlytics non-fatal per offline launch is noise.
+                    // Real parse/extractor failures still report.
+                    val networkShaped = error is java.io.IOException || error.cause is java.io.IOException
+                    if (!networkShaped) reportException(error)
                 }
                 SignatureTimestampResult(null, isAgeRestricted)
             }

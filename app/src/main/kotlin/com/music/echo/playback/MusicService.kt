@@ -1237,11 +1237,19 @@ class MusicService :
         scope.launch(Dispatchers.IO) {
             kotlinx.coroutines.delay(500)
             // Prewarm the signature timestamp (memoized in YTPlayerUtils; each resolve now starts it
-            // ASYNC and only sts-using clients await it): the MAIN client ignores it, but the web/TV
-            // fallback clients send it, and computing it cold means NewPipe's ~2.8 MB player.js
-            // fetch/parse on the first resolve's critical path. Fire-and-forget (kicks a shared
-            // background computation) — returns immediately, so it delays nothing here.
-            runCatching { iad1tya.echo.music.utils.YTPlayerUtils.prewarmSignatureTimestamp() }
+            // ASYNC and only sts-using clients await it): computing it cold means NewPipe's ~2.8 MB
+            // player.js fetch/parse on the first resolve's critical path. Gated like the other warmups:
+            // MID/HIGH tier only (LOW/ULTRA keep the lazy-on-first-resolve path — their pre-batch
+            // behavior) and never under Data Saver (a ~2.8 MB startup download is exactly what that
+            // switch promises to avoid). Fire-and-forget — returns immediately.
+            val warmTierEarly = iad1tya.echo.music.utils.PerformanceMode.effectiveTier(this@MusicService)
+            val dataSaverOn = dataStore.get(iad1tya.echo.music.constants.DataSaverEnabledKey, false)
+            if (!dataSaverOn &&
+                (warmTierEarly == iad1tya.echo.music.utils.DeviceTier.MID ||
+                    warmTierEarly == iad1tya.echo.music.utils.DeviceTier.HIGH)
+            ) {
+                runCatching { iad1tya.echo.music.utils.YTPlayerUtils.prewarmSignatureTimestamp() }
+            }
             // Also warm the cipher player.js + WebView so the FIRST song's URL resolution is fast too (and
             // stays warm/reused for every song after). On MID/HIGH tier run it in PARALLEL with the poToken
             // prewarm (two WebViews at once is fine on capable RAM) so both are ready sooner; on LOW/ULTRA
@@ -2680,7 +2688,7 @@ class MusicService :
             if (contextProfile == null && radioSeedPool.isNotEmpty()) {
                 runCatching {
                     val pool = radioSeedPool
-                    contextProfile = withContext(Dispatchers.IO) {
+                    val built = withContext(Dispatchers.IO) {
                         val genres = iad1tya.echo.music.reco.GenreCache.snapshot(this@MusicService)
                         iad1tya.echo.music.reco.ContextProfile.build(
                             pool.map { mm ->
@@ -2693,6 +2701,12 @@ class MusicService :
                             genres,
                         )
                     }
+                    // IDENTITY guard: playQueue may have swapped the context while we were parked on IO
+                    // (it reassigns radioSeedPool and nulls the profile). Assigning then would pin the OLD
+                    // playlist's profile onto the NEW context for its whole life — steer toward the wrong
+                    // genres. The pool reference changes ONLY at that reassignment site, so === is exact.
+                    if (radioSeedPool !== pool) return@runCatching
+                    contextProfile = built
                     scope.launch(Dispatchers.IO + SilentHandler) {
                         val names = pool.flatMap { it.artists }.map { it.name }.filter { it.isNotBlank() }.distinct()
                         if (names.isNotEmpty()) {
