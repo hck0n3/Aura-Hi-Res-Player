@@ -150,6 +150,11 @@ fun PlayerSettings(
         defaultValue = false
     )
 
+    val (fadeOnManualChange, onFadeOnManualChangeChange) = rememberPreference(
+        key = iad1tya.echo.music.constants.FadeOnManualChangeKey,
+        defaultValue = true
+    )
+
     val (sponsorBlockEnabled, onSponsorBlockEnabledChange) = rememberPreference(
         key = SponsorBlockEnabledKey,
         defaultValue = false
@@ -555,6 +560,19 @@ fun PlayerSettings(
                         title = { Text("Estilo de transición") },
                         description = { Text(crossfadeCurveName(crossfadeCurve)) },
                         onClick = { showCrossfadeCurveDialog = true }
+                    ))
+                    add(Material3SettingsItem(
+                        icon = painterResource(R.drawable.play),
+                        title = { Text("Entrada suave al cambiar de canción") },
+                        description = { Text("Al saltar o elegir otra canción a mano, la nueva entra con un fundido corto (estilo AIMP) en vez de golpe") },
+                        trailingContent = {
+                            Switch(
+                                checked = fadeOnManualChange,
+                                onCheckedChange = onFadeOnManualChangeChange,
+                                colors = SwitchDefaults.colors()
+                            )
+                        },
+                        onClick = { onFadeOnManualChangeChange(!fadeOnManualChange) }
                     ))
                     add(Material3SettingsItem(
                         icon = painterResource(R.drawable.album),

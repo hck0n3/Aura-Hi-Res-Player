@@ -489,6 +489,11 @@ class MusicService :
     // (onShuffleModeEnabledChanged / onMediaItemTransition) so they read a @Volatile field, never a blocking
     // DataStore read. Default matches EnhancedShuffleKey's default (ON).
     @Volatile private var enhancedShuffleHint: Boolean = true
+
+    // AIMP-style smooth entry on MANUAL track changes. Default matches FadeOnManualChangeKey (ON).
+    @Volatile private var fadeOnManualChangeHint: Boolean = true
+
+    private var manualFadeInJob: Job? = null
     @Volatile private var keepGenreLaneHint: Boolean = true
     @Volatile private var persistentQueueHint: Boolean = true
     @Volatile private var historyDurationMsHint: Float = 30000f
@@ -1306,6 +1311,7 @@ class MusicService :
         val prefs = runBlocking { dataStore.data.first() }
         player.repeatMode = prefs[RepeatModeKey] ?: REPEAT_MODE_OFF
         enhancedShuffleHint = prefs[EnhancedShuffleKey] ?: true
+        fadeOnManualChangeHint = prefs[iad1tya.echo.music.constants.FadeOnManualChangeKey] ?: true
 
 
         if (prefs[RememberShuffleAndRepeatKey] ?: true) {
@@ -1753,6 +1759,7 @@ class MusicService :
                 autoLoadMoreHint = prefs[AutoLoadMoreKey] ?: true
                 disableLoadMoreWhenRepeatAllHint = prefs[DisableLoadMoreWhenRepeatAllKey] ?: false
                 enhancedShuffleHint = prefs[EnhancedShuffleKey] ?: true
+                fadeOnManualChangeHint = prefs[iad1tya.echo.music.constants.FadeOnManualChangeKey] ?: true
                 keepGenreLaneHint = prefs[KeepGenreLaneKey] ?: true
                 persistentQueueHint = prefs[PersistentQueueKey] ?: true
                 historyDurationMsHint = (prefs[HistoryDuration]?.times(1000f)) ?: 30000f
@@ -4146,6 +4153,17 @@ class MusicService :
         // background so a subsequent on-demand toggle swaps near-instantly (cache hit, no network wait). Fully
         // self-gated + fire-and-forget on IO; a no-op that never affects audio when video was never used.
         prefetchCurrentVideoUrl()
+
+        // AIMP-style SMOOTH ENTRY on manual changes (owner request: "cuando cambio una canción cae de
+        // golpe"): a user-initiated switch — next/prev/tapping a song (SEEK) or starting another list
+        // (PLAYLIST_CHANGED) — fades the NEW song in over ~400ms instead of slamming to full level.
+        // AUTO advances are untouched (the crossfade owns those); a running crossfade is never fought.
+        if (fadeOnManualChangeHint && !isCrossfading && player.playWhenReady &&
+            (reason == Player.MEDIA_ITEM_TRANSITION_REASON_SEEK ||
+                reason == Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED)
+        ) {
+            fadeInOnManualChange()
+        }
 
         // B5: remember what we've played this shuffle session (consumed by applyShuffleOrder to avoid repeats).
         if (player.shuffleModeEnabled) {
@@ -7259,6 +7277,44 @@ class MusicService :
         if (reason == Player.DISCONTINUITY_REASON_SEEK) {
             scheduleCrossfade()
         }
+    }
+
+    /**
+     * AIMP-style smooth entry: ramp the player from silence to the user's real volume over ~400ms with an
+     * equal-power sine ease (gentle start, natural arrival). Volume-only — no seek, no buffer, no curve or
+     * crossfade machinery touched. The finally ALWAYS restores the exact user volume (mute-aware), so a
+     * cancelled ramp (rapid skips re-enter here; each cancels the previous) can never strand it low.
+     */
+    private fun fadeInOnManualChange() {
+        manualFadeInJob?.cancel()
+        if (!::playerVolume.isInitialized) return
+        val target = if (isMuted.value) 0f else playerVolume.value
+        if (target <= 0f) return
+        lateinit var self: Job
+        self = scope.launch {
+            try {
+                player.volume = 0f
+                val steps = 20
+                val stepTime = 400L / steps
+                for (i in 1..steps) {
+                    if (!isActive || isCrossfading) break
+                    val p = i / steps.toFloat()
+                    player.volume = target * kotlin.math.sin(p * (Math.PI / 2.0).toFloat())
+                    delay(stepTime)
+                }
+            } finally {
+                runCatching {
+                    // Exact restore, mute-aware — never strand the volume below the user's setting.
+                    // IDENTITY guard: on rapid skips a NEWER fade may already own the volume (it just set
+                    // 0f); a cancelled older job restoring FULL volume after that would kill the new
+                    // fade-in. Only the job still registered as current restores.
+                    if (manualFadeInJob === self && !isCrossfading && ::playerVolume.isInitialized) {
+                        player.volume = if (isMuted.value) 0f else playerVolume.value
+                    }
+                }
+            }
+        }
+        manualFadeInJob = self
     }
 
     private fun scheduleCrossfade() {

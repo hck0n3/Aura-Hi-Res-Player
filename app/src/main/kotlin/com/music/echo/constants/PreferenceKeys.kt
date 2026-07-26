@@ -260,6 +260,10 @@ val ShuffleModeKey = booleanPreferencesKey("shuffleMode")
 // song has played (memory survives restarts, days, and toggling shuffle off/on), then the completed cycle
 // resets and hands off to the infinite radio. Off = classic in-memory shuffle.
 val EnhancedShuffleKey = booleanPreferencesKey("enhanced_shuffle")
+
+// AIMP-style smooth entry on MANUAL track changes (skip/next/tap): the new song fades in over ~400ms
+// instead of slamming in at full level. Default ON (owner request). Auto-advance crossfade unaffected.
+val FadeOnManualChangeKey = booleanPreferencesKey("fade_on_manual_change")
 val SkipSilenceKey = booleanPreferencesKey("skipSilence")
 val SkipSilenceInstantKey = booleanPreferencesKey("skipSilenceInstant")
 val AudioNormalizationKey = booleanPreferencesKey("audioNormalization")
