@@ -30,11 +30,11 @@ object CrossfadeMath {
      *      sits near −30dB at the midpoint, so the songs barely overlap audibly: the old one "dies
      *      for real" and the new one is born. The −60dB floor is spliced out exactly (subtract and
      *      renormalize) so the endpoints land at exactly 0 and 1.
-     *  7 = Dipped (parabolic, the classic Ableton/Serato crossfader "dipped" family): both gains are
-     *      squares, so the summed amplitude dips to 0.5 (−6dB) at the center — an audible "breath"
-     *      between songs without ever reaching silence. The middle ground between equal-power (no
-     *      valley) and the V-fade (full valley). (Same math as curve 3; exposed under its canonical
-     *      DJ name so the owner can A/B it by character.)
+     *  7 = Deep dip (CUBIC dipped): both gains are cubes, so the summed amplitude dips to 0.25 (−12dB)
+     *      at the center — a clearly-audible "breath" between songs without ever reaching silence.
+     *      Deliberately CUBIC, not parabolic: the parabolic dipped family is byte-identical to curve 3
+     *      (Exponencial), so this deeper variant is what earns its own slot in the A/B set — the middle
+     *      ground between curve 3's gentle −6dB dip and the V-fade's full valley.
      *  8 = Equal-GAIN raised cosine ("hsin", Hann window): sin²/cos² — amplitudes sum to EXACTLY 1 at
      *      every point, with zero-slope ends (the gentlest possible start and landing). The only pair
      *      that can never bump on correlated material (same-take edits, versions/remixes); on
@@ -76,7 +76,7 @@ object CrossfadeMath {
                 val fadeIn = (10f.pow(-3f * (1f - p)) - floor) / (1f - floor)
                 fadeIn to fadeOut
             }
-            7 -> (p * p) to ((1f - p) * (1f - p))
+            7 -> (p * p * p) to ((1f - p) * (1f - p) * (1f - p))
             8 -> {
                 // Raised cosine (Hann): sin²/cos² — exact unity amplitude sum, zero-slope ends.
                 val s = sin(p * half)

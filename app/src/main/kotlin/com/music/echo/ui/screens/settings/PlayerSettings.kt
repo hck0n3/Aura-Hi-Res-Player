@@ -300,7 +300,7 @@ fun PlayerSettings(
             4 -> "Ascenso (entra rápido, sale lento)"
             5 -> "V (sale, luego entra)"
             6 -> "Logarítmica (muere de verdad)"
-            7 -> "Respiro (bajada a la mitad)"
+            7 -> "Respiro profundo (pausa marcada)"
             8 -> "Ultra suave (ganancia constante)"
             else -> "Lineal"
         }

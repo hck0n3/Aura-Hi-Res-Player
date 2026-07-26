@@ -131,17 +131,20 @@ class CrossfadeMathTest {
     }
 
     @Test
-    fun `curve 7 dipped - a minus 6dB breath at the center, never silence`() {
+    fun `curve 7 deep dip - a minus 12dB cubic breath at the center, never silence, distinct from curve 3`() {
         val (inMid, outMid) = CrossfadeMath.getGains(7, 0.5f)
-        assertEquals("incoming at 0.25 at the center", 0.25f, inMid, 1e-4f)
-        assertEquals("outgoing at 0.25 at the center", 0.25f, outMid, 1e-4f)
-        assertEquals("summed amplitude dips to 0.5 (−6dB) at the center", 0.5f, inMid + outMid, 1e-4f)
-        // The dip is a breath, not silence: summed amplitude never falls below 0.5 anywhere.
+        assertEquals("incoming at 0.125 at the center", 0.125f, inMid, 1e-4f)
+        assertEquals("outgoing at 0.125 at the center", 0.125f, outMid, 1e-4f)
+        assertEquals("summed amplitude dips to 0.25 (−12dB) at the center", 0.25f, inMid + outMid, 1e-4f)
+        // The dip is a deep breath, not silence: summed amplitude never falls below 0.25 anywhere.
         for (step in 0..100) {
             val p = step / 100f
             val (fadeIn, fadeOut) = CrossfadeMath.getGains(7, p)
-            assertTrue("sum must stay >= 0.5 (p=$p)", fadeIn + fadeOut >= 0.5f - 1e-4f)
+            assertTrue("sum must stay >= 0.25 (p=$p)", fadeIn + fadeOut >= 0.25f - 1e-4f)
         }
+        // Cubic ≠ parabolic: curve 7 must NOT alias curve 3 (the original parabolic dipped duplicate).
+        val three = CrossfadeMath.getGains(3, 0.5f)
+        assertTrue("curve 7 must differ from curve 3", kotlin.math.abs(three.first - inMid) > 0.05f)
     }
 
     @Test
