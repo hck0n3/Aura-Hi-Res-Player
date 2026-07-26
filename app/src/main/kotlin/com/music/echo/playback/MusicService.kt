@@ -2444,7 +2444,8 @@ class MusicService :
             // no-repeat memory: both rows play, and the second reads as a repeat. Context queues dedupe at
             // load (first occurrence wins; the tapped start item is preserved by remapping its index).
             // Classic queues keep duplicates — the user's literal list is not ours to edit.
-            val initialStatus = if ((queue as? iad1tya.echo.music.playback.queues.ListQueue)?.contextId != null &&
+            val initialStatus = if (enhancedShuffleHint &&
+                (queue as? iad1tya.echo.music.playback.queues.ListQueue)?.contextId != null &&
                 rawStatus.items.size != rawStatus.items.distinctBy { it.mediaId }.size
             ) {
                 val startItem = rawStatus.items.getOrNull(rawStatus.mediaItemIndex)
@@ -4256,10 +4257,12 @@ class MusicService :
                 isEnhancedContextExhausted()
             ) {
                 shuffleContextId?.let { onEnhancedContextCycleComplete(it) }
-                // Radio now owns the queue — detach the exhausted context so B5 stops recording radio songs
-                // against it and this reset can't re-fire on a later transition.
-                shuffleContextId = null
             }
+            // Radio owns the queue from here EITHER WAY — detach the context so foreign radio ids are
+            // never recorded into the playlist's persistent memory (a linear listener's nightly radio
+            // tail used to accumulate unbounded rows). The memory itself is wiped ONLY in the
+            // proven-exhausted branch above; an un-wiped context keeps its rows for the next visit.
+            shuffleContextId = null
             startRadioSeamlessly()
         }
 
@@ -4767,8 +4770,13 @@ class MusicService :
                 player.currentMetadata?.id?.let { shufflePlayedIds.add(it) }
                 playedSnapshot.clear()
                 // Enhanced Shuffle: the whole context cycled → reset its PERSISTENT memory + bump the counter so
-                // the next cycle is fresh (mirrors the in-memory reset above). Async, guarded.
-                shuffleContextId?.takeIf { enhancedShuffleHint }?.let { ctx ->
+                // the next cycle is fresh (mirrors the in-memory reset above). Async, guarded. The COVERAGE
+                // gate mirrors isEnhancedContextExhausted: a user-trimmed timeline reading "all played" is
+                // NOT proof the context cycled — the in-memory reset above keeps shuffle flowing, but the
+                // persistent wipe must not fire while the context still holds unheard songs.
+                shuffleContextId?.takeIf {
+                    enhancedShuffleHint && (radioSeedPool.isEmpty() || totalCount >= radioSeedPool.size)
+                }?.let { ctx ->
                     onEnhancedContextCycleComplete(ctx)
                     // Re-persist the cycle-OPENING song AFTER the wipe (single-lane FIFO: delete commits
                     // first, then this insert). Without it, a process death mid-cycle resurrected the
