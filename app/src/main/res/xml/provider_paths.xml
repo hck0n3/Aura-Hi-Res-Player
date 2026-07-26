@@ -3,6 +3,9 @@
     <files-path
         name="logs"
         path="logs/" />
+    <files-path
+        name="playlist_covers"
+        path="playlist_covers/" />
     <external-path
         name="external_files"
         path="." />

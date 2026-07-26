@@ -48,9 +48,11 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -878,6 +880,7 @@ fun PlaylistListItem(
     thumbnailContent = {
         PlaylistThumbnail(
             thumbnails = playlist.thumbnails,
+            fallbackThumbnails = playlist.songCovers,
             size = ListThumbnailSize,
             placeHolder = {
                 val painter = when (playlist.playlist.name) {
@@ -979,6 +982,7 @@ fun PlaylistGridItem(
         val width = maxWidth
         PlaylistThumbnail(
             thumbnails = playlist.thumbnails,
+            fallbackThumbnails = playlist.songCovers,
             size = width,
             placeHolder = {
                 val painter = when (playlist.playlist.name) {
@@ -1536,11 +1540,20 @@ fun PlaylistThumbnail(
     size: Dp,
     placeHolder: @Composable () -> Unit,
     shape: Shape,
-    cacheKey: String? = null
+    cacheKey: String? = null,
+    fallbackThumbnails: List<String> = emptyList()
 ) {
     val cropAlbumArt by rememberPreference(CropAlbumArtKey, false)
-    
-    when (thumbnails.size) {
+
+    // A single non-null thumbnailUrl can still be DEAD (purged content:// custom cover, rotted
+    // Spotify/YT mosaic link). Playlist.thumbnails can't know that — only coil finds out at load
+    // time — so on primary failure fall back to the song-cover mosaic instead of painting the
+    // error logo. Keyed on the URL list: a genuinely new cover retries the primary.
+    var primaryFailed by remember(thumbnails) { mutableStateOf(false) }
+    val effectiveThumbnails =
+        if (thumbnails.size == 1 && primaryFailed) fallbackThumbnails else thumbnails
+
+    when (effectiveThumbnails.size) {
         0 -> Box(
             contentAlignment = Alignment.Center,
             modifier = Modifier
@@ -1552,7 +1565,7 @@ fun PlaylistThumbnail(
         }
         1 -> AsyncImage(
             model = ImageRequest.Builder(LocalContext.current)
-                .data(thumbnails[0].resize(544, 544))
+                .data(effectiveThumbnails[0].resize(544, 544))
                 .apply {  }
                 .memoryCachePolicy(coil3.request.CachePolicy.ENABLED)
                 .diskCachePolicy(coil3.request.CachePolicy.ENABLED)
@@ -1562,6 +1575,7 @@ fun PlaylistThumbnail(
             contentScale = if (cropAlbumArt) ContentScale.Crop else ContentScale.Fit,
             placeholder = painterResource(R.drawable.ic_launcher_nobg),
             error = painterResource(R.drawable.ic_launcher_nobg),
+            onError = { primaryFailed = true },
             modifier = Modifier
                 .size(size)
                 .clip(shape)
@@ -1579,7 +1593,9 @@ fun PlaylistThumbnail(
             ).fastForEachIndexed { index, alignment ->
                 AsyncImage(
                     model = ImageRequest.Builder(LocalContext.current)
-                        .data(thumbnails.getOrNull(index)?.resize(544, 544))
+                        // Modulo, not getOrNull: with 2-3 covers the spare quadrants repeat real
+                        // covers instead of painting the error logo (data=null → error painter).
+                        .data(effectiveThumbnails[index % effectiveThumbnails.size].resize(544, 544))
                         .apply {  }
                         .memoryCachePolicy(coil3.request.CachePolicy.ENABLED)
                         .diskCachePolicy(coil3.request.CachePolicy.ENABLED)

@@ -37,6 +37,15 @@ data class Playlist(
         get() {
             return if (playlist.thumbnailUrl != null)
                 listOf(playlist.thumbnailUrl)
-            else songThumbnails.filterNotNull()
+            else songCovers
         }
+
+    /**
+     * Song-cover mosaic candidates (up to 4, from the playlist's first songs), independent of
+     * [PlaylistEntity.thumbnailUrl]. A non-null thumbnailUrl can still be DEAD (purged content://
+     * custom cover, rotted Spotify/YT mosaic URL) — [thumbnails] can't know that, so the UI passes
+     * this as the fallback to render when the primary URL fails to load.
+     */
+    val songCovers: List<String>
+        get() = songThumbnails.filterNotNull()
 }
