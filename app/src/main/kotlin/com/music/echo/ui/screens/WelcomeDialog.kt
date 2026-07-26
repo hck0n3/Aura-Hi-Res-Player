@@ -202,7 +202,7 @@ fun WelcomeDialog(
                     WelcomeFeatureRow(
                         iconRes = R.drawable.account,
                         title = "Cuentas y búsqueda rápida",
-                        subtitle = "Un apartado Cuentas reúne YouTube Music y Spotify, con buscadores en Ajustes y en tu Biblioteca (artistas seguidos y canciones)"
+                        subtitle = "Un apartado Cuentas reúne YouTube Music, Spotify, Last.fm y ListenBrainz, con buscadores en Ajustes y en tu Biblioteca (artistas seguidos y canciones)"
                     )
                     WelcomeDivider()
                     WelcomeFeatureRow(

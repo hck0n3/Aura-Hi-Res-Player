@@ -36,24 +36,35 @@ import iad1tya.echo.music.constants.AccountChannelHandleKey
 import iad1tya.echo.music.constants.AccountEmailKey
 import iad1tya.echo.music.constants.AccountNameKey
 import iad1tya.echo.music.constants.InnerTubeCookieKey
+import iad1tya.echo.music.constants.LastFMSessionKey
+import iad1tya.echo.music.constants.LastFMUsernameKey
+import iad1tya.echo.music.constants.ListenBrainzEnabledKey
+import iad1tya.echo.music.constants.ListenBrainzTokenKey
 import iad1tya.echo.music.spotifyimport.SpotifyImportViewModel
 import iad1tya.echo.music.ui.component.*
 import iad1tya.echo.music.ui.utils.backToMain
+import iad1tya.echo.music.utils.lastfm.LastFM
 import iad1tya.echo.music.utils.rememberPreference
 import iad1tya.echo.music.viewmodels.AccountSettingsViewModel
 import iad1tya.echo.music.viewmodels.HomeViewModel
 
 /**
- * "Cuentas": one card per connected music service (YouTube Music + Spotify). Pure aggregation of the
- * EXISTING auth state / login routes / logout actions — this screen adds NO new authentication logic.
+ * "Cuentas": one card per connectable music service (YouTube Music + Spotify + Last.fm + ListenBrainz).
+ * Pure aggregation of the EXISTING auth state / login routes / logout actions — this screen adds NO new
+ * authentication logic.
  *
  * - YouTube Music: logged in = the InnerTube cookie carries SAPISID. Identity from AccountName/Email/
  *   ChannelHandle prefs + HomeViewModel avatar. Login = route "login"; logout = the existing 3-option
  *   dialog via AccountSettingsViewModel (keep data / clear synced data).
  * - Spotify: state + logout come straight from the existing SpotifyImportViewModel; connect opens the
  *   existing "settings/spotify_import" screen.
+ * - Last.fm: state from the SAME prefs the scrobbling screen reads (session key + username); connect
+ *   opens "settings/lastfm"; logout is the scrobbling screen's exact 3-line clear (incl. LastFM.sessionKey)
+ *   behind a confirm dialog.
+ * - ListenBrainz: token + enable switch read from prefs (honest 3-state description); connect/manage
+ *   opens "settings/lastfm" (token editing lives there).
  *
- * Discord / Last.fm are intentionally omitted (no login UI in the fork).
+ * Discord is intentionally omitted (no login UI in the fork).
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -85,8 +96,19 @@ fun AccountsScreen(
     val spotifyName = spotifyState.accountName.ifBlank { "Spotify" }
     val spotifyAvatar = spotifyState.accountAvatarUrl
 
+    // ── Last.fm session (same prefs the scrobbling screen reads — no new auth) ──
+    var lastfmSession by rememberPreference(LastFMSessionKey, "")
+    var lastfmUsername by rememberPreference(LastFMUsernameKey, "")
+    val lastFmLoggedIn = remember(lastfmSession) { lastfmSession.isNotBlank() }
+
+    // ── ListenBrainz (token + enable switch live in the scrobbling screen; read-only here) ──
+    val (listenBrainzToken) = rememberPreference(ListenBrainzTokenKey, "")
+    val (listenBrainzEnabled) = rememberPreference(ListenBrainzEnabledKey, false)
+    val listenBrainzConnected = listenBrainzToken.isNotBlank()
+
     var showYtLogoutDialog by remember { mutableStateOf(false) }
     var showSpotifyLogoutDialog by remember { mutableStateOf(false) }
+    var showLastFmLogoutDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -227,6 +249,89 @@ fun AccountsScreen(
             )
 
             Spacer(modifier = Modifier.height(16.dp))
+
+            // ── Last.fm ──
+            Material3SettingsGroup(
+                title = "Last.fm",
+                items = listOf(
+                    Material3SettingsItem(
+                        icon = painterResource(R.drawable.ic_lastfm),
+                        title = {
+                            Text(
+                                text = if (lastFmLoggedIn) lastfmUsername.ifBlank { "Last.fm" } else "Last.fm",
+                                color = MaterialTheme.colorScheme.primary,
+                                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold)
+                            )
+                        },
+                        description = {
+                            Text(
+                                text = if (lastFmLoggedIn) "Sesión iniciada" else stringResource(R.string.not_logged_in)
+                            )
+                        },
+                        trailingContent = {
+                            OutlinedButton(
+                                onClick = {
+                                    if (lastFmLoggedIn) showLastFmLogoutDialog = true
+                                    else navController.navigate("settings/lastfm")
+                                },
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                                    contentColor = MaterialTheme.colorScheme.onSurface
+                                )
+                            ) {
+                                Text(stringResource(if (lastFmLoggedIn) R.string.action_logout else R.string.connect))
+                            }
+                        },
+                        onClick = {
+                            navController.navigate("settings/lastfm")
+                        }
+                    )
+                )
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // ── ListenBrainz ──
+            Material3SettingsGroup(
+                title = "ListenBrainz",
+                items = listOf(
+                    Material3SettingsItem(
+                        icon = painterResource(R.drawable.ic_listenbrainz),
+                        title = {
+                            Text(
+                                text = "ListenBrainz",
+                                color = MaterialTheme.colorScheme.primary,
+                                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold)
+                            )
+                        },
+                        description = {
+                            Text(
+                                text = when {
+                                    !listenBrainzConnected -> stringResource(R.string.not_logged_in)
+                                    listenBrainzEnabled -> "Conectado — scrobbling activo"
+                                    else -> "Token guardado — scrobbling desactivado"
+                                }
+                            )
+                        },
+                        trailingContent = {
+                            OutlinedButton(
+                                onClick = { navController.navigate("settings/lastfm") },
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                                    contentColor = MaterialTheme.colorScheme.onSurface
+                                )
+                            ) {
+                                Text(if (listenBrainzConnected) "Administrar" else stringResource(R.string.connect))
+                            }
+                        },
+                        onClick = {
+                            navController.navigate("settings/lastfm")
+                        }
+                    )
+                )
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
         }
 
         // ── YouTube Music logout: reuse the existing 3-option dialog (cancel / clear data / keep data) ──
@@ -323,6 +428,52 @@ fun AccountsScreen(
             ) {
                 Text(
                     text = "¿Cerrar sesión de Spotify?",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+            }
+        }
+
+        // ── Last.fm logout: confirm, then the scrobbling screen's exact 3-line clear ──
+        if (showLastFmLogoutDialog) {
+            DefaultDialog(
+                onDismiss = { showLastFmLogoutDialog = false },
+                title = { Text(stringResource(R.string.logout_dialog_title)) },
+                buttons = {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
+                        modifier = Modifier.padding(top = 8.dp)
+                    ) {
+                        ToggleButton(
+                            checked = false,
+                            onCheckedChange = { showLastFmLogoutDialog = false },
+                            modifier = Modifier.weight(1f),
+                            shapes = ButtonGroupDefaults.connectedLeadingButtonShapes()
+                        ) {
+                            Text(stringResource(android.R.string.cancel))
+                        }
+
+                        ToggleButton(
+                            checked = true,
+                            onCheckedChange = {
+                                lastfmSession = ""
+                                lastfmUsername = ""
+                                LastFM.sessionKey = null
+                                showLastFmLogoutDialog = false
+                            },
+                            modifier = Modifier.weight(1f),
+                            shapes = ButtonGroupDefaults.connectedTrailingButtonShapes(),
+                            colors = ToggleButtonDefaults.toggleButtonColors(
+                                contentColor = MaterialTheme.colorScheme.error
+                            )
+                        ) {
+                            Text(stringResource(R.string.action_logout))
+                        }
+                    }
+                }
+            ) {
+                Text(
+                    text = "¿Cerrar sesión de Last.fm?",
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
