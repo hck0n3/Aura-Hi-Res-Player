@@ -43,6 +43,11 @@ import java.net.ProxySelector
 import java.net.SocketAddress
 import java.net.URI
 import java.io.IOException
+import android.os.SystemClock
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
 
@@ -62,6 +67,34 @@ object YTPlayerUtils {
     @Volatile private var cachedSignatureTimestamp: Int? = null
     @Volatile private var cachedSignatureTimestampAtMs: Long = 0L
     private const val SIGNATURE_TIMESTAMP_TTL_MS = 6 * 60 * 60 * 1000L
+
+    // ASYNC sts (slow-start fix): ONE in-flight computation shared by every concurrent resolve (playback,
+    // crossfade prefetch and preload overlap routinely) and by the startup prewarm. Deliberately DETACHED
+    // from any single resolve's scope: when a resolve finishes without ever needing the sts (the main
+    // client, ANDROID_VR, discards it), the parse keeps running here and lands in the memo cache for the
+    // next resolve instead of holding the finished resolve hostage until the ~2.8 MB player.js parse ends.
+    // The underlying NewPipe call is blocking and non-cancellable anyway, so structured cancellation could
+    // not stop it either. A COMPLETED deferred is never reused: a success is served by the memo cache
+    // above, and a failure must re-run (failures are deliberately not cached — see the comment there).
+    private val stsScope = CoroutineScope(SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
+    @Volatile private var stsInFlight: Deferred<SignatureTimestampResult>? = null
+
+    private fun signatureTimestampAsync(videoId: String): Deferred<SignatureTimestampResult> {
+        // Fresh memoized value → complete instantly, no coroutine machinery at all.
+        val cached = cachedSignatureTimestamp
+        if (cached != null &&
+            SystemClock.elapsedRealtime() - cachedSignatureTimestampAtMs < SIGNATURE_TIMESTAMP_TTL_MS
+        ) {
+            return CompletableDeferred(SignatureTimestampResult(cached, isAgeRestricted = false))
+        }
+        stsInFlight?.takeIf { it.isActive }?.let { return it }
+        synchronized(this) {
+            stsInFlight?.takeIf { it.isActive }?.let { return it }
+            val started = stsScope.async { getSignatureTimestampOrNull(videoId) }
+            stsInFlight = started
+            return started
+        }
+    }
 
     private val httpClient: OkHttpClient = OkHttpClient.Builder()
         .dns(object : Dns {
@@ -106,10 +139,17 @@ object YTPlayerUtils {
     /**
      * Warm up the poToken WebView ahead of the first playback so the first song starts faster. Safe to
      * call any time (no-ops if the session isn't ready yet); never throws.
+     *
+     * GATE FIX (slow-start): this used to bail when MAIN_CLIENT alone didn't use web PoTokens — but
+     * MAIN_CLIENT is ANDROID_VR (useWebPoTokens = false), so the "prewarm" was a silent NO-OP for
+     * everyone, and the first song that fell back to a web client (WEB_REMIX, TVHTML5) paid the cold
+     * WebView + botguard init (~2-5s, 8s cap) on the loader thread. Prewarm whenever ANY client in the
+     * resolve chain needs web PoTokens. Callers decide the tier policy (MusicService gates it to
+     * MID/HIGH so low-RAM devices don't pay a startup WebView).
      */
     fun prewarmPoToken() {
         runCatching {
-            if (!MAIN_CLIENT.useWebPoTokens) return@runCatching
+            if (!MAIN_CLIENT.useWebPoTokens && STREAM_FALLBACK_CLIENTS.none { it.useWebPoTokens }) return@runCatching
             val isLoggedIn = YouTube.cookie != null
             // Fallback to visitorData when a logged-in user has a null dataSyncId (e.g. the 0.6.104 migration
             // wrongly cleared it, and it is only re-derived at login) so playback still resolves instead of
@@ -129,6 +169,16 @@ object YTPlayerUtils {
     suspend fun prewarmCipher() {
         runCatching { CipherDeobfuscator.prewarm() }
             .onFailure { Timber.tag(TAG).d("Cipher prewarm skipped: ${it.message}") }
+    }
+
+    /**
+     * Startup prewarm for the signature timestamp: kicks the shared, memoized async sts computation so
+     * the first song's sts-using clients (WEB_REMIX & co.) find it already cached instead of paying
+     * NewPipe's ~2.8 MB player.js fetch/parse on the critical path. Fire-and-forget — returns
+     * immediately, never throws. The video id is arbitrary (the sts is a per-player-version constant).
+     */
+    fun prewarmSignatureTimestamp() {
+        runCatching { signatureTimestampAsync("dQw4w9WgXcQ") }
     }
 
     
@@ -198,6 +248,48 @@ object YTPlayerUtils {
      */
     private val AUTH_SHAPED_STATUSES = setOf("LOGIN_REQUIRED")
 
+    /**
+     * Per-resolve stage timing (slow-start telemetry). ONE instance per playerResponseForPlayback call,
+     * threaded down the pipeline; exactly ONE summary line is emitted per completed resolve (success,
+     * failure or cancellation) via Timber + PlaybackLogManager, so the shareable playback log turns every
+     * slow start into attributable per-stage data. PRIVACY: only the video id and timings/counters/client
+     * names are logged — never titles, artists or any other user-identifying data (registry lesson).
+     * Overhead is trivial: SystemClock.elapsedRealtime deltas into plain Long fields — no allocations in
+     * the client loop; the summary string is built once, at emit time.
+     */
+    class ResolveTiming(private val videoId: String) {
+        private val startedAtMs = SystemClock.elapsedRealtime()
+        var dbMs: Long = -1        // caller's pre-resolve Room reads (MusicService runBlocking blocks)
+        var qobuzMs: Long = -1     // LOSSLESS-only Qobuz block wall time (-1 = block not entered)
+        var saavnMs: Long = -1     // SAAVN/lossless-fallback Saavn block wall time (-1 = not entered)
+        var stsMs: Long = -1       // time BLOCKED awaiting the async signature timestamp (-1 = never awaited)
+        var potMs: Long = 0        // PoToken generation (initial + lazy) wall time
+        var playerMs: Long = 0     // cumulative /player call wall time
+        var playerCalls: Int = 0   // /player calls attempted (main + fallbacks, across retries)
+        var urlMs: Long = 0        // findUrlOrNull (cipher/NewPipe URL extraction) wall time
+        var headMs: Long = 0       // cumulative validateStatus HEAD wall time
+        var headCount: Int = 0
+        var ntrMs: Long = 0        // n-transform wall time (EJS solver + cipher retry)
+        var attempts: Int = 0      // resolvePlaybackData attempts (1 + guest/anonymous retries)
+        var winner: String? = null // source that served: "qobuz" / "saavn" / a YouTube client name
+        var success: Boolean = false
+
+        fun addStsWait(deltaMs: Long) {
+            stsMs = (if (stsMs < 0) 0L else stsMs) + deltaMs
+        }
+
+        fun emit() {
+            val total = SystemClock.elapsedRealtime() - startedAtMs
+            fun ms(v: Long) = if (v < 0) "-" else "${v}ms"
+            val line = "id=$videoId total=${total}ms ok=$success db=${ms(dbMs)} sts=${ms(stsMs)} " +
+                "pot=${potMs}ms qobuz=${ms(qobuzMs)} saavn=${ms(saavnMs)} " +
+                "clients=$playerCalls player=${playerMs}ms url=${urlMs}ms " +
+                "head=${headCount}x/${headMs}ms ntr=${ntrMs}ms attempts=$attempts winner=${winner ?: "-"}"
+            Timber.tag(TAG).i("RESOLVE_TIMING %s", line)
+            PlaybackLogManager.log(PlaybackLogLevel.INFO, "RESOLVE_TIMING", line)
+        }
+    }
+
     // NOTE: deliberately NOT an object-level field. Resolves overlap — the media3 loader, the queue
     // PRELOAD loop, downloads, export and preview all resolve concurrently, and a preload's reset would
     // routinely erase the playing track's result (or vice versa) across a window up to RESOLVE_TIMEOUT_MS.
@@ -216,14 +308,48 @@ object YTPlayerUtils {
         // RINGTONE-ONLY opt-in: pick the SMALLEST audio format instead of the Hi-Res one (the ringtone
         // trimmer keeps a few seconds anyway, so transfer size matters more than bitrate). Every other
         // caller keeps the default (false) and its selection is byte-identical to before.
-        preferSmallestAudio: Boolean = false
+        preferSmallestAudio: Boolean = false,
+        // TELEMETRY ONLY: wall time the caller already spent on its own pre-resolve DB reads (the
+        // MusicService resolver's runBlocking Room blocks), folded into the RESOLVE_TIMING line. -1 = n/a.
+        preResolveDbMs: Long = -1,
     ): Result<PlaybackData> {
-        val showFallbackToast = context?.let { 
+        // Slow-start telemetry: exactly ONE summary line per resolve, emitted in `finally` so a caller's
+        // timeout-cancellation still leaves an attributable line (those ARE the slow starts). The line
+        // carries the video id + stage timings only — never titles/artists.
+        val timing = ResolveTiming(videoId)
+        timing.dbMs = preResolveDbMs
+        try {
+            val result = playerResponseForPlaybackImpl(
+                videoId, playlistId, audioQuality, connectivityManager, context,
+                knownArtist, knownTitle, knownDurationMs, isDownload, preferSmallestAudio, timing,
+            )
+            timing.success = result.isSuccess
+            return result
+        } finally {
+            timing.emit()
+        }
+    }
+
+    private suspend fun playerResponseForPlaybackImpl(
+        videoId: String,
+        playlistId: String?,
+        audioQuality: AudioQuality,
+        connectivityManager: ConnectivityManager,
+        context: android.content.Context?,
+        knownArtist: String?,
+        knownTitle: String?,
+        knownDurationMs: Long?,
+        isDownload: Boolean,
+        preferSmallestAudio: Boolean,
+        timing: ResolveTiming,
+    ): Result<PlaybackData> {
+        val showFallbackToast = context?.let {
             it.dataStore.data.first()[iad1tya.echo.music.constants.ShowAudioFallbackToastKey] 
         } ?: true
 
         var losslessFailed = false
         if (audioQuality == AudioQuality.LOSSLESS) {
+            val qobuzStartMs = SystemClock.elapsedRealtime()
             var qobuzAttempt: Result<PlaybackData>? = null
             var lastException: Exception? = null
             // 2×9s (was 3×15s): caps the worst-case lossless wait at ~18s before falling back to
@@ -316,7 +442,9 @@ object YTPlayerUtils {
                     break
                 }
             }
+            timing.qobuzMs = SystemClock.elapsedRealtime() - qobuzStartMs
             if (qobuzAttempt != null && qobuzAttempt.isSuccess) {
+                timing.winner = "qobuz"
                 return qobuzAttempt
             } else {
                 losslessFailed = true
@@ -338,6 +466,7 @@ object YTPlayerUtils {
         
         var saavnFailed = false
         if (audioQuality == AudioQuality.SAAVN || losslessFailed) {
+            val saavnStartMs = SystemClock.elapsedRealtime()
             var saavnAttempt: Result<PlaybackData>? = null
             var lastException: Exception? = null
             
@@ -469,7 +598,9 @@ object YTPlayerUtils {
                 lastException = e
             }
             
+            timing.saavnMs = SystemClock.elapsedRealtime() - saavnStartMs
             if (saavnAttempt != null && saavnAttempt.isSuccess) {
+                timing.winner = "saavn"
                 return saavnAttempt
             } else {
                 saavnFailed = true
@@ -503,7 +634,7 @@ object YTPlayerUtils {
             val timeoutReason = "La canción tardó demasiado en resolverse"
             authShaped.set(false)
             val r = kotlinx.coroutines.withTimeoutOrNull(RESOLVE_TIMEOUT_MS) {
-                resolvePlaybackData(videoId, playlistId, audioQuality, connectivityManager, preferSmallestAudio = preferSmallestAudio, noLogin = noLogin, authShaped = authShaped)
+                resolvePlaybackData(videoId, playlistId, audioQuality, connectivityManager, preferSmallestAudio = preferSmallestAudio, noLogin = noLogin, authShaped = authShaped, timing = timing)
             } ?: return Result.failure(StreamResolutionException(timeoutReason))
             return if (r.exceptionOrNull() is java.util.concurrent.CancellationException) {
                 Result.failure(StreamResolutionException(timeoutReason))
@@ -581,7 +712,11 @@ object YTPlayerUtils {
         // Reports back whether any client refused for session reasons. Caller-owned so concurrent
         // resolves cannot clobber each other.
         authShaped: java.util.concurrent.atomic.AtomicBoolean? = null,
+        // Slow-start telemetry sink, owned by playerResponseForPlayback. Null for the video-mode paths
+        // (videoStreamUrl/videoStreamUrlDiag), which then simply record nothing.
+        timing: ResolveTiming? = null,
     ): Result<PlaybackData> = runCatching {
+        if (timing != null) timing.attempts++
         Timber.tag(logTag).d("Fetching player response for videoId: $videoId, playlistId: $playlistId")
         PlaybackLogManager.log(PlaybackLogLevel.INFO, "Resolving playback data", "Video: $videoId")
         
@@ -600,9 +735,19 @@ object YTPlayerUtils {
         val isLoggedIn = YouTube.cookie != null && !noLogin
         Timber.tag(logTag).d("Session authentication status: ${if (isLoggedIn) "Logged in" else "Not logged in"}${if (noLogin) " (anonymous retry)" else ""}")
 
-        
-        val signatureTimestamp = getSignatureTimestampOrNull(videoId)
-        Timber.tag(logTag).d("Signature timestamp: ${signatureTimestamp.timestamp}")
+
+        // ASYNC sts (slow-start fix): started NOW so it computes in parallel with the network calls, and
+        // awaited ONLY at clients that actually send it (client.useSignatureTimestamp — InnerTube discards
+        // it otherwise, so the request bytes per client are identical to before). The old eager call
+        // serialized a potentially multi-second cold NewPipe player.js parse ahead of EVERY first resolve
+        // for a value the main client (ANDROID_VR) throws away. Only WHEN the work happens changed.
+        val stsDeferred = signatureTimestampAsync(videoId)
+        suspend fun awaitSts(): SignatureTimestampResult {
+            val stsWaitStartMs = SystemClock.elapsedRealtime()
+            val sts = stsDeferred.await()
+            timing?.addStsWait(SystemClock.elapsedRealtime() - stsWaitStartMs)
+            return sts
+        }
 
         
         var poToken: PoTokenResult? = null
@@ -615,6 +760,7 @@ object YTPlayerUtils {
         val sessionId = (if (isLoggedIn) YouTube.dataSyncId else YouTube.visitorData) ?: YouTube.visitorData
         if (MAIN_CLIENT.useWebPoTokens && sessionId != null) {
             Timber.tag(logTag).d("Generating PoToken for MAIN_CLIENT with sessionId")
+            val potStartMs = SystemClock.elapsedRealtime()
             try {
                 poToken = poTokenGenerator.getWebClientPoToken(videoId, sessionId)
                 if (poToken != null) {
@@ -623,6 +769,7 @@ object YTPlayerUtils {
             } catch (e: Exception) {
                 Timber.tag(logTag).e(e, "PoToken generation failed: ${e.message}")
             }
+            timing?.let { it.potMs += SystemClock.elapsedRealtime() - potStartMs }
         }
 
         
@@ -638,9 +785,13 @@ object YTPlayerUtils {
                 async(kotlinx.coroutines.Dispatchers.IO) {
                     kotlinx.coroutines.withTimeoutOrNull(3000L) {
                         runCatching {
+                            // METADATA_CLIENT (WEB_REMIX) does send the sts; awaiting INSIDE this 3s-capped,
+                            // optional side-fetch keeps a cold parse off the main resolve's critical path
+                            // (raw await, not awaitSts: this parallel wait must not pollute the sts= metric).
                             YouTube.player(
                                 videoId, playlistId, METADATA_CLIENT,
-                                signatureTimestamp.timestamp, null, noLogin = noLogin,
+                                if (METADATA_CLIENT.useSignatureTimestamp) stsDeferred.await().timestamp else null,
+                                null, noLogin = noLogin,
                             ).getOrNull()
                         }.getOrNull()
                     }
@@ -655,16 +806,28 @@ object YTPlayerUtils {
             // STREAM_FALLBACK_CLIENTS loop (startIndex is forced to 0 below when main is null), so
             // region-locked / members-only / deleted-but-listed songs still get EVERY fallback client
             // instead of dead-ending on the very first client.
-            val main = if (preferVideo) {
-                YouTube.player(
-                    videoId, playlistId, VIDEO_CLIENT,
-                    signatureTimestamp.timestamp, null, noLogin = noLogin,
-                ).getOrNull()
-            } else {
-                YouTube.player(
-                    videoId, playlistId, MAIN_CLIENT,
-                    signatureTimestamp.timestamp, poToken?.playerRequestPoToken, noLogin = noLogin,
-                ).getOrNull()
+            val main = run {
+                // Await the async sts only when this client sends it (VIDEO_CLIENT/TVHTML5 does;
+                // MAIN_CLIENT/ANDROID_VR never) — the wait (if any) lands in sts=, the call in player=.
+                val mainClient = if (preferVideo) VIDEO_CLIENT else MAIN_CLIENT
+                val mainSts = if (mainClient.useSignatureTimestamp) awaitSts().timestamp else null
+                val mainCallStartMs = SystemClock.elapsedRealtime()
+                val response = if (preferVideo) {
+                    YouTube.player(
+                        videoId, playlistId, VIDEO_CLIENT,
+                        mainSts, null, noLogin = noLogin,
+                    ).getOrNull()
+                } else {
+                    YouTube.player(
+                        videoId, playlistId, MAIN_CLIENT,
+                        mainSts, poToken?.playerRequestPoToken, noLogin = noLogin,
+                    ).getOrNull()
+                }
+                timing?.let {
+                    it.playerMs += SystemClock.elapsedRealtime() - mainCallStartMs
+                    it.playerCalls++
+                }
+                response
             }
             main to metadataDeferred?.await()
         }
@@ -800,20 +963,31 @@ object YTPlayerUtils {
                 
                 if (client.useWebPoTokens && poToken == null && sessionId != null) {
                     Timber.tag(logTag).d("Lazily generating PoToken for fallback web client: ${client.clientName}")
+                    val lazyPotStartMs = SystemClock.elapsedRealtime()
                     try {
                         poToken = poTokenGenerator.getWebClientPoToken(videoId, sessionId)
                     } catch (e: Exception) {
                         Timber.tag(logTag).e(e, "Lazy PoToken generation failed")
                     }
+                    timing?.let { it.potMs += SystemClock.elapsedRealtime() - lazyPotStartMs }
                 }
 
                 Timber.tag(logTag).d("Fetching player response for fallback client: ${client.clientName}")
-                
+
                 val clientPoToken = if (client.useWebPoTokens) poToken?.playerRequestPoToken else null
-                
-                val clientSigTimestamp = if (wasOriginallyAgeRestricted) null else signatureTimestamp.timestamp
+
+                // Await the async sts only for clients that send it (null otherwise — identical request,
+                // since InnerTube already discarded it for !useSignatureTimestamp clients).
+                val clientSigTimestamp =
+                    if (wasOriginallyAgeRestricted || !client.useSignatureTimestamp) null
+                    else awaitSts().timestamp
+                val clientCallStartMs = SystemClock.elapsedRealtime()
                 streamPlayerResponse =
                     YouTube.player(videoId, playlistId, client, clientSigTimestamp, clientPoToken, noLogin = noLogin).getOrNull()
+                timing?.let {
+                    it.playerMs += SystemClock.elapsedRealtime() - clientCallStartMs
+                    it.playerCalls++
+                }
             }
 
             
@@ -849,7 +1023,9 @@ object YTPlayerUtils {
 
                 Timber.tag(logTag).d("Format found: ${format.mimeType}, bitrate: ${format.bitrate}")
 
+                val urlStartMs = SystemClock.elapsedRealtime()
                 streamUrl = findUrlOrNull(format, videoId, responseToUse, skipNewPipe = wasOriginallyAgeRestricted)
+                timing?.let { it.urlMs += SystemClock.elapsedRealtime() - urlStartMs }
                 if (streamUrl == null) {
                     Timber.tag(logTag).d("Stream URL not found for format")
                     continue
@@ -869,7 +1045,9 @@ object YTPlayerUtils {
                 if (currentClient.useWebPoTokens) {
                     try {
                         Timber.tag(logTag).d("Applying n-transform to stream URL for ${currentClient.clientName}")
+                        val ntrStartMs = SystemClock.elapsedRealtime()
                         val transformed = EjsNTransformSolver.transformNParamInUrl(streamUrl!!)
+                        timing?.let { it.ntrMs += SystemClock.elapsedRealtime() - ntrStartMs }
                         if (transformed != streamUrl) {
                             streamUrl = transformed
                             Timber.tag(logTag).d("N-transform applied successfully")
@@ -911,18 +1089,26 @@ object YTPlayerUtils {
                         Timber.tag(logTag).d("Using last fallback client without validation: ${STREAM_FALLBACK_CLIENTS[clientIndex].clientName}")
                     }
                     Log.i(TAG, "Playback: client=${currentClient.clientName}, videoId=$videoId, private=$isPrivatelyOwned")
+                    timing?.winner = currentClient.clientName
                     break
                 }
 
-                if (validateStatus(streamUrl!!)) {
+                val headStartMs = SystemClock.elapsedRealtime()
+                val headOk = validateStatus(streamUrl!!)
+                timing?.let {
+                    it.headMs += SystemClock.elapsedRealtime() - headStartMs
+                    it.headCount++
+                }
+                if (headOk) {
                     // FIX B3 (#28.1): SHORT-CIRCUIT — the moment ANY client (including the MAIN client at
                     // clientIndex == -1, tried FIRST) yields a validated, directly-usable URL we break out of
                     // the loop and return it immediately, WITHOUT probing the remaining fallback clients. The
                     // full fallback chain still runs only when the main client fails to validate.
                     Timber.tag(logTag).d("Stream validated successfully with client: ${currentClient.clientName}")
                     PlaybackLogManager.log(PlaybackLogLevel.INFO, "Stream validated", currentClient.clientName)
-                    
+
                     Log.i(TAG, "Playback: client=${currentClient.clientName}, videoId=$videoId")
+                    timing?.winner = currentClient.clientName
                     break
                 } else {
                     Timber.tag(logTag).d("Stream validation failed for client: ${currentClient.clientName}")
@@ -933,10 +1119,18 @@ object YTPlayerUtils {
 
                         
                         try {
+                            val ntrRetryStartMs = SystemClock.elapsedRealtime()
                             val nTransformed = CipherDeobfuscator.transformNParamInUrl(streamUrl!!)
+                            timing?.let { it.ntrMs += SystemClock.elapsedRealtime() - ntrRetryStartMs }
                             if (nTransformed != streamUrl) {
                                 Timber.tag(logTag).d("CipherDeobfuscator n-transform applied, re-validating...")
-                                if (validateStatus(nTransformed)) {
+                                val retryHeadStartMs = SystemClock.elapsedRealtime()
+                                val retryHeadOk = validateStatus(nTransformed)
+                                timing?.let {
+                                    it.headMs += SystemClock.elapsedRealtime() - retryHeadStartMs
+                                    it.headCount++
+                                }
+                                if (retryHeadOk) {
                                     Timber.tag(logTag).d("N-transformed URL VALIDATED OK!")
                                     streamUrl = nTransformed
                                     nTransformWorked = true
@@ -947,7 +1141,10 @@ object YTPlayerUtils {
                             Timber.tag(logTag).e(e, "CipherDeobfuscator n-transform error")
                         }
 
-                        if (nTransformWorked) break
+                        if (nTransformWorked) {
+                            timing?.winner = currentClient.clientName
+                            break
+                        }
                     }
                 }
             } else {

@@ -1226,7 +1226,12 @@ class MusicService :
 
         scope.launch(Dispatchers.IO) {
             kotlinx.coroutines.delay(500)
-            runCatching { iad1tya.echo.music.utils.YTPlayerUtils.prewarmPoToken() }
+            // Prewarm the signature timestamp (memoized in YTPlayerUtils; each resolve now starts it
+            // ASYNC and only sts-using clients await it): the MAIN client ignores it, but the web/TV
+            // fallback clients send it, and computing it cold means NewPipe's ~2.8 MB player.js
+            // fetch/parse on the first resolve's critical path. Fire-and-forget (kicks a shared
+            // background computation) — returns immediately, so it delays nothing here.
+            runCatching { iad1tya.echo.music.utils.YTPlayerUtils.prewarmSignatureTimestamp() }
             // Also warm the cipher player.js + WebView so the FIRST song's URL resolution is fast too (and
             // stays warm/reused for every song after). On MID/HIGH tier run it in PARALLEL with the poToken
             // prewarm (two WebViews at once is fine on capable RAM) so both are ready sooner; on LOW/ULTRA
@@ -1238,6 +1243,13 @@ class MusicService :
                 scope.launch(Dispatchers.IO) {
                     runCatching { iad1tya.echo.music.utils.YTPlayerUtils.prewarmCipher() }
                 }
+                // PoToken prewarm — MID/HIGH only. This call used to be a SILENT NO-OP for everyone
+                // (gated on MAIN_CLIENT.useWebPoTokens, which is false for ANDROID_VR); with the gate
+                // fixed in YTPlayerUtils it really warms the WebView token used by the WEB_REMIX/TVHTML5
+                // fallback clients (~2-5s blocking in THIS background coroutine, 8s cap). LOW/ULTRA
+                // devices deliberately skip it — no startup WebView cost there, they keep the
+                // lazy-on-first-need path, which is exactly today's effective behavior for them.
+                runCatching { iad1tya.echo.music.utils.YTPlayerUtils.prewarmPoToken() }
             } else {
                 runCatching { iad1tya.echo.music.utils.YTPlayerUtils.prewarmCipher() }
             }
@@ -5871,7 +5883,11 @@ class MusicService :
 
             // Read Room NOW — BEFORE serving any playerCache/songUrlCache hit — for the container-mismatch guard
             // below, which decides whether the CACHED BYTES may be served or must be bypassed+refetched.
+            // Timed (slow-start telemetry): this runBlocking sits on the loader thread ahead of every
+            // resolve, so its cost is folded into the RESOLVE_TIMING db= stage.
+            val dbFormatReadStartMs = android.os.SystemClock.elapsedRealtime()
             val dbFormat = runBlocking(Dispatchers.IO) { database.format(mediaId).firstOrNull() }
+            val dbFormatReadMs = android.os.SystemClock.elapsedRealtime() - dbFormatReadStartMs
 
             // refetchCurrentInOpus() forces this track to Opus, overriding both the global quality and the
             // "locked" quality of the currently-playing track (below).
@@ -5956,10 +5972,13 @@ class MusicService :
 
             Timber.tag("MusicService").i("FETCHING STREAM: $mediaId | quality=$lockedQuality")
             val playbackData = runBlocking(Dispatchers.IO) {
+                val dbSongReadStartMs = android.os.SystemClock.elapsedRealtime()
                 val dbSong = database.song(mediaId).firstOrNull()
                 val knownArtist = dbSong?.artists?.joinToString { it.name }?.replace(" - Topic", "")
                 val knownTitle = dbSong?.song?.title
                 val knownDuration = dbSong?.song?.duration?.let { if (it > 0) it * 1000L else null }
+                // Both loader-thread Room reads (format above + song here) reported as RESOLVE_TIMING db=.
+                val preResolveDbMs = dbFormatReadMs + (android.os.SystemClock.elapsedRealtime() - dbSongReadStartMs)
 
                 YTPlayerUtils.playerResponseForPlayback(
                     mediaId,
@@ -5968,7 +5987,8 @@ class MusicService :
                     context = this@MusicService,
                     knownArtist = knownArtist,
                     knownTitle = knownTitle,
-                    knownDurationMs = knownDuration
+                    knownDurationMs = knownDuration,
+                    preResolveDbMs = preResolveDbMs
                 )
             }.getOrElse { throwable ->
                 when (throwable) {
