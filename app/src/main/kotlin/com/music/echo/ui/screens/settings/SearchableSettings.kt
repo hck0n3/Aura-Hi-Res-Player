@@ -24,6 +24,9 @@ fun getAllSearchableSettings(): List<Triple<String, String, String>> {
             Triple("Iniciar sesión", "Cuentas", "settings/accounts"),
             Triple("Cerrar sesión", "Cuentas", "settings/accounts"),
             Triple("Conectar", "Cuentas", "settings/accounts"),
+            Triple("Last.fm", "Cuentas", "settings/accounts"),
+            Triple("ListenBrainz", "Cuentas", "settings/accounts"),
+            Triple("Scrobbling", "Cuentas", "settings/accounts"),
             Triple("Importar de Spotify", "Cuentas", "settings/spotify_import"),
             // --- Scrobbling (settings/lastfm) ---
             Triple(stringResource(R.string.scrobbling), "Scrobbling", "settings/lastfm"),
