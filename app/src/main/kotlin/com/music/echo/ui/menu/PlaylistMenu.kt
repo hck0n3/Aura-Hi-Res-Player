@@ -402,7 +402,18 @@ fun PlaylistMenu(
                                     playerConnection.playQueue(
                                         ListQueue(
                                             title = playlist.playlist.name,
-                                            items = songs.shuffled().map(Song::toMediaItem)
+                                            items = songs.shuffled().map(Song::toMediaItem),
+                                            // Enhanced shuffle: this menu's Shuffle used to bypass the whole
+                                            // no-repeat system (no context, shuffle MODE off) → replayed
+                                            // played songs — the owner's reported path. Real playlists join
+                                            // their PL: memory; auto/download pseudo-playlists use the AP:
+                                            // namespace (excluded from the PL: orphan prune).
+                                            contextId = if (autoPlaylist == true || downloadPlaylist == true) {
+                                                "AP:" + playlist.playlist.id
+                                            } else {
+                                                "PL:" + playlist.playlist.id
+                                            },
+                                            startShuffled = true,
                                         )
                                     )
                                 }
