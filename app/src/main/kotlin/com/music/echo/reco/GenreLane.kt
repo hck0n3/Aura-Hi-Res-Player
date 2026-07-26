@@ -114,8 +114,11 @@ object GenreLane {
      * collapses onto [CHRISTIAN] so the keyword path and the genre path agree on one lane (otherwise a
      * Christian song matched by keyword and one matched by cached genre would sit in two different lanes and
      * fail to keep each other company).
+     *
+     * Internal (not private) so [ContextProfile] and its tests share the EXACT same genre vocabulary —
+     * a context profiled as "salsa y tropical" must match candidates normalized the same way.
      */
-    private fun normalizeGenre(genre: String): String? {
+    internal fun normalizeGenre(genre: String): String? {
         val g = genre.trim().lowercase()
         if (g.isBlank()) return null
         if (g.contains("christian") || g.contains("gospel")) return CHRISTIAN
