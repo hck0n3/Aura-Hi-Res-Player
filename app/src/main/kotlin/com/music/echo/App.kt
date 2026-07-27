@@ -346,6 +346,7 @@ class App : Application(), SingletonImageLoader.Factory, androidx.work.Configura
             settings[iad1tya.echo.music.constants.Defaults0127AppliedKey] != true ||
             settings[iad1tya.echo.music.constants.LiquidGlassHighTierV1AppliedKey] != true ||
             settings[iad1tya.echo.music.constants.Defaults0130CurveAppliedKey] != true ||
+            settings[iad1tya.echo.music.constants.Defaults0132GaplessOffAppliedKey] != true ||
             settings[iad1tya.echo.music.constants.LyricsBlurDefaultOnV1AppliedKey] != true ||
             settings[iad1tya.echo.music.constants.AddToPlaylistLastUpdatedDefaultV1AppliedKey] != true
         if (batchAPending) {
@@ -736,6 +737,12 @@ class App : Application(), SingletonImageLoader.Factory, androidx.work.Configura
         if (settings[iad1tya.echo.music.constants.Defaults0130CurveAppliedKey] != true) {
             p[iad1tya.echo.music.constants.CrossfadeCurveKey] = 4
             p[iad1tya.echo.music.constants.Defaults0130CurveAppliedKey] = true
+        }
+
+        // Owner order (0.6.132): gapless same-album bypass OFF — every auto-advance gets the blend.
+        if (settings[iad1tya.echo.music.constants.Defaults0132GaplessOffAppliedKey] != true) {
+            p[iad1tya.echo.music.constants.CrossfadeGaplessKey] = false
+            p[iad1tya.echo.music.constants.Defaults0132GaplessOffAppliedKey] = true
         }
     }
 

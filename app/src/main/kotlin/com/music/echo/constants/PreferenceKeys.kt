@@ -117,6 +117,11 @@ val LiquidGlassHighTierV1AppliedKey = booleanPreferencesKey("liquid_glass_high_t
 // valley as an unwanted gap; what he describes (both songs together, one down while the other rises,
 // no space) IS the Ascenso shape. FORCED once; duration stays 5s; user choices win afterwards.
 val Defaults0130CurveAppliedKey = booleanPreferencesKey("defaults_0_6_130_curve_applied")
+
+// Owner order (0.6.132): same-album pairs were skipping the crossfade ON PURPOSE (gapless bypass,
+// default ON) — he hears every skipped blend as "me corta la transición". Forced OFF once; the
+// gapless purist can re-enable it in Ajustes.
+val Defaults0132GaplessOffAppliedKey = booleanPreferencesKey("defaults_0_6_132_gapless_off_applied")
 // One-time: seed EQ ON + Audiophile preset + preamp 0.0 dB for everyone on this update.
 val EqAudiophileDefaultAppliedKey = booleanPreferencesKey("eq_audiophile_default_applied")
 // One-time (V2, FRESH key): re-apply ALL audio defaults — EQ Audiophile + preamp 0.0, crossfade 9s

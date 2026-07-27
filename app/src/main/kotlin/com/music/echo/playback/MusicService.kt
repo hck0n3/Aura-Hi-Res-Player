@@ -1781,7 +1781,7 @@ class MusicService :
                     // transition — the biggest CPU/RAM cost left on weak/TV/car devices. Transitions become hard cuts.
                     (prefs[CrossfadeEnabledKey] ?: false) && !(prefs[iad1tya.echo.music.constants.HighPerformanceModeKey] ?: false),
                     prefs[CrossfadeDurationKey] ?: 5f,
-                    prefs[CrossfadeGaplessKey] ?: true
+                    prefs[CrossfadeGaplessKey] ?: false
                 )
             },
             listenTogetherManager.roomState
@@ -7460,12 +7460,19 @@ class MusicService :
         // falls through to the unchanged 9s equal-power crossfade path below. The cleanup above still ran, so
         // any incoming player preloaded before perf mode toggled on is released rather than leaked.
         if (highPerformanceModeHint) return
-        if (!crossfadeEnabled || player.duration == C.TIME_UNSET || player.duration <= crossfadeDuration) return
+        if (!crossfadeEnabled || player.duration == C.TIME_UNSET) return
+        if (player.duration <= crossfadeDuration) {
+            traceCrossfade("skip-short", "dur=${player.duration}ms <= fade window — no blend possible")
+            return
+        }
         // Crossfade builds a SECOND ExoPlayer and copies the queue into it; the video item (a cache-less
         // muxed source with no TextureView attached on the secondary player) would break. Skip crossfade
         // entirely while video mode is on.
         if (_videoMode.value) return
-        if (crossfadeGapless && isNextItemGapless()) return
+        if (crossfadeGapless && isNextItemGapless()) {
+            traceCrossfade("gapless-bypass", "same-album pair -> deliberate gapless advance (Ajustes)")
+            return
+        }
         if (!player.hasNextMediaItem() && player.repeatMode != REPEAT_MODE_ONE) {
             // Last item with NO next: if auto-radio (infinite queue) is on, seed it NOW — early, while this song
             // still has time left — so a real crossfade INTO the first radio song is possible. A bare return here
@@ -7548,6 +7555,28 @@ class MusicService :
         return current.albumTitle != null && current.albumTitle == next.albumTitle
     }
 
+    private var lastCrossfadeTraceKey: String? = null
+
+    /**
+     * One shareable-log line per DISTINCT crossfade event (deduped per track+event so the many
+     * reschedules can't spam). Turns every "esta transición falló" report into an attributable verdict
+     * in Ajustes ▸ Registros: fade fired (which tier), swap committed, or WHY it cut instead.
+     */
+    private fun traceCrossfade(event: String, detail: String) {
+        val id = player.currentMediaItem?.mediaId ?: "?"
+        val key = "$id:$event"
+        if (key == lastCrossfadeTraceKey) return
+        lastCrossfadeTraceKey = key
+        runCatching {
+            Timber.tag(TAG).i("CROSSFADE_TRACE id=%s ev=%s %s", id, event, detail)
+            iad1tya.echo.music.utils.PlaybackLogManager.log(
+                iad1tya.echo.music.utils.PlaybackLogLevel.INFO,
+                "CROSSFADE_TRACE",
+                "id=$id ev=$event $detail"
+            )
+        }
+    }
+
     /**
      * TAIL-DETECTION handler (Main thread). The CURRENT player's detector — armed for the final stretch
      * (≤30s) by [scheduleCrossfade]'s tail-arm job — reported one of its two tiers:
@@ -7615,12 +7644,21 @@ class MusicService :
         proc.tailDetectEnabled = false
         if (isCrossfading || !crossfadeEnabled || highPerformanceModeHint || _videoMode.value) return
         if (!player.isPlaying || sleepTimer.pauseWhenSongEnd) return
-        if (crossfadeGapless && isNextItemGapless()) return
+        if (crossfadeGapless && isNextItemGapless()) {
+            traceCrossfade("gapless-bypass", "same-album pair -> deliberate gapless advance (Ajustes)")
+            return
+        }
         if (!player.hasNextMediaItem() && player.repeatMode != REPEAT_MODE_ONE) return
         // Deliberately do NOT cancel crossfadeTriggerJob: if this early fade can't actually start (the
         // secondary misses its READY window, or the user pauses during the bounded wait) the file-end-
         // anchored trigger must survive as the fallback — cancelling it here left the track with NO fade at
         // all. If the early fade DOES start, beginCrossfadeSwap cancels the stale jobs at the commit point.
+        traceCrossfade(
+            "tail-fire",
+            "tier=${if (silentNow) "silence" else "quiet"} remaining=${
+                player.duration.takeIf { it != C.TIME_UNSET }?.minus(player.currentPosition) ?: -1
+            }ms"
+        )
         startCrossfade()
     }
 
@@ -7667,10 +7705,16 @@ class MusicService :
         val targetMediaId = player.currentMediaItem?.mediaId
         crossfadeReadyJob?.cancel()
         crossfadeReadyJob = scope.launch {
+            // DYNAMIC bound (owner: "algunas transiciones las corta"): the old fixed 2.5s gave up long
+            // before slow-resolving incoming tracks were ready (a Lossless resolve alone can take longer)
+            // and fell to a HARD CUT. Wait as long as the OUTGOING still has audible time left (~800ms
+            // floor to land the swap) — a late, shorter blend always beats a cut.
             var waited = 0L
-            while (isActive && secPlayer.playbackState != Player.STATE_READY &&
-                waited < CROSSFADE_READY_TIMEOUT_MS
-            ) {
+            while (isActive && secPlayer.playbackState != Player.STATE_READY) {
+                val dur = player.duration
+                val remaining = if (dur == C.TIME_UNSET) 0L else dur - player.currentPosition
+                if (remaining <= 800L) break
+                if (!player.isPlaying || player.currentMediaItem?.mediaId != targetMediaId) break
                 delay(50)
                 waited += 50
             }
@@ -7681,8 +7725,10 @@ class MusicService :
             ) return@launch
             if (secPlayer.playbackState == Player.STATE_READY) {
                 beginCrossfadeSwap(secPlayer, savedShuffleEnabled)
+            } else {
+                // Single-player path will hard-cut — make the failure VISIBLE in the shareable log.
+                traceCrossfade("cut-not-ready", "waited=${waited}ms incoming never READY (slow resolve/buffer)")
             }
-            // else: not ready within the bound → leave the single-player path to hard-cut cleanly (no swap).
         }
     }
 
@@ -7708,6 +7754,8 @@ class MusicService :
         crossfadeTailArmJob = null
         tailQuietRecheckJob?.cancel()
         tailQuietRecheckJob = null
+
+        traceCrossfade("swap-ok", "blend running (curve+duration per Ajustes)")
 
         // Linear-play recording under crossfade: the swap path skips onMediaItemTransition, so without
         // this a LINEAR listen (shuffle off, crossfade on — every auto-advance is a swap) left no trace in
