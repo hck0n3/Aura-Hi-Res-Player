@@ -7987,10 +7987,17 @@ class MusicService :
         }
 
         crossfadeJob = scope.launch {
-            val duration = crossfadeDuration.toLong()
-            // Finer steps (~40 ms) so the volume ramp is smooth, not stair-stepped like the old 20 steps.
-            val steps = (duration / 40L).toInt().coerceIn(24, 240)
-            val stepTime = duration / steps
+            val configured = crossfadeDuration.toLong()
+            // OUTGOING decay must COMPLETE within the fading track's audible life (owner: "la que sale
+            // NO baja"): a fade that starts late — dynamic ready-wait, tail fire near the end — used to
+            // run its full configured length, so the outgoing's file ENDED while its ramp was still near
+            // full volume: heard as no decay at all. Cap its ramp to the actual remaining time.
+            val fpRemaining = fadingPlayer?.let { fp ->
+                val d = fp.duration
+                if (d == C.TIME_UNSET) Long.MAX_VALUE else (d - fp.currentPosition).coerceAtLeast(0L)
+            } ?: Long.MAX_VALUE
+            val durOut = minOf(configured, (fpRemaining - 250L).coerceAtLeast(600L))
+            val durIn = configured
             val curve = try { dataStore.get(CrossfadeCurveKey, 4) } catch (e: Exception) { 4 }
             val startVolume = try { fadingPlayer?.volume ?: 1f } catch(e:Exception) { 1f }
             // Because LUFS Normalization is fixed and active, tracks play at roughly -14 LUFS,
@@ -8000,23 +8007,43 @@ class MusicService :
             val xfHeadroom = 1f
 
             try {
-                for (i in 0..steps) {
-                    if (!isActive) break
-
-                    while (!player.isPlaying && isActive) {
-                        delay(100)
-                    }
-
-                    val progress = i / steps.toFloat()
-                    val (fadeIn, fadeOut) = crossfadeGains(curve, progress)
+                // DUAL-CLOCK blend. The old single stepped loop had a `while (!player.isPlaying) delay`
+                // that FROZE the whole fade while the incoming track buffered its start (routine on
+                // streamed/Lossless songs) — the outgoing sat pinned at full volume for those seconds and
+                // then died with its ramp barely begun: the owner's exact "la que entra está bien pero la
+                // que sale no baja". Now each side runs on ITS OWN playback clock:
+                //  • OUTGOING advances only while the fading player actually renders → its decay is always
+                //    audible, always completes before its content ends, freezes correctly on user pause;
+                //  • INCOMING advances only while the new player renders → a buffering start can neither
+                //    freeze the outgoing nor slam the incoming in at mid-level.
+                var outElapsed = 0L
+                var inElapsed = 0L
+                var lastT = android.os.SystemClock.elapsedRealtime()
+                var safety = 0L
+                while (isActive) {
+                    val now = android.os.SystemClock.elapsedRealtime()
+                    val dt = (now - lastT).coerceAtLeast(0L)
+                    lastT = now
+                    safety += dt
+                    val fp = fadingPlayer
+                    if (fp?.isPlaying == true) outElapsed += dt
+                    if (player.isPlaying) inElapsed += dt
+                    // Outgoing counts as fully faded when it's gone (null/ended) — never stalls the loop.
+                    val outDone = fp == null || fp.playbackState == Player.STATE_ENDED
+                    val outP = if (outDone) 1f else (outElapsed / durOut.toFloat()).coerceAtMost(1f)
+                    val inP = (inElapsed / durIn.toFloat()).coerceAtMost(1f)
+                    val fadeIn = crossfadeGains(curve, inP).first
+                    val fadeOut = crossfadeGains(curve, outP).second
 
                     try {
                         // Both players smoothly fade without needing to dynamically duck their headroom
                         player.volume = startVolume * fadeIn * xfHeadroom
-                        fadingPlayer?.volume = startVolume * fadeOut * xfHeadroom
+                        fp?.volume = startVolume * fadeOut * xfHeadroom
                     } catch (e: Exception) { break }
 
-                    delay(stepTime)
+                    if (inP >= 1f && outP >= 1f) break
+                    if (safety > durIn + durOut + 30_000L) break // pathological stall — bail to cleanup
+                    delay(40)
                 }
             } finally {
                 // ALWAYS end the crossfade cleanly — even if it's cancelled (skip/stop) mid-fade, which

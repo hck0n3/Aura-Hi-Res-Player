@@ -1,16 +1,15 @@
-# Aura Hi-Res Player 0.6.132 — Dos causas de "me corta la transición" eliminadas + diagnóstico por transición
+# Aura Hi-Res Player 0.6.133 — La que sale AHORA SÍ baja su volumen (bug estructural encontrado)
 
-## ✂️ Causa 1: la app se RENDÍA si la siguiente canción tardaba en cargar
-Cuando llegaba la hora del cruce y la canción entrante aún no estaba lista (pasa seguido en Lossless, que tarda más en resolver), la app esperaba solo 2.5 segundos y luego **cortaba en seco**. Ahora espera **todo el tiempo que le quede a la canción saliente** — un cruce tardío y más corto siempre es mejor que un corte. Se acabó ese corte.
+## 🔴 Tu reporte exacto, resuelto de raíz: "la que entra está bien, la que sale no baja"
+Encontramos el bug estructural en el corazón del fundido — dos fallas juntas:
 
-## ✂️ Causa 2: canciones del MISMO álbum saltaban el cruce a propósito
-Había un ajuste (activado por defecto) que entre canciones del mismo álbum hacía avance directo "gapless" en vez de cruce — tú lo oías como "me cortó la transición". **Desactivado por defecto con esta actualización**: ahora TODAS las transiciones automáticas llevan su cruce. (El purista del gapless puede reactivarlo en Ajustes ▸ Reproductor.)
+1. **El fundido entero se CONGELABA mientras la canción entrante cargaba**: había una espera interna que pausaba TODO el cruce hasta que la nueva empezara a sonar (normal que tarde unos segundos en streaming). Durante esa espera, la saliente quedaba **clavada a volumen alto**; cuando el fundido por fin corría, a la saliente casi no le quedaba vida y moría sin bajar.
+2. **La rampa de bajada nunca se ajustaba al tiempo real restante**: si el cruce arrancaba tarde, la bajada programada era más larga que lo que le quedaba a la canción — el archivo terminaba con la rampa apenas empezada.
 
-## 🔍 Y desde ahora: cada transición deja su veredicto en tu registro
-En **Ajustes ▸ Registros** ahora aparece una línea `CROSSFADE_TRACE` por cada transición: si el cruce arrancó (y por cuál detector), si el swap se completó, o **exactamente por qué cortó**. 
+**El rediseño — cada lado con su propio reloj:**
+- La que **sale** baja siguiendo SU reproducción real: su bajada siempre se oye completa y siempre termina antes de que se acabe su audio. Nada la congela.
+- La que **entra** sube siguiendo SU audio real: si tarda en cargar, sube cuando de verdad suena — sin golpes y sin frenar a la otra.
+- Pausa del usuario: ambas se congelan y reanudan correctamente.
 
-**Si vuelves a oír un corte o un cruce que no te gusta:** anota más o menos la hora, ve a Ajustes ▸ Registros, comparte el registro y mándamelo — esa transición exacta tendrá su línea con la causa. Con eso lo arreglo sin adivinar.
-
-## Recordatorio de lo abierto
-- **Cortes a mitad de canción** (solo en Lossless/Saavn) — mismo registro, línea RESOLVE_TIMING.
-- **Plegables:** mejoras hechas, sin probar en un plegable real.
+## Recordatorio
+Si algo aún no suena perfecto: **Ajustes ▸ Registros** → compartir → mándamelo. Cada transición deja su línea `CROSSFADE_TRACE` con el veredicto.
