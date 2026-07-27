@@ -65,27 +65,37 @@ class CrossfadeMathTest {
     }
 
     @Test
-    fun `curve 4 asymmetric rise - gradual both ways, rise spans 85 percent with a gentle landing`() {
-        // Incoming reaches full level at p=0.85 and HOLDS it — arriving gently (zero-slope landing).
-        val (inFull, _) = CrossfadeMath.getGains(4, 0.85f)
-        assertEquals("incoming must reach full level at p=0.85", 1f, inFull, 1e-4f)
+    fun `curve 4 asymmetric rise - gradual both ways, loudness-capped, rise spans 85 percent`() {
+        // Fully resolved by p=0.85: incoming EXACTLY full, outgoing EXACTLY silent from there on.
+        val (inFull, outAtFull) = CrossfadeMath.getGains(4, 0.85f)
+        assertEquals("incoming must reach full level at p=0.85", 1f, inFull, 1e-3f)
+        assertTrue("outgoing must be silent from p=0.85", outAtFull <= 1e-3f)
         val (inLate, _) = CrossfadeMath.getGains(4, 0.9f)
-        assertEquals("incoming must hold full level after p=0.85", 1f, inLate, 1e-4f)
-        // Gentle landing: just before full, the gain is already within 1% of unity (no hard clamp kink).
+        assertEquals("incoming must hold full level after p=0.85", 1f, inLate, 1e-3f)
+        // BOTH movements audible together: by 40% of the window the outgoing has ALREADY dropped
+        // noticeably (the owner could not hear the old asymmetric pair's decay at all).
+        val outAt40 = CrossfadeMath.getGains(4, 0.4f).second
+        assertTrue("outgoing must be audibly lowering by p=0.4 (<0.93)", outAt40 < 0.93f)
         val (inNearFull, _) = CrossfadeMath.getGains(4, 0.8f)
-        assertTrue("incoming must land smoothly (>=0.99 at p=0.8)", inNearFull >= 0.99f)
-        // The rise is AUDIBLE for most of the blend ("se va haciendo notar"): clearly rising mid-window,
-        // neither near-silent nor already-full.
+        assertTrue("incoming must land smoothly (>=0.98 at p=0.8)", inNearFull >= 0.98f)
+        // The rise is AUDIBLE for most of the blend ("se va haciendo notar"): clearly rising mid-window.
         val (inMid, _) = CrossfadeMath.getGains(4, 0.5f)
         assertTrue("incoming must be mid-rise at p=0.5 (0.6..0.95)", inMid in 0.6f..0.95f)
         // Gentle start: the first tenth of the window stays quiet (eased ramp, no abrupt entry).
         val (inEarly, _) = CrossfadeMath.getGains(4, 0.1f)
         assertTrue("incoming must start gently (<0.15 at p=0.1)", inEarly < 0.15f)
-        // Outgoing decays gradually across the WHOLE window: gentle at first, ~mid-level mid-window, gone at 1.
+        // Outgoing decays gradually across the WHOLE window: audible mid-window, gone at 1.
         val outMid = CrossfadeMath.getGains(4, 0.5f).second
         assertTrue("outgoing must still be audible mid-window (0.5..0.9)", outMid in 0.5f..0.9f)
         val outEarly = CrossfadeMath.getGains(4, 0.1f).second
         assertTrue("outgoing must decay gently at the start (>0.95 at p=0.1)", outEarly > 0.95f)
+        // LOUDNESS CAP: combined power never exceeds a single song's — the blend can never sound louder
+        // than normal playback (the owner heard the raw +1.8dB mid-blend bump as "suena más").
+        for (step in 0..100) {
+            val p = step / 100f
+            val (fadeIn, fadeOut) = CrossfadeMath.getGains(4, p)
+            assertTrue("power must stay <= 1 (p=$p)", fadeIn * fadeIn + fadeOut * fadeOut <= 1f + 1e-3f)
+        }
     }
 
     @Test

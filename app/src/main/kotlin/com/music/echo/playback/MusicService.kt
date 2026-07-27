@@ -4977,6 +4977,7 @@ class MusicService :
             val rnd = java.util.Random()
             // Precompute each index's key ONCE (rnd inside the comparator would crash TimSort).
             val keys = HashMap<Int, Double>(indices.size)
+            val primaryArtist = HashMap<Int, String>(indices.size)
             indices.forEach { i ->
                 val m = runCatching { player.getMediaItemAt(i).metadata }.getOrNull()
                 val tasteScore = if (p != null && m != null) p.scoreNames(m.artists.map { it.name }, m.title) else 0.0
@@ -4986,8 +4987,34 @@ class MusicService :
                 val id = m?.id
                 if (id == null || id !in playedSnapshot) key += 1000.0
                 keys[i] = key
+                primaryArtist[i] = m?.artists?.firstOrNull()?.name?.lowercase().orEmpty()
             }
             indices.sortByDescending { keys[it] ?: 0.0 }
+            // ARTIST SPACING (owner report: "cuando va por un cantante solo de ese cantante me pone"):
+            // the taste term clusters a favourite artist's songs together, producing same-artist RUNS
+            // that don't read as random at all. Single bounded pass: when two neighbours share the
+            // primary artist, swap the second with the next index (lookahead ≤20) that (a) has a
+            // DIFFERENT artist and (b) sits in the SAME played/unplayed group — the +1000 anti-repeat
+            // boundary is never crossed. O(n·20) on the player thread; blank artists never match.
+            run {
+                fun sameGroup(a: Int, b: Int): Boolean =
+                    ((keys[a] ?: 0.0) >= 1000.0) == ((keys[b] ?: 0.0) >= 1000.0)
+                for (i in 1 until indices.size) {
+                    val prev = primaryArtist[indices[i - 1]].orEmpty()
+                    val cur = primaryArtist[indices[i]].orEmpty()
+                    if (prev.isEmpty() || prev != cur) continue
+                    val maxJ = (i + 20).coerceAtMost(indices.size - 1)
+                    for (j in (i + 1)..maxJ) {
+                        if (!sameGroup(indices[i], indices[j])) break
+                        if (primaryArtist[indices[j]].orEmpty() != prev) {
+                            val tmp = indices[i]
+                            indices[i] = indices[j]
+                            indices[j] = tmp
+                            break
+                        }
+                    }
+                }
+            }
             val shuffledIndices = indices.toIntArray()
 
             val currentItemIndexInShuffled = shuffledIndices.indexOf(currentIndex)
@@ -6820,7 +6847,7 @@ class MusicService :
                 val lowEnd = rawTier == iad1tya.echo.music.utils.DeviceTier.LOW ||
                     rawTier == iad1tya.echo.music.utils.DeviceTier.ULTRA ||
                     isLowRamDevice
-                DefaultAudioSink
+                val delegateSink = DefaultAudioSink
                     .Builder(this@MusicService)
                     .setEnableFloatOutput(!lowEnd)
                     .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
@@ -6832,6 +6859,59 @@ class MusicService :
                             limiterProcessor
                         )
                     ).build()
+                // SINK-LEVEL silence tap: DefaultAudioSink routes the hi-res FLOAT pipeline AROUND the
+                // custom processor chain (bytecode-verified), so on 24-bit content the silence detector was
+                // never fed — long silent tails on the owner's Lossless path kept producing dead gaps. This
+                // wrapper measures the sink's INPUT (any PCM: 16-bit or float) before delegating.
+                // Measure-only on a DUPLICATE buffer (independent position/order — the original is never
+                // touched); the processor itself no-ops when the in-chain path already feeds it. handleBuffer
+                // is re-called with the SAME buffer until consumed, so only the not-yet-measured region is
+                // fed (identity + high-water mark) — re-measuring would inflate the silence counters.
+                object : androidx.media3.exoplayer.audio.ForwardingAudioSink(delegateSink) {
+                    private var tapEncoding = C.ENCODING_INVALID
+                    private var tapSampleRate = 0
+                    private var tapChannels = 0
+                    private var tapLastBuffer: java.nio.ByteBuffer? = null
+                    private var tapMeasuredEnd = -1
+
+                    override fun configure(
+                        inputFormat: androidx.media3.common.Format,
+                        specifiedBufferSize: Int,
+                        outputChannels: IntArray?,
+                    ) {
+                        tapEncoding = inputFormat.pcmEncoding
+                        tapSampleRate = inputFormat.sampleRate
+                        tapChannels = inputFormat.channelCount
+                        tapLastBuffer = null
+                        tapMeasuredEnd = -1
+                        super.configure(inputFormat, specifiedBufferSize, outputChannels)
+                    }
+
+                    override fun handleBuffer(
+                        buffer: java.nio.ByteBuffer,
+                        presentationTimeUs: Long,
+                        encodedAccessUnitCount: Int,
+                    ): Boolean {
+                        runCatching {
+                            val start = buffer.position()
+                            val end = buffer.limit()
+                            val fromPos = if (buffer === tapLastBuffer && tapMeasuredEnd in (start + 1)..end) {
+                                tapMeasuredEnd // same buffer re-offered: only the region beyond the mark is new
+                            } else {
+                                start
+                            }
+                            if (end > fromPos) {
+                                val dup = buffer.duplicate()
+                                dup.position(fromPos)
+                                dup.limit(end)
+                                silenceProcessor.measureExternal(dup, tapEncoding, tapSampleRate, tapChannels)
+                                tapLastBuffer = buffer
+                                tapMeasuredEnd = end
+                            }
+                        }
+                        return super.handleBuffer(buffer, presentationTimeUs, encodedAccessUnitCount)
+                    }
+                }
             }
         }.apply {
             // Fall through to the software decoder when a vendor HW AAC/HE-AAC decoder mis-decodes (a known
@@ -7314,15 +7394,16 @@ class MusicService :
                     waited += 50
                 }
                 if (!isActive || !player.isPlaying) return@launch
-                // ~900ms, smoothstep-EASED sine (owner: songs that OPEN at full blast still felt like a
-                // slam at 400ms — the song's own fault, so the ramp must tame it). The eased curve keeps
-                // the first ~20% of the window under -16dB, so even an explosive intro rises gradually.
-                val steps = 30
-                val stepTime = 900L / steps
+                // ~1.1s, SMOOTHERSTEP-eased sine (owner iterated twice: explosive intros must enter
+                // gently). Smootherstep (6t⁵−15t⁴+10t³) has zero FIRST and SECOND derivative at both
+                // ends — the ramp leaves silence imperceptibly, swells through the middle and lands
+                // softly at the exact user volume. First ~25% of the window stays under ≈-20dB.
+                val steps = 36
+                val stepTime = 1_100L / steps
                 for (i in 1..steps) {
                     if (!isActive || isCrossfading) break
                     val p = i / steps.toFloat()
-                    val eased = p * p * (3f - 2f * p) // smoothstep: zero-slope start AND landing
+                    val eased = p * p * p * (p * (p * 6f - 15f) + 10f) // smootherstep
                     player.volume = target * kotlin.math.sin(eased * (Math.PI / 2.0).toFloat())
                     delay(stepTime)
                 }

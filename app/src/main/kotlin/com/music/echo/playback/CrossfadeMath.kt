@@ -51,14 +51,26 @@ object CrossfadeMath {
             }
             3 -> (p * p) to ((1f - p) * (1f - p))
             4 -> {
-                // Smoothstep easing (3t²−2t³) has zero slope at both ends: the incoming ramp starts
-                // gently AND lands gently at full level; the outgoing decays gently all the way out.
-                // Rise spans ~85% of the window (owner-tuned): the incoming is audibly "making itself
-                // noticed" for most of the blend before settling at full level near the end.
+                // Owner-tuned through THREE listening rounds. Final shape: BOTH movements must be
+                // audible TOGETHER from early on — the outgoing clearly lowering while the incoming
+                // clearly rises (the previous asymmetric pair held the outgoing at ~-3dB for half the
+                // window, so its decay was inaudible under the rising song: "no escucho que se degrada").
+                // Smoothstep-EASED equal-power pair compressed into the first ~85% of the window: gentle
+                // zero-slope start, both sides moving symmetrically, fully resolved by 85% (the last 15%
+                // is the incoming alone at full level — the early-resolution "rise" character). Equal
+                // power throughout: the blend can never sound louder OR quieter than normal playback.
                 val pin = (p / 0.85f).coerceAtMost(1f)
-                val sIn = pin * pin * (3f - 2f * pin)
-                val sOut = p * p * (3f - 2f * p)
-                sin(sIn * half) to cos(sOut * half)
+                val s = pin * pin * (3f - 2f * pin)
+                var fadeIn = sin(s * half)
+                var fadeOut = cos(s * half)
+                // Safety cap (kept although equal-power sums to exactly 1): never louder than one song.
+                val power = fadeIn * fadeIn + fadeOut * fadeOut
+                if (power > 1f) {
+                    val scale = 1f / kotlin.math.sqrt(power)
+                    fadeIn *= scale
+                    fadeOut *= scale
+                }
+                fadeIn to fadeOut
             }
             5 -> {
                 // Sequential V: g_out = cos(π/2·min(1, p/0.5)) dies at the midpoint; g_in =

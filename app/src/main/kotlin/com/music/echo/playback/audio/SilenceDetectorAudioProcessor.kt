@@ -102,7 +102,7 @@ class SilenceDetectorAudioProcessor(
         // genuine tail fire. Track boundaries still reset via flush() (seek) and resetTracking() (re-arm
         // for a NEW track); a loud frame resets naturally inside detectSilence.
         if ((instantModeEnabled || tailDetectEnabled) && sampleRate > 0 && channelCount > 0) {
-            detectSilence(inputBuffer)
+            detectSilence(inputBuffer, encoding == C.ENCODING_PCM_FLOAT, sampleRate, channelCount)
         }
 
         val out = replaceOutputBuffer(inputBuffer.remaining())
@@ -110,11 +110,31 @@ class SilenceDetectorAudioProcessor(
         out.flip()
     }
 
-    private fun detectSilence(inputBuffer: ByteBuffer) {
+    /**
+     * SINK-LEVEL feed (ForwardingAudioSink tap). media3's DefaultAudioSink only inserts custom processors
+     * on the 16-bit INT pipeline — on hi-res FLOAT content (24-bit on capable devices, the owner's
+     * Lossless path) this processor is NOT in the chain at all, so long silent tails went undetected and
+     * left the exact dead gap the owner keeps reporting. The tap feeds the sink's INPUT here instead.
+     * Callers pass a DUPLICATE buffer (independent position/order — the original is never touched).
+     * No-ops when the chain already feeds us (double counting) or the tail mode is off.
+     */
+    fun measureExternal(buffer: ByteBuffer, extEncoding: Int, extSampleRate: Int, extChannelCount: Int) {
+        if (isActive) return
+        if (!tailDetectEnabled) return
+        if (extEncoding != C.ENCODING_PCM_16BIT && extEncoding != C.ENCODING_PCM_FLOAT) return
+        if (extSampleRate <= 0 || extChannelCount <= 0 || !buffer.hasRemaining()) return
+        detectSilence(buffer, extEncoding == C.ENCODING_PCM_FLOAT, extSampleRate, extChannelCount)
+    }
+
+    private fun detectSilence(
+        inputBuffer: ByteBuffer,
+        isFloat: Boolean,
+        sampleRate: Int,
+        channelCount: Int,
+    ) {
 
         inputBuffer.order(ByteOrder.LITTLE_ENDIAN)
 
-        val isFloat = encoding == C.ENCODING_PCM_FLOAT
         val bytesPerSample = if (isFloat) 4 else 2
         val frameCount = inputBuffer.remaining() / bytesPerSample / channelCount
         val basePosition = inputBuffer.position()
