@@ -40,7 +40,7 @@ class CrashHandler private constructor(
             return
         }
         try {
-            val crashLog = buildCrashLog(throwable)
+            val crashLog = buildCrashLog(throwable, thread)
             Timber.e(throwable, "App crashed")
             // Send the fatal to Crashlytics (GMS flavor; no-op on FOSS) before we kill the process,
             // so uncaught fatals are not invisible in telemetry. Does not change crash-killing behavior.
@@ -66,7 +66,7 @@ class CrashHandler private constructor(
         }
     }
 
-    private fun buildCrashLog(throwable: Throwable): String {
+    private fun buildCrashLog(throwable: Throwable, thread: Thread? = null): String {
         val stackTrace = StringWriter().apply {
             throwable.printStackTrace(PrintWriter(this))
         }.toString()
@@ -82,12 +82,40 @@ class CrashHandler private constructor(
             appendLine("Device: ${Build.MODEL}")
             appendLine("Android version: ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})")
             appendLine("App version: ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
+            appendLine("Thread: ${thread?.name ?: Thread.currentThread().name}")
+            appendLine("Uptime: ${android.os.SystemClock.elapsedRealtime() / 1000}s since boot")
+            // Explicit exception line incl. MESSAGE and each cause's message — some report viewers trim
+            // the stacktrace header, and a bare exception class alone is nearly undiagnosable.
+            appendLine("Exception: $throwable")
+            var cause: Throwable? = throwable.cause
+            var depth = 0
+            while (cause != null && depth < 8) {
+                appendLine("Caused by: $cause")
+                cause = cause.cause
+                depth++
+            }
             appendLine()
             appendLine("=".repeat(50))
             appendLine("Stacktrace:")
             appendLine("=".repeat(50))
             appendLine()
             append(stackTrace)
+            // WHAT WAS HAPPENING: the in-memory playback log carries the per-transition and per-resolve
+            // verdicts (CROSSFADE_TRACE / RESOLVE_TIMING) right up to the crash — the difference between
+            // an unreadable obfuscated frame and an attributable failure. Video ids + timings only, never
+            // titles/artists (shareable-log privacy rule).
+            runCatching {
+                val recent = PlaybackLogManager.logs.value.takeLast(25)
+                if (recent.isNotEmpty()) {
+                    appendLine()
+                    appendLine("=".repeat(50))
+                    appendLine("Recent playback log (last ${recent.size}):")
+                    appendLine("=".repeat(50))
+                    recent.forEach {
+                        appendLine("${it.timestamp} [${it.level}] ${it.message} ${it.details.orEmpty()}")
+                    }
+                }
+            }
         }
     }
 
