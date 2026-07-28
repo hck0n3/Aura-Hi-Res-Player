@@ -641,4 +641,7 @@
     <string name="discord_activity_name_description">Nombre personalizado para la actividad (déjelo vacío para usar el nombre predeterminado)</string>
     <string name="discord_advanced_mode">Modo avanzado</string>
     <string name="discord_advanced_mode_description">Mostrar opciones de personalización adicionales para la Presencia Enriquecida</string>
+
+    <!-- Registros: cierres del sistema (getHistoricalProcessExitReasons). -->
+    <string name="system_exits">Cierres del sistema</string>
 </resources>

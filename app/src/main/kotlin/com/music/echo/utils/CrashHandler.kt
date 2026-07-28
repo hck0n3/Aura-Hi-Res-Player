@@ -39,6 +39,23 @@ class CrashHandler private constructor(
             Timber.w(throwable, "Swallowed benign 'connection is closed' during restore restart")
             return
         }
+        // OOM-SAFE PROLOGUE: write a minimal header FIRST. buildCrashLog allocates (StringWriter, the
+        // whole stack trace, 25 log lines), so an OutOfMemoryError could — and on a silent close very
+        // likely did — blow up INSIDE the handler before anything was persisted, leaving zero trace.
+        // This tiny write needs almost no memory and guarantees the next launch has something to show.
+        runCatching {
+            // Self-contained: writeCrash REPLACES the file, and if buildCrashLog succeeds it overwrites
+            // this with the full report a moment later. So this text must stand alone — in the only
+            // scenario where it survives (an OOM while building the full report) it is all we get.
+            AppLogger.writeCrash(
+                applicationContext,
+                "PRELIMINARY REPORT — the full one could not be built (likely out of memory)\n" +
+                    "App: ${iad1tya.echo.music.BuildConfig.VERSION_NAME} (${iad1tya.echo.music.BuildConfig.VERSION_CODE})\n" +
+                    "Device: ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}, Android ${android.os.Build.VERSION.RELEASE}\n" +
+                    "Thread: ${thread.name}\n" +
+                    "Exception: $throwable\n"
+            )
+        }
         try {
             val crashLog = buildCrashLog(throwable, thread)
             Timber.e(throwable, "App crashed")
@@ -59,9 +76,10 @@ class CrashHandler private constructor(
             
             android.os.Process.killProcess(android.os.Process.myPid())
             exitProcess(1)
-        } catch (e: Exception) {
-            
-            Timber.e(e, "Error handling crash")
+        } catch (t: Throwable) {
+            // Throwable, not Exception: an OutOfMemoryError raised while BUILDING the report is exactly
+            // the case that used to escape here, killing the process with no dialog and no file.
+            runCatching { Timber.e(t, "Error handling crash") }
             defaultHandler?.uncaughtException(thread, throwable)
         }
     }

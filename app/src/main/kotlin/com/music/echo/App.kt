@@ -190,6 +190,16 @@ class App : Application(), SingletonImageLoader.Factory, androidx.work.Configura
             runCatching { System.loadLibrary("superpowered-bridge") }
         }
 
+        // Import Android's own record of why previous processes died (API 30+). When the system kills the
+        // app — low memory, ANR, native crash, an OEM battery manager — NO Java throwable is thrown, so
+        // CrashHandler never runs and `last_crash.txt` stays empty: exactly the "se cerró sola, sin error"
+        // report with nothing to diagnose. This reads getHistoricalProcessExitReasons once per start and
+        // mirrors the new records into logs/exit_reasons.txt (visible + shareable in Ajustes ▸ Registros).
+        // On IO and never throws; a no-op below API 30 and in the `:crash`/`:phoenix` processes.
+        applicationScope.launch(Dispatchers.IO) {
+            iad1tya.echo.music.utils.ExitReasonReporter.collect(applicationContext)
+        }
+
         // Keep the song-cache-size mirror (read by AppModule.providePlayerCache without a blocking DataStore read)
         // in sync with the authoritative DataStore value: the first emission seeds it, later changes refresh the
         // SharedPreferences copy for the next process start. Default -1 == unlimited, matching providePlayerCache.
@@ -282,11 +292,24 @@ class App : Application(), SingletonImageLoader.Factory, androidx.work.Configura
             level == android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL ||
             level == android.content.ComponentCallbacks2.TRIM_MEMORY_BACKGROUND
         ) {
-            // Cached, cheap tier check only — no DataStore read on the main thread under memory pressure.
+            // Respond on EVERY device, not just LOW-tier ones: the old gate meant a capable phone
+            // ignored TRIM_MEMORY_RUNNING_CRITICAL entirely — the system asks for memory, the app frees
+            // nothing, and the next step is the Low-Memory-Killer taking the process mid-song with no
+            // dialog and no report (owner report).
+            // But CRITICAL is a FOREGROUND callback: wiping the whole cache there throws away the cover
+            // that is on screen, and re-decoding it (plus the queue thumbnails) allocates megabytes
+            // WHILE the system is already critical — which invites the very kill we are avoiding. So a
+            // capable device HALVES the cache; only a LOW-tier one clears it outright.
             val constrained =
                 iad1tya.echo.music.utils.DeviceCapabilities.tier(this) == iad1tya.echo.music.utils.DeviceTier.LOW
-            if (constrained) {
-                runCatching { SingletonImageLoader.get(this).memoryCache?.clear() }
+            runCatching {
+                val cache = SingletonImageLoader.get(this).memoryCache
+                when {
+                    constrained -> cache?.clear()
+                    level == android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL ->
+                        cache?.trimToSize((cache.size / 2).coerceAtLeast(0L))
+                    else -> Unit
+                }
             }
         }
     }

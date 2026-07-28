@@ -81,7 +81,10 @@ class EchoMusicWidgetManager @Inject constructor(
         val albumArt: Bitmap?
         val circularAlbumArt: Bitmap?
         
-        if (artworkUri != null && artworkUri == cachedArtworkUri && cachedAlbumArt != null) {
+        // `cachedAlbumArt != null` must NOT be part of the hit test: when a load fails we still cache the
+        // URI with a null bitmap, so requiring non-null re-issued a full Coil execute() EVERY SECOND for
+        // as long as that song played. Matching on the URI alone means one attempt per song.
+        if (artworkUri != null && artworkUri == cachedArtworkUri) {
             albumArt = cachedAlbumArt
             circularAlbumArt = cachedCircularAlbumArt
         } else {
@@ -237,7 +240,28 @@ class EchoMusicWidgetManager @Inject constructor(
         }
     }
 
+    // Memoized by (source bitmap identity, radius). The widget is redrawn on a 1 Hz ticker, and this
+    // function allocated a fresh ~360 KB ARGB_8888 bitmap on EVERY tick (~21 MB/min of churn) even
+    // though the artwork only changes once per song — a real contributor to the memory pressure behind
+    // the silent low-memory kills. PlaylistWidgetManager already caches its rounded bitmap this way.
+    private var cachedRoundedSource: Bitmap? = null
+    private var cachedRoundedRadius: Float = -1f
+    private var cachedRoundedResult: Bitmap? = null
+
     private fun getRoundedCornerBitmap(bitmap: Bitmap, cornerRadius: Float): Bitmap {
+        cachedRoundedResult?.let { cached ->
+            if (cachedRoundedSource === bitmap && cachedRoundedRadius == cornerRadius && !cached.isRecycled) {
+                return cached
+            }
+        }
+        return buildRoundedCornerBitmap(bitmap, cornerRadius).also {
+            cachedRoundedSource = bitmap
+            cachedRoundedRadius = cornerRadius
+            cachedRoundedResult = it
+        }
+    }
+
+    private fun buildRoundedCornerBitmap(bitmap: Bitmap, cornerRadius: Float): Bitmap {
         // Ensure the bitmap is square for thumbnails
         val size = minOf(bitmap.width, bitmap.height)
         val xOffset = (bitmap.width - size) / 2
@@ -376,7 +400,14 @@ class EchoMusicWidgetManager @Inject constructor(
         return views
     }
     
+    // Cached per radius. This runs on the 1 Hz widget tick for every song WITHOUT artwork (local files
+    // with no embedded cover, or a failed load) and used to build TWO throwaway 300x300 bitmaps each
+    // time — and because the source bitmap was new every call, it also defeated the rounded-bitmap memo
+    // and left its slot holding garbage. ~1 MB of churn per second, inside a memory-pressure fix.
+    private val defaultIconCache = HashMap<Float, Bitmap>()
+
     private fun getRoundedDefaultIcon(cornerRadius: Float): Bitmap {
+        defaultIconCache[cornerRadius]?.takeIf { !it.isRecycled }?.let { return it }
         // Get the launcher icon and make it rounded
         val drawable = context.packageManager.getApplicationIcon(context.packageName)
         val size = 300
@@ -384,7 +415,7 @@ class EchoMusicWidgetManager @Inject constructor(
         val canvas = Canvas(bitmap)
         drawable.setBounds(0, 0, size, size)
         drawable.draw(canvas)
-        return getRoundedCornerBitmap(bitmap, cornerRadius)
+        return buildRoundedCornerBitmap(bitmap, cornerRadius).also { defaultIconCache[cornerRadius] = it }
     }
 
     private fun getOpenAppIntent(): PendingIntent {

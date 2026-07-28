@@ -1,51 +1,28 @@
-# Aura Hi-Res Player 0.6.136 — Revisión total: ~127 fallos auditados, los graves corregidos
+# Aura Hi-Res Player 0.6.137 — Playlists que no vuelven, discografías completas y por fin sabremos por qué se cierra
 
-Auditoría completa de **todas las funciones, características y botones** de la app (4 informes independientes, cada hallazgo verificado con archivo y línea). Esto es lo que estaba roto y ya no lo está.
+## 🗑️ Las playlists de YouTube borradas ya no reaparecen
+Al quitar una playlist sincronizada, su ficha **no desaparecía del todo** pero la sincronización solo miraba las playlists guardadas: no la encontraba, concluía "esta no la tengo" y **la volvía a crear**, duplicada. Tu decisión se deshacía sola en cada sincronización.
+- La sincronización ahora mira **todas** las fichas y **respeta lo que quitaste**.
+- Borrarla deja constancia (necesario: en tu cuenta de YouTube sigue existiendo, y sin ese rastro no hay forma de distinguir "la borré" de "nunca la tuve"). Sus canciones se conservan, así que si la vuelves a guardar desde YouTube regresa **completa**.
+- Los duplicados que ya tenías se limpian solos: existía una función para eso que **nadie llamaba nunca**, y además usaba la misma consulta defectuosa. Ahora conserva la copia **con las canciones**.
+- Si eliges "Eliminar también de YouTube", el borrado es definitivo en ambos lados.
 
-## 🔴 La raíz de media docena de fallos: el avance automático se saltaba avisos internos
-Con la transición suave activada (el ajuste por defecto), cada cambio automático de canción usa un camino que **esquivaba el aviso interno de "empezó otra canción"**. Todo lo que dependía de ese aviso llevaba tiempo sin funcionar, en silencio:
-- **Scrobbling a Last.fm / ListenBrainz** — no registraba los cambios automáticos.
-- **SponsorBlock** (saltar segmentos sin música) — nunca obtenía los segmentos de las canciones que entraban solas.
-- **Chromecast** — se quedaba en la canción anterior en cada avance.
-- **Playlists largas** — no cargaban su página siguiente, así que la lista se cortaba y saltaba a la radio infinita en vez de continuar.
-- **Widget, notificación y Android Auto** — mostraban título, artista y portada de la canción **anterior** mientras la barra avanzaba con la nueva.
-- **Velocidad, tono y salida de audio elegida** — se reseteaban en cada canción.
-- **Precarga de la siguiente canción** — dejaba de re-armarse (arranques más lentos en cadena).
+⚠️ La primera vez tras actualizar quizá tengas que borrar una vez más las que ya se te duplicaron: el arreglo impide que vuelva a pasar, pero no puede adivinar cuáles querías fuera.
 
-## 🛟 Fallos que perdían o estropeaban datos
-- **"Me gusta" en bloque** (selección de YouTube) reconstruía mal la ficha: ponía el tiempo reproducido a **0** y **sacaba canciones de tu Biblioteca**. Corregido: ahora conserva estadísticas, fecha, y todo lo demás.
-- **Borrado en bloque** dentro de una playlist dejaba una canción **no seleccionada** teletransportada al final de la lista.
-- **Doble alta**: cada canción se añadía **dos veces** a las playlists sincronizadas con YouTube.
-- **"Me gusta" masivo** desde la cola no guardaba nada si la canción aún no estaba en la base de datos.
-- **Un toque ejecutaba la acción dos veces** ("Reproducir a continuación", "Añadir a la cola", "Descargar", "Compartir", "Iniciar radio").
+## 💿 Discografías completas otra vez
+Dos causas distintas, las dos corregidas:
+1. **Artistas que abrían en modo local**: si su ficha se creó internamente (pasa cuando una canción llega sin datos de canal), la pantalla mostraba como mucho 6 álbumes de tu biblioteca y **no había forma de volver a la vista de YouTube**. Ahora la app **busca el canal real por nombre**, exige coincidencia exacta, lo guarda para no repetir la búsqueda, y muestra la discografía completa.
+2. **El motor que completa la discografía** (el que rescata álbumes vía otras fuentes, incluidas listas de la comunidad) tenía dos fallos: si YouTube listaba una versión **"En Vivo"**, el álbum de estudio se daba por presente y **nunca se buscaba**; y cuando sus comprobaciones de red fallaban por saturación, gastaba su presupuesto de búsquedas en álbumes que **ya tenías**. Además el filtro de "álbum completo" usaba el número de pistas de la **edición más larga**, tumbando ediciones estándar legítimas.
 
-## 🔘 Botones que no existían o no hacían nada
-- **Vuelve "Reproducir"** en el menú ⋯ de álbumes y playlists (solo salía [Aleatorio][Compartir]).
-- **Widget de playlists**: el botón de reproducir de cada tarjeta ya funciona, y tocar una tarjeta ya te lleva a su destino.
-- **Widget de tocadiscos**: ya se actualiza al colocarlo o redimensionarlo.
-- **Atajos del icono de la app** (Buscar / Biblioteca): ya funcionan con la app abierta, no solo al abrirla de cero.
-- **Artistas seguidos** que nunca aparecían en Biblioteca (según cómo se hubieran creado) ya se listan.
-- **Aleatorio** en Mi Top, En caché y pantallas de artista: ahora sí enciende el modo aleatorio de verdad.
+## 🔍 Cierres sin explicación: ahora sabremos la causa
+Si la app se cierra sin mostrar ningún error, **Android guarda el motivo real** y hasta ahora no lo leíamos.
+- Nuevo apartado **Ajustes ▸ Registros ▸ "Cierres del sistema"**: motivo (falta de memoria, ANR, fallo nativo…), memoria en uso al morir y hora. **Incluye los cierres que Android ya tenía guardados**, así que un cierre reciente aparece en cuanto abras esta versión.
+- El informe de fallos ahora **escribe una cabecera mínima primero**: si el problema era falta de memoria, el propio informe se quedaba sin memoria al generarse y **no dejaba ningún rastro**.
 
-## 🎚️ Ajustes que mentían
-- Dos pestañas (Mix y Álbumes) **compartían la misma ordenación** por una clave duplicada.
-- Valores por defecto que no eran los que usaba el motor: **precarga** (10 → 2 real), **historial** (1 → 30 segundos real, ahora con la unidad escrita), **cachés** (512/1024 → 2048 e ilimitado reales).
-- **Tema dinámico**: su interruptor nunca llegaba a mostrarse, y ninguna paleta salía marcada.
-- **Notificaciones de actualización**: el interruptor no las detenía.
-- **Liquid Glass "en el reproductor"**: no dibujaba nada pero **gastaba batería**; ahora está desactivado y etiquetado con honestidad.
-- **Cuentas** decía "scrobbling activo" mientras el **Ahorro de datos** lo estaba bloqueando.
-- **"Entrada suave al cambiar de canción"** solo era visible con la transición activada, aunque funciona siempre.
-- El **modelo de IA** no se podía escribir justo con el proveedor "Personalizado", que es cuando hace falta.
-
-## 🚫 Ya no se queda todo en blanco
-Cinco pantallas trataban un fallo de red como "sigue cargando" → esqueleto eterno sin salida. Ahora **playlists online, artista y álbum** muestran el error con botón de **Reintentar**. Una playlist online vacía ya muestra su cabecera y sus botones.
-
-## 👥 Listen Together y Last.fm
-- El **enlace de invitación** apuntaba al dominio de otro proyecto (caído): nadie podía entrar. Ahora abre Aura de verdad.
-- "Esperando aprobación" ya no se queda colgado para siempre si falla la conexión.
-- La **lista de servidores** ya no la reemplaza en cada arranque el repositorio de un tercero; el servidor de Aura siempre está y va primero.
-- **Last.fm** daba por bueno todo scrobble: su API responde "correcto" con el error dentro del cuerpo. Ahora los fallos se detectan y quedan registrados.
+## 🧠 Menos memoria (tres fugas reales)
+- La portada se decodificaba **a tamaño completo (~6 MB por canción)** solo para sacar el color del tema; ahora se pide en miniatura.
+- La app **ignoraba los avisos de memoria crítica** del sistema en móviles capaces — el paso siguiente del sistema es cerrar la app.
+- El widget creaba un mapa de bits nuevo **cada segundo** sin reutilizarlo (~21 MB por minuto).
 
 ## Recordatorio
-- Si un cruce no suena perfecto: **Ajustes ▸ Registros** → compartir → mandar.
-- **Cortes a mitad de canción** (Lossless/Saavn): mismo registro.
+- Cortes a mitad de canción (Lossless) o transiciones raras: **Ajustes ▸ Registros** → compartir → mandar.

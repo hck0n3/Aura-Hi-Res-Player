@@ -271,14 +271,29 @@ fun PlaylistMenu(
         val ytBrowseId = playlist.playlist.browseId
 
         // Local delete only: removes the playlist from the app, never from YouTube.
-        val deletePlaylistLocally: () -> Unit = {
+        // For a SYNCED playlist (browseId != null) the row is KEPT as a tombstone with bookmarkedAt =
+        // null instead of being deleted: the account still has it, so the next sync would otherwise see
+        // "not in the library" and re-create it — the deletion undid itself on every sync (owner report).
+        // The sync skips browseIds whose only local rows are un-bookmarked; saving the playlist again
+        // from its online screen re-bookmarks this same row. A purely local playlist is deleted for real.
+        // [alsoDeletedRemotely] = the user chose "delete from YouTube too". Then the account copy is going
+        // away, so the row is really deleted: keeping a tombstone would block the sync from ever restoring
+        // the playlist if the remote delete FAILS. Removing it only from the app keeps the tombstone.
+        val deletePlaylistLocally: (alsoDeletedRemotely: Boolean) -> Unit = { alsoDeletedRemotely ->
             showDeletePlaylistDialog = false
             onDismiss()
             database.transaction {
-                if (playlist.playlist.bookmarkedAt != null) {
-                    update(playlist.playlist.toggleLike())
+                if (ytBrowseId != null && !alsoDeletedRemotely) {
+                    // Tombstone only — do NOT clear the songs: the row is already invisible to every
+                    // Library query, and the re-save paths only re-bookmark the row (they never re-insert
+                    // songs), so wiping the map would bring the playlist back EMPTY.
+                    update(playlist.playlist.copy(bookmarkedAt = null))
+                } else {
+                    if (playlist.playlist.bookmarkedAt != null) {
+                        update(playlist.playlist.toggleLike())
+                    }
+                    delete(playlist.playlist)
                 }
-                delete(playlist.playlist)
             }
         }
 
@@ -309,7 +324,7 @@ fun PlaylistMenu(
                     Spacer(Modifier.height(16.dp))
                     TextButton(
                         onClick = {
-                            deletePlaylistLocally()
+                            deletePlaylistLocally(true)
                             coroutineScope.launch(Dispatchers.IO) {
                                 // Surface a remote failure: this used to be fire-and-forget, so YouTube
                                 // rejecting the delete looked like success (the row vanished locally).
@@ -330,7 +345,7 @@ fun PlaylistMenu(
                         Text(text = stringResource(R.string.delete_playlist_from_youtube_too))
                     }
                     TextButton(
-                        onClick = { deletePlaylistLocally() },
+                        onClick = { deletePlaylistLocally(false) },
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(text = stringResource(R.string.delete_playlist_local_only))
@@ -349,7 +364,7 @@ fun PlaylistMenu(
                 // Pure local playlist: keep the simple confirm (no YouTube option).
                 if (ytBrowseId == null) {
                     TextButton(
-                        onClick = { deletePlaylistLocally() }
+                        onClick = { deletePlaylistLocally(false) }
                     ) {
                         Text(text = stringResource(android.R.string.ok))
                     }

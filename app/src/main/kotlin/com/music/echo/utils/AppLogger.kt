@@ -19,6 +19,7 @@ import java.util.concurrent.Executors
 object AppLogger {
 
     private const val MAX_SIZE = 256 * 1024 // 256 KB per file, one backup kept
+    private const val MAX_EXIT_REASONS_SIZE = 128 * 1024 // 128 KB, oldest entries dropped
     private val timestampFormat = SimpleDateFormat("MM-dd HH:mm:ss.SSS", Locale.US)
     private val ioExecutor = Executors.newSingleThreadExecutor()
 
@@ -28,6 +29,14 @@ object AppLogger {
     fun logFile(context: Context): File = File(logDir(context), "app.log")
     private fun backupFile(context: Context): File = File(logDir(context), "app.log.1")
     fun crashFile(context: Context): File = File(logDir(context), "last_crash.txt")
+
+    /**
+     * Android's own record of why previous processes died (low memory / ANR / native crash / …),
+     * written by [ExitReasonReporter]. Kept in its OWN file, not in `app.log`: a system kill leaves
+     * no Java throwable, so this is the only trace of it, and it must not be rotated away by a
+     * chatty playback session.
+     */
+    fun exitReasonsFile(context: Context): File = File(logDir(context), "exit_reasons.txt")
 
     /** Plant the file tree (call once at startup, in addition to the debug tree). */
     fun plant(context: Context) {
@@ -49,12 +58,46 @@ object AppLogger {
         runCatching { crashFile(context).writeText(text) }
     }
 
+    /** System-exit records, oldest at the top. Empty string if none. */
+    fun readExitReasons(context: Context): String =
+        runCatching { exitReasonsFile(context).takeIf { it.exists() }?.readText() }.getOrNull().orEmpty()
+
+    /**
+     * Appends already-formatted system-exit lines. Grows by a few lines per app start at most (and
+     * usually not at all), so instead of the app.log rotate-to-backup scheme it simply drops the
+     * oldest half once past [MAX_EXIT_REASONS_SIZE] — the recent kills are the ones being diagnosed.
+     */
+    fun appendExitReasons(context: Context, text: String, onWritten: () -> Unit = {}) {
+        if (text.isEmpty()) return
+        ioExecutor.execute {
+            runCatching {
+                val file = exitReasonsFile(context)
+                if (file.exists() && file.length() > MAX_EXIT_REASONS_SIZE) {
+                    val kept = file.readText().takeLast(MAX_EXIT_REASONS_SIZE / 2).substringAfter('\n')
+                    file.writeText(kept)
+                }
+                file.appendText(text)
+            }.onSuccess {
+                // Runs on the executor thread, AFTER the bytes are on disk. The caller advances its
+                // "already imported" watermark here, so a process death between the enqueue and the
+                // write can never lose records by marking them seen without having stored them.
+                runCatching { onWritten() }
+            }
+        }
+    }
+
     fun clear(context: Context) {
         ioExecutor.execute {
             runCatching {
                 logFile(context).delete()
                 backupFile(context).delete()
                 crashFile(context).delete()
+                exitReasonsFile(context).delete()
+                // Reset the import watermark TOO. Android still holds ~16 exit records; without this
+                // reset, deleting the file destroyed the only copy of the data this feature exists to
+                // capture, permanently and with no confirmation. Re-importing on the next launch is
+                // harmless — the batch is labelled as pre-existing history.
+                ExitReasonReporter.resetWatermark(context)
             }
         }
     }

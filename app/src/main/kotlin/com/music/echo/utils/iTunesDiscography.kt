@@ -146,18 +146,49 @@ object iTunesDiscography {
         }.getOrNull()
 
     /**
+     * Live / acoustic edition marker, stripped together with everything that follows it ("En Vivo Desde
+     * Bogotá") REGARDLESS of the separator in front of it.
+     *
+     * Why no separator requirement: iTunes writes "X (En Vivo)" while YouTube Music usually writes the bare
+     * "X En Vivo". When only the parenthesised / dashed forms were stripped, the very same record produced
+     * two different keys ("x" vs "x en vivo") — so it was reported missing, re-searched (a wasted lookup),
+     * and then emitted TWICE by the assembly dedupe. The word list also has to cover the Spanish/English
+     * forms the app's audience actually uses (acústico/acoustic/unplugged/directo/en concierto), not just
+     * "live"/"en vivo".
+     *
+     * Two guards keep it from eating real titles:
+     *  • the lookbehind requires REAL title text in front, so a release whose title genuinely STARTS with
+     *    one of these words ("En Vivo", "Directo al Corazón", "Live Your Life") is never emptied;
+     *  • the marker must END the title, optionally followed by a venue/date clause ("… En Vivo desde
+     *    Bogotá", "… Unplugged in New York", "… En Vivo 2020"). That is what keeps "Long Live the King"
+     *    and "El Directo al Corazón" intact — an ambiguous word in the MIDDLE of a title is not a marker.
+     *
+     * Callers that must keep the two recordings apart re-add a marker themselves — see reconKey /
+     * LIVE_ACOUSTIC in ArtistItemsViewModel.
+     */
+    private val LIVE_EDITION_SUFFIX =
+        Regex(
+            "(?i)(?<=[\\p{L}\\p{Nd}])\\s*[-–—:,]?\\s*" +
+                "\\b(en\\s*vivo|en\\s*directo|en\\s*concierto|unplugged|ac[uú]stico|acoustic|live|directo)\\b" +
+                "(\\s+(?:(?:desde|en|at|from|in|@)\\b|\\d).*)?\\s*$",
+        )
+
+    /**
      * Normalize an album title so "Privé - EP", "Privé (Deluxe)" and "Privé" all compare equal. Strips
      * a trailing release-type suffix ("- EP", "- Single", "- Deluxe"...) but NOT a leading word (so
      * "Single Ladies" stays intact), and drops parentheticals/punctuation/accents-insensitive symbols.
+     * Live/acoustic markers are stripped by [LIVE_EDITION_SUFFIX] with or without a separator.
      */
     fun normalizeTitle(raw: String): String =
         raw.lowercase()
             .replace(Regex("\\(.*?\\)"), " ")
             .replace(Regex("\\[.*?\\]"), " ")
             .replace(
-                Regex("(?i)\\s*[-–—]\\s*(ep|single|deluxe|remaster(ed)?|edition|expanded|bonus|version|live|en vivo)\\b.*$"),
+                Regex("(?i)\\s*[-–—]\\s*(ep|single|deluxe|remaster(ed)?|edition|expanded|bonus|version)\\b.*$"),
                 " ",
             )
+            // Superseded the "live|en vivo" entries of the list above: this one does not need a dash.
+            .replace(LIVE_EDITION_SUFFIX, " ")
             .replace(Regex("[^\\p{L}\\p{Nd} ]"), " ")
             .replace(Regex("\\s+"), " ")
             .trim()

@@ -7322,7 +7322,12 @@ class MusicService :
                         // locally, so resolve that first and only hit the network for a speed-dial entry
                         // that isn't in the library.
                         PlaylistWidgetReceiver.TARGET_TYPE_ONLINE -> {
+                            // bookmarkedAt != null: a playlist the user REMOVED from the app keeps its row
+                            // (and its songs) as a tombstone so the sync won't resurrect it. Without this
+                            // check the widget would happily play that stale local snapshot of a playlist
+                            // the user deleted, instead of fetching the current one from YouTube.
                             val local = database.playlistByBrowseId(id).first()
+                                ?.takeIf { it.playlist.bookmarkedAt != null }
                             val localSongs =
                                 local?.let { database.playlistSongs(it.playlist.id).first() }.orEmpty()
                             if (local != null && localSongs.isNotEmpty()) {

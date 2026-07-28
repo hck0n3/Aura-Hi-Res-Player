@@ -210,17 +210,17 @@ fun ArtistScreen(
         }
     }
 
-    LaunchedEffect(libraryArtist) {
-        // "Local" is not only isLocal: it is "cannot exist online". Artists auto-followed from local files
-        // get a GENERATED id ("LA########", ArtistEntity.generateArtistId) with isLocal = false and no
-        // channelId, so YouTube.artist(id) can only ever fail for them. Driving showLocal off isLocal alone
-        // sent those rows down the ONLINE branch, which after 3 failed attempts showed "couldn't load the
-        // artist" with a Retry that can never succeed — and the local/online toggle FAB is disabled, so it
-        // was a dead end. Any library artist whose id is not a YouTube browse id (ArtistEntity
-        // .isYouTubeArtist: "UC…" / "FEmusic_library_privately_owned_artist…") opens LOCAL instead, showing
-        // its own songs and albums. Artists we don't have in the library are untouched (null -> online).
+    LaunchedEffect(libraryArtist, artistPage) {
+        // Which branch this artist opens in.
+        //  • A REAL local artist (isLocal) is always local.
+        //  • A library row with a GENERATED id ("LA########", ArtistEntity.generateArtistId) has no
+        //    YouTube page of its OWN, but the artist usually exists on YouTube — the ViewModel now
+        //    resolves the real channel by name and fills artistPage. So we only fall back to the local
+        //    view while that resolution has produced nothing; otherwise the user would get his library's
+        //    6 albums instead of the full discography (owner report), with no way back.
+        //  • Artists we don't have in the library are untouched (null -> online).
         val artist = libraryArtist?.artist
-        showLocal = artist != null && (artist.isLocal || !artist.isYouTubeArtist)
+        showLocal = artist != null && (artist.isLocal || (!artist.isYouTubeArtist && artistPage == null))
     }
 
     Box(

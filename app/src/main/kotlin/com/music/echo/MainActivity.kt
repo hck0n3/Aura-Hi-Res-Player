@@ -686,6 +686,19 @@ class MainActivity : ComponentActivity() {
                             val result = imageLoader.execute(
                                 ImageRequest.Builder(this@MainActivity)
                                     .data(song.thumbnailUrl)
+                                    // This bitmap exists ONLY to extract an accent colour, yet it was
+                                    // requested at full resolution (a 1200x1200 cover decodes to ~5.8 MB
+                                    // on the software heap, allowHardware(false)) — a prime suspect for
+                                    // the silent low-memory kills. Palette downsamples to 112x112 anyway,
+                                    // so 100x100 loses nothing visually.
+                                    // INEXACT is load-bearing: the memory-cache key does NOT include the
+                                    // size for a request without transformations, so this shares the very
+                                    // slot the UI uses. With the default EXACT precision the UI's
+                                    // full-size consumer would reject this downsampled entry and
+                                    // re-decode, costing an extra decode per track change instead of
+                                    // saving one. INEXACT reuses whatever the UI already cached.
+                                    .size(100, 100)
+                                    .precision(coil3.size.Precision.INEXACT)
                                     .allowHardware(false)
                                     .memoryCachePolicy(CachePolicy.ENABLED)
                                     .diskCachePolicy(CachePolicy.ENABLED)

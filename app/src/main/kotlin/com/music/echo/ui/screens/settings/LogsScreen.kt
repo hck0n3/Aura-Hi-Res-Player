@@ -34,18 +34,29 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 
+/**
+ * Which log the screen is showing. [SYSTEM_EXITS] is Android's own record of why previous processes
+ * died (low memory / ANR / native crash): those kills never reach CrashHandler, so they are absent
+ * from both the app log and the last-crash report and need their own tab.
+ */
+private enum class LogTab { APP, CRASH, SYSTEM_EXITS }
+
 @Composable
 fun LogsScreen(
     navController: NavController,
     scrollBehavior: TopAppBarScrollBehavior,
 ) {
     val context = LocalContext.current
-    var showCrash by remember { mutableStateOf(false) }
+    var tab by remember { mutableStateOf(LogTab.APP) }
     var reloadTrigger by remember { mutableStateOf(0) }
 
-    val logText by produceState(initialValue = "", showCrash, reloadTrigger) {
+    val logText by produceState(initialValue = "", tab, reloadTrigger) {
         value = withContext(Dispatchers.IO) {
-            if (showCrash) AppLogger.readLastCrash(context) else AppLogger.readRecentLog(context)
+            when (tab) {
+                LogTab.APP -> AppLogger.readRecentLog(context)
+                LogTab.CRASH -> AppLogger.readLastCrash(context)
+                LogTab.SYSTEM_EXITS -> AppLogger.readExitReasons(context)
+            }
         }
     }
 
@@ -77,7 +88,7 @@ fun LogsScreen(
                     IconButton(onClick = { copyToClipboard(context, logText) }, onLongClick = {}) {
                         Icon(painterResource(R.drawable.content_copy), contentDescription = stringResource(R.string.copy))
                     }
-                    IconButton(onClick = { shareLog(context, showCrash, logText) }, onLongClick = {}) {
+                    IconButton(onClick = { shareLog(context, tab, logText) }, onLongClick = {}) {
                         Icon(painterResource(R.drawable.share), contentDescription = stringResource(R.string.share))
                     }
                     IconButton(onClick = { AppLogger.clear(context); reloadTrigger++ }, onLongClick = {}) {
@@ -105,16 +116,25 @@ fun LogsScreen(
                 .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            // Horizontally scrollable: three chips with long Spanish labels overflow a narrow screen.
+            Row(
+                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 FilterChip(
-                    selected = !showCrash,
-                    onClick = { showCrash = false },
+                    selected = tab == LogTab.APP,
+                    onClick = { tab = LogTab.APP },
                     label = { Text(stringResource(R.string.app_log)) },
                 )
                 FilterChip(
-                    selected = showCrash,
-                    onClick = { showCrash = true },
+                    selected = tab == LogTab.CRASH,
+                    onClick = { tab = LogTab.CRASH },
                     label = { Text(stringResource(R.string.last_crash)) },
+                )
+                FilterChip(
+                    selected = tab == LogTab.SYSTEM_EXITS,
+                    onClick = { tab = LogTab.SYSTEM_EXITS },
+                    label = { Text(stringResource(R.string.system_exits)) },
                 )
             }
 
@@ -159,11 +179,18 @@ private fun copyToClipboard(context: Context, text: String) {
     cm.setPrimaryClip(ClipData.newPlainText("Aura Hi-Res Player logs", text))
 }
 
-private fun shareLog(context: Context, isCrash: Boolean, text: String) {
+private fun shareLog(context: Context, tab: LogTab, text: String) {
     if (text.isBlank()) return
     runCatching {
         val dir = File(context.filesDir, "logs").apply { mkdirs() }
-        val shareFile = File(dir, if (isCrash) "share_crash.txt" else "share_log.txt")
+        val shareFile = File(
+            dir,
+            when (tab) {
+                LogTab.APP -> "share_log.txt"
+                LogTab.CRASH -> "share_crash.txt"
+                LogTab.SYSTEM_EXITS -> "share_exit_reasons.txt"
+            },
+        )
         shareFile.writeText(text)
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.FileProvider", shareFile)
         // Share the .txt as a FILE attachment. Including EXTRA_TEXT made most apps paste the whole log

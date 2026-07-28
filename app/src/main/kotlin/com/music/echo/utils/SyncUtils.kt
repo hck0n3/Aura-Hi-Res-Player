@@ -18,6 +18,7 @@ import iad1tya.echo.music.constants.YtmLastSyncKey
 import iad1tya.echo.music.constants.SYNC_COOLDOWN
 import iad1tya.echo.music.db.MusicDatabase
 import iad1tya.echo.music.db.entities.ArtistEntity
+import iad1tya.echo.music.db.entities.Playlist
 import iad1tya.echo.music.db.entities.PlaylistEntity
 import iad1tya.echo.music.db.entities.PlaylistSongMap
 import iad1tya.echo.music.db.entities.SongEntity
@@ -462,6 +463,13 @@ class SyncUtils @Inject constructor(
             // budget → the worker was stopped and retried from the top → saved playlists were NEVER reached
             // ("no me pone nunca las playlists"). Running them early guarantees they complete.
             executeSyncSavedPlaylists()
+
+            // Repair rows created by the pre-0.6.137 bug: because the sync looked the playlist up through
+            // a Library-filtered query, removing a synced playlist left an invisible row and the next sync
+            // inserted a SECOND one for the same browseId. This collapses those pairs (keeping a saved,
+            // fullest row and never collapsing onto a tombstone). Cheap: it only touches browseIds that
+            // actually have more than one row. Until now this function had NO caller at all.
+            executeCleanupDuplicatePlaylists()
 
             executeSyncAutoSyncPlaylists()
 
@@ -1187,13 +1195,31 @@ class SyncUtils @Inject constructor(
                     val remotePlaylists = page.items.filterIsInstance<PlaylistItem>()
                         .filterNot { it.id == "LM" || it.id == "SE" }
                         .reversed()
-                    val localPlaylists = database.playlistsByNameAsc().first()
                     // Additive only: don't un-bookmark local saved playlists that are missing from this
                     // remote page (it can be incomplete). Same reasoning as the liked songs/albums syncs.
+                    // (The old whole-library read that used to live here is gone: rows are now looked up
+                    // per browseId inside the loop, which is also what makes a removed playlist stay
+                    // removed. Keeping the unused query cost a COUNT subquery + thumbnail relation over
+                    // EVERY playlist on every sync.)
 
                     for (playlist in remotePlaylists) {
                         try {
-                            var playlistEntity = localPlaylists.find { it.playlist.browseId == playlist.id }?.playlist
+                            // Look at EVERY local row for this browseId, not just the bookmarked ones.
+                            // localPlaylists comes from a Library query (WHERE bookmarkedAt IS NOT NULL),
+                            // so a playlist the user REMOVED from the app read as "not present here" and
+                            // was re-inserted as a SECOND row — it reappeared in Library and the removal
+                            // undid itself on every sync (owner report).
+                            val existingRows = database.playlistsByBrowseIdBlocking(playlist.id)
+                            val bookmarkedRow = existingRows.firstOrNull { it.playlist.bookmarkedAt != null }
+
+                            // The user removed it on purpose (rows exist, none bookmarked): respect that.
+                            // Saving it again from the online playlist screen re-bookmarks the same row.
+                            if (existingRows.isNotEmpty() && bookmarkedRow == null) {
+                                Timber.d("syncSavedPlaylists: skipping ${playlist.title} (${playlist.id}) — removed by the user")
+                                continue
+                            }
+
+                            var playlistEntity = bookmarkedRow?.playlist
 
                             if (playlistEntity == null) {
                                 playlistEntity = PlaylistEntity(
@@ -1363,20 +1389,31 @@ class SyncUtils @Inject constructor(
 
     private suspend fun executeCleanupDuplicatePlaylists() = withContext(Dispatchers.IO) {
         try {
-            val allPlaylists = database.playlistsByNameAsc().first()
-            val browseIdGroups = allPlaylists
-                .filter { it.playlist.browseId != null }
-                .groupBy { it.playlist.browseId }
+            // Read EVERY row per browseId, not the Library-filtered list: the duplicates this repairs
+            // were created precisely because an un-bookmarked row was invisible to that query, so the
+            // old version of this cleanup could not see the pair it was meant to merge.
+            val bookmarked = database.playlistsByNameAsc().first()
+            val browseIds = bookmarked.mapNotNull { it.playlist.browseId }.distinct()
+            val browseIdGroups = browseIds.associateWith { database.playlistsByBrowseIdBlocking(it) }
 
             for ((browseId, playlists) in browseIdGroups) {
                 if (playlists.size > 1) {
                     Timber.w("Found ${playlists.size} duplicate playlists for browseId: $browseId")
-                    val toKeep = playlists.maxByOrNull { it.songCount } ?: playlists.first()
+                    // Keep the row the REST OF THE APP resolves — same order as playlistByBrowseId
+                    // (saved first, then oldest). Picking by song count instead would delete the row the
+                    // user actually sees, and its id is referenced elsewhere as "PL:<id>" (Speed Dial
+                    // pins, widget targets, the enhanced-shuffle memory), leaving those dangling.
+                    // The survivor's songs are refilled by the sync; a tombstone's are expendable.
+                    val toKeep = playlists.minWithOrNull(
+                        compareBy<Playlist>({ if (it.playlist.bookmarkedAt != null) 0 else 1 }, { it.id })
+                    ) ?: playlists.first()
 
                     playlists.filter { it.id != toKeep.id }.forEach { duplicate ->
                         try {
                             Timber.d("Removing duplicate playlist: ${duplicate.playlist.name} (${duplicate.id})")
-                            database.clearPlaylist(duplicate.id)
+                            // clearPlaylist is redundant (playlist_song_map has onDelete = CASCADE) but
+                            // harmless; the delete is what matters and it is a single statement, so no
+                            // half-state is possible here.
                             database.delete(duplicate.playlist)
                         } catch (e: Exception) {
                             // Never swallow coroutine cancellation: doing so let the sync loop keep
@@ -1414,12 +1451,18 @@ class SyncUtils @Inject constructor(
                 database.clearAllUploadedAlbums()
 
                 // Playlists are few; clear each synced playlist's song-map then delete the playlist row.
+                // Includes TOMBSTONES (rows kept with bookmarkedAt = null so the sync won't resurrect a
+                // playlist the user removed): a Library-filtered read would leave them behind, holding
+                // their whole song map forever AND making the sync skip those playlists for good — after
+                // a full reset the account's playlists must be able to come back.
                 val savedPlaylists = database.playlistsByNameAsc().first()
-                savedPlaylists.forEach {
-                    if (it.playlist.browseId != null) {
-                        database.clearPlaylist(it.playlist.id)
-                        database.delete(it.playlist)
-                    }
+                val browseIds = savedPlaylists.mapNotNull { it.playlist.browseId }.distinct()
+                val syncedRows = browseIds.flatMap { database.playlistsByBrowseIdBlocking(it) }
+                    .plus(savedPlaylists.filter { it.playlist.browseId != null })
+                    .distinctBy { it.playlist.id }
+                syncedRows.forEach {
+                    database.clearPlaylist(it.playlist.id)
+                    database.delete(it.playlist)
                 }
             }
 

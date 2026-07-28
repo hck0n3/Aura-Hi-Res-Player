@@ -703,9 +703,17 @@ private fun OnlinePlaylistHeader(
                         coroutineScope.launch(Dispatchers.IO) {
                             if (dbPlaylist != null) {
                                 database.withTransaction {
-                                    val currentPlaylist = dbPlaylist.playlist
-                                    update(currentPlaylist, playlist)
-                                    update(currentPlaylist.toggleLike())
+                                    // Save/un-save ONLY. Deliberately does NOT refresh metadata here:
+                                    //  • update(entity, item) would copy this screen's PlaylistItem, which
+                                    //    comes from YouTube.playlist() — it hardcodes playEndpoint = null
+                                    //    and can yield an empty title/thumbnail or mis-parse isEditable.
+                                    //  • Refreshing thumbnailUrl would DESTROY a custom cover, which
+                                    //    OnlinePlaylistViewModel.refreshStoredThumbnail explicitly
+                                    //    protects ("the user's explicit choice must never be overwritten").
+                                    // The library sync owns metadata refresh; its payload does carry the
+                                    // endpoints. This also un-tombstones a row removed from the app, so
+                                    // saving again reuses it instead of creating a duplicate.
+                                    update(dbPlaylist.playlist.toggleLike())
                                 }
                             } else {
                                 // Never persist a NEW playlist before its songs have loaded: the header

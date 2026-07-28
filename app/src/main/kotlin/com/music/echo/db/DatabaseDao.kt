@@ -1057,9 +1057,23 @@ interface DatabaseDao {
     @Query("SELECT *, (SELECT COUNT(*) FROM playlist_song_map WHERE playlistId = playlist.id) AS songCount FROM playlist WHERE isEditable AND bookmarkedAt IS NOT NULL ORDER BY rowId")
     fun editablePlaylistsByCreateDateAsc(): Flow<List<Playlist>>
 
+    // ORDER BY + LIMIT are load-bearing: with a legacy duplicate pair (one row the user un-saved, one the
+    // old sync re-inserted) an unordered query returned whichever row the cursor happened to yield first,
+    // so the online screen's Save/Saved state could target the wrong row and create a THIRD one.
+    // Saved rows win; among equals the oldest.
     @Transaction
-    @Query("SELECT *, (SELECT COUNT(*) FROM playlist_song_map WHERE playlistId = playlist.id) AS songCount FROM playlist WHERE browseId = :browseId")
+    @Query("SELECT *, (SELECT COUNT(*) FROM playlist_song_map WHERE playlistId = playlist.id) AS songCount FROM playlist WHERE browseId = :browseId ORDER BY bookmarkedAt IS NULL, rowId LIMIT 1")
     fun playlistByBrowseId(browseId: String): Flow<Playlist?>
+
+    /**
+     * EVERY local row for a remote playlist, including rows the user un-saved/removed (bookmarkedAt
+     * NULL) and any accidental duplicates. The sync MUST look here, not through the Library-filtered
+     * queries: those only see bookmarked rows, so a playlist the user removed looked "missing" and got
+     * re-inserted as a second row on the next sync — the removal undid itself and left a duplicate.
+     */
+    @Transaction
+    @Query("SELECT *, (SELECT COUNT(*) FROM playlist_song_map WHERE playlistId = playlist.id) AS songCount FROM playlist WHERE browseId = :browseId ORDER BY rowId")
+    fun playlistsByBrowseIdBlocking(browseId: String): List<Playlist>
 
     @Transaction
     @Query("SELECT COUNT(*) from playlist_song_map WHERE playlistId = :playlistId AND songId = :songId LIMIT 1")

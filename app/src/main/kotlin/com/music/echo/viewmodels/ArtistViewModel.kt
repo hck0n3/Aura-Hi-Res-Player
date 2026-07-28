@@ -106,6 +106,13 @@ class ArtistViewModel @Inject constructor(
         // artist renders instantly (no spinner) while a fresh copy is still fetched in the background.
         private val pageCache =
             java.util.concurrent.ConcurrentHashMap<String, ArtistPage>()
+
+        // Locally-created artist row id ("LA########") -> the YouTube channel id resolved by NAME.
+        // An empty value marks a resolved-miss so the search isn't repeated all session. In memory ONLY:
+        // writing this into ArtistEntity.channelId would feed YouTube.subscribeChannel (toggleLike +
+        // the subscriptions sync) and could subscribe the user's account to a same-named wrong artist.
+        private val resolvedChannelIds =
+            java.util.concurrent.ConcurrentHashMap<String, String>()
     }
 
     init {
@@ -161,8 +168,47 @@ class ArtistViewModel @Inject constructor(
             // only fail for it, three times, plus a reportException. Skip the network entirely and leave
             // hasFailed FALSE — ArtistScreen renders these as local (see its showLocal logic). Gated on the
             // library row (not on the id alone) so an artist we simply don't have locally still fetches.
-            val localOnlyArtist = database.artist(artistId).first()?.artist?.let { !it.isYouTubeArtist } == true
-            if (localOnlyArtist) return@launch
+            // An artist row auto-created locally gets a generated id ("LA########") and has no YouTube
+            // page of its own — but the ARTIST usually does exist on YouTube. Before falling back to the
+            // (tiny) local view, try to resolve the real channel: use a channelId we already stored, else
+            // search YouTube by name and accept ONLY an exact normalized name match. The resolved id is
+            // persisted on the row, so this costs one search the first time and nothing afterwards.
+            // Without this, following such an artist showed at most 6 local albums and NO discography
+            // (owner report: "las discografías no salen completas") with no way back to the online page.
+            val localRow = database.artist(artistId).first()?.artist
+            var effectiveArtistId = artistId
+            // `!isLocal` is REQUIRED, not decoration: rows scanned from local files are isLocal = true and
+            // their ids are not YouTube ids either, but ArtistScreen always renders them local — resolving
+            // them would burn a network search per open whose result can never be shown.
+            if (localRow != null && !localRow.isYouTubeArtist && !localRow.isLocal) {
+                val cached = resolvedChannelIds[artistId]
+                val resolved = cached ?: runCatching {
+                    YouTube.search(localRow.name, YouTube.SearchFilter.FILTER_ARTIST).getOrNull()
+                        ?.items
+                        ?.filterIsInstance<com.music.innertube.models.ArtistItem>()
+                        ?.firstOrNull { candidate ->
+                            candidate.id.startsWith("UC") &&
+                                candidate.title.trim().equals(localRow.name.trim(), ignoreCase = true)
+                        }
+                        ?.id
+                }.getOrNull()
+                if (resolved == null) {
+                    // Genuinely local-only (or offline): leave hasFailed FALSE and let the screen render
+                    // the local view instead of a retry that could never succeed. Remember the miss for
+                    // this session so re-opening the artist doesn't pay for the same search again.
+                    resolvedChannelIds[artistId] = ""
+                    return@launch
+                }
+                if (resolved.isEmpty()) return@launch   // cached miss
+                effectiveArtistId = resolved
+                // DELIBERATELY NOT PERSISTED to ArtistEntity.channelId. That column feeds
+                // ArtistEntity.toggleLike() and SyncUtils' subscription sync, which call
+                // YouTube.subscribeChannel — writing a NAME-MATCHED guess there would make "follow"
+                // subscribe the user's real YouTube account, possibly to a same-named wrong artist, with
+                // no way to re-resolve. A whole-row @Update from this stale snapshot could also revert a
+                // "follow" the user made while the search was in flight (lost update). Session cache only.
+                resolvedChannelIds[artistId] = resolved
+            }
             // Instant re-open: show this session's cached artist page immediately (no spinner), then
             // still refresh from YouTube below so the data stays up to date. On a COLD first entry (no
             // in-memory cache yet) fall back to the page persisted last session, so the shelves (e.g.
@@ -198,7 +244,9 @@ class ArtistViewModel @Inject constructor(
             // gets a plain failure back instead of unwinding — without this a superseded fetch kept
             // burning its remaining attempts.
             while (!loaded && attempt < 3 && isActive) {
-            YouTube.artist(artistId)
+            // effectiveArtistId, not artistId: for a locally-created row this is the resolved channel id.
+            // The CACHES stay keyed by artistId (what the user navigated to), so lookups still hit.
+            YouTube.artist(effectiveArtistId)
                 .onSuccess { page ->
                     val filteredSections = page.sections
                         .map { section ->

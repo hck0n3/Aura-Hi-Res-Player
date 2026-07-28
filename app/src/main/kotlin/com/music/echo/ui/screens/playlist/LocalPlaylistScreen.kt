@@ -421,10 +421,25 @@ fun LocalPlaylistScreen(
         val ytBrowseId = playlist?.playlist?.browseId
 
         // Local delete only: removes the playlist from the app, never from YouTube.
-        val deletePlaylistLocally: () -> Unit = {
+        // A SYNCED playlist (browseId != null) keeps its row as a tombstone (bookmarkedAt = null)
+        // instead of being deleted — the account still has it, so the next sync would re-create it and
+        // the deletion would undo itself (owner report). The sync skips browseIds whose only local rows
+        // are un-bookmarked. A purely local playlist is deleted for real.
+        // [alsoDeletedRemotely] = "delete from YouTube too": the account copy is going away, so delete the
+        // row for real — a tombstone would stop the sync from ever restoring the playlist if the remote
+        // delete FAILS. Removing it only from the app keeps the tombstone (without clearing its songs:
+        // the re-save paths only re-bookmark the row, so wiping the map would bring it back EMPTY).
+        // transaction{}, not query{}: a kill between the two writes must not leave a bookmarked empty row.
+        val deletePlaylistLocally: (alsoDeletedRemotely: Boolean) -> Unit = { alsoDeletedRemotely ->
             showDeletePlaylistDialog = false
-            database.query {
-                playlist?.let { delete(it.playlist) }
+            database.transaction {
+                playlist?.let {
+                    if (it.playlist.browseId != null && !alsoDeletedRemotely) {
+                        update(it.playlist.copy(bookmarkedAt = null))
+                    } else {
+                        delete(it.playlist)
+                    }
+                }
             }
         }
 
@@ -458,7 +473,7 @@ fun LocalPlaylistScreen(
                     Spacer(Modifier.height(16.dp))
                     TextButton(
                         onClick = {
-                            deletePlaylistLocally()
+                            deletePlaylistLocally(true)
                             viewModel.viewModelScope.launch(Dispatchers.IO) {
                                 // Surface a remote failure: fire-and-forget made a YouTube rejection look
                                 // like success (the playlist vanished locally either way).
@@ -481,7 +496,7 @@ fun LocalPlaylistScreen(
                     }
                     TextButton(
                         onClick = {
-                            deletePlaylistLocally()
+                            deletePlaylistLocally(false)
                             navController.popBackStack()
                         },
                         modifier = Modifier.fillMaxWidth()
@@ -502,7 +517,7 @@ fun LocalPlaylistScreen(
                 if (ytBrowseId == null) {
                     TextButton(
                         onClick = {
-                            deletePlaylistLocally()
+                            deletePlaylistLocally(false)
                             navController.popBackStack()
                         }
                     ) {
