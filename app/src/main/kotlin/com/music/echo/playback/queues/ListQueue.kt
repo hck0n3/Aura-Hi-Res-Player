@@ -18,7 +18,7 @@ class ListQueue(
     // The buttons used to only pre-shuffle the items with shuffle mode OFF, which bypassed the whole
     // enhanced-shuffle system (no memory-aware order, no played recording → replayed played songs).
     // Transient intent — deliberately NOT persisted with the queue (restore must not re-force it).
-    val startShuffled: Boolean = false,
+    override val startShuffled: Boolean = false,
 ) : Queue {
     override val preloadItem: MediaMetadata? = null
 

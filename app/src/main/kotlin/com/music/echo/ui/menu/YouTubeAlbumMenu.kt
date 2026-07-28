@@ -152,13 +152,9 @@ fun YouTubeAlbumMenu(
     AddToPlaylistDialog(
         isVisible = showChoosePlaylistDialog,
         onGetSong = { playlist ->
-            coroutineScope.launch(Dispatchers.IO) {
-                playlist.playlist.browseId?.let { playlistId ->
-                    album?.album?.playlistId?.let { addPlaylistId ->
-                        YouTube.addPlaylistToPlaylist(playlistId, addPlaylistId)
-                    }
-                }
-            }
+            // No remote add here: AddToPlaylistDialog is the single writer to the remote playlist
+            // (it calls YouTube.addToPlaylist for every returned id). Adding the album here too
+            // made every song land TWICE in a synced YouTube playlist.
             album?.songs?.map { it.id }.orEmpty()
         },
         onDismiss = { showChoosePlaylistDialog = false }
@@ -285,9 +281,12 @@ fun YouTubeAlbumMenu(
     ) {
         item {
             NewActionGrid(
-                actions = listOfNotNull(
+                // buildList, not listOfNotNull(if (!isGuest) { play; shuffle } else null, ...):
+                // a Kotlin block evaluates to its LAST expression, so the Play action was built
+                // and silently discarded, leaving the grid with [Shuffle][Share] + an empty slot.
+                actions = buildList {
                     if (!isGuest) {
-                        NewAction(
+                        add(NewAction(
                             icon = {
                                 Icon(
                                     painter = painterResource(R.drawable.play),
@@ -305,8 +304,8 @@ fun YouTubeAlbumMenu(
                                     }
                                 }
                             }
-                        )
-                        NewAction(
+                        ))
+                        add(NewAction(
                             icon = {
                                 Icon(
                                     painter = painterResource(R.drawable.shuffle),
@@ -333,9 +332,9 @@ fun YouTubeAlbumMenu(
                                     }
                                 }
                             }
-                        )
-                    } else null,
-                    NewAction(
+                        ))
+                    }
+                    add(NewAction(
                         icon = {
                             Icon(
                                 painter = painterResource(R.drawable.share),
@@ -359,8 +358,8 @@ fun YouTubeAlbumMenu(
                             }
                             context.startActivity(Intent.createChooser(intent, null))
                         }
-                    )
-                ),
+                    ))
+                },
                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 16.dp),
                 columns = if (isGuest) 1 else 3
             )

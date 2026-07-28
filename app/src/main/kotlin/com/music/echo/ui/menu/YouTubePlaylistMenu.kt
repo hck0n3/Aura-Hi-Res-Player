@@ -120,18 +120,24 @@ fun YouTubePlaylistMenu(
         onGetSong = { targetPlaylist ->
             val allSongs = songs
                 .ifEmpty {
-                    YouTube.playlist(targetPlaylist.id).completed().getOrNull()?.songs.orEmpty()
+                    // The SOURCE is this menu's playlist, not the destination: targetPlaylist.id is
+                    // the LOCAL "LP########" id of the playlist we are adding to, which YouTube can
+                    // never resolve, so this fetch always failed and nothing was added.
+                    YouTube.playlist(playlist.id).completed().getOrNull()?.songs.orEmpty()
                 }.map {
                     it.toMediaMetadata()
                 }
-            database.transaction {
+            // withTransaction (suspending), NOT transaction {}: the latter posts the work to Room's
+            // transaction executor and returns immediately, so onGetSong could hand these ids back
+            // before the song rows are committed. The caller then inserts PlaylistSongMap rows whose
+            // songId FK is ON DELETE CASCADE — if that insert wins the race, the whole @Transaction
+            // addSongToPlaylist aborts and nothing is added, silently.
+            database.withTransaction {
                 allSongs.forEach(::insert)
             }
-            coroutineScope.launch(Dispatchers.IO) {
-                targetPlaylist.playlist.browseId?.let { playlistId ->
-                    YouTube.addPlaylistToPlaylist(playlistId, targetPlaylist.id)
-                }
-            }
+            // No remote add here: AddToPlaylistDialog is the single writer to the remote playlist
+            // (it calls YouTube.addToPlaylist for every returned id). Adding here too made every
+            // song land TWICE in a synced YouTube playlist.
             allSongs.map { it.id }
         },
         onDismiss = { showChoosePlaylistDialog = false },
@@ -264,7 +270,10 @@ fun YouTubePlaylistMenu(
                 }.map {
                     it.toMediaMetadata()
                 }
-            database.transaction {
+            // Same race as the AddToPlaylistDialog path above: ImportPlaylistDialog calls
+            // addSongToPlaylist right after onGetSong returns, so the song rows must be committed
+            // before we hand the ids back or the CASCADE FK aborts the whole insert.
+            database.withTransaction {
                 allSongs.forEach(::insert)
             }
             allSongs.map { it.id }

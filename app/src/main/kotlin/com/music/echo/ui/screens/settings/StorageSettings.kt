@@ -93,13 +93,17 @@ fun StorageSettings(
     val coroutineScope = rememberCoroutineScope()
     val songCacheString = stringResource(R.string.song_cache).lowercase()
     val imageCacheString = stringResource(R.string.image_cache).lowercase()
+    // Defaults MUST be the ones the engine actually uses (App/AppModule read the same keys with these
+    // fallbacks), otherwise the sliders show a limit that is not the one in force. The song cache default
+    // is -1 = unlimited, which the slider already renders as its own step ("Unlimited"); it is never
+    // silently rounded into a finite value.
     val (maxImageCacheSize, onMaxImageCacheSizeChange) = rememberPreference(
         key = MaxImageCacheSizeKey,
-        defaultValue = 512
+        defaultValue = App.DEFAULT_IMAGE_CACHE_SIZE_MB
     )
     val (maxSongCacheSize, onMaxSongCacheSizeChange) = rememberPreference(
         key = MaxSongCacheSizeKey,
-        defaultValue = 1024
+        defaultValue = App.DEFAULT_SONG_CACHE_SIZE_MB
     )
     val (exportDirectoryUri, onExportDirectoryUriChange) = rememberPreference(
         key = ExportDirectoryUriKey,

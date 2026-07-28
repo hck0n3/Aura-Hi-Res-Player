@@ -22,6 +22,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -135,9 +136,10 @@ fun PlayerSettings(
         defaultValue = true
     )
 
+    // Must match the engine default (MusicService reads PreloadNextSongLimitKey with default 2).
     val (preloadNextSongLimit, onPreloadNextSongLimitChange) = rememberPreference(
         key = PreloadNextSongLimitKey,
-        defaultValue = 10
+        defaultValue = 2
     )
 
     val (preloadLyricsEnabled, onPreloadLyricsEnabledChange) = rememberPreference(
@@ -208,9 +210,11 @@ fun PlayerSettings(
         PreventDuplicateTracksInQueueKey,
         defaultValue = true
     )
+    // Must match the ONLY consumer (MainActivity.onDestroy reads this key with default false); showing
+    // true here made the switch lie about the behavior users actually get.
     val (stopMusicOnTaskClear, onStopMusicOnTaskClearChange) = rememberPreference(
         StopMusicOnTaskClearKey,
-        defaultValue = true
+        defaultValue = false
     )
     val (pauseOnMute, onPauseOnMuteChange) = rememberPreference(
         PauseOnMute,
@@ -224,10 +228,19 @@ fun PlayerSettings(
         KeepScreenOn,
         defaultValue = false
     )
+    // Value is in SECONDS and must match the engine default (MusicService: HistoryDuration * 1000f,
+    // falling back to 30000f = 30 s).
     val (historyDuration, onHistoryDurationChange) = rememberPreference(
         HistoryDuration,
-        defaultValue = 1f
+        defaultValue = 30f
     )
+    // What the slider and its label both show. A value stored by the OLD 1..100 range (e.g. 1) sits
+    // outside the current 5..120 range, so it is clamped for display AND written back once — otherwise
+    // the thumb, the number and the engine would each report something different.
+    val historyDurationShown = historyDuration.coerceIn(5f, 120f)
+    LaunchedEffect(historyDuration) {
+        if (historyDuration != historyDurationShown) onHistoryDurationChange(historyDurationShown)
+    }
 
     var showAudioQualityDialog by remember {
         mutableStateOf(false)
@@ -562,19 +575,6 @@ fun PlayerSettings(
                         onClick = { showCrossfadeCurveDialog = true }
                     ))
                     add(Material3SettingsItem(
-                        icon = painterResource(R.drawable.play),
-                        title = { Text("Entrada suave al cambiar de canción") },
-                        description = { Text("Al saltar o elegir otra canción a mano, la nueva entra con un fundido corto (estilo AIMP) en vez de golpe") },
-                        trailingContent = {
-                            Switch(
-                                checked = fadeOnManualChange,
-                                onCheckedChange = onFadeOnManualChangeChange,
-                                colors = SwitchDefaults.colors()
-                            )
-                        },
-                        onClick = { onFadeOnManualChangeChange(!fadeOnManualChange) }
-                    ))
-                    add(Material3SettingsItem(
                         icon = painterResource(R.drawable.album),
                         title = { Text(stringResource(R.string.crossfade_gapless)) },
                         description = { Text(stringResource(R.string.crossfade_gapless_desc)) },
@@ -596,19 +596,49 @@ fun PlayerSettings(
                         onClick = { onCrossfadeGaplessChange(!crossfadeGapless) }
                     ))
                 }
+                // Smooth entry on MANUAL track changes. Its consumer (MusicService.fadeOnManualChangeHint)
+                // does NOT depend on crossfade, so this row must live OUTSIDE the crossfade block — nested
+                // there it was unreachable (and therefore stuck ON) whenever crossfade was off.
+                add(Material3SettingsItem(
+                    icon = painterResource(R.drawable.play),
+                    title = { Text("Entrada suave al cambiar de canción") },
+                    description = { Text("Al saltar o elegir otra canción a mano, la nueva entra con un fundido corto (estilo AIMP) en vez de golpe") },
+                    trailingContent = {
+                        Switch(
+                            checked = fadeOnManualChange,
+                            onCheckedChange = onFadeOnManualChangeChange,
+                            colors = SwitchDefaults.colors()
+                        )
+                    },
+                    onClick = { onFadeOnManualChangeChange(!fadeOnManualChange) }
+                ))
                 add(Material3SettingsItem(
                     icon = painterResource(R.drawable.history),
                     title = { Text(stringResource(R.string.history_duration)) },
                     description = {
+                        // 5..120 s in 5 s stops: the engine default (30 s) must be a REAL stop, otherwise the
+                        // slider silently refuses to return to the value the app ships with (the old
+                        // 1..100/steps=9 range only stopped at 1, 11, 21, 31…). The floor stays ABOVE zero on
+                        // purpose: at 0 the "played long enough to count" test passes for every instantly
+                        // skipped track, which would pollute history and Mi Top.
                         Slider(
-                            value = historyDuration,
+                            value = historyDurationShown,
                             onValueChange = { onHistoryDurationChange(it.roundToInt().toFloat()) },
-                            valueRange = 1f..100f,
-                            steps = 9
+                            valueRange = 5f..120f,
+                            steps = 22
                         )
                     },
                     trailingContent = {
-                        Text(text = historyDuration.roundToInt().toString())
+                        // The SHOWN (clamped) value, matching the thumb: a legacy stored 1f would otherwise
+                        // park the thumb on the 5s stop while the label read "1 second" — and the engine
+                        // would keep using 1s until the slider was physically dragged.
+                        Text(
+                            text = pluralStringResource(
+                                R.plurals.seconds,
+                                historyDurationShown.roundToInt(),
+                                historyDurationShown.roundToInt(),
+                            )
+                        )
                     }
                 ))
                 // Skip-silence toggles are intentionally HIDDEN from the UI: skip silence is hardcoded OFF in

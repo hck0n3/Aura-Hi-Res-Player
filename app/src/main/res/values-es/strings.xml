@@ -62,6 +62,8 @@
     <string name="delete_playlist_confirm">¿Confirma que quiere eliminar la lista de reproducción «%s»?</string>
     <string name="delete_playlist_from_youtube_too">Eliminar también de YouTube</string>
     <string name="delete_playlist_local_only">Solo eliminar de la app</string>
+    <string name="delete_playlist_only_local_note">Esta lista solo existe en Aura (no está sincronizada con tu cuenta de YouTube), así que no hay nada que eliminar allí.</string>
+    <string name="delete_playlist_youtube_failed">La lista se eliminó de la app, pero YouTube rechazó eliminarla de tu cuenta.</string>
     <string name="retry">Reintentar</string>
     <string name="radio">Radio</string>
     <string name="shuffle">Aleatorio</string>
@@ -367,6 +369,7 @@
     <string name="liquid_glass_text_color">Color del texto sobre cristal</string>
     <string name="liquid_glass_text_color_desc">Color del texto en superficies de cristal (por defecto se adapta al tema)</string>
     <string name="liquid_glass_player">Reproductor de cristal</string>
+    <string name="liquid_glass_player_not_available">Aún no disponible — el reproductor a pantalla completa no usa el efecto de cristal</string>
     <string name="liquid_glass_mini_player">Mini reproductor de cristal</string>
     <string name="liquid_glass_nav_bar">Barra de navegación de cristal</string>
     <string name="liquid_glass_performance_warning">Renderizar el cristal líquido consume muchos recursos y puede reducir la fluidez y la batería en algunos dispositivos</string>
@@ -490,6 +493,10 @@
     <string name="couldnt_load_new_releases">No se pudieron cargar los nuevos lanzamientos. Revisa tu conexión.</string>
     <string name="no_new_releases">No hay nuevos lanzamientos por ahora.</string>
     <string name="couldnt_load_recommendations">No se pudieron cargar las recomendaciones. Revisa tu conexión.</string>
+    <string name="couldnt_load_playlist">No se pudo cargar la lista. Revisa tu conexión.</string>
+    <string name="couldnt_load_artist">No se pudo cargar el artista. Revisa tu conexión.</string>
+    <string name="couldnt_load_album">No se pudo cargar el álbum. Revisa tu conexión.</string>
+    <string name="album_no_longer_available">Este álbum ya no está disponible en YouTube Music.</string>
     <string name="preview_unavailable">Vista previa no disponible por ahora</string>
     <string name="featured_artists">Artistas destacados</string>
     <string name="from_replay">Desde Replay</string>
@@ -545,4 +552,8 @@
     <!-- Pantalla grande / plegables -->
     <string name="immersive_canvas_on_rotate">Fondo animado a pantalla completa en horizontal</string>
     <string name="immersive_canvas_on_rotate_desc">Al girar a horizontal, muestra solo el fondo animado y los controles de reproducción. Desactivado por defecto: la interfaz completa (portada, título, progreso y cola) se mantiene en pantalla en cualquier ángulo.</string>
+    <!-- Escuchar juntos: compartir invitación y errores de conexión -->
+    <string name="listen_together_invite_message">¡Escucha música conmigo en Aura! Código de sala: %1$s\n\nToca para unirte: %2$s</string>
+    <string name="listen_together_kicked_from_room">El anfitrión te expulsó de la sala</string>
+    <string name="listen_together_connection_failed">No se pudo conectar a la sala. Revisa tu conexión a internet e inténtalo de nuevo.</string>
 </resources>

@@ -12,6 +12,7 @@ import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.plugins.defaultRequest
 import io.ktor.client.request.*
 import io.ktor.client.request.forms.FormDataContent
+import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.json
@@ -118,6 +119,26 @@ object LastFM {
         override fun toString(): String = "LastFmException(code=$code, message=$message)"
     }
 
+    /**
+     * Last.fm reports API failures as HTTP 200 with an `"error"` field in the JSON body (the same shape
+     * getMobileSession already string-matches), so a completed POST proves nothing on its own. Validate
+     * the payload first, then the status line, and throw so the enclosing runCatching yields a failure.
+     */
+    private suspend fun HttpResponse.validateLastFmWrite(method: String) {
+        val responseText = bodyAsText()
+        if (responseText.contains("\"error\"")) {
+            val parsed = runCatching { json.decodeFromString<LastFmError>(responseText) }.getOrNull()
+            throw if (parsed != null) {
+                LastFmException(parsed.error, parsed.message)
+            } else {
+                LastFmException(-1, "$method failed: $responseText")
+            }
+        }
+        if (!status.isSuccess()) {
+            throw LastFmException(status.value, "$method failed with HTTP ${status.value} ${status.description}")
+        }
+    }
+
     suspend fun updateNowPlaying(
         artist: String, track: String,
         album: String? = null, trackNumber: Int? = null, duration: Int? = null
@@ -137,7 +158,7 @@ object LastFM {
                 }
             )
             parameter("format", "json")
-        }
+        }.validateLastFmWrite("track.updateNowPlaying")
     }
 
     suspend fun scrobble(
@@ -160,7 +181,7 @@ object LastFM {
                 }
             )
             parameter("format", "json")
-        }
+        }.validateLastFmWrite("track.scrobble")
     }
 
 
@@ -180,7 +201,7 @@ object LastFM {
                 }
             )
             parameter("format", "json")
-        }
+        }.validateLastFmWrite(method)
     }
 
     // ── Public UNSIGNED read endpoints (taste import) ───────────────────────────────────────────────────

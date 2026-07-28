@@ -133,6 +133,13 @@ fun LastFMSettingsScreen(
     // ListenBrainz (opt-in, network-only)
     val (listenBrainzEnabled, onListenBrainzEnabledChange) = rememberPreference(ListenBrainzEnabledKey, false)
     val (listenBrainzToken, onListenBrainzTokenChange) = rememberPreference(ListenBrainzTokenKey, "")
+    // Data Saver force-disables ListenBrainz submissions in MusicService (the stored preference is kept
+    // and resumes when Data Saver goes off), so the row has to say it is paused instead of implying that
+    // scrobbles are still being sent.
+    val (dataSaverEnabled) = rememberPreference(
+        iad1tya.echo.music.constants.DataSaverEnabledKey,
+        false,
+    )
     var showListenBrainzTokenEditor by rememberSaveable { mutableStateOf(false) }
 
     var showLoginDialog by rememberSaveable { mutableStateOf(false) }
@@ -675,7 +682,15 @@ fun LastFMSettingsScreen(
             items = listOf(
                 Material3SettingsItem(
                     title = { Text(stringResource(R.string.listenbrainz_scrobbling)) },
-                    description = { Text(stringResource(R.string.listenbrainz_scrobbling_description)) },
+                    description = {
+                        Text(
+                            if (listenBrainzEnabled && dataSaverEnabled) {
+                                "Pausado por Ahorro de datos — no se envían scrobbles mientras esté activo"
+                            } else {
+                                stringResource(R.string.listenbrainz_scrobbling_description)
+                            }
+                        )
+                    },
                     trailingContent = {
                         Switch(
                             checked = listenBrainzEnabled,

@@ -140,6 +140,8 @@ fun ListenTogetherScreen(
     val waitingForApprovalText = stringResource(R.string.waiting_for_approval)
     val invalidRoomCodeText = stringResource(R.string.invalid_room_code)
     val joinRequestDeniedText = stringResource(R.string.join_request_denied)
+    val connectionFailedText = stringResource(R.string.listen_together_connection_failed)
+    val kickedFromRoomText = stringResource(R.string.listen_together_kicked_from_room)
 
     LaunchedEffect(savedUsername) {
         if (usernameInput.isBlank() && savedUsername.isNotBlank()) {
@@ -169,6 +171,39 @@ fun ListenTogetherScreen(
                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                     val clip = android.content.ClipData.newPlainText("ListenTogetherRoom", event.roomCode)
                     clipboard.setPrimaryClip(clip)
+                }
+                // Without these branches the client could retry up to 15 times / 120s and then emit a
+                // failure nobody read, leaving isJoiningRoom stuck true and the spinner running forever.
+                is ListenTogetherEvent.ConnectionError -> {
+                    joinErrorMessage = connectionFailedText
+                    isJoiningRoom = false
+                    isCreatingRoom = false
+                }
+                is ListenTogetherEvent.Kicked -> {
+                    joinErrorMessage = if (event.reason.isBlank()) {
+                        kickedFromRoomText
+                    } else {
+                        "$kickedFromRoomText: ${event.reason}"
+                    }
+                    isJoiningRoom = false
+                    isCreatingRoom = false
+                }
+                is ListenTogetherEvent.ServerError -> {
+                    // Only while a join/create is in flight: in-room server errors are handled elsewhere.
+                    if (isJoiningRoom || isCreatingRoom) {
+                        joinErrorMessage = event.message.ifBlank { connectionFailedText }
+                        isJoiningRoom = false
+                        isCreatingRoom = false
+                    }
+                }
+                is ListenTogetherEvent.Disconnected -> {
+                    // Disconnected also fires on a normal leave, so it is only an error when the user is
+                    // still waiting on a join/create — otherwise leaving a room would flash a fake error.
+                    if (isJoiningRoom || isCreatingRoom) {
+                        joinErrorMessage = connectionFailedText
+                        isJoiningRoom = false
+                        isCreatingRoom = false
+                    }
                 }
                 else -> {}
             }
@@ -720,9 +755,11 @@ private fun RoomStatusCard(
 
             if (isHost) {
                 Spacer(modifier = Modifier.height(16.dp))
-                val inviteLink = remember(roomCode) {
-                    "https://echomusic-listen-together.onrender.com/listen?code=$roomCode"
-                }
+                // echomusic://listen?code=… is the scheme this app actually registers (AndroidManifest)
+                // and parses (MainActivity.handleDeepLink: host "listen" + "code" query parameter). The
+                // previous https://echomusic-listen-together.onrender.com host belongs to an upstream
+                // fork we do not control, so its App Link could never verify and every invite 404'd.
+                val inviteLink = remember(roomCode) { "echomusic://listen?code=$roomCode" }
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
@@ -731,6 +768,8 @@ private fun RoomStatusCard(
                     FilledTonalButton(
                         onClick = {
                             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                            // The BARE link: this button is labelled "copy link", so pasting it into a URL
+                            // field must work. (The friendly invite sentence belongs to a share action.)
                             val clip = android.content.ClipData.newPlainText("Listen Together Link", inviteLink)
                             clipboard.setPrimaryClip(clip)
                             Toast.makeText(context, R.string.copied_to_clipboard, Toast.LENGTH_SHORT).show()

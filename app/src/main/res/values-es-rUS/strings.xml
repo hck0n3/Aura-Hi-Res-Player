@@ -58,7 +58,13 @@
     <string name="delete_playlist_confirm">¿Realmente quieres eliminar la lista de reproducción \"%s\"?</string>
     <string name="delete_playlist_from_youtube_too">Eliminar también de YouTube</string>
     <string name="delete_playlist_local_only">Solo eliminar de la app</string>
+    <string name="delete_playlist_only_local_note">Esta lista solo existe en Aura (no está sincronizada con tu cuenta de YouTube), así que no hay nada que eliminar allí.</string>
+    <string name="delete_playlist_youtube_failed">La lista se eliminó de la app, pero YouTube rechazó eliminarla de tu cuenta.</string>
     <string name="retry">Volver a intentar</string>
+    <string name="couldnt_load_playlist">No se pudo cargar la lista. Revisa tu conexión.</string>
+    <string name="couldnt_load_artist">No se pudo cargar el artista. Revisa tu conexión.</string>
+    <string name="couldnt_load_album">No se pudo cargar el álbum. Revisa tu conexión.</string>
+    <string name="album_no_longer_available">Este álbum ya no está disponible en YouTube Music.</string>
     <string name="radio">Radio</string>
     <string name="shuffle">Aleatorio</string>
     <string name="reset">Reiniciar</string>
@@ -297,4 +303,8 @@
     <string name="clear_translation_models">Modelos de traducción claros</string>
     <string name="action_like_all">Me gustan todas</string>
     <string name="squiggly">Ondulado</string>
+    <!-- Escuchar juntos: compartir invitación y errores de conexión -->
+    <string name="listen_together_invite_message">¡Escucha música conmigo en Aura! Código de sala: %1$s\n\nToca para unirte: %2$s</string>
+    <string name="listen_together_kicked_from_room">El anfitrión te sacó de la sala</string>
+    <string name="listen_together_connection_failed">No se pudo conectar a la sala. Revisa tu conexión a internet e inténtalo de nuevo.</string>
 </resources>

@@ -1415,6 +1415,10 @@ fun AppearanceSettings(
                             }
                         )
                     },
+                    // Without an onClick the whole row is inert (Material3SettingsItemRow only enables the
+                    // click when onClick != null), so only the switch itself reacted — unlike every
+                    // neighbouring row.
+                    onClick = { onShowCodecOnPlayerChange(!showCodecOnPlayer) }
                 ),
                 if (swipeThumbnail) Material3SettingsItem(
                     icon = painterResource(R.drawable.tune),

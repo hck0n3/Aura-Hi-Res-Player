@@ -6,6 +6,8 @@ import iad1tya.echo.music.utils.ShareLinks
 
 import android.content.Intent
 import android.content.res.Configuration
+import android.widget.Toast
+import iad1tya.echo.music.utils.reportException
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -289,6 +291,19 @@ fun PlaylistMenu(
                     modifier = Modifier.padding(horizontal = 18.dp)
                 )
 
+                // Local-only playlist: SAY SO. Without this the missing "delete from YouTube too" option
+                // reads as a broken/regressed dialog (owner reported exactly that) instead of what it is:
+                // there is no remote copy to delete because the playlist was never synced.
+                if (ytBrowseId == null) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = stringResource(R.string.delete_playlist_only_local_note),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 18.dp)
+                    )
+                }
+
                 // Synced playlist: let the user choose whether to also delete it on YouTube.
                 if (ytBrowseId != null) {
                     Spacer(Modifier.height(16.dp))
@@ -296,7 +311,18 @@ fun PlaylistMenu(
                         onClick = {
                             deletePlaylistLocally()
                             coroutineScope.launch(Dispatchers.IO) {
-                                YouTube.deletePlaylist(ytBrowseId)
+                                // Surface a remote failure: this used to be fire-and-forget, so YouTube
+                                // rejecting the delete looked like success (the row vanished locally).
+                                YouTube.deletePlaylist(ytBrowseId).onFailure { e ->
+                                    reportException(e)
+                                    withContext(Dispatchers.Main) {
+                                        Toast.makeText(
+                                            context,
+                                            context.getString(R.string.delete_playlist_youtube_failed),
+                                            Toast.LENGTH_LONG
+                                        ).show()
+                                    }
+                                }
                             }
                         },
                         modifier = Modifier.fillMaxWidth()
@@ -370,9 +396,12 @@ fun PlaylistMenu(
     ) {
         item {
             NewActionGrid(
-                actions = listOfNotNull(
+                // buildList, not listOfNotNull(if (!isGuest) { play; shuffle } else null, ...):
+                // a Kotlin block evaluates to its LAST expression, so the Play action was built
+                // and silently discarded, leaving the grid with [Shuffle][Share] + an empty slot.
+                actions = buildList {
                     if (!isGuest) {
-                        NewAction(
+                        add(NewAction(
                             icon = {
                                 Icon(
                                     painter = painterResource(R.drawable.play),
@@ -393,8 +422,8 @@ fun PlaylistMenu(
                                     )
                                 }
                             }
-                        )
-                        NewAction(
+                        ))
+                        add(NewAction(
                             icon = {
                                 Icon(
                                     painter = painterResource(R.drawable.shuffle),
@@ -422,9 +451,9 @@ fun PlaylistMenu(
                                     )
                                 }
                             }
-                        )
-                    } else null,
-                    NewAction(
+                        ))
+                    }
+                    add(NewAction(
                         icon = {
                             Icon(
                                 painter = painterResource(R.drawable.share),
@@ -443,8 +472,8 @@ fun PlaylistMenu(
                             }
                             context.startActivity(Intent.createChooser(intent, null))
                         }
-                    )
-                ),
+                    ))
+                },
                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 16.dp),
                 columns = if (isGuest) 1 else 3
             )

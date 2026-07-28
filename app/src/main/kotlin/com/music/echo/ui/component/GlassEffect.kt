@@ -68,12 +68,17 @@ data class GlassEffectConfig(
         }
 
     /**
-     * True when at least one per-component switch is on. With all three off no glass
-     * surface can render, so backdrop recording (the full-screen layer in
-     * [iad1tya.echo.music.MainActivity]) can be skipped even if the master switch is on.
+     * True when at least one glass surface that is actually DRAWN is on, so backdrop
+     * recording (the full-screen layer in [iad1tya.echo.music.MainActivity]) can be
+     * skipped even if the master switch is on.
+     *
+     * [playerEnabled] is deliberately NOT part of this term: nothing calls
+     * `isEnabledFor(GlassComponent.PLAYER)`, so the full screen player never renders a
+     * glass surface. Including it made the app pay for a full-screen backdrop layer
+     * (GPU + battery) that nothing ever sampled.
      */
     val anyComponentEnabled: Boolean
-        get() = playerEnabled || miniPlayerEnabled || navBarEnabled
+        get() = miniPlayerEnabled || navBarEnabled
 }
 
 /** UI surfaces that can individually opt in or out of the liquid glass effect. */

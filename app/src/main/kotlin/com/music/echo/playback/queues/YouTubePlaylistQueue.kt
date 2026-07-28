@@ -17,6 +17,7 @@ class YouTubePlaylistQueue(
     private val initialContinuation: String? = null,
     private val startIndex: Int = 0,
     override val preloadItem: MediaMetadata? = null,
+    override val startShuffled: Boolean = false,
 ) : Queue {
     private var continuation: String? = initialContinuation
     private var retryCount = 0

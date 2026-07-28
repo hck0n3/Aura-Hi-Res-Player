@@ -9,6 +9,14 @@ import iad1tya.echo.music.models.MediaMetadata
 interface Queue {
     val preloadItem: MediaMetadata?
 
+    /**
+     * The queue was started by a "Shuffle" button, so playback must ENABLE shuffle mode once the items
+     * land — not merely pre-scramble the list. Lives on the interface (not just ListQueue) because the
+     * online-playlist screen starts a YouTubePlaylistQueue, and gating on ListQueue alone left those
+     * Shuffle buttons bypassing the whole enhanced-shuffle system (frozen scramble, no memory).
+     */
+    val startShuffled: Boolean get() = false
+
     suspend fun getInitialStatus(): Status
 
     fun hasNextPage(): Boolean

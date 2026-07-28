@@ -53,7 +53,6 @@ import iad1tya.echo.music.constants.LiquidGlassLensAmountKey
 import iad1tya.echo.music.constants.LiquidGlassLensHeightKey
 import iad1tya.echo.music.constants.LiquidGlassMiniPlayerEnabledKey
 import iad1tya.echo.music.constants.LiquidGlassNavBarEnabledKey
-import iad1tya.echo.music.constants.LiquidGlassPlayerEnabledKey
 import iad1tya.echo.music.constants.LiquidGlassSurfaceOpacityKey
 import iad1tya.echo.music.constants.LiquidGlassSurfaceTintColorKey
 import iad1tya.echo.music.constants.LiquidGlassTextColorKey
@@ -132,9 +131,9 @@ fun GlassEffectSettings(
         Color.White
     }
     val textColor = if (textColorInt == 0) adaptiveTextColor else Color(textColorInt)
-    val (playerEnabled, onPlayerEnabledChange) = rememberPreference(
-        LiquidGlassPlayerEnabledKey, defaultValue = true
-    )
+    // LiquidGlassPlayerEnabledKey is intentionally NOT read here: the player glass surface is not
+    // implemented, so this screen has nothing to toggle (see the disabled row below). The key is still
+    // read in MainActivity, so a previously stored choice is preserved.
     val (miniPlayerEnabled, onMiniPlayerEnabledChange) = rememberPreference(
         LiquidGlassMiniPlayerEnabledKey, defaultValue = true
     )
@@ -303,25 +302,29 @@ fun GlassEffectSettings(
         Material3SettingsGroup(
             title = stringResource(R.string.liquid_glass_per_component),
             items = listOf(
+                // The full screen player does not render a glass surface yet (nothing calls
+                // GlassEffectConfig.isEnabledFor(GlassComponent.PLAYER)), so the switch is shown as
+                // unavailable instead of pretending to control something. The preference is kept so the
+                // user's choice survives until the player surface is actually implemented.
                 Material3SettingsItem(
                     icon = painterResource(R.drawable.music_note),
                     title = { Text(stringResource(R.string.liquid_glass_player)) },
+                    description = { Text(stringResource(R.string.liquid_glass_player_not_available)) },
+                    enabled = false,
                     trailingContent = {
                         Switch(
-                            checked = playerEnabled,
-                            onCheckedChange = onPlayerEnabledChange,
+                            checked = false,
+                            onCheckedChange = null,
+                            enabled = false,
                             thumbContent = {
                                 Icon(
-                                    painter = painterResource(
-                                        id = if (playerEnabled) R.drawable.check else R.drawable.close
-                                    ),
+                                    painter = painterResource(id = R.drawable.close),
                                     contentDescription = null,
                                     modifier = Modifier.size(SwitchDefaults.IconSize)
                                 )
                             }
                         )
-                    },
-                    onClick = { onPlayerEnabledChange(!playerEnabled) }
+                    }
                 ),
                 Material3SettingsItem(
                     icon = painterResource(R.drawable.music_note),

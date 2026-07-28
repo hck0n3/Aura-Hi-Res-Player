@@ -625,9 +625,26 @@ private fun FactoryPresetRow(
     enabled: Boolean,
     onPresetClick: (FactoryPreset) -> Unit,
 ) {
+    // Derived from the CANONICAL enum order on purpose: several curves can match within the 0.5 dB
+    // tolerance (FLAT matches anything near zero), so the winner must not depend on display order —
+    // otherwise the reorder below would change WHICH preset is considered active.
     val selectedPreset = FactoryPreset.entries.firstOrNull { preset ->
         bandGains.size == preset.gains.size &&
         bandGains.indices.all { kotlin.math.abs(bandGains[it] - preset.gains[it]) < 0.5f }
+    }
+
+    // SELECTED FIRST (owner: "que no ande buscando cuál perfil está seleccionado"). Display-only: the
+    // chip's onClick passes the FactoryPreset object itself, so what gets APPLIED never depends on
+    // position. The rest keep their canonical order behind it.
+    val displayPresets = remember(selectedPreset) {
+        if (selectedPreset == null) FactoryPreset.entries.toList()
+        else listOf(selectedPreset) + FactoryPreset.entries.filter { it != selectedPreset }
+    }
+    val presetScrollState = rememberScrollState()
+    // Bring the (now first) selected chip into view: after a reorder the row would otherwise stay
+    // scrolled where the user was, showing late chips instead of the one he just picked.
+    LaunchedEffect(selectedPreset) {
+        if (selectedPreset != null) presetScrollState.animateScrollTo(0)
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -640,34 +657,38 @@ private fun FactoryPresetRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .horizontalScroll(rememberScrollState()),
+                .horizontalScroll(presetScrollState),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            FactoryPreset.entries.forEach { preset ->
-                val isSelected = selectedPreset == preset
-                val animatedScale by androidx.compose.animation.core.animateFloatAsState(targetValue = if (isSelected) 1.05f else 1f)
-                
-                FilterChip(
-                    selected = isSelected,
-                    onClick = { if (enabled) onPresetClick(preset) },
-                    enabled = enabled,
-                    label = { 
-                        Text(
-                            text = preset.displayName, 
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                        ) 
-                    },
-                    modifier = Modifier.graphicsLayer {
-                        scaleX = animatedScale
-                        scaleY = animatedScale
-                    },
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = MaterialTheme.colorScheme.primary,
-                        selectedLabelColor = MaterialTheme.colorScheme.onPrimary
-                    ),
-                    shape = androidx.compose.foundation.shape.CircleShape,
-                    border = if (isSelected) null else FilterChipDefaults.filterChipBorder(enabled, false)
-                )
+            displayPresets.forEach { preset ->
+                // key() pins each chip's animation state to ITS preset: without it the state lives in the
+                // positional slot, so after a reorder the scale animation would play on the wrong chip.
+                key(preset) {
+                    val isSelected = selectedPreset == preset
+                    val animatedScale by androidx.compose.animation.core.animateFloatAsState(targetValue = if (isSelected) 1.05f else 1f)
+
+                    FilterChip(
+                        selected = isSelected,
+                        onClick = { if (enabled) onPresetClick(preset) },
+                        enabled = enabled,
+                        label = {
+                            Text(
+                                text = preset.displayName,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                            )
+                        },
+                        modifier = Modifier.graphicsLayer {
+                            scaleX = animatedScale
+                            scaleY = animatedScale
+                        },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = MaterialTheme.colorScheme.primary,
+                            selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                        ),
+                        shape = androidx.compose.foundation.shape.CircleShape,
+                        border = if (isSelected) null else FilterChipDefaults.filterChipBorder(enabled, false)
+                    )
+                }
             }
         }
         

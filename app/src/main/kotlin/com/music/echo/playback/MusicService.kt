@@ -182,6 +182,7 @@ import iad1tya.echo.music.models.PersistQueue
 import iad1tya.echo.music.models.toMediaMetadata
 import iad1tya.echo.music.playback.audio.SilenceDetectorAudioProcessor
 import iad1tya.echo.music.playback.queues.EmptyQueue
+import iad1tya.echo.music.playback.queues.ListQueue
 import iad1tya.echo.music.playback.queues.Queue
 import iad1tya.echo.music.playback.queues.YouTubeQueue
 import iad1tya.echo.music.playback.queues.filterExplicit
@@ -197,6 +198,8 @@ import iad1tya.echo.music.utils.get
 import iad1tya.echo.music.utils.reportException
 import iad1tya.echo.music.widget.EchoMusicWidgetManager
 import iad1tya.echo.music.widget.MusicWidgetReceiver
+import iad1tya.echo.music.widget.PlaylistWidgetReceiver
+import iad1tya.echo.music.widget.TurntableWidgetReceiver
 import dagger.hilt.android.AndroidEntryPoint
 import iad1tya.echo.music.utils.isLocalMediaId
 import kotlinx.coroutines.CoroutineScope
@@ -2592,7 +2595,7 @@ class MusicService :
             }
 
 
-            if ((queue as? iad1tya.echo.music.playback.queues.ListQueue)?.startShuffled == true &&
+            if (queue.startShuffled &&
                 !player.shuffleModeEnabled &&
                 // Only if this queue is still the LIVE one: with two rapid playQueue calls the first
                 // (slower) fetch could otherwise enable shuffle for a queue the user already replaced —
@@ -4118,21 +4121,8 @@ class MusicService :
                 persistSongUrlCache()
             }
         }
-        // SponsorBlock: fetch skippable non-music segments for the NEW track (YouTube ids only; local songs
-        // have long content:// ids and are skipped). Stale responses are ignored inside the manager.
-        if (sponsorBlockEnabled) {
-            val sbVideoId = sponsorBlock.begin(mediaItem?.mediaId)
-            if (sbVideoId != null) {
-                scope.launch(Dispatchers.IO) {
-                    sponsorBlock.accept(
-                        sbVideoId,
-                        iad1tya.echo.music.playback.sponsorblock.SponsorBlockService.fetchSegments(sbVideoId),
-                    )
-                }
-            }
-        } else {
-            sponsorBlock.clear()
-        }
+        // NOTE: SponsorBlock is fetched from applyAutoAdvanceSideEffects() below (shared with the crossfade
+        // swap path) — calling it here too issued TWO fetches per track against a free community API.
         // Sticky video mode. On a track change while video mode is on:
         //  - FAST PATH: if the incoming track was PRE-BUILT as a video (Merging) source ahead of time
         //    (prebuildNextVideoItem), ADOPT it with NO replaceMediaItem/prepare on the now-running track —
@@ -4248,38 +4238,13 @@ class MusicService :
                 player.seekTo(previousMediaItemIndex, 0)
             }
         }
-        previousMediaItemIndex = player.currentMediaItemIndex
-
-        lastPlaybackSpeed = -1.0f 
-
-        preloadUpcomingItems()
+        // Shared with the crossfade swap path — see applyAutoAdvanceSideEffects.
+        applyAutoAdvanceSideEffects()
         setupLoudnessEnhancer()
 
         discordUpdateJob?.cancel()
 
-        scrobbleManager?.onSongStop()
-        if (player.playWhenReady && player.playbackState == Player.STATE_READY) {
-            scrobbleManager?.onSongStart(player.currentMetadata, duration = player.duration)
-        }
 
-        
-        
-        if (castConnectionHandler?.isCasting?.value == true &&
-            castConnectionHandler?.isSyncingFromCast != true &&
-            mediaItem != null) {
-            val metadata = mediaItem.metadata
-            if (metadata != null) {
-                
-                
-                val navigated = castConnectionHandler?.navigateToMediaIfInQueue(metadata.id) ?: false
-                if (!navigated) {
-                    
-                    castConnectionHandler?.loadMedia(metadata)
-                }
-            }
-        }
-
-        
         // "Almost at the end" must be measured in PLAYBACK order. mediaItemCount - currentMediaItemIndex is
         // a TIMELINE distance: under shuffle the current index jumps around, so it read "5 left" on roughly
         // one transition in ten no matter how much was actually unplayed, paginating early and repeatedly
@@ -4287,6 +4252,65 @@ class MusicService :
         // one site was missed.
         // Walk the timeline in PLAYBACK order (getNextWindowIndex honours shuffleModeEnabled), counting at
         // most 6 hops — bounded work on the player thread, and correct with or without shuffle.
+        maybeLoadMoreQueuePages(reason == Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT)
+        // B3 — keep the music going when a FINITE queue ends. Album / artist-top / new-release radar / imported
+        // list / single-song queues have no next page, so as soon as the LAST item becomes current (i.e. the last
+        // song STARTS playing) we PRE-SEED a radio from that song (its YouTube relations, taste-ordered if any
+        // history exists — so it works even on a fresh empty install), OFF the player thread. Fetching + appending
+        // while the last song is still playing makes the infinite queue VISIBLE during that song and buffers the
+        // next stream BEFORE it ends → no gap / micro-cut at the transition.
+        // Fires on ANY transition reason EXCEPT a pure REPEAT (so it also covers the user manually STARTING a
+        // finite artist queue or SEEKING onto the last item — not only AUTO auto-advance / PLAYLIST_CHANGED).
+        // Still guarded: only the very last item to PLAY (shuffle/repeat-aware, so the list is never truncated),
+        // only while actually playing, never twice for the same end (radioSeedInFlight), and skipped while the
+        // first block already handles continuation (next page).
+        if (autoLoadMoreHint &&
+            reason != Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT &&
+            player.playWhenReady &&
+            !radioSeedInFlight &&
+            !currentQueue.hasNextPage() &&
+            player.mediaItemCount > 0 &&
+            !player.hasNextMediaItem() &&  // shuffle/repeat-aware "on the last item to PLAY" (not a raw timeline index)
+            !(disableLoadMoreWhenRepeatAllHint && player.repeatMode == REPEAT_MODE_ALL)
+        ) {
+            // Autoplay chips: this last-item moment is the seed of the upcoming radio — surface the
+            // suggestion chips for it right away (once-per-seed cached; local/http ids no-op inside).
+            player.currentMediaItem?.mediaId?.let { refreshAutoplaySuggestions(it) }
+            // Enhanced Shuffle: reaching the last item to play while shuffling a context means the whole
+            // context MAY have cycled — but this outer block deliberately also fires on manual SEEKs, and a
+            // manual jump onto the last playback-order item is NOT a completed cycle. Wiping there erased
+            // the memory of a barely-started playlist (partial-cycle wipe → guaranteed repeats next visit).
+            // The wipe now requires the same proof as every other cycle-complete site: a natural AUTO
+            // advance, repeat OFF, and a genuinely exhausted context. The radio handoff below still runs
+            // either way (it's the queue-end UX, independent of the memory).
+            if (enhancedShuffleHint && player.shuffleModeEnabled &&
+                reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO &&
+                player.repeatMode == Player.REPEAT_MODE_OFF &&
+                isEnhancedContextExhausted()
+            ) {
+                shuffleContextId?.let { onEnhancedContextCycleComplete(it) }
+            }
+            // Radio owns the queue from here EITHER WAY — detach the context so foreign radio ids are
+            // never recorded into the playlist's persistent memory (a linear listener's nightly radio
+            // tail used to accumulate unbounded rows). The memory itself is wiped ONLY in the
+            // proven-exhausted branch above; an un-wiped context keeps its rows for the next visit.
+            shuffleContextId = null
+            startRadioSeamlessly()
+        }
+
+
+        if (persistentQueueHint) {
+            saveQueueToDisk()
+        }
+    }
+
+    /**
+     * Queue PAGINATION (auto-load-more) for the track that just became current. Extracted so the
+     * CROSSFADE SWAP path can call it too: with crossfade ON (the default) every auto-advance skips
+     * onMediaItemTransition, so a long YouTube playlist/album never pulled its next page and fell into
+     * the infinite-radio safety net instead of continuing the list the user actually chose.
+     */
+    private fun maybeLoadMoreQueuePages(isRepeatTransition: Boolean) {
         val remainingInPlaybackOrder = run {
             val timeline = player.currentTimeline
             var idx = player.currentMediaItemIndex
@@ -4309,7 +4333,7 @@ class MusicService :
             }
         }
         if (autoLoadMoreHint &&
-            reason != Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT &&
+            !isRepeatTransition &&
             remainingInPlaybackOrder <= 5 &&
             currentQueue.hasNextPage() &&
             !(disableLoadMoreWhenRepeatAllHint && player.repeatMode == REPEAT_MODE_ALL)
@@ -4423,55 +4447,66 @@ class MusicService :
                 }
             }
         }
+    }
 
-        // B3 — keep the music going when a FINITE queue ends. Album / artist-top / new-release radar / imported
-        // list / single-song queues have no next page, so as soon as the LAST item becomes current (i.e. the last
-        // song STARTS playing) we PRE-SEED a radio from that song (its YouTube relations, taste-ordered if any
-        // history exists — so it works even on a fresh empty install), OFF the player thread. Fetching + appending
-        // while the last song is still playing makes the infinite queue VISIBLE during that song and buffers the
-        // next stream BEFORE it ends → no gap / micro-cut at the transition.
-        // Fires on ANY transition reason EXCEPT a pure REPEAT (so it also covers the user manually STARTING a
-        // finite artist queue or SEEKING onto the last item — not only AUTO auto-advance / PLAYLIST_CHANGED).
-        // Still guarded: only the very last item to PLAY (shuffle/repeat-aware, so the list is never truncated),
-        // only while actually playing, never twice for the same end (radioSeedInFlight), and skipped while the
-        // first block already handles continuation (next page).
-        if (autoLoadMoreHint &&
-            reason != Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT &&
-            player.playWhenReady &&
-            !radioSeedInFlight &&
-            !currentQueue.hasNextPage() &&
-            player.mediaItemCount > 0 &&
-            !player.hasNextMediaItem() &&  // shuffle/repeat-aware "on the last item to PLAY" (not a raw timeline index)
-            !(disableLoadMoreWhenRepeatAllHint && player.repeatMode == REPEAT_MODE_ALL)
-        ) {
-            // Autoplay chips: this last-item moment is the seed of the upcoming radio — surface the
-            // suggestion chips for it right away (once-per-seed cached; local/http ids no-op inside).
-            player.currentMediaItem?.mediaId?.let { refreshAutoplaySuggestions(it) }
-            // Enhanced Shuffle: reaching the last item to play while shuffling a context means the whole
-            // context MAY have cycled — but this outer block deliberately also fires on manual SEEKs, and a
-            // manual jump onto the last playback-order item is NOT a completed cycle. Wiping there erased
-            // the memory of a barely-started playlist (partial-cycle wipe → guaranteed repeats next visit).
-            // The wipe now requires the same proof as every other cycle-complete site: a natural AUTO
-            // advance, repeat OFF, and a genuinely exhausted context. The radio handoff below still runs
-            // either way (it's the queue-end UX, independent of the memory).
-            if (enhancedShuffleHint && player.shuffleModeEnabled &&
-                reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO &&
-                player.repeatMode == Player.REPEAT_MODE_OFF &&
-                isEnhancedContextExhausted()
-            ) {
-                shuffleContextId?.let { onEnhancedContextCycleComplete(it) }
+    /**
+     * SponsorBlock: fetch skippable non-music segments for the track that just became current (YouTube ids
+     * only; local songs have long content:// ids and are skipped). Stale responses are ignored inside the
+     * manager. Extracted so the CROSSFADE SWAP path can call it too — with crossfade ON (the default) every
+     * auto-advance skips onMediaItemTransition, so segments were only ever fetched for manually started
+     * tracks and the feature looked dead despite being ON by default.
+     */
+    private fun applySponsorBlockFor(mediaId: String?) {
+        if (sponsorBlockEnabled) {
+            val sbVideoId = sponsorBlock.begin(mediaId)
+            if (sbVideoId != null) {
+                scope.launch(Dispatchers.IO) {
+                    sponsorBlock.accept(
+                        sbVideoId,
+                        iad1tya.echo.music.playback.sponsorblock.SponsorBlockService.fetchSegments(sbVideoId),
+                    )
+                }
             }
-            // Radio owns the queue from here EITHER WAY — detach the context so foreign radio ids are
-            // never recorded into the playlist's persistent memory (a linear listener's nightly radio
-            // tail used to accumulate unbounded rows). The memory itself is wiped ONLY in the
-            // proven-exhausted branch above; an un-wiped context keeps its rows for the next visit.
-            shuffleContextId = null
-            startRadioSeamlessly()
+        } else {
+            sponsorBlock.clear()
+        }
+    }
+
+    /**
+     * Everything that must happen when a NEW track becomes current on a NATURAL auto-advance, shared by the
+     * two advance paths: onMediaItemTransition (crossfade OFF / manual) and beginCrossfadeSwap (crossfade
+     * ON — the DEFAULT, whose swap skips the transition callback entirely). Without this mirror, scrobbling,
+     * Cast follow-along, SponsorBlock, upcoming-track prefetch, the REPEAT_ONE index guard and the speed
+     * cache all silently stopped working in the app's default configuration.
+     */
+    private fun applyAutoAdvanceSideEffects() {
+        previousMediaItemIndex = player.currentMediaItemIndex
+        lastPlaybackSpeed = -1.0f
+        preloadUpcomingItems()
+        applySponsorBlockFor(player.currentMediaItem?.mediaId)
+
+        scrobbleManager?.onSongStop()
+        if (player.playWhenReady && player.playbackState == Player.STATE_READY) {
+            scrobbleManager?.onSongStart(player.currentMetadata, duration = player.duration)
+            // onSongStart only sends "now playing" and RESETS the counters — it does not start the
+            // play-time ticker; only onPlayerStateChanged(isPlaying=true) does, and that used to arrive
+            // via EVENT_IS_PLAYING_CHANGED. On a crossfade swap the incoming player is ALREADY playing
+            // before the service listener is attached, so that event never reaches us and the track was
+            // never actually scrobbled (only "now playing" was sent). Start the ticker explicitly.
+            if (player.isPlaying) {
+                scrobbleManager?.onPlayerStateChanged(true, player.currentMetadata, player.duration)
+            }
         }
 
-
-        if (persistentQueueHint) {
-            saveQueueToDisk()
+        if (castConnectionHandler?.isCasting?.value == true &&
+            castConnectionHandler?.isSyncingFromCast != true
+        ) {
+            player.currentMediaItem?.metadata?.let { metadata ->
+                val navigated = castConnectionHandler?.navigateToMediaIfInQueue(metadata.id) ?: false
+                if (!navigated) {
+                    castConnectionHandler?.loadMedia(metadata)
+                }
+            }
         }
     }
 
@@ -7230,9 +7265,97 @@ class MusicService :
             ACTION_CLEAR_SONG_CACHE -> {
                 intent.getStringExtra(EXTRA_SONG_ID)?.takeIf { it.isNotBlank() }?.let { clearSongCache(it) }
             }
+            // Playlist widget: the per-card play button. The receiver forwards the tapped card here; without
+            // this branch the intent reached onStartCommand and fell through, so the button did nothing.
+            PlaylistWidgetReceiver.ACTION_PLAY_TARGET -> {
+                playWidgetTarget(
+                    targetType = intent.getStringExtra(PlaylistWidgetReceiver.EXTRA_TARGET_TYPE),
+                    targetId = intent.getStringExtra(PlaylistWidgetReceiver.EXTRA_TARGET_ID),
+                    targetTitle = intent.getStringExtra(PlaylistWidgetReceiver.EXTRA_TARGET_TITLE),
+                )
+            }
+            // Turntable widget: sent when a widget is added/resized so it stops showing the default layout.
+            TurntableWidgetReceiver.ACTION_UPDATE_TURNTABLE_WIDGET -> {
+                updateWidgetUI(player.isPlaying)
+            }
         }
 
         return super.onStartCommand(intent, flags, startId)
+    }
+
+    /**
+     * Playlist widget → per-card play button. Builds the same queue the matching in-app screen would build
+     * and hands it to [playQueue] (which clears the #27 restore veto, so a widget tap plays immediately).
+     *
+     * Defensive by design: a missing/unknown type, a deleted playlist, an empty list or a failed YouTube
+     * fetch only logs — a home-screen tap must never crash the service nor disturb what is already playing.
+     */
+    private fun playWidgetTarget(targetType: String?, targetId: String?, targetTitle: String?) {
+        val type = targetType?.takeIf { it.isNotBlank() }
+        val id = targetId?.takeIf { it.isNotBlank() }
+        if (type == null || id == null) {
+            Timber.tag(TAG).w("playWidgetTarget: missing target (type=$targetType, id=$targetId)")
+            return
+        }
+        scope.launch(SilentHandler) {
+            val resolved: Pair<List<MediaItem>, String?>? = withContext(Dispatchers.IO) {
+                runCatching {
+                    when (type) {
+                        PlaylistWidgetReceiver.TARGET_TYPE_LIKED ->
+                            database.likedSongsByCreateDateAsc().first()
+                                .map { it.toMediaItem() } to "AP:liked"
+
+                        PlaylistWidgetReceiver.TARGET_TYPE_DOWNLOADED ->
+                            database.downloadedSongsByCreateDateAsc().first()
+                                .map { it.toMediaItem() } to "AP:downloaded"
+
+                        // The id is the top-N size the widget card was built with ("50").
+                        PlaylistWidgetReceiver.TARGET_TYPE_TOP ->
+                            database.mostPlayedSongs(0L, limit = id.toIntOrNull() ?: 50).first()
+                                .map { it.toMediaItem() } to null
+
+                        PlaylistWidgetReceiver.TARGET_TYPE_LOCAL ->
+                            database.playlistSongs(id).first()
+                                .map { it.song.toMediaItem() } to "PL:$id"
+
+                        // Online cards carry the browseId. A playlist saved in the library keeps its songs
+                        // locally, so resolve that first and only hit the network for a speed-dial entry
+                        // that isn't in the library.
+                        PlaylistWidgetReceiver.TARGET_TYPE_ONLINE -> {
+                            val local = database.playlistByBrowseId(id).first()
+                            val localSongs =
+                                local?.let { database.playlistSongs(it.playlist.id).first() }.orEmpty()
+                            if (local != null && localSongs.isNotEmpty()) {
+                                localSongs.map { it.song.toMediaItem() } to "PL:${local.playlist.id}"
+                            } else {
+                                YouTube.playlist(id).getOrNull()?.songs.orEmpty()
+                                    .map { it.toMediaItem() } to null
+                            }
+                        }
+
+                        else -> null
+                    }
+                }.onFailure {
+                    Timber.tag(TAG).w(it, "playWidgetTarget: failed to load $type/$id")
+                }.getOrNull()
+            }
+            if (resolved == null) {
+                Timber.tag(TAG).w("playWidgetTarget: nothing to play for $type/$id")
+                return@launch
+            }
+            val (items, contextId) = resolved
+            if (items.isEmpty()) {
+                Timber.tag(TAG).w("playWidgetTarget: empty target $type/$id")
+                return@launch
+            }
+            playQueue(
+                ListQueue(
+                    title = targetTitle,
+                    items = items,
+                    contextId = contextId,
+                )
+            )
+        }
     }
 
     /**
@@ -7839,6 +7962,17 @@ class MusicService :
 
         traceCrossfade("swap-ok", "blend running (curve+duration per Ajustes)")
 
+        // A crossfade swap IS a natural auto-advance — but it reaches the next track through a path that
+        // never fires onMediaItemTransition. Everything that normally happens there must be mirrored here or
+        // it silently stops working in the app's DEFAULT configuration (crossfade ON): scrobbling, Cast
+        // follow-along, SponsorBlock segments, upcoming-track prefetch, and pulling the next page of a long
+        // playlist/album (whose absence made the queue fall into the infinite radio instead of continuing).
+        applyAutoAdvanceSideEffects()
+        // REPEAT_ONE swaps the SAME track in over and over; treating those as fresh advances paginated the
+        // queue on every loop (a page fetched + appended per repeat). The transition path suppresses
+        // pagination on repeats for exactly this reason — mirror it.
+        maybeLoadMoreQueuePages(isRepeatTransition = player.repeatMode == REPEAT_MODE_ONE)
+
         // Linear-play recording under crossfade: the swap path skips onMediaItemTransition, so without
         // this a LINEAR listen (shuffle off, crossfade on — every auto-advance is a swap) left no trace in
         // the persistent context memory, and activating shuffle later replayed songs heard minutes before.
@@ -7933,6 +8067,19 @@ class MusicService :
         sec.volume = 0f
         sec.repeatMode = player.repeatMode
         sec.shuffleModeEnabled = player.shuffleModeEnabled
+        // Carry the USER's playback settings across the swap. Speed/pitch and the chosen audio output are
+        // set on the player object, not on a preference — so with crossfade ON (the default) every
+        // auto-advance silently reset 1.25x/+2 semitones back to normal and dropped the selected output.
+        sec.playbackParameters = player.playbackParameters
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            preferredDeviceId?.let { id ->
+                runCatching {
+                    audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+                        .find { it.id == id }
+                        ?.let { sec.setPreferredAudioDevice(it) }
+                }
+            }
+        }
 
         // FIX B: pre-level the incoming track BEFORE sec.prepare() primes its first buffers. The secondary
         // shares the NormalizationGainAudioProcessor.gain static, which still holds the OUTGOING track's
@@ -8015,6 +8162,12 @@ class MusicService :
         // describing a fallback container, mismatches, and purges the playing track's cached bytes on every
         // re-open. With crossfade ON (the default here) every advance is a swap, so that was permanent.
         currentPlayingMediaId = nextPlayer.currentMediaItem?.mediaId
+        // The UI's song identity ALSO only has two writers, and the other one lives in onEvents behind
+        // TIMELINE_CHANGED/POSITION_DISCONTINUITY — neither fires for a swap, and the service listener is
+        // attached to the incoming player only further down (after its own transition already happened).
+        // Without this, with crossfade ON the widget/notification/Android-Auto kept showing the PREVIOUS
+        // song's title, artist, artwork and like state while the progress bar advanced against the new one.
+        nextPlayer.currentMetadata?.let { currentMediaMetadata.value = it }
         val currentPlayer = player
 
         // LEARN the outgoing track's intro silence (finalized at its first loud frame): next time this

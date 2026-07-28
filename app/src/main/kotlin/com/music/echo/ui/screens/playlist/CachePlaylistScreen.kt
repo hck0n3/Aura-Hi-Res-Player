@@ -576,6 +576,10 @@ private fun CachePlaylistHeader(
                         ListQueue(
                             title = context.getString(R.string.cached_playlist),
                             items = songs.shuffled().map { it.toMediaItem() },
+                            // Turn shuffle MODE on so Enhanced Shuffle actually drives the order and
+                            // records plays. Pre-shuffling alone left the mode off: the icon stayed
+                            // off and the order was a frozen scramble.
+                            startShuffled = true,
                         )
                     )
                 },

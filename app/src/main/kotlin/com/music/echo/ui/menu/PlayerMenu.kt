@@ -77,7 +77,6 @@ import androidx.media3.exoplayer.offline.Download
 import androidx.media3.exoplayer.offline.DownloadRequest
 import androidx.media3.exoplayer.offline.DownloadService
 import androidx.navigation.NavController
-import com.music.innertube.YouTube
 import iad1tya.echo.music.LocalDatabase
 import iad1tya.echo.music.LocalDownloadUtil
 import iad1tya.echo.music.LocalListenTogetherManager
@@ -101,7 +100,6 @@ import iad1tya.echo.music.ui.component.NewAction
 import iad1tya.echo.music.ui.component.NewActionGrid
 import iad1tya.echo.music.ui.component.VolumeSlider
 import iad1tya.echo.music.utils.rememberPreference
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlin.math.log2
 import kotlin.math.pow
@@ -183,13 +181,19 @@ fun PlayerMenu(
 
     AddToPlaylistDialog(
         isVisible = showChoosePlaylistDialog,
-        onGetSong = { playlist ->
-            database.transaction {
+        onGetSong = {
+            // withTransaction (suspending), NOT transaction {}: the latter posts to Room's
+            // transaction executor and returns immediately, so the id could be handed back before
+            // the song row is committed. AddToPlaylistDialog then inserts a PlaylistSongMap row
+            // whose songId FK is ON DELETE CASCADE — if that wins the race, the whole @Transaction
+            // addSongToPlaylist aborts and nothing is added, silently.
+            database.withTransaction {
                 insert(mediaMetadata)
             }
-            coroutineScope.launch(Dispatchers.IO) {
-                playlist.playlist.browseId?.let { YouTube.addToPlaylist(it, mediaMetadata.id) }
-            }
+            // No remote add here: AddToPlaylistDialog is the single writer to the remote playlist
+            // (it calls YouTube.addToPlaylist for every returned id, on the duplicate-confirm
+            // branches too). Adding here as well made every song land TWICE in a synced YouTube
+            // playlist, and "add anyway" issue two remote adds.
             listOf(mediaMetadata.id)
         },
         onDismiss = {
@@ -1473,9 +1477,11 @@ fun ListenTogetherDialog(
                             }
                             if (isHost) {
                                 Spacer(modifier = Modifier.height(12.dp))
-                                val inviteLink = remember(room.roomCode) {
-                                    "https://echomusic-listen-together.onrender.com/listen?code=${room.roomCode}"
-                                }
+                                // Custom scheme registered in AndroidManifest and parsed by
+                                // MainActivity.handleDeepLink (host "listen" + "code" query parameter).
+                                // The old onrender.com host belongs to an upstream fork we do not
+                                // control, so those invite links resolved to a 404 for every recipient.
+                                val inviteLink = remember(room.roomCode) { "echomusic://listen?code=${room.roomCode}" }
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.Center
@@ -1483,6 +1489,12 @@ fun ListenTogetherDialog(
                                     FilledTonalButton(
                                         onClick = {
                                             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                            // Copy the BARE deep link, not the friendly invite
+                                            // sentence: this button is labelled "copy link", so the
+                                            // clipboard has to paste cleanly into a URL/link field.
+                                            // There is no share action in this menu, so the
+                                            // listen_together_invite_message wording belongs only to
+                                            // the share button on ListenTogetherScreen.
                                             val clip = android.content.ClipData.newPlainText("Listen Together Link", inviteLink)
                                             clipboard.setPrimaryClip(clip)
                                             Toast.makeText(context, R.string.copied_to_clipboard, Toast.LENGTH_SHORT).show()

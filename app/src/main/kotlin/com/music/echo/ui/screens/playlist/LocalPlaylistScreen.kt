@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -439,6 +440,19 @@ fun LocalPlaylistScreen(
                     modifier = Modifier.padding(horizontal = 18.dp)
                 )
 
+                // Local-only playlist: SAY SO. Without this the missing "delete from YouTube too" option
+                // reads as a broken dialog (owner reported exactly that) instead of what it is: there is
+                // no remote copy to delete because the playlist was never synced to his account.
+                if (ytBrowseId == null) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = stringResource(R.string.delete_playlist_only_local_note),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 18.dp)
+                    )
+                }
+
                 // Synced playlist: let the user choose whether to also delete it on YouTube.
                 if (ytBrowseId != null) {
                     Spacer(Modifier.height(16.dp))
@@ -446,7 +460,18 @@ fun LocalPlaylistScreen(
                         onClick = {
                             deletePlaylistLocally()
                             viewModel.viewModelScope.launch(Dispatchers.IO) {
-                                YouTube.deletePlaylist(ytBrowseId)
+                                // Surface a remote failure: fire-and-forget made a YouTube rejection look
+                                // like success (the playlist vanished locally either way).
+                                YouTube.deletePlaylist(ytBrowseId).onFailure { e ->
+                                    reportException(e)
+                                    withContext(Dispatchers.Main) {
+                                        Toast.makeText(
+                                            context,
+                                            context.getString(R.string.delete_playlist_youtube_failed),
+                                            Toast.LENGTH_LONG
+                                        ).show()
+                                    }
+                                }
                             }
                             navController.popBackStack()
                         },

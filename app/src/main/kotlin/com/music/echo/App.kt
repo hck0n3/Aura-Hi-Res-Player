@@ -10,6 +10,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.widget.Toast
+import androidx.compose.ui.graphics.toArgb
 import androidx.datastore.preferences.core.edit
 import coil3.ImageLoader
 import coil3.PlatformContext
@@ -348,7 +349,8 @@ class App : Application(), SingletonImageLoader.Factory, androidx.work.Configura
             settings[iad1tya.echo.music.constants.Defaults0130CurveAppliedKey] != true ||
             settings[iad1tya.echo.music.constants.Defaults0132GaplessOffAppliedKey] != true ||
             settings[iad1tya.echo.music.constants.LyricsBlurDefaultOnV1AppliedKey] != true ||
-            settings[iad1tya.echo.music.constants.AddToPlaylistLastUpdatedDefaultV1AppliedKey] != true
+            settings[iad1tya.echo.music.constants.AddToPlaylistLastUpdatedDefaultV1AppliedKey] != true ||
+            settings[iad1tya.echo.music.constants.ThemeAccentRepairV1AppliedKey] != true
         if (batchAPending) {
             runCatching {
                 dataStore.edit { p ->
@@ -584,17 +586,33 @@ class App : Application(), SingletonImageLoader.Factory, androidx.work.Configura
 
             // Appearance follows the SYSTEM theme by default (user request): light/dark AUTO and the
             // system dynamic (Material You) colour theme ON — so a fresh install has ONLY the automatic
-            // system theme selected, not a manual colour. The teal accent below is just the fallback
-            // used if the user later turns the dynamic theme off.
+            // system theme selected, not a manual colour. The accent below is DefaultThemeColor, which is
+            // exactly what the UI reads as "no manual colour picked".
             p[iad1tya.echo.music.constants.DarkModeKey] =
                 iad1tya.echo.music.ui.screens.settings.DarkMode.AUTO.name
             // pureBlack MUST be false here: with darkMode=AUTO, leaving pureBlack=true lit up BOTH the
             // "Follow system" and "AMOLED" cards at once (they're independent in the UI). "System theme
             // only" means AUTO + no pure-black.
             p[iad1tya.echo.music.constants.PureBlackKey] = false
-            p[iad1tya.echo.music.constants.DynamicThemeKey] = true
-            // Fallback accent (only applies when dynamic theme is OFF): matches the "AURA HI-RES" tones.
-            p[iad1tya.echo.music.constants.SelectedThemeColorKey] = 0xFF36C5E0.toInt()
+            // Seeded ONLY when still unset (same null-guard as the visual keys above), so a seed-version
+            // bump or a restore never wipes a palette / dynamic-theme choice the user already made.
+            if (p[iad1tya.echo.music.constants.DynamicThemeKey] == null) {
+                p[iad1tya.echo.music.constants.DynamicThemeKey] = true
+            }
+            // The accent MUST be DefaultThemeColor: the whole appearance UI treats "accent ==
+            // DefaultThemeColor" as "no manual colour picked" (AppearanceSettings.isUsingCustomColor gates
+            // the dynamic-theme switch on it, ThemeScreen marks the selected swatch with it, and
+            // echomusicTheme only turns on Material You when it matches). Seeding the old 0xFF36C5E0
+            // literal meant the app permanently looked like the user had picked a custom colour: the
+            // dynamic-theme switch never rendered and every swatch showed unselected. The legacy literal is
+            // treated as "not a user choice" and corrected; any other stored colour is left untouched.
+            // PURE null-guard: repairing the legacy literal is the one-time ThemeAccentRepairV1 block's job.
+            // Doing it here too would re-fire on every future seed-version bump and silently overwrite a
+            // user who genuinely picks that colour from the palette.
+            if (p[iad1tya.echo.music.constants.SelectedThemeColorKey] == null) {
+                p[iad1tya.echo.music.constants.SelectedThemeColorKey] =
+                    iad1tya.echo.music.ui.theme.DefaultThemeColor.toArgb()
+            }
 
             // Smaller library grid thumbnails (playlists/albums/artists) so the grid looks tidier.
             p[iad1tya.echo.music.constants.GridItemsSizeKey] =
@@ -743,6 +761,23 @@ class App : Application(), SingletonImageLoader.Factory, androidx.work.Configura
         if (settings[iad1tya.echo.music.constants.Defaults0132GaplessOffAppliedKey] != true) {
             p[iad1tya.echo.music.constants.CrossfadeGaplessKey] = false
             p[iad1tya.echo.music.constants.Defaults0132GaplessOffAppliedKey] = true
+        }
+
+        // 0.6.136 — repair the accent seeded by older builds. Every install up to 0.6.135 stored the
+        // literal 0xFF36C5E0, which the appearance UI reads as "the user picked a custom colour": the
+        // dynamic-theme switch never rendered and no palette swatch ever showed as selected. Correcting it
+        // inside applySeedDefaults alone was DEAD CODE for upgrades (that function early-returns once the
+        // stored seed version equals the current one), and bumping the seed version would re-apply every
+        // other seeded default over the user's own choices. Hence a FRESH one-time key — the project rule
+        // for forced default migrations. Only the exact legacy literal is touched; a real user colour is
+        // left alone.
+        if (settings[iad1tya.echo.music.constants.ThemeAccentRepairV1AppliedKey] != true) {
+            val legacySeededAccent = 0xFF36C5E0.toInt()
+            if (settings[iad1tya.echo.music.constants.SelectedThemeColorKey] == legacySeededAccent) {
+                p[iad1tya.echo.music.constants.SelectedThemeColorKey] =
+                    iad1tya.echo.music.ui.theme.DefaultThemeColor.toArgb()
+            }
+            p[iad1tya.echo.music.constants.ThemeAccentRepairV1AppliedKey] = true
         }
     }
 

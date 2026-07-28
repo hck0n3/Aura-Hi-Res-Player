@@ -233,12 +233,11 @@ fun SongMenu(
 
     AddToPlaylistDialog(
         isVisible = showChoosePlaylistDialog,
-        onGetSong = { playlist ->
-            coroutineScope.launch(Dispatchers.IO) {
-                playlist.playlist.browseId?.let { browseId ->
-                    YouTube.addToPlaylist(browseId, song.id)
-                }
-            }
+        onGetSong = {
+            // No remote add here: AddToPlaylistDialog is the single writer to the remote playlist
+            // (it calls YouTube.addToPlaylist for every returned id, on the duplicate-confirm
+            // branches too). Adding here as well made every song land TWICE in a synced YouTube
+            // playlist, and "add anyway" issue two remote adds.
             listOf(song.id)
         },
         onDismiss = {

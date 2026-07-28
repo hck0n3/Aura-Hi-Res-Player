@@ -75,15 +75,16 @@ class ScrobbleManager(
         if (lastFmActive() && useNowPlaying) {
             scrobblingJob?.cancel()
             scrobblingJob = scope.launch {
-                try {
-                    LastFM.updateNowPlaying(
-                        artist = artists.ifEmpty { "Unknown Artist" },
-                        track = metadata.title,
-                        album = metadata.album?.title,
-                        duration = duration?.let { (it / 1000).toInt() }
-                    )
-                } catch (e: Exception) {
+                // LastFM.updateNowPlaying wraps everything in runCatching, so failures arrive as a
+                // Result — never as a thrown exception. Read it, or a rejected call looks like a success.
+                LastFM.updateNowPlaying(
+                    artist = artists.ifEmpty { "Unknown Artist" },
+                    track = metadata.title,
+                    album = metadata.album?.title,
+                    duration = duration?.let { (it / 1000).toInt() }
+                ).onFailure { e ->
                     Timber.e(e, "Last.fm updateNowPlaying failed")
+                    reportException(e)
                 }
             }
         }
@@ -184,17 +185,19 @@ class ScrobbleManager(
         if (lastFmActive() && artists.isNotEmpty()) {
             scrobblingJob?.cancel()
             scrobblingJob = scope.launch {
-                try {
-                    LastFM.scrobble(
-                        artist = artists,
-                        track = metadata.title,
-                        timestamp = timestamp,
-                        album = metadata.album?.title,
-                        duration = durationInSeconds.toInt()
-                    )
+                // Only claim success once the response actually validated: Last.fm answers API errors
+                // with HTTP 200 + an "error" field, so an unchecked call always looked like it worked.
+                LastFM.scrobble(
+                    artist = artists,
+                    track = metadata.title,
+                    timestamp = timestamp,
+                    album = metadata.album?.title,
+                    duration = durationInSeconds.toInt()
+                ).onSuccess {
                     Timber.d("Successfully scrobbled ${metadata.title}")
-                } catch (e: Exception) {
+                }.onFailure { e ->
                     Timber.e(e, "Last.fm scrobble failed")
+                    reportException(e)
                 }
             }
         }

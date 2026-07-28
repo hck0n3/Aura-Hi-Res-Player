@@ -736,6 +736,9 @@ interface DatabaseDao {
     @Query("SELECT *, (SELECT COUNT(1) FROM song_artist_map JOIN song ON song_artist_map.songId = song.id WHERE artistId = artist.id AND song.inLibrary IS NOT NULL) AS songCount FROM artist WHERE bookmarkedAt IS NOT NULL ORDER BY songCount")
     fun artistsBookmarkedBySongCountAsc(): Flow<List<Artist>>
 
+    // LEFT JOIN + COALESCE on purpose: an INNER JOIN dropped every followed artist with no rows in
+    // song_artist_map yet (nothing of theirs is in the `song` table), so picking "play time" made
+    // followed artists DISAPPEAR from the Library instead of just sorting them. They now sort with 0.
     @Transaction
     @SuppressWarnings(RoomWarnings.QUERY_MISMATCH)
     @Query(
@@ -747,14 +750,14 @@ interface DatabaseDao {
                 WHERE artistId = artist.id
                   AND song.inLibrary IS NOT NULL) AS songCount
         FROM artist
-                 JOIN(SELECT artistId, SUM(totalPlayTime) AS totalPlayTime
-                      FROM song_artist_map
-                               JOIN song
-                                    ON song_artist_map.songId = song.id
-                      GROUP BY artistId
-                      ORDER BY totalPlayTime)
-                     ON artist.id = artistId
+                 LEFT JOIN(SELECT artistId, SUM(totalPlayTime) AS totalPlayTime
+                           FROM song_artist_map
+                                    JOIN song
+                                         ON song_artist_map.songId = song.id
+                           GROUP BY artistId) AS artistPlayTime
+                     ON artist.id = artistPlayTime.artistId
         WHERE bookmarkedAt IS NOT NULL
+        ORDER BY COALESCE(artistPlayTime.totalPlayTime, 0)
     """
     )
     fun artistsBookmarkedByPlayTimeAsc(): Flow<List<Artist>>
@@ -771,6 +774,13 @@ interface DatabaseDao {
                 .reversed(descending)
         }
 
+    /**
+     * Followed ("liked") artists. Deliberately NOT filtered by id format: every query below already
+     * restricts to `bookmarkedAt IS NOT NULL`, which IS the definition of "followed". The old
+     * `isYouTubeArtist || isLocal` filter silently dropped artists created with
+     * [ArtistEntity.generateArtistId] (ids like "LA########") — e.g. the ones
+     * [followArtistsWithContent] auto-follows — so they were followed yet could never be listed.
+     */
     fun artistsBookmarked(sortType: ArtistSortType, descending: Boolean) =
         when (sortType) {
             ArtistSortType.CREATE_DATE -> artistsBookmarkedByCreateDateAsc()
@@ -778,9 +788,7 @@ interface DatabaseDao {
             ArtistSortType.SONG_COUNT -> artistsBookmarkedBySongCountAsc()
             ArtistSortType.PLAY_TIME -> artistsBookmarkedByPlayTimeAsc()
         }.map { artists ->
-            artists
-                .filter { it.artist.isYouTubeArtist || it.artist.isLocal } 
-                .reversed(descending)
+            artists.reversed(descending)
         }
 
     @SuppressWarnings(RoomWarnings.QUERY_MISMATCH)
@@ -852,17 +860,20 @@ interface DatabaseDao {
     @Query("SELECT * FROM album WHERE bookmarkedAt IS NOT NULL ORDER BY duration")
     fun albumsLikedByLengthAsc(): Flow<List<Album>>
 
+    // LEFT JOIN + COALESCE on purpose: an INNER JOIN dropped every liked album whose tracks aren't in
+    // the `song` table yet (saved but never opened/downloaded), so picking "play time" made liked
+    // albums DISAPPEAR from the Library instead of just sorting them. They now sort with 0.
     @Transaction
     @SuppressWarnings(RoomWarnings.QUERY_MISMATCH)
     @Query(
         """
         SELECT album.*
         FROM album
-                 JOIN song
+                 LEFT JOIN song
                       ON song.albumId = album.id
         WHERE bookmarkedAt IS NOT NULL
         GROUP BY album.id
-        ORDER BY SUM(song.totalPlayTime)
+        ORDER BY COALESCE(SUM(song.totalPlayTime), 0)
     """
     )
     fun albumsLikedByPlayTimeAsc(): Flow<List<Album>>

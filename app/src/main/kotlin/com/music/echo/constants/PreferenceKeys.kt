@@ -122,6 +122,10 @@ val Defaults0130CurveAppliedKey = booleanPreferencesKey("defaults_0_6_130_curve_
 // default ON) — he hears every skipped blend as "me corta la transición". Forced OFF once; the
 // gapless purist can re-enable it in Ajustes.
 val Defaults0132GaplessOffAppliedKey = booleanPreferencesKey("defaults_0_6_132_gapless_off_applied")
+
+/** 0.6.136 one-time repair of the legacy seeded accent (0xFF36C5E0) that made the app look like the user
+ *  had picked a custom colour, hiding the dynamic-theme switch and every palette selection. */
+val ThemeAccentRepairV1AppliedKey = booleanPreferencesKey("theme_accent_repair_v1_applied")
 // One-time: seed EQ ON + Audiophile preset + preamp 0.0 dB for everyone on this update.
 val EqAudiophileDefaultAppliedKey = booleanPreferencesKey("eq_audiophile_default_applied")
 // One-time (V2, FRESH key): re-apply ALL audio defaults — EQ Audiophile + preamp 0.0, crossfade 9s
@@ -399,7 +403,10 @@ val AddToPlaylistSortDescendingKey = booleanPreferencesKey("addToPlaylistSortDes
 val ArtistSongSortTypeKey = stringPreferencesKey("artistSongSortType")
 val ArtistSongSortDescendingKey = booleanPreferencesKey("artistSongSortDescending")
 val MixSortTypeKey = stringPreferencesKey("mixSortType")
-val MixSortDescendingKey = booleanPreferencesKey("albumSortDescending")
+// NOTE: this used to store into "albumSortDescending" (a copy/paste collision with AlbumSortDescendingKey),
+// so the Mix tab and the Albums tab shared a single stored value. Own key now; the Mix tab falls back to its
+// default once on update.
+val MixSortDescendingKey = booleanPreferencesKey("mixSortDescending")
 
 val LocalSongsMinDurationSecondsKey = intPreferencesKey("local_songs_min_duration_seconds")
 val LocalSongsExcludedFoldersKey = stringSetPreferencesKey("local_songs_excluded_folders")

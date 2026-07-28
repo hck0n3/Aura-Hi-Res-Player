@@ -275,14 +275,24 @@ fun AddToPlaylistDialog(
                     TextButton(
                         onClick = {
                             showDuplicateDialog = false
+                            // Capture before dismissing: the dialog resets this state when reopened.
+                            val playlist = selectedPlaylist!!
+                            val addedIds = songIds!!.filter {
+                                !duplicates.contains(it)
+                            }
                             onDismiss()
                             database.transaction {
-                                addSongToPlaylist(
-                                    selectedPlaylist!!,
-                                    songIds!!.filter {
-                                        !duplicates.contains(it)
+                                addSongToPlaylist(playlist, addedIds)
+                            }
+                            // Same remote sync as the no-duplicates path above, for the songs actually
+                            // added — otherwise resolving a duplicate wrote locally only and the synced
+                            // YouTube playlist never received them.
+                            playlist.playlist.browseId?.let { plist ->
+                                coroutineScope.launch(Dispatchers.IO) {
+                                    addedIds.forEach {
+                                        YouTube.addToPlaylist(plist, it)
                                     }
-                                )
+                                }
                             }
                         }
                     ) {
@@ -292,9 +302,20 @@ fun AddToPlaylistDialog(
                     TextButton(
                         onClick = {
                             showDuplicateDialog = false
+                            // Capture before dismissing: the dialog resets this state when reopened.
+                            val playlist = selectedPlaylist!!
+                            val addedIds = songIds!!
                             onDismiss()
                             database.transaction {
-                                addSongToPlaylist(selectedPlaylist!!, songIds!!)
+                                addSongToPlaylist(playlist, addedIds)
+                            }
+                            // Same remote sync as the no-duplicates path above.
+                            playlist.playlist.browseId?.let { plist ->
+                                coroutineScope.launch(Dispatchers.IO) {
+                                    addedIds.forEach {
+                                        YouTube.addToPlaylist(plist, it)
+                                    }
+                                }
                             }
                         }
                     ) {

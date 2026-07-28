@@ -133,13 +133,19 @@ fun QueueMenu(
 
     AddToPlaylistDialog(
         isVisible = showChoosePlaylistDialog,
-        onGetSong = { playlist ->
-            database.transaction {
+        onGetSong = {
+            // withTransaction (suspending), NOT transaction {}: the latter posts to Room's
+            // transaction executor and returns immediately, so the id could be handed back before
+            // the song row is committed. AddToPlaylistDialog then inserts a PlaylistSongMap row
+            // whose songId FK is ON DELETE CASCADE — if that wins the race, the whole @Transaction
+            // addSongToPlaylist aborts and nothing is added, silently.
+            database.withTransaction {
                 insert(mediaMetadata)
             }
-            coroutineScope.launch(Dispatchers.IO) {
-                playlist.playlist.browseId?.let { YouTube.addToPlaylist(it, mediaMetadata.id) }
-            }
+            // No remote add here: AddToPlaylistDialog is the single writer to the remote playlist
+            // (it calls YouTube.addToPlaylist for every returned id, on the duplicate-confirm
+            // branches too). Adding here as well made every song land TWICE in a synced YouTube
+            // playlist, and "add anyway" issue two remote adds.
             listOf(mediaMetadata.id)
         },
         onDismiss = {

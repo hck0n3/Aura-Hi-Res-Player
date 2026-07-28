@@ -559,16 +559,24 @@ fun AiSettings(
                             onClick = { showApiKeyDialog = true }
                         )
                     )
-                    if (aiProvider != "Custom") {
-                        add(
-                            Material3SettingsItem(
-                                icon = painterResource(R.drawable.discover_tune),
-                                title = { Text(stringResource(R.string.ai_model)) },
-                                description = { Text(openRouterModel.ifBlank { stringResource(R.string.not_set) }) },
-                                onClick = { showModelDialog = true }
-                            )
+                    // The model row must ALWAYS be reachable. It used to be hidden for the "Custom"
+                    // provider, which is exactly the case where the user HAS to type a model name
+                    // (AiPlaylistService omits the field entirely when it is blank). For Custom we go
+                    // straight to the free-text dialog; the preset list makes no sense there.
+                    add(
+                        Material3SettingsItem(
+                            icon = painterResource(R.drawable.discover_tune),
+                            title = { Text(stringResource(R.string.ai_model)) },
+                            description = { Text(openRouterModel.ifBlank { stringResource(R.string.not_set) }) },
+                            onClick = {
+                                if (aiProvider == "Custom") {
+                                    showCustomModelInput = true
+                                } else {
+                                    showModelDialog = true
+                                }
+                            }
                         )
-                    }
+                    )
                 }
             }
         )

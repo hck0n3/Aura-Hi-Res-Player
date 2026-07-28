@@ -163,6 +163,8 @@ fun AlbumScreen(
     val releasesForYou by viewModel.releasesForYou.collectAsState()
     val description by viewModel.description.collectAsState()
     val descriptionRuns by viewModel.descriptionRuns.collectAsState()
+    val hasFailed by viewModel.hasFailed.collectAsState()
+    val notFound by viewModel.notFound.collectAsState()
     val hideExplicit by rememberPreference(key = HideExplicitKey, defaultValue = false)
     // DATA SAVER: hide video songs (heavier streams) and turn the album canvas off while the switch
     // is ON; both user prefs stay persisted and come back untouched when it goes OFF.
@@ -553,6 +555,13 @@ fun AlbumScreen(
                                     playerConnection.player.play()
                                 } else {
                                     playerConnection.service.getAutomix(playlistId)
+                                    // Queue the RAW album in TRACK ORDER. An album is an ordered work, so
+                                    // Play must never inherit the display list: `filteredSongs` ends in
+                                    // .likedFirst(), which would pull liked tracks to the front and play a
+                                    // 12-track album as [7, 11, 1, 2, ...]. The hide-explicit / hide-video
+                                    // (Data Saver) prefs are NOT lost by passing the raw list: MusicService
+                                    // .playQueue re-applies filterExplicit + filterVideoSongs to every queue
+                                    // it builds (MusicService.kt, getInitialStatus()).
                                     playerConnection.playQueue(
                                         LocalAlbumRadio(albumWithSongs)
                                     )
@@ -603,8 +612,16 @@ fun AlbumScreen(
                         Surface(
                             onClick = {
                                 playerConnection.service.getAutomix(playlistId)
+                                // Shuffle the RAW album, not the display list: `filteredSongs` is
+                                // liked-first, and shuffling it would still bias the result. The
+                                // hide-explicit / hide-video prefs are applied by MusicService.playQueue.
                                 playerConnection.playQueue(
-                                    LocalAlbumRadio(albumWithSongs.copy(songs = albumWithSongs.songs.shuffled())),
+                                    LocalAlbumRadio(
+                                        albumWithSongs.copy(songs = albumWithSongs.songs.shuffled()),
+                                        // Turn shuffle MODE on once the items land — the pre-scramble alone
+                                        // left the shuffle icon off and the order frozen.
+                                        startShuffled = true,
+                                    ),
                                 )
                             },
                             shape = CircleShape,
@@ -864,6 +881,45 @@ fun AlbumScreen(
 
             item(key = "bottom_spacer") {
                 Spacer(Modifier.height(50.dp))
+            }
+        } else if (notFound) {
+            // The album is GONE from YouTube (terminal NOT_FOUND), not unreachable. Say so, and offer no
+            // Retry: retrying a deleted album can never succeed, and the generic connection message would
+            // send the user hunting a network problem that doesn't exist.
+            item(key = "not_found_state") {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(32.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = stringResource(R.string.album_no_longer_available),
+                        textAlign = TextAlign.Center,
+                    )
+                }
+            }
+        } else if (hasFailed) {
+            // Terminal failure with nothing cached to show: stop the endless spinner and let the user
+            // retry the fetch (mirrors ArtistItemsScreen).
+            item(key = "error_state") {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(32.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = stringResource(R.string.couldnt_load_album),
+                            textAlign = TextAlign.Center,
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        androidx.compose.material3.Button(onClick = { viewModel.load() }) {
+                            Text(stringResource(R.string.retry))
+                        }
+                    }
+                }
             }
         } else {
             item(key = "loading") {

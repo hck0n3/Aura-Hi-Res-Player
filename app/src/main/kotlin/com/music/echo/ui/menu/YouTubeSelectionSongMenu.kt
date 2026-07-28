@@ -16,6 +16,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -79,15 +80,16 @@ fun YouTubeSelectionSongMenu(
     }
 
     
-    val allLiked by remember(songSelection) {
-        mutableStateOf(
-            songSelection.isNotEmpty() && songSelection.all { song ->
-                
-                val metadata = song.toMediaMetadata()
-                metadata.liked
-            }
-        )
-    }
+    // Like state has to come from the DATABASE: SongItem.toMediaMetadata() never fills `liked`, so the
+    // old metadata-based check was structurally always false — "Quitar me gusta a todas" could never
+    // appear, and selecting already-liked songs showed "Me gusta a todas" doing nothing.
+    val selectedIds = remember(songSelection) { songSelection.map { it.id } }
+    val selectedDbSongs by remember(selectedIds) {
+        database.getSongsByIdsFlow(selectedIds)
+    }.collectAsState(initial = emptyList())
+    val allLiked = selectedIds.isNotEmpty() &&
+        selectedDbSongs.size == selectedIds.size &&
+        selectedDbSongs.all { it.song.liked }
 
     
     val allInLibrary by remember(songSelection) {
@@ -398,26 +400,24 @@ fun YouTubeSelectionSongMenu(
                             database.transaction {
                                 songSelection.forEach { song ->
                                     val metadata = song.toMediaMetadata()
-                                    if ((!allLiked && !metadata.liked) || allLiked) {
-                                        
-                                        insert(metadata)
-                                        
-                                        val songEntity = iad1tya.echo.music.db.entities.SongEntity(
-                                            id = metadata.id,
-                                            title = metadata.title,
-                                            duration = metadata.duration,
-                                            thumbnailUrl = metadata.thumbnailUrl,
-                                            albumId = metadata.album?.id,
-                                            albumName = metadata.album?.title,
-                                            liked = !metadata.liked,
-                                            totalPlayTime = 0,
-                                            inLibrary = metadata.inLibrary,
-                                            isLocal = false,
-                                            libraryAddToken = metadata.libraryAddToken,
-                                            libraryRemoveToken = metadata.libraryRemoveToken
-                                        )
-                                        update(songEntity)
-                                        syncUtils.likeSong(songEntity)
+                                    // insert() is IGNORE-on-conflict: a song already saved keeps its
+                                    // row, a new one gets created. Then toggle the row we read back.
+                                    // Rebuilding a SongEntity by hand reset totalPlayTime to 0 and —
+                                    // because SongItem.toMediaMetadata() never fills liked/inLibrary —
+                                    // wrote inLibrary = null, which DELETED already-saved songs from
+                                    // the Library (every Library query filters inLibrary IS NOT NULL)
+                                    // and also dropped likedDate/explicit/download flags.
+                                    insert(metadata)
+                                    val existing = getSongByIdBlocking(metadata.id)?.song ?: return@forEach
+                                    // Like state must come from the DB row, not from the metadata.
+                                    if ((!allLiked && !existing.liked) || allLiked) {
+                                        // localToggleLike, NOT toggleLike: the latter ALSO fires its own
+                                        // detached YouTube.likeVideo, so combined with syncUtils every like
+                                        // went to YouTube twice — un-retried, not login-gated, and racing
+                                        // the serialized sync (a fast like→unlike could land reversed).
+                                        val toggled = existing.localToggleLike()
+                                        upsert(toggled)
+                                        syncUtils.likeSong(toggled)
                                     }
                                 }
                             }

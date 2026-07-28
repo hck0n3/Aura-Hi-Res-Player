@@ -105,6 +105,13 @@ fun AccountsScreen(
     val (listenBrainzToken) = rememberPreference(ListenBrainzTokenKey, "")
     val (listenBrainzEnabled) = rememberPreference(ListenBrainzEnabledKey, false)
     val listenBrainzConnected = listenBrainzToken.isNotBlank()
+    // Data Saver force-disables ListenBrainz submissions in MusicService (the stored preference is kept
+    // and resumes when Data Saver goes off). Read it here so the row cannot claim "scrobbling activo"
+    // while nothing is actually being submitted.
+    val (dataSaverEnabled) = rememberPreference(
+        iad1tya.echo.music.constants.DataSaverEnabledKey,
+        false,
+    )
 
     var showYtLogoutDialog by remember { mutableStateOf(false) }
     var showSpotifyLogoutDialog by remember { mutableStateOf(false) }
@@ -308,6 +315,8 @@ fun AccountsScreen(
                             Text(
                                 text = when {
                                     !listenBrainzConnected -> stringResource(R.string.not_logged_in)
+                                    listenBrainzEnabled && dataSaverEnabled ->
+                                        "Conectado — pausado por Ahorro de datos"
                                     listenBrainzEnabled -> "Conectado — scrobbling activo"
                                     else -> "Token guardado — scrobbling desactivado"
                                 }

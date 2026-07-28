@@ -91,6 +91,8 @@
     <string name="delete_playlist_confirm">Do you really want to delete the playlist \"%s\"?</string>
     <string name="delete_playlist_from_youtube_too">Delete from YouTube too</string>
     <string name="delete_playlist_local_only">Delete from the app only</string>
+    <string name="delete_playlist_only_local_note">This playlist only exists in Aura (it is not synced with your YouTube account), so there is nothing to delete there.</string>
+    <string name="delete_playlist_youtube_failed">The playlist was deleted from the app, but YouTube rejected deleting it from your account.</string>
     <string name="you_might_also_like">Related Playlist</string>
 
     <!-- Button -->
@@ -327,6 +329,7 @@
     <string name="liquid_glass_text_color">Glass text color</string>
     <string name="liquid_glass_text_color_desc">Text color used on glass surfaces (default adapts to the theme)</string>
     <string name="liquid_glass_player">Glass player</string>
+    <string name="liquid_glass_player_not_available">Not available yet — the full screen player does not use the glass effect</string>
     <string name="liquid_glass_mini_player">Glass mini player</string>
     <string name="liquid_glass_nav_bar">Glass navigation bar</string>
     <string name="liquid_glass_performance_warning">Rendering liquid glass is performance heavy and may reduce smoothness and battery life on some devices</string>
@@ -543,6 +546,10 @@
     <string name="couldnt_load_new_releases">Couldn\'t load new releases. Check your connection.</string>
     <string name="no_new_releases">No new releases right now.</string>
     <string name="couldnt_load_recommendations">Couldn\'t load recommendations. Check your connection.</string>
+    <string name="couldnt_load_playlist">Couldn\'t load the playlist. Check your connection.</string>
+    <string name="couldnt_load_artist">Couldn\'t load the artist. Check your connection.</string>
+    <string name="couldnt_load_album">Couldn\'t load the album. Check your connection.</string>
+    <string name="album_no_longer_available">This album is no longer available on YouTube Music.</string>
     <string name="preview_unavailable">Preview unavailable right now</string>
     <string name="featured_artists">Featured Artists</string>
     <string name="from_replay">From Replay</string>
@@ -603,4 +610,8 @@
     <!-- Large screen / foldable layout -->
     <string name="immersive_canvas_on_rotate">Full-screen animated background in landscape</string>
     <string name="immersive_canvas_on_rotate_desc">When you rotate to landscape, show only the animated background and the playback controls. Off by default: the full interface (cover, title, progress and queue) stays on screen at every angle.</string>
+    <!-- Listen Together: invite sharing and connection errors -->
+    <string name="listen_together_invite_message">Listen to music with me on Aura! Room code: %1$s\n\nTap to join: %2$s</string>
+    <string name="listen_together_kicked_from_room">The host removed you from the room</string>
+    <string name="listen_together_connection_failed">Couldn\'t connect to the room. Check your internet connection and try again.</string>
 </resources>

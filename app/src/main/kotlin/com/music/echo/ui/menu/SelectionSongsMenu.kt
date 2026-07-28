@@ -21,6 +21,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -131,13 +132,9 @@ fun SelectionSongMenu(
     AddToPlaylistDialog(
         isVisible = showChoosePlaylistDialog,
         onGetSong = { playlist ->
-            coroutineScope.launch(Dispatchers.IO) {
-                songSelection.forEach { song ->
-                    playlist.playlist.browseId?.let { browseId ->
-                        YouTube.addToPlaylist(browseId, song.id)
-                    }
-                }
-            }
+            // No remote add here: AddToPlaylistDialog is the single writer to the remote playlist
+            // (it calls YouTube.addToPlaylist for every returned id). Adding here too made every
+            // song land TWICE in a synced YouTube playlist.
             songSelection.map { it.id }
         },
         onDismiss = {
@@ -501,13 +498,17 @@ fun SelectionSongMenu(
                                 },
                                 onClick = {
                                     onDismiss()
-                                    var i = 0
                                     database.query {
-                                        songPosition.forEach { cur ->
-                                            move(cur.playlistId, cur.position - i, Int.MAX_VALUE)
-                                            delete(cur.copy(position = Int.MAX_VALUE))
-                                            i++
-                                        }
+                                        // The `- i` compensation only holds if the rows are visited in
+                                        // ASCENDING position order, but the selection arrives in TAP
+                                        // order. Out of order it resolved the wrong source position and
+                                        // parked an UNSELECTED song at Int.MAX_VALUE (teleported to the
+                                        // end). Sorting first makes i == rows already removed before it.
+                                        songPosition.sortedBy { it.position }
+                                            .forEachIndexed { i, cur ->
+                                                move(cur.playlistId, cur.position - i, Int.MAX_VALUE)
+                                                delete(cur.copy(position = Int.MAX_VALUE))
+                                            }
                                     }
                                     clearAction()
                                 }
@@ -536,9 +537,16 @@ fun SelectionMediaMetadataMenu(
     val listenTogetherManager = iad1tya.echo.music.LocalListenTogetherManager.current
     val isGuest = listenTogetherManager?.isInRoom == true && listenTogetherManager.isHost == false
 
-    val allLiked by remember(songSelection) {
-        mutableStateOf(songSelection.isNotEmpty() && songSelection.all { it.liked })
-    }
+    // Like state has to come from the DATABASE: this menu's selection is List<MediaMetadata>, and
+    // MediaMetadata.liked is never populated (neither Song.toMediaMetadata nor SongItem.toMediaMetadata
+    // assigns it), so the old check was structurally always false — the un-like branch was unreachable.
+    val selectedIds = remember(songSelection) { songSelection.map { it.id } }
+    val selectedDbSongs by remember(selectedIds) {
+        database.getSongsByIdsFlow(selectedIds)
+    }.collectAsState(initial = emptyList())
+    val allLiked = selectedIds.isNotEmpty() &&
+        selectedDbSongs.size == selectedIds.size &&
+        selectedDbSongs.all { it.song.liked }
 
     var showChoosePlaylistDialog by rememberSaveable {
         mutableStateOf(false)
@@ -783,13 +791,24 @@ fun SelectionMediaMetadataMenu(
                             },
                             onClick = {
                                 database.query {
-                                    if (allLiked) {
-                                        songSelection.forEach { song ->
-                                            update(song.toSongEntity().toggleLike())
-                                        }
-                                    } else {
-                                        songSelection.filter { !it.liked }.forEach { song ->
-                                            update(song.toSongEntity().toggleLike())
+                                    songSelection.forEach { song ->
+                                        // update() is a no-op when the row does not exist yet, so the
+                                        // like silently vanished for songs not saved to the library.
+                                        // insert() is IGNORE-on-conflict, so an already-saved song keeps
+                                        // its row; then toggle the row we read back and upsert it —
+                                        // writing back toSongEntity() would wipe totalPlayTime/inLibrary.
+                                        insert(song)
+                                        val existing = getSongByIdBlocking(song.id)?.song ?: return@forEach
+                                        // Like state must come from the DB row, never from the
+                                        // MediaMetadata: MediaMetadata.liked is never filled by
+                                        // Song/SongItem.toMediaMetadata(), so it is ALWAYS false.
+                                        // Filtering the selection on it made "like all" a blind
+                                        // toggle that UN-liked every already-liked row (locally and
+                                        // on YouTube, since toggleLike() calls likeVideo()).
+                                        // toggleLike() is a pure toggle, so only flip a row that is
+                                        // not already in the desired state.
+                                        if ((!allLiked && !existing.liked) || allLiked) {
+                                            upsert(existing.toggleLike())
                                         }
                                     }
                                 }

@@ -14,6 +14,9 @@ import kotlinx.coroutines.withContext
 class LocalAlbumRadio(
     private val albumWithSongs: AlbumWithSongs,
     private val startIndex: Int = 0,
+    // The album screen's Shuffle button: pre-scrambling the list alone left shuffle MODE off, so the
+    // shuffle icon stayed dark, the order was a one-shot scramble and the no-repeat memory saw nothing.
+    override val startShuffled: Boolean = false,
 ) : Queue {
     override val preloadItem: MediaMetadata? = null
 

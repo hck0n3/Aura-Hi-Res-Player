@@ -12,10 +12,13 @@ import iad1tya.echo.music.utils.reportException
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.isActive
 import iad1tya.echo.music.utils.Wikipedia
 import iad1tya.echo.music.utils.AppleMusicAboutAlbum
 import javax.inject.Inject
@@ -24,7 +27,9 @@ import javax.inject.Inject
 class AlbumViewModel
 @Inject
 constructor(
-    database: MusicDatabase,
+    // `private val` (not a bare constructor param) because the fetch now lives in the retryable
+    // [load], and a constructor parameter is only in scope for property initializers / init blocks.
+    private val database: MusicDatabase,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
     val albumId = savedStateHandle.get<String>("albumId")!!
@@ -38,8 +43,31 @@ constructor(
     var description = MutableStateFlow<String?>(null)
     var descriptionRuns = MutableStateFlow<List<com.music.innertube.models.Run>?>(null)
 
+    // Terminal-failure flag: true once the album fetch stops without having succeeded. The screen uses it
+    // to stop the endless spinner and offer Retry, mirroring ArtistItemsViewModel.hasFailed. Irrelevant
+    // while Room already has the album — the screen only consults it when there is nothing to render, and
+    // it checks [notFound] FIRST because a deleted album is not a connection problem.
+    private val _hasFailed = MutableStateFlow(false)
+    val hasFailed: StateFlow<Boolean> = _hasFailed
+
+    // Terminal NOT_FOUND: the album does not exist on YouTube any more (and its cached copy was deleted).
+    // Distinct from [hasFailed], which means "couldn't reach it" — a connection error with a Retry button
+    // is a lie here, because retrying can never succeed. The screen shows a plain "not available" message.
+    private val _notFound = MutableStateFlow(false)
+    val notFound: StateFlow<Boolean> = _notFound
+
+    private var loadJob: Job? = null
+
     init {
-        viewModelScope.launch {
+        load()
+    }
+
+    fun load() {
+        _hasFailed.value = false
+        _notFound.value = false
+        // Supersede any in-flight load, so a second Retry tap can't race the first one's terminal write.
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
             val album = database.album(albumId).first()
             val hasSongs = database.albumWithSongs(albumId).first()?.songs?.isNotEmpty() == true
             if (album?.description != null) {
@@ -51,11 +79,16 @@ constructor(
             // content"). Room already persists the song list; the only gap was this single un-retried fetch.
             var attempt = 0
             var loaded = false
-            while (!loaded && attempt < 3) {
+            // Distinct from [loaded]: a terminal NOT_FOUND also stops the loop, but it is NOT a success.
+            var succeeded = false
+            // `isActive` in the condition: YouTube.album is runCatching{}-wrapped, so a CANCELLED job gets
+            // a plain failure back instead of unwinding and would otherwise burn its remaining attempts.
+            while (!loaded && attempt < 3 && isActive) {
             YouTube
                 .album(albumId, withSongs = !hasSongs)
                 .onSuccess {
                     loaded = true
+                    succeeded = true
                     playlistId.value = it.album.playlistId
                     otherVersions.value = it.otherVersions
                     releasesForYou.value = it.releasesForYou
@@ -119,7 +152,10 @@ constructor(
                 }.onFailure { err ->
                     if (err.message?.contains("NOT_FOUND") == true) {
                         // Album is genuinely gone: terminal, so stop retrying and delete the cached copy.
+                        // Flag it as NOT_FOUND rather than letting it fall through to the generic
+                        // "check your connection" + Retry, which can never succeed for a deleted album.
                         loaded = true
+                        _notFound.value = true
                         reportException(err)
                         val albumToDelete = album?.album
                         if (albumToDelete != null) {
@@ -138,6 +174,12 @@ constructor(
                 attempt++
                 if (attempt < 3) kotlinx.coroutines.delay(700L * attempt)
             }
+            }
+            // `isActive`: a job superseded by a newer load() returns failure from the runCatching{} wrapper
+            // instead of unwinding, and there is no suspension point before this write on the last attempt
+            // — so a dead job could flip the screen to the error state while its replacement is running.
+            if (isActive) {
+                _hasFailed.value = !succeeded
             }
         }
     }

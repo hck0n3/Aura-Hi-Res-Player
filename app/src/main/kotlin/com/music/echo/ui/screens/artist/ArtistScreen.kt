@@ -36,6 +36,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
@@ -77,6 +78,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -168,9 +170,13 @@ fun ArtistScreen(
     val artistPage = viewModel.artistPage
     val libraryArtist by viewModel.libraryArtist.collectAsState()
     val librarySongs by viewModel.librarySongs.collectAsState()
+    // Full local catalogue (librarySongs is a 3-item preview for the shelf): anything that PLAYS the
+    // artist's songs must use this, never the preview.
+    val allLibrarySongs by viewModel.allLibrarySongs.collectAsState()
     val libraryAlbums by viewModel.libraryAlbums.collectAsState()
     val artistVideoUrl by viewModel.artistVideoUrl.collectAsState()
     val artistVideoSong by viewModel.artistVideoSong.collectAsState()
+    val hasFailed by viewModel.hasFailed.collectAsState()
     val hideExplicit by rememberPreference(key = HideExplicitKey, defaultValue = false)
     val showArtistDescription by rememberPreference(key = ShowArtistDescriptionKey, defaultValue = true)
     val showArtistSubscriberCount by rememberPreference(key = ShowArtistSubscriberCountKey, defaultValue = true)
@@ -205,8 +211,16 @@ fun ArtistScreen(
     }
 
     LaunchedEffect(libraryArtist) {
-        
-        showLocal = libraryArtist?.artist?.isLocal == true
+        // "Local" is not only isLocal: it is "cannot exist online". Artists auto-followed from local files
+        // get a GENERATED id ("LA########", ArtistEntity.generateArtistId) with isLocal = false and no
+        // channelId, so YouTube.artist(id) can only ever fail for them. Driving showLocal off isLocal alone
+        // sent those rows down the ONLINE branch, which after 3 failed attempts showed "couldn't load the
+        // artist" with a Retry that can never succeed — and the local/online toggle FAB is disabled, so it
+        // was a dead end. Any library artist whose id is not a YouTube browse id (ArtistEntity
+        // .isYouTubeArtist: "UC…" / "FEmusic_library_privately_owned_artist…") opens LOCAL instead, showing
+        // its own songs and albums. Artists we don't have in the library are untouched (null -> online).
+        val artist = libraryArtist?.artist
+        showLocal = artist != null && (artist.isLocal || !artist.isYouTubeArtist)
     }
 
     Box(
@@ -216,7 +230,29 @@ fun ArtistScreen(
             state = lazyListState,
             contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
         ) {
-            if (artistPage == null && !showLocal) {
+            // Genuine loading only: shimmer until we have a page OR the fetch terminates in failure
+            // (mirrors ArtistItemsScreen). Without the hasFailed arm this shimmered forever offline.
+            if (artistPage == null && !showLocal && hasFailed) {
+                item(key = "error_state") {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(32.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = stringResource(R.string.couldnt_load_artist),
+                                textAlign = TextAlign.Center,
+                            )
+                            Spacer(Modifier.height(12.dp))
+                            Button(onClick = { viewModel.fetchArtistsFromYTM() }) {
+                                Text(stringResource(R.string.retry))
+                            }
+                        }
+                    }
+                }
+            } else if (artistPage == null && !showLocal) {
                 item(key = "shimmer") {
                     ShimmerHost (
                         modifier = Modifier
@@ -651,16 +687,24 @@ fun ArtistScreen(
                                                 )
                                             }
                                         }
-                                    } else if (librarySongs.isNotEmpty() && !isGuest) {
+                                    } else if (allLibrarySongs.isNotEmpty() && !isGuest) {
                                         ToggleButton(
                                             checked = false,
                                             onCheckedChange = {
-                                                val shuffledSongs = librarySongs.shuffled()
+                                                // Shuffle the artist's FULL local catalogue. `librarySongs`
+                                                // is artistSongsPreview(previewSize = 3) — shuffling it
+                                                // could only ever pick from three songs.
+                                                val shuffledSongs = allLibrarySongs.shuffled()
                                                 if (shuffledSongs.isNotEmpty()) {
                                                     playerConnection.playQueue(
                                                         ListQueue(
                                                             title = libraryArtist?.artist?.name ?: "Unknown Artist",
-                                                            items = shuffledSongs.map { it.toMediaItem() }
+                                                            items = shuffledSongs.map { it.toMediaItem() },
+                                                            // Turn shuffle MODE on so Enhanced Shuffle actually
+                                                            // drives the order and records plays. Pre-shuffling
+                                                            // alone left the mode off: the icon stayed off and
+                                                            // the order was a frozen scramble.
+                                                            startShuffled = true,
                                                         )
                                                     )
                                                 }

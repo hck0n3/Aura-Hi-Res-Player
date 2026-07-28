@@ -34,6 +34,9 @@ import java.util.concurrent.TimeUnit
  * is found. Reuses [checkForUpdate] so the "is there an update" decision stays in one place (and the
  * no-subscription build's gate is respected — it reports no update). Notifies once per version via
  * [LastUpdateNotifiedTagKey] so the same pending update isn't re-announced every week.
+ *
+ * Gated by the user's two Settings > Updates switches ([getAutoUpdateCheckSetting] and
+ * [getUpdateNotificationsSetting]): with either off the run is a no-op.
  */
 class UpdateCheckWorker(
     context: Context,
@@ -42,6 +45,17 @@ class UpdateCheckWorker(
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         try {
+            // Honor the two user switches in Settings > Updates. Without these guards the worker checked
+            // and notified every 6 hours no matter what the user had turned off. Scheduling is untouched:
+            // the periodic work stays enqueued and simply does nothing while the settings are off, so
+            // re-enabling them takes effect without rescheduling.
+            if (!getAutoUpdateCheckSetting(applicationContext)) {
+                return@withContext Result.success()
+            }
+            if (!getUpdateNotificationsSetting(applicationContext)) {
+                return@withContext Result.success()
+            }
+
             val deferred = CompletableDeferred<Pair<Boolean, String>>()
             checkForUpdate(
                 applicationContext,

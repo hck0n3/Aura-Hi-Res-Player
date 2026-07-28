@@ -39,10 +39,12 @@ import iad1tya.echo.music.constants.SongSortType
 import iad1tya.echo.music.constants.SongSortTypeKey
 import iad1tya.echo.music.constants.TopSize
 import iad1tya.echo.music.db.MusicDatabase
+import iad1tya.echo.music.db.entities.Song
 import iad1tya.echo.music.extensions.filterExplicit
 import iad1tya.echo.music.extensions.filterExplicitAlbums
 import iad1tya.echo.music.extensions.filterVideoSongs
 import iad1tya.echo.music.extensions.filterYoutubeShorts
+import iad1tya.echo.music.extensions.reversed
 import iad1tya.echo.music.extensions.toEnum
 import iad1tya.echo.music.playback.DownloadUtil
 import iad1tya.echo.music.utils.SyncUtils
@@ -63,9 +65,53 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.text.Collator
 import java.time.Duration
 import java.time.LocalDateTime
+import java.util.Locale
 import javax.inject.Inject
+
+/**
+ * Apply the Library sort selector to the "exported" song list in memory.
+ *
+ * Every other Library branch hands (sortType, descending) to the DAO, which sorts in SQL. The
+ * exported branch reads its rows with `SELECT * FROM song WHERE id IN (:ids)` — SQLite guarantees no
+ * ordering for that — so the tab used to ignore the 4 sort options and the asc/desc arrow entirely.
+ * Ordering rules mirror [iad1tya.echo.music.db.DatabaseDao.songs] / `likedSongs`; CREATE_DATE has no
+ * SQL equivalent here (an exported song need not be in the library), so it falls back to the order of
+ * the exported id list, i.e. the order the songs were exported.
+ */
+internal fun List<Song>.sortedAsExported(
+    exportedSongIds: List<String>,
+    sortType: SongSortType,
+    descending: Boolean,
+): List<Song> {
+    val collator = Collator.getInstance(Locale.getDefault())
+    collator.strength = Collator.PRIMARY
+    val ascending = when (sortType) {
+        SongSortType.CREATE_DATE -> {
+            val exportPosition = exportedSongIds.withIndex().associate { (index, id) -> id to index }
+            sortedBy { exportPosition[it.song.id] ?: Int.MAX_VALUE }
+        }
+
+        SongSortType.NAME -> sortedWith(compareBy(collator) { it.song.title })
+
+        SongSortType.ARTIST ->
+            sortedWith(
+                compareBy(collator) { song ->
+                    song.artists.joinToString("") { it.name }
+                },
+            ).groupBy { it.album?.title }
+                .flatMap { (_, songsByAlbum) ->
+                    songsByAlbum.sortedBy { album ->
+                        album.artists.joinToString("") { it.name }
+                    }
+                }
+
+        SongSortType.PLAY_TIME -> sortedBy { it.song.totalPlayTime }
+    }
+    return ascending.reversed(descending)
+}
 
 @HiltViewModel
 class LibrarySongsViewModel
@@ -99,7 +145,12 @@ constructor(
                     SongFilter.UPLOADED -> database.uploadedSongs(sortType, descending).map { it.filterExplicit(hideExplicit).filterVideoSongs(hideVideoSongs) }
                     SongFilter.EXPORTED -> {
                         val ids = exportedSongIds.split(",").filter { it.isNotBlank() }
-                        database.getSongsByIdsFlow(ids).map { it.filterExplicit(hideExplicit).filterVideoSongs(hideVideoSongs) }
+                        // `WHERE id IN (...)` comes back unordered, so the sort selector is applied here.
+                        database.getSongsByIdsFlow(ids).map {
+                            it.filterExplicit(hideExplicit)
+                                .filterVideoSongs(hideVideoSongs)
+                                .sortedAsExported(ids, sortType, descending)
+                        }
                     }
                     // Final display step: pin liked songs to the top across every filter (stable — the
                     // user's chosen sort order is preserved within the liked and non-liked groups). For the

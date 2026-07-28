@@ -233,6 +233,7 @@ import iad1tya.echo.music.ui.menu.YouTubeSongMenu
 import iad1tya.echo.music.ui.player.BottomSheetPlayer
 import iad1tya.echo.music.ui.player.NowPlayingSidePanel
 import iad1tya.echo.music.ui.screens.Screens
+import iad1tya.echo.music.widget.PlaylistWidgetReceiver
 import iad1tya.echo.music.ui.screens.SettingDialoge
 import iad1tya.echo.music.license.LicenseGate
 import iad1tya.echo.music.ui.screens.WelcomeDialog
@@ -286,6 +287,11 @@ class MainActivity : ComponentActivity() {
         // Picture-in-Picture playback controls (system RemoteActions shown when the PiP window is tapped).
         const val PIP_ACTION = "iad1tya.echo.music.action.PIP"
         const val PIP_CONTROL = "control"
+        // Playlist widget: tapping a card (anywhere but its play button) opens the app on that target.
+        // Values must stay in sync with PlaylistWidgetManager/PlaylistWidgetReceiver.
+        private const val ACTION_OPEN_WIDGET_TARGET = "iad1tya.echo.music.action.OPEN_WIDGET_TARGET"
+        private const val EXTRA_WIDGET_TARGET_TYPE = "extra_widget_target_type"
+        private const val EXTRA_WIDGET_TARGET_ID = "extra_widget_target_id"
     }
 
     override fun attachBaseContext(newBase: Context) {
@@ -1758,6 +1764,50 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleDeepLinkIntent(intent: Intent, navController: NavHostController) {
+        // Launcher shortcuts ("Buscar" / "Biblioteca"). A COLD start picks the start destination from the
+        // same action while composing; a WARM start (the app is singleTask, so it arrives through
+        // onNewIntent) never re-runs that remember(), which is why the shortcuts did nothing once the app
+        // was already open. Navigating with the bottom-bar options makes the cold-start case a no-op
+        // (launchSingleTop on the destination that is already on top).
+        if (intent.action == ACTION_SEARCH || intent.action == ACTION_LIBRARY) {
+            val route = if (intent.action == ACTION_SEARCH) Screens.Search.route else Screens.Library.route
+            intent.action = null
+            runCatching {
+                navController.navigate(route) {
+                    popUpTo(navController.graph.startDestinationId) {
+                        saveState = true
+                    }
+                    launchSingleTop = true
+                    restoreState = true
+                }
+            }
+            return
+        }
+
+        // Playlist widget: a card tap opens the app on that playlist/collection. Without this branch the
+        // activity launched and the intent fell through, so the app just opened wherever it had been.
+        if (intent.action == ACTION_OPEN_WIDGET_TARGET) {
+            val targetType = intent.getStringExtra(EXTRA_WIDGET_TARGET_TYPE)
+            val targetId = intent.getStringExtra(EXTRA_WIDGET_TARGET_ID)?.takeIf { it.isNotBlank() }
+            intent.action = null
+            intent.removeExtra(EXTRA_WIDGET_TARGET_TYPE)
+            intent.removeExtra(EXTRA_WIDGET_TARGET_ID)
+            val route = when (targetType) {
+                PlaylistWidgetReceiver.TARGET_TYPE_LIKED -> "auto_playlist/liked"
+                PlaylistWidgetReceiver.TARGET_TYPE_DOWNLOADED -> "auto_playlist/downloaded"
+                PlaylistWidgetReceiver.TARGET_TYPE_TOP -> targetId?.let { "top_playlist/$it" }
+                PlaylistWidgetReceiver.TARGET_TYPE_LOCAL -> targetId?.let { "local_playlist/$it" }
+                PlaylistWidgetReceiver.TARGET_TYPE_ONLINE -> targetId?.let { "online_playlist/$it" }
+                else -> null
+            } ?: return
+            runCatching {
+                navController.navigate(route) {
+                    launchSingleTop = true
+                }
+            }
+            return
+        }
+
         // Recognition entry (tile permission fallback, result-notification tap, or a RECOGNITION deep
         // link): open the Recognition screen; with EXTRA_AUTO_START_RECOGNITION it starts listening
         // immediately instead of requiring a second tap.

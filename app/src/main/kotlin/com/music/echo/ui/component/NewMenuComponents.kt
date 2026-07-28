@@ -31,6 +31,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -187,9 +188,14 @@ fun NewActionGrid(
 
                     if (performAction) {
                         action.onClick()
-                        LaunchedEffect(Unit) {
-                            performAction = false
-                        }
+                        // SideEffect, NOT LaunchedEffect: it runs synchronously as soon as this composition
+                        // is applied, so the flag is cleared before any recomposition can re-enter the
+                        // branch. The old LaunchedEffect dispatched the reset to a coroutine, and the state
+                        // change caused BY the action itself (queue changed, download started, playback
+                        // moved) recomposed first — running the side effect a second time. That is why
+                        // "Reproducir a continuación" / "Añadir a la cola" / "Descargar" / "Compartir" /
+                        // "Iniciar radio" could fire twice from one tap.
+                        SideEffect { performAction = false }
                     }
 
                     val bgColor = if (action.backgroundColor != Color.Unspecified) action.backgroundColor else MaterialTheme.colorScheme.surfaceVariant

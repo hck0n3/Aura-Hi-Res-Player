@@ -257,7 +257,10 @@ fun OnlinePlaylistScreen(
             state = lazyListState,
             contentPadding = LocalPlayerAwareWindowInsets.current.union(WindowInsets.ime).asPaddingValues(),
         ) {
-            if (playlist == null || songs.isEmpty()) {
+            // Gated on the PLAYLIST only, never on the song list: an online playlist with 0 songs still
+            // has a header (title, cover, Save/Download/Shuffle), and hiding it rendered literally
+            // nothing. A terminal failure now shows a retry instead of a blank screen forever.
+            if (playlist == null) {
                 if (isLoading) {
                     item(key = "loading_placeholder") {
                         Box(
@@ -267,6 +270,37 @@ fun OnlinePlaylistScreen(
                             contentAlignment = Alignment.Center
                         ) {
                             ContainedLoadingIndicator()
+                        }
+                    }
+                } else {
+                    item(key = "error_state") {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(32.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    text = stringResource(R.string.couldnt_load_playlist),
+                                    textAlign = TextAlign.Center,
+                                )
+                                // Raw cause as a muted secondary line (technical, not translated) so a
+                                // failure is diagnosable without hiding the localized headline.
+                                error?.let { detail ->
+                                    Spacer(Modifier.height(4.dp))
+                                    Text(
+                                        text = detail,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        textAlign = TextAlign.Center,
+                                    )
+                                }
+                                Spacer(Modifier.height(12.dp))
+                                Button(onClick = { viewModel.retry() }) {
+                                    Text(stringResource(R.string.retry))
+                                }
+                            }
                         }
                     }
                 }
@@ -674,6 +708,12 @@ private fun OnlinePlaylistHeader(
                                     update(currentPlaylist.toggleLike())
                                 }
                             } else {
+                                // Never persist a NEW playlist before its songs have loaded: the header
+                                // renders as soon as `playlist` is set (songs arrive later), and saving in
+                                // that window wrote a PlaylistEntity with remoteSongCount = N and ZERO
+                                // PlaylistSongMap rows — a Library playlist claiming N songs and holding
+                                // none. `enabled` below already blocks the tap; this is the backstop.
+                                if (songs.isEmpty()) return@launch
                                 database.withTransaction {
                                     val playlistEntity = PlaylistEntity(
                                         name = playlist.title,
@@ -703,6 +743,9 @@ private fun OnlinePlaylistHeader(
                             }
                         }
                     },
+                    // Saving a playlist that has no songs yet would store an empty one; un-saving an already
+                    // saved playlist stays available because it touches no song rows.
+                    enabled = songs.isNotEmpty() || dbPlaylist != null,
                     shape = ButtonDefaults.shape,
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.surfaceVariant,
@@ -919,6 +962,10 @@ private fun OnlinePlaylistHeader(
                         }
                     },
                     modifier = Modifier.weight(1f).semantics { role = Role.Button }.tvFocusable(isTvOrCar, scaleFocused = 1f),
+                    // The header renders as soon as `playlist` arrives, songs land later. Both branches
+                    // above iterate `songs`, so a tap in that window did nothing at all while looking
+                    // enabled. Show it as disabled until there is something to download.
+                    enabled = songs.isNotEmpty(),
                     shapes = ButtonGroupDefaults.connectedLeadingButtonShapes(),
                 ) {
                     when (downloadState) {
@@ -967,7 +1014,13 @@ private fun OnlinePlaylistHeader(
                                     playlistId = playlist.id,
                                     playlistTitle = playlist.title,
                                     initialSongs = songs.shuffled(),
-                                    initialContinuation = continuation
+                                    initialContinuation = continuation,
+                                    // Turn shuffle MODE on once the items land: pre-scrambling alone left the
+                                    // shuffle icon off and the order frozen. HONEST SCOPE: no contextId is
+                                    // passed (no scheme exists for online playlists yet), so the persistent
+                                    // per-context no-repeat memory stays off here — only the in-memory
+                                    // session set applies.
+                                    startShuffled = true,
                                 )
                             )
                         }

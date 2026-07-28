@@ -76,8 +76,13 @@ constructor(
 
                     "exported" -> {
                         val ids = exportedSongIds.split(",").filter { it.isNotBlank() }
+                        // `WHERE id IN (...)` comes back unordered, so the sort selector is applied here.
                         database.getSongsByIdsFlow(ids)
-                            .map { it.filterExplicit(hideExplicit).filterVideoSongs(hideVideoSongs) }
+                            .map {
+                                it.filterExplicit(hideExplicit)
+                                    .filterVideoSongs(hideVideoSongs)
+                                    .sortedAsExported(ids, sortType, descending)
+                            }
                     }
 
                     else -> kotlinx.coroutines.flow.flowOf(emptyList())

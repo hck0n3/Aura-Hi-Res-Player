@@ -14,6 +14,7 @@ import com.music.innertube.models.filterExplicit
 import com.music.innertube.models.filterVideoSongs
 import com.music.innertube.models.filterYoutubeShorts
 import com.music.innertube.pages.ArtistPage
+import iad1tya.echo.music.constants.ArtistSongSortType
 import iad1tya.echo.music.constants.HideExplicitKey
 import iad1tya.echo.music.constants.HideVideoSongsKey
 import iad1tya.echo.music.constants.HideYoutubeShortsKey
@@ -32,6 +33,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
@@ -62,7 +64,13 @@ class ArtistViewModel @Inject constructor(
 
     private val _artistVideoSong = MutableStateFlow<com.music.innertube.models.SongItem?>(null)
     val artistVideoSong: StateFlow<com.music.innertube.models.SongItem?> = _artistVideoSong
-    
+
+    // Terminal-failure flag: true once every retry of the artist fetch failed AND we have no page to
+    // show (not even a cached one). The screen uses it to stop the endless shimmer and offer Retry,
+    // mirroring ArtistItemsViewModel.hasFailed.
+    private val _hasFailed = MutableStateFlow(false)
+    val hasFailed: StateFlow<Boolean> = _hasFailed
+
     val libraryArtist = database.artist(artistId)
         .stateIn(viewModelScope, SharingStarted.Lazily, null)
     val librarySongs = context.dataStore.data
@@ -72,6 +80,19 @@ class ArtistViewModel @Inject constructor(
             database.artistSongsPreview(artistId).map { it.filterExplicit(hideExplicit).filterVideoSongsLocal(hideVideoSongs) }
         }
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
+    // FULL local song list for this artist. [librarySongs] above is deliberately a 3-item PREVIEW for the
+    // shelf, so any action that plays "the artist's songs" (Shuffle / Play all) must read this instead —
+    // shuffling the preview could only ever pick from 3 songs.
+    val allLibrarySongs = context.dataStore.data
+        .map { (it[HideExplicitKey] ?: false) to (it[HideVideoSongsKey] ?: false) }
+        .distinctUntilChanged()
+        .flatMapLatest { (hideExplicit, hideVideoSongs) ->
+            database.artistSongs(artistId, ArtistSongSortType.CREATE_DATE, descending = false)
+                .map { it.filterExplicit(hideExplicit).filterVideoSongsLocal(hideVideoSongs) }
+        }
+        .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
     val libraryAlbums = context.dataStore.data
         .map { it[HideExplicitKey] ?: false }
         .distinctUntilChanged()
@@ -132,6 +153,16 @@ class ArtistViewModel @Inject constructor(
     ) {
         fetchJob?.cancel()
         fetchJob = viewModelScope.launch {
+            // A (re)try is starting: clear any previous terminal failure so the screen leaves the
+            // retry state and shows progress again.
+            _hasFailed.value = false
+            // An artist row that was auto-created locally gets a generated id ("LA########", see
+            // ArtistEntity.generateArtistId) and therefore has NO YouTube page: YouTube.artist(id) can
+            // only fail for it, three times, plus a reportException. Skip the network entirely and leave
+            // hasFailed FALSE — ArtistScreen renders these as local (see its showLocal logic). Gated on the
+            // library row (not on the id alone) so an artist we simply don't have locally still fetches.
+            val localOnlyArtist = database.artist(artistId).first()?.artist?.let { !it.isYouTubeArtist } == true
+            if (localOnlyArtist) return@launch
             // Instant re-open: show this session's cached artist page immediately (no spinner), then
             // still refresh from YouTube below so the data stays up to date. On a COLD first entry (no
             // in-memory cache yet) fall back to the page persisted last session, so the shelves (e.g.
@@ -163,7 +194,10 @@ class ArtistViewModel @Inject constructor(
             // which forced the user to leave and re-enter the artist several times.
             var attempt = 0
             var loaded = false
-            while (!loaded && attempt < 3) {
+            // `isActive` in the condition: YouTube.artist is runCatching{}-wrapped, so a CANCELLED job
+            // gets a plain failure back instead of unwinding — without this a superseded fetch kept
+            // burning its remaining attempts.
+            while (!loaded && attempt < 3 && isActive) {
             YouTube.artist(artistId)
                 .onSuccess { page ->
                     val filteredSections = page.sections
@@ -306,6 +340,17 @@ class ArtistViewModel @Inject constructor(
                 attempt++
                 if (attempt < 3) kotlinx.coroutines.delay(700L * attempt)
             }
+            }
+            // Every retry failed. Only a terminal failure if there is nothing to show at all — with a
+            // cached/persisted page the screen renders normally and must NOT flip to the retry state.
+            //
+            // `isActive` is REQUIRED, not defensive: YouTube.artist is runCatching{}-wrapped, so a job
+            // cancelled by a newer fetchArtistsFromYTM() returns failure here instead of throwing, and on
+            // attempt == 2 there is no suspension point between the last call and this write. Without the
+            // guard the dead job could set hasFailed = true AFTER its replacement cleared it, showing the
+            // error + Retry UI while a fresh fetch was still running.
+            if (!loaded && artistPage == null && isActive) {
+                _hasFailed.value = true
             }
         }
     }
