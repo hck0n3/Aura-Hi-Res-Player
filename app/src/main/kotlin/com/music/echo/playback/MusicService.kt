@@ -501,6 +501,25 @@ class MusicService :
     // Which track the tail detector is currently armed for: re-scheduling the SAME track re-arms without
     // resetting the counters (a reset mid-silence would delay a genuine tail fire); a NEW track resets.
     private var tailArmedMediaId: String? = null
+
+    // PER-SONG SILENCE MEMORY (session-scoped, owner: "5s de MÚSICA bajando, silencio omitido — y la que
+    // entra arranca en su música"). Learned from the live detector on each song's first play:
+    //  • tailSilenceHintMs — length of the song's trailing silence. Next plays anchor the crossfade
+    //    trigger at (musical end - fade window): the decay covers the LAST 5s OF MUSIC and completes as
+    //    the music ends; the silent tail never plays. First play still uses the live tail tiers.
+    //  • leadSilenceHintMs — length of the song's intro silence (below ~-42 dBFS, i.e. inaudible). Next
+    //    times the song ENTERS a crossfade, the incoming player starts right at its music, so the rise is
+    //    heard over real audio instead of dead air.
+    // Main-thread only (all writers/readers are Main). Size-capped defensively; a wrong-direction miss is
+    // always safe: no hint → exact 0.6.133 behavior.
+    private val tailSilenceHintMs = HashMap<String, Long>()
+    private val leadSilenceHintMs = HashMap<String, Long>()
+
+    // LEAD-HINT TRUST: the intro measurement is only meaningful if counting started at the song's REAL
+    // beginning. A mid-song start (session restore seeks to the persisted position; a near-start seek
+    // before the first loud frame) would measure some interior quiet run — storing that as "intro
+    // silence" would make later plays seek past REAL music. Set at the arm/reset site, checked at store.
+    private var leadHintTrustedForArmedTrack = false
     @Volatile private var keepGenreLaneHint: Boolean = true
     @Volatile private var persistentQueueHint: Boolean = true
     @Volatile private var historyDurationMsHint: Float = 30000f
@@ -6914,6 +6933,13 @@ class MusicService :
                         }
                         return super.handleBuffer(buffer, presentationTimeUs, encodedAccessUnitCount)
                     }
+
+                    override fun playToEndOfStream() {
+                        // FLOAT pipeline never calls the processor's queueEndOfStream (it isn't in the
+                        // chain) — mirror the EOS trailing-silence snapshot from here. Idempotent.
+                        runCatching { silenceProcessor.markEndOfStreamExternal() }
+                        super.playToEndOfStream()
+                    }
                 }
             }
         }.apply {
@@ -7397,12 +7423,13 @@ class MusicService :
                     waited += 50
                 }
                 if (!isActive || !player.isPlaying) return@launch
-                // ~1.1s, SMOOTHERSTEP-eased sine (owner iterated twice: explosive intros must enter
-                // gently). Smootherstep (6t⁵−15t⁴+10t³) has zero FIRST and SECOND derivative at both
-                // ends — the ramp leaves silence imperceptibly, swells through the middle and lands
-                // softly at the exact user volume. First ~25% of the window stays under ≈-20dB.
-                val steps = 36
-                val stepTime = 1_100L / steps
+                // ~1.6s, SMOOTHERSTEP-eased sine (owner iterated three times: explosive intros must enter
+                // gently, and the 1.1s window still read as "muy rápido" — the swell has to be NOTICED).
+                // Smootherstep (6t⁵−15t⁴+10t³) has zero FIRST and SECOND derivative at both ends — the
+                // ramp leaves silence imperceptibly, swells through the middle and lands softly at the
+                // exact user volume. First ~25% of the window stays under ≈-20dB.
+                val steps = 48
+                val stepTime = 1_600L / steps
                 for (i in 1..steps) {
                     if (!isActive || isCrossfading) break
                     val p = i / steps.toFloat()
@@ -7490,11 +7517,28 @@ class MusicService :
             return
         }
 
-        val triggerTime = player.duration - crossfadeDuration.toLong()
-        val delayMs = triggerTime - player.currentPosition
-        if (delayMs <= 0) return
-
         val targetMediaId = player.currentMediaItem?.mediaId
+
+        // PER-SONG TAIL MEMORY: if a previous play measured this song's trailing silence, anchor the
+        // trigger at (musical end - fade window) instead of (file end - fade window) — the decay covers
+        // the last seconds of MUSIC and completes right as the music ends; the silent tail never plays.
+        // Clamped so a bad hint can never pull the trigger absurdly early; no hint → live tail tiers
+        // below remain the first-play path.
+        var tailHint = (targetMediaId?.let { tailSilenceHintMs[it] } ?: 0L)
+            .coerceAtMost((player.duration * 2) / 5)
+        // The hint may never pull the trigger into the song's opening seconds: on a short track (or with
+        // a bogus learned tail) the fade would start at position ~0 — and under REPEAT_ONE that state
+        // re-arms itself into an endless fade→swap loop, building an ExoPlayer per pass. Under 3s of
+        // audible pre-fade play, drop the hint (the live tail tiers still cover the real ending).
+        if (player.duration - tailHint - crossfadeDuration.toLong() < 3_000L) tailHint = 0L
+        val triggerTime = player.duration - tailHint - crossfadeDuration.toLong()
+        // Already INSIDE the fade window (near-end seek; radio items landing during the last seconds and
+        // re-arming this schedule): fire the fade NOW instead of bailing. The old `return` here is why a
+        // late re-arm could still end in a hard cut — every guard re-runs inside startCrossfade anyway.
+        val delayMs = (triggerTime - player.currentPosition).coerceAtLeast(0L)
+        if (tailHint > 0) {
+            traceCrossfade("hint-anchor", "learnedTail=${tailHint}ms — fade covers the last music, not the silence")
+        }
 
         // Preload (build + buffer) the incoming player a few seconds BEFORE the fade so it's already
         // playing the instant the fade starts. This removes the occasional cut/gap on slow networks,
@@ -7526,8 +7570,8 @@ class MusicService :
         // handler's position-tiered thresholds). Measure-only. HONEST
         // SCOPE: media3 only feeds custom processors on the 16-bit INT pipeline (Opus/AAC/16-bit FLAC —
         // the vast majority of content); the hi-res FLOAT pipeline (24-bit on capable devices) bypasses
-        // the whole custom chain, so those tracks keep the file-end-anchored fade. A sink-level tap
-        // (ForwardingAudioSink) is the known follow-up if 24-bit coverage is ever needed.
+        // the whole custom chain — covered since 0.6.131 by the sink-level tap (ForwardingAudioSink →
+        // measureExternal), so FLOAT content is measured too.
         // WHOLE-TRACK arming (owner order: the transition must fire NO MATTER how many seconds of silence
         // the song carries — never a dead gap). The position-tiered handler keeps mid-song safety: far from
         // the end TRUE silence needs ≥7s continuous (a skit/grand-pause can't fire), near the end 3.5s, and
@@ -7539,6 +7583,11 @@ class MusicService :
             if (tailArmedMediaId != armId) {
                 it.resetTracking()
                 tailArmedMediaId = armId
+                leadHintTrustedForArmedTrack = player.currentPosition <= 2_000L
+            } else if (player.currentPosition > 2_000L && it.leadingSilenceUsOrNegative() < 0L) {
+                // Same-track re-arm past the intro with nothing finalized yet: a seek moved counting away
+                // from the beginning — the eventual finalize would be interior audio, not the intro.
+                leadHintTrustedForArmedTrack = false
             }
             it.tailDetectEnabled = true
         }
@@ -7557,6 +7606,20 @@ class MusicService :
         if (nextIndex == C.INDEX_UNSET) return false
         val next = player.getMediaItemAt(nextIndex).mediaMetadata
         return current.albumTitle != null && current.albumTitle == next.albumTitle
+    }
+
+    /** Per-song tail memory writer. Sub-2s "tails" mean the song has no real silent tail — an EXACT (EOS)
+     *  measurement saying so also CLEARS any stale learned value. Implausible values (> half the song) are
+     *  ignored outright. */
+    private fun storeTailHint(mediaId: String?, hintMs: Long, durationMs: Long) {
+        if (mediaId == null || durationMs == C.TIME_UNSET) return
+        if (hintMs > durationMs / 2) return
+        if (hintMs < 2_000L) {
+            tailSilenceHintMs.remove(mediaId)
+            return
+        }
+        if (tailSilenceHintMs.size > 400) tailSilenceHintMs.clear()
+        tailSilenceHintMs[mediaId] = hintMs
     }
 
     private var lastCrossfadeTraceKey: String? = null
@@ -7653,6 +7716,21 @@ class MusicService :
             return
         }
         if (!player.hasNextMediaItem() && player.repeatMode != REPEAT_MODE_ONE) return
+        // LEARN this song's tail for the per-song memory (silent tier ONLY: its run start is the true end
+        // of audible content; the quiet tier's run start is the START of a still-audible mastered fade-out
+        // — anchoring 5s before THAT would cut real music on later plays). trailing ≈ remaining + run; the
+        // sink buffer skews it ≤~0.5s toward "earlier", which can only trim threshold-level noise. The EOS
+        // snapshot in cleanupCrossfade refines this with the exact value when the decoder reached EOS.
+        if (silentNow) {
+            val dur = player.duration
+            if (dur != C.TIME_UNSET) {
+                storeTailHint(
+                    player.currentMediaItem?.mediaId,
+                    (dur - player.currentPosition) + proc.silenceDurationUs() / 1_000L,
+                    dur
+                )
+            }
+        }
         // Deliberately do NOT cancel crossfadeTriggerJob: if this early fade can't actually start (the
         // secondary misses its READY window, or the user pauses during the bounded wait) the file-end-
         // anchored trigger must survive as the fallback — cancelling it here left the track with NO fade at
@@ -7846,12 +7924,15 @@ class MusicService :
             items.add(player.getMediaItemAt(i))
         }
         sec.setMediaItems(items)
-        sec.seekTo(targetIndex, 0)
+        val incomingId = items.getOrNull(targetIndex)?.mediaId
+        // PER-SONG INTRO MEMORY: start the incoming player right at its learned first audible frame — the
+        // crossfade rise lands on real music instead of dead intro silence. No hint → 0 (exact old
+        // behavior). The seek happens while this player is still muted and unstarted: inaudible.
+        val leadSkipMs = incomingId?.let { leadSilenceHintMs[it] } ?: 0L
+        sec.seekTo(targetIndex, leadSkipMs)
         sec.volume = 0f
         sec.repeatMode = player.repeatMode
         sec.shuffleModeEnabled = player.shuffleModeEnabled
-
-        val incomingId = items.getOrNull(targetIndex)?.mediaId
 
         // FIX B: pre-level the incoming track BEFORE sec.prepare() primes its first buffers. The secondary
         // shares the NormalizationGainAudioProcessor.gain static, which still holds the OUTGOING track's
@@ -7935,6 +8016,19 @@ class MusicService :
         // re-open. With crossfade ON (the default here) every advance is a swap, so that was permanent.
         currentPlayingMediaId = nextPlayer.currentMediaItem?.mediaId
         val currentPlayer = player
+
+        // LEARN the outgoing track's intro silence (finalized at its first loud frame): next time this
+        // song ENTERS a crossfade, the incoming player starts right at its music — the rise is heard over
+        // real audio instead of dead intro air. Undercount-safe by construction (frames before arming are
+        // simply not counted), so a stored skip can never eat music.
+        playerSilenceProcessors[currentPlayer]?.leadingSilenceUsOrNegative()?.takeIf { it >= 0 }?.let { us ->
+            val ms = us / 1_000L
+            val id = currentPlayer.currentMediaItem?.mediaId
+            if (id != null && id == tailArmedMediaId && leadHintTrustedForArmedTrack && ms in 1_000..20_000) {
+                if (leadSilenceHintMs.size > 400) leadSilenceHintMs.clear()
+                leadSilenceHintMs[id] = ms
+            }
+        }
 
         fadingPlayer = currentPlayer
         // Pin the OUTGOING player to its current normalization (the companion statics still hold its
@@ -8086,6 +8180,15 @@ class MusicService :
         playerLimiterProcessors[player]?.setInstanceMakeup(null, null)
         lastNormalizedId = null
         lastNormalizedHadLoudness = false
+        // Refine the per-song tail memory with the EXACT end-of-stream measurement when the decoder
+        // reached EOS (it runs ahead of the playback clock, so this is usually available even though the
+        // silent tail itself never audibly played). Read BEFORE stop() — duration/item may reset after.
+        fadingPlayer?.let { fp ->
+            val trailingUs = playerSilenceProcessors[fp]?.trailingSilenceUsOrNegative() ?: -1L
+            if (trailingUs >= 0) {
+                runCatching { storeTailHint(fp.currentMediaItem?.mediaId, trailingUs / 1_000L, fp.duration) }
+            }
+        }
         fadingPlayer?.stop()
         // NO clearMediaItems: this teardown fires at fade end — often the exact moment the outgoing
         // player's own content ENDS (the 0.6.133 durOut cap makes that overlap routine). A playlist

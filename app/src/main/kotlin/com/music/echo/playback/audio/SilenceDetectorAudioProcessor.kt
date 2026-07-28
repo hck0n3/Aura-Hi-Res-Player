@@ -35,8 +35,22 @@ class SilenceDetectorAudioProcessor(
     // (the skip-silence feature stays hardcoded OFF): this mode never skips or alters audio — it only
     // measures and fires [onLongSilence]. Near-zero cost: detection runs solely while armed (last ~20s of
     // a track), on the already-hot audio pipeline thread.
+    // NOTIFICATION arm only — see [countingLatched] for the measurement gate. Disarming (every
+    // reschedule; the moment a fade starts) stops FIRES, not counting: the per-song silence memory needs
+    // the counters to keep running to end-of-stream on the fading player, whose arm is withdrawn exactly
+    // when its fade begins (frozen counters there made the "exact EOS" snapshot store garbage).
     @Volatile
     var tailDetectEnabled: Boolean = false
+        set(value) {
+            field = value
+            if (value) countingLatched = true
+        }
+
+    // Latched ON the first time tail detection is armed; cleared only by a full [reset]. Once a track has
+    // ever wanted tail measurement on this processor, it measures for the processor's whole life —
+    // notifications stay strictly gated by [tailDetectEnabled]. Per-frame cost is an abs+compare.
+    @Volatile
+    private var countingLatched = false
 
     // TAIL mode requires LONGER silence than instant-skip's 2s default: a genuine end-of-song tail runs many
     // seconds, while a musical caesura (grand pause before a finale, breakdown gap) is usually shorter —
@@ -101,7 +115,7 @@ class SilenceDetectorAudioProcessor(
         // briefly disarms/re-arms on every reschedule, and wiping mid-silence progress there would delay a
         // genuine tail fire. Track boundaries still reset via flush() (seek) and resetTracking() (re-arm
         // for a NEW track); a loud frame resets naturally inside detectSilence.
-        if ((instantModeEnabled || tailDetectEnabled) && sampleRate > 0 && channelCount > 0) {
+        if ((instantModeEnabled || countingLatched) && sampleRate > 0 && channelCount > 0) {
             detectSilence(inputBuffer, encoding == C.ENCODING_PCM_FLOAT, sampleRate, channelCount)
         }
 
@@ -120,7 +134,7 @@ class SilenceDetectorAudioProcessor(
      */
     fun measureExternal(buffer: ByteBuffer, extEncoding: Int, extSampleRate: Int, extChannelCount: Int) {
         if (isActive) return
-        if (!tailDetectEnabled) return
+        if (!countingLatched) return
         if (extEncoding != C.ENCODING_PCM_16BIT && extEncoding != C.ENCODING_PCM_FLOAT) return
         if (extSampleRate <= 0 || extChannelCount <= 0 || !buffer.hasRemaining()) return
         detectSilence(buffer, extEncoding == C.ENCODING_PCM_FLOAT, extSampleRate, extChannelCount)
@@ -132,6 +146,7 @@ class SilenceDetectorAudioProcessor(
         sampleRate: Int,
         channelCount: Int,
     ) {
+        lastDetectSampleRate = sampleRate
 
         inputBuffer.order(ByteOrder.LITTLE_ENDIAN)
 
@@ -162,12 +177,19 @@ class SilenceDetectorAudioProcessor(
                 val requiredUs = if (instantModeEnabled) minSilenceDurationUs else tailMinSilenceDurationUs
                 if (silentDurationUs >= requiredUs) {
                     inSilence = true
-                    if (!notifiedThisSilence) {
+                    // Counting runs whenever latched; FIRING additionally requires the live arm. A
+                    // threshold crossed while disarmed notifies on the first frame after a re-arm.
+                    if (!notifiedThisSilence && (instantModeEnabled || tailDetectEnabled)) {
                         notifiedThisSilence = true
                         onLongSilence()
                     }
                 }
             } else {
+                // First loud frame since resetTracking finalizes the LEADING silence measurement.
+                if (!seenLoudFrame) {
+                    seenLoudFrame = true
+                    leadingSilenceUs = (consecutiveSilentFrames * 1_000_000L) / sampleRate
+                }
                 consecutiveSilentFrames = 0
                 inSilence = false
                 notifiedThisSilence = false
@@ -178,12 +200,12 @@ class SilenceDetectorAudioProcessor(
             // the quiet run alive (a fade-out hovers in that band for seconds). Each tier notifies once
             // per episode through the same callback; the Main-side handler tells them apart via
             // isCurrentlySilent()/isCurrentlyQuiet() and applies its own position guard to this tier.
-            if (tailDetectEnabled && framePeakNorm < QUIET_THRESHOLD_NORM) {
+            if (countingLatched && framePeakNorm < QUIET_THRESHOLD_NORM) {
                 consecutiveQuietFrames++
                 val quietDurationUs = (consecutiveQuietFrames * 1_000_000L) / sampleRate
                 if (quietDurationUs >= tailQuietMinDurationUs) {
                     inQuiet = true
-                    if (!notifiedThisQuiet) {
+                    if (!notifiedThisQuiet && tailDetectEnabled) {
                         notifiedThisQuiet = true
                         onLongSilence()
                     }
@@ -207,19 +229,71 @@ class SilenceDetectorAudioProcessor(
 
     fun resetTracking() {
         clearSilenceState()
+        leadingSilenceUs = -1L
+        seenLoudFrame = false
+        trailingSilenceUs = -1L
     }
 
     fun isCurrentlySilent(): Boolean = inSilence
 
     fun isCurrentlyQuiet(): Boolean = inQuiet
 
+    // LEADING-SILENCE capture: length of the silent run from track start (resetTracking) to the FIRST
+    // loud frame. -1 until finalized. Lets the service learn each song's intro silence and start the
+    // NEXT plays right at the music (owner: "si tienen silencio al empezar, que sea omitido").
+    @Volatile
+    private var leadingSilenceUs: Long = -1L
+
+    @Volatile
+    private var seenLoudFrame = false
+
+    fun leadingSilenceUsOrNegative(): Long = leadingSilenceUs
+
+    // TRAILING-SILENCE snapshot, taken at end-of-stream (decode EOS): the final continuous silent run of
+    // the WHOLE decoded track = the file's exact trailing silence. EOS-anchored on purpose — a snapshot at
+    // fire/positon time would be skewed by decode-ahead (the decoder runs seconds ahead of the playback
+    // clock, so run-length minus position math OVERestimates the tail and would cut real music on the next
+    // play). -1 until EOS is reached. Feeds the service's per-song tail memory: NEXT plays anchor the fade
+    // at (musical end - fade window), so the decay covers the last seconds of MUSIC and the silent tail
+    // never plays.
+    @Volatile
+    private var trailingSilenceUs: Long = -1L
+
+    fun trailingSilenceUsOrNegative(): Long = trailingSilenceUs
+
+    /** Sink-tap equivalent of [queueEndOfStream]: the FLOAT pipeline bypasses the processor chain, so the
+     *  ForwardingAudioSink calls this from playToEndOfStream() to take the same EOS trailing snapshot.
+     *  SAME gates as [measureExternal]: when the chain is active (int pipeline) its own queueEndOfStream
+     *  owns the snapshot — and a STALE-active processor (int track earlier on this player, float track
+     *  now: the sink never re-configures the custom chain) must not snapshot a counter that measured
+     *  nothing, which would erase a valid learned tail via the sub-2s "clears stale entry" path. */
+    fun markEndOfStreamExternal() {
+        if (isActive) return
+        if (!countingLatched) return
+        snapshotTrailingSilence()
+    }
+
+    private fun snapshotTrailingSilence() {
+        val sr = if (lastDetectSampleRate > 0) lastDetectSampleRate else sampleRate
+        if (sr > 0) trailingSilenceUs = (consecutiveSilentFrames * 1_000_000L) / sr
+    }
+
+    // The sample rate the detector ACTUALLY ran at. On the sink-tap path (float pipeline) the processor is
+    // inactive and its own [sampleRate] field may be 0/stale — duration accessors must use the rate the
+    // frames were counted at or they return 0 and every duration gate misjudges.
+    @Volatile
+    private var lastDetectSampleRate = 0
+
     /** How long the CURRENT uninterrupted silence run has lasted (µs); 0 if not in one. Lets the Main-side
      *  handler require a LONGER run for fires far from the track's end (mid-song skit/grand-pause safety). */
-    fun silenceDurationUs(): Long =
-        if (sampleRate > 0) (consecutiveSilentFrames * 1_000_000L) / sampleRate else 0L
+    fun silenceDurationUs(): Long {
+        val sr = if (lastDetectSampleRate > 0) lastDetectSampleRate else sampleRate
+        return if (sr > 0) (consecutiveSilentFrames * 1_000_000L) / sr else 0L
+    }
 
     override fun queueEndOfStream() {
         inputEnded = true
+        snapshotTrailingSilence()
     }
 
     override fun getOutput(): ByteBuffer {
@@ -244,6 +318,7 @@ class SilenceDetectorAudioProcessor(
         channelCount = 0
         encoding = C.ENCODING_INVALID
         isActive = false
+        countingLatched = false
     }
 
     private fun replaceOutputBuffer(size: Int): ByteBuffer {
