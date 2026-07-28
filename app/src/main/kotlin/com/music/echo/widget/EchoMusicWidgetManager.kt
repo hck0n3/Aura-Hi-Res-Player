@@ -83,8 +83,12 @@ class EchoMusicWidgetManager @Inject constructor(
         
         // `cachedAlbumArt != null` must NOT be part of the hit test: when a load fails we still cache the
         // URI with a null bitmap, so requiring non-null re-issued a full Coil execute() EVERY SECOND for
-        // as long as that song played. Matching on the URI alone means one attempt per song.
-        if (artworkUri != null && artworkUri == cachedArtworkUri) {
+        // as long as that song played. Matching on the URI alone means one attempt per song — but a
+        // FAILED load must still get a second chance, or one network blip at track start leaves the
+        // launcher icon for the whole song (forever under repeat-one). Retry occasionally, not per tick.
+        if (artworkUri != null && artworkUri == cachedArtworkUri &&
+            (cachedAlbumArt != null || ++artworkRetryTicks % ARTWORK_RETRY_TICKS != 0)
+        ) {
             albumArt = cachedAlbumArt
             circularAlbumArt = cachedCircularAlbumArt
         } else {
@@ -405,6 +409,15 @@ class EchoMusicWidgetManager @Inject constructor(
     // time — and because the source bitmap was new every call, it also defeated the rounded-bitmap memo
     // and left its slot holding garbage. ~1 MB of churn per second, inside a memory-pressure fix.
     private val defaultIconCache = HashMap<Float, Bitmap>()
+
+    // Widget ticks since the last artwork attempt, used only to re-try a FAILED load (see the hit test
+    // in updateWidgetUI). ~30 s between retries: cheap enough to recover from a network blip, far from
+    // the per-second storm the URI-only hit test was introduced to stop.
+    private var artworkRetryTicks = 0
+
+    private companion object {
+        const val ARTWORK_RETRY_TICKS = 30
+    }
 
     private fun getRoundedDefaultIcon(cornerRadius: Float): Bitmap {
         defaultIconCache[cornerRadius]?.takeIf { !it.isRecycled }?.let { return it }

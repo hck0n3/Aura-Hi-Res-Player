@@ -180,6 +180,45 @@ class DiscographyKeysTest {
         assertEquals(1, floor.getValue("solo un sencillo"))
     }
 
+    // ── defect 6: "- EP" collapses the floor exactly like "- Single" did ──
+    //
+    // normalizeTitle strips "- EP" too, so a 4-track "X - EP" shared the 12-track album's key. "More than
+    // one track" let it through and the floor became 4 → ceil(4*0.6)=3, so a 3-of-12 TRUNCATED upload passed
+    // isComplete, was marked present by countsAsHave and could win Phase D. The MAX rule demanded 8.
+
+    @Test fun anEpEditionCannotSetTheFloorOfItsAlbum() {
+        val floor = buildFloorTracks(listOf("Sin Fronteras" to 12, "Sin Fronteras - EP" to 4))
+        assertEquals(12, floor.getValue("sin fronteras"))
+        val truncated = quality(3, true) // 3 of 12, durations fine — the shape that slipped through
+        assertFalse(isComplete(truncated, floor["sin fronteras"]))
+        assertFalse(countsAsHave(truncated, floor["sin fronteras"]))
+        assertTrue(isComplete(quality(12, true), floor["sin fronteras"]))
+    }
+
+    @Test fun aTwoTrackMiniEditionCannotSetTheFloorEither() {
+        // 2 tracks passes the old "more than one" test but is still not an edition of a 12-track album
+        assertEquals(12, buildFloorTracks(listOf("X Album" to 12, "X Album - EP" to 2)).getValue("x album"))
+    }
+
+    @Test fun aStandardEditionIsNotMistakenForAMiniEdition() {
+        // the ratio rule must NOT undo the MIN-across-stores protection: a standard edition is never under
+        // half of its own deluxe, so it still sets the floor (and still passes its own gate)
+        for (pair in listOf(listOf(24, 12), listOf(24, 13), listOf(18, 10))) {
+            val (deluxe, standard) = pair
+            val floor = buildFloorTracks(listOf("Look Up Child" to deluxe, "Look Up Child" to standard))
+            assertEquals("$deluxe/$standard", standard, floor.getValue("look up child"))
+            assertTrue("$deluxe/$standard", isComplete(quality(standard, true), floor["look up child"]))
+        }
+    }
+
+    @Test fun aGenuinelyShortAlbumStillKeepsARealFloor() {
+        // the fullest edition of itself always passes its own ratio test → a 5-track album still gates at 3
+        val floor = buildFloorTracks(listOf("Corto" to 5))
+        assertEquals(5, floor.getValue("corto"))
+        assertFalse(isComplete(quality(2, true), floor["corto"]))
+        assertTrue(isComplete(quality(5, true), floor["corto"]))
+    }
+
     @Test fun expectedTracksStillRanksByTheFullestEdition() {
         // ranking keeps the MAX — a deluxe upload must still beat a truncated one
         val expected = buildExpectedTracks(
@@ -258,34 +297,103 @@ class DiscographyKeysTest {
         assertEquals(live, reconKey("Lenguaje de Amor - En Vivo"))
     }
 
-    @Test fun everyLiveMarkerNormalizesToTheStudioBaseWithOrWithoutASeparator() {
+    @Test fun everyUNAMBIGUOUSLiveMarkerNormalizesToTheStudioBase() {
         val expected = reconKey("Lenguaje de Amor") + LIVE_MARKER
         for (raw in listOf(
-            // separator-less (the case the old suffix list missed entirely)
-            "Lenguaje de Amor En Vivo",
-            "Lenguaje de Amor En Directo",
-            "Lenguaje de Amor En Concierto",
-            "Lenguaje de Amor Acústico",
-            "Lenguaje de Amor Acoustic",
-            "Lenguaje de Amor Unplugged",
-            "Lenguaje de Amor Live",
-            // separators the old list also did not cover for these words
+            // parenthesised (iTunes' form) — the whole parenthetical goes, venue/date clause included
+            "Lenguaje de Amor (En Vivo)",
+            "Lenguaje de Amor (Live)",
+            "Lenguaje de Amor (Acústico)",
+            "Lenguaje de Amor (Unplugged)",
+            "Lenguaje de Amor (En Vivo Desde Bogotá)",
+            // after a REAL separator — any marker of the list, plus its venue/date tail
+            "Lenguaje de Amor - En Vivo",
             "Lenguaje de Amor - Acústico",
             "Lenguaje de Amor: Live",
             "Lenguaje de Amor, Unplugged",
-            // marker plus a venue/date clause
-            "Lenguaje de Amor (En Vivo Desde Bogotá)",
-            "Lenguaje de Amor En Vivo Desde Bogotá",
-            "Lenguaje de Amor En Vivo 2020",
-            "Lenguaje de Amor Unplugged in New York",
+            "Lenguaje de Amor - Live at the Apollo",
+            "Lenguaje de Amor - En Vivo 2020",
+            "Lenguaje de Amor - En Vivo Desde Bogotá",
+            // separator-less: ONLY the multi-word Spanish forms (YouTube Music's form, the owner's case)
+            "Lenguaje de Amor En Vivo",
+            "Lenguaje de Amor En Directo",
+            "Lenguaje de Amor En Concierto",
         )) {
             assertEquals(raw, expected, reconKey(raw))
         }
     }
 
+    // ── defect 5: the strip must never MUTILATE a legitimate title ──
+    //
+    // The two mistakes are NOT symmetric. A missed strip costs one wasted lookup (the release is searched
+    // again and, at worst, listed twice). A WRONG strip renames the album to a shorter title that collides
+    // with another release — and Phase D keeps ONE winner per key, so the loser disappears from the
+    // discography, the exact opposite of what this feature is for. Every title below is real and every one
+    // was mutilated by the separator-less venue clause ("marker + everything after it, any separator or
+    // none"), which is why that clause now exists only in the parenthesised/separator form.
+
+    @Test fun aLegitimateTitleIsNeverShortenedByTheLiveStrip() {
+        for ((raw, whole) in listOf(
+            "We Live in Time" to "we live in time",                       // used to become "we"
+            "Sessions Live at the Apollo" to "sessions live at the apollo", // used to become "sessions"
+            "Nada Es Igual Live 2019" to "nada es igual live 2019",        // digit branch → "nada es igual"
+            "Long Live" to "long live",
+            "MTV Unplugged" to "mtv unplugged",
+            "MTV Unplugged in New York" to "mtv unplugged in new york",
+            "Radio Live" to "radio live",
+            "One Live" to "one live",
+        )) {
+            assertEquals(raw, whole, plainKey(reconKey(raw)))
+        }
+    }
+
+    @Test fun twoRealAlbumsOfTheSameSeriesKeepTwoKeys() {
+        // "MTV Unplugged" is a huge series (Maná, Shakira, Alejandro Sanz, Café Tacvba). Both entries used
+        // to collapse to "mtv", so an artist holding both lost one of them in Phase D.
+        assertNotEquals(reconKey("MTV Unplugged"), reconKey("MTV Unplugged in New York"))
+        assertNotEquals(reconKey("Long Live"), reconKey("Long Live the King"))
+        assertNotEquals(reconKey("We Live in Time"), reconKey("We Live in Sound"))
+    }
+
+    @Test fun anAmbiguousSeparatorLessMarkerIsDeliberatelyNotStripped() {
+        // Conservative by design: a bare single-word marker with no separator stays in the key. The cost is
+        // one wasted lookup (and at worst a duplicate row); the alternative deletes "MTV Unplugged" & co.
+        for (raw in listOf(
+            "Lenguaje de Amor Live",
+            "Lenguaje de Amor Unplugged",
+            "Lenguaje de Amor Acústico",
+            "Lenguaje de Amor Acoustic",
+            // venue/date tail with NO separator: this shape is what ate whole titles, so it is left alone
+            "Lenguaje de Amor En Vivo Desde Bogotá",
+            "Lenguaje de Amor En Vivo 2020",
+            "Lenguaje de Amor Unplugged in New York",
+        )) {
+            assertNotEquals(raw, reconKey("Lenguaje de Amor") + LIVE_MARKER, reconKey(raw))
+            assertTrue(raw, plainKey(reconKey(raw)).startsWith("lenguaje de amor "))
+        }
+    }
+
+    @Test fun aTitleThatIsNothingButAMarkerKeepsAllItsWords() {
+        // the strip may never leave fewer than one meaningful word, and never fires when the marker IS the
+        // title — otherwise every such release would share one empty key
+        for (raw in listOf("En Vivo", "Live", "En Directo", "Unplugged", "Acústico", "Directo al Corazón")) {
+            assertEquals(raw, raw.lowercase(), plainKey(reconKey(raw)))
+        }
+    }
+
+    @Test fun theOwnersCaseKeysTheSameInAllThreeForms() {
+        // "Alex Campos En Vivo" (YouTube Music) == "Alex Campos (En Vivo)" (iTunes) == "Alex Campos - En Vivo"
+        val paren = reconKey("Alex Campos (En Vivo)")
+        assertEquals(paren, reconKey("Alex Campos En Vivo"))
+        assertEquals(paren, reconKey("Alex Campos - En Vivo"))
+        assertNotEquals(paren, reconKey("Alex Campos"))
+        // …while the separator-less venue form is simply left whole (one wasted lookup, no mutilation)
+        assertEquals("alex campos en vivo desde bogotá", plainKey(reconKey("Alex Campos En Vivo Desde Bogotá")))
+    }
+
     @Test fun aTitleWhoseOwnWordsLookLikeMarkersIsNotMutilated() {
-        // stripping only fires when the marker FOLLOWS real title text and ENDS it, so these survive whole —
-        // otherwise "Long Live the King" would collapse to "long" and collide with unrelated releases.
+        // stripping only fires after a real separator, or for a multi-word Spanish marker that ENDS the
+        // title — so these survive whole. Otherwise "Long Live the King" collapses to "long" and collides.
         assertEquals("en vivo", plainKey(reconKey("En Vivo")))
         assertEquals("directo al corazón", plainKey(reconKey("Directo al Corazón")))
         assertEquals("live your life", plainKey(reconKey("Live Your Life")))

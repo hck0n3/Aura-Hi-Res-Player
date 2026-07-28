@@ -103,7 +103,11 @@ object ExitReasonReporter {
         // The watermark advances only once the lines are actually on disk (callback runs on AppLogger's
         // IO executor). Otherwise a kill between enqueue and write would mark these records as seen
         // and they would never be logged — the exact silent-loss this class exists to prevent.
-        val newest = fresh.last().timestamp
+        // Clamp the watermark to "now" as well. Storing a FUTURE timestamp (a record written while the
+        // clock was ahead) would make the guard above re-open the whole batch on every launch — the same
+        // records re-imported forever, each run re-emitting the history header and pushing real entries
+        // out of the size-capped file.
+        val newest = minOf(fresh.last().timestamp, System.currentTimeMillis())
         AppLogger.appendExitReasons(context, text) {
             // commit(), not apply(): this callback ALREADY runs on AppLogger's IO executor, so the
             // synchronous write is free here — and apply()'s deferred flush is exactly what a

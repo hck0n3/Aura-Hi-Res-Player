@@ -1075,6 +1075,16 @@ interface DatabaseDao {
     @Query("SELECT *, (SELECT COUNT(*) FROM playlist_song_map WHERE playlistId = playlist.id) AS songCount FROM playlist WHERE browseId = :browseId ORDER BY rowId")
     fun playlistsByBrowseIdBlocking(browseId: String): List<Playlist>
 
+    /**
+     * EVERY row that came from a remote playlist, INCLUDING tombstones (bookmarkedAt NULL — rows kept so
+     * the sync won't resurrect a playlist the user removed). "Clear synced content" must use this: a
+     * Library-filtered read cannot see a browseId whose only row is a tombstone, so those rows survived
+     * a full reset holding their entire song map, and the sync then skipped those playlists forever.
+     */
+    @Transaction
+    @Query("SELECT *, (SELECT COUNT(*) FROM playlist_song_map WHERE playlistId = playlist.id) AS songCount FROM playlist WHERE browseId IS NOT NULL ORDER BY rowId")
+    fun playlistsWithBrowseIdBlocking(): List<Playlist>
+
     @Transaction
     @Query("SELECT COUNT(*) from playlist_song_map WHERE playlistId = :playlistId AND songId = :songId LIMIT 1")
     fun checkInPlaylist(

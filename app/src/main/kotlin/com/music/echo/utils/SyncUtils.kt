@@ -1404,9 +1404,12 @@ class SyncUtils @Inject constructor(
                     // user actually sees, and its id is referenced elsewhere as "PL:<id>" (Speed Dial
                     // pins, widget targets, the enhanced-shuffle memory), leaving those dangling.
                     // The survivor's songs are refilled by the sync; a tombstone's are expendable.
-                    val toKeep = playlists.minWithOrNull(
-                        compareBy<Playlist>({ if (it.playlist.bookmarkedAt != null) 0 else 1 }, { it.id })
-                    ) ?: playlists.first()
+                    // EXACTLY what playlistByBrowseId resolves: bookmarked first, then lowest rowId.
+                    // playlistsByBrowseIdBlocking is already ORDER BY rowId, so "first bookmarked, else
+                    // first" reproduces it. Tie-breaking on the TEXT id instead would disagree with rowId
+                    // about half the time and delete the row the app actually shows.
+                    val toKeep = playlists.firstOrNull { it.playlist.bookmarkedAt != null }
+                        ?: playlists.first()
 
                     playlists.filter { it.id != toKeep.id }.forEach { duplicate ->
                         try {
@@ -1455,14 +1458,12 @@ class SyncUtils @Inject constructor(
                 // playlist the user removed): a Library-filtered read would leave them behind, holding
                 // their whole song map forever AND making the sync skip those playlists for good — after
                 // a full reset the account's playlists must be able to come back.
-                val savedPlaylists = database.playlistsByNameAsc().first()
-                val browseIds = savedPlaylists.mapNotNull { it.playlist.browseId }.distinct()
-                val syncedRows = browseIds.flatMap { database.playlistsByBrowseIdBlocking(it) }
-                    .plus(savedPlaylists.filter { it.playlist.browseId != null })
-                    .distinctBy { it.playlist.id }
-                syncedRows.forEach {
-                    database.clearPlaylist(it.playlist.id)
-                    database.delete(it.playlist)
+                // Reads EVERY row with a browseId, tombstones included. Seeding this from a Library query
+                // could not see a browseId whose only row is a tombstone — the normal state after the
+                // user removes a synced playlist — so those rows survived the reset with their whole
+                // song map AND kept the sync skipping those playlists for good.
+                database.playlistsWithBrowseIdBlocking().forEach {
+                    database.delete(it.playlist)  // playlist_song_map cascades
                 }
             }
 

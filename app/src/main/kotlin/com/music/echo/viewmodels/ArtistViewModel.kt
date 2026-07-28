@@ -182,24 +182,32 @@ class ArtistViewModel @Inject constructor(
             // them would burn a network search per open whose result can never be shown.
             if (localRow != null && !localRow.isYouTubeArtist && !localRow.isLocal) {
                 val cached = resolvedChannelIds[artistId]
-                val resolved = cached ?: runCatching {
-                    YouTube.search(localRow.name, YouTube.SearchFilter.FILTER_ARTIST).getOrNull()
-                        ?.items
+                val resolved: String?
+                if (cached != null) {
+                    resolved = cached
+                } else {
+                    // Distinguish "YouTube answered, this artist isn't there" from "the request failed".
+                    // Only the FORMER may be cached as a miss: caching a transient failure (offline, one
+                    // throttled request) would pin the artist to the tiny local view for the whole
+                    // session, with no retry — the very dead end this resolution exists to remove.
+                    val searchResult = runCatching {
+                        YouTube.search(localRow.name, YouTube.SearchFilter.FILTER_ARTIST).getOrNull()
+                    }.getOrNull()
+                    val match = searchResult?.items
                         ?.filterIsInstance<com.music.innertube.models.ArtistItem>()
                         ?.firstOrNull { candidate ->
                             candidate.id.startsWith("UC") &&
                                 candidate.title.trim().equals(localRow.name.trim(), ignoreCase = true)
                         }
                         ?.id
-                }.getOrNull()
-                if (resolved == null) {
-                    // Genuinely local-only (or offline): leave hasFailed FALSE and let the screen render
-                    // the local view instead of a retry that could never succeed. Remember the miss for
-                    // this session so re-opening the artist doesn't pay for the same search again.
-                    resolvedChannelIds[artistId] = ""
+                    if (match == null && searchResult != null) resolvedChannelIds[artistId] = ""
+                    resolved = match
+                }
+                if (resolved.isNullOrEmpty()) {
+                    // Local-only, offline, or a cached miss: leave hasFailed FALSE so the screen renders
+                    // the local view instead of a retry that could never succeed.
                     return@launch
                 }
-                if (resolved.isEmpty()) return@launch   // cached miss
                 effectiveArtistId = resolved
                 // DELIBERATELY NOT PERSISTED to ArtistEntity.channelId. That column feeds
                 // ArtistEntity.toggleLike() and SyncUtils' subscription sync, which call

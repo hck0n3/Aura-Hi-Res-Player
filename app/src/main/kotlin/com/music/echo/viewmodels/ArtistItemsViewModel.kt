@@ -124,13 +124,30 @@ fun countsAsHave(quality: AlbumQuality?, floor: Int?): Boolean =
  *
  * A title iTunes knows ONLY as a 1-track release really is a single, so it keeps its own count as the floor.
  * Unknown counts (0) never become the floor; a title with nothing but unknowns maps to 0 = "do not gate".
+ *
+ * "More than one track" is NOT enough on its own, because the same suffix strip also collapses "- EP":
+ * a 4-track "X - EP" shares the key of the 12-track album "X" and pins the floor at 4, whose gate is
+ * `ceil(4 * 0.6) = 3` — so a 3-of-12 TRUNCATED upload passes [isComplete], is marked present by
+ * [countsAsHave] and can win Phase D, replacing the real album. The MAX-based rule this replaced demanded 8.
+ *
+ * Hence the ratio rule: an edition with LESS THAN HALF the tracks of the fullest known edition is a
+ * mini/EP/sampler pressing, not a legitimate short edition of the album, and may not set the gate. Half is
+ * chosen because it separates the two cases cleanly in real catalogs — a standard edition is never under
+ * half of its own deluxe (12 vs 24, 13 vs 24: kept, so the MIN-across-stores rule that protects standard
+ * editions survives), while an EP/mini is (4 vs 12, 2 vs 12: ignored). A genuinely short album still keeps a
+ * real floor: it is the fullest edition of itself, so it always passes its own ratio test.
+ *
+ * The remaining error is deliberately one-sided. A floor that is too HIGH only wastes one search — the
+ * release stays in `missing`, is looked up again, and Phase D still falls back to the best album it has. A
+ * floor that is too LOW admits a truncated upload as the winner, which is a visibly broken album.
  */
 fun buildFloorTracks(itunesMeta: List<Pair<String, Int>>): Map<String, Int> =
     itunesMeta
         .groupBy { iTunesDiscography.normalizeTitle(it.first) }
         .mapValues { (_, v) ->
-            v.mapNotNull { (_, count) -> count.takeIf { it > 1 } }.minOrNull()
-                ?: v.maxOf { it.second }
+            val editions = v.mapNotNull { (_, count) -> count.takeIf { it > 1 } }
+            val fullest = editions.maxOrNull() ?: 0
+            editions.filter { it * 2 >= fullest }.minOrNull() ?: v.maxOf { it.second }
         }
         .filterKeys { it.isNotBlank() }
 

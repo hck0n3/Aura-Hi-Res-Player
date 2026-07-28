@@ -145,51 +145,78 @@ object iTunesDiscography {
                 ?.takeIf { it.isNotBlank() }
         }.getOrNull()
 
+    private val PARENTHETICAL = Regex("\\(.*?\\)")
+    private val BRACKETED = Regex("\\[.*?\\]")
+    private val EDITION_SUFFIX =
+        Regex("(?i)\\s*[-–—]\\s*(ep|single|deluxe|remaster(ed)?|edition|expanded|bonus|version)\\b.*$")
+    private val NON_WORD = Regex("[^\\p{L}\\p{Nd} ]")
+    private val WHITESPACE = Regex("\\s+")
+
     /**
-     * Live / acoustic edition marker, stripped together with everything that follows it ("En Vivo Desde
-     * Bogotá") REGARDLESS of the separator in front of it.
+     * Live / acoustic edition marker to strip so that the studio and the live edition of a record each key
+     * consistently no matter which store wrote the title.
      *
-     * Why no separator requirement: iTunes writes "X (En Vivo)" while YouTube Music usually writes the bare
-     * "X En Vivo". When only the parenthesised / dashed forms were stripped, the very same record produced
-     * two different keys ("x" vs "x en vivo") — so it was reported missing, re-searched (a wasted lookup),
-     * and then emitted TWICE by the assembly dedupe. The word list also has to cover the Spanish/English
-     * forms the app's audience actually uses (acústico/acoustic/unplugged/directo/en concierto), not just
-     * "live"/"en vivo".
+     * DELIBERATELY CONSERVATIVE. The two mistakes are not symmetric: a missed strip only costs ONE wasted
+     * lookup (the release is searched again and, at worst, listed twice), while a WRONG strip turns a real
+     * title into a shorter one that COLLIDES with another release — and Phase D keeps a single winner per
+     * key, so the album that loses the collision disappears from the discography. Only two shapes qualify:
      *
-     * Two guards keep it from eating real titles:
-     *  • the lookbehind requires REAL title text in front, so a release whose title genuinely STARTS with
-     *    one of these words ("En Vivo", "Directo al Corazón", "Live Your Life") is never emptied;
-     *  • the marker must END the title, optionally followed by a venue/date clause ("… En Vivo desde
-     *    Bogotá", "… Unplugged in New York", "… En Vivo 2020"). That is what keeps "Long Live the King"
-     *    and "El Directo al Corazón" intact — an ambiguous word in the MIDDLE of a title is not a marker.
+     *  1. a marker introduced by a REAL separator (" - ", " – ", ":", ","), optionally followed by a
+     *     venue/date clause: "X - Live at the Apollo", "X: En Vivo 2019", "X, Unplugged". The separator is
+     *     what proves the tail is an edition label rather than part of the title.
+     *  2. NO separator: ONLY the unambiguous multi-word Spanish forms ("en vivo", "en directo",
+     *     "en concierto"), and only when they END the title. This is the shape the owner's catalog needs —
+     *     iTunes writes "X (En Vivo)" (the parenthetical is already dropped above) while YouTube Music
+     *     writes the bare "X En Vivo"; two keys for one record made it be reported missing, re-searched and
+     *     then emitted twice by the assembly dedupe.
+     *
+     * What is deliberately NOT stripped without a separator, because it mutilated real albums:
+     *  • a bare single word — "live", "unplugged", "acústico", "acoustic", "directo". Legitimate titles end
+     *    in them: "Long Live", "MTV Unplugged", "Radio Live", "One Live".
+     *  • anything that FOLLOWS the marker. The old venue clause was applied to the separator-less form too
+     *    and ate the rest of the title: "We Live in Time" → "we", "Sessions Live at the Apollo" →
+     *    "sessions", "Nada Es Igual Live 2019" → "nada es igual", and — worst — "MTV Unplugged in New York"
+     *    → "mtv", the SAME key as "MTV Unplugged", so an artist holding both lost one. The clause survives
+     *    only inside shape 1.
+     *
+     * The lookbehind additionally requires real title text in front, so a release whose title IS the marker
+     * ("En Vivo", "Live", "Directo al Corazón") is never emptied; [normalizeTitle] double-checks that.
      *
      * Callers that must keep the two recordings apart re-add a marker themselves — see reconKey /
      * LIVE_ACOUSTIC in ArtistItemsViewModel.
      */
     private val LIVE_EDITION_SUFFIX =
         Regex(
-            "(?i)(?<=[\\p{L}\\p{Nd}])\\s*[-–—:,]?\\s*" +
-                "\\b(en\\s*vivo|en\\s*directo|en\\s*concierto|unplugged|ac[uú]stico|acoustic|live|directo)\\b" +
-                "(\\s+(?:(?:desde|en|at|from|in|@)\\b|\\d).*)?\\s*$",
+            "(?i)(?<=[\\p{L}\\p{Nd}])" +
+                "(?:" +
+                // 1) after a real separator: any marker, plus an optional venue/date tail
+                "(?:\\s+[-–—]\\s*|\\s*[:,]\\s*)" +
+                "(?:en\\s*vivo|en\\s*directo|en\\s*concierto|unplugged|ac[uú]stico|acoustic|live|directo)\\b" +
+                "(?:\\s+(?:(?:desde|en|at|from|in|@)\\b|\\d).*)?" +
+                "|" +
+                // 2) separator-less: only the multi-word Spanish forms, and only at the very end
+                "\\s+(?:en\\s*vivo|en\\s*directo|en\\s*concierto)\\b" +
+                ")\\s*$",
         )
 
     /**
      * Normalize an album title so "Privé - EP", "Privé (Deluxe)" and "Privé" all compare equal. Strips
      * a trailing release-type suffix ("- EP", "- Single", "- Deluxe"...) but NOT a leading word (so
      * "Single Ladies" stays intact), and drops parentheticals/punctuation/accents-insensitive symbols.
-     * Live/acoustic markers are stripped by [LIVE_EDITION_SUFFIX] with or without a separator.
+     * Live/acoustic markers are stripped by [LIVE_EDITION_SUFFIX] — see there for exactly which shapes.
      */
-    fun normalizeTitle(raw: String): String =
-        raw.lowercase()
-            .replace(Regex("\\(.*?\\)"), " ")
-            .replace(Regex("\\[.*?\\]"), " ")
-            .replace(
-                Regex("(?i)\\s*[-–—]\\s*(ep|single|deluxe|remaster(ed)?|edition|expanded|bonus|version)\\b.*$"),
-                " ",
-            )
-            // Superseded the "live|en vivo" entries of the list above: this one does not need a dash.
-            .replace(LIVE_EDITION_SUFFIX, " ")
-            .replace(Regex("[^\\p{L}\\p{Nd} ]"), " ")
-            .replace(Regex("\\s+"), " ")
-            .trim()
+    fun normalizeTitle(raw: String): String {
+        val base = raw.lowercase()
+            .replace(PARENTHETICAL, " ")
+            .replace(BRACKETED, " ")
+            .replace(EDITION_SUFFIX, " ")
+        val stripped = squeeze(base.replace(LIVE_EDITION_SUFFIX, " "))
+        // The strip must never leave fewer than one meaningful word: if it consumed everything (a title that
+        // is nothing but a marker), keep the unstripped title — a wasted lookup beats an empty key, which
+        // would merge every such release into one.
+        return if (stripped.isNotBlank()) stripped else squeeze(base)
+    }
+
+    private fun squeeze(s: String): String =
+        s.replace(NON_WORD, " ").replace(WHITESPACE, " ").trim()
 }
