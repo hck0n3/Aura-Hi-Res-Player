@@ -94,6 +94,15 @@ jobs:
           name: Aura-Hi-Res-Player
           path: app/build/outputs/apk/release-artifacts/*.apk
 
+      # R8 mapping for deobfuscating user crash reports (obfuscated frames like `utils.s2.n` are
+      # unreadable without the EXACT mapping of the shipped build — a local rebuild renames differently).
+      - name: Upload R8 mapping (crash deobfuscation)
+        uses: actions/upload-artifact@v4
+        with:
+          name: r8-mapping
+          path: app/build/outputs/mapping/**/mapping.*
+          if-no-files-found: warn
+
       - name: Parse Release Info
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         run: |
