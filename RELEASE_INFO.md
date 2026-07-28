@@ -1,15 +1,15 @@
-# Aura Hi-Res Player 0.6.133 — La que sale AHORA SÍ baja su volumen (bug estructural encontrado)
+# Aura Hi-Res Player 0.6.134 — Crash del cliente cazado + reportes que se explican solos
 
-## 🔴 Tu reporte exacto, resuelto de raíz: "la que entra está bien, la que sale no baja"
-Encontramos el bug estructural en el corazón del fundido — dos fallas juntas:
+## 🔴 El crash reportado por un cliente (0.6.133): cazado y blindado
+Con herramientas nuevas de desofuscación rastreamos el cierre inesperado hasta su origen real: una **carrera interna del motor de audio** cuando la app tocaba la lista de un reproductor moribundo justo en el instante en que su canción terminaba (podía pasar en cualquier cruce — "escuchando música normal"). Blindado por dos lados:
+- El desmontaje del cruce ya no hace la operación redundante que competía con el motor.
+- Un aviso interno del generador de tokens que podía tumbar la app quedó protegido.
 
-1. **El fundido entero se CONGELABA mientras la canción entrante cargaba**: había una espera interna que pausaba TODO el cruce hasta que la nueva empezara a sonar (normal que tarde unos segundos en streaming). Durante esa espera, la saliente quedaba **clavada a volumen alto**; cuando el fundido por fin corría, a la saliente casi no le quedaba vida y moría sin bajar.
-2. **La rampa de bajada nunca se ajustaba al tiempo real restante**: si el cruce arrancaba tarde, la bajada programada era más larga que lo que le quedaba a la canción — el archivo terminaba con la rampa apenas empezada.
-
-**El rediseño — cada lado con su propio reloj:**
-- La que **sale** baja siguiendo SU reproducción real: su bajada siempre se oye completa y siempre termina antes de que se acabe su audio. Nada la congela.
-- La que **entra** sube siguiendo SU audio real: si tarda en cargar, sube cuando de verdad suena — sin golpes y sin frenar a la otra.
-- Pausa del usuario: ambas se congelan y reanudan correctamente.
+## 🛡️ Reportes de crash que se explican solos (para siempre)
+- Cada reporte ahora incluye el **mensaje del error, su cadena de causas, el hilo, y las últimas 25 líneas de lo que la app estaba haciendo** (transiciones, resoluciones) — un crash futuro llega con su propia explicación.
+- El mapa de desofuscación de CADA versión queda guardado — ningún crash volverá a ser ilegible.
+- Nuevo libro permanente de crashes (`docs/CRASH_REPORTS.md`): cada reporte queda registrado con causa y estado — los errores no se repiten.
 
 ## Recordatorio
-Si algo aún no suena perfecto: **Ajustes ▸ Registros** → compartir → mándamelo. Cada transición deja su línea `CROSSFADE_TRACE` con el veredicto.
+- Si un cruce no suena perfecto: **Ajustes ▸ Registros** → compartir → mandar. Cada transición trae su veredicto.
+- **Cortes a mitad de canción** (Lossless/Saavn): mismo registro.

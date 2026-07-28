@@ -87,7 +87,13 @@ class PoTokenWebView private constructor(
                     Timber.tag(TAG).e("This WebView implementation is broken: $fmt")
 
                     onInitializationErrorCloseAndCancel(exception)
-                    popAllPoTokenContinuations().forEach { (_, cont) -> cont.resumeWithException(exception) }
+                    // runCatching: a continuation may have been resumed/cancelled concurrently (timeout,
+                    // renderer-gone, prewarm-vs-resolve contention) — a double resume throws ISE on the
+                    // posting thread and would crash the app. Every other resume path here is guarded;
+                    // this was the one exception (found by the CRASH_REPORTS #2 hunt).
+                    popAllPoTokenContinuations().forEach { (_, cont) ->
+                        runCatching { cont.resumeWithException(exception) }
+                    }
                 }
                 return super.onConsoleMessage(m)
             }

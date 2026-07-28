@@ -310,7 +310,10 @@ class MusicService :
         override fun onPlayerError(error: PlaybackException) {
             Timber.tag(TAG).e(error, "Secondary player error")
             secondaryPlayer?.stop()
-            secondaryPlayer?.clearMediaItems()
+            // NO clearMediaItems before release(): redundant (release frees everything) and it is a live
+            // timeline MUTATION racing the dying player's own transition machinery — media3's
+            // evaluateMediaItemTransitionReason throws its bare "impossible state" ISE when a playlist
+            // edit lands exactly as an ended/auto transition is being evaluated (client crash, CRASH_REPORTS #2).
             // Full teardown (mirror cleanupCrossfade/releasePlayer): also drop the EQ processor and release()
             // the native player, or every secondary-player error leaks an ExoPlayer and permanently grows
             // EqualizerService's processor list.
@@ -7448,7 +7451,8 @@ class MusicService :
                 playerLimiterProcessors.remove(it)
                 playerEqProcessors.remove(it)?.let { eq -> equalizerService.removeAudioProcessor(eq) }
                 it.stop()
-                it.clearMediaItems()
+                // NO clearMediaItems: redundant before release() and a mutation-race trigger (see
+                // secondaryPlayerListener teardown / CRASH_REPORTS #2).
                 it.release()
             }
             secondaryPlayer = null
@@ -8083,7 +8087,11 @@ class MusicService :
         lastNormalizedId = null
         lastNormalizedHadLoudness = false
         fadingPlayer?.stop()
-        fadingPlayer?.clearMediaItems()
+        // NO clearMediaItems: this teardown fires at fade end — often the exact moment the outgoing
+        // player's own content ENDS (the 0.6.133 durOut cap makes that overlap routine). A playlist
+        // mutation landing while its transition machinery evaluates the ended/auto transition hits
+        // media3's bare "impossible state" IllegalStateException in evaluateMediaItemTransitionReason
+        // (retraced client crash, CRASH_REPORTS #2). release() below frees everything anyway.
         fadingPlayer?.let {
             // Bookkeeping only — no fade math touched. Silence was the one map this teardown forgot, so every
             // crossfade left a dead entry holding a released ExoPlayer for the whole session.
