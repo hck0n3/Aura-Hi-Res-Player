@@ -505,6 +505,17 @@ class MusicService :
     // resetting the counters (a reset mid-silence would delay a genuine tail fire); a NEW track resets.
     private var tailArmedMediaId: String? = null
 
+    // Monotonic timeline mutation counter (Main-thread writes via onTimelineChanged). Captured by
+    // prepareSecondaryPlayer so scheduleCrossfade can prove a preloaded secondary's queue copy is still
+    // identical to the live queue before reusing it.
+    private var timelineVersion = 0L
+    private var secondaryTimelineVersion = -1L
+
+    // Shuffle score cache: mediaId -> (tasteScore, primaryArtistLowercase). Stable per taste-profile
+    // object; cleared when the profile instance changes. Main-thread only (applyShuffleOrder's thread).
+    private val shuffleScoreCache = HashMap<String, Pair<Double, String>>()
+    private var shuffleScoreCacheProfile: Any? = null
+
     // PER-SONG SILENCE MEMORY (session-scoped, owner: "5s de MÚSICA bajando, silencio omitido — y la que
     // entra arranca en su música"). Learned from the live detector on each song's first play:
     //  • tailSilenceHintMs — length of the song's trailing silence. Next plays anchor the crossfade
@@ -1288,22 +1299,28 @@ class MusicService :
             // stays warm/reused for every song after). On MID/HIGH tier run it in PARALLEL with the poToken
             // prewarm (two WebViews at once is fine on capable RAM) so both are ready sooner; on LOW/ULTRA
             // keep it sequential so two WebViews don't spin up at once on weak/low-RAM devices. Best-effort.
+            // DATA SAVER gates the cipher prewarm too (thermal/battery audit): prewarmCipher triggers the
+            // ~2 MB base.js download when the 6 h disk cache is cold — the exact class of startup download
+            // Data Saver promises to avoid, and it ran UNGATED on every tier while the sts prewarm right
+            // above was correctly gated. Under Data Saver the cipher warms lazily on the first resolve.
             val warmTier = iad1tya.echo.music.utils.PerformanceMode.effectiveTier(this@MusicService)
-            if (warmTier == iad1tya.echo.music.utils.DeviceTier.MID ||
-                warmTier == iad1tya.echo.music.utils.DeviceTier.HIGH
-            ) {
-                scope.launch(Dispatchers.IO) {
+            if (!dataSaverOn) {
+                if (warmTier == iad1tya.echo.music.utils.DeviceTier.MID ||
+                    warmTier == iad1tya.echo.music.utils.DeviceTier.HIGH
+                ) {
+                    scope.launch(Dispatchers.IO) {
+                        runCatching { iad1tya.echo.music.utils.YTPlayerUtils.prewarmCipher() }
+                    }
+                    // PoToken prewarm — MID/HIGH only. This call used to be a SILENT NO-OP for everyone
+                    // (gated on MAIN_CLIENT.useWebPoTokens, which is false for ANDROID_VR); with the gate
+                    // fixed in YTPlayerUtils it really warms the WebView token used by the WEB_REMIX/TVHTML5
+                    // fallback clients (~2-5s blocking in THIS background coroutine, 8s cap). LOW/ULTRA
+                    // devices deliberately skip it — no startup WebView cost there, they keep the
+                    // lazy-on-first-need path, which is exactly today's effective behavior for them.
+                    runCatching { iad1tya.echo.music.utils.YTPlayerUtils.prewarmPoToken() }
+                } else {
                     runCatching { iad1tya.echo.music.utils.YTPlayerUtils.prewarmCipher() }
                 }
-                // PoToken prewarm — MID/HIGH only. This call used to be a SILENT NO-OP for everyone
-                // (gated on MAIN_CLIENT.useWebPoTokens, which is false for ANDROID_VR); with the gate
-                // fixed in YTPlayerUtils it really warms the WebView token used by the WEB_REMIX/TVHTML5
-                // fallback clients (~2-5s blocking in THIS background coroutine, 8s cap). LOW/ULTRA
-                // devices deliberately skip it — no startup WebView cost there, they keep the
-                // lazy-on-first-need path, which is exactly today's effective behavior for them.
-                runCatching { iad1tya.echo.music.utils.YTPlayerUtils.prewarmPoToken() }
-            } else {
-                runCatching { iad1tya.echo.music.utils.YTPlayerUtils.prewarmCipher() }
             }
         }
 
@@ -1951,8 +1968,22 @@ class MusicService :
         scope.launch {
             while (isActive) {
                 delay(10.seconds)
+                // POSITION only — not saveQueueToDisk(). This loop serialized THREE full object graphs
+                // (queue + automix + state, O(N) getMediaItemAt walk on Main) every 10 s of playback:
+                // on a 5000-item radio queue that was ~1 MB of flash writes six times a minute, all to
+                // refresh a position the periodic persist already saves.
+                // COHERENCE guard: while queueDirty, the queue FILE still describes the OLD timeline —
+                // writing a position/index measured against the NEW one would desync the pair, and a
+                // process kill in that window restored the wrong song (index applied to the old queue).
+                // So a dirty queue takes the full save here (clearing the flag); clean queues take the
+                // cheap position-only write. Net cost: one full save per real mutation, not six/minute.
                 if (dataStore.get(PersistentQueueKey, true) && player.isPlaying) {
-                    saveQueueToDisk()
+                    if (queueDirty) {
+                        queueDirty = false
+                        saveQueueToDisk()
+                    } else {
+                        runCatching { savePlaybackPositionToDisk() }
+                    }
                 }
             }
         }
@@ -4097,6 +4128,11 @@ class MusicService :
      */
     override fun onTimelineChanged(timeline: androidx.media3.common.Timeline, reason: Int) {
         queueDirty = true
+        // Invalidates any preloaded crossfade secondary: its queue COPY becomes the live queue at the
+        // swap, so it may only be reused while the timeline it copied is byte-identical. A counter — not
+        // a content compare — because ANY mutation (append, remove, reorder, replaceMediaItem with the
+        // same id) must invalidate, and comparing 5000 ids per reschedule would defeat the optimization.
+        timelineVersion++
     }
 
     override fun onMediaItemTransition(
@@ -4300,7 +4336,14 @@ class MusicService :
 
 
         if (persistentQueueHint) {
-            saveQueueToDisk()
+            // Same content-vs-position split as onPlaybackStateChanged: an auto-advance where nothing was
+            // appended only moves the INDEX, which the position file already captures.
+            if (queueDirty) {
+                queueDirty = false
+                saveQueueToDisk()
+            } else {
+                runCatching { savePlaybackPositionToDisk() }
+            }
         }
     }
 
@@ -4675,7 +4718,16 @@ class MusicService :
 
         
         if (dataStore.get(PersistentQueueKey, true) && !isSilenceSkipping) {
-            saveQueueToDisk()
+            // Full triple-graph serialization ONLY when the queue content actually changed (queueDirty =
+            // any timeline mutation). Plain state flips (BUFFERING→READY fires ≥1× per song) re-wrote the
+            // ENTIRE queue to flash each time — on big radio queues that was megabytes per song of pure
+            // wear. The position file carries index/position/state, so restore loses nothing.
+            if (queueDirty) {
+                queueDirty = false
+                saveQueueToDisk()
+            } else {
+                runCatching { savePlaybackPositionToDisk() }
+            }
         }
 
         if (playbackState == Player.STATE_READY) {
@@ -5035,22 +5087,42 @@ class MusicService :
             // taste contribution is now ±0.255 vs random's 1.0 (~4:1): a mild nudge, visibly shuffled.
             val p = cachedTaste
             val rnd = java.util.Random()
+            // SCORE CACHE (thermal audit): with crossfade ON this whole function re-runs on EVERY
+            // auto-advance, and scoring 5000 items (scoreNames + lowercase allocations each) cost
+            // 20-60 ms on the Main thread per advance. Taste and primary artist are stable per mediaId
+            // for a given taste profile — cache them and only the cheap random term is fresh per apply.
+            if (shuffleScoreCacheProfile !== p) {
+                shuffleScoreCache.clear()
+                shuffleScoreCacheProfile = p
+            }
             // Precompute each index's key ONCE (rnd inside the comparator would crash TimSort).
             val keys = HashMap<Int, Double>(indices.size)
             val unplayedGroup = HashMap<Int, Boolean>(indices.size)
             val primaryArtist = HashMap<Int, String>(indices.size)
             indices.forEach { i ->
-                val m = runCatching { player.getMediaItemAt(i).metadata }.getOrNull()
-                val tasteScore = if (p != null && m != null) p.scoreNames(m.artists.map { it.name }, m.title) else 0.0
+                val item = runCatching { player.getMediaItemAt(i) }.getOrNull()
+                val itemId = item?.mediaId
+                val cachedScore = itemId?.let { shuffleScoreCache[it] }
+                val scored = cachedScore ?: run {
+                    val m = item?.metadata
+                    val t = if (p != null && m != null) p.scoreNames(m.artists.map { it.name }, m.title) else 0.0
+                    val a = m?.artists?.firstOrNull()?.name?.lowercase().orEmpty()
+                    (t to a).also { pair ->
+                        if (itemId != null) {
+                            if (shuffleScoreCache.size > 20_000) shuffleScoreCache.clear()
+                            shuffleScoreCache[itemId] = pair
+                        }
+                    }
+                }
+                val tasteScore = scored.first
                 var key = tasteScore.coerceIn(-1.7, 1.7) * 0.15 + rnd.nextDouble()
                 // Anti-repeat: already-played songs sink BELOW all not-yet-played ones (big offset), so the
                 // whole pool is exhausted before anything repeats. Within each group the smart order applies.
-                val id = m?.id
-                val isUnplayed = id == null || id !in playedSnapshot
+                val isUnplayed = itemId == null || itemId !in playedSnapshot
                 if (isUnplayed) key += 1000.0
                 keys[i] = key
                 unplayedGroup[i] = isUnplayed
-                primaryArtist[i] = m?.artists?.firstOrNull()?.name?.lowercase().orEmpty()
+                primaryArtist[i] = scored.second
             }
             indices.sortByDescending { keys[it] ?: 0.0 }
             // ARTIST SPACING (owner reports: "cuando va por un cantante solo de ese cantante me pone",
@@ -7612,20 +7684,54 @@ class MusicService :
         // Release any incoming player we preloaded for a transition that's no longer happening (user
         // skipped, seeked, queue changed) so we never leak a second ExoPlayer.
         if (!isCrossfading) {
-            secondaryPlayer?.let {
-                // Silence too — this is the MOST frequent teardown of the three (it runs whenever a preloaded
-                // incoming player is discarded: skip, seek, queue change), so omitting it here leaked a
-                // HashMap entry keyed by a released ExoPlayer on nearly every user interaction.
-                playerSilenceProcessors.remove(it)
-                playerNormProcessors.remove(it)
-                playerLimiterProcessors.remove(it)
-                playerEqProcessors.remove(it)?.let { eq -> equalizerService.removeAudioProcessor(eq) }
-                it.stop()
-                // NO clearMediaItems: redundant before release() and a mutation-race trigger (see
-                // secondaryPlayerListener teardown / CRASH_REPORTS #2).
-                it.release()
+            // REUSE a still-valid preload (thermal audit): scheduleCrossfade fires from ~6 event sites
+            // (playWhenReady flips, rebuffer→READY, in-song seeks...), and unconditionally tearing the
+            // buffered secondary down meant building 2-4 full ExoPlayers per song — each with native
+            // processor init, an O(N) queue copy and up to 12 s of re-buffering (network + decode heat).
+            // Keep it ONLY when:
+            //  • the TIMELINE VERSION is unchanged (a counter bumped by every onTimelineChanged): the
+            //    secondary holds a queue COPY that becomes the LIVE queue at the swap, so ANY timeline
+            //    mutation — append, remove, drag-reorder past the next item, replaceMediaItem with the
+            //    same id (Opus refetch, video URI) — makes the copy stale. Same-target+same-count alone
+            //    provably missed reorders and replacements (adversarial round);
+            //  • the next target still matches (shuffle reorder without timeline change);
+            //  • AND every early-return below would NOT fire — a kept player is only legal on the path
+            //    that reaches the trigger scheduling, otherwise it sits prepared with NO trigger job
+            //    (an orphan holding codecs + 12 s of buffer indefinitely).
+            val keepPreload = secondaryPlayer?.let { sec ->
+                val targetIdx = if (player.repeatMode == REPEAT_MODE_ONE) {
+                    player.currentMediaItemIndex
+                } else {
+                    player.nextMediaItemIndex
+                }
+                val liveTarget = if (targetIdx != C.INDEX_UNSET && targetIdx < player.mediaItemCount) {
+                    runCatching { player.getMediaItemAt(targetIdx).mediaId }.getOrNull()
+                } else null
+                liveTarget != null &&
+                    secondaryTimelineVersion == timelineVersion &&
+                    runCatching { sec.currentMediaItem?.mediaId }.getOrNull() == liveTarget &&
+                    !highPerformanceModeHint && crossfadeEnabled && !_videoMode.value &&
+                    player.duration != C.TIME_UNSET && player.duration > crossfadeDuration &&
+                    !(crossfadeGapless && isNextItemGapless())
+            } == true
+            if (!keepPreload) {
+                secondaryPlayer?.let {
+                    // Silence too — this is the MOST frequent teardown of the three (it runs whenever a
+                    // preloaded incoming player is discarded: skip, seek, queue change), so omitting it here
+                    // leaked a HashMap entry keyed by a released ExoPlayer on nearly every user interaction.
+                    playerSilenceProcessors.remove(it)
+                    playerNormProcessors.remove(it)
+                    playerLimiterProcessors.remove(it)
+                    playerEqProcessors.remove(it)?.let { eq -> equalizerService.removeAudioProcessor(eq) }
+                    it.stop()
+                    // NO clearMediaItems: redundant before release() and a mutation-race trigger (see
+                    // secondaryPlayerListener teardown / CRASH_REPORTS #2).
+                    it.release()
+                }
+                // Inside the if — an unconditional null here ORPHANED the kept player (nulled without
+                // release, rebuilt from scratch anyway): the exact leak this block exists to prevent.
+                secondaryPlayer = null
             }
-            secondaryPlayer = null
         }
         // High-Performance Mode: crossfade is force-disabled (crossfadeEnabled already reflects this via the
         // perf-gated flow at collect time). This explicit, cheap @Volatile guard makes the intent robust and
@@ -8078,6 +8184,10 @@ class MusicService :
             items.add(player.getMediaItemAt(i))
         }
         sec.setMediaItems(items)
+        // Stamp which live-timeline version this COPY mirrors — the reuse check in scheduleCrossfade
+        // compares against it. Read BEFORE this function's own player reads complete; onTimelineChanged
+        // runs on this same Main thread, so no mutation can interleave mid-copy.
+        secondaryTimelineVersion = timelineVersion
         val incomingId = items.getOrNull(targetIndex)?.mediaId
         // PER-SONG INTRO MEMORY: start the incoming player right at its learned first audible frame — the
         // crossfade rise lands on real music instead of dead intro silence. No hint → 0 (exact old

@@ -18,7 +18,7 @@ import android.graphics.RectF
 import android.graphics.Shader
 import android.os.Bundle
 import android.widget.RemoteViews
-import coil3.ImageLoader
+import coil3.imageLoader
 import coil3.request.ImageRequest
 import coil3.request.allowHardware
 import coil3.request.crossfade
@@ -38,11 +38,13 @@ class EchoMusicWidgetManager @Inject constructor(
     private val database: MusicDatabase,
     private val playlistWidgetManager: PlaylistWidgetManager,
 ) {
-    private val imageLoader by lazy {
-        ImageLoader.Builder(context)
-            .crossfade(false)
-            .build()
-    }
+    // The APP's singleton loader, not a private one: a private ImageLoader.Builder(context).build()
+    // silently inherits Coil's OWN default disk cache (a different directory from the app's
+    // cacheDir/coil), so every widget user RE-DOWNLOADED and re-stored every cover the app had already
+    // fetched — one full-size network hit per song, per widget, forever (battery/thermal audit).
+    // PlaylistWidgetManager already did this correctly.
+    private val imageLoader
+        get() = context.imageLoader
 
     // Cache for album art to avoid reloading
     private var cachedArtworkUri: String? = null

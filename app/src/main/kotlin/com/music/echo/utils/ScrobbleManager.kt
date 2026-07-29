@@ -84,7 +84,10 @@ class ScrobbleManager(
                     duration = duration?.let { (it / 1000).toInt() }
                 ).onFailure { e ->
                     Timber.e(e, "Last.fm updateNowPlaying failed")
-                    reportException(e)
+                    // No reportException for plain network failures: with Last.fm connected and the
+                    // device offline this fired up to twice PER TRACK, flooding Crashlytics with
+                    // non-fatals (and their upload cost). Same deliberate filter as YTPlayerUtils.
+                    if (e !is java.io.IOException) reportException(e)
                 }
             }
         }
@@ -197,7 +200,8 @@ class ScrobbleManager(
                     Timber.d("Successfully scrobbled ${metadata.title}")
                 }.onFailure { e ->
                     Timber.e(e, "Last.fm scrobble failed")
-                    reportException(e)
+                    // IOException = offline/transient network, not a bug — see the now-playing site.
+                    if (e !is java.io.IOException) reportException(e)
                 }
             }
         }

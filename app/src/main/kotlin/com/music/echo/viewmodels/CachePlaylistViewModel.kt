@@ -40,9 +40,20 @@ class CachePlaylistViewModel @Inject constructor(
     init {
         // Run off the main thread: the DataStore reads and SimpleCache key-scans below
         // must not block the UI thread. Tied to viewModelScope so it is cancelled when the
-        // ViewModel is cleared (screen closed); delay() is cancellable, so the loop stops.
+        // ViewModel is cleared; delay() is cancellable, so the loop stops.
+        //
+        // SUBSCRIBER-GATED (thermal audit's #1 finding): this ViewModel is ALSO obtained by the song
+        // ⋯-menu via hiltViewModel(), whose host sits OUTSIDE the NavHost — its owner is the ACTIVITY,
+        // so onCleared never fires until the app dies. Opening any song menu ONCE therefore left this
+        // loop issuing a Room relation query + two full cache-key-set copies + N SimpleCache lock scans
+        // EVERY SECOND for the rest of the session, screen off included (~86k queries/day). The loop now
+        // PARKS (suspends, zero work) whenever nobody is collecting [cachedSongs] — collectAsState
+        // subscribes only while the cache screen/menu is actually composed — and resumes on demand.
         viewModelScope.launch(Dispatchers.IO) {
             while (true) {
+                if (_cachedSongs.subscriptionCount.value == 0) {
+                    _cachedSongs.subscriptionCount.first { it > 0 }
+                }
                 // Non-blocking suspend read of the latest preferences (no runBlocking on any thread).
                 val prefs = context.dataStore.data.first()
                 val hideExplicit = prefs[HideExplicitKey] ?: false

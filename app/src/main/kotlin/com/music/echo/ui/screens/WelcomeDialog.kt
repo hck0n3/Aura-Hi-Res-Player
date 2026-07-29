@@ -88,31 +88,43 @@ fun WelcomeDialog(
                     WelcomeFeatureRow(
                         iconRes = R.drawable.equalizer,
                         title = "EQ gráfico (10) + paramétrico interactivo (PEQ)",
-                        subtitle = "EQ gráfico de 10 bandas (las que dejes en 0 dB no procesan nada — señal pura) o modo paramétrico interactivo: arrastra puntos en la curva para dar forma al sonido (5-8 bandas, con frecuencia/Q/ganancia exactas para el purista), limitador anti-distorsión con headroom automático y perfiles AutoEq para +5000 auriculares que se combinan con tu EQ manual (cascada)"
+                        subtitle = "EQ gráfico de 10 bandas (las que dejes en 0 dB no procesan nada — señal pura) o modo paramétrico interactivo: arrastra puntos en la curva para dar forma al sonido (5-8 bandas, con frecuencia/Q/ganancia exactas para el purista), limitador anti-distorsión con headroom automático y perfiles AutoEq para +5000 auriculares que se combinan con tu EQ manual (cascada); de fábrica viene activo un perfil audiófilo con preamp 0 dB"
                     )
                     WelcomeDivider()
                     WelcomeFeatureRow(
                         iconRes = R.drawable.tune,
                         title = "Audio de alta calidad",
-                        subtitle = "Sonido sin pérdida (Qobuz, con Saavn como respaldo a 320 kbps), Volumen Seguro activado por defecto (nivela y limita las pistas muy altas) y control de tempo/tono"
+                        subtitle = "Cadena de audio en 32-bit float, bit-perfect (lo que no actives no toca la señal); sonido sin pérdida (Qobuz, con Saavn como respaldo a 320 kbps), Volumen Seguro activado por defecto (nivela y limita las pistas muy altas; se puede apagar) y control de tempo/tono"
+                    )
+                    WelcomeDivider()
+                    WelcomeFeatureRow(
+                        iconRes = R.drawable.play,
+                        title = "Transiciones de audio",
+                        subtitle = "Crossfade de 5s estilo Ascenso activado por defecto: las dos canciones suenan juntas (la saliente siempre baja mientras entra la nueva), con 9 curvas y duración 1-15s a elegir; memoriza los silencios de cada canción para que el fundido cubra música —nunca silencio— y entrada suave al cambiar de canción a mano"
+                    )
+                    WelcomeDivider()
+                    WelcomeFeatureRow(
+                        iconRes = R.drawable.shuffle,
+                        title = "Aleatorio Mejorado",
+                        subtitle = "No repite nada hasta agotar la lista y recuerda entre días qué oíste en cada playlist o en tu biblioteca; empieza por lo que aún no has escuchado, separa a los artistas para que no te bombardee el mismo, y al agotar la lista sigue solo con la radio infinita"
                     )
                     WelcomeDivider()
                     WelcomeFeatureRow(
                         iconRes = R.drawable.skip_next,
                         title = "Saltar partes sin música (SponsorBlock)",
-                        subtitle = "Activa SponsorBlock en Ajustes ▸ Reproductor y la app salta sola patrocinios, autopromo y las partes sin música de los videos —usando la base comunitaria SponsorBlock—; nunca corta el audio real de la canción"
+                        subtitle = "Activado por defecto: la app salta sola patrocinios, autopromo y las partes sin música de los videos —usando la base comunitaria SponsorBlock—; nunca corta el audio real de la canción y puedes apagarlo en Ajustes ▸ Reproductor"
                     )
                     WelcomeDivider()
                     WelcomeFeatureRow(
                         iconRes = R.drawable.lyrics,
                         title = "Letras sincronizadas",
-                        subtitle = "Letras en tiempo real con múltiples proveedores"
+                        subtitle = "Letras en tiempo real con múltiples proveedores y estilos Apple o Metro, romanización en 12 idiomas, traducción por IA y ajuste de desfase que se guarda por canción"
                     )
                     WelcomeDivider()
                     WelcomeFeatureRow(
                         iconRes = R.drawable.download,
                         title = "Modo sin conexión",
-                        subtitle = "Descarga canciones y playlists para escucharlas offline; el interruptor de la barra superior cambia entre online/offline con un toque"
+                        subtitle = "Descarga canciones y playlists para escucharlas offline —con descarga por bloques que esquiva la limitación de velocidad—; el interruptor de la barra superior cambia entre online/offline con un toque, y un Modo ahorro de datos opcional fuerza Opus y apaga videos, canvas y precarga para gastar el mínimo"
                     )
                     WelcomeDivider()
                     WelcomeFeatureRow(
@@ -124,7 +136,7 @@ fun WelcomeDialog(
                     WelcomeFeatureRow(
                         iconRes = R.drawable.palette,
                         title = "Temas a tu estilo",
-                        subtitle = "Acento dinámico, Material You, modo oscuro puro AMOLED y Liquid Glass (Beta): estilo de cristal para reproductor, mini-reproductor, barra de navegación y botones flotantes en equipos capaces — desactivado por defecto"
+                        subtitle = "Acento dinámico, Material You, modo oscuro puro AMOLED y Liquid Glass (Beta): estilo de cristal para reproductor, mini-reproductor, barra de navegación y botones flotantes — se enciende solo en equipos de gama alta capaces; en el resto puedes activarlo en Ajustes ▸ Apariencia"
                     )
                     WelcomeDivider()
                     WelcomeFeatureRow(
@@ -142,13 +154,13 @@ fun WelcomeDialog(
                     WelcomeFeatureRow(
                         iconRes = R.drawable.group,
                         title = "Listen Together",
-                        subtitle = "Escucha música en tiempo real con tus amigos"
+                        subtitle = "Escucha música en tiempo real con tus amigos, en salas con chat integrado"
                     )
                     WelcomeDivider()
                     WelcomeFeatureRow(
                         iconRes = R.drawable.discover_tune,
                         title = "Recomendaciones con IA",
-                        subtitle = "Inicio, radio y mezclas que aprenden de tus gustos y de toda tu biblioteca importada (en el dispositivo); Inicio con 'Reproducido recientemente', 'Nuevos lanzamientos', 'Mix diario 1/2/3' y un mix según la hora del día; toca un chip de estado de ánimo y el contenido y la reproducción se sesgan a ese ánimo mientras esté activo; al acabar una lista la música sigue sola con temas similares y la cola infinita no repite lo recién escuchado; crea listas con una frase, con el número exacto de canciones que pides y respetando el género/idioma/ánimo; y si lo activas en Ajustes ▸ IA, una playlist 'Recomendado para ti (IA)' persistente en Inicio con canciones nuevas según tu historial, refrescada a diario"
+                        subtitle = "Inicio, radio y mezclas que aprenden de tus gustos y de toda tu biblioteca importada (en el dispositivo); Inicio con 'Reproducido recientemente', 'Nuevos lanzamientos', 'Mix diario 1/2/3' y un mix según la hora del día; toca un chip de estado de ánimo y el contenido y la reproducción se sesgan a ese ánimo mientras esté activo; al acabar una playlist o álbum la app analiza sus géneros y artistas y sigue sola en el mismo estilo, y la cola infinita no repite lo recién escuchado; crea listas con una frase, con el número exacto de canciones que pides y respetando el género/idioma/ánimo; y si lo activas en Ajustes ▸ IA, una playlist 'Recomendado para ti (IA)' persistente en Inicio con canciones nuevas según tu historial, refrescada a diario — todo con una cascada de modelos de IA gratuitos que nunca te deja en 'IA ocupada'"
                     )
                     WelcomeDivider()
                     WelcomeFeatureRow(
@@ -182,15 +194,33 @@ fun WelcomeDialog(
                     )
                     WelcomeDivider()
                     WelcomeFeatureRow(
+                        iconRes = R.drawable.folder_managed,
+                        title = "Música local",
+                        subtitle = "Reproduce los archivos de música guardados en tu dispositivo, con escáner de medios locales"
+                    )
+                    WelcomeDivider()
+                    WelcomeFeatureRow(
                         iconRes = R.drawable.new_release,
                         title = "Radar de novedades",
                         subtitle = "Los estrenos de los artistas que sigues, renovados cada viernes al estilo Spotify: solo la tanda de la semana"
                     )
                     WelcomeDivider()
                     WelcomeFeatureRow(
+                        iconRes = R.drawable.library_music,
+                        title = "Discografías completas",
+                        subtitle = "Los catálogos de artista se completan solos: la app resuelve el canal real del artista y cruza iTunes y listas de la comunidad para mostrar la discografía completa, con todas las colaboraciones"
+                    )
+                    WelcomeDivider()
+                    WelcomeFeatureRow(
                         iconRes = R.drawable.grid_view,
                         title = "Pantallas grandes (estilo Spotify)",
                         subtitle = "En tablets, Android TV y plegables la app usa una interfaz dividida (lista + detalle) que aprovecha todo el ancho"
+                    )
+                    WelcomeDivider()
+                    WelcomeFeatureRow(
+                        iconRes = R.drawable.cast,
+                        title = "En el coche, la TV y tu pantalla de inicio",
+                        subtitle = "Android Auto, Android TV y Google Cast (build con Google Play Services); tres widgets para tu pantalla de inicio —reproductor, tocadiscos de vinilo y playlists— y copia de seguridad local de tu biblioteca cuando quieras"
                     )
                     WelcomeDivider()
                     WelcomeFeatureRow(

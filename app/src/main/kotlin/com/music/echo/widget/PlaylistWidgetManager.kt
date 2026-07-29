@@ -28,13 +28,12 @@ import coil3.toBitmap
 import iad1tya.echo.music.MainActivity
 import iad1tya.echo.music.R
 import iad1tya.echo.music.db.MusicDatabase
-import iad1tya.echo.music.db.entities.Playlist
 import iad1tya.echo.music.di.ApplicationScope
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
@@ -60,8 +59,9 @@ class PlaylistWidgetManager @Inject constructor(
 
     /**
      * True when at least one playlist widget is placed. Lets the 1 Hz media updater skip this widget's work
-     * entirely — it is the most expensive one, running five Room queries per refresh including an unindexed
-     * most-played scan (#55 battery/heat).
+     * entirely — it is the most expensive one: a full RemoteViews grid rebuild, and historically five Room
+     * queries per refresh including an unindexed most-played scan (#55 battery/heat). The queries are now
+     * served from [cachedQuickPicks]; the presence gate still saves the binder/RemoteViews work.
      */
     fun hasAnyWidget(): Boolean = runCatching {
         AppWidgetManager.getInstance(context)
@@ -91,6 +91,35 @@ class PlaylistWidgetManager @Inject constructor(
         currentPosition = 0,
     )
 
+    /**
+     * Quick-picks list served to every render, maintained by [observeQuickPickChanges] (Room flows,
+     * ~500 ms debounce). The 1 Hz ticker used to bypass this and issue FIVE fresh Room queries per
+     * second via [updateWidgets] — including an unindexed most-played aggregate over the whole Event
+     * table — ~300 queries/minute of pure heat while music played (#55). Renders now read this cache;
+     * queries only run when the underlying data actually changes (flow emission) or on explicit
+     * widget events (added/resized), never on the playback tick.
+     */
+    @Volatile
+    private var cachedQuickPicks: List<QuickPick>? = null
+
+    /**
+     * Fingerprint of the last FULL render. While it matches the incoming state, the per-second tick
+     * only moves the progress bar — everything else on the widget (titles, artwork grid, buttons) is
+     * unchanged — so we ship a one-action [AppWidgetManager.partiallyUpdateAppWidget] instead of
+     * re-parceling the whole grid (bitmaps included) and forcing the launcher to re-apply it.
+     */
+    @Volatile
+    private var lastRenderedContent: RenderedContent? = null
+
+    // Ticks since the last full render. A periodic full render (~1/min) self-heals the rare cases where
+    // the system's cached full RemoteViews was lost (system_server restart) and partial merges would
+    // otherwise leave a hollow widget until the next song change.
+    private var ticksSinceFullRender = 0
+
+    // Ticks spent showing the fallback icon because the CURRENT song's artwork failed to load. Used to
+    // retry the load occasionally (~30 s) instead of on every tick — same policy as EchoMusicWidgetManager.
+    private var artworkRetryTicks = 0
+
     init {
         observeQuickPickChanges()
     }
@@ -114,7 +143,10 @@ class PlaylistWidgetManager @Inject constructor(
         val appWidgetManager = AppWidgetManager.getInstance(context)
         val state = lastWidgetState
         val albumArt = getCachedAlbumArt(state.artworkUri)
-        val quickPicks = buildQuickPicks()
+        // Explicit widget event (added/resized) — rebuild from the database so a brand-new widget never
+        // shows a stale grid, and refresh the cache with the result. Rare and user-initiated, so the
+        // query cost is fine here; the 1 Hz tick is the path that must never query.
+        val quickPicks = freshQuickPicks()
         val views = createRemoteViews(
             options = options,
             title = state.title,
@@ -166,8 +198,43 @@ class PlaylistWidgetManager @Inject constructor(
         val widgetIds = appWidgetManager.getAppWidgetIds(componentName)
         if (widgetIds.isEmpty()) return
 
+        // Cached snapshot — NO Room queries on this path (see cachedQuickPicks). The only query left
+        // here is the one-time cold-start fill before the observe flow's first emission.
+        val quickPicks = currentQuickPicks()
+        val content = RenderedContent(
+            title = title,
+            artist = artist,
+            artworkUri = artworkUri,
+            isPlaying = isPlaying,
+            isLiked = isLiked,
+            quickPicks = quickPicks,
+            widgetIds = widgetIds.sorted(),
+        )
+
+        val needsFullRender = content != lastRenderedContent ||
+            ticksSinceFullRender >= FULL_RENDER_MAX_TICKS ||
+            shouldRetryFailedArtwork(artworkUri)
+
+        if (!needsFullRender) {
+            // Light path — the steady-state 1 Hz tick. Between ticks only the playback position moved,
+            // so ship a single setImageLevel action; the system merges it into its cached full
+            // RemoteViews and the launcher re-applies in place instead of re-inflating the grid.
+            ticksSinceFullRender++
+            val partialViews = RemoteViews(context.packageName, R.layout.widget_playlist)
+            partialViews.setInt(
+                R.id.widget_playlist_progress_fill,
+                "setImageLevel",
+                progressLevel(duration, currentPosition),
+            )
+            widgetIds.forEach { widgetId ->
+                appWidgetManager.partiallyUpdateAppWidget(widgetId, partialViews)
+            }
+            return
+        }
+
+        // Full path — content actually changed (song/like/play-state/quick-picks/widget set), the
+        // periodic self-heal fired, or a failed artwork load is due for a retry.
         val albumArt = getCachedAlbumArt(artworkUri)
-        val quickPicks = buildQuickPicks()
 
         widgetIds.forEach { widgetId ->
             val options = appWidgetManager.getAppWidgetOptions(widgetId)
@@ -184,11 +251,52 @@ class PlaylistWidgetManager @Inject constructor(
             )
             appWidgetManager.updateAppWidget(widgetId, views)
         }
+        lastRenderedContent = content
+        ticksSinceFullRender = 0
     }
+
+    /**
+     * True (about once every [ARTWORK_RETRY_TICKS] calls) while the requested artwork is NOT the one in
+     * the cache — i.e. the last load failed and the widget is stuck on the fallback icon. Forces a full
+     * render so [getCachedAlbumArt] re-attempts the load; without this, the partial path would pin the
+     * fallback icon for the rest of the song after one network blip at track start.
+     */
+    private fun shouldRetryFailedArtwork(artworkUri: String?): Boolean {
+        if (artworkUri == null || artworkUri == cachedArtworkUri) {
+            artworkRetryTicks = 0
+            return false
+        }
+        if (++artworkRetryTicks >= ARTWORK_RETRY_TICKS) {
+            artworkRetryTicks = 0
+            return true
+        }
+        return false
+    }
+
+    private fun progressLevel(duration: Long, currentPosition: Long): Int =
+        if (duration > 0) {
+            ((currentPosition.toDouble() / duration.toDouble()) * 10000).toInt().coerceIn(0, 10000)
+        } else {
+            0
+        }
 
     @OptIn(FlowPreview::class)
     private fun observeQuickPickChanges() {
-        combine(
+        quickPickSnapshots()
+            .distinctUntilChanged()
+            .debounce(500L)
+            .onEach { snapshot ->
+                // Refresh the cache FIRST so the render below (and every 1 Hz tick after it) sees the
+                // new content; the tick's fingerprint check then promotes exactly one full render.
+                cachedQuickPicks = buildQuickPicks(snapshot)
+                refreshWidgetsFromLastState()
+            }
+            .launchIn(applicationScope)
+    }
+
+    /** The five Room flows that feed the quick-picks grid, combined into one immutable snapshot. */
+    private fun quickPickSnapshots(): Flow<QuickPickSnapshot> {
+        return combine(
             database.speedDialDao.getAll().map { items ->
                 items.map { item ->
                     SpeedDialSnapshot(
@@ -243,10 +351,6 @@ class PlaylistWidgetManager @Inject constructor(
                 topSongs = topSongs,
             )
         }
-            .distinctUntilChanged()
-            .debounce(500L)
-            .onEach { refreshWidgetsFromLastState() }
-            .launchIn(applicationScope)
     }
 
     private suspend fun createRemoteViews(
@@ -278,12 +382,11 @@ class PlaylistWidgetManager @Inject constructor(
             if (isLiked) R.drawable.ic_widget_heart_nav else R.drawable.ic_widget_heart_outline_nav,
         )
 
-        val progressLevel = if (duration > 0) {
-            ((currentPosition.toDouble() / duration.toDouble()) * 10000).toInt().coerceIn(0, 10000)
-        } else {
-            0
-        }
-        views.setInt(R.id.widget_playlist_progress_fill, "setImageLevel", progressLevel)
+        views.setInt(
+            R.id.widget_playlist_progress_fill,
+            "setImageLevel",
+            progressLevel(duration, currentPosition),
+        )
 
         views.setOnClickPendingIntent(R.id.widget_playlist_album_art, getOpenAppIntent())
         views.setOnClickPendingIntent(
@@ -382,26 +485,25 @@ class PlaylistWidgetManager @Inject constructor(
         else -> emptySet()
     }
 
-    private suspend fun buildQuickPicks(): List<QuickPick> = withContext(Dispatchers.IO) {
-        val speedDialItemsDeferred = async { database.speedDialDao.getAll().first() }
-        val savedPlaylistsDeferred = async { database.playlistsByCreateDateAsc().first() }
-        val likedSongsDeferred = async { database.likedSongsByCreateDateAsc().first() }
-        val downloadedSongsDeferred = async { database.downloadedSongsByCreateDateAsc().first() }
-        val topSongsDeferred = async { database.mostPlayedSongs(0L, limit = 50).first() }
+    /** Cache-first read used by the render path; queries only before the flow's first emission. */
+    private suspend fun currentQuickPicks(): List<QuickPick> =
+        cachedQuickPicks ?: freshQuickPicks()
 
+    /** One-shot database rebuild (five Room queries) that also refreshes the cache. */
+    private suspend fun freshQuickPicks(): List<QuickPick> =
+        withContext(Dispatchers.IO) { buildQuickPicks(quickPickSnapshots().first()) }
+            .also { cachedQuickPicks = it }
+
+    /** Pure transformation — no database access; every render-path caller works from a snapshot. */
+    private fun buildQuickPicks(snapshot: QuickPickSnapshot): List<QuickPick> {
         val result = mutableListOf<QuickPick>()
         val seen = mutableSetOf<String>()
-        val speedDialItems = speedDialItemsDeferred.await()
-        val savedPlaylists = savedPlaylistsDeferred.await()
-        val likedSongs = likedSongsDeferred.await()
-        val downloadedSongs = downloadedSongsDeferred.await()
-        val topSongs = topSongsDeferred.await()
 
         fun add(item: QuickPick) {
             if (seen.add(item.key)) result += item
         }
 
-        speedDialItems
+        snapshot.speedDial
             .filter { it.type == "PLAYLIST" || it.type == "LOCAL_PLAYLIST" }
             .forEach { item ->
                 if (item.type == "LOCAL_PLAYLIST") {
@@ -416,8 +518,8 @@ class PlaylistWidgetManager @Inject constructor(
                         ),
                     )
                 } else {
-                    val saved = savedPlaylists.firstOrNull {
-                        it.playlist.browseId == item.id || it.playlist.id == item.id
+                    val saved = snapshot.playlists.firstOrNull {
+                        it.browseId == item.id || it.id == item.id
                     }
                     if (saved != null) {
                         add(saved.toQuickPick())
@@ -436,69 +538,68 @@ class PlaylistWidgetManager @Inject constructor(
                 }
             }
 
-        savedPlaylists
-            .filter { it.playlist.browseId == null || it.playlist.isLocal }
+        snapshot.playlists
+            .filter { it.browseId == null || it.isLocal }
             .forEach { add(it.toQuickPick()) }
 
-        savedPlaylists
-            .filter { it.playlist.browseId != null && !it.playlist.isLocal }
+        snapshot.playlists
+            .filter { it.browseId != null && !it.isLocal }
             .forEach { add(it.toQuickPick()) }
 
-        if (likedSongs.isNotEmpty()) {
+        if (snapshot.likedSongs.isNotEmpty()) {
             add(
                 QuickPick(
                     key = "auto:liked",
                     targetType = PlaylistWidgetReceiver.TARGET_TYPE_LIKED,
                     targetId = PlaylistWidgetReceiver.TARGET_TYPE_LIKED,
                     title = context.getString(R.string.liked_songs),
-                    thumbnailUrl = likedSongs.firstOrNull()?.thumbnailUrl,
+                    thumbnailUrl = snapshot.likedSongs.firstOrNull()?.thumbnailUrl,
                     fallbackIconRes = R.drawable.ic_widget_heart_nav,
                 ),
             )
         }
 
-        if (downloadedSongs.isNotEmpty()) {
+        if (snapshot.downloadedSongs.isNotEmpty()) {
             add(
                 QuickPick(
                     key = "auto:downloaded",
                     targetType = PlaylistWidgetReceiver.TARGET_TYPE_DOWNLOADED,
                     targetId = PlaylistWidgetReceiver.TARGET_TYPE_DOWNLOADED,
                     title = context.getString(R.string.downloaded_songs),
-                    thumbnailUrl = downloadedSongs.firstOrNull()?.thumbnailUrl,
+                    thumbnailUrl = snapshot.downloadedSongs.firstOrNull()?.thumbnailUrl,
                     fallbackIconRes = R.drawable.cached,
                 ),
             )
         }
 
-        if (topSongs.isNotEmpty()) {
+        if (snapshot.topSongs.isNotEmpty()) {
             add(
                 QuickPick(
                     key = "auto:top50",
                     targetType = PlaylistWidgetReceiver.TARGET_TYPE_TOP,
                     targetId = "50",
                     title = context.getString(R.string.my_top),
-                    thumbnailUrl = topSongs.firstOrNull()?.thumbnailUrl,
+                    thumbnailUrl = snapshot.topSongs.firstOrNull()?.thumbnailUrl,
                     fallbackIconRes = R.drawable.trending_up,
                 ),
             )
         }
 
-        result
+        return result
     }
 
-    private fun Playlist.toQuickPick(): QuickPick {
-        val browseId = playlist.browseId
-        val isOnline = browseId != null && !playlist.isLocal
+    private fun PlaylistSnapshot.toQuickPick(): QuickPick {
+        val isOnline = browseId != null && !isLocal
         return QuickPick(
-            key = if (isOnline) "online:$browseId" else "local:${playlist.id}",
+            key = if (isOnline) "online:$browseId" else "local:$id",
             targetType = if (isOnline) {
                 PlaylistWidgetReceiver.TARGET_TYPE_ONLINE
             } else {
                 PlaylistWidgetReceiver.TARGET_TYPE_LOCAL
             },
-            targetId = browseId ?: playlist.id,
-            title = playlist.name,
-            thumbnailUrl = thumbnails.firstOrNull(),
+            targetId = browseId ?: id,
+            title = name,
+            thumbnailUrl = thumbnailUrl,
             fallbackIconRes = R.drawable.playlist_play,
         )
     }
@@ -682,6 +783,22 @@ class PlaylistWidgetManager @Inject constructor(
         val currentPosition: Long,
     )
 
+    /**
+     * Everything a full render depends on EXCEPT playback position/duration. While two consecutive
+     * updates compare equal here, only the progress bar can differ, so the partial-update path is safe.
+     * QuickPick is a plain data class, so list comparison is structural. Widget ids are included so
+     * adding a widget mid-session forces a full render for it on the next tick.
+     */
+    private data class RenderedContent(
+        val title: String,
+        val artist: String,
+        val artworkUri: String?,
+        val isPlaying: Boolean,
+        val isLiked: Boolean,
+        val quickPicks: List<QuickPick>,
+        val widgetIds: List<Int>,
+    )
+
     private data class QuickPickSnapshot(
         val speedDial: List<SpeedDialSnapshot>,
         val playlists: List<PlaylistSnapshot>,
@@ -732,6 +849,14 @@ class PlaylistWidgetManager @Inject constructor(
         val fallbackIconRes: Int,
         val cornerRadius: Int,
     )
+
+    private companion object {
+        /** ~30 s between retries of a FAILED artwork load (matches EchoMusicWidgetManager's policy). */
+        const val ARTWORK_RETRY_TICKS = 30
+
+        /** Periodic full-render self-heal: at most one full grid re-parcel per minute at steady state. */
+        const val FULL_RENDER_MAX_TICKS = 60
+    }
 
     private val cardSlots = listOf(
         CardSlot(R.id.widget_playlist_card_1, R.id.widget_playlist_card_1_art, R.id.widget_playlist_card_1_play_container, R.id.widget_playlist_card_1_play, R.id.widget_playlist_card_1_title),
