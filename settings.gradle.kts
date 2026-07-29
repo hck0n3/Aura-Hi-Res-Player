@@ -18,6 +18,7 @@ dependencyResolutionManagement {
 
 rootProject.name = "echomusic"
 include(":app")
+include(":migration")
 include(":canvas")
 include(":innertube")
 include(":kugou")

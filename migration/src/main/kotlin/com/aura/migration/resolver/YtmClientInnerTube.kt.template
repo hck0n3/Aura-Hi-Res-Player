@@ -1,0 +1,75 @@
+package com.aura.migration.resolver
+
+/*
+ * ============================================================================
+ *  PLANTILLA - RENOMBRA A .kt Y COMPLETA CON TU CLIENTE DE INNERTUBE
+ * ============================================================================
+ *
+ *  Es lo UNICO que conecta este modulo con tu app. Unas 40 lineas.
+ *
+ *  EL PARAMETRO CRITICO
+ *  --------------------
+ *  YouTube Music filtra por tipo con un parametro `params` opaco en base64.
+ *  El de "solo canciones" es, en las implementaciones actuales:
+ *
+ *      EgWKAQIIAWoKEAkQBRAKEAMQBA%3D%3D
+ *
+ *  PERO: es un valor que YouTube ha cambiado entre versiones. Antes de fiarte,
+ *  busca en tu modulo innertube el filtro que YA usas cuando el usuario toca
+ *  la pestana "Canciones" en la busqueda de la app. Ese es el bueno, porque
+ *  esta probado contra la version de InnerTube que tu cliente habla.
+ *
+ *  Sin este filtro se cuelan lyric videos, remixes de fans y covers de
+ *  karaoke, y la precision se hunde. Es el ajuste con mayor impacto de todo
+ *  el sistema.
+ * ============================================================================
+ */
+
+import com.aura.migration.model.YtmCandidate
+
+class YtmClientInnerTube(
+    private val innerTube: Any   // <- sustituye por tu tipo real
+) : YtmClient {
+
+    companion object {
+        // TODO: reemplazar por la constante que ya tienes en tu codigo
+        const val FILTER_SONGS = "EgWKAQIIAWoKEAkQBRAKEAMQBA%3D%3D"
+    }
+
+    override suspend fun searchSongs(query: String, limit: Int): List<YtmCandidate> {
+        // val res = innerTube.search(query = query, params = FILTER_SONGS)
+        // return res.items.take(limit).map { it.toCandidate(isSong = true) }
+        TODO("envolver tu innerTube.search con params = FILTER_SONGS")
+    }
+
+    override suspend fun searchAll(query: String, limit: Int): List<YtmCandidate> {
+        // val res = innerTube.search(query = query, params = null)
+        // return res.items.take(limit).map { it.toCandidate(isSong = false) }
+        TODO("envolver tu innerTube.search sin filtro")
+    }
+
+    override suspend fun createPlaylist(name: String, description: String?): String {
+        TODO("innerTube.createPlaylist(name, description)")
+    }
+
+    override suspend fun addToPlaylist(playlistId: String, videoIds: List<String>) {
+        // Lotear de 50 en 50: peticiones enormes fallan silenciosamente.
+        // videoIds.chunked(50).forEach { innerTube.addToPlaylist(playlistId, it) }
+        TODO("innerTube.addToPlaylist por lotes de 50")
+    }
+}
+
+/*
+ *  MAPEADOR - adapta a la forma real de tus DTOs de innertube:
+ *
+ *  private fun SongItem.toCandidate(isSong: Boolean) = YtmCandidate(
+ *      videoId    = id,
+ *      title      = title,
+ *      artists    = artists.map { it.name },
+ *      album      = album?.name,
+ *      durationMs = duration?.times(1000L),   // OJO si viene en segundos
+ *      explicit   = explicit,
+ *      isSong     = isSong,
+ *      thumbnailUrl = thumbnail
+ *  )
+ */

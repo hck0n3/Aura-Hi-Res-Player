@@ -141,6 +141,12 @@ jobs:
         with:
           name: ${{ env.RELEASE_TITLE }}
           body_path: release-body.md
+          # PRIVATE BETA mechanism (owner order: test builds go only to him, never to everyone).
+          # A tag containing "-beta" or "-test" is published as a PRERELEASE: GitHub excludes
+          # prereleases from the `releases/latest` endpoint, which is exactly what the in-app
+          # updater queries — so no user's app ever offers the beta. The owner installs it from
+          # the release page directly. A normal `vX.Y.Z` tag behaves exactly as before.
+          prerelease: ${{ contains(github.ref, '-beta') || contains(github.ref, '-test') }}
           files: |
             app/build/outputs/apk/release-artifacts/*.apk
             app/build/outputs/apk/release-artifacts/changelog.json

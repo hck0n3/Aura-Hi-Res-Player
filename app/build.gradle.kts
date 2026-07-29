@@ -340,6 +340,7 @@ dependencies {
     ksp(libs.hilt.compiler)
 
     implementation(project(":innertube"))
+    implementation(project(":migration"))
     implementation(project(":kugou"))
     implementation(project(":lrclib"))
     implementation(project(":betterlyrics"))

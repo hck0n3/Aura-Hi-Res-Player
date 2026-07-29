@@ -1,0 +1,18 @@
+title,artist,album,duration_ms,isrc,expected_video_id,category
+# Rellena 200 filas. Reparto recomendado, calculado para exponer los fallos reales:
+#   40  pop mainstream en ingles      -> caso base
+#   40  musica latina con tildes y ñ  -> TU PUBLICO PRINCIPAL, donde la normalizacion ingenua falla
+#   20  remixes y versiones extendidas-> el fallo mas frecuente de todo importador
+#   20  directos y acusticos          -> segundo fallo mas frecuente
+#   15  clasica                       -> obra vs movimiento, brutal
+#   15  escrituras no latinas (JP/KR/AR)
+#   15  artistas de nombre ambiguo    -> Nirvana, Aurora, Sublime
+#   20  indie / oscuro                -> prueba real de cobertura
+#   15  explicit vs clean             -> duplicados sutiles
+#
+# Para sacar el expected_video_id: busca la cancion en YouTube Music y copia
+# el parametro v= de la URL. Verificalo de oido, no de titulo.
+#
+# Ejemplos de formato:
+Blinding Lights,The Weeknd,After Hours,200040,USUG11904206,4NRXx6U8ABQ,pop_en
+Corazón Partío,Alejandro Sanz,Más,312000,,QqvJPCXBTBk,latino_tildes
