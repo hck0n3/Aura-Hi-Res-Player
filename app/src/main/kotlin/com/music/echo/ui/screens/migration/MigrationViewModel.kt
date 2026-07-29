@@ -8,12 +8,14 @@ import androidx.lifecycle.viewModelScope
 import com.aura.migration.MigrationEngine
 import com.aura.migration.model.ImportReport
 import com.aura.migration.model.MatchResult
+import com.aura.migration.model.SourcePlaylist
 import com.aura.migration.model.SourceTrack
 import com.aura.migration.model.YtmCandidate
 import com.aura.migration.source.PlaylistSource
 import com.aura.migration.source.SourceError
 import com.aura.migration.source.deezer.DeezerSource
 import com.aura.migration.source.file.FileSource
+import com.aura.migration.source.tidal.TidalSource
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import iad1tya.echo.music.constants.DataSaverEnabledKey
@@ -21,6 +23,7 @@ import iad1tya.echo.music.constants.InnerTubeCookieKey
 import iad1tya.echo.music.db.MusicDatabase
 import iad1tya.echo.music.db.entities.PlaylistEntity
 import iad1tya.echo.music.migration.InMemoryPlaylistSource
+import iad1tya.echo.music.migration.TidalTokenStore
 import iad1tya.echo.music.utils.SyncUtils
 import iad1tya.echo.music.utils.dataStore
 import kotlinx.coroutines.Dispatchers
@@ -70,17 +73,38 @@ data class MigrationUiState(
     val ambiguousPending: Int get() = ambiguous.count { !it.resolved }
 }
 
+/**
+ * Tidal OAuth + collection state, kept SEPARATE from [MigrationUiState] on purpose: the login lives on
+ * its own screen ([MigrationTidalScreen]) and must not be wiped by [reset]/[cancelPending], which only
+ * touch the import state machine. Once a Tidal playlist is prepared it flows into the SAME CONFIRM ->
+ * RUNNING -> DONE machinery as the file/Deezer paths via [uiState].
+ */
+data class TidalAuthUiState(
+    val authenticated: Boolean = false,
+    val loggingIn: Boolean = false,
+    val collection: List<SourcePlaylist> = emptyList(),
+    val collectionLoading: Boolean = false,
+    val error: String? = null,
+    /** Set when [beginTidalLogin] has built the authorize URL off-Main; the screen opens it then clears it. */
+    val pendingAuthUrl: String? = null,
+)
+
 @HiltViewModel
 class MigrationViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val engine: MigrationEngine,
     private val deezerSource: DeezerSource,
+    private val tidalSource: TidalSource,
+    private val tidalTokenStore: TidalTokenStore,
     private val database: MusicDatabase,
     private val syncUtils: SyncUtils,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(MigrationUiState())
     val uiState: StateFlow<MigrationUiState> = _uiState.asStateFlow()
+
+    private val _tidalState = MutableStateFlow(TidalAuthUiState())
+    val tidalState: StateFlow<TidalAuthUiState> = _tidalState.asStateFlow()
 
     /** The running import, so a re-entry cancels the previous one instead of running two at once. */
     private var migrationJob: Job? = null
@@ -171,6 +195,159 @@ class MigrationViewModel @Inject constructor(
                 fail(e.message ?: "URL de Deezer no válida.")
             }
         }
+    }
+
+    // ── TIDAL: AUTH ──────────────────────────────────────────────────────
+
+    /** Re-derives Tidal login from the encrypted token vault, and lazily loads the collection once. */
+    fun refreshTidalAuth() {
+        // Off Main: isAuthenticated lazily builds EncryptedSharedPreferences (Keystore + disk) on first
+        // touch — jank if done on the UI thread at screen entry (thermal/battery audit discipline).
+        viewModelScope.launch {
+            val authed = withContext(Dispatchers.IO) { tidalTokenStore.isAuthenticated }
+            _tidalState.value = _tidalState.value.copy(authenticated = authed)
+            if (authed && _tidalState.value.collection.isEmpty() && !_tidalState.value.collectionLoading) {
+                loadTidalCollection()
+            }
+        }
+    }
+
+    /**
+     * Step 1 of PKCE: build the authorize URL (verifier persisted by the store) and post it to
+     * [TidalAuthUiState.pendingAuthUrl] for the UI to open in a Custom Tab. Runs OFF Main — beginAuth()
+     * reads the client id from DataStore (a runBlocking read) and lazily inits EncryptedSharedPreferences,
+     * neither of which may block the UI thread on the login tap.
+     * Deliberately does NOT flip loggingIn: the user is about to leave for the browser, and if they cancel
+     * there WITHOUT a redirect no callback fires — a flag set now would strand the button disabled forever.
+     * loggingIn is scoped to the code exchange in [completeTidalLogin].
+     */
+    fun beginTidalLogin() {
+        viewModelScope.launch {
+            _tidalState.value = _tidalState.value.copy(error = null, pendingAuthUrl = null)
+            val url = withContext(Dispatchers.IO) {
+                runCatching { tidalTokenStore.beginAuth() }.getOrNull()
+            }
+            _tidalState.value = if (url != null) {
+                _tidalState.value.copy(pendingAuthUrl = url)
+            } else {
+                _tidalState.value.copy(
+                    error = "No pude iniciar el acceso a Tidal. Revisa que el client id sea correcto.",
+                )
+            }
+        }
+    }
+
+    /** The UI opened the pending auth URL — clear it so it isn't re-opened on recomposition. */
+    fun consumeTidalAuthUrl() {
+        _tidalState.value = _tidalState.value.copy(pendingAuthUrl = null)
+    }
+
+    /** The redirect came back with ?error= (typically the user cancelled the consent screen). */
+    fun tidalLoginFailed(error: String) {
+        _tidalState.value = _tidalState.value.copy(
+            loggingIn = false,
+            error = if (error == "access_denied") "Cancelaste el acceso a Tidal."
+            else "Tidal rechazó el acceso ($error).",
+        )
+    }
+
+    /**
+     * Step 3 of PKCE: redeem the authorization code delivered via echomusic://tidal-callback.
+     *
+     * `state` is intentionally NOT validated: [com.aura.migration.source.tidal.TidalAuth.buildAuthRequest]
+     * emits no `state` param, so there is nothing to compare against — the PKCE code_verifier (persisted in
+     * [TidalTokenStore]) already binds this exchange to the request we started. Acceptable for a private
+     * beta; if a `state` is ever added to the authorize URL, validate it here.
+     */
+    fun completeTidalLogin(code: String, state: String?) {
+        _tidalState.value = _tidalState.value.copy(loggingIn = true, error = null)
+        viewModelScope.launch {
+            val ok = withContext(Dispatchers.IO) {
+                runCatching { tidalTokenStore.exchangeCode(code) }.getOrDefault(false)
+            }
+            if (ok) {
+                _tidalState.value = _tidalState.value.copy(authenticated = true, loggingIn = false, error = null)
+                loadTidalCollection()
+            } else {
+                _tidalState.value = _tidalState.value.copy(
+                    authenticated = false,
+                    loggingIn = false,
+                    error = "No pude completar el acceso a Tidal. Inténtalo de nuevo.",
+                )
+            }
+        }
+    }
+
+    /** Loads the signed-in user's Tidal playlist collection (nice-to-have; the URL field is the fallback). */
+    fun loadTidalCollection() {
+        _tidalState.value = _tidalState.value.copy(collectionLoading = true, error = null)
+        viewModelScope.launch {
+            try {
+                val lists = withContext(Dispatchers.IO) { tidalSource.listPlaylists(null) }
+                _tidalState.value = _tidalState.value.copy(collection = lists, collectionLoading = false)
+            } catch (e: SourceError.NotAuthenticated) {
+                _tidalState.value = _tidalState.value.copy(
+                    authenticated = false,
+                    collectionLoading = false,
+                    error = "Tu sesión de Tidal caducó. Vuelve a iniciar sesión.",
+                )
+            } catch (e: Exception) {
+                _tidalState.value = _tidalState.value.copy(
+                    collectionLoading = false,
+                    error = "No pude cargar tus listas de Tidal. Puedes pegar el enlace de una lista abajo.",
+                )
+            }
+        }
+    }
+
+    fun logoutTidal() {
+        tidalTokenStore.logout()
+        _tidalState.value = TidalAuthUiState()
+    }
+
+    fun dismissTidalError() {
+        _tidalState.value = _tidalState.value.copy(error = null)
+    }
+
+    // ── TIDAL: IMPORT ────────────────────────────────────────────────────
+
+    /** Prepare an import from a pasted Tidal playlist URL. On success -> CONFIRM (shared machinery). */
+    fun prepareTidalImport(input: String) {
+        viewModelScope.launch {
+            try {
+                _tidalState.value = _tidalState.value.copy(error = null)
+                if (!tidalSource.accepts(input)) {
+                    tidalError("Pega el enlace de una lista de Tidal (tidal.com/playlist/…).")
+                    return@launch
+                }
+                val meta = withContext(Dispatchers.IO) { tidalSource.listPlaylists(input) }.firstOrNull()
+                    ?: run { tidalError("No pude leer esa lista de Tidal."); return@launch }
+                beginTidalConfirm(meta)
+            } catch (e: SourceError.NotAuthenticated) {
+                _tidalState.value = _tidalState.value.copy(
+                    authenticated = false,
+                    error = "Tu sesión de Tidal caducó. Vuelve a iniciar sesión.",
+                )
+            } catch (e: SourceError) {
+                tidalError(e.message ?: "No pude leer la lista de Tidal.")
+            } catch (e: Exception) {
+                tidalError(e.message ?: "Enlace de Tidal no válido.")
+            }
+        }
+    }
+
+    /** Prepare an import from a collection playlist the user tapped. On success -> CONFIRM. */
+    fun prepareTidalPlaylist(playlist: SourcePlaylist) = beginTidalConfirm(playlist)
+
+    private fun beginTidalConfirm(meta: SourcePlaylist) {
+        val name = meta.name.ifBlank { "Lista de Tidal" }
+        prepared = Prepared(source = tidalSource, playlistId = meta.id, name = name, count = meta.trackCount)
+        _tidalState.value = _tidalState.value.copy(error = null)
+        toConfirm(name, meta.trackCount)
+    }
+
+    private fun tidalError(message: String) {
+        _tidalState.value = _tidalState.value.copy(error = message)
     }
 
     // ── IMPORT ───────────────────────────────────────────────────────────
