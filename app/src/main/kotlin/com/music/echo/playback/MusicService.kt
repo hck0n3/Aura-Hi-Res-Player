@@ -5027,43 +5027,58 @@ class MusicService :
                     }
                 }
             }
-            // Smart shuffle: nudge tracks you tend to like toward the front, but keep plenty of randomness
-            // (random term dominates) so it still feels shuffled, not a fixed favourites list. With no taste
-            // profile yet this is just a plain shuffle.
+            // Smart shuffle: nudge tracks you tend to like toward the front, but RANDOM MUST DOMINATE.
+            // The old factor (taste * 0.5, taste up to ~1.7) put a favourite artist's songs 0.85 above a
+            // uniform [0,1) draw — near PARITY with the entire random range — so on a big playlist that
+            // artist's whole block sorted to the front and re-toggling shuffle recomputed the same bias:
+            // the owner's exact "me bombardea el mismo artista / eso no tiene nada de aleatorio". Capped
+            // taste contribution is now ±0.255 vs random's 1.0 (~4:1): a mild nudge, visibly shuffled.
             val p = cachedTaste
             val rnd = java.util.Random()
             // Precompute each index's key ONCE (rnd inside the comparator would crash TimSort).
             val keys = HashMap<Int, Double>(indices.size)
+            val unplayedGroup = HashMap<Int, Boolean>(indices.size)
             val primaryArtist = HashMap<Int, String>(indices.size)
             indices.forEach { i ->
                 val m = runCatching { player.getMediaItemAt(i).metadata }.getOrNull()
                 val tasteScore = if (p != null && m != null) p.scoreNames(m.artists.map { it.name }, m.title) else 0.0
-                var key = tasteScore * 0.5 + rnd.nextDouble()
+                var key = tasteScore.coerceIn(-1.7, 1.7) * 0.15 + rnd.nextDouble()
                 // Anti-repeat: already-played songs sink BELOW all not-yet-played ones (big offset), so the
                 // whole pool is exhausted before anything repeats. Within each group the smart order applies.
                 val id = m?.id
-                if (id == null || id !in playedSnapshot) key += 1000.0
+                val isUnplayed = id == null || id !in playedSnapshot
+                if (isUnplayed) key += 1000.0
                 keys[i] = key
+                unplayedGroup[i] = isUnplayed
                 primaryArtist[i] = m?.artists?.firstOrNull()?.name?.lowercase().orEmpty()
             }
             indices.sortByDescending { keys[it] ?: 0.0 }
-            // ARTIST SPACING (owner report: "cuando va por un cantante solo de ese cantante me pone"):
-            // the taste term clusters a favourite artist's songs together, producing same-artist RUNS
-            // that don't read as random at all. Single bounded pass: when two neighbours share the
-            // primary artist, swap the second with the next index (lookahead ≤20) that (a) has a
-            // DIFFERENT artist and (b) sits in the SAME played/unplayed group — the +1000 anti-repeat
-            // boundary is never crossed. O(n·20) on the player thread; blank artists never match.
+            // ARTIST SPACING (owner reports: "cuando va por un cantante solo de ese cantante me pone",
+            // then "me bombardea el mismo artista, eso no tiene nada de aleatorio"): enforce a MINIMUM
+            // GAP of 2 — a song's primary artist must differ from BOTH previous picks. The old pass only
+            // broke up adjacent pairs with a 20-slot lookahead, so a dense favourite-artist block (taste
+            // clustering + big catalogs) sailed straight through: every candidate within 20 was the same
+            // artist and the pass gave up (its 20-slot lookahead was too short for dense blocks; the gap
+            // was only 1). Lookahead is now 60 with a minimum gap of 2. Still bounded (O(n·60), cheap
+            // ops on precomputed maps). GROUP MEMBERSHIP, not the key threshold: a much-skipped artist's
+            // unplayed song can carry a NEGATIVE taste term and land under 1000, so `key >= 1000` misread
+            // it as played — the scan then crossed into real played territory and could lift an
+            // already-played song above the boundary (a repeat before the cycle closed). The recorded
+            // membership can't be fooled by the key's value. When a stretch is genuinely all one artist
+            // (playlist composition), no swap exists and it stays — spacing can't invent variety the
+            // pool doesn't have.
             run {
-                fun sameGroup(a: Int, b: Int): Boolean =
-                    ((keys[a] ?: 0.0) >= 1000.0) == ((keys[b] ?: 0.0) >= 1000.0)
+                fun sameGroup(a: Int, b: Int): Boolean = unplayedGroup[a] == unplayedGroup[b]
                 for (i in 1 until indices.size) {
-                    val prev = primaryArtist[indices[i - 1]].orEmpty()
+                    val prev1 = primaryArtist[indices[i - 1]].orEmpty()
+                    val prev2 = if (i >= 2) primaryArtist[indices[i - 2]].orEmpty() else ""
                     val cur = primaryArtist[indices[i]].orEmpty()
-                    if (prev.isEmpty() || prev != cur) continue
-                    val maxJ = (i + 20).coerceAtMost(indices.size - 1)
+                    if (cur.isEmpty() || (cur != prev1 && cur != prev2)) continue
+                    val maxJ = (i + 60).coerceAtMost(indices.size - 1)
                     for (j in (i + 1)..maxJ) {
                         if (!sameGroup(indices[i], indices[j])) break
-                        if (primaryArtist[indices[j]].orEmpty() != prev) {
+                        val cand = primaryArtist[indices[j]].orEmpty()
+                        if (cand != prev1 && cand != prev2) {
                             val tmp = indices[i]
                             indices[i] = indices[j]
                             indices[j] = tmp
