@@ -442,6 +442,20 @@ fun NavGraphBuilder.navigationBuilder(
         )
     }
 
+    // Playlist migration (Tidal / Deezer / archivo / Apple → YouTube Music). Entry point lives in the
+    // Library "Importar" menu, next to the Spotify/YouTube import options.
+    composable("migration") {
+        iad1tya.echo.music.ui.screens.migration.MigrationScreen(navController)
+    }
+
+    composable("migration/tidal") {
+        iad1tya.echo.music.ui.screens.migration.MigrationTidalScreen(navController)
+    }
+
+    composable("migration/apple") {
+        iad1tya.echo.music.ui.screens.migration.MigrationAppleScreen(navController)
+    }
+
     composable(
         route = "settings/ytm_sync?onboarding={onboarding}",
         arguments = listOf(navArgument("onboarding") { type = NavType.BoolType; defaultValue = false }),

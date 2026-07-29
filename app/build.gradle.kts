@@ -51,8 +51,8 @@ android {
         // Public version reset to a fresh stable 0.0.1 for the Aura Hi-Res Player relaunch.
         // versionCode stays monotonic (never below the last shipped 673) so the in-app updater and
         // sideload-install-over-existing keep working; only the user-facing versionName resets.
-        versionCode = 844
-        versionName = "0.6.139"
+        versionCode = 845
+        versionName = "0.6.140-beta1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -341,6 +341,9 @@ dependencies {
 
     implementation(project(":innertube"))
     implementation(project(":migration"))
+    // Tidal OAuth tokens at rest (bridge TidalTokenStore). MUST stay on the exact same version the
+    // :migration module uses, or two Tink stacks end up on the classpath.
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
     implementation(project(":kugou"))
     implementation(project(":lrclib"))
     implementation(project(":betterlyrics"))

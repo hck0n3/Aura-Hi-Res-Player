@@ -1,23 +1,29 @@
-# Aura Hi-Res Player 0.6.139 — Auditoría de calor y batería: los quemadores reales, sellados
+# Aura Hi-Res Player 0.6.140-beta1 — Migrar playlists a YouTube Music (BETA PRIVADA)
 
-Reporte del dueño: "siento que mi cel está calentando con esa app". Auditoría completa en 3 frentes (motor de audio, UI/widgets, red) con costos derivados del código — y arreglo de todo lo que de verdad quema.
+> ⚠️ **Build de PRUEBA, solo para el dueño.** Sale como *prerelease*: el actualizador de la app NO la ofrece a nadie más. Instálala a mano desde esta página. Todo lo de 0.6.139 sigue igual.
 
-## 🔥 Los tres calentadores principales
-1. **Sondeo fantasma**: abrir el menú ⋯ de cualquier canción UNA vez dejaba una consulta a la base de datos corriendo **cada segundo para siempre** (~86.000 consultas/día), incluso con la pantalla apagada y la app en segundo plano. Ahora se aparca en cero trabajo cuando nada lo está mirando.
-2. **Reescritura de la cola a disco cada 10 s**: con colas grandes de radio eran ~1 MB de escritura seis veces por minuto, en el hilo principal. Ahora solo se guarda la posición; la cola completa únicamente cuando su contenido cambió de verdad (con guardia de coherencia para que una restauración nunca caiga en la canción equivocada).
-3. **Widget de playlists**: reconstruía 5 consultas + ~9 mapas de bits + 69 vistas **por segundo**. Ahora el tick manda solo el progreso; todo lo demás solo cuando algo cambió.
+## 🎵 Nueva función: migrar playlists de otros servicios a YouTube Music
+Biblioteca ▸ botón "Importar" ▸ **Migrar playlist**. Elige la fuente:
 
-## 🔧 Más ahorros reales
-- El **segundo reproductor** del crossfade ya no se destruye y reconstruye 2-4 veces por canción cuando nada cambió (con validación estricta por versión de cola, para que jamás pueda colar una cola desactualizada).
-- El barajado en colas de 5.000 canciones ya no recalcula tus gustos **en cada avance** (caché por canción: de 20-60 ms por avance a unos pocos).
-- El **widget principal re-descargaba cada portada** por usar una caché separada de la del resto de la app. Unificado.
-- El prewarm de ~2 MB del arranque ahora respeta el **Ahorro de datos**.
-- El scrobbling sin conexión ya no genera 2 reportes de telemetría **por canción**.
-- La carátula del widget ya no se reintenta por red cada segundo cuando falla una carga.
+- **Archivo (CSV / M3U / JSPF)** ✅ funcional — exporta tu playlist de cualquier servicio (TuneMyMusic, Soundiiz, export GDPR de Spotify/Apple, o un reproductor local) e impórtala. Sin login, sin trámites.
+- **Deezer (URL pública)** ✅ funcional — pega el enlace de una playlist pública. (Deezer cerró el registro de apps, así que solo públicas.)
+- **Tidal** ⏳ preparado, login "próximamente" — necesita que registres un client-id en developer.tidal.com (10 min, tu cuenta). La pantalla lo explica y guarda el id cifrado; el inicio de sesión se activa cuando confirmes los endpoints de Tidal.
+- **Apple Music** 📄 guía — te lleva a la transferencia nativa de Apple (lo más fiable para Apple).
 
-## 📖 Bienvenida y Acerca de: todo lo real, sin placebos
-Ambas pantallas actualizadas con TODO lo que la app ofrece hasta hoy — cada afirmación **verificada contra el código** antes de escribirse: transiciones con memoria de silencios, Aleatorio Mejorado con separación de artistas, discografías completas, 3 widgets, Auto/TV/Cast, cierres del sistema, y más. Corregidos dos datos desfasados (SponsorBlock ya viene activo; Liquid Glass se enciende solo en gama alta).
+### Cómo funciona la coincidencia
+Cada canción se busca en YouTube Music y se puntúa por **duración + artista + título + álbum + versión**. Regla de oro: **nunca inserta una coincidencia dudosa en silencio** — si no está claro, va a "revisar" y decides tú. La duración es el discriminante fuerte (una versión en vivo dura distinto que la de estudio), y las etiquetas Remix/Live/Acoustic penalizan fuerte para no traer la grabación equivocada.
 
-## Recordatorio
-- Si notas calor: dime si pasa con **pantalla apagada o abierta**, si tienes **widget** puesto, y si vas por **datos o WiFi** — con eso lo atribuyo fino.
-- **Cierres del sistema** (Ajustes ▸ Registros): si la app se cierra sin error, ahí está la causa real.
+- **Progreso en vivo** (X de Y, canción actual), freno de 120 ms por pista para no calentar.
+- **Pantalla de resultados**: cuántas encontradas, cuántas ambiguas, cuántas no encontradas.
+- **Revisión de ambiguas**: eliges el candidato correcto o la saltas; tu elección se guarda como verdad permanente (una corrección manual nunca la pisa un resultado automático).
+- La playlist creada **aparece en tu Biblioteca** y se sincroniza con tu cuenta de YouTube.
+- Aviso antes de importar más de 100 canciones o con el Ahorro de datos activo.
+
+## Qué probar y reportar
+1. **Archivo**: exporta una playlist a CSV y prueba. ¿Coincidencias correctas? ¿Alguna versión equivocada (remix/directo)?
+2. **Deezer**: una playlist pública. ¿Nombre y número correctos? ¿Importa?
+3. La playlist nueva, ¿aparece en Biblioteca y se puede reproducir?
+4. Cualquier fallo → **Ajustes ▸ Registros**.
+
+## Nota técnica
+El motor de coincidencias venía con falsos positivos (artista equivocado, remixes colados); recalibrado y con 14 pruebas propias en verde. Todo verificado por auditoría adversarial antes de esta beta — se cazó y arregló un fallo que dejaba Deezer inservible.

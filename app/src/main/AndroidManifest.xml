@@ -112,6 +112,17 @@
                 <data android:host="listen" />
             </intent-filter>
 
+            <!-- Tidal OAuth (PKCE) redirect for the playlist migration importer -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data android:scheme="echomusic" />
+                <data android:host="tidal-callback" />
+            </intent-filter>
+
             <!-- Youtube filter -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />

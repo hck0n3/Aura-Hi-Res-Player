@@ -1035,3 +1035,10 @@ val TermsAcceptedVersionKey = intPreferencesKey("termsAcceptedVersion")
 val TermsAcceptedAtKey = longPreferencesKey("termsAcceptedAtMillis")
 // App versionCode the user was running when they accepted (audit trail).
 val TermsAcceptedAppVersionKey = intPreferencesKey("termsAcceptedAppVersionCode")
+
+// ── Playlist migration (Tidal / Deezer / archivo → YouTube Music) ──
+// Tidal Open API client id for the PKCE OAuth flow (no client secret — the project is GPL, an embedded
+// secret would be a public secret). User-supplied from developer.tidal.com; blank = Tidal import not
+// configured. Only the ID lives here — access/refresh TOKENS are credentials and live in
+// EncryptedSharedPreferences (migration/TidalTokenStore, file "tidal_tokens"), never in DataStore.
+val TidalClientIdKey = stringPreferencesKey("tidal_client_id")

@@ -195,6 +195,7 @@ import iad1tya.echo.music.constants.UseNewMiniPlayerDesignKey
 import iad1tya.echo.music.db.MusicDatabase
 import iad1tya.echo.music.db.entities.SearchHistory
 import iad1tya.echo.music.extensions.toEnum
+import iad1tya.echo.music.migration.TidalAuthCallbackBus
 import iad1tya.echo.music.models.toMediaMetadata
 import iad1tya.echo.music.playback.DownloadUtil
 import iad1tya.echo.music.playback.MusicService
@@ -1864,6 +1865,20 @@ class MainActivity : ComponentActivity() {
         }
         intent.data = null
         intent.removeExtra(Intent.EXTRA_TEXT)
+
+        // Tidal OAuth redirect (echomusic://tidal-callback?code=...&state=..., or ?error=... when the
+        // user cancels): this is an auth handshake, not content to open. MUST be handled before the
+        // Listen Together branch below — that one keys off getQueryParameter("code") too, and an OAuth
+        // authorization code must never be mistaken for a room code.
+        if (uri.scheme == "echomusic" && uri.host.equals("tidal-callback", ignoreCase = true)) {
+            TidalAuthCallbackBus.emit(
+                code = uri.getQueryParameter("code"),
+                state = uri.getQueryParameter("state"),
+                error = uri.getQueryParameter("error"),
+            )
+            return
+        }
+
         val coroutineScope = lifecycle.coroutineScope
 
         val listenCode = uri.getQueryParameter("code")
