@@ -260,6 +260,16 @@ fun BackupAndRestore(
                                 icon = painterResource(R.drawable.ic_spotify),
                                 onClick = { navController.navigate("settings/spotify_import") }
                             ),
+                            // Login-based whole-library migration, right beside Spotify (owner: "lo que
+                            // esté en ajustes permita loguearse para importar toda su biblioteca"). Tidal
+                            // signs in and pulls the whole playlist collection; Deezer/archivo remain
+                            // link/file (they have no login) — the picker offers each honestly.
+                            Material3SettingsItem(
+                                title = { Text("Migrar playlists (Tidal, Deezer, archivo)") },
+                                description = { Text("Inicia sesión en Tidal para traer toda tu biblioteca, o importa por enlace/archivo") },
+                                icon = painterResource(R.drawable.playlist_add),
+                                onClick = { navController.navigate("migration") }
+                            ),
                             Material3SettingsItem(
                                 title = { Text("Sincronizar desde YouTube Music") },
                                 description = { Text("Trae tu me gusta, álbumes, artistas, suscripciones y playlists de tu cuenta") },

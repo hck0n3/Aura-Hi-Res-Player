@@ -35,6 +35,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import timber.log.Timber
 import java.time.LocalDateTime
 import javax.inject.Inject
 
@@ -263,8 +264,11 @@ class MigrationViewModel @Inject constructor(
         _tidalState.value = _tidalState.value.copy(loggingIn = true, error = null)
         viewModelScope.launch {
             val ok = withContext(Dispatchers.IO) {
-                runCatching { tidalTokenStore.exchangeCode(code) }.getOrDefault(false)
+                runCatching { tidalTokenStore.exchangeCode(code) }
+                    .onFailure { Timber.tag("Migration").w(it, "Tidal exchangeCode threw") }
+                    .getOrDefault(false)
             }
+            Timber.tag("Migration").i("Tidal token exchange ok=%s", ok)
             if (ok) {
                 _tidalState.value = _tidalState.value.copy(authenticated = true, loggingIn = false, error = null)
                 loadTidalCollection()
@@ -284,17 +288,24 @@ class MigrationViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val lists = withContext(Dispatchers.IO) { tidalSource.listPlaylists(null) }
+                // Log the count so a 200-but-empty (wrong `me` path / JSON shape) is distinguishable from
+                // a real 403 in the shareable logs — the collection path used to be a total blind spot.
+                Timber.tag("Migration").i("Tidal collection loaded: %d playlists", lists.size)
                 _tidalState.value = _tidalState.value.copy(collection = lists, collectionLoading = false)
             } catch (e: SourceError.NotAuthenticated) {
+                Timber.tag("Migration").w("Tidal collection: not authenticated")
                 _tidalState.value = _tidalState.value.copy(
                     authenticated = false,
                     collectionLoading = false,
                     error = "Tu sesión de Tidal caducó. Vuelve a iniciar sesión.",
                 )
             } catch (e: Exception) {
+                // The REAL cause (403 = scopes not granted, 404 = wrong endpoint, parse error) — without
+                // this line the user only ever saw a blank list and we were guessing.
+                Timber.tag("Migration").w(e, "Tidal collection load failed")
                 _tidalState.value = _tidalState.value.copy(
                     collectionLoading = false,
-                    error = "No pude cargar tus listas de Tidal. Puedes pegar el enlace de una lista abajo.",
+                    error = "No pude cargar tus listas de Tidal (${e.message ?: "error"}). Puedes pegar el enlace de una lista abajo.",
                 )
             }
         }
