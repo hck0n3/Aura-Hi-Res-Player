@@ -50,6 +50,12 @@ fun MigrationTidalScreen(navController: NavController) {
     val context = LocalContext.current
     val (savedClientId, setSavedClientId) = rememberPreference(TidalClientIdKey, "")
     var clientIdField by remember(savedClientId) { mutableStateOf(savedClientId) }
+    // The id the app will actually use: a pasted one wins, else the one baked into the build. When a
+    // default is baked in, the owner never has to paste anything — the setup card collapses to an
+    // optional "advanced" override.
+    val bakedClientId = iad1tya.echo.music.BuildConfig.TIDAL_CLIENT_ID
+    val effectiveClientId = savedClientId.ifBlank { bakedClientId }
+    var showClientIdEditor by remember { mutableStateOf(false) }
 
     // Share the picker's ViewModel so a prepared Tidal import reuses the same state machine + engine.
     val migrationEntry = remember(navController) { navController.getBackStackEntry("migration") }
@@ -130,51 +136,67 @@ fun MigrationTidalScreen(navController: NavController) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
-            // Client id entry
-            Card(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
-                Column(
-                    modifier = Modifier.fillMaxWidth().padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+            // Client id entry — shown only when there is NO usable id yet (no baked default and nothing
+            // pasted), or when the user explicitly opens the advanced override. With a baked-in id the
+            // owner sees a compact "listo" line + an optional "cambiar" link instead of a paste form.
+            if (effectiveClientId.isBlank() || showClientIdEditor) {
+                Card(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Text(
+                            text = stringResource(R.string.migrate_tidal_clientid_title),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        Text(
+                            text = stringResource(R.string.migrate_tidal_clientid_how),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        OutlinedTextField(
+                            value = clientIdField,
+                            onValueChange = { clientIdField = it },
+                            singleLine = true,
+                            label = { Text(stringResource(R.string.migrate_tidal_clientid_label)) },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            OutlinedButton(
+                                onClick = { openExternal(context, "https://developer.tidal.com/dashboard") },
+                                modifier = Modifier.weight(1f),
+                            ) { Text(stringResource(R.string.migrate_tidal_open_dashboard)) }
+                            Button(
+                                onClick = {
+                                    setSavedClientId(clientIdField.trim())
+                                    showClientIdEditor = false
+                                },
+                                modifier = Modifier.weight(1f),
+                            ) { Text(stringResource(R.string.migrate_tidal_save)) }
+                        }
+                    }
+                }
+            } else {
+                // Baked-in (or already-saved) id: no paste needed, just a status line + advanced override.
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        text = stringResource(R.string.migrate_tidal_clientid_title),
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    Text(
-                        text = stringResource(R.string.migrate_tidal_clientid_how),
+                        text = stringResource(R.string.migrate_tidal_clientid_ready),
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = MaterialTheme.colorScheme.primary,
                     )
-                    OutlinedTextField(
-                        value = clientIdField,
-                        onValueChange = { clientIdField = it },
-                        singleLine = true,
-                        label = { Text(stringResource(R.string.migrate_tidal_clientid_label)) },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        OutlinedButton(
-                            onClick = { openExternal(context, "https://developer.tidal.com/dashboard") },
-                            modifier = Modifier.weight(1f),
-                        ) { Text(stringResource(R.string.migrate_tidal_open_dashboard)) }
-                        Button(
-                            onClick = { setSavedClientId(clientIdField.trim()) },
-                            modifier = Modifier.weight(1f),
-                        ) { Text(stringResource(R.string.migrate_tidal_save)) }
-                    }
-                    if (savedClientId.isNotBlank()) {
-                        Text(
-                            text = stringResource(R.string.migrate_tidal_saved),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.primary,
-                        )
+                    TextButton(onClick = { showClientIdEditor = true }) {
+                        Text(stringResource(R.string.migrate_tidal_clientid_change))
                     }
                 }
             }
 
-            // Sign-in / import — only once a client id exists (nothing to authenticate against otherwise).
-            if (savedClientId.isNotBlank()) {
+            // Sign-in / import — available as soon as ANY usable client id exists (baked or pasted).
+            if (effectiveClientId.isNotBlank()) {
                 if (!tidalState.authenticated) {
                     LoginCard(
                         loggingIn = tidalState.loggingIn,

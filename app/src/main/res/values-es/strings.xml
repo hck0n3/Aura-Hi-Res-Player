@@ -599,6 +599,8 @@
     <string name="migrate_tidal_open_dashboard">Abrir panel</string>
     <string name="migrate_tidal_save">Guardar</string>
     <string name="migrate_tidal_saved">Client id guardado.</string>
+    <string name="migrate_tidal_clientid_ready">Client id de Tidal listo.</string>
+    <string name="migrate_tidal_clientid_change">Cambiar</string>
     <string name="migrate_tidal_login_title">Acceso a Tidal</string>
     <string name="migrate_tidal_login_desc">Autoriza a Aura a leer tus listas de Tidal. Se abre el navegador; tu contraseña nunca se ve ni se guarda.</string>
     <string name="migrate_tidal_login">Iniciar sesión en Tidal</string>

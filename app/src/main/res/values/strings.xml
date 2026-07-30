@@ -657,6 +657,8 @@
     <string name="migrate_tidal_open_dashboard">Open dashboard</string>
     <string name="migrate_tidal_save">Save</string>
     <string name="migrate_tidal_saved">Client id saved.</string>
+    <string name="migrate_tidal_clientid_ready">Tidal client id ready.</string>
+    <string name="migrate_tidal_clientid_change">Change</string>
     <string name="migrate_tidal_login_title">Tidal sign-in</string>
     <string name="migrate_tidal_login_desc">Authorize Aura to read your Tidal playlists. This opens your browser; your password is never seen or stored.</string>
     <string name="migrate_tidal_login">Sign in to Tidal</string>

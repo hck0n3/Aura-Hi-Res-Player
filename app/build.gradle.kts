@@ -51,8 +51,8 @@ android {
         // Public version reset to a fresh stable 0.0.1 for the Aura Hi-Res Player relaunch.
         // versionCode stays monotonic (never below the last shipped 673) so the in-app updater and
         // sideload-install-over-existing keep working; only the user-facing versionName resets.
-        versionCode = 846
-        versionName = "0.6.140-beta2"
+        versionCode = 847
+        versionName = "0.6.140-beta3"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -78,6 +78,18 @@ android {
 
         buildConfigField("String", "LASTFM_API_KEY", "\"$lastFmKey\"")
         buildConfigField("String", "LASTFM_SECRET", "\"$lastFmSecret\"")
+
+        // Tidal OAuth client id, embedded so the owner never re-pastes it (same pattern as the LastFM
+        // keys above). A client id is NOT a secret — Tidal's Open API is PKCE-only (no client secret),
+        // so the id is public by design; this is low-severity and consistent with the house rule.
+        // Overridable via local.properties / a TIDAL_CLIENT_ID CI secret; blank means "no default, the
+        // user pastes their own in the app". takeIf { isNotBlank() } so an empty CI env var falls through.
+        // NOTE: this id is tied to the OWNER's developer.tidal.com account and its rate limits — fine for
+        // the private beta; revisit (a production Tidal app) before wiring Tidal into a PUBLIC release.
+        val tidalClientId = localProperties.getProperty("TIDAL_CLIENT_ID")?.takeIf { it.isNotBlank() }
+            ?: System.getenv("TIDAL_CLIENT_ID")?.takeIf { it.isNotBlank() }
+            ?: "nNgez049R98ji742"
+        buildConfigField("String", "TIDAL_CLIENT_ID", "\"$tidalClientId\"")
 
 //add nightly build label support
         val isNightly = project.hasProperty("nightly") && project.property("nightly") == "true"

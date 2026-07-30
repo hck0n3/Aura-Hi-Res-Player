@@ -97,7 +97,11 @@ object MigrationModule {
     fun provideTidalAuth(
         @ApplicationContext context: Context,
     ): TidalAuth = TidalAuth(
-        clientId = context.dataStore.get(TidalClientIdKey, ""),
+        // A pasted id (settings) overrides; otherwise fall back to the id baked into the build so the
+        // owner never has to paste anything. BuildConfig.TIDAL_CLIENT_ID may be blank on a build without
+        // a default — then only a pasted id works.
+        clientId = context.dataStore.get(TidalClientIdKey, "")
+            .ifBlank { iad1tya.echo.music.BuildConfig.TIDAL_CLIENT_ID },
         redirectUri = TIDAL_REDIRECT_URI,
     )
 
