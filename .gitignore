@@ -190,10 +190,15 @@ run_on_emulator.sh
 build_and_sign_apk.sh
 
 # YouTube tokens and sensitive assets
-**/assets/po_token.html
+# NOTE: po_token.html is a REQUIRED, non-secret BotGuard harness asset (no keys/cookies live
+# inside it — the real GOOGLE_API_KEY/REQUEST_KEY are in PoTokenWebView.kt). It MUST be committed
+# so CI-built APKs contain it; otherwise AssetManager.open("po_token.html") throws
+# FileNotFoundException at runtime. The generic *token* pattern below catches it by filename, so
+# it is explicitly re-included with the negation at the end of this block.
 **/assets/*token*
 **/assets/*secret*
 **/assets/*key*
+!**/assets/po_token.html
 
 # Personal development files
 *.personal

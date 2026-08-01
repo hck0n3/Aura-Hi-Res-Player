@@ -109,6 +109,7 @@ fun MigrationScreen(
                         onDeezer = { deezerInput = ""; showDeezerDialog = true },
                         onTidal = { navController.navigate("migration/tidal") },
                         onApple = { navController.navigate("migration/apple") },
+                        onYouTubeLogin = { navController.navigate("login") },
                     )
 
                     MigrationPhase.CONFIRM -> confirmContent(
@@ -197,11 +198,21 @@ private fun androidx.compose.foundation.lazy.LazyListScope.pickerContent(
     onDeezer: () -> Unit,
     onTidal: () -> Unit,
     onApple: () -> Unit,
+    onYouTubeLogin: () -> Unit,
 ) {
+    // HARD GATE: the migrated playlist is CREATED in the user's YouTube Music account, so a YT Music
+    // session is mandatory. Without it, hide the sources entirely and send the user to log in first —
+    // otherwise they'd authenticate Tidal, pick a playlist, and only fail at the end (owner's report:
+    // Tidal found the playlist + songs, then "no se puede migrar" because he wasn't signed into YTM).
     if (!state.signedInYouTube) {
+        item { WarningCard(text = stringResource(R.string.migrate_needs_youtube)) }
         item {
-            WarningCard(text = stringResource(R.string.migrate_needs_youtube))
+            Button(
+                onClick = onYouTubeLogin,
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text(stringResource(R.string.migrate_youtube_login)) }
         }
+        return
     }
     item {
         Text(

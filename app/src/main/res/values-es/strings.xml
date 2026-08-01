@@ -561,6 +561,7 @@
     <string name="migrate_pick_source_desc">Trae una lista de otro servicio a tu biblioteca de YouTube Music. Cada canción se busca en YouTube Music.</string>
     <string name="migrate_source_group">Elige el origen</string>
     <string name="migrate_needs_youtube">Inicia sesión en YouTube Music (Ajustes -> Cuentas) para migrar: la lista se crea en tu cuenta de YouTube Music.</string>
+    <string name="migrate_youtube_login">Iniciar sesión en YouTube Music</string>
     <string name="migrate_source_file">Archivo (CSV, M3U, JSPF)</string>
     <string name="migrate_source_file_desc">Funciona con cualquier exportación de Spotify, Apple, TuneMyMusic, Soundiiz…</string>
     <string name="migrate_source_deezer">Deezer</string>
