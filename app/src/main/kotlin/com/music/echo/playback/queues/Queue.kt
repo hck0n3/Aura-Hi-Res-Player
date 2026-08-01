@@ -29,23 +29,31 @@ interface Queue {
         val mediaItemIndex: Int,
         val position: Long = 0L,
     ) {
+        /**
+         * Re-anchors [mediaItemIndex] after a filter shrinks [items].
+         *
+         * Both filters used to `copy(items = …)` and KEEP the old index, so removing any item before it
+         * shifted the whole queue: playback started on a DIFFERENT song than the one that was requested.
+         * The worst case was a single-song play whose seed sat at index 0 — drop the seed and index 0 now
+         * points at the radio's NEXT track, i.e. "it plays something unrelated". Note the video filter is
+         * ORed with Data Saver in MusicService, so this fired for a setting users don't read as "filter".
+         *
+         * The anchor is the item the index pointed at. If the anchor itself was filtered out we fall back
+         * to 0 (the caller's preloadItem, when present, still pins the right song regardless).
+         */
+        private fun reanchor(filtered: List<MediaItem>): Status {
+            val anchorId = items.getOrNull(mediaItemIndex)?.mediaId
+            val newIndex = anchorId
+                ?.let { id -> filtered.indexOfFirst { it.mediaId == id }.takeIf { it >= 0 } }
+                ?: 0
+            return copy(items = filtered, mediaItemIndex = newIndex.coerceAtMost((filtered.size - 1).coerceAtLeast(0)))
+        }
+
         fun filterExplicit(enabled: Boolean = true) =
-            if (enabled) {
-                copy(
-                    items = items.filterExplicit(),
-                )
-            } else {
-                this
-            }
+            if (enabled) reanchor(items.filterExplicit()) else this
 
         fun filterVideoSongs(disableVideos: Boolean = false) =
-            if (disableVideos) {
-                copy(
-                    items = items.filterVideoSongs(true),
-                )
-            } else {
-                this
-            }
+            if (disableVideos) reanchor(items.filterVideoSongs(true)) else this
     }
 }
 

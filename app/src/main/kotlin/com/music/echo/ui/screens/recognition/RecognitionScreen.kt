@@ -271,7 +271,22 @@ fun RecognitionScreen(
                 song.artists.joinToString { it.name },
             )
             withContext(Dispatchers.Main) {
-                connection.playQueue(YouTubeQueue(WatchEndpoint(videoId = song.id)))
+                // THE preloadItem IS THE FIX — this was the actual "plays a completely unrelated song"
+                // bug, and why hardening the MATCHING twice (beta7, beta8) never cured it: the call shape
+                // was never touched. This was the ONLY single-song play path in the app without a
+                // preloadItem (search, charts, the song menu, deep links and Listen Together all pass
+                // one). Without it, MusicService can't pin anything up front and instead plays
+                // `initialStatus.items[safeIndex]` — a list fetched from the NETWORK (the radio) that is
+                // never checked against the requested videoId. Worse, filterExplicit/filterVideoSongs
+                // shrink that list but KEEP the index, and the video filter is ORed with Data Saver, so
+                // with Data Saver on the seed gets dropped while the index still says 0 and the radio's
+                // NEXT track plays instead — exactly "suena otra que no tiene nada que ver".
+                // With the preloadItem, MusicService pins this exact song synchronously before any
+                // network call and adds the radio around it, so shown == played by construction. The
+                // radio continuation is preserved (a ListQueue would kill it and end in silence).
+                connection.playQueue(
+                    YouTubeQueue(WatchEndpoint(videoId = song.id), song.toMediaMetadata()),
+                )
             }
         }
     }
