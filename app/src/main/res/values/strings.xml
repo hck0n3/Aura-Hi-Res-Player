@@ -676,4 +676,5 @@
     <string name="migrate_apple_intro">Apple Music can\'t be migrated in-app, but Apple offers a native transfer to YouTube Music. Since YouTube Music is Aura\'s catalog, transferred playlists show up on a library refresh.</string>
     <string name="migrate_apple_open_privacy">Open privacy.apple.com</string>
     <string name="migrate_apple_limitations_title">Good to know</string>
+    <string name="login_use_phone_account">Use phone account</string>
 </resources>

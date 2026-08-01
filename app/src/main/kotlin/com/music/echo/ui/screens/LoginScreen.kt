@@ -2,7 +2,9 @@
 
 package iad1tya.echo.music.ui.screens
 
+import android.accounts.AccountManager
 import android.annotation.SuppressLint
+import android.net.Uri
 import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
@@ -84,6 +86,35 @@ fun LoginScreen(
     var accountEmail by rememberPreference(AccountEmailKey, "")
     var accountChannelHandle by rememberPreference(AccountChannelHandleKey, "")
     var hasCompletedLogin by remember { mutableStateOf(false) }
+
+    // Held in state so the account-picker callback can reload it. The WebView still loads the normal
+    // ServiceLogin URL by default; the picker only PRE-FILLS the email so the user skips typing it.
+    var webViewRef by remember { mutableStateOf<WebView?>(null) }
+
+    // System account picker (AndroidX framework, NOT Google Play Services) — enumerates the phone's
+    // synced Google accounts with NO permission and NO GMS, so it works on the FOSS flavor too. It only
+    // returns the chosen email; Google's own web sign-in still handles the password/2FA. login_hint is
+    // the standard OIDC param the sign-in page honours to pre-select/pre-fill that account.
+    val accountPicker = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val email = result.data?.getStringExtra(AccountManager.KEY_ACCOUNT_NAME)
+        if (!email.isNullOrBlank()) {
+            val hinted = "https://accounts.google.com/ServiceLogin" +
+                "?continue=https%3A%2F%2Fmusic.youtube.com" +
+                "&Email=${Uri.encode(email)}&login_hint=${Uri.encode(email)}"
+            webViewRef?.loadUrl(hinted)
+        }
+    }
+
+    fun launchAccountPicker() {
+        runCatching {
+            val intent = AccountManager.newChooseAccountIntent(
+                null, null, arrayOf("com.google"), null, null, null, null,
+            )
+            accountPicker.launch(intent)
+        }.onFailure { Timber.w(it, "Account picker unavailable") }
+    }
 
     var webView: WebView? = null
 
@@ -178,6 +209,7 @@ fun LoginScreen(
                     }
                 }, "Android")
                 webView = this
+                webViewRef = this
                 loadUrl("https://accounts.google.com/ServiceLogin?continue=https%3A%2F%2Fmusic.youtube.com")
             }
         }
@@ -194,6 +226,14 @@ fun LoginScreen(
                     painterResource(R.drawable.arrow_back),
                     contentDescription = null
                 )
+            }
+        },
+        actions = {
+            // "Use a phone account": pre-selects one of the device's Google accounts so the user skips
+            // typing their email. The web sign-in (password/2FA) still runs — this is a convenience, not
+            // a full auto-login (YTM auth is a web cookie, not an OAuth token).
+            androidx.compose.material3.TextButton(onClick = { launchAccountPicker() }) {
+                Text(stringResource(R.string.login_use_phone_account))
             }
         }
     )
