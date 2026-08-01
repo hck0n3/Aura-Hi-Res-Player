@@ -55,4 +55,39 @@ class ScorerTest {
         val s = Scorer.score(src("Hello", "Adele"), cand("Hello", "Lionel Richie"))
         assertTrue(s < Scorer.ACCEPT)
     }
+
+    // --- NO_DURATION_BONUS: la rama que se activa cuando la FUENTE no trae duracion.
+    // Ninguno de los tests de arriba la ejecuta (todos usan d=200_000), asi que iba sin cobertura.
+
+    @Test fun `sin duracion, match identico si auto-acepta`() {
+        val s = Scorer.score(src("Blinding Lights", "The Weeknd", d = null),
+                             cand("Blinding Lights", "The Weeknd"))
+        assertTrue("un match exacto sin duracion deberia aceptarse, fue $s", s >= Scorer.ACCEPT)
+    }
+
+    @Test fun `sin duracion, otra version NO auto-acepta aunque el titulo se parezca`() {
+        // Caso real que colaba: titleSim ~0.93 y "radio version" NO esta en VERSION_TAGS, asi que
+        // versionPenalty no dispara. Sin duracion no hay nada que descarte el otro master -> debe
+        // quedarse en revision, no insertarse solo.
+        val s = Scorer.score(src("Boulevard of Broken Dreams", "Green Day", d = null),
+                             cand("Boulevard of Broken Dreams (Radio Version)", "Green Day"))
+        assertTrue("otra version colada sin duracion, fue $s", s < Scorer.ACCEPT)
+    }
+
+    @Test fun `sin duracion, directo NO auto-acepta`() {
+        val s = Scorer.score(src("Suspicious Minds", "Elvis Presley", d = null),
+                             cand("Suspicious Minds (Live)", "Elvis Presley"))
+        assertTrue("directo colado sin duracion, fue $s", s < Scorer.ACCEPT)
+    }
+
+    @Test fun `sin duracion, artista equivocado sigue sin pasar`() {
+        val s = Scorer.score(src("Hello", "Adele", d = null), cand("Hello", "Lionel Richie"))
+        assertTrue("artista equivocado colado sin duracion, fue $s", s < Scorer.ACCEPT)
+    }
+
+    @Test fun `sin duracion, un video suelto no se beneficia del bono`() {
+        val s = Scorer.score(src("Song", "Artist", d = null),
+                             cand("Song", "Artist", song = false))
+        assertTrue("un video no-cancion no deberia auto-aceptarse, fue $s", s < Scorer.ACCEPT)
+    }
 }

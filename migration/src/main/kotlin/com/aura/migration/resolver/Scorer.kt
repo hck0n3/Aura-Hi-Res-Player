@@ -22,6 +22,13 @@ object Scorer {
     const val REVIEW = 50f
     /** Margen minimo sobre el segundo candidato para confiar sin preguntar. */
     const val MARGIN = 10f
+    /**
+     * Compensa la ausencia de duracion. La duracion vale hasta 45 (el discriminante mas fuerte),
+     * asi que una fuente que NO la trae topa en ~70 y jamas auto-acepta: todo cae en revision para
+     * siempre. Cuando la fuente no tiene duracion Y artista+titulo casan casi perfecto con una
+     * cancion real, ese acuerdo ya es fiable por si solo.
+     */
+    const val NO_DURATION_BONUS = 15f
 
     fun score(src: SourceTrack, cand: YtmCandidate): Float {
         var s = 0f
@@ -40,14 +47,31 @@ object Scorer {
         // richie") = 0.351), while a correct artist after normalizeArtist scores >= ~0.8 and the
         // "The Weeknd"/"Weeknd" token case lands exactly AT 0.5 (strict < keeps it unpenalized).
         if (artistSim < 0.5f) s -= 35f
-        s += 20f * Similarity.best(
+        val titleSim = Similarity.best(
             TextNormalizer.normalize(src.title),
             TextNormalizer.normalize(cand.title)
         )
+        s += 20f * titleSim
         s += albumScore(src.album, cand.album)
         s += if (cand.isSong) 15f else -15f
         s += explicitScore(src.explicit, cand.explicit)
         s += versionPenalty(src.title, cand.title)
+
+        // Only when the SOURCE lacks a duration (null): a genuine exact match on a real Song still
+        // clears ACCEPT instead of being trapped at ~70. No effect when the source HAS a duration.
+        //
+        // The title test is EXACT EQUALITY of the normalized titles, NOT a similarity threshold. A 0.9
+        // Jaro-Winkler cutoff was provably unsafe: "Boulevard of Broken Dreams" vs "… (Radio Version)"
+        // scores 0.93, and versionPenalty does NOT fire because VERSION_TAGS lists "radio edit" but not
+        // "radio version" — so the bonus lifted 63.6 -> 78.6 and SILENTLY auto-inserted a different
+        // master. Duration is exactly the signal that would have killed it, and it's the one we lack
+        // here, so the fallback must be strict: same artist, byte-identical normalized title, real Song.
+        // Any extra qualifier ("radio version", "live", "acoustic"…) survives normalize() as trailing
+        // words, so the titles differ and the bonus is withheld -> the pair stays in REVIEW for the user.
+        val titlesIdentical = TextNormalizer.normalize(src.title) == TextNormalizer.normalize(cand.title)
+        if (src.durationMs == null && cand.isSong && artistSim >= 0.85f && titlesIdentical) {
+            s += NO_DURATION_BONUS
+        }
 
         return s
     }

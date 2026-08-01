@@ -347,6 +347,10 @@ fun NavGraphBuilder.navigationBuilder(
         iad1tya.echo.music.ui.screens.settings.LastFMSettingsScreen(navController)
     }
 
+    composable("settings/qobuz") {
+        iad1tya.echo.music.ui.screens.settings.QobuzSettingsScreen(navController)
+    }
+
     composable("settings/appearance") {
         AppearanceSettings(navController, scrollBehavior, activity, snackbarHostState)
     }

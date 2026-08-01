@@ -89,7 +89,7 @@ class TidalSource(
                         origin = type
                     )
                 }
-            url = res.obj("links")?.strOrNull("next")?.let { "$API$it" }
+            url = nextPageUrl(res, "include=playlists", current = url!!)
         }
         return out
     }
@@ -108,8 +108,15 @@ class TidalSource(
 
     override suspend fun fetchTracks(playlistId: String): List<SourceTrack> {
         val out = mutableListOf<SourceTrack>()
+        // include=items ALONE sideloads only the track resources — their `artists`/`albums`
+        // relationships stay as bare links, so `included` holds NO artist resources and every
+        // extractArtists() returns empty => artist score 0 + the -35 artist gate => a hard ceiling
+        // of ~50 (REVIEW) => ZERO auto-matches for the whole playlist. Nesting the includes
+        // (items.artists, items.albums) makes the server put the artist/album resources in
+        // `included` AND populate each track's relationship linkage, which is what the extractors
+        // below read. items.albums is cheap and turns album into a real +10 discriminant.
         var url: String? = "$API/playlists/$playlistId/relationships/items" +
-                           "?countryCode=$countryCode&include=items&page[limit]=$PAGE"
+                           "?countryCode=$countryCode&include=items,items.artists,items.albums&page[limit]=$PAGE"
         var position = 0
 
         while (url != null) {
@@ -122,7 +129,7 @@ class TidalSource(
                     out += SourceTrack(
                         title = a.str("title"),
                         artists = extractArtists(node, res),
-                        album = null,   // requiere include=albums; opcional
+                        album = extractAlbum(node, res),
                         durationMs = parseIso8601Duration(a.strOrNull("duration")),
                         isrc = a.strOrNull("isrc"),
                         explicit = a.strOrNull("explicit")?.toBooleanStrictOrNull(),
@@ -130,9 +137,50 @@ class TidalSource(
                     )
                 }
 
-            url = res.obj("links")?.strOrNull("next")?.let { "$API$it" }
+            url = nextPageUrl(res, "include=items,items.artists,items.albums", current = url!!)
         }
         return out
+    }
+
+    /**
+     * Resolves the JSON:API `links.next` cursor into an absolute URL, defensively.
+     *
+     * Three real hazards this guards, all of which broke long playlists:
+     *  1. `links.next` MAY already be absolute. Blindly prefixing [API] produced
+     *     "https://openapi.tidal.com/v2https://…", and OkHttp's Request.Builder().url(...) throws
+     *     IllegalArgumentException for that — which the HTTP layer only retries for IOException, so it
+     *     escaped and failed the WHOLE import.
+     *  2. The cursor may drop our `include=`. Without it the next page's `included` carries no track
+     *     resources, so page 2+ silently yields ZERO items and the playlist is truncated at [PAGE] with
+     *     no error at all. We re-attach the include when it's missing.
+     *  3. A malformed/relative-without-slash cursor: treated as "no more pages" instead of crashing.
+     */
+    private fun nextPageUrl(
+        res: kotlinx.serialization.json.JsonObject,
+        include: String,
+        current: String,
+    ): String? {
+        val next = res.obj("links")?.strOrNull("next") ?: return null
+        val absolute = when {
+            next.startsWith("http://", ignoreCase = true) ||
+                next.startsWith("https://", ignoreCase = true) -> next
+            next.startsWith("/") -> "$API$next"
+            // A cursor we don't know how to resolve (e.g. a bare "?page[cursor]=…"). Rebuild it onto the
+            // CURRENT url's path instead of silently ending the list: returning null here truncated the
+            // playlist with no error at all, which for a migration tool is worse than failing loudly.
+            next.startsWith("?") -> current.substringBefore('?') + next
+            else -> return null
+        }
+        // Force OUR include. Testing only for the PRESENCE of "include=" was not enough: if the server
+        // echoes the cursor with the original narrower `include=items`, page 2+ carries no artist
+        // resources again -> empty artists -> the -35 artist gate -> zero auto-matches from page 2 on,
+        // i.e. the exact bug this whole change fixes, resurfacing after the first 100 tracks.
+        val withoutInclude = absolute
+            .replace(Regex("([?&])include=[^&]*&?"), "$1")
+            .trimEnd('?', '&')
+        val resolved = withoutInclude + (if ("?" in withoutInclude) "&" else "?") + include
+        // A server echoing the same cursor would loop forever; treat it as the end of the list.
+        return resolved.takeIf { it != current }
     }
 
     private fun extractArtists(
@@ -142,9 +190,25 @@ class TidalSource(
         val ids = node.obj("relationships")?.obj("artists")?.arr("data")
             ?.map { it.str("id") }?.toSet() ?: emptySet()
         if (ids.isEmpty()) return emptyList()
-        return root.arr("included")
+        // Preserve the relationship order (main artist first) instead of the `included` order, so
+        // SourceTrack.primaryArtist is the track's lead artist, not whichever resource landed first.
+        val byId = root.arr("included")
             .filter { it.str("type") == "artists" && it.str("id") in ids }
-            .mapNotNull { it.obj("attributes")?.strOrNull("name") }
+            .associate { it.str("id") to it.obj("attributes")?.strOrNull("name") }
+        return node.obj("relationships")?.obj("artists")?.arr("data")
+            ?.mapNotNull { byId[it.str("id")] } ?: emptyList()
+    }
+
+    /** First linked album title (nice-to-have: feeds albumScore, never required for a match). */
+    private fun extractAlbum(
+        node: kotlinx.serialization.json.JsonObject,
+        root: kotlinx.serialization.json.JsonObject
+    ): String? {
+        val id = node.obj("relationships")?.obj("albums")?.arr("data")
+            ?.firstOrNull()?.str("id")?.takeIf { it.isNotBlank() } ?: return null
+        return root.arr("included")
+            .firstOrNull { it.str("type") == "albums" && it.str("id") == id }
+            ?.obj("attributes")?.strOrNull("title")
     }
 
     /** Tidal v2 da duraciones ISO-8601 ("PT3M21S"). */

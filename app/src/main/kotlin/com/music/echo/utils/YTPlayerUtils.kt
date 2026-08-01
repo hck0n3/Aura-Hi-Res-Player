@@ -350,6 +350,95 @@ object YTPlayerUtils {
         var losslessFailed = false
         if (audioQuality == AudioQuality.LOSSLESS) {
             val qobuzStartMs = SystemClock.elapsedRealtime()
+
+            // ONE /player round trip for the whole lossless branch. The own-subscription probe and the two
+            // proxy attempts below all need the same title/artist/duration, and each used to fetch it
+            // again — up to three identical requests per lossless track, every one of them spending the
+            // very time budget it was supposed to fit inside.
+            //
+            // Only a SUCCESSFUL response is memoised: a fetch that failed (or was cut short by the
+            // timeout) leaves the cache null, so the next attempt retries it exactly as it did before.
+            // The fetch itself still happens INSIDE each withTimeoutOrNull, so it stays bounded.
+            var metadataCache: PlayerResponse? = null
+            suspend fun sharedMetadata(): PlayerResponse? {
+                if (metadataCache == null) {
+                    metadataCache = playerResponseForMetadata(videoId).getOrNull()
+                }
+                return metadataCache
+            }
+
+            // OWN-SUBSCRIPTION FIRST: when the owner has LINKED their real Qobuz account and the preference
+            // is on (QobuzHiRes.isActive), sign a getFileUrl against the user's own token and hand the FLAC
+            // url straight to the media3 hi-res path — the DELIVERED bit_depth/sampling_rate are read back
+            // from Qobuz. This is completely inert for anyone without a linked Qobuz account, so behaviour
+            // is byte-identical to before for them; only then do we fall through to the squid.wtf proxy loop.
+            //
+            // isActive() is the FIRST guard and short-circuits on a plain volatile preference read, so a
+            // user without Qobuz never reaches the vault, the network, or the timeout below. It is also
+            // non-throwing: an unreadable keystore reads as "not linked" instead of aborting resolution.
+            //
+            // QobuzHiRes.resolve() returns ONLY verified-lossless deliveries. That is what makes it safe to
+            // run before the proxy: if this account/track can only be served lossy, it returns null here
+            // and the proxy — which does deliver FLAC — is not pre-empted.
+            // The whole own-subscription attempt — INCLUDING isActive() — lives inside one 6s window.
+            // isActive() must not sit outside it: for a LINKED user it opens the encrypted vault
+            // (AndroidKeyStore + disk) on the media3 loader thread inside MusicService's runBlocking, with
+            // no bound of its own, so a contended keystore stalled track start by an unbounded amount.
+            // 6s (not 9s) keeps the lossless branch's worst case at ~18s as documented below: this attempt
+            // is ADDITIVE to the two 9s proxy attempts, and 9s here pushed it to 27s.
+            val ownStream = kotlinx.coroutines.withTimeoutOrNull(6000L) {
+                if (!iad1tya.echo.music.qobuz.QobuzHiRes.isActive()) return@withTimeoutOrNull null
+                run {
+                    val metadata = sharedMetadata()
+                    val title = knownTitle ?: metadata?.videoDetails?.title
+                    val author = knownArtist ?: metadata?.videoDetails?.author?.replace(" - Topic", "")
+                    if (title != null && author != null) {
+                        val durationSeconds = metadata?.videoDetails?.lengthSeconds?.toLongOrNull()
+                        val durationMs = knownDurationMs ?: durationSeconds?.let { it * 1000L }
+                        iad1tya.echo.music.qobuz.QobuzHiRes.resolve(author, title, durationMs)?.let { s ->
+                            val format = PlayerResponse.StreamingData.Format(
+                                itag = 0,
+                                mimeType = s.mimeType.ifBlank { "audio/flac; codecs=\"flac\"" },
+                                // Delivered PCM rate (depth × sample rate × 2ch), computed by QobuzHiRes
+                                // from the verified-lossless response — never inferred for a lossy stream.
+                                bitrate = s.bitrateBps,
+                                audioSampleRate = s.samplingRateHz,
+                                contentLength = 0L,
+                                url = s.url,
+                                cipher = null,
+                                signatureCipher = null,
+                                audioQuality = "LOSSLESS",
+                                fps = null,
+                                width = null,
+                                height = null,
+                                quality = "lossless",
+                                qualityLabel = null,
+                                averageBitrate = null,
+                                approxDurationMs = null,
+                                audioChannels = null,
+                                loudnessDb = null,
+                                lastModified = null,
+                                audioTrack = null
+                            )
+                            PlaybackData(
+                                audioConfig = null,
+                                videoDetails = metadata?.videoDetails,
+                                playbackTracking = null,
+                                format = format,
+                                streamUrl = s.url,
+                                streamExpiresInSeconds = 3600
+                            )
+                        }
+                    } else null
+                }
+            }
+            if (ownStream != null) {
+                timing.qobuzMs = SystemClock.elapsedRealtime() - qobuzStartMs
+                timing.winner = "qobuz"
+                Timber.tag(TAG).d("Qobuz own-subscription stream served for videoId=$videoId")
+                return Result.success(ownStream)
+            }
+
             var qobuzAttempt: Result<PlaybackData>? = null
             var lastException: Exception? = null
             // 2×9s (was 3×15s): caps the worst-case lossless wait at ~18s before falling back to
@@ -357,7 +446,7 @@ object YTPlayerUtils {
             for (attempt in 1..2) {
                 try {
                     qobuzAttempt = kotlinx.coroutines.withTimeoutOrNull(9000L) {
-                        val metadata = playerResponseForMetadata(videoId).getOrNull()
+                        val metadata = sharedMetadata()
                         val title = knownTitle ?: metadata?.videoDetails?.title
                         val author = knownArtist ?: metadata?.videoDetails?.author?.replace(" - Topic", "")
                         if (title != null && author != null) {

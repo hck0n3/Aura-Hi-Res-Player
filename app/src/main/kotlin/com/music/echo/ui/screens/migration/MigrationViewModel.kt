@@ -28,7 +28,9 @@ import iad1tya.echo.music.utils.SyncUtils
 import iad1tya.echo.music.utils.dataStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -110,6 +112,14 @@ class MigrationViewModel @Inject constructor(
     /** The running import, so a re-entry cancels the previous one instead of running two at once. */
     private var migrationJob: Job? = null
 
+    /** The running "append resolved ambiguous" job. Cleared by [reset] so it can't write stale ids into a
+     *  fresh import; the work itself is serialised by [appendMutex] rather than cancelled (cancelling
+     *  mid-append would leave a half-filled remote playlist). */
+    private var appendJob: Job? = null
+
+    /** Serialises applyResolved: a double tap waits instead of creating a second playlist / appending twice. */
+    private val appendMutex = kotlinx.coroutines.sync.Mutex()
+
     /** The prepared, ready-to-run import (set in CONFIRM, consumed by [confirmAndStart]). */
     private data class Prepared(
         val source: PlaylistSource,
@@ -119,6 +129,13 @@ class MigrationViewModel @Inject constructor(
     )
 
     private var prepared: Prepared? = null
+
+    /**
+     * Display name of the source of the running/finished import (e.g. "Tidal"). Kept so the ambiguous-
+     * resolve path can build the same "Importada desde X" description if it has to create the YTM
+     * playlist lazily (0 auto-matches case) — [prepared] may be a stale/other import by then.
+     */
+    private var sourceDisplayName: String = ""
 
     init {
         refreshEnvironment()
@@ -369,6 +386,7 @@ class MigrationViewModel @Inject constructor(
             fail("Inicia sesión en YouTube Music (Ajustes → Cuentas) para migrar: la playlist se crea en tu cuenta de YouTube Music.")
             return
         }
+        sourceDisplayName = p.source.displayName
         _uiState.value = _uiState.value.copy(
             phase = MigrationPhase.RUNNING,
             progressDone = 0,
@@ -417,22 +435,30 @@ class MigrationViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Persists the local mirror row for a freshly-created YTM playlist and returns its local id.
+     * bookmarkedAt is MANDATORY — without it the playlist is invisible in Library (documented landmine).
+     * browseId = the YTM id so Aura's sync keeps it up to date. The insert is awaited (not fire-and-forget)
+     * so the row exists BEFORE any syncPlaylist writes PlaylistSongMap rows against it — same
+     * insert-parent-first order as the Spotify import. Shared by [onFinished] and [applyResolved].
+     */
+    private suspend fun createLocalMirror(ytmPlaylistId: String, name: String): String {
+        val localId = PlaylistEntity.generatePlaylistId()
+        val entity = PlaylistEntity(
+            id = localId,
+            name = name,
+            browseId = ytmPlaylistId,
+            bookmarkedAt = LocalDateTime.now(),
+            isEditable = true,
+        )
+        database.withTransaction { insert(entity) }
+        return localId
+    }
+
     private suspend fun onFinished(report: ImportReport, ytmPlaylistId: String?) {
         var localId: String? = null
         if (ytmPlaylistId != null) {
-            // Persist the local mirror row. bookmarkedAt is MANDATORY — without it the playlist is invisible
-            // in Library (documented landmine). browseId = the YTM id so Aura's sync keeps it up to date.
-            localId = PlaylistEntity.generatePlaylistId()
-            val entity = PlaylistEntity(
-                id = localId,
-                name = report.playlistName,
-                browseId = ytmPlaylistId,
-                bookmarkedAt = LocalDateTime.now(),
-                isEditable = true,
-            )
-            // Await the insert (not fire-and-forget) so the row exists BEFORE syncPlaylist writes
-            // PlaylistSongMap rows against it — same insert-parent-first order as the Spotify import.
-            database.withTransaction { insert(entity) }
+            localId = createLocalMirror(ytmPlaylistId, report.playlistName)
             // Pull the freshly-created YTM playlist's songs into the local row so it shows populated.
             syncUtils.syncPlaylist(ytmPlaylistId, localId)
         }
@@ -464,36 +490,69 @@ class MigrationViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(ambiguous = list)
     }
 
-    /** Persists the user's picks and appends them to the created YTM playlist, then re-syncs. */
+    /** Persists the user's picks and appends them to the YTM playlist, then re-syncs. */
     fun applyResolved() {
         val state = _uiState.value
-        val ytmId = state.ytmPlaylistId
-        val localId = state.localPlaylistId
-        if (ytmId == null) {
-            fail("No se creó ninguna playlist (ninguna canción tuvo coincidencia automática), así que no hay dónde añadir las revisadas.")
-            return
-        }
         val chosen = state.ambiguous.filter { it.chosenVideoId != null }
         if (chosen.isEmpty()) {
-            // Nothing to add: just drop the resolved items and stay on the result screen.
+            // Nothing to add (only skips): just drop the resolved items and stay on the result screen.
+            // Never create an empty playlist for a user who resolved nothing.
             _uiState.value = state.copy(ambiguous = state.ambiguous.filterNot { it.resolved })
             return
         }
         _uiState.value = state.copy(appendingResolved = true)
-        viewModelScope.launch {
-            try {
-                chosen.forEach { engine.confirmMatch(it.track, it.chosenVideoId!!) }
-                engine.appendResolved(ytmId, chosen.map { it.chosenVideoId!! })
-                if (localId != null) syncUtils.syncPlaylist(ytmId, localId)
-                _uiState.value = _uiState.value.copy(
-                    appendingResolved = false,
-                    matchedCount = _uiState.value.matchedCount + chosen.size,
-                    // Keep only the still-unresolved ones (skipped or untouched) on the list.
-                    ambiguous = _uiState.value.ambiguous.filterNot { it.resolved },
-                )
-            } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(appendingResolved = false)
-                fail(e.message ?: "No pude añadir las canciones revisadas.")
+        // Dispatchers.IO is LOAD-BEARING here, same as confirmAndStart: engine.createPlaylist reaches
+        // YouTube.createPlaylist, which is NOT suspend — it wraps runBlocking — so on the Main dispatcher
+        // this freezes the UI for a full InnerTube round trip and ANRs on a slow connection.
+        // appendResolved/syncPlaylist/DB writes below are network+disk too.
+        // A MUTEX, not cancel-on-reentry: engine.createPlaylist wraps runBlocking (not interruptible) and
+        // appendResolved adds ONE video per request with delays between them, so cancelling mid-flight
+        // would leave a HALF-appended playlist, skip the local sync, and surface "Job was cancelled" as a
+        // migration error. Serialising instead makes a double tap a harmless no-op wait.
+        appendJob = viewModelScope.launch(Dispatchers.IO) {
+            appendMutex.withLock {
+                // NonCancellable: once we start creating/appending remote state, finishing is safer than
+                // aborting halfway (a cancel here is unobservable to the user but leaves YTM inconsistent).
+                withContext(NonCancellable) {
+                    try {
+                        // 0 auto-matches means engine.import (matched.isEmpty()) created NO playlist — by
+                        // design, to never leave an empty list behind. Now that the user has resolved at
+                        // least one ambiguous track we have something to add, so create the YTM playlist +
+                        // local mirror row ON DEMAND. This turns the old dead-end ("no hay dónde añadir las
+                        // revisadas") into a working migration when every track needed review.
+                        var ytmId = _uiState.value.ytmPlaylistId
+                        var localId = _uiState.value.localPlaylistId
+                        // TWO INDEPENDENT guards. With a single `if (ytmId == null)` around both, a
+                        // createLocalMirror failure (Room/disk) left ytmId committed but localId null, and
+                        // the retry skipped the whole block — the playlist then existed on YouTube but NO
+                        // bookmarked row was ever written, so it stayed invisible in Library forever.
+                        if (ytmId == null) {
+                            val name = state.playlistName.ifBlank { "Playlist importada" }
+                            val description = "Importada desde ${sourceDisplayName.ifBlank { "otra plataforma" }}"
+                            ytmId = engine.createPlaylist(name, description)
+                            // Commit the REMOTE id immediately: if the mirror below throws, a retry must
+                            // reuse this playlist instead of creating a SECOND one and orphaning it.
+                            _uiState.value = _uiState.value.copy(ytmPlaylistId = ytmId)
+                        }
+                        if (localId == null) {
+                            val name = state.playlistName.ifBlank { "Playlist importada" }
+                            localId = createLocalMirror(ytmId, name)
+                            _uiState.value = _uiState.value.copy(localPlaylistId = localId)
+                        }
+                        chosen.forEach { engine.confirmMatch(it.track, it.chosenVideoId!!) }
+                        engine.appendResolved(ytmId, chosen.map { it.chosenVideoId!! })
+                        if (localId != null) syncUtils.syncPlaylist(ytmId, localId)
+                        _uiState.value = _uiState.value.copy(
+                            appendingResolved = false,
+                            matchedCount = _uiState.value.matchedCount + chosen.size,
+                            // Keep only the still-unresolved ones (skipped or untouched) on the list.
+                            ambiguous = _uiState.value.ambiguous.filterNot { it.resolved },
+                        )
+                    } catch (e: Exception) {
+                        _uiState.value = _uiState.value.copy(appendingResolved = false)
+                        fail(e.message ?: "No pude añadir las canciones revisadas.")
+                    }
+                }
             }
         }
     }
@@ -502,6 +561,16 @@ class MigrationViewModel @Inject constructor(
 
     fun reset() {
         prepared = null
+        // Cancel BOTH jobs: an in-flight import or append that outlives reset() writes the OLD import's
+        // ids/counts into the FRESH state — a stale ytmPlaylistId then makes the next applyResolved append
+        // the new import's tracks into the PREVIOUS playlist (cross-import corruption), and a stale
+        // matchedCount/ambiguous filter silently drops the new import's resolved rows.
+        // The append body runs under NonCancellable, so an already-started remote append still finishes
+        // consistently; what this cancels is the job wrapper (and any append still waiting on the mutex).
+        migrationJob?.cancel()
+        migrationJob = null
+        appendJob?.cancel()
+        appendJob = null
         _uiState.value = MigrationUiState(
             signedInYouTube = _uiState.value.signedInYouTube,
             dataSaver = _uiState.value.dataSaver,

@@ -93,6 +93,14 @@ class MigrationEngine(
         cache.confirmByUser(track.cacheKey(), videoId)
     }
 
+    /**
+     * Crea la playlist destino bajo demanda. Necesario cuando la importacion dio 0 coincidencias
+     * automaticas (asi que [import] no la creo, por diseno: nunca una lista vacia) y el usuario acaba
+     * de resolver un ambiguo — recien ahora hay algo que anadir. Devuelve el id de la playlist YTM.
+     */
+    suspend fun createPlaylist(name: String, description: String? = null): String =
+        ytm.createPlaylist(name, description)
+
     /** Anade a una playlist ya creada los ambiguos que el usuario resolvio. */
     suspend fun appendResolved(ytmPlaylistId: String, videoIds: List<String>) {
         if (videoIds.isNotEmpty()) ytm.addToPlaylist(ytmPlaylistId, videoIds)

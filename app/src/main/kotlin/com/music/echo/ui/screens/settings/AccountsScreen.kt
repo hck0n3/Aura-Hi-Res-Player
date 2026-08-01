@@ -101,6 +101,11 @@ fun AccountsScreen(
     var lastfmUsername by rememberPreference(LastFMUsernameKey, "")
     val lastFmLoggedIn = remember(lastfmSession) { lastfmSession.isNotBlank() }
 
+    // ── Qobuz (owner's OWN subscription; token vault + toggle live in the Qobuz screen) ──
+    // The enabled preference flips true on link / false on logout, so it is a reactive proxy for the
+    // connected badge here — the Qobuz screen shows the authoritative tier + controls.
+    val (qobuzEnabled) = rememberPreference(iad1tya.echo.music.constants.UseOwnQobuzHiResKey, false)
+
     // ── ListenBrainz (token + enable switch live in the scrobbling screen; read-only here) ──
     val (listenBrainzToken) = rememberPreference(ListenBrainzTokenKey, "")
     val (listenBrainzEnabled) = rememberPreference(ListenBrainzEnabledKey, false)
@@ -292,6 +297,46 @@ fun AccountsScreen(
                         onClick = {
                             navController.navigate("settings/lastfm")
                         }
+                    )
+                )
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // ── Qobuz (Hi-Res con tu propia suscripción) ──
+            Material3SettingsGroup(
+                title = "Qobuz",
+                items = listOf(
+                    Material3SettingsItem(
+                        icon = painterResource(R.drawable.echoequlizer),
+                        title = {
+                            Text(
+                                text = "Qobuz",
+                                color = MaterialTheme.colorScheme.primary,
+                                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold)
+                            )
+                        },
+                        description = {
+                            Text(
+                                text = if (qobuzEnabled) stringResource(R.string.qobuz_account_active)
+                                else stringResource(R.string.not_logged_in)
+                            )
+                        },
+                        trailingContent = {
+                            OutlinedButton(
+                                onClick = { navController.navigate("settings/qobuz") },
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                                    contentColor = MaterialTheme.colorScheme.onSurface
+                                )
+                            ) {
+                                Text(
+                                    if (qobuzEnabled) stringResource(R.string.qobuz_manage)
+                                    else stringResource(R.string.connect)
+                                )
+                            }
+                        },
+                        onClick = { navController.navigate("settings/qobuz") }
                     )
                 )
             )

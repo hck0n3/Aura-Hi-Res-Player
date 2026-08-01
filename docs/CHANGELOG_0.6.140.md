@@ -19,6 +19,8 @@ Trae tus playlists de otras plataformas a tu cuenta de YouTube Music.
 
 **Requisito honesto**: la playlist se crea en tu cuenta de **YouTube Music**, así que debes tener sesión de YT Music iniciada. Si no la tienes, la pantalla te lo pide primero (no te deja perder el viaje eligiendo una playlist para fallar al final).
 
+**Arreglos de coincidencia (Tidal)**: se corrigió un fallo que dejaba **0 coincidencias automáticas** en playlists de Tidal (no llegaba el artista de cada pista al emparejador, así que ninguna alcanzaba el umbral y todo caía en "ambiguas"). Ahora emparejan bien. Y si una migración solo produce ambiguas, la playlist se crea al resolver la primera — ya no da "no hay dónde añadir las revisadas".
+
 **Límites reales (sin humo)**: Deezer solo playlists públicas (cerraron el registro de apps). Apple no permite login de terceros (solo su transferencia nativa). Solo Spotify y Tidal permiten login+biblioteca completa.
 
 ## 🔐 Login más cómodo
@@ -27,8 +29,15 @@ Trae tus playlists de otras plataformas a tu cuenta de YouTube Music.
 ## 🔧 Correcciones de reproducción
 - **Streaming reparado cuando YouTube cambia su reproductor**: se corrigió el descifrado para el reproductor nuevo de YouTube; algunas canciones que tardaban mucho o fallaban ("No hay ninguna fuente disponible") vuelven a sonar. *(Este arreglo también llega a versiones anteriores sin actualizar, vía configuración remota.)*
 - **poToken restaurado**: un archivo necesario para autenticarse con YouTube faltaba en las compilaciones; se corrigió. Menos fallos y resoluciones más rápidas.
-- **Reconocer canción — ahora reproduce la correcta**: antes mostraba bien la portada/título pero al darle play sonaba otra canción (usaba un id frágil de Shazam, a menudo el video musical u otra versión). Ahora reproduce exactamente la canción que reconoció; si no encuentra una coincidencia fiable, avisa en vez de sonar cualquier cosa.
+- **Reconocer canción — ahora reproduce la correcta**: antes mostraba bien la portada/título pero al darle play sonaba **otra canción sin relación**. Eran dos fallos encadenados: usaba un id frágil de Shazam (a menudo el video musical u otra versión) y, al resolver, aceptaba la primera canción con **título parecido aunque fuera de otro artista**. Ahora exige que coincidan **título Y artista**; si no hay una coincidencia fiable, avisa y **no reproduce nada** en vez de sonar cualquier cosa.
+
+## 🎧 Qobuz hi-res con TU suscripción (nuevo)
+- Puedes **vincular tu propia cuenta de Qobuz** (Ajustes ▸ Cuentas ▸ Qobuz) pegando tu token o con correo y contraseña. Con la cuenta vinculada, las canciones en calidad sin pérdida se resuelven contra **tu suscripción** y suenan en FLAC hi-res.
+- Negocia la mejor calidad disponible automáticamente (24/192 → 24/96 → FLAC 16/44 → 320) y muestra la que realmente se entregó.
+- **Requiere suscripción propia**: plan **Studio o Sublime** para 24 bits. Una cuenta gratuita solo obtiene fragmentos de 30 s, y la app lo detecta y no los reproduce como si fueran la canción.
+- Tus credenciales se guardan **cifradas en el móvil** y solo se envían a qobuz.com. Desactivado por defecto: si no vinculas cuenta, nada cambia.
 - **Letra sincronizada palabra por palabra arreglada**: el estilo por defecto inventaba el ritmo por palabra en canciones que solo traen letra por líneas (la mayoría), y se desincronizaba. Ahora ilumina la línea completa a tiempo; el resaltado real palabra-por-palabra se mantiene solo en las canciones que traen ese dato (estilo Apple).
+- **Discografías más completas**: cuando un álbum que falta se completa a través de una lista de la comunidad, ahora se trae el **álbum entero** (todas sus pistas) en vez de solo las que había en esa lista.
 
 ## 📚 Biblioteca y playlists
 - **Buscar entre tus playlists**: campo de búsqueda en la pestaña Playlists — filtra tus listas por nombre al escribir.

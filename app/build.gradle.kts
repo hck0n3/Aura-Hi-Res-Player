@@ -51,8 +51,8 @@ android {
         // Public version reset to a fresh stable 0.0.1 for the Aura Hi-Res Player relaunch.
         // versionCode stays monotonic (never below the last shipped 673) so the in-app updater and
         // sideload-install-over-existing keep working; only the user-facing versionName resets.
-        versionCode = 851
-        versionName = "0.6.140-beta7"
+        versionCode = 852
+        versionName = "0.6.140-beta8"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -90,6 +90,24 @@ android {
             ?: System.getenv("TIDAL_CLIENT_ID")?.takeIf { it.isNotBlank() }
             ?: "nNgez049R98ji742"
         buildConfigField("String", "TIDAL_CLIENT_ID", "\"$tidalClientId\"")
+
+        // Qobuz web-player keys, used ONLY to sign the owner's OWN Qobuz subscription requests (the
+        // hi-res FLAC path in utils/qobuz + qobuz/*). These are the PUBLIC play.qobuz.com web-player
+        // app_id / app_secret ("spoofbuz"), the same values the browser player ships — not a private
+        // secret. Blank by default: the owner fills them in local.properties / a CI secret, OR leaves
+        // them blank and the app scrapes them from play.qobuz.com bundle.js at login time (see
+        // qobuz/QobuzBundleScraper.kt). takeIf { isNotBlank() } so an empty CI env var falls through.
+        // A Qobuz app_secret alone streams nothing — every getFileUrl also needs the user's own
+        // user_auth_token (their paid login), so shipping these is low-severity and consistent with the
+        // LastFM/Tidal house rule.
+        val qobuzAppId = localProperties.getProperty("QOBUZ_APP_ID")?.takeIf { it.isNotBlank() }
+            ?: System.getenv("QOBUZ_APP_ID")?.takeIf { it.isNotBlank() }
+            ?: ""
+        val qobuzAppSecret = localProperties.getProperty("QOBUZ_APP_SECRET")?.takeIf { it.isNotBlank() }
+            ?: System.getenv("QOBUZ_APP_SECRET")?.takeIf { it.isNotBlank() }
+            ?: ""
+        buildConfigField("String", "QOBUZ_APP_ID", "\"$qobuzAppId\"")
+        buildConfigField("String", "QOBUZ_APP_SECRET", "\"$qobuzAppSecret\"")
 
 //add nightly build label support
         val isNightly = project.hasProperty("nightly") && project.property("nightly") == "true"

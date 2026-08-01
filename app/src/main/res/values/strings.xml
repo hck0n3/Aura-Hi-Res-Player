@@ -683,4 +683,31 @@
     <string name="migrate_apple_open_privacy">Open privacy.apple.com</string>
     <string name="migrate_apple_limitations_title">Good to know</string>
     <string name="login_use_phone_account">Use phone account</string>
+    <!-- Qobuz hi-res (owner's own subscription) -->
+    <string name="qobuz_title">Qobuz</string>
+    <string name="qobuz_intro">Stream in Qobuz quality (Hi-Res FLAC) with YOUR own Qobuz subscription. Sign in with your account or paste your token. Nothing is stored on any server but your own device.</string>
+    <string name="qobuz_login_title">Sign in to Qobuz</string>
+    <string name="qobuz_token_hint">Paste your Qobuz user_auth_token (recommended — no password needed).</string>
+    <string name="qobuz_token_label">Token (user_auth_token)</string>
+    <string name="qobuz_use_token">Use token</string>
+    <string name="qobuz_or_password">Or sign in with your email and password</string>
+    <string name="qobuz_email_label">Email</string>
+    <string name="qobuz_password_label">Password</string>
+    <string name="qobuz_login">Sign in</string>
+    <string name="qobuz_connected">Connected to Qobuz</string>
+    <string name="qobuz_logout">Log out</string>
+    <string name="qobuz_tier">Plan: %1$s</string>
+    <string name="qobuz_tier_lossy">Standard/lossless account</string>
+    <string name="qobuz_hires_ready">Hi-Res 24-bit available</string>
+    <string name="qobuz_free_note">You need Qobuz Studio or Sublime for 24-bit. Your current account only allows standard quality.</string>
+    <string name="qobuz_use_own_title">Use my Qobuz subscription</string>
+    <string name="qobuz_use_own_desc">When on, lossless tracks stream from your Qobuz (Hi-Res FLAC) instead of the proxy.</string>
+    <string name="qobuz_free_not_enabled">We did not turn on \"Use my Qobuz subscription\": your plan does not include 24-bit, so Qobuz would only send standard quality and the app would ignore it. You can turn it on anyway.</string>
+    <string name="qobuz_account_active">Hi-Res with your subscription — active</string>
+    <string name="qobuz_manage">Manage</string>
+    <string name="qobuz_err_no_app_id">Could not get the Qobuz app_id. Set it up or try again with a connection.</string>
+    <string name="qobuz_err_no_secret">Could not validate the Qobuz signature (app_secret). Check the configuration and try again.</string>
+    <string name="qobuz_err_bad_credentials">Wrong email or password.</string>
+    <string name="qobuz_err_bad_token">The Qobuz token is invalid or has expired.</string>
+    <string name="qobuz_err_probe">Could not verify the Qobuz account. Try again.</string>
 </resources>

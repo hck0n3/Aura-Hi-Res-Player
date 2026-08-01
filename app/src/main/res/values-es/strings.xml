@@ -625,4 +625,31 @@
     <string name="migrate_apple_open_privacy">Abrir privacy.apple.com</string>
     <string name="migrate_apple_limitations_title">Ten en cuenta</string>
     <string name="login_use_phone_account">Usar cuenta del teléfono</string>
+    <!-- Qobuz hi-res (suscripción propia del dueño) -->
+    <string name="qobuz_title">Qobuz</string>
+    <string name="qobuz_intro">Reproduce en calidad Qobuz (FLAC Hi-Res) con TU propia suscripción de Qobuz. Inicia sesión con tu cuenta o pega tu token. Nada se guarda en ningún servidor, solo en tu dispositivo.</string>
+    <string name="qobuz_login_title">Iniciar sesión en Qobuz</string>
+    <string name="qobuz_token_hint">Pega tu user_auth_token de Qobuz (recomendado, sin contraseña).</string>
+    <string name="qobuz_token_label">Token (user_auth_token)</string>
+    <string name="qobuz_use_token">Usar token</string>
+    <string name="qobuz_or_password">O inicia sesión con tu correo y contraseña</string>
+    <string name="qobuz_email_label">Correo electrónico</string>
+    <string name="qobuz_password_label">Contraseña</string>
+    <string name="qobuz_login">Iniciar sesión</string>
+    <string name="qobuz_connected">Conectado a Qobuz</string>
+    <string name="qobuz_logout">Cerrar sesión</string>
+    <string name="qobuz_tier">Plan: %1$s</string>
+    <string name="qobuz_tier_lossy">Cuenta estándar/sin pérdida</string>
+    <string name="qobuz_hires_ready">Hi-Res 24-bit disponible</string>
+    <string name="qobuz_free_note">Necesitas Qobuz Studio o Sublime para 24-bit. Tu cuenta actual solo permite calidad estándar.</string>
+    <string name="qobuz_use_own_title">Usar mi suscripción Qobuz</string>
+    <string name="qobuz_use_own_desc">Cuando está activo, las pistas sin pérdida se reproducen desde tu Qobuz (FLAC Hi-Res) en vez del proxy.</string>
+    <string name="qobuz_free_not_enabled">No activamos \"Usar mi suscripción Qobuz\": tu plan no incluye 24-bit, así que Qobuz solo enviaría calidad estándar y la app la descartaría. Puedes activarlo igualmente.</string>
+    <string name="qobuz_account_active">Hi-Res con tu suscripción — activo</string>
+    <string name="qobuz_manage">Administrar</string>
+    <string name="qobuz_err_no_app_id">No se pudo obtener el app_id de Qobuz. Configúralo o inténtalo de nuevo con conexión.</string>
+    <string name="qobuz_err_no_secret">No se pudo validar la firma de Qobuz (app_secret). Revisa la configuración e inténtalo de nuevo.</string>
+    <string name="qobuz_err_bad_credentials">Correo o contraseña incorrectos.</string>
+    <string name="qobuz_err_bad_token">El token de Qobuz no es válido o caducó.</string>
+    <string name="qobuz_err_probe">No se pudo verificar la cuenta de Qobuz. Inténtalo de nuevo.</string>
 </resources>

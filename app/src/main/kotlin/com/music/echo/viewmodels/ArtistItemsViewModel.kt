@@ -10,6 +10,7 @@ import com.music.innertube.YouTube
 import com.music.innertube.models.AlbumItem
 import com.music.innertube.models.BrowseEndpoint
 import com.music.innertube.models.PlaylistItem
+import com.music.innertube.models.SongItem
 import com.music.innertube.models.YTItem
 import com.music.innertube.models.filterExplicit
 import com.music.innertube.models.filterVideoSongs
@@ -193,6 +194,46 @@ fun buildInstrumentalTitles(itunesMeta: List<Pair<String, Int>>): Set<String> =
 fun matchesLiveness(candidateTitle: String, requestedKey: String): Boolean =
     reconKey(candidateTitle).endsWith(LIVE_MARKER) == requestedKey.endsWith(LIVE_MARKER)
 
+/**
+ * Is [ytTitle] plausibly the release the completion asked for ([target] — the marker-FREE normalized title)?
+ *
+ * Short titles (singles feed the Albums completion too) need an EXACT match — a fuzzy substring would let a
+ * single like "Amor" match the album "Lenguaje de Amor". Only titles ≥6 chars use the fuzzy contains() so
+ * genuinely long titles still tolerate minor punctuation/edition differences.
+ *
+ * Top level (was a local of buildCompleteDiscography) because BOTH acceptance paths must apply it: the album
+ * search AND the album materialized from a community playlist. The materialization used to accept whatever
+ * album its tracks pointed at with no title relation at all, so an unrelated compilation ("Colección de Oro")
+ * could be published as the missing release.
+ */
+fun titleMatch(ytTitle: String, target: String): Boolean {
+    val yt = iTunesDiscography.normalizeTitle(ytTitle)
+    return yt == target || (target.length >= 6 && (yt.contains(target) || target.contains(yt)))
+}
+
+/**
+ * Is this verdict strictly better evidence about an album than [other]? A conclusive "looks like a real
+ * album" beats "looks truncated", and between two same-shaped verdicts the one that saw MORE tracks wins.
+ *
+ * Used so a cached quality entry is never DOWNGRADED by a later, poorer parse of the same album: the caches
+ * are process-wide, so one bad parse would otherwise make a real album read as truncated on every other
+ * artist screen for the rest of the session.
+ */
+private fun AlbumQuality.betterThan(other: AlbumQuality): Boolean =
+    if (basicOk != other.basicOk) basicOk else songCount > other.songCount
+
+/**
+ * One album materialized from a community playlist's tracks: the fetched [AlbumItem] plus the structural
+ * verdict of the FULL track list it arrived with ([quality] is null when the fetch came back with NO
+ * parseable songs, which is inconclusive — never a verdict).
+ *
+ * Cached per albumId so the acceptance rules (credit / title relation / liveness / instrumental /
+ * completeness floor) can be re-applied for a DIFFERENT requested release without a second network request.
+ * Caching the item alone was not enough: a cache hit then had no track list to judge, so it was returned
+ * unchecked.
+ */
+private data class MaterializedAlbum(val album: AlbumItem, val quality: AlbumQuality?)
+
 @HiltViewModel
 class ArtistItemsViewModel
 @Inject
@@ -214,16 +255,49 @@ constructor(
     companion object {
         private const val TAG = "DISCOGRAPHY"
 
+        // Hard size cap for the session caches below. They live in the companion object, i.e. they are
+        // PROCESS-wide and survive every screen — without a cap they only ever grow (one entry per album
+        // browseId the user ever scrolls past). Same pattern as MusicService's shuffleScoreCache: these are
+        // pure accelerators, so dropping them wholesale costs at most a re-fetch, never correctness.
+        private const val CACHE_MAX_ENTRIES = 2_000
+
+        /** Store [value] under [key], clearing the cache first if it has reached [CACHE_MAX_ENTRIES]. */
+        private fun <K : Any, V : Any> putCapped(
+            cache: java.util.concurrent.ConcurrentHashMap<K, V>,
+            key: K,
+            value: V,
+        ) {
+            if (cache.size >= CACHE_MAX_ENTRIES) cache.clear()
+            cache[key] = value
+        }
+
         // Per-artist cache of the completed (iTunes-driven) discography for this app session, so
         // re-opening the same artist's albums shows the full list instantly instead of re-fetching.
         private val completedCache =
             java.util.concurrent.ConcurrentHashMap<String, List<YTItem>>()
 
         // Per-browseId cache of album quality for the session (so re-checking the same album — base or a
-        // completion candidate — never re-hits the network). Bounded like completedCache. A FAILED probe is
-        // never stored here: absence means "unknown", which countsAsHave reads as "assume present".
+        // completion candidate — never re-hits the network).
+        //
+        // WRITE RULE, and it is not optional: only a CONCLUSIVE probe (one that came back with a non-empty
+        // track list) may be stored, and a stored verdict is never downgraded (see cacheAlbumQuality). A
+        // failed or empty probe leaves NO entry: absence means "unknown", which countsAsHave reads as
+        // "assume present". Because this map is process-wide, one unconditional write of a bad parse turns a
+        // single throttled request into a session-long "this album is truncated" lie for EVERY other artist
+        // screen — countsAsHave would then report a real album as missing everywhere.
         private val albumQualityCache =
             java.util.concurrent.ConcurrentHashMap<String, AlbumQuality>()
+
+        // Per-albumId cache of the FULL album materialized from a community-playlist discovery (see
+        // materializeAlbumFromPlaylistSongs). Ensures ONE YouTube.album fetch per unique album even when
+        // several missing releases resolve to the same album, so the completion never becomes a per-track
+        // fetch storm. It caches the fetch OUTCOME (item + the verdict of the full track list), not an
+        // approval: every acceptance rule is re-applied per requested release on a cache hit, because the
+        // same album can be right for one release and wrong for another (studio vs live). A fetch that threw
+        // is not stored (mirrors fetchAlbumQuality's don't-cache-a-failure rule); a fetch that returned an
+        // empty track list IS stored as unusable, so a dead album is not re-requested by every release.
+        private val fullAlbumCache =
+            java.util.concurrent.ConcurrentHashMap<String, MaterializedAlbum>()
     }
 
     init {
@@ -283,7 +357,7 @@ constructor(
                                 // truncated upload for a full one, which need not grow the count. `!=` covers
                                 // all three; identical means nothing to do (never publish an empty/no-op).
                                 if (complete.isNotEmpty() && complete != baseItems) {
-                                    completedCache[cacheKey] = complete
+                                    putCapped(completedCache, cacheKey, complete)
                                     // Merge with whatever the user has scrolled in by now and keep the LIVE
                                     // continuation, so the completion never overwrites loaded pages or
                                     // rewinds paging back to page 1.
@@ -336,13 +410,8 @@ constructor(
                     artistName.contains(it.name, ignoreCase = true)
             }
         }
-        fun titleMatch(ytTitle: String, target: String): Boolean {
-            val yt = norm(ytTitle)
-            // Short titles (now that singles feed Albums completion) need an EXACT match — a fuzzy substring
-            // would let a single like "Amor" match the album "Lenguaje de Amor". Only titles ≥6 chars use
-            // the fuzzy contains() so genuinely long titles still tolerate minor punctuation/edition diffs.
-            return yt == target || (target.length >= 6 && (yt.contains(target) || target.contains(yt)))
-        }
+        // titleMatch is now a top-level helper (see above): the community-playlist materialization must
+        // apply the SAME title relation as the album search, and a local function is invisible to it.
 
         // iTunes / Apple Music is the authority on which releases exist AND how many tracks each has. Query
         // several stores in parallel and merge — the US store, the device's local store, and the main
@@ -492,14 +561,54 @@ constructor(
                                     matchesLiveness(p.title, key)
                             }
 
-                        // Quality control: only add a community playlist if its tracks are NOT truncated
-                        // previews (the Lauren Daigle problem — list looks complete but songs play for
-                        // seconds) and it has roughly the iTunes track count. Full, playable audio only.
-                        // The floor is the SMALLEST edition iTunes knows, not the largest (see floorTracks).
-                        if (pl != null && isSourceComplete(pl.id, floorTracks[target])) {
-                            key to (pl as YTItem)
-                        } else {
+                        if (pl == null) {
                             null
+                        } else {
+                            // The community playlist is only a DISCOVERY vehicle. Its OWN track list is
+                            // whatever the uploader curated — usually just the album's tracks that happened to
+                            // land in this playlist, i.e. a partial slice, not the full record. Fetch its
+                            // songs ONCE and, when they reference a real YouTube-Music album (SongItem.album.id
+                            // — an MPREb… browseId), materialize the COMPLETE album via YouTube.album(id) and
+                            // add THAT instead of the partial playlist. Only if there is no album id (or the
+                            // album fetch fails) do we fall back to the playlist, still quality-gated so a
+                            // truncated/preview upload (the Lauren Daigle problem) is rejected — the floor is
+                            // the SMALLEST edition iTunes knows, not the largest (see floorTracks).
+                            val plSongs = YouTube.playlist(pl.id).getOrNull()?.songs
+                            // OWN inner budget: this is the 4th sequential request of this release's
+                            // lookup (album search -> playlist search -> playlist songs -> album). Left
+                            // inside the outer 12s window alone, a slow album fetch expired the WHOLE
+                            // block, so `withTimeoutOrNull` returned null and the release was dropped —
+                            // strictly worse than before, when the playlist fallback below was published.
+                            // Bounding it separately means a slow album fetch degrades to that fallback
+                            // instead of losing the release ("faltan álbumes", the owner's actual report).
+                            val fullAlbum = plSongs?.let {
+                                withTimeoutOrNull(4000L) {
+                                    materializeAlbumFromPlaylistSongs(
+                                        songs = it,
+                                        target = target,
+                                        requestedKey = key,
+                                        floor = floorTracks[target],
+                                        allowInstrumental = allowInstrumental,
+                                        credited = { alb -> credited(alb) },
+                                    )
+                                }
+                            }
+                            when {
+                                // Full album wins — but ONLY if it already passed, inside the materializer,
+                                // the same acceptance rules the album-search branch above applies (credit,
+                                // title relation, liveness, instrumental) PLUS the completeness floor. It
+                                // must be judged there, not left to Phase D: a completion-only group has no
+                                // community playlist to fall back to (playlistByKey[key] is null once this
+                                // branch returns an album), so Phase D's last-resort `bestAlbum` line would
+                                // publish it UNGATED — a 3-track upload for a 13-track release, or even a
+                                // zero-track album, exactly what the floor exists to reject.
+                                fullAlbum != null -> key to (fullAlbum as YTItem)
+                                // Graceful fallback: no album id or the album fetch failed → keep the partial
+                                // playlist rather than drop the release entirely, if it clears the floor.
+                                plSongs != null && songsLookComplete(plSongs, floorTracks[target]) ->
+                                    key to (pl as YTItem)
+                                else -> null
+                            }
                         }
                     }
                   }
@@ -507,12 +616,17 @@ constructor(
             }
         }.awaitAll().filterNotNull()
 
-        val foundAlbums = found.mapNotNull { it.second as? AlbumItem }
+        // KEEP THE KEY. A found album stays paired with the reconKey it was fetched FOR, not with the key of
+        // its own title. Dropping the key here and regrouping by reconKey(item.title) below is what let an
+        // album materialized for "X (En Vivo)" land in the STUDIO group of "X" — the live edition then had no
+        // group at all and stayed missing, the very bug the liveness filters exist to prevent.
+        val foundAlbums: List<Pair<String, AlbumItem>> =
+            found.mapNotNull { (t, item) -> (item as? AlbumItem)?.let { t to it } }
         val foundPlaylists = found.mapNotNull { (t, item) -> (item as? PlaylistItem)?.let { t to it } }
 
         // Phase C — quality-gate the found albums too (bounded, cached), so reconciliation can rank them
         // against the base albums by real track count.
-        foundAlbums.distinctBy { it.browseId }.map { a ->
+        foundAlbums.map { it.second }.distinctBy { it.browseId }.map { a ->
             async { semaphore.withPermit { withTimeoutOrNull(12000L) { fetchAlbumQuality(a.browseId) } } }
         }.awaitAll()
 
@@ -531,16 +645,23 @@ constructor(
         )
 
         // Group by reconKey so studio and live/acoustic editions of the same title are SEPARATE groups
-        // (each keeps its own winner); iTunes lookups below still use the plain norm.
-        val albumGroups: Map<String, List<AlbumItem>> = (baseAlbums + foundAlbums).groupBy { reconKey(it.title) }
+        // (each keeps its own winner); iTunes lookups below still use the plain norm. A BASE album is keyed
+        // by its own title (it is what the artist page shows); a FOUND album keeps the key it was searched
+        // for, so it can never be refiled into another release's group.
+        val albumGroups: Map<String, List<AlbumItem>> =
+            (baseAlbums.map { reconKey(it.title) to it } + foundAlbums)
+                .groupBy({ it.first }, { it.second })
         // Keyed by reconKey (same space as albumGroups / winnerByNorm), so the studio group can only claim a
         // studio community upload and a live group can only claim a live one.
         val playlistByKey: Map<String, PlaylistItem> = foundPlaylists.associate { it.first to it.second }
         val winnerByNorm = LinkedHashMap<String, YTItem>()
         for ((nt, group) in albumGroups) {
             // iTunes expected-count / instrumental lookups key by the PLAIN norm (iTunes has no separate
-            // live entry), while the group key `nt` may carry the |live marker.
-            val plainNorm = norm(group.first().title)
+            // live entry), while the group key `nt` may carry the |live marker. Derived from the KEY, not
+            // from group.first().title: the group's members are now filed under the key they were fetched
+            // for, so the first member's own title is no longer guaranteed to reproduce it. For a base-keyed
+            // group this is identical (plainKey(reconKey(t)) == normalizeTitle(t)).
+            val plainNorm = plainKey(nt)
             val expected = expectedTracks[plainNorm]
             val floor = floorTracks[plainNorm]
             val allowInstrumental = plainNorm in itunesInstrumental
@@ -579,18 +700,29 @@ constructor(
         // occurrence only → de-dupes base duplicates), keep non-album base items (singles/videos) in place,
         // then append completion winners for titles not present in the base list.
         val emitted = HashSet<String>()
+        // Also dedupe by ITEM ID, not just by key. Two different keys can legitimately resolve to the SAME
+        // YouTube release (e.g. a live request whose only credible candidate is an album already shown under
+        // another key), and listing one album twice is a visible bug.
+        val emittedIds = HashSet<String>()
         val result = ArrayList<YTItem>()
         for (item in baseItems) {
             if (item is AlbumItem) {
                 val nt = reconKey(item.title)
+                // Remember EVERY base album id — including one dropped here as a duplicate key, and one that
+                // lost its group to a better candidate — so the completion loop can never re-append a base
+                // album under some other key.
+                emittedIds.add(item.id)
                 if (!emitted.add(nt)) continue
-                result.add(winnerByNorm[nt] ?: item) // fallback: original base item (never make it empty)
+                val winner = winnerByNorm[nt] ?: item // fallback: original base item (never make it empty)
+                emittedIds.add(winner.id)
+                result.add(winner)
             } else {
                 result.add(item)
+                emittedIds.add(item.id)
             }
         }
         for ((nt, w) in winnerByNorm) {
-            if (emitted.add(nt)) result.add(w)
+            if (emitted.add(nt) && emittedIds.add(w.id)) result.add(w)
         }
         if (hideExplicit) result.filterExplicit(true) else result
     }
@@ -602,22 +734,184 @@ constructor(
      * clips (the truncated Lauren Daigle "official") has a low median and fails. `basicOk` excludes the
      * iTunes track-count check so the result is independent of which title it matched.
      *
-     * Returns null when the probe itself could not complete (YouTube throttled/failed the fetch). That is an
-     * INCONCLUSIVE result, not a verdict, so it is deliberately NOT written to the cache — caching it would
-     * turn one throttled request into a session-long "this album is truncated" lie for every later phase.
+     * Returns null when the probe itself could not complete (YouTube throttled/failed the fetch) OR when it
+     * came back EMPTY. Both are INCONCLUSIVE, not verdicts, so neither is written to the cache — caching one
+     * would turn a single throttled request into a session-long "this album is truncated" lie for every later
+     * phase and every other artist screen. The empty case is not hypothetical: YouTube.albumSongs ends in
+     * `?: emptyList()`, so a parse miss surfaces as a SUCCESSFUL fetch carrying zero songs, which would
+     * otherwise be stored as the maximally damaging verdict AlbumQuality(0, basicOk = false).
      */
     private suspend fun fetchAlbumQuality(browseId: String): AlbumQuality? {
         albumQualityCache[browseId]?.let { return it }
         val songs = YouTube.album(browseId).getOrNull()?.songs ?: return null
-        val quality = if (songs.size < 2) {
+        return cacheAlbumQuality(browseId, songs)
+    }
+
+    /**
+     * The ONLY writer of [albumQualityCache]. Turns an already-fetched track list into a verdict and stores it
+     * under two rules, both of which exist because the cache is process-wide and unbounded in lifetime:
+     *
+     *  • CONCLUSIVE ONLY — an empty [songs] list is a failed parse, not a zero-track album, so nothing is
+     *    stored and null is returned. Absence reads as "unknown", which countsAsHave treats as "assume
+     *    present"; a stored AlbumQuality(0, false) would instead make every other artist screen report that
+     *    album as missing for the rest of the session.
+     *  • NEVER DOWNGRADE — if a verdict is already stored, a new one replaces it only when it is better
+     *    evidence (see betterThan). Two callers probe the same album (the base/found quality probes and the
+     *    community-playlist materialization); the poorer parse must not overwrite the richer one.
+     *
+     * Returns the verdict now in force for [browseId] (which may be the previously cached, better one).
+     */
+    private fun cacheAlbumQuality(browseId: String, songs: List<SongItem>): AlbumQuality? {
+        if (songs.isEmpty()) return null
+        val fresh = qualityFromSongs(songs)
+        val prev = albumQualityCache[browseId]
+        if (prev != null && !fresh.betterThan(prev)) return prev
+        putCapped(albumQualityCache, browseId, fresh)
+        return fresh
+    }
+
+    /**
+     * The structural [AlbumQuality] verdict for an already-fetched track list (song count + whether the
+     * median track is long enough to be a real track). Pure: it turns songs into a verdict and nothing else —
+     * every write to the shared cache goes through [cacheAlbumQuality], which alone decides whether the
+     * verdict is conclusive enough to store. Both probe paths ([fetchAlbumQuality] and
+     * [materializeAlbumFromPlaylistSongs]) reach the cache that way, so the album fetched to materialize a
+     * community-playlist discovery is never re-probed by Phase C/D.
+     * Durations are in SECONDS (innertube parseTime), so a real track is ≥ 90 s median.
+     */
+    private fun qualityFromSongs(songs: List<SongItem>): AlbumQuality =
+        if (songs.size < 2) {
             AlbumQuality(songCount = songs.size, basicOk = false)
         } else {
             val durations = songs.mapNotNull { it.duration }.filter { it > 0 }
             val median = if (durations.isEmpty()) 0 else durations.sorted()[durations.size / 2]
             AlbumQuality(songCount = songs.size, basicOk = median >= 90)
         }
-        albumQualityCache[browseId] = quality
-        return quality
+
+    /**
+     * A community playlist matched a missing release, but the playlist is only a DISCOVERY vehicle: its own
+     * track list is whatever the uploader curated — usually a partial slice of the album. When its [songs]
+     * reference a real YouTube-Music album (SongItem.album.id — an MPREb… browseId), materialize the COMPLETE
+     * album via [YouTube.album] and return it, so the discography shows the full release instead of the
+     * playlist's subset.
+     *
+     * IT IS AN ACCEPTANCE DECISION, NOT A LOOKUP. Whatever it returns is published by Phase D essentially
+     * unchallenged: for a completion-only group there is no competing base album and no community playlist
+     * left (this branch consumed it), so Phase D's last-resort `bestAlbum` line emits it even when it fails
+     * the gate. Every rule the album-search branch applies must therefore be applied HERE:
+     *
+     *  • CREDIT — [credited], so a same-titled record by another artist is not adopted.
+     *  • TITLE RELATION — [titleMatch] against [target]. Without it the "album most tracks belong to" wins by
+     *    majority alone, so a playlist padded with an unrelated compilation ("Colección de Oro") publishes
+     *    that compilation as the missing release.
+     *  • LIVENESS — [matchesLiveness] against [requestedKey]. A request for "X (En Vivo)" whose tracks point
+     *    at the STUDIO album must be REJECTED, not answered with the studio record: the live edition would
+     *    stay missing while its slot was spent, which is the exact bug the album branch already fixed.
+     *  • INSTRUMENTAL — a karaoke/backing-track upload is not the release (unless iTunes says this release is
+     *    genuinely instrumental, [allowInstrumental]).
+     *  • COMPLETENESS — the FULL track list must clear [isComplete] against [floor]. A community playlist that
+     *    references a 3-track upload of a 13-track album must add NOTHING, exactly as before this feature
+     *    existed; and a zero-track album (YouTube.albumSongs ends in `?: emptyList()`, so a parse miss is a
+     *    SUCCESS with no songs) is rejected outright.
+     *
+     * Bounded and deduped: exactly ONE album is chosen and fetched ONCE — the outcome is cached by albumId in
+     * [fullAlbumCache], so several releases resolving to the same album, and several tracks of the same album,
+     * never trigger more than one fetch. The cache stores the FETCH, not an approval: the rules above are
+     * re-applied on every hit, because the same album can be right for one requested release and wrong for
+     * another. The fetch also seeds [albumQualityCache] (conclusive results only, see [cacheAlbumQuality])
+     * from the FULL track list, so Phase C/D judge the whole album rather than the playlist's partial count
+     * and never re-probe it.
+     *
+     * Returns null whenever the tracks carry no usable album id, the fetch fails, or any rule above rejects
+     * the album — the caller then falls back to the partial playlist (itself floor-gated) rather than
+     * dropping the release, and the reason is logged.
+     */
+    private suspend fun materializeAlbumFromPlaylistSongs(
+        songs: List<SongItem>,
+        target: String,
+        requestedKey: String,
+        floor: Int?,
+        allowInstrumental: Boolean,
+        credited: (AlbumItem) -> Boolean,
+    ): AlbumItem? {
+        val norm = iTunesDiscography::normalizeTitle
+        // Dedupe by albumId across the playlist's tracks: pick ONE album, not one per track.
+        val albumRefs = songs.mapNotNull { it.album }.filter { it.id.isNotBlank() }
+        if (albumRefs.isEmpty()) return null
+        val trackCountById = albumRefs.groupingBy { it.id }.eachCount()
+        // Insertion order = first-seen track order, so ties break deterministically.
+        val nameById = LinkedHashMap<String, String>()
+        albumRefs.forEach { if (it.id !in nameById) nameById[it.id] = it.name }
+
+        // Only refs that could plausibly BE the requested release may be considered. Screening on the ref's
+        // name (carried by the song metadata, no network) also means an unrelated album is never fetched.
+        val candidates = nameById.entries.filter { (_, name) ->
+            titleMatch(name, target) &&
+                matchesLiveness(name, requestedKey) &&
+                (allowInstrumental || !INSTRUMENTAL.containsMatchIn(name))
+        }
+        if (candidates.isEmpty()) {
+            Timber.tag(TAG).i(
+                "no track of the community playlist for '%s' points at a matching album (saw: %s) → keeping the partial playlist",
+                requestedKey, nameById.values.take(5).joinToString(", "),
+            )
+            return null
+        }
+        // Among the plausible refs prefer an EXACT normalized title, but inside that preference pick the album
+        // MOST of the playlist's tracks belong to. Taking the first exact match instead (the old firstOrNull)
+        // let a stray songs[0] override an overwhelming majority: normalizeTitle strips "- Single", so a
+        // 1-track "X - Single" ref matched `target` exactly and beat an 11-to-1 majority for the 13-track "X".
+        val exact = candidates.filter { norm(it.value) == target }
+        val pool = if (exact.isNotEmpty()) exact else candidates
+        val albumId = pool.maxByOrNull { trackCountById[it.key] ?: 0 }?.key ?: return null
+
+        val materialized = fullAlbumCache[albumId] ?: run {
+            val page = YouTube.album(albumId).getOrElse {
+                // A thrown fetch is NOT negative-cached (same rule as fetchAlbumQuality): it is a transport
+                // failure, not evidence about the album.
+                Timber.tag(TAG).w(
+                    it, "community-playlist album fetch failed for %s; falling back to the partial playlist set", albumId,
+                )
+                return null
+            }
+            // Conclusive results only — an empty track list must never be published as a verdict.
+            MaterializedAlbum(page.album, cacheAlbumQuality(albumId, page.songs))
+                .also { m -> putCapped(fullAlbumCache, albumId, m) }
+        }
+
+        val album = materialized.album
+        val quality = materialized.quality
+        if (quality == null) {
+            // Fetch succeeded but carried no parseable songs. NEVER publish a zero-track album.
+            Timber.tag(TAG).w(
+                "materialized album %s ('%s') came back with no tracks → keeping the partial playlist for '%s'",
+                albumId, album.title, requestedKey,
+            )
+            return null
+        }
+        // Re-check the fetched album itself: the ref name in the song metadata is not always the album's own
+        // title, and on a cache hit these rules were last evaluated for a DIFFERENT requested release.
+        if (!credited(album) ||
+            !titleMatch(album.title, target) ||
+            !matchesLiveness(album.title, requestedKey) ||
+            (!allowInstrumental && INSTRUMENTAL.containsMatchIn(album.title))
+        ) {
+            Timber.tag(TAG).i(
+                "materialized album '%s' (%s) is not the release '%s' was asking for → keeping the partial playlist",
+                album.title, albumId, requestedKey,
+            )
+            return null
+        }
+        if (!isComplete(quality, floor)) {
+            // The whole point of the floor: a community playlist pointing at a truncated upload must add
+            // NOTHING rather than publish a 3-of-13 album as the missing release.
+            Timber.tag(TAG).i(
+                "materialized album '%s' (%s) has %d track(s), below the floor (%s) for '%s' → keeping the partial playlist",
+                album.title, albumId, quality.songCount, floor?.toString() ?: "none", requestedKey,
+            )
+            return null
+        }
+        return album
     }
 
     /** Album quality gate for one [album] against its iTunes [floor] track count. */
@@ -626,17 +920,19 @@ constructor(
         isComplete(fetchAlbumQuality(album.browseId), floor)
 
     /**
-     * Quality control for a community-uploaded source: reject it if its tracks look truncated/previews
-     * (median track under ~90 s), it has too few tracks, it carries NO real duration metadata at all, or it
-     * is clearly shorter than the iTunes [floor] track count (the SMALLEST edition iTunes lists, so a
-     * standard edition is not rejected for being shorter than some store's deluxe). Real album tracks
-     * average a few minutes, so a source full of 20-60 s clips (or with no durations to verify) is bad.
+     * Quality control for a community-uploaded source, evaluated on its already-fetched [songs]: reject it
+     * if its tracks look truncated/previews (median track under ~90 s), it has too few tracks, it carries NO
+     * real duration metadata at all, or it is clearly shorter than the iTunes [floor] track count (the
+     * SMALLEST edition iTunes lists, so a standard edition is not rejected for being shorter than some
+     * store's deluxe). Real album tracks average a few minutes, so a source full of 20-60 s clips (or with
+     * no durations to verify) is bad.
      *
-     * Note this stays strict on failure: an unfetchable/unverifiable playlist is rejected, because here the
-     * decision is whether to ADD something new — the conservative answer is "don't".
+     * This is the FALLBACK gate only: it decides whether to keep the playlist's partial slice when the full
+     * album could not be materialized (see [materializeAlbumFromPlaylistSongs]). It stays strict — the
+     * decision is whether to ADD something new, so an unverifiable source is rejected. The caller fetches the
+     * playlist once and passes the songs here, so no extra network call is made.
      */
-    private suspend fun isSourceComplete(playlistId: String, floor: Int? = null): Boolean {
-        val songs = YouTube.playlist(playlistId).getOrNull()?.songs ?: return false
+    private fun songsLookComplete(songs: List<SongItem>, floor: Int? = null): Boolean {
         if (songs.size < 2) return false
         val durations = songs.mapNotNull { it.duration }.filter { it > 0 }
         if (durations.isEmpty()) return false // require REAL durations — an unverifiable source is rejected

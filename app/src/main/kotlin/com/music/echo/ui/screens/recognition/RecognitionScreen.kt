@@ -58,6 +58,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -75,25 +76,25 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
-import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
 import com.music.innertube.YouTube
 import com.music.innertube.models.SongItem
+import com.music.innertube.models.WatchEndpoint
 import iad1tya.echo.music.LocalDatabase
 import iad1tya.echo.music.LocalPlayerConnection
 import iad1tya.echo.music.LocalSyncUtils
 import iad1tya.echo.music.R
 import iad1tya.echo.music.models.toMediaMetadata
 import iad1tya.echo.music.ui.component.IconButton
+import iad1tya.echo.music.playback.queues.YouTubeQueue
 import iad1tya.echo.music.ui.menu.AddToPlaylistDialog
-import iad1tya.echo.music.ui.screens.search.suggestions.SuggestionTrack
-import iad1tya.echo.music.ui.screens.search.suggestions.SuggestionsViewModel
 import iad1tya.echo.music.ui.utils.backToMain
 import com.music.shazamkit.models.RecognitionResult
 import com.music.shazamkit.models.RecognitionStatus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import timber.log.Timber
 
@@ -107,7 +108,7 @@ fun RecognitionScreen(
     val database = LocalDatabase.current
     val playerConnection = LocalPlayerConnection.current
     val syncUtils = LocalSyncUtils.current
-    val suggestionsViewModel: SuggestionsViewModel = hiltViewModel()
+    val coroutineScope = rememberCoroutineScope()
 
 
     // Only reset when no session is live — otherwise entering the screen mid-recognition
@@ -210,14 +211,7 @@ fun RecognitionScreen(
         }
         resolvedSong = null
         resolveFailed = false
-        val match = withContext(Dispatchers.IO) {
-            YouTube.search("${result.title} ${result.artist}", YouTube.SearchFilter.FILTER_SONG)
-                .getOrNull()
-                ?.items
-                ?.filterIsInstance<SongItem>()
-                .orEmpty()
-                .let { songs -> bestSongMatch(songs, result) }
-        }
+        val match = resolveRecognizedSong(result)
         if (match != null) {
             resolvedSong = match
             resolvedTrackId = result.trackId
@@ -225,6 +219,60 @@ fun RecognitionScreen(
             resolveFailed = true
             resolvedTrackId = result.trackId
             Toast.makeText(context, R.string.recognition_resolve_failed, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    // Play EXACTLY the song shown on screen. Resolution is strict (normalized title AND artist must
+    // agree — see bestSongMatch), so this either plays the recognized track or plays NOTHING; it never
+    // falls back to a blind first search result (that was the "plays an unrelated song" bug). The tap
+    // does NOT depend on the maybe-null pre-resolved value: if the one-shot resolve hasn't finished (or
+    // resolved a PREVIOUS recognition), it resolves the shown title+artist now, in the coroutine.
+    fun playRecognizedSong(result: RecognitionResult) {
+        val connection = playerConnection
+        if (connection == null) {
+            // No live player connection: fall back to the old search navigation.
+            val searchQuery = "${result.title} ${result.artist}"
+            navController.navigate("search/${java.net.URLEncoder.encode(searchQuery, "UTF-8")}")
+            return
+        }
+        coroutineScope.launch {
+            // Reuse the pre-resolved song ONLY if it actually matches the shown title+artist: a resolve
+            // for a previous recognition could still be latched for a sub-frame after a new result
+            // renders. Otherwise resolve NOW, so a fast tap can't fall into a blind path.
+            val cached = resolvedSong
+            val song = if (
+                cached != null &&
+                titleMatches(cached.title, result.title) &&
+                cached.artists.any { a -> artistMatches(a.name, result.artist) }
+            ) {
+                cached
+            } else {
+                resolveRecognizedSong(result)
+            }
+            if (song == null) {
+                // No confident YouTube Music match: tell the user and play NOTHING. Playing an
+                // unrelated top result would again be "shown != played" — the exact bug being fixed.
+                Timber.i(
+                    "Recognition Play: no confident match for shown \"%s\" — %s; playing nothing",
+                    result.title,
+                    result.artist,
+                )
+                Toast.makeText(context, R.string.recognition_resolve_failed, Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            // shown == played: log the recognized metadata and the resolved song right before play, so
+            // any future mismatch is visible in the log.
+            Timber.i(
+                "Recognition Play: shown \"%s\" — %s -> videoId=%s \"%s\" — %s",
+                result.title,
+                result.artist,
+                song.id,
+                song.title,
+                song.artists.joinToString { it.name },
+            )
+            withContext(Dispatchers.Main) {
+                connection.playQueue(YouTubeQueue(WatchEndpoint(videoId = song.id)))
+            }
         }
     }
 
@@ -331,32 +379,7 @@ fun RecognitionScreen(
                     is RecognitionStatus.Success -> {
                         SuccessState(
                             result = status.result,
-                            onPlayOnApp = { result ->
-                                if (playerConnection != null) {
-                                    // Play the SAME song shown on screen. We pass the id RESOLVED from the
-                                    // displayed title+artist (the exact SongItem Like / Add-to-playlist use),
-                                    // NOT result.youtubeVideoId: that Shazam "video" id is the official
-                                    // music-VIDEO upload (often a different/remixed track) and its uri parse
-                                    // can false-positive, which made Play play a DIFFERENT song than the
-                                    // cover/title shown. If the resolve hasn't finished yet (or failed),
-                                    // videoId = null makes playTrack do the strict title+artist search+match,
-                                    // so it still plays the recognized song (or shows a no-results toast).
-                                    suggestionsViewModel.playTrack(
-                                        SuggestionTrack(
-                                            rank = 0,
-                                            title = result.title,
-                                            artist = result.artist,
-                                            thumbnailUrl = result.coverArtHqUrl ?: result.coverArtUrl,
-                                            videoId = resolvedSong?.id,
-                                        ),
-                                        playerConnection
-                                    )
-                                } else {
-                                    // No live player connection: fall back to the old search navigation.
-                                    val searchQuery = "${result.title} ${result.artist}"
-                                    navController.navigate("search/${java.net.URLEncoder.encode(searchQuery, "UTF-8")}")
-                                }
-                            },
+                            onPlayOnApp = { result -> playRecognizedSong(result) },
                             isResolving = resolvedSong == null && !resolveFailed,
                             isResolved = resolvedSong != null,
                             isLiked = isLiked,
@@ -565,45 +588,82 @@ private fun ProcessingState() {
     }
 }
 
-// Bidirectional artist match — same semantics as SuggestionsViewModel.playTrack, so the resolved
-// song (Like / Add-to-playlist) is the SAME one the Play button would pick.
+// Normalize a title/artist for matching. Shazam metadata uses typographic punctuation (curly quotes,
+// en/em dashes) and one-sided "feat." credits where YouTube Music uses straight ASCII; a strict
+// equals/contains fails those LEGIT matches. Mirrors SuggestionsViewModel.normalize so the recognized
+// song resolves to the SAME YouTube Music id the rest of the app would pick.
+private fun normalizeForMatch(s: String): String =
+    s.lowercase()
+        .replace('‘', '\'') // ' left single quote
+        .replace('’', '\'') // ' right single quote (Apple-style apostrophe)
+        .replace('“', '"')  // " left double quote
+        .replace('”', '"')  // " right double quote
+        .replace('–', '-')  // – en dash
+        .replace('—', '-')  // — em dash
+        .replace(Regex("""\s*[(\[](?:feat|ft|featuring)\.?\s[^)\]]*[)\]]"""), " ")
+        .replace(Regex("""\s+(?:feat|ft|featuring)\.?\s.*$"""), " ")
+        .replace(Regex("""\s+"""), " ")
+        .trim()
+
+// Bidirectional artist match, compared NORMALIZED — same semantics as SuggestionsViewModel, so the
+// recognized song (Play / Like / Add-to-playlist) resolves to the SAME track the rest of the app picks.
 private fun artistMatches(ytArtistName: String, recognizedArtist: String): Boolean {
-    val ytNorm = ytArtistName.trim().lowercase()
-    val recNorm = recognizedArtist.trim().lowercase()
+    val ytNorm = normalizeForMatch(ytArtistName)
+    val recNorm = normalizeForMatch(recognizedArtist)
+    if (ytNorm.isEmpty() || recNorm.isEmpty()) return false
     return recNorm.contains(ytNorm) || ytNorm.contains(recNorm)
 }
 
+// Bidirectional NORMALIZED title match (either side may carry a "(Remastered)"-style tail the other
+// lacks; feat credits are already stripped by normalizeForMatch).
+private fun titleMatches(ytTitle: String, recognizedTitle: String): Boolean {
+    val ytNorm = normalizeForMatch(ytTitle)
+    val recNorm = normalizeForMatch(recognizedTitle)
+    if (ytNorm.isEmpty() || recNorm.isEmpty()) return false
+    return ytNorm.contains(recNorm) || recNorm.contains(ytNorm)
+}
+
+// The single search + best-match used everywhere in this screen (one-shot pre-resolve AND the Play
+// tap), so Play, Like and Add-to-playlist all target the SAME YouTube Music song. Returns null on
+// network failure or when nothing matches confidently.
+private suspend fun resolveRecognizedSong(result: RecognitionResult): SongItem? =
+    withContext(Dispatchers.IO) {
+        YouTube.search("${result.title} ${result.artist}", YouTube.SearchFilter.FILTER_SONG)
+            .getOrNull()
+            ?.items
+            ?.filterIsInstance<SongItem>()
+            .orEmpty()
+            .let { songs -> bestSongMatch(songs, result) }
+    }
+
 private fun bestSongMatch(songs: List<SongItem>, result: RecognitionResult): SongItem? {
-    // Match the recognized metadata (the SAME title/artist shown on screen) to a real YouTube Music
-    // song. We deliberately do NOT blindly trust result.youtubeVideoId: it is parsed from Shazam's
-    // "video" hub option (the official music-VIDEO upload — frequently a different/remixed track) with
-    // an 11-char uri heuristic that can false-positive on a non-YouTube link. Trusting it (and, worse,
-    // resolving that unverified id directly) made Play/Like/Add pick a DIFFERENT song than the cover +
-    // title shown. The id is honored ONLY when it actually appears among the title-matching FILTER_SONG
-    // results, i.e. it is confirmed to be this song on YouTube Music.
+    // Resolve the recognized song (the EXACT title + artist shown on screen) to a real YouTube Music
+    // song. BOTH the title AND the artist must agree — there is deliberately NO title-only / first-
+    // result fallback. The old title-only fallbacks resolved to a same-title (or merely substring-
+    // title) song by a DIFFERENT artist whenever the recognized artist's version wasn't among the
+    // search results, so Play played a COMPLETELY UNRELATED track ("nada que ver", shown != played).
+    // We also do NOT blindly trust result.youtubeVideoId (Shazam's music-VIDEO id, parsed with an
+    // 11-char uri heuristic that can false-positive): it is honored ONLY as a disambiguator when that
+    // exact id is present among the FILTER_SONG results AND its title + artist already agree.
     val match =
-        songs.firstOrNull { s ->
-            s.title.equals(result.title, ignoreCase = true) &&
-                s.artists.any { a -> artistMatches(a.name, result.artist) }
-        }
-        ?: result.youtubeVideoId?.let { id ->
+        // Shazam's own YouTube id, but ONLY when confirmed among results with matching title+artist.
+        result.youtubeVideoId?.let { id ->
             songs.firstOrNull { s ->
                 s.id == id &&
-                    (s.title.equals(result.title, ignoreCase = true) ||
-                        s.title.contains(result.title, ignoreCase = true) ||
-                        result.title.contains(s.title, ignoreCase = true))
+                    titleMatches(s.title, result.title) &&
+                    s.artists.any { a -> artistMatches(a.name, result.artist) }
             }
         }
+        // Exact normalized title + artist.
         ?: songs.firstOrNull { s ->
-            s.title.contains(result.title, ignoreCase = true) &&
+            normalizeForMatch(s.title) == normalizeForMatch(result.title) &&
                 s.artists.any { a -> artistMatches(a.name, result.artist) }
         }
-        // Title-first fallback so the right track wins over a different song by the same artist.
-        ?: songs.firstOrNull { s -> s.title.equals(result.title, ignoreCase = true) }
-        ?: songs.firstOrNull { s -> s.title.contains(result.title, ignoreCase = true) }
-    // No confident title match: return null instead of a blind songs.first(). The shown cover/title
-    // come from the Shazam match, so playing an unrelated top result would again be "shown != played" —
-    // the exact bug being fixed. The caller surfaces the recognition_resolve_failed toast.
+        // Bidirectional normalized title contains + artist.
+        ?: songs.firstOrNull { s ->
+            titleMatches(s.title, result.title) &&
+                s.artists.any { a -> artistMatches(a.name, result.artist) }
+        }
     if (match == null) {
         Timber.w(
             "Recognition: no confident YouTube Music match for \"%s\" — %s (searched %d songs)",

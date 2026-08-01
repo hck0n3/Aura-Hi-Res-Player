@@ -1042,3 +1042,12 @@ val TermsAcceptedAppVersionKey = intPreferencesKey("termsAcceptedAppVersionCode"
 // configured. Only the ID lives here — access/refresh TOKENS are credentials and live in
 // EncryptedSharedPreferences (migration/TidalTokenStore, file "tidal_tokens"), never in DataStore.
 val TidalClientIdKey = stringPreferencesKey("tidal_client_id")
+
+// ── Qobuz hi-res (owner's OWN subscription) ──
+// When ON and the user has linked their Qobuz account (token in EncryptedSharedPreferences, file
+// "qobuz_session"), the LOSSLESS resolve path streams a signed FLAC from the user's real Qobuz
+// subscription instead of the third-party proxy. DEFAULT OFF: nothing changes for users without Qobuz.
+// Auto-flipped ON once, right after a successful link, so the owner doesn't have to hunt for the toggle;
+// user choices win afterwards. Gated additionally on being linked (QobuzHiRes.isActive), so a stray ON
+// value with no token is inert.
+val UseOwnQobuzHiResKey = booleanPreferencesKey("use_own_qobuz_hires")

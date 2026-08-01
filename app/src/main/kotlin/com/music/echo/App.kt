@@ -98,6 +98,11 @@ class App : Application(), SingletonImageLoader.Factory, androidx.work.Configura
     @Inject
     lateinit var downloadUtilLazy: dagger.Lazy<iad1tya.echo.music.playback.DownloadUtil>
 
+    // Qobuz credential vault (owner's OWN subscription). Bound to the QobuzHiRes playback holder at startup
+    // so the resolver (an object, un-injectable) can read the linked session. Cheap to construct.
+    @Inject
+    lateinit var qobuzTokenStore: iad1tya.echo.music.qobuz.QobuzTokenStore
+
     override fun onCreate() {
         super.onCreate()
 
@@ -1101,6 +1106,17 @@ class App : Application(), SingletonImageLoader.Factory, androidx.work.Configura
     }
 
     private fun observeSettingsChanges() {
+        // Bind the Qobuz playback holder to the encrypted vault, then keep its "use my subscription" flag in
+        // sync with the preference. INERT unless the owner linked Qobuz (QobuzHiRes.isActive also checks the
+        // token), so this changes nothing for users without a Qobuz account.
+        runCatching { iad1tya.echo.music.qobuz.QobuzHiRes.attach(qobuzTokenStore) }
+        applicationScope.launch(Dispatchers.IO) {
+            dataStore.data
+                .map { it[iad1tya.echo.music.constants.UseOwnQobuzHiResKey] ?: false }
+                .distinctUntilChanged()
+                .collect { enabled -> iad1tya.echo.music.qobuz.QobuzHiRes.enabled = enabled }
+        }
+
         applicationScope.launch(Dispatchers.IO) {
             dataStore.data
                 .map { it[VisitorDataKey] }

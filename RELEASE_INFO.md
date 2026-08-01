@@ -1,27 +1,27 @@
-# Aura Hi-Res Player 0.6.140-beta7 — Correcciones grandes + fluidez (BETA PRIVADA)
+# Aura Hi-Res Player 0.6.140-beta8 — Reconocedor, Tidal, discografías y Qobuz (BETA PRIVADA)
 
-> ⚠️ **Build de PRUEBA, solo para el dueño.** Sale como *prerelease*: el actualizador NO la ofrece a nadie más. Instálala a mano. Todo lo de 0.6.139 sigue igual.
+> ⚠️ **Build de PRUEBA, solo para el dueño.** Sale como *prerelease*: el actualizador NO la ofrece a nadie más. Instálala a mano.
 
-## 🔧 Correcciones
-- **Streaming reparado** — YouTube rotó su reproductor; el descifrado nuevo ya está VIVO para todos (config remota, sin actualizar). Las canciones que fallaban vuelven a sonar.
-- **poToken** — un archivo necesario faltaba en las compilaciones (estaba ignorado por git). Corregido: menos fallos y resoluciones más rápidas.
-- **Reconocer canción** — reproducía otra canción distinta a la reconocida (usaba un id frágil de Shazam). Ahora suena exactamente la que reconoció; si no hay match fiable, avisa.
-- **Letra palabra-por-palabra** — se desincronizaba en canciones con letra por líneas (inventaba el ritmo). Ahora ilumina la línea a tiempo; el barrido real se reserva para las que traen tiempo por palabra.
+## 🎤 Reconocer canción — por fin reproduce la correcta
+Reportaste que reconocía perfecto pero al darle play sonaba **otra canción sin relación**. Eran **dos** fallos encadenados (el primer intento en beta7 solo tapó uno):
+1. Usaba un id frágil que devuelve Shazam (a menudo el video musical u otra versión).
+2. Al resolver la canción, aceptaba la primera con **título parecido aunque fuera de otro artista** — y como sí devolvía algo, la protección nunca saltaba.
 
-## 🎵 Migración de playlists
-- **Requiere sesión de YouTube Music** (ahí se crea la playlist): si no la tienes, la pantalla te lo pide primero — ya no eliges playlist para fallar al final. Tidal / Deezer / Archivo / Apple como en betas previas.
+Ahora exige que coincidan **título Y artista**. Si no hay coincidencia fiable, **avisa y no reproduce nada** en vez de sonar cualquier cosa.
 
-## 📚 Biblioteca y playlists
-- **Buscar entre tus playlists** — campo de búsqueda en la pestaña Playlists (insensible a mayúsculas y acentos).
-- **Sincronizar una playlist a mano** — "Sincronizar ahora" en cada playlist de YouTube. (Corregido de paso un fallo que podía vaciar una lista en una sincronización con respuesta vacía momentánea.)
+## 🎵 Migrar desde Tidal — se acabaron las "0 encontradas"
+Tu captura mostraba *0 encontradas / 8 por revisar / 7 no encontradas*. Causa: al pedir las canciones no se pedían los **artistas**, así que **todas** llegaban sin artista al emparejador y ninguna podía alcanzar el mínimo. Corregido (y comprobado: una canción real pasa de 50 a 115 puntos).
+- Si aun así todo sale "ambiguo", la lista **se crea al resolver la primera** — ya no aparece "no hay dónde añadir las revisadas".
+- Playlists de más de 100 canciones: corregido un fallo que podía cortar la importación o truncarla en silencio.
 
-## 🔗 Enlaces de YouTube
-- Aura abre más tipos: canción (watch/embed/v/shorts/youtu.be/vnd.youtube), playlist, álbum, artista, búsqueda — varios se caían. Ajuste para aparecer en el selector "Abrir con". *(Android no deja reemplazar a la fuerza a la app de YT Music; ponla por defecto en Ajustes ▸ Apps ▸ Aura.)*
+## 💿 Discografías completas
+Cuando un álbum que falta se completa a través de una lista de la comunidad, ahora se trae el **álbum entero**, no solo las pistas que había en esa lista. Además no confunde la edición "En Vivo" con la de estudio, y nunca publica un álbum vacío o recortado.
 
-## ⚡ Fluidez (todas las gamas)
-- Fondos animados del reproductor **no se dibujan al minimizar** (gasto invisible eliminado).
-- Fondo del **mini-reproductor** respeta Alto Rendimiento y freno térmico.
-- **Piso por hardware**: gama baja/ultra-baja nunca corre shaders animados ni 2º decodificador, aunque apagues Alto Rendimiento — fluida en equipos débiles.
+## 🎧 Qobuz con TU suscripción (nuevo)
+Ajustes ▸ Cuentas ▸ **Qobuz**: vincula tu cuenta pegando tu token o con correo y contraseña. Con la cuenta vinculada, las canciones sin pérdida se resuelven contra **tu suscripción** en FLAC hi-res, negociando la mejor calidad disponible (24/192 → 24/96 → 16/44) y mostrando la que realmente llegó.
+- **Requiere plan Studio o Sublime** para 24 bits. Con plan básico/gratuito la app lo detecta y **no lo activa**, en vez de fingir hi-res.
+- Garantía: un MP3 **nunca** se acepta como hi-res (eso además podía provocar cortes a mitad de canción).
+- Credenciales cifradas en el móvil, enviadas solo a qobuz.com. Desactivado por defecto: si no vinculas cuenta, nada cambia.
 
 ---
-Verificado por auditoría adversarial (7 áreas): sin crashes, sin pérdida de datos. 206/206 tests.
+**Calidad**: dos rondas de auditoría adversarial sobre esta tanda encontraron **23 defectos**, todos corregidos antes de publicar — varios de ellos en los propios arreglos, incluidos tres que habrían empeorado justo lo que reportaste. Compila en ambos sabores, 225/225 pruebas (5 nuevas para el emparejador).
