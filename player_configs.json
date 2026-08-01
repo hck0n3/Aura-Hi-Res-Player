@@ -1,5 +1,19 @@
 [
   {
+    "hash": "bed7a914",
+    "signatureTimestamp": 20662,
+    "sigFuncName": "_expr_sig",
+    "sigConstantArg": null,
+    "sigConstantArgs": null,
+    "sigPreprocessFunc": null,
+    "sigPreprocessArgs": null,
+    "sigJsExpression": "wzh(11,6026,INPUT)",
+    "nFuncName": "_expr_n",
+    "nArrayIndex": null,
+    "nConstantArgs": null,
+    "nJsExpression": "(function(n){try{var u=new g.Nk('https://x.googlevideo.com/videoplayback?n='+n,true);var t=u.get('n');return(t&&t!==n)?t:n;}catch(e){return n;}})(INPUT)"
+  },
+  {
     "hash": "66a6ea83",
     "signatureTimestamp": 20640,
     "sigFuncName": "_expr_sig",
