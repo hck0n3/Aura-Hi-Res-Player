@@ -41,6 +41,7 @@
     <string name="filter_albums">Álbumes</string>
     <string name="filter_artists">Artistas</string>
     <string name="filter_playlists">Listas de reproducción</string>
+    <string name="search_playlists">Buscar en tus playlists</string>
     <string name="filter_community_playlists">Listas de reproducción de la comunidad</string>
     <string name="filter_featured_playlists">Listas de reproducción destacadas</string>
     <string name="filter_bookmarked">Marcado como favorito</string>
@@ -101,6 +102,10 @@
     <string name="remove_from_queue">Quitar de la cola</string>
     <string name="search_online">Buscar en línea</string>
     <string name="action_sync">Sincronizar</string>
+    <string name="playlist_sync_now">Sincronizar ahora</string>
+    <string name="playlist_syncing">Sincronizando…</string>
+    <string name="playlist_sync_failed">No se pudo sincronizar</string>
+    <string name="sync_login_required">Inicia sesión en YouTube Music</string>
     <string name="advanced">Avanzado</string>
     <string name="tempo_and_pitch">Tempo y tono</string>
     <string name="sort_by_create_date">Fecha añadida</string>

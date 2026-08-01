@@ -7,6 +7,7 @@ import iad1tya.echo.music.utils.ShareLinks
 import android.content.Intent
 import android.content.res.Configuration
 import android.widget.Toast
+import iad1tya.echo.music.utils.rememberPreference
 import iad1tya.echo.music.utils.reportException
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
@@ -47,11 +48,14 @@ import androidx.media3.exoplayer.offline.Download
 import androidx.media3.exoplayer.offline.DownloadRequest
 import androidx.media3.exoplayer.offline.DownloadService
 import com.music.innertube.YouTube
+import com.music.innertube.utils.parseCookieString
 import iad1tya.echo.music.LocalDatabase
 import iad1tya.echo.music.LocalDownloadUtil
 import iad1tya.echo.music.LocalListenTogetherManager
 import iad1tya.echo.music.LocalPlayerConnection
+import iad1tya.echo.music.LocalSyncUtils
 import iad1tya.echo.music.R
+import iad1tya.echo.music.constants.InnerTubeCookieKey
 import iad1tya.echo.music.db.entities.Playlist
 import iad1tya.echo.music.db.entities.SpeedDialItem
 import iad1tya.echo.music.db.entities.PlaylistSong
@@ -89,6 +93,10 @@ fun PlaylistMenu(
     val playerConnection = LocalPlayerConnection.current ?: return
     val listenTogetherManager = LocalListenTogetherManager.current
     val isGuest = listenTogetherManager?.isInRoom == true && !listenTogetherManager.isHost
+    val syncUtils = LocalSyncUtils.current
+    // Same cookie gate the rest of the app uses to know if the user is signed into YouTube Music.
+    val (innerTubeCookie) = rememberPreference(InnerTubeCookieKey, "")
+    val isLoggedIn = remember(innerTubeCookie) { "SAPISID" in parseCookieString(innerTubeCookie) }
     // Enhanced-shuffle context for this menu's Shuffle action (must match the screens' PL:/AP: scheme).
     val menuShuffleContextId = if (autoPlaylist == true || downloadPlaylist == true) {
         "AP:" + playlist.playlist.id
@@ -552,6 +560,52 @@ fun PlaylistMenu(
                                             }
                                         }
                                         onDismiss()
+                                    }
+                                )
+                            )
+                        }
+                    }
+                    // Manual on-demand sync — only for a YouTube-linked (synced) playlist: browseId != null.
+                    if (!isGuest) {
+                        playlist.playlist.browseId?.let { browseId ->
+                            add(
+                                Material3MenuItemData(
+                                    title = { Text(text = stringResource(R.string.playlist_sync_now)) },
+                                    description = { Text(text = stringResource(R.string.sync_playlist_desc)) },
+                                    icon = {
+                                        Icon(
+                                            painter = painterResource(R.drawable.sync),
+                                            contentDescription = null,
+                                        )
+                                    },
+                                    onClick = {
+                                        onDismiss()
+                                        if (!isLoggedIn) {
+                                            // Never hit YouTube signed out — just tell the user to sign in.
+                                            Toast.makeText(
+                                                context,
+                                                context.getString(R.string.sync_login_required),
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                        } else {
+                                            Toast.makeText(
+                                                context,
+                                                context.getString(R.string.playlist_syncing),
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                            coroutineScope.launch(Dispatchers.IO) {
+                                                val ok = syncUtils.syncPlaylistNow(browseId, playlist.playlist.id)
+                                                withContext(Dispatchers.Main) {
+                                                    Toast.makeText(
+                                                        context,
+                                                        context.getString(
+                                                            if (ok) R.string.playlist_synced else R.string.playlist_sync_failed
+                                                        ),
+                                                        Toast.LENGTH_SHORT
+                                                    ).show()
+                                                }
+                                            }
+                                        }
                                     }
                                 )
                             )

@@ -34,8 +34,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -117,6 +119,21 @@ fun LibraryPlaylistsScreen(
     val gridItemSize by rememberEnumPreference(GridItemsSizeKey, GridItemSize.BIG)
 
     val playlists by viewModel.allPlaylists.collectAsState()
+
+    // Search among the user's created playlists (owner request). Filters ONLY the user-playlist section
+    // by name, case- AND diacritic-insensitive ("cancion" matches "Canción"); the auto-playlists
+    // (liked/downloaded/top…) are unaffected.
+    var playlistSearchQuery by rememberSaveable { mutableStateOf("") }
+    val filteredPlaylists = remember(playlists, playlistSearchQuery) {
+        val q = playlistSearchQuery.trim()
+        if (q.isEmpty()) playlists
+        else {
+            fun norm(s: String) = java.text.Normalizer.normalize(s.lowercase(), java.text.Normalizer.Form.NFD)
+                .replace(Regex("\\p{Mn}+"), "")
+            val nq = norm(q)
+            playlists.filter { norm(it.playlist.name).contains(nq) }
+        }
+    }
 
     val topSize by viewModel.topValue.collectAsState(initial = 50)
 
@@ -213,6 +230,33 @@ fun LibraryPlaylistsScreen(
     // action buttons (see LibraryScreen), so they are shared across the library, not just here.
 
     val headerContent = @Composable {
+      androidx.compose.foundation.layout.Column(modifier = Modifier.fillMaxWidth()) {
+        // Search among the user's created playlists (filters the list below by name).
+        androidx.compose.material3.OutlinedTextField(
+            value = playlistSearchQuery,
+            onValueChange = { playlistSearchQuery = it },
+            singleLine = true,
+            leadingIcon = {
+                androidx.compose.material3.Icon(
+                    androidx.compose.ui.res.painterResource(R.drawable.search),
+                    contentDescription = null,
+                )
+            },
+            trailingIcon = {
+                if (playlistSearchQuery.isNotEmpty()) {
+                    androidx.compose.material3.IconButton(onClick = { playlistSearchQuery = "" }) {
+                        androidx.compose.material3.Icon(
+                            androidx.compose.ui.res.painterResource(R.drawable.close),
+                            contentDescription = null,
+                        )
+                    }
+                }
+            },
+            placeholder = { androidx.compose.material3.Text(stringResource(R.string.search_playlists)) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+        )
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.padding(start = 16.dp),
@@ -237,8 +281,8 @@ fun LibraryPlaylistsScreen(
             Text(
                 text = pluralStringResource(
                     R.plurals.n_playlist,
-                    playlists.size,
-                    playlists.size
+                    filteredPlaylists.size,
+                    filteredPlaylists.size
                 ),
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.secondary,
@@ -246,6 +290,7 @@ fun LibraryPlaylistsScreen(
 
             Spacer(modifier = Modifier.width(16.dp))
         }
+      }
     }
 
     Box(
@@ -356,7 +401,7 @@ fun LibraryPlaylistsScreen(
                         )
                     }
 
-                    playlists.let { playlists ->
+                    filteredPlaylists.let { playlists ->
                         if (playlists.isEmpty()) {
                             item(key = "empty_placeholder") {
                             }
@@ -491,7 +536,7 @@ fun LibraryPlaylistsScreen(
                         )
                     }
 
-                    playlists.let { playlists ->
+                    filteredPlaylists.let { playlists ->
                         if (playlists.isEmpty()) {
                             item(span = { GridItemSpan(maxLineSpan) }) {
                             }

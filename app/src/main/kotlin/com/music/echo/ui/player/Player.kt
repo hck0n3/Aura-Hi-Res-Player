@@ -303,6 +303,13 @@ fun BottomSheetPlayer(
     val hidePlayerSlider by rememberPreference(iad1tya.echo.music.constants.HidePlayerSliderKey, false)
     // High-Performance Mode hides these heavy visuals without touching the user's stored toggles (reversible).
     val highPerfMode by rememberPreference(iad1tya.echo.music.constants.HighPerformanceModeKey, false)
+    // Hardware floor (fluidity audit): even if a LOW/ultra-low device has Performance Mode turned OFF,
+    // never run the per-frame blurred/animated player backgrounds on it — the perf flag is user-
+    // reversible, so it's the only thing standing between weak silicon and a full-screen shader. The raw
+    // hardware tier is not user-toggleable. compute() only returns LOW/MID/HIGH, so LOW == genuinely weak.
+    val rawTierLow = remember {
+        iad1tya.echo.music.utils.DeviceCapabilities.tier(context) == iad1tya.echo.music.utils.DeviceTier.LOW
+    }
     // Anti-overheating: true only while the OS reports MODERATE+ thermal (always false below API 29 / while
     // cool). When hot, the heavy CONTINUOUS visuals below drop to their cheap/off path exactly like Perf Mode,
     // then restore automatically once the device cools. A cool/capable device: deviceThrottle == false, so every
@@ -1052,8 +1059,9 @@ fun BottomSheetPlayer(
                     .fillMaxSize()
                     .background(bottomSheetBackgroundColor)
             ) {
-                if (highPerfMode || deviceThrottle) {
-                    // Perf mode OR the device is HOT (deviceThrottle): show the cover as a PLAIN, opaque, STATIC
+                if (highPerfMode || deviceThrottle || rawTierLow) {
+                    // Perf mode OR the device is HOT (deviceThrottle) OR genuinely weak hardware (rawTierLow):
+                    // show the cover as a PLAIN, opaque, STATIC
                     // background — a single downsized image draw, NO blur/glow/mesh shader, NO palette extraction,
                     // NO per-frame animation. This is the single gate for the heavy blurred/animated backgrounds
                     // (BLUR / GRADIENT / GLOW_ANIMATED / APPLE_MUSIC / LIVE_MESH) and the animated Canvas draw. So

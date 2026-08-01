@@ -114,8 +114,7 @@ import androidx.media3.exoplayer.offline.DownloadService
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
 import com.music.innertube.YouTube
-import com.music.innertube.models.SongItem
-import com.music.innertube.utils.completed
+import com.music.innertube.utils.parseCookieString
 import iad1tya.echo.music.LocalDatabase
 import iad1tya.echo.music.LocalDownloadUtil
 import iad1tya.echo.music.LocalPlayerAwareWindowInsets
@@ -124,6 +123,7 @@ import iad1tya.echo.music.LocalSyncUtils
 import iad1tya.echo.music.R
 import iad1tya.echo.music.constants.AiPlaylistEnabledKey
 import iad1tya.echo.music.constants.DarkModeKey
+import iad1tya.echo.music.constants.InnerTubeCookieKey
 import iad1tya.echo.music.constants.PlaylistEditLockKey
 import iad1tya.echo.music.constants.PlaylistSongSortDescendingKey
 import iad1tya.echo.music.constants.PlaylistSongSortType
@@ -131,10 +131,8 @@ import iad1tya.echo.music.constants.PlaylistSongSortTypeKey
 import iad1tya.echo.music.constants.SwipeToRemoveSongKey
 import iad1tya.echo.music.db.entities.Playlist
 import iad1tya.echo.music.db.entities.PlaylistSong
-import iad1tya.echo.music.db.entities.PlaylistSongMap
 import iad1tya.echo.music.extensions.move
 import iad1tya.echo.music.extensions.toMediaItem
-import iad1tya.echo.music.models.toMediaMetadata
 import iad1tya.echo.music.playback.ExoDownloadService
 import iad1tya.echo.music.playback.queues.ListQueue
 import iad1tya.echo.music.ui.component.ActionPromptDialog
@@ -1031,6 +1029,9 @@ fun LocalPlaylistHeader(
     val syncUtils = LocalSyncUtils.current
     val scope = rememberCoroutineScope()
     val isTvOrCar = rememberIsTvOrCar()
+    // Same cookie gate the rest of the app uses to know if the user is signed into YouTube Music.
+    val (innerTubeCookie) = rememberPreference(InnerTubeCookieKey, "")
+    val isLoggedIn = remember(innerTubeCookie) { "SAPISID" in parseCookieString(innerTubeCookie) }
 
     val playlistLength =
         remember(songs) {
@@ -1486,28 +1487,35 @@ fun LocalPlaylistHeader(
                             onAiModify = onShowAiModifyDialog,
                             onEdit = onShowEditDialog,
                             onSync = {
-                                scope.launch(Dispatchers.IO) {
-                                    val playlistPage = YouTube.playlist(playlist.playlist.browseId!!)
-                                        .completed()
-                                        .getOrNull() ?: return@launch
-                                    database.transaction {
-                                        clearPlaylist(playlist.id)
-                                        playlistPage.songs
-                                            .map(SongItem::toMediaMetadata)
-                                            .onEach(::insert)
-                                            .mapIndexed { position, song ->
-                                                PlaylistSongMap(
-                                                    songId = song.id,
-                                                    playlistId = playlist.id,
-                                                    position = position,
-                                                    setVideoId = song.setVideoId
+                                val browseId = playlist.playlist.browseId
+                                when {
+                                    browseId == null -> {}
+                                    !isLoggedIn -> Toast.makeText(
+                                        context,
+                                        context.getString(R.string.sync_login_required),
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                    else -> {
+                                        Toast.makeText(
+                                            context,
+                                            context.getString(R.string.playlist_syncing),
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                        // Route through the guarded single-playlist sync (an empty or
+                                        // truncated remote page never wipes the local copy) and report the
+                                        // real result — the old inline clear-and-reinsert could wipe the
+                                        // playlist and always claimed success even when the fetch failed.
+                                        scope.launch(Dispatchers.IO) {
+                                            val ok = syncUtils.syncPlaylistNow(browseId, playlist.id)
+                                            withContext(Dispatchers.Main) {
+                                                snackbarHostState.showSnackbar(
+                                                    context.getString(
+                                                        if (ok) R.string.playlist_synced else R.string.playlist_sync_failed
+                                                    )
                                                 )
                                             }
-                                            .forEach(::insert)
+                                        }
                                     }
-                                }
-                                scope.launch(Dispatchers.Main) {
-                                    snackbarHostState.showSnackbar(context.getString(R.string.playlist_synced))
                                 }
                             },
                             onDelete = onshowDeletePlaylistDialog,

@@ -60,15 +60,21 @@ fun BottomSheet(
 ) {
     val density = LocalDensity.current
     
-    Box(
-        modifier = modifier
-            .graphicsLayer {
-                
-                alpha = (1.4f * (state.progress.coerceAtLeast(0.1f) - 0.1f).pow(0.5f)).coerceIn(0f, 1f)
-            }
-            .fillMaxSize(),
-        content = background
-    )
+    // Only compose the player's background slot when NOT fully docked. While collapsed the background
+    // is at alpha 0 yet still RAN — animated styles (GLOW/LIVE_MESH) kept an InfiniteTransition ticking
+    // and redrew every frame behind the mini-player, invisible per-frame GPU/CPU burn on every tier
+    // (fluidity/battery audit). isCollapsed clears the instant a drag begins, so the fade-in is intact.
+    if (!state.isCollapsed) {
+        Box(
+            modifier = modifier
+                .graphicsLayer {
+
+                    alpha = (1.4f * (state.progress.coerceAtLeast(0.1f) - 0.1f).pow(0.5f)).coerceIn(0f, 1f)
+                }
+                .fillMaxSize(),
+            content = background
+        )
+    }
     Box(
         modifier = modifier
             .fillMaxSize()

@@ -124,7 +124,15 @@
             </intent-filter>
 
             <!-- Youtube filter -->
-            <intent-filter android:autoVerify="true">
+            <!-- autoVerify is DELIBERATELY OMITTED here (it was android:autoVerify="true"). autoVerify asks
+                 Android to confirm, via Digital Asset Links on the domain, that we OWN youtube.com /
+                 music.youtube.com / youtu.be — we don't, so on Android 12+ that verification ALWAYS fails,
+                 and a failed-autoVerify web filter is treated as "do not offer this app for these links":
+                 Aura stops appearing in the "Abrir con" chooser and the links can't even be enabled by hand.
+                 As a plain (unverified) web filter it instead shows up in Ajustes → Apps → Aura → Abrir de
+                 forma predeterminada, so the user can pick Aura as the handler. (autoVerify is kept ONLY on
+                 the Listen Together filter above, whose domain the project actually controls.) -->
+            <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <action android:name="android.media.action.MEDIA_PLAY_FROM_SEARCH" />
                 <action android:name="android.nfc.action.NDEF_DISCOVERED" />
@@ -142,10 +150,13 @@
                 <data android:pathPrefix="/v/" />
                 <data android:pathPrefix="/embed/" />
                 <data android:pathPrefix="/watch" />
+                <data android:pathPrefix="/shorts/" />
                 <!-- channel prefix -->
                 <data android:pathPrefix="/channel/" />
                 <data android:pathPrefix="/user/" />
                 <data android:pathPrefix="/c/" />
+                <!-- channel handle (music.youtube.com/@name) -->
+                <data android:pathPrefix="/@" />
                 <!-- playlist prefix -->
                 <data android:pathPrefix="/playlist" />
                 <!-- browse prefix -->
@@ -154,7 +165,8 @@
                 <data android:pathPrefix="/search" />
             </intent-filter>
 
-            <intent-filter android:autoVerify="true">
+            <!-- youtu.be short links. autoVerify omitted for the same reason as the filter above. -->
+            <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <action android:name="android.media.action.MEDIA_PLAY_FROM_SEARCH" />
                 <action android:name="android.nfc.action.NDEF_DISCOVERED" />

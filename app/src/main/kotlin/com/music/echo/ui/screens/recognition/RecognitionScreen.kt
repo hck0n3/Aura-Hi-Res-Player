@@ -95,6 +95,7 @@ import com.music.shazamkit.models.RecognitionStatus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.withContext
+import timber.log.Timber
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -332,15 +333,21 @@ fun RecognitionScreen(
                             result = status.result,
                             onPlayOnApp = { result ->
                                 if (playerConnection != null) {
-                                    // Actually play: direct video id when Shazam gave one, else the
-                                    // proven search + best-match + YouTubeQueue path (with failure toasts).
+                                    // Play the SAME song shown on screen. We pass the id RESOLVED from the
+                                    // displayed title+artist (the exact SongItem Like / Add-to-playlist use),
+                                    // NOT result.youtubeVideoId: that Shazam "video" id is the official
+                                    // music-VIDEO upload (often a different/remixed track) and its uri parse
+                                    // can false-positive, which made Play play a DIFFERENT song than the
+                                    // cover/title shown. If the resolve hasn't finished yet (or failed),
+                                    // videoId = null makes playTrack do the strict title+artist search+match,
+                                    // so it still plays the recognized song (or shows a no-results toast).
                                     suggestionsViewModel.playTrack(
                                         SuggestionTrack(
                                             rank = 0,
                                             title = result.title,
                                             artist = result.artist,
                                             thumbnailUrl = result.coverArtHqUrl ?: result.coverArtUrl,
-                                            videoId = result.youtubeVideoId,
+                                            videoId = resolvedSong?.id,
                                         ),
                                         playerConnection
                                     )
@@ -566,18 +573,26 @@ private fun artistMatches(ytArtistName: String, recognizedArtist: String): Boole
     return recNorm.contains(ytNorm) || ytNorm.contains(recNorm)
 }
 
-private suspend fun bestSongMatch(songs: List<SongItem>, result: RecognitionResult): SongItem? =
-    // Shazam already gave us the exact video id: trust it above the name heuristics. If it isn't in
-    // the FILTER_SONG results (video-only upload, regional variant…), resolve that exact id directly
-    // so Like/Add persist EXACTLY the item the Play button plays — the name heuristics below could
-    // otherwise pick a DIFFERENT track. Heuristics stay as fallback when the id resolve fails.
-    result.youtubeVideoId?.let { id ->
-        songs.firstOrNull { it.id == id }
-            ?: YouTube.queue(videoIds = listOf(id)).getOrNull()?.firstOrNull()
-    }
-        ?: songs.firstOrNull { s ->
+private fun bestSongMatch(songs: List<SongItem>, result: RecognitionResult): SongItem? {
+    // Match the recognized metadata (the SAME title/artist shown on screen) to a real YouTube Music
+    // song. We deliberately do NOT blindly trust result.youtubeVideoId: it is parsed from Shazam's
+    // "video" hub option (the official music-VIDEO upload — frequently a different/remixed track) with
+    // an 11-char uri heuristic that can false-positive on a non-YouTube link. Trusting it (and, worse,
+    // resolving that unverified id directly) made Play/Like/Add pick a DIFFERENT song than the cover +
+    // title shown. The id is honored ONLY when it actually appears among the title-matching FILTER_SONG
+    // results, i.e. it is confirmed to be this song on YouTube Music.
+    val match =
+        songs.firstOrNull { s ->
             s.title.equals(result.title, ignoreCase = true) &&
                 s.artists.any { a -> artistMatches(a.name, result.artist) }
+        }
+        ?: result.youtubeVideoId?.let { id ->
+            songs.firstOrNull { s ->
+                s.id == id &&
+                    (s.title.equals(result.title, ignoreCase = true) ||
+                        s.title.contains(result.title, ignoreCase = true) ||
+                        result.title.contains(s.title, ignoreCase = true))
+            }
         }
         ?: songs.firstOrNull { s ->
             s.title.contains(result.title, ignoreCase = true) &&
@@ -586,7 +601,17 @@ private suspend fun bestSongMatch(songs: List<SongItem>, result: RecognitionResu
         // Title-first fallback so the right track wins over a different song by the same artist.
         ?: songs.firstOrNull { s -> s.title.equals(result.title, ignoreCase = true) }
         ?: songs.firstOrNull { s -> s.title.contains(result.title, ignoreCase = true) }
-        ?: songs.firstOrNull()
+    // No confident title match: return null instead of a blind songs.first(). The shown cover/title
+    // come from the Shazam match, so playing an unrelated top result would again be "shown != played" —
+    // the exact bug being fixed. The caller surfaces the recognition_resolve_failed toast.
+    if (match == null) {
+        Timber.w(
+            "Recognition: no confident YouTube Music match for \"%s\" — %s (searched %d songs)",
+            result.title, result.artist, songs.size,
+        )
+    }
+    return match
+}
 
 @Composable
 private fun SuccessState(

@@ -215,6 +215,20 @@ private fun NewMiniPlayer(
     }
     
     val miniPlayerBackground by rememberEnumPreference(MiniPlayerBackgroundStyleKey, defaultValue = PlayerBackgroundStyle.DEFAULT)
+    // The mini-player is ALWAYS on screen while playing, yet its animated backgrounds (GLOW/LIVE_MESH)
+    // had NO perf/thermal gate — unlike the full player — so picking one ran a per-frame gradient
+    // forever, even in High-Performance Mode (fluidity audit). Gate it the same way: perf mode or
+    // thermal throttle -> static DEFAULT.
+    val miniPerfHigh by rememberPreference(iad1tya.echo.music.constants.HighPerformanceModeKey, false)
+    val miniThrottle = iad1tya.echo.music.utils.rememberDeviceThrottle()
+    // Same HARDWARE floor as the full player: on genuinely-LOW devices never run the per-frame animated
+    // background, even with Performance Mode off — and this surface matters MORE, the mini-player is
+    // always on screen while playing.
+    val miniCtx = androidx.compose.ui.platform.LocalContext.current
+    val miniRawTierLow = remember {
+        iad1tya.echo.music.utils.DeviceCapabilities.tier(miniCtx) == iad1tya.echo.music.utils.DeviceTier.LOW
+    }
+    val effectiveMiniPlayerBackground = if (miniPerfHigh || miniThrottle || miniRawTierLow) PlayerBackgroundStyle.DEFAULT else miniPlayerBackground
     
     
     val playbackState by playerConnection.playbackState.collectAsState()
@@ -379,7 +393,7 @@ private fun NewMiniPlayer(
         ) {
             
             MiniPlayerBackgroundLayer(
-                style = miniPlayerBackground,
+                style = effectiveMiniPlayerBackground,
                 mediaMetadata = mediaMetadata,
                 gradientColors = gradientColors
             )

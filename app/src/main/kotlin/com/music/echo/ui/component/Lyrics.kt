@@ -1810,6 +1810,15 @@ fun Lyrics(
 
                                             val charProgress = when {
                                                 !isActiveLine -> 0f
+                                                // Line-only lyrics (most songs: LrcLib/Kugou line LRC) have NO
+                                                // real per-word timing. The old code FABRICATED a uniform
+                                                // char-weighted sweep across the line — but vocals don't fill a
+                                                // line uniformly, so it visibly ran ahead on fast lines and
+                                                // lagged on held ones ("letra por letra desincronizado"). Light
+                                                // the whole active line together instead (honest line-level
+                                                // sync, same as EchoMusicLyrics). The true per-char sweep below
+                                                // runs ONLY when hasRealWordTimings (Apple/richsync data).
+                                                !hasRealWordTimings -> 1f
                                                 lineRelTime >= charEnd -> 1f
                                                 lineRelTime < charStart -> 0f
                                                 else -> {

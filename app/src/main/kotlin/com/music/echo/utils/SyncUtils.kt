@@ -395,6 +395,25 @@ class SyncUtils @Inject constructor(
         }
     }
 
+    /**
+     * Manual, user-initiated "Sincronizar ahora" for one YouTube-linked playlist. Runs the SAME guarded
+     * single-playlist sync as the background path (an empty or materially-truncated remote page never
+     * wipes the local copy), and — unlike the fire-and-forget [syncPlaylist] above — returns whether it
+     * actually reached YouTube and applied, so the caller can show a "Listo" / "Falló" toast.
+     * Returns false (never throws) when the user is not signed into YouTube Music, so a signed-out tap
+     * can never crash. Callers should still gate on their own cookie check to show the "sign in" hint.
+     */
+    suspend fun syncPlaylistNow(browseId: String, playlistId: String): Boolean {
+        if (!isLoggedIn()) return false
+        // executeSyncPlaylist returns the nested Result from withRetry { YouTube.playlist(..).completed() }:
+        // outer getOrNull() is null only if it threw, inner getOrNull() is null if the fetch failed after
+        // retries, and isSuccess reflects the completed() page fetch itself.
+        return runCatching { executeSyncPlaylist(browseId, playlistId) }
+            .getOrNull()
+            ?.getOrNull()
+            ?.isSuccess == true
+    }
+
     fun syncAllAlbums() {
         syncScope.launch {
             syncChannel.send(SyncOperation.LikedAlbums)

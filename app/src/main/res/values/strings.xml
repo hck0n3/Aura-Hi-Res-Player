@@ -62,6 +62,7 @@
     <string name="filter_artists">Artists</string>
     <string name="filter_local">Local</string>
     <string name="filter_playlists">Playlists</string>
+    <string name="search_playlists">Search your playlists</string>
     <string name="podcasts">Podcasts</string>
     <string name="update_signature_mismatch">Could not verify the update signature. Install cancelled for safety.</string>
     <string name="filter_community_playlists">Community playlists</string>
@@ -149,6 +150,10 @@
     <string name="remove_from_queue">Remove from queue</string>
     <string name="search_online">Search online</string>
     <string name="action_sync">Sync</string>
+    <string name="playlist_sync_now">Sync now</string>
+    <string name="playlist_syncing">Syncing…</string>
+    <string name="playlist_sync_failed">Sync failed</string>
+    <string name="sync_login_required">Sign in to YouTube Music</string>
     <string name="advanced">Advanced</string>
     <string name="tempo_and_pitch">Tempo and Pitch</string>
 

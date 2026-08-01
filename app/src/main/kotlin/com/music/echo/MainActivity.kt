@@ -1881,6 +1881,62 @@ class MainActivity : ComponentActivity() {
 
         val coroutineScope = lifecycle.coroutineScope
 
+        // ── Shared helpers so every YouTube/YTM link shape below reuses the SAME play/navigate paths.
+
+        // Enqueue + play a single video (optionally inside a playlist/mix context). This is how the app
+        // "opens a song": it does NOT push a screen — it hands the videoId to the player via YouTubeQueue.
+        fun playVideo(videoId: String, playlistId: String?) {
+            coroutineScope.launch(Dispatchers.IO) {
+                YouTube.queue(listOf(videoId), playlistId).onSuccess { queue ->
+                    withContext(Dispatchers.Main) {
+                        playerConnection?.playQueue(
+                            YouTubeQueue(
+                                WatchEndpoint(videoId = queue.firstOrNull()?.id, playlistId = playlistId),
+                                queue.firstOrNull()?.toMediaMetadata()
+                            )
+                        )
+                    }
+                }.onFailure { reportException(it) }
+            }
+        }
+
+        // Enqueue + play a whole playlist/mix (no specific starting video).
+        fun playPlaylist(playlistId: String) {
+            coroutineScope.launch(Dispatchers.IO) {
+                YouTube.queue(null, playlistId).onSuccess { queue ->
+                    val firstItem = queue.firstOrNull()
+                    withContext(Dispatchers.Main) {
+                        playerConnection?.playQueue(
+                            YouTubeQueue(
+                                WatchEndpoint(videoId = firstItem?.id, playlistId = playlistId),
+                                firstItem?.toMediaMetadata()
+                            )
+                        )
+                    }
+                }.onFailure { reportException(it) }
+            }
+        }
+
+        // A YTM browseId (from music.youtube.com/browse/<id> or /channel/<id>) is polymorphic: its PREFIX
+        // decides the screen. The old code always opened "album/<id>", so channels, playlists and podcasts
+        // shared as /browse/ links wrongly landed on the album screen (blank) or dropped. Route by prefix:
+        //   MPREb… = album · UC…/MPLA… = artist (channel) · VL… = playlist (innertube re-adds the VL prefix,
+        //   so strip it here) · anything else (MPSP podcasts, moods, FEmusic…) = the generic browse grid.
+        fun navigateBrowseId(browseId: String) {
+            // Guard degenerate ids: a bare "VL" (empty playlist id) or an empty browseId would navigate
+            // to a route with an empty required arg and throw IllegalArgumentException. Real YT/YTM share
+            // links never produce these, but a malformed link must no-op (open the app), not crash.
+            if (browseId.isBlank()) return
+            when {
+                browseId.startsWith("MPREb") -> navController.navigate("album/$browseId")
+                browseId.startsWith("UC") || browseId.startsWith("MPLA") -> navController.navigate("artist/$browseId")
+                browseId.startsWith("VL") ->
+                    browseId.removePrefix("VL").takeIf { it.isNotBlank() }
+                        ?.let { navController.navigate("online_playlist/$it") }
+                else -> navController.navigate("browse/$browseId")
+            }
+        }
+
         val listenCode = uri.getQueryParameter("code")
             ?: uri.getQueryParameter("room")
             ?: uri.pathSegments.getOrNull(1)
@@ -1891,7 +1947,22 @@ class MainActivity : ComponentActivity() {
             return
         }
 
+        // Legacy "open in YouTube" scheme: vnd.youtube:<id>, vnd.youtube://<id>, vnd.youtube.launch:<id>,
+        // or vnd.youtube://…/watch?v=<id>. The video id is the scheme-specific part (or a v= param).
+        if (uri.scheme?.startsWith("vnd.youtube") == true) {
+            val ssp = uri.schemeSpecificPart.orEmpty()
+            val videoId = when {
+                ssp.contains("v=") -> ssp.substringAfter("v=").substringBefore("&")
+                ssp.startsWith("//") -> ssp.removePrefix("//").substringAfterLast('/').substringBefore('?').substringBefore('&')
+                else -> ssp.substringBefore('?').substringBefore('&')
+            }.trim()
+            if (videoId.isNotBlank()) playVideo(videoId, uri.getQueryParameter("list"))
+            return
+        }
+
         when (val path = uri.pathSegments.firstOrNull()) {
+            // /playlist?list=… — OLAK5uy_ ids are album playlists, so resolve them to the album screen;
+            // everything else opens the online playlist screen.
             "playlist" -> uri.getQueryParameter("list")?.let { playlistId ->
                 if (playlistId.startsWith("OLAK5uy_")) {
                     coroutineScope.launch(Dispatchers.IO) {
@@ -1908,12 +1979,18 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            "browse" -> uri.lastPathSegment?.let { browseId ->
-                navController.navigate("album/$browseId")
+            // /browse/<id> — resolve album vs artist vs playlist vs podcast by prefix (see helper).
+            "browse" -> uri.lastPathSegment?.let { navigateBrowseId(it) }
+
+            // /channel/UC… is a real artist browseId → artist screen.
+            "channel" -> uri.lastPathSegment?.let { artistId ->
+                navController.navigate("artist/$artistId")
             }
 
-            "channel", "c" -> uri.lastPathSegment?.let { artistId ->
-                navController.navigate("artist/$artistId")
+            // /c/NAME and /user/NAME are *custom* URLs, NOT browseIds — the artist screen can't load them,
+            // so fall back to a search on the name instead of dropping the link.
+            "c", "user" -> uri.lastPathSegment?.let { name ->
+                navController.navigate("search/${URLEncoder.encode(name, "UTF-8")}")
             }
 
             "search" -> {
@@ -1922,46 +1999,33 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            else -> {
-                val videoId = when {
-                    path == "watch" -> uri.getQueryParameter("v")
-                    uri.host == "youtu.be" -> uri.pathSegments.firstOrNull()
-                    else -> null
-                }
-
+            // All the direct-video shapes: /watch?v=ID, /embed/ID, /v/ID, /shorts/ID (youtu.be/ID is
+            // handled in the else branch, since its id is the FIRST path segment).
+            "watch", "embed", "v", "shorts" -> {
+                val videoId = if (path == "watch") uri.getQueryParameter("v") else uri.lastPathSegment
                 val playlistId = uri.getQueryParameter("list")
+                when {
+                    !videoId.isNullOrBlank() -> playVideo(videoId, playlistId)   // song (in playlist context if present)
+                    !playlistId.isNullOrBlank() -> playPlaylist(playlistId)      // e.g. /watch?list=… with no v
+                    else -> { /* nothing usable — leave the app open */ }
+                }
+            }
 
-                if (videoId != null) {
-                    coroutineScope.launch(Dispatchers.IO) {
-                        YouTube.queue(listOf(videoId), playlistId).onSuccess { queue ->
-                            withContext(Dispatchers.Main) {
-                                playerConnection?.playQueue(
-                                    YouTubeQueue(
-                                        WatchEndpoint(videoId = queue.firstOrNull()?.id, playlistId = playlistId),
-                                        queue.firstOrNull()?.toMediaMetadata()
-                                    )
-                                )
-                            }
-                        }.onFailure {
-                            reportException(it)
-                        }
-                    }
-                } else if (playlistId != null) {
-                    coroutineScope.launch(Dispatchers.IO) {
-                        YouTube.queue(null, playlistId).onSuccess { queue ->
-                            val firstItem = queue.firstOrNull()
-                            withContext(Dispatchers.Main) {
-                                playerConnection?.playQueue(
-                                    YouTubeQueue(
-                                        WatchEndpoint(videoId = firstItem?.id, playlistId = playlistId),
-                                        firstItem?.toMediaMetadata()
-                                    )
-                                )
-                            }
-                        }.onFailure {
-                            reportException(it)
-                        }
-                    }
+            else -> {
+                val playlistId = uri.getQueryParameter("list")
+                when {
+                    // /@handle — a channel handle can't be resolved to a browseId offline; search for it.
+                    path != null && path.startsWith("@") ->
+                        navController.navigate("search/${URLEncoder.encode(path.removePrefix("@"), "UTF-8")}")
+
+                    // youtu.be/<id> (id is the first path segment); carries an optional &list= context.
+                    uri.host == "youtu.be" && !path.isNullOrBlank() -> playVideo(path, playlistId)
+
+                    // Any other URL that still carries a ?list= (e.g. a bare list share) → play it.
+                    !playlistId.isNullOrBlank() -> playPlaylist(playlistId)
+
+                    // Unrecognized YouTube URL: don't crash — the app is already open, just stay put.
+                    else -> { }
                 }
             }
         }
