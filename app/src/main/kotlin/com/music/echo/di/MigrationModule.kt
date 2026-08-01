@@ -121,5 +121,6 @@ object MigrationModule {
         http = http,
         tokenProvider = { tokenStore.accessToken() },
         countryCode = Locale.getDefault().country.takeIf { it.length == 2 } ?: "ES",
+        userIdProvider = { tokenStore.userId() },
     )
 }

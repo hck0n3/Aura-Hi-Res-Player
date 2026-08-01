@@ -106,6 +106,10 @@ class TidalTokenStore(
         }
     }
 
+    /** The numeric Tidal user id from the token response, if it carried one. Used as a fallback for the
+     *  `/userCollections/me` path — some v2 deployments want the id, not the literal `me`. */
+    fun userId(): String? = prefs.getString(KEY_USER_ID, null)
+
     /** Forget everything (the "log out of Tidal" action). */
     fun logout() {
         prefs.edit().clear().apply()
@@ -127,6 +131,11 @@ class TidalTokenStore(
             putLong(KEY_EXPIRES_AT, System.currentTimeMillis() + expiresIn * 1000)
             // A refresh response may omit refresh_token: keep the one we have.
             json.string("refresh_token")?.let { putString(KEY_REFRESH_TOKEN, it) }
+            // Capture the numeric user id (Tidal returns it as user_id, sometimes nested in "user").
+            (json.string("user_id")
+                ?: (json["user"] as? JsonObject)?.string("id")
+                ?: (json["user"] as? JsonObject)?.string("userId"))
+                ?.let { putString(KEY_USER_ID, it) }
         }.apply()
         return true
     }
@@ -157,6 +166,7 @@ class TidalTokenStore(
         const val KEY_ACCESS_TOKEN = "access_token"
         const val KEY_REFRESH_TOKEN = "refresh_token"
         const val KEY_EXPIRES_AT = "expires_at"
+        const val KEY_USER_ID = "user_id"
         const val KEY_CODE_VERIFIER = "code_verifier"
         const val EXPIRY_MARGIN_MS = 60_000L
         const val DEFAULT_EXPIRES_IN_S = 3_600L

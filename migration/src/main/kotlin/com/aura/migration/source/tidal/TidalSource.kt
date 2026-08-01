@@ -18,7 +18,10 @@ import com.aura.migration.source.SourceError
 class TidalSource(
     private val http: HttpJson,
     private val tokenProvider: suspend () -> String?,
-    private val countryCode: String = "ES"
+    private val countryCode: String = "ES",
+    // The numeric user id, if known — a fallback for the `me` path segment, which some v2 deployments
+    // reject (404) in favour of the explicit id. Optional so existing callers/tests are unaffected.
+    private val userIdProvider: suspend () -> String? = { null },
 ) : PlaylistSource {
 
     override val type = SourceType.TIDAL
@@ -53,18 +56,33 @@ class TidalSource(
             }
         }
 
+        // Try the `me` alias first; if the deployment 404s it, retry with the numeric user id.
+        return try {
+            fetchCollection("me")
+        } catch (e: SourceError.NotFound) {
+            val uid = userIdProvider() ?: throw e
+            fetchCollection(uid)
+        }
+    }
+
+    private suspend fun fetchCollection(userSegment: String): List<SourcePlaylist> {
         val out = mutableListOf<SourcePlaylist>()
-        var url: String? = "$API/userCollections/me/relationships/playlists" +
+        var url: String? = "$API/userCollections/$userSegment/relationships/playlists" +
                            "?countryCode=$countryCode&include=playlists&page[limit]=$PAGE"
 
         while (url != null) {
             val res = http.getJson(url, headers())
-            res.arr("included")
+            // Read playlist objects from BOTH shapes: the full resources land in `included` when
+            // include=playlists is honoured; if the deployment inlines attributes under `data` instead,
+            // take them there. Nodes with no attributes (bare {type,id} linkage) are skipped.
+            (res.arr("included") + res.arr("data"))
                 .filter { it.str("type") == "playlists" }
                 .forEach { node ->
                     val a = node.obj("attributes") ?: return@forEach
+                    val id = node.str("id")
+                    if (id.isBlank() || out.any { it.id == id }) return@forEach
                     out += SourcePlaylist(
-                        id = node.str("id"),
+                        id = id,
                         name = a.str("name").ifBlank { "Playlist" },
                         description = a.strOrNull("description"),
                         trackCount = a.longOrNull("numberOfItems")?.toInt() ?: 0,
