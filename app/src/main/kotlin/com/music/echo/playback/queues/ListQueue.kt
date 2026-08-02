@@ -13,7 +13,7 @@ class ListQueue(
     // Enhanced Shuffle context id (e.g. "PL:<id>", "LIBRARY"). Null = no persistent per-context
     // no-repeat memory for this queue (falls back to the classic in-memory shuffle). Optional so every
     // existing call site is unaffected.
-    val contextId: String? = null,
+    override val contextId: String? = null,
     // Set by the screens' Shuffle buttons: ask playQueue to turn shuffle MODE on once the items land.
     // The buttons used to only pre-shuffle the items with shuffle mode OFF, which bypassed the whole
     // enhanced-shuffle system (no memory-aware order, no played recording → replayed played songs).

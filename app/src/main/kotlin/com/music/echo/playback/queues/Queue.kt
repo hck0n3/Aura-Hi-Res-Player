@@ -17,6 +17,18 @@ interface Queue {
      */
     val startShuffled: Boolean get() = false
 
+    /**
+     * Persistent Enhanced Shuffle bucket for this queue ("PL:<id>", "AP:liked", "AL:<id>", "AR:<id>"…),
+     * or null when the queue has no memory (raw radio, search results).
+     *
+     * Lives on the INTERFACE, not just on ListQueue: the service used to read it as
+     * `(queue as? ListQueue)?.contextId`, so any screen that legitimately started a different queue type
+     * silently lost its no-repeat memory, and the only workaround was to convert the screen to a
+     * ListQueue — which changes what plays after the queue ends. Declaring it here lets every queue type
+     * carry a bucket while keeping its own continuation behaviour.
+     */
+    val contextId: String? get() = null
+
     suspend fun getInitialStatus(): Status
 
     fun hasNextPage(): Boolean
@@ -42,11 +54,33 @@ interface Queue {
          * to 0 (the caller's preloadItem, when present, still pins the right song regardless).
          */
         private fun reanchor(filtered: List<MediaItem>): Status {
-            val anchorId = items.getOrNull(mediaItemIndex)?.mediaId
-            val newIndex = anchorId
-                ?.let { id -> filtered.indexOfFirst { it.mediaId == id }.takeIf { it >= 0 } }
+            if (filtered.isEmpty()) return copy(items = filtered, mediaItemIndex = 0)
+            val anchor = items.getOrNull(mediaItemIndex)
+                ?: return copy(items = filtered, mediaItemIndex = 0)
+
+            // Match the same OCCURRENCE, not merely the same id: a queue may legitimately hold the same
+            // song twice, and anchoring on the FIRST copy rewinds playback to the earlier one.
+            val occurrence = items.take(mediaItemIndex).count { it.mediaId == anchor.mediaId }
+            var seen = 0
+            filtered.forEachIndexed { i, item ->
+                if (item.mediaId == anchor.mediaId) {
+                    if (seen == occurrence) {
+                        return copy(items = filtered, mediaItemIndex = i)
+                    }
+                    seen++
+                }
+            }
+
+            // The anchor itself was filtered out. Land on the first SURVIVOR that followed it rather than
+            // on index 0: restarting the queue from the top is a rewind the user never asked for, and on a
+            // restore it silently replays songs already heard.
+            val survivorIds = filtered.mapTo(HashSet()) { it.mediaId }
+            val nextSurvivor = items.drop(mediaItemIndex + 1).firstOrNull { it.mediaId in survivorIds }
+            val fallback = nextSurvivor
+                ?.let { n -> filtered.indexOfFirst { it.mediaId == n.mediaId } }
+                ?.takeIf { it >= 0 }
                 ?: 0
-            return copy(items = filtered, mediaItemIndex = newIndex.coerceAtMost((filtered.size - 1).coerceAtLeast(0)))
+            return copy(items = filtered, mediaItemIndex = fallback)
         }
 
         fun filterExplicit(enabled: Boolean = true) =

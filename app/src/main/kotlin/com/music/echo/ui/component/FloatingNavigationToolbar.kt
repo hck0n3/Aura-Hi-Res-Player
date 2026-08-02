@@ -503,6 +503,14 @@ private fun floatingToolbarFabContainerColor(pureBlack: Boolean): Color {
 
 @Composable
 private fun floatingToolbarFabContentColor(pureBlack: Boolean): Color {
+    val glassConfig = LocalGlassEffectConfig.current
+    if (glassConfig.isEnabledFor(GlassComponent.NAV_BAR) && isGlassSupported()) {
+        // On glass the FAB container is forced transparent, so the icon is drawn against the BACKDROP,
+        // not against primaryContainer — onPrimaryContainer is the wrong half of that pair there (it was
+        // the only glass surface still using it). Route through the shared adaptive helper like every
+        // other glass surface, which also honors the user's custom Liquid Glass text color.
+        return glassContentColor(glassConfig)
+    }
     return if (pureBlack) Color.White else MaterialTheme.colorScheme.onPrimaryContainer
 }
 

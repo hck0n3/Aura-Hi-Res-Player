@@ -17,6 +17,10 @@ class LocalAlbumRadio(
     // The album screen's Shuffle button: pre-scrambling the list alone left shuffle MODE off, so the
     // shuffle icon stayed dark, the order was a one-shot scramble and the no-repeat memory saw nothing.
     override val startShuffled: Boolean = false,
+    // "AL:<local album id>" — gives the album screen's Shuffle a persistent no-repeat memory WITHOUT
+    // converting it to a ListQueue, which would have replaced YouTube's album-radio continuation with
+    // Aura's own radio, i.e. changed what plays once the album ends.
+    override val contextId: String? = null,
 ) : Queue {
     override val preloadItem: MediaMetadata? = null
 

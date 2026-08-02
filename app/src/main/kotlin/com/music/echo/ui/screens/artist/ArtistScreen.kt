@@ -118,6 +118,7 @@ import iad1tya.echo.music.ui.component.NavigationTitle
 import iad1tya.echo.music.ui.component.SongListItem
 import iad1tya.echo.music.ui.component.YouTubeGridItem
 import iad1tya.echo.music.ui.component.YouTubeListItem
+import iad1tya.echo.music.ui.component.rememberPlayedShuffleSet
 import iad1tya.echo.music.ui.component.shimmer.ButtonPlaceholder
 import iad1tya.echo.music.ui.component.shimmer.ListItemPlaceHolder
 import iad1tya.echo.music.ui.utils.rememberIsTvOrCar
@@ -688,18 +689,33 @@ fun ArtistScreen(
                                             }
                                         }
                                     } else if (allLibrarySongs.isNotEmpty() && !isGuest) {
+                                        // Enhanced Shuffle context for THIS artist. "AR:" + the LOCAL artist
+                                        // row id (ArtistEntity's primary key, the same id this screen was
+                                        // opened with). NOT "PL:": DatabaseDao's startup orphan prune wipes
+                                        // every "PL:%" context with no matching `playlist` row, so a
+                                        // PL:-namespaced artist would forget everything on each launch.
+                                        // Nothing prunes "AR:%", so the memory survives process death.
+                                        val artistShuffleContextId = libraryArtist?.id?.let { "AR:$it" }
+                                        val artistPlayedForStart = rememberPlayedShuffleSet(artistShuffleContextId)
                                         ToggleButton(
                                             checked = false,
                                             onCheckedChange = {
                                                 // Shuffle the artist's FULL local catalogue. `librarySongs`
                                                 // is artistSongsPreview(previewSize = 3) — shuffling it
                                                 // could only ever pick from three songs.
-                                                val shuffledSongs = allLibrarySongs.shuffled()
+                                                //
+                                                // UNPLAYED-FIRST start: the opener is guaranteed to be an
+                                                // unheard song while any remain (a uniform scramble could
+                                                // re-open with something just heard).
+                                                val (unheard, heard) =
+                                                    allLibrarySongs.partition { it.id !in artistPlayedForStart }
+                                                val shuffledSongs = unheard.shuffled() + heard.shuffled()
                                                 if (shuffledSongs.isNotEmpty()) {
                                                     playerConnection.playQueue(
                                                         ListQueue(
                                                             title = libraryArtist?.artist?.name ?: "Unknown Artist",
                                                             items = shuffledSongs.map { it.toMediaItem() },
+                                                            contextId = artistShuffleContextId,
                                                             // Turn shuffle MODE on so Enhanced Shuffle actually
                                                             // drives the order and records plays. Pre-shuffling
                                                             // alone left the mode off: the icon stayed off and

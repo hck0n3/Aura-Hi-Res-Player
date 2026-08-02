@@ -96,6 +96,7 @@ import iad1tya.echo.music.ui.component.IconButton
 import iad1tya.echo.music.ui.component.LocalMenuState
 import iad1tya.echo.music.ui.component.SongListItem
 import iad1tya.echo.music.ui.component.SortHeader
+import iad1tya.echo.music.ui.component.rememberPlayedShuffleSet
 import iad1tya.echo.music.ui.menu.CachePlaylistMenu
 import iad1tya.echo.music.ui.menu.SelectionSongMenu
 import iad1tya.echo.music.ui.menu.SongMenu
@@ -123,6 +124,10 @@ fun CachePlaylistScreen(
     val isPlaying by playerConnection.isEffectivelyPlaying.collectAsState()
     val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
     val cachedSongs by viewModel.cachedSongs.collectAsState()
+
+    // Enhanced Shuffle context for this auto-playlist. The "AP:" prefix (vs real playlists' "PL:") keeps this
+    // virtual id out of the PL:%-orphan prune that runs on every launch, so its no-repeat memory persists.
+    val shuffleContextId = "AP:cached"
 
     val (sortType, onSortTypeChange) = rememberEnumPreference(
         SongSortTypeKey,
@@ -223,6 +228,7 @@ fun CachePlaylistScreen(
                             songs = filteredSongs,
                             context = context,
                             menuState = menuState,
+                            contextId = shuffleContextId,
                             modifier = Modifier.animateItem()
                         )
                     }
@@ -308,7 +314,8 @@ fun CachePlaylistScreen(
                                             ListQueue(
                                                 title = "Cache Songs",
                                                 items = cachedSongs.map { it.toMediaItem() },
-                                                startIndex = cachedSongs.indexOfFirst { it.id == song.id }
+                                                startIndex = cachedSongs.indexOfFirst { it.id == song.id },
+                                                contextId = shuffleContextId,
                                             )
                                         )
                                     }
@@ -460,6 +467,8 @@ private fun CachePlaylistHeader(
     songs: List<Song>,
     context: android.content.Context,
     menuState: iad1tya.echo.music.ui.component.MenuState,
+    // Enhanced Shuffle context id for this auto-playlist ("AP:cached"). null = classic shuffle.
+    contextId: String? = null,
     modifier: Modifier = Modifier
 ) {
     val playerConnection = LocalPlayerConnection.current ?: return
@@ -544,6 +553,7 @@ private fun CachePlaylistHeader(
                         ListQueue(
                             title = context.getString(R.string.cached_playlist),
                             items = songs.map { it.toMediaItem() },
+                            contextId = contextId,
                         )
                     )
                 },
@@ -570,12 +580,17 @@ private fun CachePlaylistHeader(
             }
 
             
+            val playedForStart = rememberPlayedShuffleSet(contextId)
             TextButton(
                 onClick = {
+                    // UNPLAYED-FIRST start: guarantees the opener is an unheard song while any remain
+                    // (a uniform pick started with an already-heard song most of the time).
+                    val (unheard, heard) = songs.partition { it.id !in playedForStart }
                     playerConnection.playQueue(
                         ListQueue(
                             title = context.getString(R.string.cached_playlist),
-                            items = songs.shuffled().map { it.toMediaItem() },
+                            items = (unheard.shuffled() + heard.shuffled()).map { it.toMediaItem() },
+                            contextId = contextId,
                             // Turn shuffle MODE on so Enhanced Shuffle actually drives the order and
                             // records plays. Pre-shuffling alone left the mode off: the icon stayed
                             // off and the order was a frozen scramble.

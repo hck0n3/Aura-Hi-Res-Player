@@ -355,9 +355,11 @@ class CastConnectionHandler(
             remoteMediaClient = session.remoteMediaClient
             remoteMediaClient?.registerCallback(remoteMediaClientCallback)
             
-            // Get initial volume
-            _castVolume.value = session.volume.toFloat()
-            
+            // Get initial volume (and keep it in sync with changes made on the device itself). The raw
+            // read was also unclamped and unguarded — session.volume throws if the session is not fully
+            // connected, which would have taken down the whole started-callback.
+            adoptSessionVolume(session)
+
             // Start position updates
             startPositionUpdates()
             
@@ -369,6 +371,10 @@ class CastConnectionHandler(
             Timber.e("Cast session start failed: $error")
             _isCasting.value = false
             _isConnecting.value = false
+            // The listener may already be attached (a session can fail AFTER we adopted it). It holds this
+            // handler, which holds the service, while the CastSession is owned process-wide — so leaving
+            // it attached on a failure path outlives the session it belongs to.
+            runCatching { session.removeCastListener(castVolumeListener) }
         }
         
         override fun onSessionEnding(session: CastSession) {
@@ -387,8 +393,10 @@ class CastConnectionHandler(
             _isCasting.value = false
             _isConnecting.value = false
             _castDeviceName.value = null
+            // Detach the volume listener before dropping the session, or it outlives it.
+            runCatching { session.removeCastListener(castVolumeListener) }
             castSession = null
-            
+
             remoteMediaClient?.unregisterCallback(remoteMediaClientCallback)
             remoteMediaClient = null
             
@@ -422,6 +430,8 @@ class CastConnectionHandler(
         
         override fun onSessionResumeFailed(session: CastSession, error: Int) {
             _isConnecting.value = false
+            // Same reasoning as onSessionStartFailed: never leave the volume listener on a dead session.
+            runCatching { session.removeCastListener(castVolumeListener) }
         }
         
         override fun onSessionSuspended(session: CastSession, reason: Int) {}
@@ -690,13 +700,30 @@ class CastConnectionHandler(
     }
 
     /**
+     * Mirrors volume changes made ON THE DEVICE ITSELF (the TV remote, the speaker's buttons, another
+     * phone casting to it). Without this the in-app slider only ever moved when the app moved it, so it
+     * drifted out of sync with reality and the next drag jumped the volume.
+     */
+    private val castVolumeListener = object : com.google.android.gms.cast.Cast.Listener() {
+        override fun onVolumeChanged() {
+            castSession?.let { adoptSessionVolume(it) }
+        }
+    }
+
+    /**
      * Seeds the volume mirror from the LIVE session, so the in-app slider starts where the device
-     * actually is instead of at whatever value the mirror happened to hold. Best-effort: reading
-     * volume throws if the session is not fully connected yet.
+     * actually is instead of at whatever value the mirror happened to hold, and keeps it in sync from
+     * then on. Best-effort: reading volume throws if the session is not fully connected yet.
      */
     private fun adoptSessionVolume(session: CastSession) {
         runCatching { _castVolume.value = session.volume.toFloat().coerceIn(0f, 1f) }
             .onFailure { Timber.w(it, "Could not read Cast session volume") }
+        // addCastListener is idempotent per instance in the GMS SDK, but guard anyway so repeated
+        // resume callbacks cannot stack duplicate listeners on one session.
+        runCatching {
+            session.removeCastListener(castVolumeListener)
+            session.addCastListener(castVolumeListener)
+        }.onFailure { Timber.w(it, "Could not attach Cast volume listener") }
     }
     
     /**

@@ -60,6 +60,23 @@ Trae tus playlists de otras plataformas a tu cuenta de YouTube Music.
 - **Reproducción por Chromecast más robusta** al elegir dispositivo (arregla un fallo en móviles Xiaomi).
 - **Auto-reparación de reproducción ampliada**: la lista de configuraciones que permite arreglar la reproducción sin actualizar la app pasa de 5 a **390** entradas.
 
+## 🔀 Modo aleatorio: que de verdad no repita
+- **Al reabrir la app ya no empieza de cero.** Si la app se cerraba (o el sistema la cerraba) y volvías a entrar, el aleatorio arrancaba **sin tu historial**: seguía guardado, pero no se leía. Ahora se recupera siempre.
+- **La última canción sin escuchar ya no se pierde.** Al cerrar cada vuelta, la única que te quedaba por oír acababa **al fondo del montón** y sonaban repetidas hasta terminar el ciclo.
+- **Las canciones de la radio infinita también cuentan** como escuchadas (antes se rebarajaban todas por igual al acabarse la playlist).
+- **"···" → Aleatorio** en **álbumes y artistas** ahora enciende el aleatorio de verdad. Antes solo desordenaba la lista una vez, con el modo apagado y sin sistema anti-repetición.
+- **Memoria entre días donde no la había**: **"Mi Top"** (con memoria separada por periodo), **"Caché"**, **álbumes** y **artistas**.
+- **"Me gusta", "Descargadas", "Subidas" y "Exportadas"**: antes se guardaban en **dos sitios distintos** según entraras por Biblioteca o por la tarjeta, así que lo escuchado por un lado era invisible por el otro. Ahora es uno solo.
+- **Android Auto**: lo que reproduces en el coche ya se apunta **en la lista correcta** (antes se anotaba en la última lista abierta en el móvil, ensuciando una que ni estabas oyendo) y su botón "Aleatorio" activa el sistema completo.
+- **Al cambiar de playlist**: si la nueva tardaba en cargar, lo que sonaba mientras tanto se apuntaba en la lista equivocada. Corregido.
+
+## 📱 Interfaz y varios
+- La **cola colapsada ya no tapa** la parte baja del reproductor en horizontal y en tablet.
+- Los **botones flotantes** respetan tu color de texto de Liquid Glass (eran la única superficie de cristal que no lo hacía).
+- **Cast**: el volumen que cambies **en el altavoz o con el mando de la tele** se refleja en la app.
+- **La app pesa 4 MB menos**: se empaquetaba una tipografía que no usaba nadie.
+- **Reconocer canción**: cerrado un último caso en el que podía sonar otra canción del mismo artista cuyo título contenía al reconocido (por ejemplo *"Sola"* → *"Ella Baila Sola"*).
+
 ---
 
 ## Detalle técnico (interno — no para el público)

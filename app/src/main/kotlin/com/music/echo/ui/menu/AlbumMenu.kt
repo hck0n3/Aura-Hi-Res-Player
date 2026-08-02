@@ -86,6 +86,7 @@ import iad1tya.echo.music.ui.component.Material3MenuItemData
 import iad1tya.echo.music.ui.component.NewAction
 import iad1tya.echo.music.ui.component.NewActionGrid
 import iad1tya.echo.music.ui.component.SongListItem
+import iad1tya.echo.music.ui.component.rememberPlayedShuffleSet
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
@@ -105,6 +106,12 @@ fun AlbumMenu(
     val scope = rememberCoroutineScope()
     val libraryAlbum by database.album(originalAlbum.id).collectAsState(initial = originalAlbum)
     val album = libraryAlbum ?: originalAlbum
+    // Enhanced Shuffle context for this menu's Shuffle action — must match AlbumScreen's header shuffle
+    // ("AL:" + the LOCAL album row id) so both share one no-repeat memory. Never "PL:": DatabaseDao's
+    // startup orphan prune drops every "PL:%" context with no matching `playlist` row, which would wipe
+    // the album's memory on each launch. Nothing prunes "AL:%".
+    val menuShuffleContextId = "AL:" + album.id
+    val menuPlayedSet = rememberPlayedShuffleSet(menuShuffleContextId)
     var songs by remember {
         mutableStateOf(emptyList<Song>())
     }
@@ -351,10 +358,17 @@ fun AlbumMenu(
                                     album.album.playlistId?.let { playlistId ->
                                         playerConnection.service.getAutomix(playlistId)
                                     }
+                                    // UNPLAYED-FIRST start: the opener is guaranteed to be an unheard
+                                    // track while any remain.
+                                    val (unheard, heard) = songs.partition { it.id !in menuPlayedSet }
                                     playerConnection.playQueue(
                                         ListQueue(
                                             title = album.album.title,
-                                            items = songs.shuffled().map(Song::toMediaItem),
+                                            items = (unheard.shuffled() + heard.shuffled()).map(Song::toMediaItem),
+                                            // Persistent per-album no-repeat memory: without a contextId the
+                                            // whole anti-repeat system is in-memory only and dies with the
+                                            // process (the phone kills the app → the same songs come back).
+                                            contextId = menuShuffleContextId,
                                             // A pre-scrambled list with shuffle MODE still OFF is a FROZEN
                                             // order: the anti-repeat system never runs, so tapping this again
                                             // re-scrambles uniformly and can replay what was just heard.

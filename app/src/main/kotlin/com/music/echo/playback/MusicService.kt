@@ -1334,6 +1334,13 @@ class MusicService :
         setupAudioFocusRequest()
 
         mediaLibrarySessionCallback.apply {
+            // The callback's `service` field was declared lateinit in the original import and NEVER
+            // assigned anywhere in this repo's history, so every `::service.isInitialized` check in it was
+            // permanently false and every unguarded use would have thrown. Assign it here, before
+            // MediaLibrarySession.Builder below, so external controllers (Android Auto, watches,
+            // assistants) can reach the service. Qualified receiver: inside apply{} a bare `this` is the
+            // callback, not the service.
+            service = this@MusicService
             toggleLike = ::toggleLike
             toggleStartRadio = ::toggleStartRadio
             toggleLibrary = ::toggleLibrary
@@ -1920,6 +1927,18 @@ class MusicService :
                         playerVolume.value = playerState.volume.let { if (it.isNaN() || it < 0.05f) 1f else it.coerceIn(0f, 1f) }
 
                         
+                        // Two indices disagree here, and the intuitive choice is the WRONG one.
+                        //
+                        // The player's current index came from the QUEUE file, which is only rewritten when
+                        // the timeline actually changes (0.6.139 stopped rewriting it every 10 s). This
+                        // state file is written every ~10 s, so ITS index is the fresher one — it names the
+                        // song that was really playing. Preferring the "anchored" index therefore resumes
+                        // on an EARLIER song, which is worse than the filter skew it was meant to avoid.
+                        //
+                        // So: keep using the fresher saved index. The residual skew (filters dropping items
+                        // BEFORE the current song shift this index by k) is bounded and pre-existing;
+                        // fixing it properly means persisting the current song's ID and anchoring by id,
+                        // which is a change to the persisted format and belongs in its own release.
                         if (playerState.currentMediaItemIndex < player.mediaItemCount) {
                             player.seekTo(playerState.currentMediaItemIndex, playerState.currentPosition)
                         }
@@ -2502,10 +2521,11 @@ class MusicService :
 
         currentQueue = queue
         queueTitle = null
-        // Enhanced Shuffle: adopt this queue's persistent context id (e.g. "PL:<id>", "LIBRARY"). Null for
-        // any non-ListQueue or a ListQueue without a contextId → no persistent memory, classic shuffle. On a
-        // RESTORE the restored ListQueue carries the contextId saved in PersistQueue, so memory resumes.
-        shuffleContextId = (queue as? iad1tya.echo.music.playback.queues.ListQueue)?.contextId
+        // NOTE: the Enhanced Shuffle context is deliberately NOT adopted here — see the adoption site
+        // further down, after the items actually land on the timeline. Flipping it at this point (before
+        // an async fetch that can take seconds on mobile data) meant every song the OLD queue advanced to
+        // while the NEW one loaded was recorded into the NEW queue's memory: songs marked as heard in a
+        // playlist that never played them, and their real playlist never learning they were.
         scope.launch { runCatching { tasteProfile() } } // warm the taste cache for smart shuffle / autoplay
         // Shuffle reset on a NEW queue is intentional when PersistentShuffleAcrossQueues is off.
         // Two things made it read as "shuffle is broken":
@@ -2554,7 +2574,7 @@ class MusicService :
             // load (first occurrence wins; the tapped start item is preserved by remapping its index).
             // Classic queues keep duplicates — the user's literal list is not ours to edit.
             val initialStatus = if (enhancedShuffleHint &&
-                (queue as? iad1tya.echo.music.playback.queues.ListQueue)?.contextId != null &&
+                queue.contextId != null &&
                 rawStatus.items.size != rawStatus.items.distinctBy { it.mediaId }.size
             ) {
                 val startItem = rawStatus.items.getOrNull(rawStatus.mediaItemIndex)
@@ -2637,6 +2657,17 @@ class MusicService :
                 activeMoodTitle = null
             }
 
+
+            // Enhanced Shuffle: adopt this queue's persistent context id (e.g. "PL:<id>", "AP:liked") only
+            // NOW, once its items ARE the timeline, and only if this queue is still the live one. Adopting
+            // it at the top of playQueue opened a window — the whole async fetch — in which the old queue
+            // was still playing while the new queue's context was already installed, so every advance in
+            // that window was filed under the wrong playlist. Null for any non-ListQueue or a ListQueue
+            // without a contextId → no persistent memory, classic shuffle. On a RESTORE the restored
+            // ListQueue carries the contextId saved in PersistQueue, so memory resumes.
+            if (currentQueue === queue) {
+                shuffleContextId = queue.contextId
+            }
 
             if (queue.startShuffled &&
                 !player.shuffleModeEnabled &&
@@ -4138,8 +4169,49 @@ class MusicService :
      * `moveMediaItem` — which is what makes it a correct trigger where a count/index/id signature was not:
      * a drag-reorder of upcoming tracks changes none of those three.
      */
+    /**
+     * Set by [adoptExternalQueue] when an EXTERNAL controller (Android Auto, a watch, an assistant)
+     * hands media3 a queue directly, and consumed in [onTimelineChanged] once those items are actually
+     * on the timeline — which is the earliest moment a shuffle session can be started (it bails on an
+     * empty queue).
+     */
+    @Volatile private var pendingExternalShuffle = false
+
+    /** When [pendingExternalShuffle] was armed, so a request that never lands cannot fire much later. */
+    @Volatile private var pendingExternalShuffleAt = 0L
+
+    /**
+     * Adopts a queue that did NOT come through [playQueue].
+     *
+     * `onSetMediaItems` returns items straight to media3, so the service never learned about them:
+     * [shuffleContextId] kept pointing at the last IN-APP queue, and every song played from the car was
+     * recorded into that other playlist's memory — poisoning a list the user was not even listening to,
+     * while the one actually playing learned nothing. Passing null is the correct, honest answer for a
+     * source with no persistent bucket (search, an album, a radio): no memory is better than wrong
+     * memory.
+     */
+    fun adoptExternalQueue(contextId: String?, shuffle: Boolean) {
+        shuffleContextId = contextId
+        pendingExternalShuffle = shuffle
+        pendingExternalShuffleAt = android.os.SystemClock.elapsedRealtime()
+    }
+
     override fun onTimelineChanged(timeline: androidx.media3.common.Timeline, reason: Int) {
         queueDirty = true
+        // An external controller's items have landed: NOW the shuffle session can start. Enabling the
+        // mode fires onShuffleModeEnabledChanged; if it is already on, media3 stays silent and we must
+        // start the session ourselves (the same media3 rule that left restored queues without memory).
+        if (pendingExternalShuffle) {
+            // Expire it rather than letting it sit armed: a shuffle tap on a collection that turns out to
+            // be EMPTY never produces a timeline change of its own, and a stale flag would then force
+            // shuffle onto whatever unrelated queue the user starts next, minutes later.
+            if (android.os.SystemClock.elapsedRealtime() - pendingExternalShuffleAt > EXTERNAL_SHUFFLE_ARM_TIMEOUT_MS) {
+                pendingExternalShuffle = false
+            } else if (player.mediaItemCount > 0) {
+                pendingExternalShuffle = false
+                if (player.shuffleModeEnabled) beginShuffleSession() else player.shuffleModeEnabled = true
+            }
+        }
         // Invalidates any preloaded crossfade secondary: its queue COPY becomes the live queue at the
         // swap, so it may only be reused while the timeline it copied is byte-identical. A counter — not
         // a content compare — because ANY mutation (append, remove, reorder, replaceMediaItem with the
@@ -4679,7 +4751,18 @@ class MusicService :
                 // Persist queue position every other tick (~10s) so a mid-song kill resumes in place.
                 if (tick % 2 == 0 && dataStore.get(PersistentQueueKey, true)) {
                     val ok = withContext(Dispatchers.Main) { player.isPlaying && player.mediaItemCount > 0 }
-                    if (ok) runCatching { savePlaybackPositionToDisk() }
+                    if (ok) {
+                        // COHERENCE: while queueDirty the queue FILE still describes the OLD timeline, so a
+                        // position written now would point INTO a queue that no longer matches — restore
+                        // then lands on the wrong song. The state-change writer already guards this; this
+                        // second, periodic writer did not, which reopened the same window every 10 s.
+                        // Flush the queue first so the pair on disk always describes the same timeline.
+                        if (queueDirty) {
+                            queueDirty = false
+                            withContext(Dispatchers.Main) { saveQueueToDisk() }
+                        }
+                        runCatching { savePlaybackPositionToDisk() }
+                    }
                 }
             }
         }
@@ -8562,6 +8645,9 @@ class MusicService :
         const val YOUTUBE_PLAYLIST = "youtube_playlist"
         const val SEARCH = "search"
         const val SHUFFLE_ACTION = "__shuffle__"
+
+        /** How long an external controller's shuffle request stays armed before it is discarded. */
+        private const val EXTERNAL_SHUFFLE_ARM_TIMEOUT_MS = 15_000L
 
         // Refetch: sent by the song menus to drop a song's cached stream URL + bytes (see clearSongCache).
         const val ACTION_CLEAR_SONG_CACHE = "iad1tya.echo.music.ACTION_CLEAR_SONG_CACHE"

@@ -112,7 +112,9 @@ import iad1tya.echo.music.constants.HideExplicitKey
 import iad1tya.echo.music.constants.HideVideoSongsKey
 import iad1tya.echo.music.constants.AlbumCanvasEnabledKey
 import iad1tya.echo.music.db.entities.Album
+import iad1tya.echo.music.extensions.toMediaItem
 import iad1tya.echo.music.playback.ExoDownloadService
+import iad1tya.echo.music.playback.queues.ListQueue
 import iad1tya.echo.music.playback.queues.LocalAlbumRadio
 import iad1tya.echo.music.ui.component.AlbumGradient
 import iad1tya.echo.music.ui.component.ExpandableText
@@ -122,6 +124,7 @@ import iad1tya.echo.music.ui.component.LocalMenuState
 import iad1tya.echo.music.ui.component.NavigationTitle
 import iad1tya.echo.music.ui.component.SongListItem
 import iad1tya.echo.music.ui.component.YouTubeGridItem
+import iad1tya.echo.music.ui.component.rememberPlayedShuffleSet
 import iad1tya.echo.music.ui.menu.AlbumMenu
 import iad1tya.echo.music.ui.menu.SelectionSongMenu
 import iad1tya.echo.music.ui.menu.SongMenu
@@ -608,16 +611,40 @@ fun AlbumScreen(
                             }
                         }
 
-                        
+
+                        // Enhanced Shuffle context for THIS album. "AL:" + the LOCAL album row id
+                        // (AlbumEntity's primary key — never album.playlistId, which YouTube can rotate).
+                        // The prefix is deliberately NOT "PL:": DatabaseDao's startup orphan prune deletes
+                        // every "PL:%" context with no matching `playlist` row, so a PL:-namespaced album
+                        // would lose its no-repeat memory on every launch. Nothing prunes "AL:%".
+                        val albumShuffleContextId = "AL:" + albumWithSongs.album.id
+                        val albumPlayedForStart = rememberPlayedShuffleSet(albumShuffleContextId)
                         Surface(
                             onClick = {
                                 playerConnection.service.getAutomix(playlistId)
                                 // Shuffle the RAW album, not the display list: `filteredSongs` is
                                 // liked-first, and shuffling it would still bias the result. The
                                 // hide-explicit / hide-video prefs are applied by MusicService.playQueue.
+                                //
+                                // Still a LocalAlbumRadio: contextId now lives on the Queue interface, so
+                                // the album keeps YouTube's album-radio continuation (what plays AFTER the
+                                // album) and gains persistent no-repeat memory. Converting it to a
+                                // ListQueue would have silently swapped that continuation for Aura's own
+                                // radio — a behaviour change nobody asked for.
+                                //
+                                // UNPLAYED-FIRST start: the opener is guaranteed to be an unheard track
+                                // while any remain (a uniform pick could re-open with a just-heard song).
+                                val (unheard, heard) =
+                                    albumWithSongs.songs.partition { it.id !in albumPlayedForStart }
+                                val openerId = (unheard.ifEmpty { heard }).randomOrNull()?.id
                                 playerConnection.playQueue(
                                     LocalAlbumRadio(
-                                        albumWithSongs.copy(songs = albumWithSongs.songs.shuffled()),
+                                        albumWithSongs = albumWithSongs,
+                                        startIndex = openerId
+                                            ?.let { id -> albumWithSongs.songs.indexOfFirst { it.id == id } }
+                                            ?.coerceAtLeast(0)
+                                            ?: 0,
+                                        contextId = albumShuffleContextId,
                                         // Turn shuffle MODE on once the items land — the pre-scramble alone
                                         // left the shuffle icon off and the order frozen.
                                         startShuffled = true,

@@ -42,6 +42,7 @@ import iad1tya.echo.music.ui.component.Material3MenuGroup
 import iad1tya.echo.music.ui.component.Material3MenuItemData
 import iad1tya.echo.music.ui.component.NewAction
 import iad1tya.echo.music.ui.component.NewActionGrid
+import iad1tya.echo.music.ui.component.rememberPlayedShuffleSet
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -62,6 +63,12 @@ fun ArtistMenu(
     val artistState = database.artist(originalArtist.id).collectAsState(initial = originalArtist)
     val artist = artistState.value ?: originalArtist
     val isPinned by database.speedDialDao.isPinned(artist.id).collectAsState(initial = false)
+    // Enhanced Shuffle context for this menu's Shuffle action — must match ArtistScreen /
+    // ArtistSongsScreen ("AR:" + the LOCAL artist row id) so all three share one no-repeat memory.
+    // Never "PL:": DatabaseDao's startup orphan prune deletes every "PL:%" context with no matching
+    // `playlist` row, which would erase the memory on each launch. Nothing prunes "AR:%".
+    val menuShuffleContextId = "AR:" + artist.id
+    val menuPlayedSet = rememberPlayedShuffleSet(menuShuffleContextId)
 
     ArtistListItem(
         artist = artist,
@@ -134,16 +141,24 @@ fun ArtistMenu(
                                     onClick = {
                                         coroutineScope.launch {
                                             val songs = withContext(Dispatchers.IO) {
-                                                database
+                                                val all = database
                                                     .artistSongs(artist.id, ArtistSongSortType.CREATE_DATE, true)
                                                     .first()
+                                                // UNPLAYED-FIRST start: the opener is guaranteed to be an
+                                                // unheard song while any remain.
+                                                val (unheard, heard) =
+                                                    all.partition { it.id !in menuPlayedSet }
+                                                (unheard.shuffled() + heard.shuffled())
                                                     .map { it.toMediaItem() }
-                                                    .shuffled()
                                             }
                                             playerConnection.playQueue(
                                                 ListQueue(
                                                     title = artist.artist.name,
                                                     items = songs,
+                                                    // Persistent per-artist no-repeat memory: without a
+                                                    // contextId it lives only in RAM and dies with the process
+                                                    // (app killed → the same songs come back next morning).
+                                                    contextId = menuShuffleContextId,
                                                     // See AlbumMenu: without this the mode stays OFF and the
                                                     // scramble is frozen, bypassing the whole anti-repeat system.
                                                     startShuffled = true,

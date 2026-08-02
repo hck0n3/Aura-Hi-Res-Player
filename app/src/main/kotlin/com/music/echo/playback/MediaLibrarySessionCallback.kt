@@ -108,7 +108,8 @@ constructor(
         controller: MediaSession.ControllerInfo,
         playerCommand: Int,
     ): Int {
-        if (playerCommand == androidx.media3.common.Player.COMMAND_PLAY_PAUSE &&
+        if (PHANTOM_PLAY_VETO_ENABLED &&
+            playerCommand == androidx.media3.common.Player.COMMAND_PLAY_PAUSE &&
             this::service.isInitialized &&
             service.awaitingFirstUserPlay
         ) {
@@ -463,6 +464,39 @@ constructor(
             val defaultResult = MediaItemsWithStartPosition(emptyList(), startIndex, startPositionMs)
             val path = mediaItems.firstOrNull()?.mediaId?.split("/")
                 ?: return@future defaultResult
+
+            // Tell the service which persistent-shuffle bucket this EXTERNAL queue belongs to, before the
+            // items reach media3. Without it the service kept the last IN-APP context, so everything played
+            // from the car was filed under a playlist that was not even playing — and, being a queue that
+            // never went through playQueue, shuffle mode was never enabled either, so Auto's "Aleatorio"
+            // was a one-off scramble with no anti-repeat at all. Roots with no stable bucket adopt null:
+            // no memory is the honest answer, wrong memory is not.
+            val isShuffleAction = path.lastOrNull() == MusicService.SHUFFLE_ACTION
+            val externalContextId = when (path.firstOrNull()) {
+                MusicService.PLAYLIST -> path.getOrNull(1)?.let { id ->
+                    // Auto-playlists live in the AP: namespace, real playlists in PL: — matching what the
+                    // in-app screens write, so the car and the phone share ONE memory per collection.
+                    // The AP: suffix is the NAVIGATION id the in-app screens use ("liked"/"downloaded"),
+                    // not the entity constant ("LP_LIKED") — a mismatch here would silently create a
+                    // third, car-only bucket, which is the very bug being fixed.
+                    when (id) {
+                        PlaylistEntity.LIKED_PLAYLIST_ID -> "AP:liked"
+                        PlaylistEntity.DOWNLOADED_PLAYLIST_ID -> "AP:downloaded"
+                        else -> "PL:$id"
+                    }
+                }
+                MusicService.ALBUM -> path.getOrNull(1)?.let { "AL:$it" }
+                MusicService.ARTIST -> path.getOrNull(1)?.let { "AR:$it" }
+                else -> null
+            }
+            // Guarded on purpose: every other use of `service` in this file tests isInitialized, because
+            // the field went years unassigned. It IS assigned now (MusicService wires it before building
+            // the session), so this is defence in depth — but an unguarded read here would make every
+            // external play request throw, and media3's failure callback for onSetMediaItems has an EMPTY
+            // body: no items, no play, no log. A silent dead tap in the car, repeatable forever.
+            if (this@MediaLibrarySessionCallback::service.isInitialized) {
+                service.adoptExternalQueue(externalContextId, shuffle = isShuffleAction)
+            }
 
             when (path.firstOrNull()) {
                 MusicService.SONG -> {
@@ -1028,5 +1062,22 @@ constructor(
         // Finite pageSize = a real paginating client that owns its page window; slice exactly what it asked for
         // (clamping here would skip items, since fromIndex advances by the client's pageSize, not ours).
         return subList(fromIndex.toInt(), minOf(fromIndex.toInt() + pageSize, size))
+    }
+
+    private companion object {
+        /**
+         * #27 anti-phantom-playback veto (BT / car / watch / notification sending PLAY over a queue that
+         * was just restored). DELIBERATELY OFF.
+         *
+         * The veto was written against `service.awaitingFirstUserPlay`, but `service` was a lateinit that
+         * this repo NEVER assigned, so `::service.isInitialized` was permanently false and the veto has
+         * never executed a single time — registry row 27 records it as shipped, and it was dead code.
+         * Wiring `service` (needed so external controllers can reach the service at all) would switch it
+         * on for the first time as a SIDE EFFECT of an unrelated fix, and its failure mode is the mirror
+         * image of the bug it prevents: a PLAY from the steering wheel after a restore would be DENIED
+         * until the user taps play in the app. That trade belongs to a change of its own, tested in the
+         * car — not smuggled in here. Flip to true only together with that on-device test.
+         */
+        const val PHANTOM_PLAY_VETO_ENABLED = false
     }
 }

@@ -3149,13 +3149,29 @@ fun BottomSheetPlayer(
                 )
                 val verticalPaddingDp = with(density) { verticalPadding.toDp() }
                 val verticalWindowInsets = WindowInsets(left = 0.dp, top = verticalPaddingDp, right = 0.dp, bottom = verticalPaddingDp)
-                
+
+                // The collapsed queue handle is drawn OVER this pane on exactly the same condition as in
+                // portrait (`!isFullScreen && !onImmersiveVideo` — see the Queue's AnimatedVisibility at the
+                // end of this sheet), and its height is SHEET-DERIVED: collapsedBound = QueuePeekHeight (64dp)
+                // + the bottom system inset + 1dp. A hardcoded 24.dp was therefore always short, leaving the
+                // bottom of the wide/landscape layout sitting UNDER the handle. Pad by the sheet's own bound
+                // like the portrait branch does. The vertical inset is ALREADY applied by
+                // `verticalWindowInsets` above, so subtract it to avoid double-counting, and never drop below
+                // the original 24.dp. When the sheet is not drawn this stays exactly at 24.dp, so no permanent
+                // dead space is added to the fullscreen / immersive-video cases.
+                val wideBottomPadding by animateDpAsState(
+                    targetValue =
+                        if (isFullScreen || onImmersiveVideo) 24.dp
+                        else (queueSheetState.collapsedBound - verticalPaddingDp).coerceAtLeast(24.dp),
+                    label = "wideBottomPadding"
+                )
+
                 Row(
                     modifier = Modifier
                         .windowInsetsPadding(
                             WindowInsets.systemBars.only(WindowInsetsSides.Horizontal).add(verticalWindowInsets)
                         )
-                        .padding(bottom = 24.dp)
+                        .padding(bottom = wideBottomPadding)
                         .fillMaxSize()
                 ) {
                     val currentSliderPosition by rememberUpdatedState(sliderPosition)

@@ -18,15 +18,17 @@ fun Queue.toPersistQueue(
     mediaItemIndex: Int,
     position: Long
 ): PersistQueue {
-    return when (this) {
+    // The context is applied ONCE at the end, to every branch. It used to be set inside the ListQueue
+    // branch only, so the moment a non-ListQueue carried a context (LocalAlbumRadio does now, which is
+    // how an album keeps its own radio continuation AND gains no-repeat memory) that memory was silently
+    // dropped at the first restart — the exact failure the context was added to prevent.
+    val persisted = when (this) {
         is ListQueue -> PersistQueue(
             title = title,
             items = items,
             mediaItemIndex = mediaItemIndex,
             position = position,
             queueType = QueueType.LIST,
-            // Carry the Enhanced Shuffle context across restart so the memory resumes on the same queue.
-            contextId = this.contextId
         )
         is YouTubeQueue -> {
             
@@ -75,6 +77,7 @@ fun Queue.toPersistQueue(
             queueType = QueueType.LIST
         )
     }
+    return persisted.copy(contextId = this.contextId)
 }
 
 fun PersistQueue.toQueue(): Queue {
@@ -105,12 +108,14 @@ fun PersistQueue.toQueue(): Queue {
             )
         }
         is QueueType.LOCAL_ALBUM_RADIO -> {
-            
+            // Restored as a ListQueue (the album rows may no longer exist), but the CONTEXT must survive
+            // or the album's no-repeat memory dies at every restart.
             ListQueue(
                 title = title,
                 items = items.map { it.toMediaItem() },
                 startIndex = mediaItemIndex,
-                position = position
+                position = position,
+                contextId = contextId
             )
         }
     }

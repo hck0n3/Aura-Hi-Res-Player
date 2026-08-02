@@ -158,10 +158,27 @@ fun LibrarySongsScreen(
     // so nulling the context permanently killed the library's cross-session no-repeat memory for those
     // users (and hid the chip that would have told them). A transient search still gets null — a filtered
     // subset exhausting must not wipe the tab's real bucket.
+    // Four of these tabs show the SAME collection as an auto-playlist screen, which files its memory under
+    // "AP:liked" / "AP:downloaded" / … . Using "LIB:<filter>" here gave each collection TWO disjoint
+    // buckets: shuffling "Me gusta" from the Library tab on Monday taught nothing to the "Me gusta" card
+    // opened on Tuesday, so the same songs came back. Only the true LIBRARY tab keeps a LIB: id — it has
+    // no auto-playlist twin.
+    val canonicalCollectionId = when (filter) {
+        SongFilter.LIKED -> "AP:liked"
+        SongFilter.DOWNLOADED -> "AP:downloaded"
+        SongFilter.UPLOADED -> "AP:uploaded"
+        SongFilter.EXPORTED -> "AP:exported"
+        SongFilter.LIBRARY -> "LIB:LIBRARY"
+    }
     val libraryContextId = when {
         searchQuery.isNotBlank() -> null
-        hideExplicit -> "LIB:${filter.name}:NX"
-        else -> "LIB:${filter.name}"
+        // ":NX" only for the LIBRARY tab. The four AP-mapped tabs must use the id VERBATIM: the
+        // auto-playlist screens never append a suffix, so "AP:liked:NX" would be a third bucket and the
+        // split this remap exists to close would simply reappear for anyone who hides explicit content.
+        // The suffix's original purpose (a filtered subset must not exhaust the tab's real bucket) is
+        // preserved where it still applies, and the auto-playlist screens already share this behaviour.
+        hideExplicit && filter == SongFilter.LIBRARY -> "$canonicalCollectionId:NX"
+        else -> canonicalCollectionId
     }
     // Enhanced Shuffle: reactive per-tab played-set for the "ya reproducida" dim/check + the X/Y chip.
     val shufflePlayedSet = rememberPlayedShuffleSet(libraryContextId)

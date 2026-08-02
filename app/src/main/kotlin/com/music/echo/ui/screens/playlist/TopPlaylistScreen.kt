@@ -100,6 +100,7 @@ import iad1tya.echo.music.ui.component.IconButton
 import iad1tya.echo.music.ui.component.LocalMenuState
 import iad1tya.echo.music.ui.component.SongListItem
 import iad1tya.echo.music.ui.component.SortHeader
+import iad1tya.echo.music.ui.component.rememberPlayedShuffleSet
 import iad1tya.echo.music.ui.menu.SelectionSongMenu
 import iad1tya.echo.music.ui.menu.SongMenu
 import iad1tya.echo.music.ui.menu.TopPlaylistMenu
@@ -179,6 +180,11 @@ fun TopPlaylistScreen(
 
     val sortType by viewModel.topPeriod.collectAsState()
     val name = stringResource(R.string.my_top) + " $maxSize"
+
+    // Enhanced Shuffle context for this auto-playlist. The period is PART of the id because changing it
+    // changes the song list, so the per-period no-repeat memories must never mix. The "AP:" prefix (vs real
+    // playlists' "PL:") keeps this virtual id out of the PL:%-orphan prune, so the memory persists forever.
+    val shuffleContextId = "AP:top:" + sortType.name
 
     val downloadUtil = LocalDownloadUtil.current
     var downloadState by remember { mutableIntStateOf(Download.STATE_STOPPED) }
@@ -271,6 +277,7 @@ fun TopPlaylistScreen(
                                 downloadState = downloadState,
                                 onShowRemoveDownloadDialog = { showRemoveDownloadDialog = true },
                                 menuState = menuState,
+                                contextId = shuffleContextId,
                                 modifier = Modifier.animateItem()
                             )
                         }
@@ -363,7 +370,8 @@ fun TopPlaylistScreen(
                                                 ListQueue(
                                                     title = name,
                                                     items = songs!!.map { it.toMediaItem() },
-                                                    startIndex = songs!!.indexOfFirst { it.id == song.id }
+                                                    startIndex = songs!!.indexOfFirst { it.id == song.id },
+                                                    contextId = shuffleContextId,
                                                 ),
                                             )
                                         }
@@ -520,6 +528,8 @@ private fun TopPlaylistHeader(
     downloadState: Int,
     onShowRemoveDownloadDialog: () -> Unit,
     menuState: iad1tya.echo.music.ui.component.MenuState,
+    // Enhanced Shuffle context id for this auto-playlist ("AP:top:<period>"). null = classic shuffle.
+    contextId: String? = null,
     modifier: Modifier = Modifier
 ) {
     val playerConnection = LocalPlayerConnection.current ?: return
@@ -590,12 +600,17 @@ private fun TopPlaylistHeader(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 
+                val playedForStart = rememberPlayedShuffleSet(contextId)
                 Button(
                     onClick = {
+                        // UNPLAYED-FIRST start: guarantees the opener is an unheard song while any remain
+                        // (a uniform pick started with an already-heard song most of the time).
+                        val (unheard, heard) = songs.partition { it.id !in playedForStart }
                         playerConnection.playQueue(
                             ListQueue(
                                 title = name,
-                                items = songs.shuffled().map { it.toMediaItem() },
+                                items = (unheard.shuffled() + heard.shuffled()).map { it.toMediaItem() },
+                                contextId = contextId,
                                 // Turn shuffle MODE on so Enhanced Shuffle actually drives the order and
                                 // records plays. Pre-shuffling alone left the mode off: the icon stayed
                                 // off and the order was a frozen scramble.
@@ -637,6 +652,7 @@ private fun TopPlaylistHeader(
                             ListQueue(
                                 title = name,
                                 items = songs.map { it.toMediaItem() },
+                                contextId = contextId,
                             )
                         )
                     },

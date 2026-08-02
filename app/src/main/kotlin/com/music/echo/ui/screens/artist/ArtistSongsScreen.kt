@@ -49,6 +49,7 @@ import iad1tya.echo.music.ui.component.IconButton
 import iad1tya.echo.music.ui.component.LocalMenuState
 import iad1tya.echo.music.ui.component.SongListItem
 import iad1tya.echo.music.ui.component.SortHeader
+import iad1tya.echo.music.ui.component.rememberPlayedShuffleSet
 import iad1tya.echo.music.ui.menu.SongMenu
 import iad1tya.echo.music.ui.utils.backToMain
 import iad1tya.echo.music.utils.listItemShape
@@ -82,6 +83,13 @@ fun ArtistSongsScreen(
     val artist by viewModel.artist.collectAsState()
     val songs by viewModel.songs.collectAsState()
     val lazyListState = rememberLazyListState()
+
+    // Enhanced Shuffle context for THIS artist: "AR:" + the LOCAL artist row id (ArtistEntity's primary
+    // key — the same id the route was opened with), matching ArtistScreen's header shuffle so both share
+    // one memory. NOT "PL:": DatabaseDao's startup orphan prune deletes every "PL:%" context with no
+    // matching `playlist` row, which would erase the artist's no-repeat memory on every launch.
+    val artistShuffleContextId = artist?.id?.let { "AR:$it" }
+    val artistPlayedForStart = rememberPlayedShuffleSet(artistShuffleContextId)
 
     Box(
         modifier = Modifier.fillMaxSize(),
@@ -202,10 +210,14 @@ fun ArtistSongsScreen(
             lazyListState = lazyListState,
             icon = R.drawable.shuffle,
             onClick = {
+                // UNPLAYED-FIRST start: the opener is guaranteed to be an unheard song while any
+                // remain (a uniform scramble could re-open with something just heard).
+                val (unheard, heard) = songs.partition { it.id !in artistPlayedForStart }
                 playerConnection.playQueue(
                     ListQueue(
                         title = artist?.artist?.name,
-                        items = songs.shuffled().map { it.toMediaItem() },
+                        items = (unheard.shuffled() + heard.shuffled()).map { it.toMediaItem() },
+                        contextId = artistShuffleContextId,
                         // Turn shuffle MODE on so Enhanced Shuffle actually drives the order and
                         // records plays. Pre-shuffling alone left the mode off: the icon stayed
                         // off and the order was a frozen scramble.
