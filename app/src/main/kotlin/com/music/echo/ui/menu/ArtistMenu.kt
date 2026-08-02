@@ -144,6 +144,9 @@ fun ArtistMenu(
                                                 ListQueue(
                                                     title = artist.artist.name,
                                                     items = songs,
+                                                    // See AlbumMenu: without this the mode stays OFF and the
+                                                    // scramble is frozen, bypassing the whole anti-repeat system.
+                                                    startShuffled = true,
                                                 ),
                                             )
                                         }

@@ -674,9 +674,16 @@ private fun bestSongMatch(songs: List<SongItem>, result: RecognitionResult): Son
             normalizeForMatch(s.title) == normalizeForMatch(result.title) &&
                 s.artists.any { a -> artistMatches(a.name, result.artist) }
         }
-        // Bidirectional normalized title contains + artist.
+        // Bidirectional normalized title contains + artist. This is the only LOOSE branch, and plain
+        // substring containment is too loose on its own: "ella baila sola" CONTAINS "sola", so a
+        // recognition of "Sola" would happily resolve to "Ella Baila Sola" whenever the same artist
+        // performs both — shown != played, by the same mechanism the earlier fixes chased elsewhere.
+        // Containment stays (it is what tolerates a "(Remastered)"/"(Official Video)" tail on either
+        // side), but the pair must ALSO agree word-wise: the recognized title has to be the candidate's
+        // title modulo decoration, not merely a fragment appearing somewhere inside it.
         ?: songs.firstOrNull { s ->
             titleMatches(s.title, result.title) &&
+                com.music.jiosaavn.SaavnMatcher.titleMatches(s.title, result.title, result.artist) &&
                 s.artists.any { a -> artistMatches(a.name, result.artist) }
         }
     if (match == null) {

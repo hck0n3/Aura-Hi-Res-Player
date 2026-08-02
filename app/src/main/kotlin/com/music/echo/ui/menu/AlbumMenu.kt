@@ -354,7 +354,13 @@ fun AlbumMenu(
                                     playerConnection.playQueue(
                                         ListQueue(
                                             title = album.album.title,
-                                            items = songs.shuffled().map(Song::toMediaItem)
+                                            items = songs.shuffled().map(Song::toMediaItem),
+                                            // A pre-scrambled list with shuffle MODE still OFF is a FROZEN
+                                            // order: the anti-repeat system never runs, so tapping this again
+                                            // re-scrambles uniformly and can replay what was just heard.
+                                            // Registry rows 92(b)/94(b) fixed exactly this for the playlist
+                                            // menu; the album/artist menus were left behind.
+                                            startShuffled = true,
                                         )
                                     )
                                 }

@@ -1938,8 +1938,20 @@ class MusicService :
                         // Setting it here also lands AFTER the queue is populated, so the listener can
                         // actually build a shuffle order — the boot-time read runs while the player is still
                         // empty, where onShuffleModeEnabledChanged early-returns on mediaItemCount == 0.
+                        //
+                        // …but landing after the queue is populated is NOT sufficient on its own: media3
+                        // ignores setShuffleModeEnabled when the value is unchanged, so it fires no event.
+                        // On a restore the flag is ALREADY true (the boot read set it from ShuffleModeKey,
+                        // and playQueue deliberately skips its reset-to-false when isRestore), so assigning
+                        // true here was a silent no-op and the shuffle session never started: empty played
+                        // set, media3's own random order, and the persistent memory sitting unread in the
+                        // DB — i.e. songs heard yesterday coming straight back. Start it explicitly when
+                        // the assignment cannot fire the listener itself.
                         if (dataStore.get(RememberShuffleAndRepeatKey, true)) {
-                            player.shuffleModeEnabled = playerState.shuffleModeEnabled
+                            val wanted = playerState.shuffleModeEnabled
+                            val listenerWillFire = player.shuffleModeEnabled != wanted
+                            player.shuffleModeEnabled = wanted
+                            if (wanted && !listenerWillFire) beginShuffleSession()
                         }
                     }
                 }.onFailure { error ->
@@ -4865,7 +4877,44 @@ class MusicService :
     override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) {
         updateNotification()
         if (shuffleModeEnabled) {
+            beginShuffleSession()
+        }
 
+
+        // Persist the USER's choice only. A programmatic reset (playQueue clearing shuffle for a new
+        // queue) must not overwrite it, or "remember shuffle" can never survive a restart.
+        if (!suppressShuffleModePersist && dataStore.get(RememberShuffleAndRepeatKey, true)) {
+            scope.launch {
+                dataStore.edit { settings ->
+                    settings[ShuffleModeKey] = shuffleModeEnabled
+                }
+            }
+        }
+
+
+        if (dataStore.get(PersistentQueueKey, true)) {
+            saveQueueToDisk()
+        }
+    }
+
+    /**
+     * Starts an anti-repeat shuffle session for the CURRENT queue: reset the in-memory played set, count
+     * the current song, order the queue, then seed the persistent memory and re-order once it loads.
+     *
+     * Extracted from [onShuffleModeEnabledChanged] because that callback is NOT a reliable trigger.
+     * media3 early-returns from `setShuffleModeEnabled` when the value is unchanged, so a queue RESTORED
+     * with shuffle already on never fired it, and this whole session never started:
+     *   1. boot sets player.shuffleModeEnabled from ShuffleModeKey while the player is still EMPTY, so
+     *      this session bails on mediaItemCount == 0;
+     *   2. playQueue's reset-to-false is deliberately skipped on a restore (`!isRestore`), so the flag
+     *      stays true;
+     *   3. the per-queue restore then assigns true again — the SAME value — and media3 stays silent.
+     * The net effect was shuffle running with an EMPTY played set and media3's default random order: the
+     * persistent memory was intact in the DB, and nobody ever read it, so already-heard songs came back
+     * after every restart. Callers that change the flag get this via the callback; the restore path calls
+     * it directly. Safe to call twice — it is idempotent for a given queue.
+     */
+    private fun beginShuffleSession() {
             if (player.mediaItemCount == 0) return
 
             // B5: start a fresh anti-repeat session each time shuffle is enabled; the current song counts as played.
@@ -4901,23 +4950,6 @@ class MusicService :
             if (enhancedShuffleHint && ctx != null) {
                 seedEnhancedShuffleFromDb(ctx, shufflePlaylistFirst)
             }
-        }
-
-        
-        // Persist the USER's choice only. A programmatic reset (playQueue clearing shuffle for a new
-        // queue) must not overwrite it, or "remember shuffle" can never survive a restart.
-        if (!suppressShuffleModePersist && dataStore.get(RememberShuffleAndRepeatKey, true)) {
-            scope.launch {
-                dataStore.edit { settings ->
-                    settings[ShuffleModeKey] = shuffleModeEnabled
-                }
-            }
-        }
-
-        
-        if (dataStore.get(PersistentQueueKey, true)) {
-            saveQueueToDisk()
-        }
     }
 
     override fun onRepeatModeChanged(repeatMode: Int) {
@@ -5030,18 +5062,29 @@ class MusicService :
             val originalAll = (0 until originalQueueSize).filter { it != currentIndex }
             val originalUnplayed = originalAll.filterNot(::idxPlayed).toMutableList()
             val originalPlayed = originalAll.filter(::idxPlayed).toMutableList()
-            val addedIndices = (originalQueueSize until totalCount).filter { it != currentIndex }.toMutableList()
+            // The APPENDED group needs the same played/unplayed split as the original one. It used to be
+            // shuffled as one undifferentiated block, so once the playlist finished and the infinite radio
+            // started appending, every radio track already heard was re-shuffled uniformly back among the
+            // unheard ones on the next re-apply — and with crossfade ON that re-apply happens at EVERY song
+            // boundary. The no-repeat promise silently stopped at the playlist's edge.
+            val addedAll = (originalQueueSize until totalCount).filter { it != currentIndex }
+            val addedUnplayed = addedAll.filterNot(::idxPlayed).toMutableList()
+            val addedPlayed = addedAll.filter(::idxPlayed).toMutableList()
 
             originalUnplayed.shuffle()
             originalPlayed.shuffle()
-            addedIndices.shuffle()
+            addedUnplayed.shuffle()
+            addedPlayed.shuffle()
 
             val shuffledIndices = IntArray(totalCount)
             var pos = 0
             shuffledIndices[pos++] = currentIndex
             originalUnplayed.forEach { shuffledIndices[pos++] = it }
-            addedIndices.forEach { shuffledIndices[pos++] = it }
+            addedUnplayed.forEach { shuffledIndices[pos++] = it }
+            // Played entries last, playlist before radio — the same "playlist first" intent, applied to the
+            // leftovers so a re-heard tail can never outrank something still unheard.
             originalPlayed.forEach { shuffledIndices[pos++] = it }
+            addedPlayed.forEach { shuffledIndices[pos++] = it }
             player.setShuffleOrder(DefaultShuffleOrder(shuffledIndices, System.currentTimeMillis()))
         } else {
             val indices = (0 until totalCount).toMutableList()
@@ -5161,11 +5204,20 @@ class MusicService :
             }
             val shuffledIndices = indices.toIntArray()
 
+            // Anchor the CURRENT song at the front by ROTATION, not by swapping.
+            //
+            // A swap sends whatever held slot 0 to the current song's old slot — and the current song has
+            // just been PLAYED, so its slot lives deep in the played region. Slot 0 is by construction the
+            // best UNPLAYED candidate, so the swap banishes an unheard song into played territory. It is
+            // worst exactly at the end of a cycle: with ONE unplayed song left it sits at slot 0, the swap
+            // buries it, and slot 1 — the next song to play — is already-heard. That is a repeat BEFORE
+            // the cycle closed, which also robs the exhaustion handoff of its trigger.
+            // Rotating preserves the relative order of every other entry, so the best unplayed candidate
+            // simply becomes the next one to play.
             val currentItemIndexInShuffled = shuffledIndices.indexOf(currentIndex)
-            if (currentItemIndexInShuffled != -1) {
-                val temp = shuffledIndices[0]
-                shuffledIndices[0] = shuffledIndices[currentItemIndexInShuffled]
-                shuffledIndices[currentItemIndexInShuffled] = temp
+            if (currentItemIndexInShuffled > 0) {
+                System.arraycopy(shuffledIndices, 0, shuffledIndices, 1, currentItemIndexInShuffled)
+                shuffledIndices[0] = currentIndex
             }
             player.setShuffleOrder(DefaultShuffleOrder(shuffledIndices, System.currentTimeMillis()))
         }

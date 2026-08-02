@@ -326,7 +326,10 @@ fun YouTubeAlbumMenu(
                                         playerConnection.playQueue(
                                             ListQueue(
                                                 title = album?.album?.title,
-                                                items = songs.shuffled().map(Song::toMediaItem)
+                                                items = songs.shuffled().map(Song::toMediaItem),
+                                                // See AlbumMenu: without this the mode stays OFF and the
+                                                // scramble is frozen, bypassing the whole anti-repeat system.
+                                                startShuffled = true,
                                             )
                                         )
                                     }
