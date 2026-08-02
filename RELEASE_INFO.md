@@ -1,40 +1,55 @@
-# Aura Hi-Res Player 0.6.140-beta12 — Memoria del aleatorio en toda la app (BETA PRIVADA)
+# Aura Hi-Res Player 0.6.140-beta13 — El aleatorio, de verdad + 125 MB menos (BETA PRIVADA)
 
 > ⚠️ Build de PRUEBA, solo para el dueño. Prerelease: el actualizador NO la ofrece a nadie más.
 
-beta11 arregló que el aleatorio repitiera. Esta cierra **el resto**: la memoria no existía en media app, y donde existía se guardaba en dos sitios distintos.
+## 🔴 La repetición que oíste en beta12: era culpa mía
 
-## 🔀 Memoria entre días donde no había ninguna
-- **"Mi Top"** (memoria separada por periodo, para que Top-semana y Top-histórico no se mezclen) y **"Caché"**.
-- **Álbumes** y **artistas**. Además, el menú "···" y la pantalla usan ahora **el mismo** identificador: da igual por dónde entres.
-- **"Me gusta", "Descargadas", "Subidas", "Exportadas"**: antes Biblioteca y la tarjeta guardaban en **sitios distintos**, así que lo escuchado por un lado era invisible por el otro.
+En beta12 moví una pieza para cerrar otro fallo, y abrí uno peor: **la canción con la que arrancas una lista era la única de toda la sesión que no quedaba registrada**. Las siguientes sí. Al día siguiente activabas el aleatorio y **esa** volvía a sonar.
 
-## 🚗 Android Auto
-Lo que reproducías en el coche **se apuntaba en la lista equivocada** — la última que hubieras abierto en el móvil. Ensuciaba una lista que ni estabas oyendo, mientras la que sonaba no aprendía nada. Y su "Aleatorio" era un desorden de una sola vez, con el modo apagado.
+Y como es siempre la canción **que tú eliges** para empezar, las que se repetían eran justo tus favoritas. Por eso lo notaste enseguida.
 
-Ahora enciende el sistema completo y apunta donde toca, compartiendo memoria con el teléfono.
+Arreglado en dos frentes: ahora se registra en la lista correcta, y esa misma transición ya no puede anotar la canción nueva **en el bucket de la lista anterior** (ensuciando una lista que ni estabas oyendo).
 
-## ⏱️ Una carrera que ensuciaba los datos
-Al tocar otra playlist, el contexto cambiaba **al instante** pero las canciones tardaban segundos en cargar. Todo lo que avanzaba la lista vieja en esa ventana se apuntaba en la nueva.
+## 🔀 Tu regla, aplicada
 
-## 📋 Cola
-- El re-anclaje elegía mal cuando una lista tiene **la misma canción dos veces** (rebobinaba a la primera copia), y si la canción actual quedaba filtrada **volvía al principio de la cola**.
-- El guardado periódico de posición podía quedar **desincronizado** de la cola guardada, así que al reabrir aterrizabas en otra canción.
+- Lo que ya sonó **no se repite** — lo hayas escuchado en aleatorio o en orden normal.
+- El conteo **solo se reinicia** cuando la lista se ha terminado **y** tú vuelves a activar el aleatorio.
+- La app **termina la lista** antes de continuar con la cola inteligente.
+- **Android Auto**: corregido un fallo que podía borrar el conteo **entero** de una lista (por ejemplo, todo *Me gusta*) — pasaba justo en tu rutina: el móvil mata la app de noche y por la mañana entras al coche.
 
-## 📱 Interfaz, Cast y tamaño
-- La **cola colapsada ya no tapa** la parte baja del reproductor en horizontal y tablet (unos 40 puntos).
-- Los **botones flotantes** respetan tu color de texto de Liquid Glass.
-- **Cast**: el volumen que cambies **en el altavoz o con el mando de la tele** se refleja en la app.
-- **4 MB menos de APK**: se empaquetaba una tipografía que no usaba nadie.
+## 🔍 Y para que la próxima vez no haya dudas
+
+Cada canción que arranca deja una línea en el registro con: si **ya estaba marcada como escuchada**, en qué **modo**, de qué **lista**, cuántas llevas, y si la **radio inteligente** ya había entrado. Si vuelves a oír una repetida, me mandas el registro y se ve en un renglón.
+
+## 💿 Discografías: tres causas, no una
+
+- **Al hacer scroll se borraban los álbumes recuperados.** La paginación guardaba la lista antes de pedir la página siguiente y la reescribía encima. Reaparecían al salir y entrar, y se perdían otra vez al siguiente scroll.
+- **Veías el álbum completo y la playlist truncada a la vez** para el mismo disco. Tu frase *"la playlist que mete el disco está incompleta"*: no estaba incompleta — **sobraba**.
+- **Una discografía cargada con mala conexión se quedaba así para siempre.** Ahora se repara sola en segundo plano, y solo publica el resultado si es **mejor** que lo que ya tenías: un reintento peor no puede quitarte nada.
+
+## 📥 Migrar tu biblioteca completa (no solo playlists)
+
+**Tidal** y **Deezer** ahora traen tu biblioteca entera: **canciones favoritas**, **álbumes guardados** y **artistas seguidos**, además de tus playlists. Y van a su sitio: las favoritas se marcan como **Me gusta**, álbumes y artistas van a **Biblioteca**.
+
+En Deezer se hace pegando la URL de tu perfil (debe ser **público**), porque Deezer cerró el registro de aplicaciones y no hay inicio de sesión posible.
+
+## 🔊 Volumen seguro y preamp
+
+Al **desactivar** el Volumen Seguro, el preamp del ecualizador vuelve a **0.0 dB**. El preamp se aplica **después** del limitador: mientras el Volumen Seguro está activo, el limitador recoge lo que empuje de más; al apagarlo esa red desaparece y el refuerzo se queda, así que el siguiente máster fuerte distorsionaba.
+
+Solo ocurre en el momento en que lo apagas, no cada vez que abres la app, y **no toca tu preset guardado**.
+
+## 📦 125,4 MB menos
+
+La app empaquetaba **Python, ffmpeg y aria2c** para las cuatro arquitecturas — una librería de descarga que **ninguna línea del código usa**. Al ser binarios, el optimizador que borra código muerto no los tocaba: viajaban enteros en cada instalación.
+
+También fuera: un **descargador de actualizaciones de repuesto que no verificaba la firma** del APK (el que funciona de verdad sí la verifica y aborta si no cuadra), una pantalla completa que no era accesible desde ningún sitio, y un procesador de audio vacío que suplantaba por nombre al real.
 
 ---
 
-## Lo que cazó la revisión (y por eso esta build tardó)
-La revisión adversarial encontró un **bloqueante en mi propio código**: usé un campo interno que **nunca se asigna en toda la app** — lleva muerto desde el origen del proyecto. Habría lanzado un error en **cada** reproducción desde Android Auto, y de forma **silenciosa**: el sistema se traga ese fallo sin dejar rastro. El coche habría dejado de reproducir del todo, y en el móvil no se habría notado.
-
-De paso salió algo que te afecta: como ese campo nunca se asignó, **el bloqueo anti-arranque-fantasma (que la app no se ponga a sonar sola cuando se conecta el Bluetooth o el coche) nunca ha estado activo**. Está apuntado como resuelto desde 0.6.104 y era código muerto. Lo he dejado **desactivado a propósito** en esta build: activarlo de golpe podría hacer que el PLAY del volante no arranque la cola tras un reinicio, y eso merece una prueba tuya en el coche, no colarlo dentro de otro arreglo.
-
-Otros 7 hallazgos aplicados, incluido **uno que invalidaba un arreglo mío**: al reabrir, preferir el índice "re-anclado" te dejaba en una canción **anterior**, porque el índice guardado del reproductor es más fresco que el de la cola. Revertido.
+## Lo que NO va en esta build (a propósito)
+- La reorganización de los ajustes. Mover cosas de sitio exige actualizar el índice del buscador en el mismo cambio, y no quiero mezclarlo con arreglos de reproducción.
+- El bloqueo anti-arranque-fantasma sigue **desactivado** a la espera de que lo pruebes en el coche.
 
 ---
-Compila en ambos sabores, 259/259 pruebas.
+Compila en ambos sabores.

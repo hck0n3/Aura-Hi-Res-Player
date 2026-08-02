@@ -624,6 +624,75 @@ class MusicService :
     // when the queue has no enhanced memory (raw YT radio, album/artist, etc.) → classic in-memory shuffle.
     // Set in playQueue from the ListQueue's contextId (carried across restart via PersistQueue.contextId).
     @Volatile private var shuffleContextId: String? = null
+
+    /**
+     * COVERAGE — how many items the CURRENT CONTEXT actually loaded, and WHICH context that number
+     * describes. This is the proof that "everything on the timeline is played" really means "the LIST
+     * finished", instead of "the user trimmed the queue down to songs he already heard".
+     *
+     * It used to be read off [radioSeedPool], and that was a real defect: two unrelated facts shared one
+     * field. [radioSeedPool] is a RADIO SEED sample — written ONLY by playQueue, empty for a YouTubeQueue,
+     * and built with `mapNotNull { it.metadata }` so it can even be SHORTER than the list. Queues adopted
+     * from an external controller ([adoptExternalQueue]: Android Auto, a watch, an assistant) never go
+     * through playQueue, so on a fresh process the pool was still `emptyList()` and the coverage guard
+     * silently vanished for the whole car session; worse, a leftover pool from a previous in-app queue
+     * (a 4-track EP, an 80-song playlist) was compared against a completely different list.
+     *
+     * Keyed by context id ON PURPOSE: a size that describes another context is NOT coverage, it is noise,
+     * so [EnhancedShuffleCycle.coverageOf] reports UNKNOWN for it. UNKNOWN deliberately means "judge by
+     * the timeline alone" (today's behaviour when the pool was empty) and NOT "report not-exhausted":
+     * this same reading also drives the handoff to the infinite radio, so a permanent "not exhausted"
+     * would make every external queue unable to finish and leave it re-shuffling what was already heard.
+     */
+    @Volatile private var contextCoverageId: String? = null
+    @Volatile private var contextCoverageSize: Int = 0
+
+    /**
+     * When [adoptExternalQueue] armed a coverage fill, so [onTimelineChanged] — the first instant the
+     * external items ARE the timeline — can measure the context, and only then. Zeroed once consumed (or
+     * once expired) so an in-app queue landing later can never be measured into the external context.
+     */
+    @Volatile private var externalCoverageArmedAt = 0L
+
+    /**
+     * Contexts that completed a full no-repeat lap in THIS process. Advisory only — the authoritative
+     * "this list is finished" is re-derived from the persistent memory at re-activation time (see
+     * [seedEnhancedShuffleFromDb]), which is what makes it survive the process death that MIUI inflicts
+     * nightly. Used to keep the cycle counter honest (one bump per completion) and to make the NO_REPEAT
+     * trace say whether the list was already finished when a song started.
+     */
+    private val completedShuffleContexts = LinkedHashSet<String>()
+
+    /** Records a completed lap, bounded so a long session can't grow this set without limit. */
+    private fun rememberCompletedContext(contextId: String): Boolean {
+        val isNew = completedShuffleContexts.add(contextId)
+        while (completedShuffleContexts.size > 32) {
+            val it = completedShuffleContexts.iterator()
+            if (it.hasNext()) { it.next(); it.remove() } else break
+        }
+        return isNew
+    }
+
+    /**
+     * True while the app itself is turning shuffle on for a RESTORED queue. The owner's rule is that the
+     * per-list memory resets only when HE re-activates shuffle on a finished list; a process that died
+     * overnight and came back restoring its queue is not him re-activating anything.
+     * media3 delivers listener events synchronously inside the assignment (same contract
+     * [suppressShuffleModePersist] relies on), so a try/finally around the assignment is enough.
+     */
+    @Volatile private var suppressShuffleActivationReset = false
+
+    /**
+     * Armed while a playQueue is between "the player's timeline was replaced" and "the new context was
+     * adopted". During that window media3's synchronous PLAYLIST_CHANGED transition would otherwise file
+     * the NEW list's opener into the PREVIOUS list's memory — poisoning a list the user is not even
+     * listening to. The opener is recorded explicitly at the adoption site instead.
+     *
+     * A TIMESTAMP, not a boolean, on purpose: playQueue has several early returns and its coroutine can be
+     * abandoned on an offline fetch, so a plain flag could stay armed forever and silently disable ALL
+     * transition-path recording for the rest of the process. This one expires on its own.
+     */
+    @Volatile private var contextAdoptionPendingAt = 0L
     // Enhanced Shuffle: ALL persistent-memory writes (per-song inserts, cursor updates, cycle-complete
     // clears) go through this single-lane dispatcher so LAUNCH order == COMMIT order. Otherwise the
     // fire-and-forget per-song insert and the cycle-complete DELETE — both scheduled from the same
@@ -1165,6 +1234,77 @@ class MusicService :
      * connects/disconnects), apply the EQ profile the user assigned to it — or do nothing if none.
      * Switches the EQ bands live, reflects them in the EQ screen, and persists the choice.
      */
+    /**
+     * NO_REPEAT trace — one line per song start, so "sonó una repetida" stops being unfalsifiable.
+     *
+     * The owner reported a repeat and could not tell whether it happened in shuffle or in linear play.
+     * Without this line a report like that is undiagnosable after the fact: the played set lives in
+     * memory, the context is a field, and by the time he opens the log the state has moved on. Logged at
+     * INFO because AppLogger only PERSISTS >= INFO — at DEBUG it would exist only in a debug build, which
+     * is exactly where the bug does not happen.
+     *
+     * REPEAT=YES on a line whose src is the list (not the radio) is a genuine no-repeat failure; the same
+     * line tells us which mode, which context, and how full the memory was when it happened.
+     */
+    private fun traceNoRepeat(reason: String) {
+        runCatching {
+            val id = player.currentMediaItem?.mediaId ?: player.currentMetadata?.id ?: return
+            val ctx = shuffleContextId
+            val wasPlayed = id in shufflePlayedIds
+            Timber.tag(TAG).i(
+                "NO_REPEAT %s id=%s mode=%s ctx=%s repeat=%s played=%d/%d radioSeeded=%b cover=%d done=%b",
+                reason,
+                id,
+                if (player.shuffleModeEnabled) "SHUFFLE" else "LINEAR",
+                ctx ?: "none",
+                if (wasPlayed) "YES" else "no",
+                shufflePlayedIds.size,
+                player.mediaItemCount,
+                radioSeedPool.isNotEmpty(),
+                // COVERAGE, separate from the seed pool: 0 = unknown for this context (see contextCoverageId).
+                // A REPEAT=YES line with cover=0 says the coverage guard was blind when it happened.
+                currentContextCoverage(),
+                ctx != null && ctx in completedShuffleContexts,
+            )
+        }
+    }
+
+    /**
+     * Returns the EQ preamp to 0.0 dB when the user turns Safe Volume OFF.
+     *
+     * WHY: the preamp is output make-up applied AFTER the limiter, so while Safe Volume is on it is
+     * safe — the limiter catches whatever it pushes past full scale. Turn Safe Volume off and that
+     * safety net disappears while the boost stays, so the very next loud master clips. Anyone who
+     * raised the preamp to compensate for Safe Volume's level drop gets distortion the moment they
+     * switch to bit-perfect playback, with nothing on screen linking the two settings.
+     *
+     * Only ever called on a real ON -> OFF transition (see the collector), never at startup, so a user
+     * who deliberately runs with Safe Volume off keeps whatever preamp they set.
+     *
+     * Writes the same three places [applyEqForCurrentOutput] does: the raw `echo_eq_prefs` value the
+     * audio processor reads, the unsaved profile (the DSP observes
+     * `combine(activeProfile, unsavedProfile) { unsaved ?: active }`, so writing only the active one
+     * would be overridden by a stale unsaved), and the live equalizer service. The SAVED profile is
+     * deliberately left untouched — this is a safety correction, not an edit of the user's preset.
+     */
+    private fun resetEqPreamp() {
+        if (!::eqProfileRepository.isInitialized) return
+        val effective = eqProfileRepository.unsavedProfile.value ?: eqProfileRepository.activeProfile.value
+        runCatching {
+            getSharedPreferences("echo_eq_prefs", Context.MODE_PRIVATE)
+                .edit()
+                .putFloat("preampDb", 0f)
+                .apply()
+        }
+        if (effective == null || effective.preamp == 0.0) return
+        val flattened = effective.copy(preamp = 0.0)
+        eqProfileRepository.setUnsavedProfile(flattened)
+        if (::equalizerService.isInitialized) {
+            runCatching { equalizerService.applyProfile(flattened) }
+        }
+        Timber.tag(TAG).i("Safe Volume turned off -> EQ preamp reset from %.1f dB to 0.0 dB", effective.preamp)
+    }
+
     private fun applyEqForCurrentOutput() {
         if (!::eqProfileRepository.isInitialized || !::equalizerService.isInitialized) return
         scope.launch {
@@ -1729,12 +1869,19 @@ class MusicService :
 
         // Re-apply when the Safe Volume toggle changes so it takes effect live (mid-song), not just next track.
         scope.launch {
+            // Tracks the PREVIOUS value so the preamp reset below fires only on a real user toggle.
+            // This flow also emits once at startup with the CURRENT value: acting on that emission would
+            // wipe the user's own preamp every single launch for anyone who keeps Safe Volume off.
+            var previouslyEnabled: Boolean? = null
             dataStore.data
                 .map { it[SafeVolumeEnabledKey] ?: true }
                 .distinctUntilChanged()
-                .collect {
-                    safeVolumeEnabledHint = it // mirror for the crossfade pre-level
+                .collect { enabled ->
+                    val wasEnabled = previouslyEnabled
+                    previouslyEnabled = enabled
+                    safeVolumeEnabledHint = enabled // mirror for the crossfade pre-level
                     setupLoudnessEnhancer()
+                    if (wasEnabled == true && !enabled) resetEqPreamp()
                 }
         }
 
@@ -1969,8 +2116,17 @@ class MusicService :
                         if (dataStore.get(RememberShuffleAndRepeatKey, true)) {
                             val wanted = playerState.shuffleModeEnabled
                             val listenerWillFire = player.shuffleModeEnabled != wanted
-                            player.shuffleModeEnabled = wanted
-                            if (wanted && !listenerWillFire) beginShuffleSession()
+                            // Restoring shuffle is the APP re-installing a previous state, not the user
+                            // re-activating it — and only the latter may reset a finished list's memory.
+                            // Covers both deliveries: the listener (media3 dispatches it synchronously
+                            // inside the assignment) and the explicit call for the silent no-op case.
+                            suppressShuffleActivationReset = true
+                            try {
+                                player.shuffleModeEnabled = wanted
+                                if (wanted && !listenerWillFire) beginShuffleSession(isUserActivation = false)
+                            } finally {
+                                suppressShuffleActivationReset = false
+                            }
                         }
                     }
                 }.onFailure { error ->
@@ -2521,6 +2677,9 @@ class MusicService :
 
         currentQueue = queue
         queueTitle = null
+        // Arm the adoption latch: from here until the context is adopted below, the transition path must
+        // not attribute this queue's opener to the PREVIOUS list.
+        contextAdoptionPendingAt = android.os.SystemClock.elapsedRealtime()
         // NOTE: the Enhanced Shuffle context is deliberately NOT adopted here — see the adoption site
         // further down, after the items actually land on the timeline. Flipping it at this point (before
         // an async fetch that can take seconds on mobile data) meant every song the OLD queue advanced to
@@ -2667,6 +2826,41 @@ class MusicService :
             // ListQueue carries the contextId saved in PersistQueue, so memory resumes.
             if (currentQueue === queue) {
                 shuffleContextId = queue.contextId
+                contextAdoptionPendingAt = 0L // adopted: the transition path may record again
+                // COVERAGE of this context — the SIZE OF THE LIST, taken from the very items that just became
+                // the timeline, and stamped with the context it describes. Deliberately NOT radioSeedPool.size:
+                // that pool drops items whose metadata is null and is empty for a YouTubeQueue, so it under-
+                // reports the list. An external adopt can no longer inherit this number either — the id is
+                // part of it. See [contextCoverageId].
+                contextCoverageId = queue.contextId
+                contextCoverageSize = if (queue.contextId != null) initialStatus.items.size else 0
+                externalCoverageArmedAt = 0L // an in-app queue landed: nothing external left to measure
+
+                // THE OPENER — the song the user actually tapped to start this list.
+                //
+                // media3 fires its PLAYLIST_CHANGED transition SYNCHRONOUSLY inside setMediaItems above,
+                // which happens ~57 lines BEFORE this adoption. At that moment shuffleContextId still
+                // named the PREVIOUS list (or was null on a cold start), so the opener is the ONE song of
+                // the whole session that no recording site files under the right list: every later song
+                // records correctly, only the first is lost. And since the opener is the song he CHOSE,
+                // the songs that come back are precisely his favourites.
+                //
+                // Recorded here, from queue.contextId directly (not the field), inside the liveness guard
+                // so a superseded queue can never write into the live one's bucket.
+                val openerId = player.currentMediaItem?.mediaId ?: player.currentMetadata?.id
+                val openerCtx = queue.contextId
+                // playWhenReady is the PARAMETER, not player.playWhenReady: a queue that was prepared but
+                // never actually played must not be marked as heard. isRestore is excluded for the same
+                // reason — the restore path deliberately leaves playback paused awaiting the first real
+                // user play, and the seek below records the resumed song once it moves.
+                if (enhancedShuffleHint && openerCtx != null && openerId != null && playWhenReady && !isRestore) {
+                    val now = System.currentTimeMillis()
+                    scope.launch(enhancedShuffleWriteDispatcher) {
+                        runCatching {
+                            database.insertEnhancedPlayed(EnhancedShufflePlayedEntity(openerCtx, openerId, now))
+                        }
+                    }
+                }
             }
 
             if (queue.startShuffled &&
@@ -2714,7 +2908,12 @@ class MusicService :
                 // callback; the later per-queue snapshot write is true→true and never re-fires it).
                 val seedCtx = shuffleContextId
                 if (enhancedShuffleHint && seedCtx != null) {
-                    seedEnhancedShuffleFromDb(seedCtx, shufflePlaylistFirst)
+                    // Starting a list DELIBERATELY while shuffle is on is the user activating shuffle for
+                    // that list — so if the list is already finished, this is condition (b) of the owner's
+                    // rule and the seed resets the lap instead of loading a fully-played memory. A RESTORE
+                    // is not: the process died and came back on its own, and the finished list must stay
+                    // finished (it hands off to the infinite radio, exactly as it did before dying).
+                    seedEnhancedShuffleFromDb(seedCtx, shufflePlaylistFirst, isUserActivation = !isRestore)
                 }
             }
 
@@ -4194,10 +4393,35 @@ class MusicService :
         shuffleContextId = contextId
         pendingExternalShuffle = shuffle
         pendingExternalShuffleAt = android.os.SystemClock.elapsedRealtime()
+        // COVERAGE — the half of the job this function used to skip entirely. It adopted the context but
+        // left the coverage of the PREVIOUS in-app queue in place (or, on a fresh process, none at all),
+        // and coverage is what proves a list really finished. Consequences, both real: with no coverage the
+        // "everything played" reading was taken straight off the LIVE TIMELINE, so a shrinking queue could
+        // complete a cycle it had not played (registry row 94(e)); with a FOREIGN coverage (12-song car
+        // queue vs an 80-song playlist measured earlier) the list could never finish, so the handoff to the
+        // infinite radio never fired and the queue just re-shuffled what was already heard.
+        // Zero = unknown until the items land; onTimelineChanged fills it in.
+        contextCoverageId = contextId
+        contextCoverageSize = 0
+        externalCoverageArmedAt = if (contextId != null) pendingExternalShuffleAt else 0L
     }
 
     override fun onTimelineChanged(timeline: androidx.media3.common.Timeline, reason: Int) {
         queueDirty = true
+        // COVERAGE for an EXTERNALLY adopted queue: this is the first instant its items ARE the timeline,
+        // so it is the only place the size of the car's list can be learned (onSetMediaItems hands them
+        // straight to media3, never touching playQueue). Armed by adoptExternalQueue and consumed here —
+        // exactly once, and only while its arm is fresh — so an in-app queue landing later can never be
+        // measured into the external context. Runs for a LINEAR external queue too: the user can toggle
+        // shuffle from the car afterwards, and the coverage must already be there when he does.
+        if (externalCoverageArmedAt != 0L) {
+            if (android.os.SystemClock.elapsedRealtime() - externalCoverageArmedAt > EXTERNAL_SHUFFLE_ARM_TIMEOUT_MS) {
+                externalCoverageArmedAt = 0L
+            } else if (player.mediaItemCount > 0 && contextCoverageId != null && contextCoverageId == shuffleContextId) {
+                contextCoverageSize = player.mediaItemCount
+                externalCoverageArmedAt = 0L
+            }
+        }
         // An external controller's items have landed: NOW the shuffle session can start. Enabling the
         // mode fires onShuffleModeEnabledChanged; if it is already on, media3 stays silent and we must
         // start the session ourselves (the same media3 rule that left restored queues without memory).
@@ -4303,6 +4527,10 @@ class MusicService :
             fadeInOnManualChange()
         }
 
+        // BEFORE the add below: the trace must report whether this song was ALREADY played when it
+        // started, and recording it first would make every line read "repeat=YES".
+        traceNoRepeat("transition")
+
         // B5: remember what we've played this shuffle session (consumed by applyShuffleOrder to avoid repeats).
         if (player.shuffleModeEnabled) {
             val playedId = (mediaItem?.mediaId ?: player.currentMetadata?.id)
@@ -4317,7 +4545,17 @@ class MusicService :
         run {
             val playedId = (mediaItem?.mediaId ?: player.currentMetadata?.id)
             val ctx = shuffleContextId
-            if (enhancedShuffleHint && ctx != null && playedId != null) {
+            // SURGICAL exclusion, not a blanket filter on PLAYLIST_CHANGED: that reason is also how a song
+            // started from Android Auto arrives, and suppressing it wholesale would stop the car's songs
+            // from ever being recorded. Only the timeline replacement that playQueue itself just caused —
+            // while its context is still unadopted — is skipped, because that transition would file the NEW
+            // list's opener under the PREVIOUS list. playQueue records that opener itself, correctly.
+            val adoptionInFlight = contextAdoptionPendingAt != 0L &&
+                android.os.SystemClock.elapsedRealtime() - contextAdoptionPendingAt < CONTEXT_ADOPTION_WINDOW_MS
+            val isQueueReplacement = reason == Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED
+            if (enhancedShuffleHint && ctx != null && playedId != null &&
+                !(adoptionInFlight && isQueueReplacement)
+            ) {
                 val now = System.currentTimeMillis()
                 scope.launch(enhancedShuffleWriteDispatcher) {
                     runCatching { database.insertEnhancedPlayed(EnhancedShufflePlayedEntity(ctx, playedId, now)) }
@@ -4343,7 +4581,7 @@ class MusicService :
                 player.hasNextMediaItem() &&            // a tail still sits ahead...
                 isEnhancedContextExhausted()            // ...and it is entirely already-played
             ) {
-                onEnhancedContextCycleComplete(exhaustCtx)
+                markEnhancedContextCycleComplete(exhaustCtx)
                 shuffleContextId = null                 // radio is no longer this context — stop recording into it
                 startRadioSeamlessly()
             }
@@ -4398,22 +4636,22 @@ class MusicService :
             player.currentMediaItem?.mediaId?.let { refreshAutoplaySuggestions(it) }
             // Enhanced Shuffle: reaching the last item to play while shuffling a context means the whole
             // context MAY have cycled — but this outer block deliberately also fires on manual SEEKs, and a
-            // manual jump onto the last playback-order item is NOT a completed cycle. Wiping there erased
-            // the memory of a barely-started playlist (partial-cycle wipe → guaranteed repeats next visit).
-            // The wipe now requires the same proof as every other cycle-complete site: a natural AUTO
-            // advance, repeat OFF, and a genuinely exhausted context. The radio handoff below still runs
-            // either way (it's the queue-end UX, independent of the memory).
+            // manual jump onto the last playback-order item is NOT a completed cycle. Marking there would
+            // brand a barely-started playlist as finished (and its next re-activation would then reset a
+            // memory that was still half full). The mark requires the same proof as every other
+            // cycle-complete site: a natural AUTO advance, repeat OFF, and a genuinely exhausted context.
+            // The radio handoff below still runs either way (it's the queue-end UX, independent of memory).
             if (enhancedShuffleHint && player.shuffleModeEnabled &&
                 reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO &&
                 player.repeatMode == Player.REPEAT_MODE_OFF &&
                 isEnhancedContextExhausted()
             ) {
-                shuffleContextId?.let { onEnhancedContextCycleComplete(it) }
+                shuffleContextId?.let { markEnhancedContextCycleComplete(it) }
             }
             // Radio owns the queue from here EITHER WAY — detach the context so foreign radio ids are
             // never recorded into the playlist's persistent memory (a linear listener's nightly radio
-            // tail used to accumulate unbounded rows). The memory itself is wiped ONLY in the
-            // proven-exhausted branch above; an un-wiped context keeps its rows for the next visit.
+            // tail used to accumulate unbounded rows). The memory itself is NEVER wiped here: it is kept
+            // until the user re-activates shuffle on this list (see seedEnhancedShuffleFromDb).
             shuffleContextId = null
             startRadioSeamlessly()
         }
@@ -4960,7 +5198,9 @@ class MusicService :
     override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) {
         updateNotification()
         if (shuffleModeEnabled) {
-            beginShuffleSession()
+            // Every enable that reaches this callback is a USER activation (a toggle, a Shuffle button,
+            // the car) EXCEPT the queue restore, which announces itself with suppressShuffleActivationReset.
+            beginShuffleSession(isUserActivation = !suppressShuffleActivationReset)
         }
 
 
@@ -4996,8 +5236,12 @@ class MusicService :
      * persistent memory was intact in the DB, and nobody ever read it, so already-heard songs came back
      * after every restart. Callers that change the flag get this via the callback; the restore path calls
      * it directly. Safe to call twice — it is idempotent for a given queue.
+     *
+     * [isUserActivation] carries the owner's rule: a finished list keeps its memory until HE turns shuffle
+     * on again for it. Only a true user activation may reset the lap; a restore (the app re-installing its
+     * own previous state) may not.
      */
-    private fun beginShuffleSession() {
+    private fun beginShuffleSession(isUserActivation: Boolean = true) {
             if (player.mediaItemCount == 0) return
 
             // B5: start a fresh anti-repeat session each time shuffle is enabled; the current song counts as played.
@@ -5031,7 +5275,7 @@ class MusicService :
             // the fallback above already plays — we just refine the order when it lands.
             val ctx = shuffleContextId
             if (enhancedShuffleHint && ctx != null) {
-                seedEnhancedShuffleFromDb(ctx, shufflePlaylistFirst)
+                seedEnhancedShuffleFromDb(ctx, shufflePlaylistFirst, isUserActivation)
             }
     }
 
@@ -5049,57 +5293,97 @@ class MusicService :
         }
     }
 
-    /**
-     * Enhanced Shuffle: a context finished a full no-repeat cycle (every song played). Wipe its persistent
-     * played-set so the next cycle re-shuffles from scratch, and bump its cycle counter. Async + guarded; safe
-     * to call more than once for the same completion (the DELETE is idempotent, the counter is advisory only).
-     */
+    /** COVERAGE of the LIVE context, or [EnhancedShuffleCycle.COVERAGE_UNKNOWN] when it is not known. */
+    private fun currentContextCoverage(): Int =
+        EnhancedShuffleCycle.coverageOf(shuffleContextId, contextCoverageId, contextCoverageSize)
+
     /**
      * Enhanced Shuffle: true when every id in the CURRENT timeline is already in [shufflePlayedIds] — i.e.
      * the unplayed pool is empty and continuing would only replay already-heard songs. Player-thread only,
-     * O(queue size); called only when enhanced shuffle is active with a context, so the cost is bounded to
-     * that path. Any missing/failed id read is treated as "not exhausted" (never a false positive).
+     * O(queue size) with NO allocation (the ids are read through an accessor, not copied into a list — this
+     * runs on every auto-advance with crossfade ON, on queues of thousands of items). Any missing/failed id
+     * read is treated as "not exhausted" (never a false positive).
      */
-    private fun isEnhancedContextExhausted(): Boolean {
-        val count = player.mediaItemCount
-        if (count == 0) return false
-        // User removals SHRINK the timeline (queue swipe-dismiss, multi-select remove): a trimmed queue
-        // reading "all played" while the CONTEXT still holds unheard songs must NOT complete the cycle —
-        // the wipe would resurrect those unheard songs as a "fresh cycle" (repeats). radioSeedPool is the
-        // context's original item list, so require the live timeline to still cover it.
-        if (radioSeedPool.isNotEmpty() && count < radioSeedPool.size) return false
-        for (i in 0 until count) {
-            val id = runCatching { player.getMediaItemAt(i).mediaId }.getOrNull() ?: return false
-            if (id !in shufflePlayedIds) return false
-        }
-        return true
-    }
+    private fun isEnhancedContextExhausted(): Boolean =
+        EnhancedShuffleCycle.isCycleComplete(
+            timelineSize = player.mediaItemCount,
+            coverageSize = currentContextCoverage(),
+            playedIds = shufflePlayedIds,
+        ) { i -> runCatching { player.getMediaItemAt(i).mediaId }.getOrNull() }
 
-    private fun onEnhancedContextCycleComplete(contextId: String) {
+    /**
+     * Enhanced Shuffle: a context finished a full no-repeat lap (every song played).
+     *
+     * It does NOT wipe the memory any more — that is the owner's rule: "lo que ya se reprodujo de la lista
+     * no se vuelva a repetir A MENOS QUE ya se haya finalizado la reproducción de esa lista **Y** el
+     * usuario vuelva a activar el aleatorio". Two conditions, not one. Completion is only the FIRST; the
+     * lap is reset when he turns shuffle on again for this list (see [seedEnhancedShuffleFromDb]). Until
+     * then the memory stays, so returning to the list later still knows what he heard.
+     *
+     * What completion does do — unchanged — is hand the queue over to the infinite radio at the call sites,
+     * so playback never stops and never loops the songs it just played.
+     *
+     * The marker itself is the memory: "finished" = the persistent played-set covers the whole list, which
+     * is re-derived at re-activation time and therefore survives the process dying overnight for free. The
+     * in-process set is advisory (trace + one cycle bump per completion).
+     */
+    private fun markEnhancedContextCycleComplete(contextId: String) {
+        val isNew = rememberCompletedContext(contextId)
+        if (!isNew) return // already counted this lap in this process; the DB write is not idempotent (a counter)
         val now = System.currentTimeMillis()
-        // Same single-lane writer as the per-song insert: guarantees this DELETE commits AFTER every
-        // insert launched before it in the same transition, so the reset can't be partially undone by a
-        // late in-flight per-song write.
+        // Same single-lane writer as the per-song insert, so this can never be reordered against the
+        // per-song rows launched before it.
         scope.launch(enhancedShuffleWriteDispatcher) {
             runCatching {
-                database.clearEnhancedContext(contextId)
                 database.insertEnhancedContextIgnore(EnhancedShuffleContextEntity(contextId = contextId, updatedAt = now))
                 database.incrementEnhancedCycle(contextId, now)
             }
         }
     }
 
+    /**
+     * Enhanced Shuffle: THE ONLY place the persistent per-context memory is wiped. Reached exclusively from
+     * [seedEnhancedShuffleFromDb] when both of the owner's conditions hold — the list is finished AND he
+     * just re-activated shuffle on it — so a fresh lap begins with the count reset for THAT list only.
+     *
+     * The wipe and the re-insert of what the new lap has ALREADY heard are one unit of work on the
+     * single-lane writer: split in two, a per-song insert launched in between would be deleted, and those
+     * songs would come back as unplayed after a process death (a guaranteed repeat per restart).
+     * [openerIds] is the new lap's in-memory set — the song that opened it plus anything played while the
+     * DB read was in flight, whose own inserts were queued BEFORE this DELETE and are about to be erased.
+     */
+    private fun resetEnhancedContextMemory(contextId: String, openerIds: Collection<String>) {
+        completedShuffleContexts.remove(contextId)
+        val now = System.currentTimeMillis()
+        val openers = openerIds.toList() // snapshot: the live set belongs to the player thread
+        scope.launch(enhancedShuffleWriteDispatcher) {
+            runCatching {
+                database.clearEnhancedContext(contextId)
+                database.insertEnhancedContextIgnore(EnhancedShuffleContextEntity(contextId = contextId, updatedAt = now))
+                openers.forEach { id ->
+                    database.insertEnhancedPlayed(EnhancedShufflePlayedEntity(contextId, id, now))
+                }
+            }
+        }
+    }
 
     /**
      * Enhanced Shuffle: SEED the in-memory B5 played-set from the PERSISTENT per-context memory (∩ current
-     * queue ids, + the current song) and RE-APPLY the order once loaded. Shared by two callers:
-     *  - onShuffleModeEnabledChanged — shuffle toggled ON for a queue with a context;
+     * queue ids, + the current song) and RE-APPLY the order once loaded — or, when the list turns out to be
+     * FINISHED and this is a user re-activation, reset the lap instead. Shared by two callers:
+     *  - beginShuffleSession — shuffle toggled ON for a queue with a context (the toggle, a Shuffle button,
+     *    the car, or a restore — the restore passes isUserActivation = false);
      *  - playQueue — a queue STARTS while shuffle is ALREADY ON. The toggle callback never fires then
      *    (true→true is not a change), which used to leave the order blind to persisted plays: the UI
      *    (reading the DB) showed songs as played, yet the ORDER (reading this set) replayed them.
      * The DB read is async; the current order keeps playing and is refined when the seed lands.
+     *
+     * WHY the "is it finished?" question is answered HERE and not from a stored flag: the persistent set is
+     * the ground truth, so the answer survives a process death with no schema change, and it stays correct
+     * when the LIST changed since it finished — three songs added to a completed playlist make it unfinished
+     * again, and those three are exactly what should play first. A stored "completed" flag could not know.
      */
-    private fun seedEnhancedShuffleFromDb(ctx: String, shufflePlaylistFirst: Boolean) {
+    private fun seedEnhancedShuffleFromDb(ctx: String, shufflePlaylistFirst: Boolean, isUserActivation: Boolean) {
         scope.launch(Dispatchers.IO) {
             val persisted = runCatching { database.playedSongIdsForContext(ctx) }
                 .getOrNull()?.toHashSet() ?: return@launch
@@ -5109,10 +5393,30 @@ class MusicService :
                 if (!player.shuffleModeEnabled || shuffleContextId != ctx || player.mediaItemCount == 0) {
                     return@withContext
                 }
-                val queueIds = (0 until player.mediaItemCount).mapNotNull {
+                val queueIds = (0 until player.mediaItemCount).map {
                     runCatching { player.getMediaItemAt(it).mediaId }.getOrNull()
                 }
-                val seed = queueIds.filterTo(LinkedHashSet()) { it in persisted }
+                // Condition (a): is this list genuinely finished? Judged against the CONTEXT (its coverage),
+                // never against the live timeline alone — a queue the user trimmed down to songs he already
+                // heard reads "all played" while the list still holds unheard ones (registry row 94(e)).
+                val cycleComplete = EnhancedShuffleCycle.isCycleComplete(
+                    timelineSize = queueIds.size,
+                    coverageSize = currentContextCoverage(),
+                    playedIds = persisted,
+                ) { i -> queueIds[i] }
+                if (EnhancedShuffleCycle.shouldResetForNewCycle(isUserActivation, cycleComplete)) {
+                    // (a) AND (b): finished list + the user turning shuffle on again = the count resets, for
+                    // THIS list only, and a fresh lap starts. shufflePlayedIds was already cleared by the
+                    // caller (it holds the current song, plus anything played while this read was in
+                    // flight), so it IS the new lap and the order below is a full re-shuffle.
+                    player.currentMetadata?.id?.let { shufflePlayedIds.add(it) }
+                    resetEnhancedContextMemory(ctx, shufflePlayedIds)
+                    Timber.tag(TAG).i("NO_REPEAT cycle-reset ctx=%s size=%d (finished + re-activated)", ctx, queueIds.size)
+                    applyShuffleOrder(player.currentMediaItemIndex, player.mediaItemCount, shufflePlaylistFirst)
+                    return@withContext
+                }
+                val seed = LinkedHashSet<String>()
+                queueIds.forEach { id -> if (id != null && id in persisted) seed.add(id) }
                 player.currentMetadata?.id?.let { seed.add(it) }
                 // UNION, never clear: songs the user played/skipped DURING this async DB read were
                 // already added to shufflePlayedIds by onMediaItemTransition on the Main thread. A
@@ -5182,28 +5486,35 @@ class MusicService :
                     runCatching { player.getMediaItemAt(i).mediaId }.getOrNull()?.let { it in playedSnapshot } == true
                 }
             ) {
-                shufflePlayedIds.clear()
-                player.currentMetadata?.id?.let { shufflePlayedIds.add(it) }
-                playedSnapshot.clear()
-                // Enhanced Shuffle: the whole context cycled → reset its PERSISTENT memory + bump the counter so
-                // the next cycle is fresh (mirrors the in-memory reset above). Async, guarded. The COVERAGE
-                // gate mirrors isEnhancedContextExhausted: a user-trimmed timeline reading "all played" is
-                // NOT proof the context cycled — the in-memory reset above keeps shuffle flowing, but the
-                // persistent wipe must not fire while the context still holds unheard songs.
-                shuffleContextId?.takeIf {
-                    enhancedShuffleHint && (radioSeedPool.isEmpty() || totalCount >= radioSeedPool.size)
-                }?.let { ctx ->
-                    onEnhancedContextCycleComplete(ctx)
-                    // Re-persist the cycle-OPENING song AFTER the wipe (single-lane FIFO: delete commits
-                    // first, then this insert). Without it, a process death mid-cycle resurrected the
-                    // opener as unplayed — one guaranteed repeat per restart.
-                    player.currentMetadata?.id?.let { cur ->
-                        val now = System.currentTimeMillis()
-                        scope.launch(enhancedShuffleWriteDispatcher) {
-                            runCatching { database.insertEnhancedPlayed(EnhancedShufflePlayedEntity(ctx, cur, now)) }
-                        }
-                    }
+                // IN-MEMORY reset — the "keep the music flowing" fallback, and ONLY when the handoff to the
+                // infinite radio is not available for this context (continuation disabled, repeat on, no
+                // context, feature off). Where the handoff IS available it must win, because clearing the
+                // set here also erases the very evidence the handoff runs on: isEnhancedContextExhausted()
+                // reads this set, so a reset now means the next auto-advance sees a "fresh" list and the
+                // finished one silently starts another lap instead of continuing into the smart queue —
+                // which is exactly what happened after a process death (the seed re-fills the set from disk,
+                // this reset empties it again). Skipping the reset costs nothing audible: with every song
+                // played the +1000 unplayed bonus applies to none of them, so the order below is the same
+                // uniform shuffle either way — it just stays TRUTHFUL about the list being finished.
+                // Never silence: media3 walks the whole shuffle order regardless of what this set says.
+                val handoffAvailable = enhancedShuffleHint && autoLoadMoreHint &&
+                    player.shuffleModeEnabled && shuffleContextId != null &&
+                    player.repeatMode == Player.REPEAT_MODE_OFF &&
+                    EnhancedShuffleCycle.coversContext(totalCount, currentContextCoverage())
+                if (!handoffAvailable) {
+                    shufflePlayedIds.clear()
+                    player.currentMetadata?.id?.let { shufflePlayedIds.add(it) }
+                    playedSnapshot.clear()
                 }
+                // Enhanced Shuffle: the whole context cycled → MARK it finished. It no longer wipes the
+                // persistent memory: per the owner's rule the count resets only when he re-activates
+                // shuffle on a finished list, so the memory has to outlive the completion (this was one of
+                // ~five sites that used to reset it early). The COVERAGE gate stays and now reads the
+                // context's own coverage instead of the radio seed pool: a user-trimmed timeline reading
+                // "all played" is NOT proof the list cycled.
+                shuffleContextId?.takeIf {
+                    enhancedShuffleHint && EnhancedShuffleCycle.coversContext(totalCount, currentContextCoverage())
+                }?.let { ctx -> markEnhancedContextCycleComplete(ctx) }
             }
             // Smart shuffle: nudge tracks you tend to like toward the front, but RANDOM MUST DOMINATE.
             // The old factor (taste * 0.5, taste up to ~1.7) put a favourite artist's songs 0.85 above a
@@ -8217,6 +8528,9 @@ class MusicService :
         // follow-along, SponsorBlock segments, upcoming-track prefetch, and pulling the next page of a long
         // playlist/album (whose absence made the queue fall into the infinite radio instead of continuing).
         applyAutoAdvanceSideEffects()
+        // Same ordering rule as the transition path: trace BEFORE either recording block below, or the
+        // line always reads "repeat=YES" and tells us nothing.
+        traceNoRepeat("crossfade-swap")
         // REPEAT_ONE swaps the SAME track in over and over; treating those as fresh advances paginated the
         // queue on every loop (a page fetched + appended per repeat). The transition path suppresses
         // pagination on repeats for exactly this reason — mirror it.
@@ -8262,7 +8576,8 @@ class MusicService :
             // and a plain applyShuffleOrder here would run its all-played self-reset SYNCHRONOUSLY — wiping
             // the memory before any later check could observe the exhaustion (verified: that made a
             // scheduleCrossfade-time check dead code). A swap is by definition a NATURAL auto-advance, so
-            // the early-handoff's AUTO-only semantics hold. On exhaustion: complete the cycle, detach the
+            // the early-handoff's AUTO-only semantics hold. On exhaustion: MARK the lap complete (the
+            // memory is kept — it resets only when the user re-activates shuffle on this list), detach the
             // context, seed the infinite radio while this last song still plays, and SKIP this swap's
             // re-shuffle — the self-reset would un-sink the played tail; appendSeed() re-applies the order
             // once the radio items land (unplayed radio sorts ahead; the tail stays sunk).
@@ -8274,7 +8589,7 @@ class MusicService :
                 player.repeatMode == REPEAT_MODE_OFF && autoLoadMoreHint &&
                 !radioSeedInFlight && isEnhancedContextExhausted()
             ) {
-                onEnhancedContextCycleComplete(exhaustCtx)
+                markEnhancedContextCycleComplete(exhaustCtx)
                 shuffleContextId = null
                 startRadioSeamlessly()
                 // KNOWN bounded edge: until appendSeed re-applies the order, the swapped-in player keeps
@@ -8649,6 +8964,13 @@ class MusicService :
         /** How long an external controller's shuffle request stays armed before it is discarded. */
         private const val EXTERNAL_SHUFFLE_ARM_TIMEOUT_MS = 15_000L
 
+        /**
+         * How long the context-adoption latch stays valid. Covers the gap between replacing the timeline
+         * and adopting the new context (a synchronous hop in the local case, one network fetch in the
+         * worst case) and then expires, so an abandoned playQueue can never disable recording for good.
+         */
+        private const val CONTEXT_ADOPTION_WINDOW_MS = 20_000L
+
         // Refetch: sent by the song menus to drop a song's cached stream URL + bytes (see clearSongCache).
         const val ACTION_CLEAR_SONG_CACHE = "iad1tya.echo.music.ACTION_CLEAR_SONG_CACHE"
         const val EXTRA_SONG_ID = "songId"
@@ -8895,4 +9217,81 @@ data class AutoplayChip(
     val kind: Kind,
 ) {
     enum class Kind { RELATED, ARTIST, MIX }
+}
+
+/**
+ * The enhanced shuffle's CYCLE decisions, as pure functions: when a list counts as FINISHED, and when its
+ * per-list no-repeat memory may be reset. No Android, no media3, no player — so they can be unit-tested.
+ *
+ * This class of bug ("the shuffle repeats") has now been fixed seven times, and the reason it kept coming
+ * back is that the decision lived inline in [MusicService], tangled with the live player, where no test
+ * could reach it. Ordering already moved out to [ShuffleOrdering] for the same reason; this is the other
+ * half — the *when*, not the *order*.
+ *
+ * The two facts these functions keep apart:
+ *  - COVERAGE: how many items the CONTEXT (the list the user opened) actually loaded. Used to be read off
+ *    the radio seed pool, which is a different fact that merely lived in the same field: it is written by
+ *    one code path only, is empty for a queue handed over by Android Auto, and can hold the size of a
+ *    completely different list. Judging "everything played" against the LIVE TIMELINE instead of the
+ *    context is what let a shrinking queue finish a lap it never played.
+ *  - COMPLETION: every song of the context is in the played set. Completion hands the queue to the
+ *    infinite radio; it does NOT by itself reset the memory — that needs the user to re-activate shuffle.
+ */
+object EnhancedShuffleCycle {
+
+    /** Coverage is unknown: judge by the timeline alone (see [coversContext] for why not "not finished"). */
+    const val COVERAGE_UNKNOWN = 0
+
+    /**
+     * Coverage only counts when it describes THIS context. A size measured for another list is not a
+     * weaker signal, it is a wrong one: it made a 12-song car queue impossible to finish against an
+     * 80-song playlist measured minutes earlier, and it made an 80-song list finish against a 4-track EP.
+     */
+    fun coverageOf(contextId: String?, coverageContextId: String?, coverageSize: Int): Int =
+        if (contextId != null && contextId == coverageContextId && coverageSize > 0) coverageSize
+        else COVERAGE_UNKNOWN
+
+    /**
+     * Does the live timeline still cover the whole context?
+     *
+     * UNKNOWN coverage answers YES on purpose. "If we don't know, report not finished" looks like the safe
+     * side and is strictly worse: the very same reading decides the handoff to the infinite radio, so a
+     * permanent "not finished" means the list can never end, the radio never takes over, and the queue
+     * loops re-shuffling songs already heard — the exact complaint this feature exists to prevent.
+     */
+    fun coversContext(timelineSize: Int, coverageSize: Int): Boolean =
+        coverageSize <= COVERAGE_UNKNOWN || timelineSize >= coverageSize
+
+    /**
+     * Has this list been played to the end? Every id must be known AND already played, and the pool being
+     * judged must still cover the context.
+     *
+     * [idAt] is an accessor rather than a list so the hot path (every auto-advance, and with crossfade ON
+     * that is every song) can read straight from the player's timeline without copying thousands of ids.
+     * An id that cannot be read answers "not finished" — an unreadable item is never proof of completion.
+     */
+    inline fun isCycleComplete(
+        timelineSize: Int,
+        coverageSize: Int,
+        playedIds: Set<String>,
+        idAt: (Int) -> String?,
+    ): Boolean {
+        if (timelineSize <= 0) return false
+        if (!coversContext(timelineSize, coverageSize)) return false
+        for (i in 0 until timelineSize) {
+            val id = idAt(i) ?: return false
+            if (id !in playedIds) return false
+        }
+        return true
+    }
+
+    /**
+     * The owner's rule, in one line: "lo que ya se reprodujo de la lista no se vuelva a repetir A MENOS QUE
+     * ya se haya finalizado la reproducción de esa lista Y el usuario vuelva a activar el aleatorio".
+     *
+     * TWO conditions. Finishing the list alone must not reset anything — the memory has to still be there
+     * when he comes back to that list later. The reset belongs to the moment he turns shuffle on again.
+     */
+    fun shouldResetForNewCycle(isUserActivation: Boolean, cycleComplete: Boolean): Boolean =
+        isUserActivation && cycleComplete
 }

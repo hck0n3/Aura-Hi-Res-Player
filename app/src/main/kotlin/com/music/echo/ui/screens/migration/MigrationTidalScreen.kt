@@ -322,7 +322,10 @@ private fun ConnectedCard(
 
                 state.collection.isNotEmpty() -> {
                     state.collection.forEach { playlist ->
-                        PlaylistRow(playlist = playlist, onClick = { onPickPlaylist(playlist) })
+                        // Shared row: TidalSource now returns the user's LIBRARY (favourites / saved
+                        // albums / followed artists) alongside real playlists, and the row is what makes
+                        // that difference visible (badge + "where this lands" line).
+                        MigrationCollectionRow(playlist = playlist, onClick = { onPickPlaylist(playlist) })
                     }
                     TextButton(onClick = onReload) {
                         Text(stringResource(R.string.migrate_tidal_reload))
@@ -365,32 +368,6 @@ private fun ConnectedCard(
             ) {
                 Text(stringResource(R.string.migrate_tidal_import))
             }
-        }
-    }
-}
-
-@Composable
-private fun PlaylistRow(playlist: SourcePlaylist, onClick: () -> Unit) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.medium,
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        onClick = onClick,
-    ) {
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            Text(
-                text = playlist.name,
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Text(
-                text = stringResource(R.string.migrate_tidal_track_count, playlist.trackCount),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
     }
 }

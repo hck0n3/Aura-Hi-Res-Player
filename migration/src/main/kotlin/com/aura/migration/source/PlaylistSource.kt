@@ -1,5 +1,7 @@
 package com.aura.migration.source
 
+import com.aura.migration.model.CollectionKind
+import com.aura.migration.model.SourceArtist
 import com.aura.migration.model.SourcePlaylist
 import com.aura.migration.model.SourceTrack
 import com.aura.migration.model.SourceType
@@ -29,6 +31,14 @@ interface PlaylistSource {
 
     /** Tracks en orden original. Pagina internamente. */
     suspend fun fetchTracks(playlistId: String): List<SourceTrack>
+
+    /**
+     * Artistas de una coleccion [CollectionKind.FOLLOWED_ARTISTS].
+     *
+     * Los artistas seguidos no tienen canciones que resolver: se anaden a la Biblioteca tal cual.
+     * Default vacio para que una fuente que no soporte artistas no tenga que implementarlo.
+     */
+    suspend fun fetchArtists(collectionId: String): List<SourceArtist> = emptyList()
 }
 
 /** Errores tipados: la UI necesita distinguirlos para dar mensajes utiles. */

@@ -25,7 +25,37 @@ data class SourcePlaylist(
     val description: String? = null,
     val trackCount: Int = 0,
     val artworkUrl: String? = null,
-    val origin: SourceType
+    val origin: SourceType,
+    /**
+     * What this entry IS on the source platform, which decides where it lands in Aura.
+     *
+     * A user's library is not a playlist: their favourite songs belong in "Me gusta", their saved
+     * albums and followed artists belong in Library. Modelling them as [SourcePlaylist] keeps the
+     * whole pipeline (resolver, cache, UI, progress) unchanged, and this field is what stops them
+     * from being dumped into a newly created playlist instead.
+     */
+    val kind: CollectionKind = CollectionKind.PLAYLIST
+)
+
+/** What a [SourcePlaylist] represents, and therefore where its contents belong in Aura. */
+enum class CollectionKind {
+    /** A real playlist → mirrored as a playlist. */
+    PLAYLIST,
+
+    /** The user's liked/favourite songs → liked in Aura, not a new playlist. */
+    FAVORITE_TRACKS,
+
+    /** Albums saved to the user's library → added to Library. */
+    SAVED_ALBUMS,
+
+    /** Artists the user follows → added to Library. Carries no tracks; see [PlaylistSource]. */
+    FOLLOWED_ARTISTS,
+}
+
+/** An artist from the source platform. Followed artists have no tracks to resolve. */
+data class SourceArtist(
+    val name: String,
+    val artworkUrl: String? = null,
 )
 
 enum class SourceType { TIDAL, DEEZER, APPLE, SPOTIFY, FILE }

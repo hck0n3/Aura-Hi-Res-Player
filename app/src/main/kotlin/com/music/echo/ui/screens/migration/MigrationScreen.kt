@@ -7,6 +7,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -65,7 +66,13 @@ fun MigrationScreen(
                 navigationIcon = {
                     IconButton(
                         onClick = {
-                            if (showReview) showReview = false else navController.navigateUp()
+                            when {
+                                showReview -> showReview = false
+                                // A loaded collection (Deezer profile) is a step of its own: back returns
+                                // to the source picker instead of leaving the migration screen entirely.
+                                state.phase == MigrationPhase.COLLECTION -> viewModel.cancelCollection()
+                                else -> navController.navigateUp()
+                            }
                         },
                         onLongClick = navController::backToMain,
                     ) {
@@ -112,6 +119,12 @@ fun MigrationScreen(
                         onYouTubeLogin = { navController.navigate("login") },
                     )
 
+                    MigrationPhase.COLLECTION -> collectionContent(
+                        state = state,
+                        onPick = viewModel::prepareCollectionItem,
+                        onBack = { viewModel.cancelCollection() },
+                    )
+
                     MigrationPhase.CONFIRM -> confirmContent(
                         state = state,
                         onContinue = { viewModel.confirmAndStart() },
@@ -142,12 +155,20 @@ fun MigrationScreen(
             text = {
                 Column {
                     Text(stringResource(R.string.migrate_deezer_hint))
+                    Spacer(Modifier.height(8.dp))
+                    // Up-front, so a private profile is a fixable instruction and not a dead end. The
+                    // failure itself is still handled (SourceError.PrivatePlaylist -> error dialog).
+                    Text(
+                        text = stringResource(R.string.migrate_deezer_public_note),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                     Spacer(Modifier.height(12.dp))
                     OutlinedTextField(
                         value = deezerInput,
                         onValueChange = { deezerInput = it },
                         singleLine = true,
-                        placeholder = { Text("https://www.deezer.com/playlist/…") },
+                        placeholder = { Text(stringResource(R.string.migrate_deezer_placeholder)) },
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
@@ -254,6 +275,132 @@ private fun androidx.compose.foundation.lazy.LazyListScope.pickerContent(
     }
 }
 
+// ── COLLECTION ───────────────────────────────────────────────────────────
+// A source that exposes MANY collections at once (today: a public Deezer profile). Mirrors the Tidal
+// collection list, but here it is a phase of the shared state machine because the Deezer entry point is
+// a dialog on this screen, not a screen of its own.
+
+private fun androidx.compose.foundation.lazy.LazyListScope.collectionContent(
+    state: MigrationUiState,
+    onPick: (com.aura.migration.model.SourcePlaylist) -> Unit,
+    onBack: () -> Unit,
+) {
+    item {
+        Text(
+            text = stringResource(R.string.migrate_collection_title),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+        )
+    }
+    item {
+        Text(
+            text = stringResource(R.string.migrate_collection_desc),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+    if (state.collectionLoading) {
+        item {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                Text(
+                    text = stringResource(R.string.migrate_collection_loading),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    } else if (state.collection.isEmpty()) {
+        item { WarningCard(text = stringResource(R.string.migrate_collection_empty)) }
+    } else {
+        items(state.collection) { item ->
+            MigrationCollectionRow(playlist = item, onClick = { onPick(item) })
+        }
+    }
+    item {
+        TextButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) {
+            Text(stringResource(R.string.migrate_collection_back))
+        }
+    }
+}
+
+/**
+ * One selectable collection. The badge is the whole point: a user must be able to tell at a glance that
+ * "Canciones favoritas" is their LIBRARY (it will be liked / bookmarked) and not just another playlist
+ * that happens to be listed next to them.
+ */
+@Composable
+internal fun MigrationCollectionRow(
+    playlist: com.aura.migration.model.SourcePlaylist,
+    onClick: () -> Unit,
+) {
+    val isLibrary = playlist.kind != com.aura.migration.model.CollectionKind.PLAYLIST
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.medium,
+        color = if (isLibrary) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.45f)
+        else MaterialTheme.colorScheme.surfaceContainerLow,
+        onClick = onClick,
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    text = playlist.name,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                if (isLibrary) {
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f),
+                    ) {
+                        Text(
+                            text = stringResource(R.string.migrate_library_badge),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                        )
+                    }
+                }
+            }
+            Text(
+                // Followed artists are counted in ARTISTS, not songs — saying "%d songs" there is a lie.
+                text = if (playlist.kind == com.aura.migration.model.CollectionKind.FOLLOWED_ARTISTS)
+                    stringResource(R.string.migrate_artist_count, playlist.trackCount)
+                else stringResource(R.string.migrate_tidal_track_count, playlist.trackCount),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = stringResource(destinationRes(playlist.kind)),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/** Where a collection of this [kind] will land in Aura. Single source of truth for the wording. */
+@androidx.annotation.StringRes
+private fun destinationRes(kind: com.aura.migration.model.CollectionKind): Int = when (kind) {
+    com.aura.migration.model.CollectionKind.PLAYLIST -> R.string.migrate_dest_playlist
+    com.aura.migration.model.CollectionKind.FAVORITE_TRACKS -> R.string.migrate_dest_liked
+    com.aura.migration.model.CollectionKind.SAVED_ALBUMS -> R.string.migrate_dest_library
+    com.aura.migration.model.CollectionKind.FOLLOWED_ARTISTS -> R.string.migrate_dest_artists
+}
+
 // ── CONFIRM ──────────────────────────────────────────────────────────────
 
 private fun androidx.compose.foundation.lazy.LazyListScope.confirmContent(
@@ -276,11 +423,21 @@ private fun androidx.compose.foundation.lazy.LazyListScope.confirmContent(
                     fontWeight = FontWeight.Bold,
                 )
                 Text(
-                    text = if (state.pendingCount > 0)
-                        stringResource(R.string.migrate_confirm_count, state.pendingCount)
-                    else stringResource(R.string.migrate_confirm_count_unknown),
+                    text = when {
+                        state.pendingKind == com.aura.migration.model.CollectionKind.FOLLOWED_ARTISTS ->
+                            stringResource(R.string.migrate_artist_count, state.pendingCount)
+                        state.pendingCount > 0 ->
+                            stringResource(R.string.migrate_confirm_count, state.pendingCount)
+                        else -> stringResource(R.string.migrate_confirm_count_unknown)
+                    },
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                // Say WHERE this lands before anything runs: a library import creates no playlist, and
+                // silently doing something different from "migrate playlist" would be a nasty surprise.
+                Text(
+                    text = stringResource(destinationRes(state.pendingKind)),
+                    style = MaterialTheme.typography.bodyMedium,
                 )
                 Text(
                     text = stringResource(R.string.migrate_confirm_network_note),
@@ -378,21 +535,47 @@ private fun androidx.compose.foundation.lazy.LazyListScope.doneContent(
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                 )
-                Text(
-                    text = stringResource(R.string.migrate_result_matched, state.matchedCount),
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                Text(
-                    text = stringResource(R.string.migrate_result_ambiguous, state.ambiguousPending),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    text = stringResource(R.string.migrate_result_notfound, state.notFoundCount),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                if (state.ytmPlaylistId == null) {
+                if (state.resultKind == com.aura.migration.model.CollectionKind.FOLLOWED_ARTISTS) {
+                    // Artists never go through the resolver, so "found / to review / not found" would be
+                    // three lines of zeros. Report what actually happened instead.
+                    Text(
+                        text = stringResource(R.string.migrate_result_artists, state.artistsAdded),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    if (state.notFoundCount > 0) {
+                        Text(
+                            text = stringResource(R.string.migrate_result_artists_notfound, state.notFoundCount),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                } else {
+                    Text(
+                        text = when (state.resultKind) {
+                            com.aura.migration.model.CollectionKind.FAVORITE_TRACKS ->
+                                stringResource(R.string.migrate_result_liked, state.matchedCount)
+                            com.aura.migration.model.CollectionKind.SAVED_ALBUMS ->
+                                stringResource(R.string.migrate_result_library, state.matchedCount)
+                            else -> stringResource(R.string.migrate_result_matched, state.matchedCount)
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Text(
+                        text = stringResource(R.string.migrate_result_ambiguous, state.ambiguousPending),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        text = stringResource(R.string.migrate_result_notfound, state.notFoundCount),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                // A library import creates NO playlist BY DESIGN — warning about it there would report a
+                // successful import as a failure. Only the playlist path can legitimately miss one.
+                if (state.resultKind == com.aura.migration.model.CollectionKind.PLAYLIST &&
+                    state.ytmPlaylistId == null
+                ) {
                     WarningInline(text = stringResource(R.string.migrate_result_no_playlist))
                 }
             }

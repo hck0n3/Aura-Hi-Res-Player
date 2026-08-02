@@ -628,14 +628,16 @@
     <string name="migrate_source_file">File (CSV, M3U, JSPF)</string>
     <string name="migrate_source_file_desc">Works with any export from Spotify, Apple, TuneMyMusic, Soundiiz…</string>
     <string name="migrate_source_deezer">Deezer</string>
-    <string name="migrate_source_deezer_desc">Paste the link to a public playlist</string>
+    <string name="migrate_source_deezer_desc">Paste a public playlist link — or your profile link for your whole library</string>
     <string name="migrate_source_tidal">Tidal</string>
     <string name="migrate_source_tidal_desc">Needs your own client id (set it up inside)</string>
     <string name="migrate_source_apple">Apple Music</string>
     <string name="migrate_source_apple_desc">Guide to Apple\'s native transfer</string>
     <string name="migrate_continue">Continue</string>
     <string name="migrate_deezer_title">Import from Deezer</string>
-    <string name="migrate_deezer_hint">Paste the URL of a public Deezer playlist.</string>
+    <string name="migrate_deezer_hint">Paste the URL of a public Deezer playlist, or of your Deezer profile to import your whole library (favourites, saved albums, followed artists and playlists).</string>
+    <string name="migrate_deezer_placeholder">deezer.com/playlist/… or deezer.com/profile/…</string>
+    <string name="migrate_deezer_public_note">Your Deezer profile must be PUBLIC (Deezer app → Settings → Privacy). A private profile can\'t be read.</string>
     <string name="migrate_confirm_count">%d songs will be migrated.</string>
     <string name="migrate_confirm_count_unknown">The playlist\'s songs will be migrated.</string>
     <string name="migrate_confirm_network_note">Each song is searched on YouTube Music, one at a time.</string>
@@ -682,6 +684,24 @@
     <string name="migrate_apple_intro">Apple Music can\'t be migrated in-app, but Apple offers a native transfer to YouTube Music. Since YouTube Music is Aura\'s catalog, transferred playlists show up on a library refresh.</string>
     <string name="migrate_apple_open_privacy">Open privacy.apple.com</string>
     <string name="migrate_apple_limitations_title">Good to know</string>
+    <!-- Whole-library migration: a collection is routed by what it IS (playlist / likes / library) -->
+    <string name="migrate_collection_title">Choose what to import</string>
+    <string name="migrate_collection_desc">Each item goes where it belongs: favourites become liked songs, saved albums and followed artists go to your Library, playlists become playlists.</string>
+    <string name="migrate_collection_loading">Reading the profile…</string>
+    <string name="migrate_collection_empty">Nothing readable here. Check that the profile is public.</string>
+    <string name="migrate_collection_back">Choose another source</string>
+    <string name="migrate_library_badge">Library</string>
+    <string name="migrate_artist_count">%d artists</string>
+    <string name="migrate_dest_playlist">A new playlist will be created in your YouTube Music account.</string>
+    <string name="migrate_dest_liked">These songs will be added to your liked songs — no playlist is created.</string>
+    <string name="migrate_dest_library">These songs will be added to your Library — no playlist is created.</string>
+    <string name="migrate_dest_artists">These artists will be added to your Library.</string>
+    <string name="migrate_result_liked">%d added to liked songs</string>
+    <string name="migrate_result_library">%d added to your Library</string>
+    <string name="migrate_result_artists">%d artists added to your Library</string>
+    <string name="migrate_result_artists_notfound">%d artists not found</string>
+    <string name="migrate_error_deezer_profile">I couldn\'t read that Deezer profile. Check that it is public and try again.</string>
+    <string name="migrate_error_artists">I couldn\'t add the artists.</string>
     <string name="login_use_phone_account">Use phone account</string>
     <!-- Qobuz hi-res (owner's own subscription) -->
     <string name="qobuz_title">Qobuz</string>

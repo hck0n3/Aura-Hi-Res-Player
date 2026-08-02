@@ -3,6 +3,7 @@
 package iad1tya.echo.music.viewmodels
 
 import android.content.Context
+import android.os.SystemClock
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -26,6 +27,7 @@ import iad1tya.echo.music.utils.get
 import iad1tya.echo.music.utils.reportException
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -234,6 +236,35 @@ private fun AlbumQuality.betterThan(other: AlbumQuality): Boolean =
  */
 private data class MaterializedAlbum(val album: AlbumItem, val quality: AlbumQuality?)
 
+/**
+ * The outcome of ONE buildCompleteDiscography run: the list to publish plus whether that run LOST DATA.
+ *
+ * [degraded] is true when at least one release was cut off by a time budget (a lookup or a quality probe that
+ * never returned) or had to be published as a community playlist's partial slice instead of the full album.
+ * It is the difference between "YouTube/iTunes really has nothing more" (a stable answer, re-running changes
+ * nothing) and "this run was starved by the network" (a re-run on a better connection would find more) — the
+ * only thing that makes a cached discography worth repairing later.
+ */
+private data class DiscographyRun(val items: List<YTItem>, val degraded: Boolean)
+
+/**
+ * One completed discography as cached for the process (see ArtistItemsViewModel.completedCache).
+ *
+ * Storing the plain list was the bug: a run degraded by a bad connection was cached exactly as incomplete as
+ * the network made it and then republished verbatim on every later open, with no network and no way to
+ * refresh — the discography stayed short for the whole process lifetime. Carrying [degraded] and
+ * [builtAtElapsedMs] alongside the items is what lets a later open notice "this entry was built on a bad
+ * network, and that was a while ago" and heal it in the background.
+ *
+ * [builtAtElapsedMs] is SystemClock.elapsedRealtime (monotonic), not wall time: the whole cache is
+ * process-scoped, and a wall-clock jump (timezone/NTP) must not make an entry look 3 hours old.
+ */
+private data class CompletedDiscography(
+    val items: List<YTItem>,
+    val degraded: Boolean,
+    val builtAtElapsedMs: Long,
+)
+
 @HiltViewModel
 class ArtistItemsViewModel
 @Inject
@@ -271,10 +302,26 @@ constructor(
             cache[key] = value
         }
 
+        // How long a DEGRADED cache entry must have been sitting before a later open is allowed to spend
+        // network on repairing it. The point is that the repair must never ride on the SAME bad connection
+        // that produced the degraded entry: re-running two minutes later (still on the same weak mobile
+        // data) would just burn battery to reproduce the same short list. Ten minutes is long enough that
+        // the user has plausibly moved/changed network, and short enough that a normal listening session
+        // still heals itself.
+        private const val DEGRADED_REPAIR_MIN_AGE_MS = 10 * 60 * 1000L
+
         // Per-artist cache of the completed (iTunes-driven) discography for this app session, so
         // re-opening the same artist's albums shows the full list instantly instead of re-fetching.
+        // The value carries the run's DEGRADED verdict + build time (see CompletedDiscography), because an
+        // entry built on a bad network used to be republished, incomplete, forever.
         private val completedCache =
-            java.util.concurrent.ConcurrentHashMap<String, List<YTItem>>()
+            java.util.concurrent.ConcurrentHashMap<String, CompletedDiscography>()
+
+        // Cache keys whose background repair has already been STARTED in this process (in flight or
+        // finished). `add` returning false is both guards at once: at most one repair in flight per artist
+        // section, and at most one repair ATTEMPT per artist section per process — so a permanently bad
+        // network cannot turn every single open into another full completion run (battery/heat).
+        private val repairAttempted = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
 
         // Per-browseId cache of album quality for the session (so re-checking the same album — base or a
         // completion candidate — never re-hits the network).
@@ -344,20 +391,32 @@ constructor(
                             // base duplicate (e.g. instrumental) that the fresh base publish re-introduced.
                             val current = itemsPage.value
                             itemsPage.value = ItemsPage(
-                                items = mergeDiscography(cached, current?.items ?: emptyList()),
+                                items = mergeDiscography(cached.items, current?.items ?: emptyList()),
                                 continuation = current?.continuation ?: artistItemsPage.continuation,
                             )
+                            // ONLY AFTER that instant publish (no shimmer, no added latency, no network on
+                            // this path): if the cached entry was built on a starved network it is stale-
+                            // incomplete forever, so schedule ONE background repair. Returns immediately —
+                            // and does nothing at all for a clean entry.
+                            maybeRepairDegradedDiscography(cacheKey, cached, baseItems, hideExplicit, isSinglesSection)
                         } else {
                             viewModelScope.launch {
-                                val complete =
+                                // A run that THREW is degraded by definition, but it also returns baseItems
+                                // unchanged, so the `!= baseItems` guard below keeps it out of the cache.
+                                val completion =
                                     runCatching { buildCompleteDiscography(baseItems, hideExplicit, isSinglesSection) }
-                                        .getOrDefault(baseItems)
+                                        .getOrDefault(DiscographyRun(baseItems, degraded = true))
+                                val complete = completion.items
                                 // Publish whenever reconciliation CHANGED the list — it may add albums, but it
                                 // may also just de-duplicate (drop an instrumental/truncated copy) or swap a
                                 // truncated upload for a full one, which need not grow the count. `!=` covers
                                 // all three; identical means nothing to do (never publish an empty/no-op).
                                 if (complete.isNotEmpty() && complete != baseItems) {
-                                    putCapped(completedCache, cacheKey, complete)
+                                    putCapped(
+                                        completedCache,
+                                        cacheKey,
+                                        CompletedDiscography(complete, completion.degraded, SystemClock.elapsedRealtime()),
+                                    )
                                     // Merge with whatever the user has scrolled in by now and keep the LIVE
                                     // continuation, so the completion never overwrites loaded pages or
                                     // rewinds paging back to page 1.
@@ -390,14 +449,22 @@ constructor(
      * on YouTube / YouTube Music IN PARALLEL — first as a proper album, otherwise as a community/user
      * upload. Every album candidate (base list included) is quality-gated (median track length + iTunes
      * track count) and reconciled to ONE winner per logical album, so truncated/instrumental duplicates
-     * (e.g. Lauren Daigle self-titled) are dropped. Returns the full, de-duplicated list to publish at once.
+     * (e.g. Lauren Daigle self-titled) are dropped. Returns the full, de-duplicated list to publish at once,
+     * together with whether this particular run LOST DATA to the network (see [DiscographyRun.degraded]) —
+     * which is what makes the cached result eligible for a later background repair.
      */
     private suspend fun buildCompleteDiscography(
         baseItems: List<YTItem>,
         hideExplicit: Boolean,
         isSinglesSection: Boolean,
-    ): List<YTItem> = coroutineScope {
-        val artistName = resolveArtistName() ?: return@coroutineScope baseItems
+    ): DiscographyRun = coroutineScope {
+        // Set by [withBudget] whenever one of the time budgets below expires, and by the community-playlist
+        // fallback when a release can only be published as a partial slice. It is the ONLY thing that
+        // distinguishes "this is everything that exists" from "this is everything the network let us see".
+        val degraded = java.util.concurrent.atomic.AtomicBoolean(false)
+        // No completion possible at all (unknown artist name) — that is not a network degradation, and the
+        // caller discards a result identical to baseItems anyway.
+        val artistName = resolveArtistName() ?: return@coroutineScope DiscographyRun(baseItems, degraded = false)
         val norm = iTunesDiscography::normalizeTitle
         val baseAlbums = baseItems.filterIsInstance<AlbumItem>()
 
@@ -457,8 +524,11 @@ constructor(
                 artistName, probedBase.size, baseUnique.size, baseUnique.size - probedBase.size,
             )
         }
+        // A probe cut off here leaves the album's quality UNKNOWN, which countsAsHave reads as "assume
+        // present": a truncated base album then silently keeps its slot and is never re-completed. That is a
+        // degraded run, so it is recorded (withBudget) — the budget itself is untouched.
         probedBase.map { a ->
-            async { semaphore.withPermit { withTimeoutOrNull(12000L) { fetchAlbumQuality(a.browseId) } } }
+            async { semaphore.withPermit { withBudget(12000L, degraded) { fetchAlbumQuality(a.browseId) } } }
         }.awaitAll()
         // `have` is keyed by reconKey — the SAME key grouping/assembly/merge use below. Keying it by the flat
         // norm (the 0.6.98 asymmetry) let a live edition on the YouTube page ("Lenguaje de Amor (En Vivo)")
@@ -518,7 +588,10 @@ constructor(
                 semaphore.withPermit {
                   // Bound each lookup so one slow YouTube search can't stall the whole completion.
                   // 12s (was 8s) gives a throttled search enough time to return before being dropped.
-                  withTimeoutOrNull(12000L) {
+                  // THE most damaging degradation: when this budget expires the release is DROPPED from the
+                  // discography outright, so withBudget marks the run for a later repair. Note it cannot be
+                  // inferred from the null result — a lookup that simply found nothing returns null too.
+                  withBudget(12000L, degraded) {
                     val target = norm(mt)
                     // Key every hit by reconKey, like the rest of the pipeline, so a live edition's result
                     // can never be filed under (and claimed by) the studio release of the same name.
@@ -582,7 +655,7 @@ constructor(
                             // Bounding it separately means a slow album fetch degrades to that fallback
                             // instead of losing the release ("faltan álbumes", the owner's actual report).
                             val fullAlbum = plSongs?.let {
-                                withTimeoutOrNull(4000L) {
+                                withBudget(4000L, degraded) {
                                     materializeAlbumFromPlaylistSongs(
                                         songs = it,
                                         target = target,
@@ -605,8 +678,18 @@ constructor(
                                 fullAlbum != null -> key to (fullAlbum as YTItem)
                                 // Graceful fallback: no album id or the album fetch failed → keep the partial
                                 // playlist rather than drop the release entirely, if it clears the floor.
-                                plSongs != null && songsLookComplete(plSongs, floorTracks[target]) ->
+                                //
+                                // Deliberately NOT marked as degraded. Landing here is usually DETERMINISTIC
+                                // — YouTube genuinely has no album for that release — so a repair run would
+                                // reach the exact same fallback and cost ~470 requests for nothing, once per
+                                // process, for every artist with a community-only release. The case that IS
+                                // recoverable, "the album exists but its fetch timed out", is already flagged
+                                // by the inner budget above, so nothing repairable is lost by staying quiet
+                                // here. Battery and heat are a standing constraint; a retry that cannot
+                                // improve the result is pure cost.
+                                plSongs != null && songsLookComplete(plSongs, floorTracks[target]) -> {
                                     key to (pl as YTItem)
+                                }
                                 else -> null
                             }
                         }
@@ -626,8 +709,10 @@ constructor(
 
         // Phase C — quality-gate the found albums too (bounded, cached), so reconciliation can rank them
         // against the base albums by real track count.
+        // Same as Phase A: a cut-off probe leaves the found album unranked/ungated, so the group can be
+        // reconciled to a worse winner than the data would have allowed → degraded run.
         foundAlbums.map { it.second }.distinctBy { it.browseId }.map { a ->
-            async { semaphore.withPermit { withTimeoutOrNull(12000L) { fetchAlbumQuality(a.browseId) } } }
+            async { semaphore.withPermit { withBudget(12000L, degraded) { fetchAlbumQuality(a.browseId) } } }
         }.awaitAll()
 
         // Phase D — reconcile per normalized title: ONE winner per logical album. Ranking for albums:
@@ -724,7 +809,144 @@ constructor(
         for ((nt, w) in winnerByNorm) {
             if (emitted.add(nt) && emittedIds.add(w.id)) result.add(w)
         }
-        if (hideExplicit) result.filterExplicit(true) else result
+        val items = if (hideExplicit) result.filterExplicit(true) else result
+        if (degraded.get()) {
+            Timber.tag(TAG).w(
+                "'%s': DEGRADED run (a lookup/probe hit its budget, or a release fell back to a partial " +
+                    "playlist) → %d items cached as repairable", artistName, items.size,
+            )
+        }
+        DiscographyRun(items, degraded.get())
+    }
+
+    /**
+     * Run [block] under [timeoutMs] exactly as `withTimeoutOrNull` does, and RECORD in [degraded] whether the
+     * budget expired. The budgets themselves are unchanged — this only observes them.
+     *
+     * The null result cannot be used for that: `withTimeoutOrNull` collapses "the lookup finished and found
+     * nothing" (a stable answer — re-running changes nothing) and "the lookup was CUT OFF" (data lost to a
+     * bad network) into the same null. The flag is therefore set from a marker written INSIDE the block,
+     * which a timeout can never reach.
+     */
+    private suspend fun <T> withBudget(
+        timeoutMs: Long,
+        degraded: java.util.concurrent.atomic.AtomicBoolean,
+        block: suspend () -> T,
+    ): T? {
+        var finished = false
+        val value = withTimeoutOrNull(timeoutMs) { block().also { finished = true } }
+        if (!finished) degraded.set(true)
+        return value
+    }
+
+    /**
+     * SELF-HEALING of [completedCache]: re-run the completion ONCE, in the background, for an artist section
+     * whose cached discography was built on a starved network.
+     *
+     * Why it exists: a degraded run used to be cached exactly as incomplete as the network made it, and every
+     * later open republished it verbatim — no network, no retry, no way to refresh. The discography stayed
+     * short for the whole process lifetime ("la discografía SIGUE sin salir completa").
+     *
+     * What it is NOT: it is not a poller and it does not loop. It is scheduled only by a real user action
+     * (opening the section again), never on the FIRST open of an artist, and only when ALL of these hold:
+     *  • the cached entry is degraded (a clean entry is never re-run: nothing to heal),
+     *  • it was built at least [DEGRADED_REPAIR_MIN_AGE_MS] ago (so the repair does not ride the same bad
+     *    connection that produced it), and
+     *  • no repair has been started for this section yet in this process ([repairAttempted]).
+     *
+     * WORST-CASE COST — one repair equals at most ONE more completion run, i.e. the same bound as the first
+     * open: ≤7 iTunes store requests + ≤60 base quality probes + ≤80 releases × ≤4 requests each (album
+     * search, playlist search, playlist songs, album fetch) + ≤80 found-album probes ≈ 470 requests, at 6
+     * concurrent (the existing semaphore). In practice far fewer: albumQualityCache / fullAlbumCache are
+     * process-wide, so everything the first run already resolved is served from memory. And it can happen AT
+     * MOST ONCE per artist section for the entire life of the process — a permanently bad network costs one
+     * extra run, not one per open.
+     */
+    private fun maybeRepairDegradedDiscography(
+        cacheKey: String,
+        cached: CompletedDiscography,
+        baseItems: List<YTItem>,
+        hideExplicit: Boolean,
+        isSinglesSection: Boolean,
+    ) {
+        if (!cached.degraded) return
+        val ageMs = SystemClock.elapsedRealtime() - cached.builtAtElapsedMs
+        if (ageMs < DEGRADED_REPAIR_MIN_AGE_MS) return
+        // Atomic claim: false means another open already started (or finished) this section's one repair.
+        if (!repairAttempted.add(cacheKey)) return
+        // Off the critical path: the cached list is already on screen (published by the caller before this
+        // call), and everything below is network work on Dispatchers.IO.
+        viewModelScope.launch(Dispatchers.IO) {
+            Timber.tag(TAG).i(
+                "repairing degraded discography %s (%d items, built %d s ago)",
+                cacheKey, cached.items.size, ageMs / 1000,
+            )
+            val fresh =
+                runCatching { buildCompleteDiscography(baseItems, hideExplicit, isSinglesSection) }
+                    .onFailure { Timber.tag(TAG).w(it, "repair run for %s failed → keeping the cached list", cacheKey) }
+                    .getOrNull() ?: return@launch
+            // A run that produced nothing beyond the base list (artist name unresolvable, every lookup empty)
+            // is not evidence about anything, and merging it over the cache could only take things away.
+            if (fresh.items.isEmpty() || fresh.items == baseItems) {
+                Timber.tag(TAG).i("repair run for %s completed nothing → keeping the cached list", cacheKey)
+                return@launch
+            }
+            // MERGE, NEVER REPLACE. mergeDiscography keeps every primary item and appends the cached ones the
+            // fresh run does not already cover — so a release the first (degraded) run did find survives even
+            // if this run missed it, while a release now recovered as a REAL ALBUM absorbs the stale partial
+            // playlist of the same title instead of showing next to it.
+            val healed = mergeDiscography(fresh.items, cached.items)
+
+            // ── MONOTONICITY GATE — the repair may only ever ADD. A worse retry is a complete no-op. ──────
+            // A previous fix in this file dropped releases an earlier build had shown; that must not recur,
+            // so the merged list is checked against the cached one on all three axes before anything is
+            // published or stored:
+            //   1. it may not be SHORTER,
+            //   2. every RELEASE (reconKey) already on screen must still be there — the id may change only
+            //      because a partial playlist was upgraded to its real album, never because it vanished,
+            //   3. no album the cache had already resolved may be DISPLACED by a different one: re-deciding
+            //      a release is not repairing it, and this run may itself be degraded.
+            val healedIds = healed.mapTo(HashSet()) { it.id }
+            val cachedIds = cached.items.mapTo(HashSet()) { it.id }
+            val healedKeys = healed.mapTo(HashSet()) { reconKey(it.title) }
+            val cachedKeys = cached.items.mapTo(HashSet()) { reconKey(it.title) }
+            val displacedAlbums = cached.items.filterIsInstance<AlbumItem>().filterNot { it.id in healedIds }
+            if (healed.size < cached.items.size || !healedKeys.containsAll(cachedKeys) || displacedAlbums.isNotEmpty()) {
+                Timber.tag(TAG).w(
+                    "repair for %s was NOT strictly better (%d → %d items, %d release(s) lost, %d album(s) displaced) → discarded",
+                    cacheKey, cached.items.size, healed.size, (cachedKeys - healedKeys).size, displacedAlbums.size,
+                )
+                return@launch
+            }
+
+            // Store the healed list with the NEW run's verdict: a repair that came back clean clears the
+            // degraded flag, so the entry is never considered for repair again.
+            putCapped(
+                completedCache,
+                cacheKey,
+                CompletedDiscography(healed, fresh.degraded, SystemClock.elapsedRealtime()),
+            )
+            if (healedIds == cachedIds) {
+                Timber.tag(TAG).i(
+                    "repair for %s recovered nothing new (%d items, degraded=%b) → nothing republished",
+                    cacheKey, healed.size, fresh.degraded,
+                )
+                return@launch
+            }
+            // Re-read the item list HERE, after the network, and merge into it — never into the snapshot
+            // taken before the run (same rule loadMore follows): a continuation page may have landed while
+            // the repair was in flight, and republishing a stale snapshot would erase it.
+            itemsPage.update { current ->
+                ItemsPage(
+                    items = mergeDiscography(healed, current?.items ?: emptyList()),
+                    continuation = current?.continuation,
+                )
+            }
+            Timber.tag(TAG).i(
+                "repair for %s published: %d → %d items (degraded=%b)",
+                cacheKey, cached.items.size, healed.size, fresh.degraded,
+            )
+        }
     }
 
     /**
@@ -951,30 +1173,45 @@ constructor(
      */
     private fun mergeDiscography(primary: List<YTItem>, secondary: List<YTItem>): List<YTItem> {
         val ids = primary.mapTo(HashSet()) { it.id }
-        val norms = primary.mapTo(HashSet()) { reconKey(it.title) }
+        // Titles primary covers with a REAL ALBUM. The old filter only dropped a secondary item when it
+        // was itself an AlbumItem, so once a release was upgraded from "only exposed as a playlist" to the
+        // full album, the stale PlaylistItem was not an AlbumItem and survived: the same record showed
+        // TWICE — the complete album and, right next to it, the truncated playlist. That is the shape of
+        // the owner's report ("la playlist que mete el disco está incompleta"): the incomplete copy was
+        // never meant to still be on screen once the album itself had been recovered.
+        val albumNorms = primary.filterIsInstance<AlbumItem>().mapTo(HashSet()) { reconKey(it.title) }
         val extras = secondary.filter { item ->
-            item.id !in ids &&
-                !(item is AlbumItem && reconKey(item.title) in norms)
+            item.id !in ids && reconKey(item.title) !in albumNorms
         }
         return primary + extras
     }
 
     fun loadMore() {
         viewModelScope.launch {
-            val oldItemsPage = itemsPage.value ?: return@launch
-            val continuation = oldItemsPage.continuation ?: return@launch
+            // Capture ONLY the continuation token up front. The item LIST must be re-read AFTER the
+            // request completes: buildCompleteDiscography publishes the completed discography while this
+            // continuation is in flight, and merging into a PRE-NETWORK snapshot silently erased every
+            // release the completion had just added. Concretely — 25 items on screen, the user scrolls,
+            // the completion lands 12 recovered releases (37 on screen), then the continuation returns and
+            // republishes its stale 25 + the new page. The 12 are gone. They survive only in
+            // completedCache, so they come back if he leaves and re-enters the artist, and vanish again on
+            // the next scroll. Any artist whose grid paginates hits this; it is not a rare race.
+            val continuation = itemsPage.value?.continuation ?: return@launch
             YouTube
                 .artistItemsContinuation(continuation)
                 .onSuccess { artistItemsContinuationPage ->
                     val hideExplicit = context.dataStore.get(HideExplicitKey, false)
                     val hideVideoSongs = context.dataStore.get(HideVideoSongsKey, false)
-                    itemsPage.update {
+                    // Filter the NEW page only — what is already published was filtered when it was built,
+                    // and re-filtering it here would re-apply the rules to completion results too.
+                    val newItems = artistItemsContinuationPage.items
+                        .filterExplicit(hideExplicit)
+                        .filterVideoSongs(hideVideoSongs)
+                    itemsPage.update { current ->
                         ItemsPage(
-                            items =
-                            (oldItemsPage.items + artistItemsContinuationPage.items)
-                                .distinctBy { it.id }
-                                .filterExplicit(hideExplicit)
-                                .filterVideoSongs(hideVideoSongs),
+                            // distinctBy keeps the FIRST occurrence, so a completed release already in
+                            // `current` wins over a duplicate id arriving in the new page.
+                            items = ((current?.items ?: emptyList()) + newItems).distinctBy { it.id },
                             continuation = artistItemsContinuationPage.continuation,
                         )
                     }

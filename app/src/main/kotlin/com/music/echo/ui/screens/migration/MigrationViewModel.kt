@@ -6,8 +6,9 @@ import android.provider.OpenableColumns
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.aura.migration.MigrationEngine
+import com.aura.migration.model.CollectionKind
 import com.aura.migration.model.ImportReport
-import com.aura.migration.model.MatchResult
+import com.aura.migration.model.SourceArtist
 import com.aura.migration.model.SourcePlaylist
 import com.aura.migration.model.SourceTrack
 import com.aura.migration.model.YtmCandidate
@@ -16,14 +17,22 @@ import com.aura.migration.source.SourceError
 import com.aura.migration.source.deezer.DeezerSource
 import com.aura.migration.source.file.FileSource
 import com.aura.migration.source.tidal.TidalSource
+import com.music.innertube.YouTube
+import com.music.innertube.models.ArtistItem
+import com.music.innertube.models.SongItem
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import iad1tya.echo.music.R
 import iad1tya.echo.music.constants.DataSaverEnabledKey
 import iad1tya.echo.music.constants.InnerTubeCookieKey
 import iad1tya.echo.music.db.MusicDatabase
+import iad1tya.echo.music.db.entities.ArtistEntity
 import iad1tya.echo.music.db.entities.PlaylistEntity
 import iad1tya.echo.music.migration.InMemoryPlaylistSource
 import iad1tya.echo.music.migration.TidalTokenStore
+import iad1tya.echo.music.models.MediaMetadata
+import iad1tya.echo.music.models.toMediaMetadata
+import iad1tya.echo.music.spotifyimport.ArtistNameMatching
 import iad1tya.echo.music.utils.SyncUtils
 import iad1tya.echo.music.utils.dataStore
 import kotlinx.coroutines.Dispatchers
@@ -41,7 +50,7 @@ import timber.log.Timber
 import java.time.LocalDateTime
 import javax.inject.Inject
 
-enum class MigrationPhase { PICK, CONFIRM, RUNNING, DONE, ERROR }
+enum class MigrationPhase { PICK, COLLECTION, CONFIRM, RUNNING, DONE, ERROR }
 
 /** One ambiguous track awaiting the user's decision. */
 data class AmbiguousItem(
@@ -55,9 +64,14 @@ data class MigrationUiState(
     val phase: MigrationPhase = MigrationPhase.PICK,
     val signedInYouTube: Boolean = false,
     val dataSaver: Boolean = false,
+    // COLLECTION — a source that exposes MANY collections (Deezer profile) instead of a single list.
+    val collection: List<SourcePlaylist> = emptyList(),
+    val collectionLoading: Boolean = false,
     // CONFIRM
     val pendingName: String = "",
     val pendingCount: Int = 0,
+    /** What the pending import IS, which decides where it lands (playlist / likes / library). */
+    val pendingKind: CollectionKind = CollectionKind.PLAYLIST,
     // RUNNING
     val progressDone: Int = 0,
     val progressTotal: Int = 0,
@@ -66,6 +80,9 @@ data class MigrationUiState(
     val playlistName: String = "",
     val matchedCount: Int = 0,
     val notFoundCount: Int = 0,
+    val artistsAdded: Int = 0,
+    /** The kind of the FINISHED import, so the result screen reports the right destination. */
+    val resultKind: CollectionKind = CollectionKind.PLAYLIST,
     val ytmPlaylistId: String? = null,
     val localPlaylistId: String? = null,
     val ambiguous: List<AmbiguousItem> = emptyList(),
@@ -126,9 +143,18 @@ class MigrationViewModel @Inject constructor(
         val playlistId: String,
         val name: String,
         val count: Int,
+        /**
+         * What this collection IS on the source platform — the ONLY thing that decides the destination
+         * in Aura. PLAYLIST keeps the original "create a playlist in YouTube Music" behaviour; the
+         * library kinds bypass playlist creation entirely (see [confirmAndStart] / [onFinished]).
+         */
+        val kind: CollectionKind = CollectionKind.PLAYLIST,
     )
 
     private var prepared: Prepared? = null
+
+    /** The source that produced [MigrationUiState.collection], so a tapped row knows who to fetch from. */
+    private var collectionSource: PlaylistSource? = null
 
     /**
      * Display name of the source of the running/finished import (e.g. "Tidal"). Kept so the ambiguous-
@@ -187,7 +213,7 @@ class MigrationViewModel @Inject constructor(
                     name = name,
                     count = tracks.size,
                 )
-                toConfirm(name, tracks.size)
+                toConfirm(name, tracks.size, CollectionKind.PLAYLIST)
             } catch (e: SourceError) {
                 fail(e.message ?: "Formato de archivo no soportado.")
             } catch (e: Exception) {
@@ -198,21 +224,75 @@ class MigrationViewModel @Inject constructor(
 
     // ── DEEZER ───────────────────────────────────────────────────────────
 
+    /**
+     * Two shapes of input, decided by [DeezerSource.isProfile]:
+     *  - a PLAYLIST url / bare id -> the original single-playlist flow, byte-for-byte unchanged.
+     *  - a PROFILE url -> the user's whole public library: favourites, saved albums, followed artists
+     *    and their playlists, listed for selection (phase COLLECTION), mirroring the Tidal list.
+     *
+     * The branch is mandatory, not cosmetic: [DeezerSource.parseId] THROWS on a profile url, so without
+     * it a pasted profile link only ever produced "URL de Deezer no válida".
+     */
     fun prepareDeezerImport(input: String) {
         viewModelScope.launch {
             try {
+                if (deezerSource.isProfile(input)) {
+                    loadDeezerProfile(input)
+                    return@launch
+                }
                 val id = deezerSource.parseId(input)
                 val meta = withContext(Dispatchers.IO) { deezerSource.listPlaylists(input) }.firstOrNull()
                 val name = meta?.name?.takeIf { it.isNotBlank() } ?: "Playlist de Deezer"
                 val count = meta?.trackCount ?: 0
                 prepared = Prepared(source = deezerSource, playlistId = id, name = name, count = count)
-                toConfirm(name, count)
+                toConfirm(name, count, CollectionKind.PLAYLIST)
             } catch (e: SourceError) {
                 fail(e.message ?: "No pude leer la playlist de Deezer.")
             } catch (e: Exception) {
                 fail(e.message ?: "URL de Deezer no válida.")
             }
         }
+    }
+
+    /**
+     * Lists everything a PUBLIC Deezer profile exposes. Dispatchers.IO is load-bearing here for the same
+     * reason as [confirmAndStart]: DeezerSource issues SYNCHRONOUS OkHttp calls, and running them on Main
+     * throws NetworkOnMainThreadException, which used to be swallowed into a generic failure.
+     */
+    private suspend fun loadDeezerProfile(input: String) {
+        _uiState.value = _uiState.value.copy(
+            phase = MigrationPhase.COLLECTION,
+            collection = emptyList(),
+            collectionLoading = true,
+            errorMessage = null,
+        )
+        try {
+            val lists = withContext(Dispatchers.IO) { deezerSource.listPlaylists(input) }
+            Timber.tag("Migration").i("Deezer profile loaded: %d collections", lists.size)
+            collectionSource = deezerSource
+            _uiState.value = _uiState.value.copy(collection = lists, collectionLoading = false)
+        } catch (e: SourceError.PrivatePlaylist) {
+            _uiState.value = _uiState.value.copy(collectionLoading = false)
+            fail(context.getString(R.string.migrate_error_deezer_profile))
+        } catch (e: Exception) {
+            Timber.tag("Migration").w(e, "Deezer profile load failed")
+            _uiState.value = _uiState.value.copy(collectionLoading = false)
+            fail(e.message ?: context.getString(R.string.migrate_error_deezer_profile))
+        }
+    }
+
+    /** The user tapped one of the collections listed in phase COLLECTION. -> CONFIRM. */
+    fun prepareCollectionItem(item: SourcePlaylist) {
+        val source = collectionSource ?: return
+        val name = item.name.ifBlank { "Importación" }
+        prepared = Prepared(
+            source = source,
+            playlistId = item.id,
+            name = name,
+            count = item.trackCount,
+            kind = item.kind,
+        )
+        toConfirm(name, item.trackCount, item.kind)
     }
 
     // ── TIDAL: AUTH ──────────────────────────────────────────────────────
@@ -369,9 +449,17 @@ class MigrationViewModel @Inject constructor(
 
     private fun beginTidalConfirm(meta: SourcePlaylist) {
         val name = meta.name.ifBlank { "Lista de Tidal" }
-        prepared = Prepared(source = tidalSource, playlistId = meta.id, name = name, count = meta.trackCount)
+        // meta.kind carries whether this is a real playlist or one of the synthetic LIBRARY collections
+        // (favourites / saved albums / followed artists) that TidalSource now surfaces.
+        prepared = Prepared(
+            source = tidalSource,
+            playlistId = meta.id,
+            name = name,
+            count = meta.trackCount,
+            kind = meta.kind,
+        )
         _tidalState.value = _tidalState.value.copy(error = null)
-        toConfirm(name, meta.trackCount)
+        toConfirm(name, meta.trackCount, meta.kind)
     }
 
     private fun tidalError(message: String) {
@@ -394,44 +482,64 @@ class MigrationViewModel @Inject constructor(
             progressCurrent = "",
             errorMessage = null,
         )
-        // Dispatchers.IO is LOAD-BEARING, not decoration: MigrationEngine.import is a plain flow{} with
-        // no flowOn, so its body runs on the collector's dispatcher. On viewModelScope (Main) the very
-        // first act — source.fetchTracks() — is a SYNCHRONOUS OkHttp call for Deezer =>
-        // NetworkOnMainThreadException (swallowed into Progress.Failed => "la migración falló" on EVERY
-        // Deezer import), and createPlaylist's runBlocking would ANR on slow networks for File imports
-        // too. Collecting on IO puts the whole resolve/create loop off the main thread; the UI-state
-        // writes below are cheap value copies to a StateFlow (thread-safe), read back on Main by Compose.
         migrationJob?.cancel()
-        migrationJob = viewModelScope.launch(Dispatchers.IO) {
-            engine.import(p.source, p.playlistId, playlistName = p.name, createInYtm = true)
-                .collect { progress ->
-                    when (progress) {
-                        is MigrationEngine.Progress.Started ->
-                            _uiState.value = _uiState.value.copy(
-                                progressTotal = progress.total,
-                                progressDone = 0,
-                                playlistName = progress.playlistName,
-                            )
+        // Followed artists carry NO tracks, so there is nothing for the resolver to do: they never go
+        // through the engine at all (see [runArtistImport]).
+        migrationJob = if (p.kind == CollectionKind.FOLLOWED_ARTISTS) {
+            viewModelScope.launch(Dispatchers.IO) { runArtistImport(p) }
+        } else {
+            viewModelScope.launch(Dispatchers.IO) { runTrackImport(p) }
+        }
+    }
 
-                        is MigrationEngine.Progress.Track -> {
-                            _uiState.value = _uiState.value.copy(
-                                progressDone = progress.done,
-                                progressTotal = progress.total,
-                                progressCurrent = progress.current,
-                            )
-                            // Real thermal backpressure: the engine's flow is UNBUFFERED, so suspending
-                            // the collector here suspends the producer — pacing the up-to-4 searches/track
-                            // so a 1000-track import can't hammer the endpoint back-to-back (the promise
-                            // the unused MigrationRunner made; enforced on the LIVE path instead).
-                            delay(TRACK_THROTTLE_MS)
-                        }
+    /**
+     * The resolve-every-track path, shared by playlists AND by the two track-carrying library kinds.
+     *
+     * The ONLY difference is `createInYtm`: a real playlist is mirrored into a NEW YouTube Music playlist
+     * exactly as before, while favourites/saved albums must NOT create one — their songs belong in "Me
+     * gusta" / the Library, so the engine just resolves and hands back the videoIds ([onFinished] writes).
+     *
+     * Dispatchers.IO (set by the caller) is LOAD-BEARING, not decoration: MigrationEngine.import is a plain
+     * flow{} with no flowOn, so its body runs on the collector's dispatcher. On viewModelScope (Main) the
+     * very first act — source.fetchTracks() — is a SYNCHRONOUS OkHttp call for Deezer =>
+     * NetworkOnMainThreadException (swallowed into Progress.Failed => "la migración falló" on EVERY Deezer
+     * import), and createPlaylist's runBlocking would ANR on slow networks for File imports too. The
+     * UI-state writes below are cheap value copies to a StateFlow (thread-safe), read back on Main.
+     */
+    private suspend fun runTrackImport(p: Prepared) {
+        engine.import(
+            p.source,
+            p.playlistId,
+            playlistName = p.name,
+            createInYtm = p.kind == CollectionKind.PLAYLIST,
+        ).collect { progress ->
+            when (progress) {
+                is MigrationEngine.Progress.Started ->
+                    _uiState.value = _uiState.value.copy(
+                        progressTotal = progress.total,
+                        progressDone = 0,
+                        playlistName = progress.playlistName,
+                    )
 
-                        is MigrationEngine.Progress.Finished -> onFinished(progress.report, progress.ytmPlaylistId)
-
-                        is MigrationEngine.Progress.Failed ->
-                            fail(progress.error.message ?: "La migración falló.")
-                    }
+                is MigrationEngine.Progress.Track -> {
+                    _uiState.value = _uiState.value.copy(
+                        progressDone = progress.done,
+                        progressTotal = progress.total,
+                        progressCurrent = progress.current,
+                    )
+                    // Real thermal backpressure: the engine's flow is UNBUFFERED, so suspending
+                    // the collector here suspends the producer — pacing the up-to-4 searches/track
+                    // so a 1000-track import can't hammer the endpoint back-to-back (the promise
+                    // the unused MigrationRunner made; enforced on the LIVE path instead).
+                    delay(TRACK_THROTTLE_MS)
                 }
+
+                is MigrationEngine.Progress.Finished ->
+                    onFinished(progress.report, progress.ytmPlaylistId, p.kind)
+
+                is MigrationEngine.Progress.Failed ->
+                    fail(progress.error.message ?: "La migración falló.")
+            }
         }
     }
 
@@ -455,12 +563,26 @@ class MigrationViewModel @Inject constructor(
         return localId
     }
 
-    private suspend fun onFinished(report: ImportReport, ytmPlaylistId: String?) {
+    private suspend fun onFinished(report: ImportReport, ytmPlaylistId: String?, kind: CollectionKind) {
         var localId: String? = null
-        if (ytmPlaylistId != null) {
-            localId = createLocalMirror(ytmPlaylistId, report.playlistName)
-            // Pull the freshly-created YTM playlist's songs into the local row so it shows populated.
-            syncUtils.syncPlaylist(ytmPlaylistId, localId)
+        when (kind) {
+            // Unchanged: the playlist path the owner already uses.
+            CollectionKind.PLAYLIST -> {
+                if (ytmPlaylistId != null) {
+                    localId = createLocalMirror(ytmPlaylistId, report.playlistName)
+                    // Pull the freshly-created YTM playlist's songs into the local row so it shows populated.
+                    syncUtils.syncPlaylist(ytmPlaylistId, localId)
+                }
+            }
+            // Favourites become LIKED songs, saved albums land in the LIBRARY. Neither creates a playlist.
+            CollectionKind.FAVORITE_TRACKS ->
+                persistResolvedSongs(report.matched.map { it.source to it.videoId }, markLiked = true)
+
+            CollectionKind.SAVED_ALBUMS ->
+                persistResolvedSongs(report.matched.map { it.source to it.videoId }, markLiked = false)
+
+            // Never reaches the engine; kept exhaustive so a new kind can't silently fall through.
+            CollectionKind.FOLLOWED_ARTISTS -> Unit
         }
 
         _uiState.value = _uiState.value.copy(
@@ -468,10 +590,227 @@ class MigrationViewModel @Inject constructor(
             playlistName = report.playlistName,
             matchedCount = report.matched.size,
             notFoundCount = report.notFound.size,
+            resultKind = kind,
             ytmPlaylistId = ytmPlaylistId,
             localPlaylistId = localId,
             ambiguous = report.ambiguous.map { AmbiguousItem(it.source, it.candidates) },
         )
+    }
+
+    // ── DESTINO: CANCIONES (ME GUSTA / BIBLIOTECA) ───────────────────────
+
+    /**
+     * Writes freshly-resolved videoIds into the local database as LIKED songs (`markLiked = true`) or as
+     * LIBRARY songs (`markLiked = false`). This is the whole point of the non-playlist kinds.
+     *
+     * Three landmines this deliberately avoids, all of them documented project rules:
+     *  1. A resolved videoId may have NO row at all. `update()` on a missing row is a SILENT no-op, so a
+     *     brand-new song is INSERTED first (via the DAO's `insert(MediaMetadata)`, which also creates the
+     *     artist rows + song↔artist maps) with the flags already applied — the same shape the Spotify
+     *     import uses in mirrorPlaylist. Existing rows are written with **upsert**, never `update`.
+     *  2. `inLibrary` is what every Library song query filters on (`WHERE inLibrary IS NOT NULL`); a row
+     *     written without it is real but INVISIBLE. It is always stamped, for likes too (liking a song in
+     *     this app also puts it in the library — see SongEntity.toggleLike).
+     *  3. Existing rows keep their original likedDate/inLibrary: re-importing must never re-stamp and
+     *     reshuffle the user's ordering.
+     *
+     * Metadata comes from ONE batched [YouTube.queue] per 50 ids (same machinery as JrPlaylistImporter)
+     * so imported songs carry real titles/artists/artwork; if that lookup fails the SourceTrack itself is
+     * the fallback, because a like that lands with a plain title beats a like that never lands.
+     *
+     * Caller must already be on Dispatchers.IO: this is network + disk from top to bottom.
+     */
+    private suspend fun persistResolvedSongs(
+        resolved: List<Pair<SourceTrack, String>>,
+        markLiked: Boolean,
+    ): Int {
+        if (resolved.isEmpty()) return 0
+        val ordered = resolved
+            .sortedBy { it.first.sourcePosition }
+            .distinctBy { it.second }
+
+        val byVideoId = HashMap<String, SongItem>()
+        ordered.map { it.second }.chunked(YTM_QUEUE_CHUNK).forEach { chunk ->
+            runCatching { YouTube.queue(videoIds = chunk).getOrNull() }
+                .getOrNull()
+                ?.forEach { song -> byVideoId[song.id] = song }
+            delay(TRACK_THROTTLE_MS)
+        }
+
+        val metadata = ordered.map { (track, videoId) ->
+            byVideoId[videoId]?.toMediaMetadata() ?: fallbackMetadata(track, videoId)
+        }
+
+        // One transaction per block so Room's invalidation tracker emits once per block instead of once
+        // per row — the same anti-flicker batching SyncUtils uses for big libraries.
+        metadata.chunked(DB_BATCH_SIZE).forEach { block ->
+            database.withTransaction {
+                val now = LocalDateTime.now()
+                block.forEach { meta ->
+                    val existing = getSongByIdBlocking(meta.id)?.song
+                    if (existing == null) {
+                        insert(meta) { song ->
+                            song.copy(
+                                inLibrary = song.inLibrary ?: now,
+                                liked = song.liked || markLiked,
+                                likedDate = if (markLiked) song.likedDate ?: now else song.likedDate,
+                            )
+                        }
+                    } else if (existing.inLibrary == null || (markLiked && !existing.liked)) {
+                        // UPSERT, never update: the hard project rule for like writes (an update on a row
+                        // that vanished between the read and the write is a silent no-op).
+                        upsert(
+                            existing.copy(
+                                inLibrary = existing.inLibrary ?: now,
+                                liked = existing.liked || markLiked,
+                                likedDate = if (markLiked) existing.likedDate ?: now else existing.likedDate,
+                            ),
+                        )
+                    }
+                }
+            }
+        }
+
+        // Imported song artists also become followed, so "tus artistas" reflects the import (same tail as
+        // the Spotify import). Additive and best-effort — it must never fail the import itself.
+        runCatching { database.followArtistsWithContent(LocalDateTime.now()) }
+        // Mirror upwards on the existing, retried, queued sync path instead of firing one raw
+        // YouTube.likeVideo per song from here (that would be an unbounded burst on a 2000-song library).
+        runCatching {
+            if (markLiked) syncUtils.syncLikedSongs() else syncUtils.syncLibrarySongs()
+        }
+        Timber.tag("Migration").i(
+            "Persisted %d resolved songs (liked=%s)", metadata.size, markLiked,
+        )
+        return metadata.size
+    }
+
+    /**
+     * Minimal metadata for a videoId whose YouTube lookup failed — title/artists come from the SOURCE
+     * platform, which we always have. Mirrors JrPlaylistImporter.importDirect: a thin row is filled in
+     * with real artwork/album the first time the song is played.
+     */
+    private fun fallbackMetadata(track: SourceTrack, videoId: String) = MediaMetadata(
+        id = videoId,
+        title = track.title,
+        artists = track.artists.filter { it.isNotBlank() }.map { MediaMetadata.Artist(id = null, name = it) },
+        duration = track.durationMs?.let { (it / 1000).toInt() } ?: -1,
+    )
+
+    // ── DESTINO: ARTISTAS SEGUIDOS ───────────────────────────────────────
+
+    /**
+     * Followed artists have no tracks to resolve, so the engine is bypassed entirely: each source artist
+     * is matched to a YouTube Music artist channel and BOOKMARKED locally — `bookmarkedAt` is exactly
+     * what "Biblioteca -> Artistas" filters on (`WHERE bookmarkedAt IS NOT NULL`); without it the row
+     * exists but is invisible. Same shape as the Spotify import's matchAndFollowArtist.
+     *
+     * Sequential + throttled on purpose (one search per artist): a parallel burst is the thermal/network
+     * behaviour this project keeps auditing out.
+     */
+    private suspend fun runArtistImport(p: Prepared) {
+        try {
+            val artists = p.source.fetchArtists(p.playlistId)
+            if (artists.isEmpty()) {
+                _uiState.value = _uiState.value.copy(
+                    phase = MigrationPhase.DONE,
+                    playlistName = p.name,
+                    matchedCount = 0,
+                    notFoundCount = 0,
+                    artistsAdded = 0,
+                    resultKind = CollectionKind.FOLLOWED_ARTISTS,
+                    ytmPlaylistId = null,
+                    localPlaylistId = null,
+                    ambiguous = emptyList(),
+                )
+                return
+            }
+
+            _uiState.value = _uiState.value.copy(
+                progressTotal = artists.size,
+                progressDone = 0,
+                playlistName = p.name,
+            )
+
+            var added = 0
+            artists.forEachIndexed { index, artist ->
+                _uiState.value = _uiState.value.copy(
+                    progressDone = index + 1,
+                    progressTotal = artists.size,
+                    progressCurrent = artist.name,
+                )
+                // One artist that fails to match NEVER sinks the rest — the engine's non-negotiable
+                // principle, applied to this path too.
+                if (runCatching { bookmarkArtist(artist) }.getOrDefault(false)) added++
+                delay(TRACK_THROTTLE_MS)
+            }
+
+            // Push the new follows up to the account on the existing retried sync path.
+            runCatching { syncUtils.syncArtistsSubscriptions() }
+
+            _uiState.value = _uiState.value.copy(
+                phase = MigrationPhase.DONE,
+                playlistName = p.name,
+                matchedCount = 0,
+                notFoundCount = artists.size - added,
+                artistsAdded = added,
+                resultKind = CollectionKind.FOLLOWED_ARTISTS,
+                ytmPlaylistId = null,
+                localPlaylistId = null,
+                ambiguous = emptyList(),
+            )
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Timber.tag("Migration").w(e, "Artist import failed")
+            fail(e.message ?: context.getString(R.string.migrate_error_artists))
+        }
+    }
+
+    /** Matches one source artist on YouTube Music and bookmarks it. Returns true when it landed. */
+    private suspend fun bookmarkArtist(artist: SourceArtist): Boolean {
+        if (artist.name.isBlank()) return false
+        val results = YouTube.search(artist.name, YouTube.SearchFilter.FILTER_ARTIST).getOrNull()
+            ?: return false
+        val match = results.items
+            .filterIsInstance<ArtistItem>()
+            .firstOrNull { ArtistNameMatching.isLikelyMatch(artist.name, it.title) }
+            ?: return false
+
+        // Resolve the real channel id the same way SyncUtils / the Spotify import do: search-result
+        // ArtistItems carry channelId == null and a browse id that is often not a channel id.
+        val channelId = match.channelId
+            ?: if (match.id.startsWith("UC")) match.id
+            else runCatching { YouTube.getChannelId(match.id) }.getOrNull()?.takeIf { it.isNotEmpty() }
+
+        val existing = database.getArtistById(match.id)
+        database.withTransaction {
+            val now = LocalDateTime.now()
+            if (existing == null) {
+                insert(
+                    ArtistEntity(
+                        id = match.id,
+                        name = match.title,
+                        thumbnailUrl = match.thumbnail ?: artist.artworkUrl,
+                        channelId = channelId,
+                        // MANDATORY: "Biblioteca -> Artistas" filters WHERE bookmarkedAt IS NOT NULL.
+                        bookmarkedAt = now,
+                    ),
+                )
+            } else {
+                update(
+                    existing.copy(
+                        name = match.title,
+                        thumbnailUrl = match.thumbnail ?: existing.thumbnailUrl,
+                        channelId = channelId ?: existing.channelId,
+                        // Never re-stamp: keep the date the user originally followed them.
+                        bookmarkedAt = existing.bookmarkedAt ?: now,
+                        lastUpdateTime = now,
+                    ),
+                )
+            }
+        }
+        return true
     }
 
     // ── AMBIGUOUS REVIEW ─────────────────────────────────────────────────
@@ -515,6 +854,24 @@ class MigrationViewModel @Inject constructor(
                 // aborting halfway (a cancel here is unobservable to the user but leaves YTM inconsistent).
                 withContext(NonCancellable) {
                     try {
+                        chosen.forEach { engine.confirmMatch(it.track, it.chosenVideoId!!) }
+
+                        // A LIBRARY import has no playlist to append to: the reviewed songs go exactly
+                        // where the auto-matched ones went (liked / library). Creating a playlist here
+                        // would be the very bug this change fixes, just deferred to the review screen.
+                        if (state.resultKind != CollectionKind.PLAYLIST) {
+                            persistResolvedSongs(
+                                chosen.map { it.track to it.chosenVideoId!! },
+                                markLiked = state.resultKind == CollectionKind.FAVORITE_TRACKS,
+                            )
+                            _uiState.value = _uiState.value.copy(
+                                appendingResolved = false,
+                                matchedCount = _uiState.value.matchedCount + chosen.size,
+                                ambiguous = _uiState.value.ambiguous.filterNot { it.resolved },
+                            )
+                            return@withContext
+                        }
+
                         // 0 auto-matches means engine.import (matched.isEmpty()) created NO playlist — by
                         // design, to never leave an empty list behind. Now that the user has resolved at
                         // least one ambiguous track we have something to add, so create the YTM playlist +
@@ -539,7 +896,6 @@ class MigrationViewModel @Inject constructor(
                             localId = createLocalMirror(ytmId, name)
                             _uiState.value = _uiState.value.copy(localPlaylistId = localId)
                         }
-                        chosen.forEach { engine.confirmMatch(it.track, it.chosenVideoId!!) }
                         engine.appendResolved(ytmId, chosen.map { it.chosenVideoId!! })
                         if (localId != null) syncUtils.syncPlaylist(ytmId, localId)
                         _uiState.value = _uiState.value.copy(
@@ -561,6 +917,7 @@ class MigrationViewModel @Inject constructor(
 
     fun reset() {
         prepared = null
+        collectionSource = null
         // Cancel BOTH jobs: an in-flight import or append that outlives reset() writes the OLD import's
         // ids/counts into the FRESH state — a stale ytmPlaylistId then makes the next applyResolved append
         // the new import's tracks into the PREVIOUS playlist (cross-import corruption), and a stale
@@ -579,7 +936,25 @@ class MigrationViewModel @Inject constructor(
 
     fun cancelPending() {
         prepared = null
-        _uiState.value = _uiState.value.copy(phase = MigrationPhase.PICK, errorMessage = null)
+        // Back to the collection list when there is one (a Deezer profile) instead of throwing the user
+        // all the way out to the picker and making them paste the URL again.
+        val hasCollection = _uiState.value.collection.isNotEmpty()
+        _uiState.value = _uiState.value.copy(
+            phase = if (hasCollection) MigrationPhase.COLLECTION else MigrationPhase.PICK,
+            errorMessage = null,
+        )
+    }
+
+    /** Leaves the collection list (Deezer profile) and returns to the source picker. */
+    fun cancelCollection() {
+        prepared = null
+        collectionSource = null
+        _uiState.value = _uiState.value.copy(
+            phase = MigrationPhase.PICK,
+            collection = emptyList(),
+            collectionLoading = false,
+            errorMessage = null,
+        )
     }
 
     fun dismissError() {
@@ -587,11 +962,12 @@ class MigrationViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(phase = MigrationPhase.PICK, errorMessage = null)
     }
 
-    private fun toConfirm(name: String, count: Int) {
+    private fun toConfirm(name: String, count: Int, kind: CollectionKind) {
         _uiState.value = _uiState.value.copy(
             phase = MigrationPhase.CONFIRM,
             pendingName = name,
             pendingCount = count,
+            pendingKind = kind,
             errorMessage = null,
         )
     }
@@ -608,5 +984,11 @@ class MigrationViewModel @Inject constructor(
     private companion object {
         // Per-track pause between resolves — matches the (now-removed) MigrationRunner's value.
         const val TRACK_THROTTLE_MS = 120L
+
+        /** YouTube.queue asserts a hard per-request cap; 50 is what the other importers use. */
+        const val YTM_QUEUE_CHUNK = 50
+
+        /** Rows written per transaction, so Room emits one invalidation per block, not per row. */
+        const val DB_BATCH_SIZE = 300
     }
 }

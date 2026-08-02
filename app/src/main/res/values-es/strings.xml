@@ -570,14 +570,16 @@
     <string name="migrate_source_file">Archivo (CSV, M3U, JSPF)</string>
     <string name="migrate_source_file_desc">Funciona con cualquier exportación de Spotify, Apple, TuneMyMusic, Soundiiz…</string>
     <string name="migrate_source_deezer">Deezer</string>
-    <string name="migrate_source_deezer_desc">Pega el enlace de una lista pública</string>
+    <string name="migrate_source_deezer_desc">Pega el enlace de una lista pública o el de tu perfil para traer toda tu biblioteca</string>
     <string name="migrate_source_tidal">Tidal</string>
     <string name="migrate_source_tidal_desc">Necesita tu propio client id (configúralo dentro)</string>
     <string name="migrate_source_apple">Apple Music</string>
     <string name="migrate_source_apple_desc">Guía de la transferencia nativa de Apple</string>
     <string name="migrate_continue">Continuar</string>
     <string name="migrate_deezer_title">Importar de Deezer</string>
-    <string name="migrate_deezer_hint">Pega la URL de una lista pública de Deezer.</string>
+    <string name="migrate_deezer_hint">Pega la URL de una lista pública de Deezer, o la de tu perfil de Deezer para importar toda tu biblioteca (favoritas, álbumes guardados, artistas seguidos y listas).</string>
+    <string name="migrate_deezer_placeholder">deezer.com/playlist/… o deezer.com/profile/…</string>
+    <string name="migrate_deezer_public_note">Tu perfil de Deezer debe ser PÚBLICO (app de Deezer → Ajustes → Privacidad). Un perfil privado no se puede leer.</string>
     <string name="migrate_confirm_count">Se migrarán %d canciones.</string>
     <string name="migrate_confirm_count_unknown">Se migrarán las canciones de la lista.</string>
     <string name="migrate_confirm_network_note">Cada canción se busca en YouTube Music, una por una.</string>
@@ -624,6 +626,24 @@
     <string name="migrate_apple_intro">Apple Music no se puede migrar dentro de la app, pero Apple ofrece una transferencia nativa a YouTube Music. Como YouTube Music es el catálogo de Aura, las listas transferidas aparecen al actualizar la biblioteca.</string>
     <string name="migrate_apple_open_privacy">Abrir privacy.apple.com</string>
     <string name="migrate_apple_limitations_title">Ten en cuenta</string>
+    <!-- Migración de la biblioteca entera: cada colección va según lo que ES (lista / me gusta / biblioteca) -->
+    <string name="migrate_collection_title">Elige qué importar</string>
+    <string name="migrate_collection_desc">Cada cosa va a su sitio: las favoritas se marcan como Me gusta, los álbumes guardados y los artistas seguidos van a tu Biblioteca, y las listas se crean como listas.</string>
+    <string name="migrate_collection_loading">Leyendo el perfil…</string>
+    <string name="migrate_collection_empty">Aquí no hay nada que se pueda leer. Comprueba que el perfil sea público.</string>
+    <string name="migrate_collection_back">Elegir otro origen</string>
+    <string name="migrate_library_badge">Biblioteca</string>
+    <string name="migrate_artist_count">%d artistas</string>
+    <string name="migrate_dest_playlist">Se creará una lista nueva en tu cuenta de YouTube Music.</string>
+    <string name="migrate_dest_liked">Estas canciones se añadirán a tus Me gusta; no se crea ninguna lista.</string>
+    <string name="migrate_dest_library">Estas canciones se añadirán a tu Biblioteca; no se crea ninguna lista.</string>
+    <string name="migrate_dest_artists">Estos artistas se añadirán a tu Biblioteca.</string>
+    <string name="migrate_result_liked">%d añadidas a Me gusta</string>
+    <string name="migrate_result_library">%d añadidas a tu Biblioteca</string>
+    <string name="migrate_result_artists">%d artistas añadidos a tu Biblioteca</string>
+    <string name="migrate_result_artists_notfound">%d artistas no encontrados</string>
+    <string name="migrate_error_deezer_profile">No pude leer ese perfil de Deezer. Comprueba que sea público e inténtalo de nuevo.</string>
+    <string name="migrate_error_artists">No pude añadir los artistas.</string>
     <string name="login_use_phone_account">Usar cuenta del teléfono</string>
     <!-- Qobuz hi-res (suscripción propia del dueño) -->
     <string name="qobuz_title">Qobuz</string>
