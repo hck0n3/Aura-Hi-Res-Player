@@ -406,10 +406,17 @@ class CastConnectionHandler(
             _isCasting.value = true
             _isConnecting.value = false
             _castDeviceName.value = session.castDevice?.friendlyName
-            
+
+            // WITHOUT this, setVolume() writes to a null session and silently does nothing: the slider
+            // moves, the speaker does not. onSessionStarted was the ONLY assignment, so every session
+            // that was RESUMED (app returned to foreground, process restarted while casting) had volume
+            // control dead with no error anywhere.
+            castSession = session
+            adoptSessionVolume(session)
+
             remoteMediaClient = session.remoteMediaClient
             remoteMediaClient?.registerCallback(remoteMediaClientCallback)
-            
+
             startPositionUpdates()
         }
         
@@ -435,6 +442,10 @@ class CastConnectionHandler(
             sessionManager?.currentCastSession?.let { session ->
                 _isCasting.value = true
                 _castDeviceName.value = session.castDevice?.friendlyName
+                // Same omission as onSessionResumed: without this, adopting an already-running session
+                // leaves volume control writing to null.
+                castSession = session
+                adoptSessionVolume(session)
                 remoteMediaClient = session.remoteMediaClient
                 remoteMediaClient?.registerCallback(remoteMediaClientCallback)
                 startPositionUpdates()
@@ -456,13 +467,46 @@ class CastConnectionHandler(
         }
     }
     
+    /**
+     * Selects [route] so the Cast SDK's SessionManager can start a session on it.
+     *
+     * Aura drives its OWN picker sheet (see CastButton/CastPickerSheet) instead of the system
+     * MediaRouteChooserDialog, so this manual selectRoute() is what actually connects — it cannot
+     * simply be dropped. It is, however, called with a route SNAPSHOT the sheet captured earlier, and
+     * that route can be gone by the time the user taps it (device sleeps, Wi-Fi blips, discovery
+     * refreshes). Some OEM MediaRouter implementations — Xiaomi's notably — throw from selectRoute()
+     * on a removed route ("Ignoring attempt to select removed route") instead of ignoring it, which
+     * crashed the app straight out of the device picker.
+     *
+     * So: re-resolve the route by id against the LIVE router right before selecting (the stale object
+     * is never handed back to the framework), and treat any OEM throw as a failed connection attempt
+     * rather than a crash. The user simply sees the picker not connect, and can retry.
+     */
     fun connectToRoute(route: MediaRouter.RouteInfo) {
         // Ensure we're initialized before trying to connect
         if (mediaRouter == null) {
             initialize()
         }
+        val router = mediaRouter
+        if (router == null) {
+            Timber.w("connectToRoute: MediaRouter unavailable")
+            _isConnecting.value = false
+            return
+        }
+        // Re-query: the snapshot the picker handed us may already be removed.
+        val live = runCatching { router.routes.firstOrNull { it.id == route.id } }.getOrNull()
+        if (live == null) {
+            Timber.w("connectToRoute: route ${route.id} is no longer available; ignoring")
+            _isConnecting.value = false
+            return
+        }
         _isConnecting.value = true
-        mediaRouter?.selectRoute(route)
+        runCatching { router.selectRoute(live) }
+            .onFailure {
+                // OEM MediaRouter threw on a route that vanished between the re-query and the select.
+                Timber.w(it, "selectRoute failed for ${route.id}")
+                _isConnecting.value = false
+            }
     }
     
     fun disconnect() {
@@ -628,14 +672,31 @@ class CastConnectionHandler(
      * Set the Cast device volume (0.0 to 1.0)
      */
     fun setVolume(volume: Float) {
+        val clampedVolume = volume.coerceIn(0f, 1f)
+        val session = castSession
+        if (session == null) {
+            // Do NOT move the mirror in this case: publishing a volume we could not apply is what made
+            // the failure invisible — the UI slider tracked a value the speaker never received.
+            Timber.w("Cast setVolume($clampedVolume) ignored: no active session")
+            return
+        }
         try {
-            val clampedVolume = volume.coerceIn(0f, 1f)
-            castSession?.volume = clampedVolume.toDouble()
+            session.volume = clampedVolume.toDouble()
             _castVolume.value = clampedVolume
             Timber.d("Set Cast volume to $clampedVolume")
         } catch (e: Exception) {
             Timber.e(e, "Failed to set Cast volume")
         }
+    }
+
+    /**
+     * Seeds the volume mirror from the LIVE session, so the in-app slider starts where the device
+     * actually is instead of at whatever value the mirror happened to hold. Best-effort: reading
+     * volume throws if the session is not fully connected yet.
+     */
+    private fun adoptSessionVolume(session: CastSession) {
+        runCatching { _castVolume.value = session.volume.toFloat().coerceIn(0f, 1f) }
+            .onFailure { Timber.w(it, "Could not read Cast session volume") }
     }
     
     /**

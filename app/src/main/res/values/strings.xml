@@ -461,7 +461,7 @@
     <string name="listen_together_smart_resync">Smart Network Resync</string>
     <string name="listen_together_smart_resync_desc">Automatically catch up with the host after a connection drop</string>
     <string name="spotify_import_title">Import From Spotify</string>
-    <string name="spotify_import_desc">Connect Spotify, choose playlists, and mirror them into local ArchiveTune playlists.</string>
+    <string name="spotify_import_desc">Connect Spotify, choose playlists, and mirror them into local Aura playlists.</string>
     <string name="spotify_add_by_link">Import playlist by link</string>
     <string name="spotify_add_by_link_desc">Paste a Spotify playlist link, URI or ID — including public playlists you don\'t own</string>
     <string name="spotify_add_by_link_hint">Paste a Spotify playlist link, URI (spotify:playlist:…) or ID.</string>

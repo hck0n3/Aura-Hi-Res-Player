@@ -612,14 +612,19 @@ object YouTube {
                 }?.mapNotNull {
                     PlaylistPage.fromMusicResponsiveListItemRenderer(it)
                 } ?: emptyList(),
+            // NO `?: sectionListRenderer.continuations` fallback here: that fires precisely when the
+            // playlist shelf has NO more songs, and would hand songsContinuation the SECTION LIST's
+            // continuation — the "Recommended"/suggestions one — so pagination kept walking and poured
+            // suggested songs into the synced playlist. The same value is still exposed below as
+            // `continuation` for the related/"you might also like" use, which is what it actually is.
+            // A playlist that is genuinely finished must end with a null songs cursor.
             songsContinuation = response.contents?.twoColumnBrowseResultsRenderer?.secondaryContents?.sectionListRenderer
                 ?.contents?.firstOrNull()?.let { content ->
                     content.musicPlaylistShelfRenderer?.contents?.getContinuation()
                         ?: content.musicPlaylistShelfRenderer?.continuations?.getContinuation()
                         ?: content.musicShelfRenderer?.contents?.getContinuation()
                         ?: content.musicShelfRenderer?.continuations?.getContinuation()
-                } ?: response.contents?.twoColumnBrowseResultsRenderer?.secondaryContents?.sectionListRenderer
-                    ?.continuations?.getContinuation(),
+                },
             continuation = response.contents?.twoColumnBrowseResultsRenderer?.secondaryContents?.sectionListRenderer
                 ?.continuations?.getContinuation(),
             related = related?.ifEmpty { null }

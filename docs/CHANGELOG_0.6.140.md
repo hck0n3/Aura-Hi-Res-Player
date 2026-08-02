@@ -52,6 +52,14 @@ Trae tus playlists de otras plataformas a tu cuenta de YouTube Music.
 - El fondo animado del **mini-reproductor** (siempre visible) ahora respeta el Modo Alto Rendimiento y el freno térmico, igual que el reproductor grande.
 - **Piso por hardware**: en dispositivos de gama baja/ultra-baja los fondos con shaders y el segundo decodificador nunca se activan, aunque se apague el Modo Alto Rendimiento — la app se mantiene fluida en equipos débiles.
 
+## 🔊 Reproducción y estabilidad
+- **Firma de las peticiones a YouTube corregida**: Aura enviaba sus dos credenciales de reproducción **intercambiadas**, así que cada petición iba firmada con la credencial de la otra. Es la causa típica de los errores 403 y de que una URL de reproducción deje de valer **a mitad de canción**.
+- **Menos "se cerró sola"**: al arrancar, la app hacía todo su trabajo pesado **también en los procesos auxiliares** (el de reporte de fallos y el de reinicio). Eso incluía abrir la caché de música por duplicado — dos procesos escribiendo el mismo índice justo cuando la app ya estaba fallando. Ahora ese trabajo solo lo hace el proceso principal: menos riesgo de perder descargas o caché, y menos batería y calor.
+- **Cast: el volumen ya funciona siempre.** Si la sesión se reanudaba (volver a la app, o reiniciarse mientras emitías), el deslizador se movía pero **el altavoz no cambiaba de volumen**, sin ningún aviso. Además, ahora el deslizador arranca en el volumen **real** del dispositivo.
+- **Alta calidad por JioSaavn más fiable**: se añadió una comprobación de título que impide que suene **otra canción** cuando el servidor devuelve algo que no es lo pedido (antes bastaba con que coincidieran la duración y el artista). Funciona con títulos en cualquier idioma y escritura — español con acentos, hindi, japonés, coreano, ruso — y cuando no puede juzgar (título en un alfabeto y respuesta en otro) se aparta en vez de rechazar, para no dejar sin alta calidad a nadie.
+- **Reproducción por Chromecast más robusta** al elegir dispositivo (arregla un fallo en móviles Xiaomi).
+- **Auto-reparación de reproducción ampliada**: la lista de configuraciones que permite arreglar la reproducción sin actualizar la app pasa de 5 a **390** entradas.
+
 ---
 
 ## Detalle técnico (interno — no para el público)

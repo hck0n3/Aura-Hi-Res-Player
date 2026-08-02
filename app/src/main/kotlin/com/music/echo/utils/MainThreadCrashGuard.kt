@@ -42,10 +42,18 @@ object MainThreadCrashGuard {
 
     /**
      * True only for the foreground-service-start exception family AND only when the throw unwound through
-     * media3's notification / startForeground path — so an FGS exception raised by unrelated app code is
-     * never masked. Matched by exact type / framework class name, not by message text.
+     * a framework path that legitimately starts a foreground service on our behalf — so an FGS exception
+     * raised by unrelated app code is never masked. Matched by exact type / framework class name, not by
+     * message text.
+     *
+     * Two such paths exist:
+     *  - media3's notification / startForeground path (the original case), and
+     *  - GMS Cast, which starts its own ReconnectionService/CastRemoteDisplay foreground service when a
+     *    session is established or resumed. Its stack contains NO media3 frames, so it used to be
+     *    re-thrown here, and the uncaught handler then swallowed it WITHOUT re-entering the looper —
+     *    killing the main thread and closing the app silently, with no CrashActivity and no report.
      */
-    private fun Throwable.isSwallowableForegroundServiceCrash(): Boolean {
+    fun Throwable.isSwallowableForegroundServiceCrash(): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return false
         val isFgsType = this is ForegroundServiceStartNotAllowedException ||
             javaClass.name == "android.app.ForegroundServiceDidNotStartInTimeException"
@@ -55,7 +63,12 @@ object MainThreadCrashGuard {
             cn.startsWith("androidx.media3.session.MediaNotificationManager") ||
                 cn.startsWith("androidx.media3.session.MediaSessionService") ||
                 (cn.startsWith("androidx.media3.session.") &&
-                    frame.methodName.contains("startForeground", ignoreCase = true))
+                    frame.methodName.contains("startForeground", ignoreCase = true)) ||
+                // Both the public Cast surface and the minified internal one: R8 rewrites the GMS Cast
+                // internals to com.google.android.gms.internal.cast.zz*, so matching only the public
+                // package would leave the whitelist unfired on exactly the release builds users run.
+                cn.startsWith("com.google.android.gms.cast.") ||
+                cn.startsWith("com.google.android.gms.internal.cast.")
         }
     }
 }

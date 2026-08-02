@@ -583,23 +583,21 @@ object YTPlayerUtils {
 
                     val ytDuration = knownDurationMs?.let { it / 1000L } ?: metadata?.videoDetails?.lengthSeconds?.toLongOrNull() ?: 0L
 
-                    fun normalize(s: String): Set<String> =
-                        s.lowercase()
-                            .replace(Regex("[^a-z0-9\\s]"), " ")
-                            .split(Regex("\\s+"))
-                            .filter { it.length > 1 }
-                            .toSet()
+                    // Same formula as before (common / max(|A|,|B|)), but tokenized by SaavnMatcher so
+                    // the score and the title gate below agree — and so accents survive. The old
+                    // inline `[^a-z0-9\s]` squash DELETED accented characters mid-word ("preguntó" ->
+                    // "pregunt", "ñengo" -> "engo"), scoring 0 on Spanish titles that match perfectly
+                    // and leaving duration+artist to carry the decision on their own.
+                    fun wordOverlapScore(a: String, b: String, maxPts: Int): Int =
+                        (com.music.jiosaavn.SaavnMatcher.overlapRatio(a, b) * maxPts).toInt()
 
-                    fun wordOverlapScore(a: String, b: String, maxPts: Int): Int {
-                        val setA = normalize(a)
-                        val setB = normalize(b)
-                        if (setA.isEmpty() || setB.isEmpty()) return 0
-                        val common = setA.intersect(setB).size
-                        val ratio  = common.toDouble() / maxOf(setA.size, setB.size)
-                        return (ratio * maxPts).toInt()
-                    }
-
-                    data class ScoredSong(val song: com.music.jiosaavn.SaavnSong, val score: Int, val artistOk: Boolean)
+                    data class ScoredSong(
+                        val song: com.music.jiosaavn.SaavnSong,
+                        val score: Int,
+                        val artistOk: Boolean,
+                        val titleOk: Boolean,
+                        val titleSim: Double
+                    )
 
                     val scored = songs.map { candidate ->
                         var score = 0
@@ -624,18 +622,47 @@ object YTPlayerUtils {
                         // otherwise pass the threshold and substitute a DIFFERENT artist's same-titled
                         // song (e.g. another "Dirt") — the wrong-song bug.
                         val artistOk = artist.isBlank() || artistScore > 0
-                        ScoredSong(candidate, score, artistOk)
+                        // HARD TITLE GATE (checked BEFORE the additive score can qualify anything):
+                        // the score above is a SUM, so duration (+30) + artist (+20) + explicit (+5)
+                        // alone reach 55 — past MIN_CONFIDENCE — with a title score of ZERO. That is a
+                        // completely different song by the same artist, and with a failed metadata
+                        // fetch (artist blank => artistOk true for everyone) a different song by
+                        // anyone. variantPenalty can't catch it: a clean-but-wrong title has no
+                        // variant marker. Same discipline as the Qobuz confidence() below, where
+                        // titleSim is multiplicative and a zero title kills the candidate.
+                        // titleMatches (not a raw titleSimilarity compare) so the gate ABSTAINS when the
+                        // two titles are in scripts it cannot compare — YT stores native script while
+                        // Saavn returns the transliteration on a big part of the Indian catalogue, and a
+                        // token metric scores those 0. Rejecting there would kill jiosaavn's core market.
+                        val titleSim = com.music.jiosaavn.SaavnMatcher.titleSimilarity(title, candidate.name, artist)
+                        val titleOk = com.music.jiosaavn.SaavnMatcher.titleMatches(title, candidate.name, artist)
+                        ScoredSong(candidate, score, artistOk, titleOk, titleSim)
                     }
+
+                    // Keep rejected-by-title candidates visible: if a real match is ever gated out, this
+                    // line is the evidence (and the top scorer is the one that would have played). At
+                    // INFO because AppLogger.FileTree only persists >= INFO — at DEBUG this goes nowhere
+                    // in a release build, which is precisely where a bad rejection has to be diagnosed.
+                    scored.filterNot { it.titleOk }
+                        .sortedByDescending { it.score }
+                        .take(3)
+                        .forEach {
+                            Timber.tag(TAG).i(
+                                "Saavn rejected by title gate: name=\"${it.song.name}\" " +
+                                    "titleSim=${"%.2f".format(it.titleSim)} < ${com.music.jiosaavn.SaavnMatcher.MIN_TITLE_SIMILARITY} " +
+                                    "(score=${it.score}, artistOk=${it.artistOk}) for yt=\"$title\""
+                            )
+                        }
 
                     val MIN_CONFIDENCE = 40
                     val bestSong = scored
-                        .filter { it.artistOk }
+                        .filter { it.titleOk && it.artistOk }
                         .maxByOrNull { it.score }
                         ?.takeIf { it.score >= MIN_CONFIDENCE }
                         ?.song
 
                     if (bestSong == null) {
-                        throw Exception("Saavn: no same-artist match >= $MIN_CONFIDENCE (won't substitute a different song)")
+                        throw Exception("Saavn: no same-title/same-artist match >= $MIN_CONFIDENCE (won't substitute a different song)")
                     }
 
                     Timber.tag(TAG).d("Saavn best match: id=${bestSong.id}, name=${bestSong.name}")

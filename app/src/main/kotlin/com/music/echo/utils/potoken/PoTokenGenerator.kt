@@ -190,9 +190,14 @@ class PoTokenGenerator {
 
         Timber.tag(TAG).d("poToken generated successfully: session=${streamingPot.take(20)}..., video=${playerPot.take(20)}...")
 
+        // CONTENT BINDING — these two are NOT interchangeable, and both are String, so a swap compiles
+        // silently and only shows up as HTTP 403 / streams that die mid-song:
+        //  - the /player REQUEST token must be bound to the VIDEO ID   -> playerPot   (generated from videoId)
+        //  - the STREAM URL token (?pot=) must be bound to the SESSION -> streamingPot (generated from sessionId)
+        // They were assigned crosswise here, so every request carried the other one's binding.
         return PoTokenResult(
-            playerRequestPoToken = streamingPot,
-            streamingDataPoToken = playerPot,
+            playerRequestPoToken = playerPot,
+            streamingDataPoToken = streamingPot,
         )
     }
 }

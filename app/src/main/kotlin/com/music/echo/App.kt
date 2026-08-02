@@ -163,6 +163,23 @@ class App : Application(), SingletonImageLoader.Factory, androidx.work.Configura
             scheduleNonCriticalWork()
         }
 
+        // ── DEFAULT PROCESS ONLY, FROM HERE DOWN ──────────────────────────────────────────────────────
+        // onCreate runs in EVERY process: `:crash` (CrashActivity) and `:phoenix` (the restart trampoline),
+        // both throwaway and both alive for seconds. Everything below is heavyweight startup work that a
+        // throwaway process must never do, and one item is outright unsafe there:
+        //
+        //   downloadUtilLazy.get() constructs the @PlayerCache and @DownloadCache SimpleCache singletons.
+        //   media3 guards a cache directory against a second instance only WITHIN a process (a static set
+        //   of locked dirs), so nothing stopped `:crash`/`:phoenix` from opening the SAME cache dirs and
+        //   the SAME StandaloneDatabaseProvider while the still-running main process held them — two
+        //   writers on one cache index. That risks a corrupted index, i.e. downloads and cached songs
+        //   going missing or failing to play, precisely at the moment the app is already crashing.
+        //
+        // The rest is waste with a real cost the owner tracks: a full scan of both cache dirs, a native
+        // .so load, a network refresh and two never-ending Flow collectors — battery and heat spent by a
+        // process that is about to die. scheduleNonCriticalWork() above keeps its own identical guard.
+        if (!isDefaultProcess()) return
+
         // Best-effort background refresh of the self-healing player configs (owner-hosted JSON). Idempotent
         // and network-optional: on failure the app keeps its built-in hardcoded configs. Never throws. Lets
         // a YouTube cipher rotation be fixed by publishing one config, with no app update.
