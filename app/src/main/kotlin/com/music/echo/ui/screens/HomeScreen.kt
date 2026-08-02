@@ -637,7 +637,9 @@ fun HomeScreen(
     // Fixed logical order is the DEFAULT (false); users who explicitly enabled randomization keep it
     // (the stored preference wins — only the unset default changed). Matches ContentSettings' default.
     val (randomizeHomeOrder) = rememberPreference(RandomizeHomeOrderKey, false)
-    val (showSpeedDial) = rememberPreference(ShowSpeedDialKey, true)
+    // OFF by default (owner's call). Must match ContentSettings' default exactly: two different defaults
+    // for one key make the toggle disagree with what Home actually renders until the user touches it.
+    val (showSpeedDial) = rememberPreference(ShowSpeedDialKey, false)
     val (tasteOnlyHome) = rememberPreference(HomeTasteOnlyKey, true)
     val (homeRichLayout) = rememberPreference(HomeRichLayoutKey, true)
     // Editorial look: bigger artwork cards in the taste rows. Null = compact (default component size).

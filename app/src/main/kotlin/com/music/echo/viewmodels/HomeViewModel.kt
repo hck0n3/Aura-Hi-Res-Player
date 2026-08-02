@@ -319,7 +319,10 @@ class HomeViewModel @Inject constructor(
     // Home DISPLAYS is filtered, cheaply, with id Sets.
 
     private val showSpeedDialFlow = context.dataStore.data
-        .map { it[ShowSpeedDialKey] ?: true }
+        // OFF by default, matching HomeScreen and ContentSettings. This one is the load-bearing copy:
+        // it gates whether the speed-dial data is QUERIED at all, so leaving it true would keep doing the
+        // work for a section the UI no longer draws.
+        .map { it[ShowSpeedDialKey] ?: false }
         .distinctUntilChanged()
 
     /** Ids on SpeedDial's first pager page (~the tiles actually visible without swiping). Empty when

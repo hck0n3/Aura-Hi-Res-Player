@@ -237,7 +237,15 @@ constructor(
     ) {
         currentLyricsJob?.cancel()
 
-        val cacheKey = "$songArtists-$songTitle".replace(" ", "")
+        // WRONG-SONG FIX: this used to be "$songArtists-$songTitle" — a key WEAKER than the videoId.
+        // Two distinct tracks that share a title+artist (the album cut and the music-video upload, a
+        // live/remaster re-upload, a re-issue under the same name) collapsed onto ONE entry, so the
+        // provider sheet opened on the second song showed the FIRST song's results. Key on the
+        // videoId, which is what actually identifies the track.
+        // The "all:" prefix keeps this namespace disjoint from getLyrics(), which stores a
+        // single-result list under the bare id in this SAME LruCache — without it, getLyrics would
+        // read back getAllLyrics' first provider entry (a result the user never chose).
+        val cacheKey = "all:$mediaId"
         cache.get(cacheKey)?.let { results ->
             results.forEach {
                 callback(it)

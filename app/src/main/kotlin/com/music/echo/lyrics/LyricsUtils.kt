@@ -557,16 +557,30 @@ object LyricsUtils {
             }.toList()
     }
 
+    /**
+     * Reading LEAD applied when choosing the active line, in ms. This is upstream's value and
+     * behaviour (Echo-Music: `lines[index].time >= position + 300L`).
+     *
+     * An LRC timestamp marks when a line STARTS being sung, so switching the highlight exactly at
+     * that instant gives the reader zero time to find the line — it is perceived as running late.
+     * Leading the switch slightly is what every LRC player does.
+     *
+     * HISTORY (do not "fix" this back): a previous coherence change removed the lead because
+     * APPLE_V2 then FABRICATED a per-char sweep starting at (position - entry.time), so a led line
+     * sat visibly empty for 300 ms. That fabricated sweep has since been gated off — the per-char
+     * sweep in Lyrics.kt now runs ONLY with real word timings — so the reason to drop the lead went
+     * away with it, but the lead was never restored. What was left is a line that switches with no
+     * lead at all, i.e. the reported desync. The intra-line fill deliberately still uses the RAW
+     * position: the line lights first, then fills as it is actually sung (Apple Music behaviour).
+     */
+    const val LINE_LOOK_AHEAD_MS = 300L
+
     fun findCurrentLineIndex(
         lines: List<LyricsEntry>,
         position: Long,
     ): Int {
         for (index in lines.indices) {
-            // Coherence fix: no look-ahead. The intra-line word fill (EchoMusicLyrics) starts at
-            // (position - entry.time) with NO look-ahead, so a +300ms line look-ahead lit the line
-            // ~300ms before any word could fill — an empty highlight. Switch the active line exactly
-            // when the word fill begins by comparing against the raw position.
-            if (lines[index].time >= position) {
+            if (lines[index].time >= position + LINE_LOOK_AHEAD_MS) {
                 return index - 1
             }
         }

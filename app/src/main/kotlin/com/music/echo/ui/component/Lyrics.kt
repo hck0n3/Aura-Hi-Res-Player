@@ -320,13 +320,31 @@ fun Lyrics(
     val scope = rememberCoroutineScope()
 
     val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
-    val rawLyricsEntity by playerConnection.currentLyrics.collectAsState(initial = null)
-    val currentSong by playerConnection.currentSong.collectAsState(initial = null)
-    // Wrong-song guard: currentLyrics is a flatMapLatest over the DB, so on a track change it
+    // CROSSFADE (default ON, 5 s): the swap publishes the INCOMING song at the START of the fade — the
+    // notification, widget and Android Auto need that and are untouched — but for those seconds the user is
+    // still HEARING the outgoing track. The lyrics therefore used to jump a whole song early on EVERY track
+    // change. While a swap is in flight this is non-null and the lyrics view follows that outgoing song, on
+    // the outgoing player's own clock (see the ticker below); it goes null when the fade commits. Null at any
+    // other time — or if the service state is unreadable — so everything below degrades to the old behaviour.
+    val crossfadeOutgoing by playerConnection.crossfadeOutgoingMetadata.collectAsState()
+    val lyricsMediaId = (crossfadeOutgoing ?: mediaMetadata)?.id
+    // Keyed on the song the LYRICS are showing, which outside a crossfade is exactly the live song — i.e.
+    // the same rows (and the same single Room subscription each) PlayerConnection's currentLyrics/currentSong
+    // would have handed us. During a fade they simply stay on the audible song for a few seconds longer.
+    val rawLyricsEntity by remember(lyricsMediaId) { database.lyrics(lyricsMediaId) }
+        .collectAsState(initial = null)
+    val currentSong by remember(lyricsMediaId) { database.song(lyricsMediaId) }
+        .collectAsState(initial = null)
+    // Wrong-song guard: the lyrics query is a flow over the DB, so on a track change it
     // keeps emitting the PREVIOUS song's row until Room re-queries for the new id. Only accept
-    // the entity when it belongs to the currently-playing song; otherwise fall back to the
+    // the entity when it belongs to the song being shown; otherwise fall back to the
     // LOADING state so a stale/late row can never paint the previous song's lyrics on this one.
-    val lyricsEntity = rawLyricsEntity?.takeIf { it.id == mediaMetadata?.id }
+    val lyricsEntity = rawLyricsEntity?.takeIf { it.id == lyricsMediaId }
+    // Tapping a line seeks the LIVE player. While a crossfade swap is in flight the lines on screen belong to
+    // the OUTGOING song, so that seek would jump the INCOMING track to a timestamp taken from the previous
+    // one — and the outgoing player is already ending, so it cannot be seeked meaningfully either. Ignore the
+    // tap for those few seconds; outside a crossfade this is just the user's setting, unchanged.
+    val lyricsClickSeekEnabled = changeLyrics && crossfadeOutgoing == null
     val lyrics = remember(lyricsEntity) { lyricsEntity?.lyrics?.trim() }
 
     val playerBackground by rememberEnumPreference(
@@ -788,7 +806,15 @@ fun Lyrics(
             withFrameMillis {
                 val sliderPosition = sliderPositionProvider()
                 isSeeking = sliderPosition != null
-                val position = sliderPosition ?: playerConnection.player.currentPosition
+                // While a crossfade swap is in flight the lines on screen belong to the OUTGOING song, so the
+                // highlight has to run on the OUTGOING player's clock: reading the live (incoming) player here
+                // would paint that song's FIRST lines against a position of ~0. Asked for only while the view
+                // is actually showing the outgoing song, and null whenever it is not readable (no swap, fade
+                // committed, player released — the service also self-heals the override on that null), in
+                // which case this is byte-for-byte the previous expression.
+                val outgoingPosition =
+                    if (crossfadeOutgoing != null) playerConnection.crossfadeOutgoingPositionMs() else null
+                val position = outgoingPosition ?: sliderPosition ?: playerConnection.player.currentPosition
                 currentPlaybackPosition = position
                 val lyricsOffset = currentSong?.song?.lyricsOffset ?: 0
                 currentLineIndex = findCurrentLineIndex(lines, position + lyricsOffset)
@@ -1124,7 +1150,7 @@ fun Lyrics(
                                         if (selectedIndices.size < maxSelectionLimit) selectedIndices.add(index)
                                         else showMaxSelectionToast = true
                                     }
-                                } else if (isSynced && changeLyrics && !isGuest) {
+                                } else if (isSynced && lyricsClickSeekEnabled && !isGuest) {
                                     val lyricsOffset = currentSong?.song?.lyricsOffset ?: 0
                                     playerConnection.seekTo((item.time - lyricsOffset).coerceAtLeast(0))
                                     scope.launch {
@@ -1205,7 +1231,7 @@ fun Lyrics(
                                         if (selectedIndices.size < maxSelectionLimit) selectedIndices.add(index)
                                         else showMaxSelectionToast = true
                                     }
-                                } else if (isSynced && changeLyrics && !isGuest) {
+                                } else if (isSynced && lyricsClickSeekEnabled && !isGuest) {
                                     val lyricsOffset = currentSong?.song?.lyricsOffset ?: 0
                                     playerConnection.seekTo((item.time - lyricsOffset).coerceAtLeast(0))
                                     scope.launch {
@@ -1261,7 +1287,7 @@ fun Lyrics(
                                             showMaxSelectionToast = true
                                         }
                                     }
-                                } else if (isSynced && changeLyrics && !isGuest) {
+                                } else if (isSynced && lyricsClickSeekEnabled && !isGuest) {
                                     
                                     val lyricsOffset = currentSong?.song?.lyricsOffset ?: 0
                                     playerConnection.seekTo((item.time - lyricsOffset).coerceAtLeast(0))
@@ -1784,6 +1810,14 @@ fun Lyrics(
                                 }
                             }
 
+                            // Line-only lyrics (LrcLib / KuGou — most songs) light the whole line together,
+                            // which used to SNAP on. Ease it in with the SHARED 350 ms whole-line fade
+                            // (iad1tya.echo.music.ui.component.rememberWholeLineFillProgress, the same one
+                            // EchoMusic uses) instead of a second implementation. Still zero fabricated
+                            // per-word timings, so nothing can drift against the audio. Unused — and the
+                            // animation stays idle — when the entry HAS real per-word timings.
+                            val wholeLineFill = rememberWholeLineFillProgress(isActiveLine)
+
                             @OptIn(ExperimentalLayoutApi::class)
                             FlowRow(
                                 modifier = Modifier.fillMaxWidth(),
@@ -1818,7 +1852,10 @@ fun Lyrics(
                                                 // the whole active line together instead (honest line-level
                                                 // sync, same as EchoMusicLyrics). The true per-char sweep below
                                                 // runs ONLY when hasRealWordTimings (Apple/richsync data).
-                                                !hasRealWordTimings -> 1f
+                                                // It EASES in over 350 ms rather than snapping on — see
+                                                // wholeLineFill above; the value is still line-level, never
+                                                // a per-word guess.
+                                                !hasRealWordTimings -> wholeLineFill
                                                 lineRelTime >= charEnd -> 1f
                                                 lineRelTime < charStart -> 0f
                                                 else -> {
@@ -1866,7 +1903,11 @@ fun Lyrics(
                                 entry = item,
                                 isActive = isActiveLine,
                                 isPast = !isActiveLine && item.time < currentPlaybackPosition,
-                                effectivePlaybackPosition = effectivePlaybackPosition + 150L, 
+                                // No per-style fudge: the reading lead now lives in exactly ONE place
+                                // (LyricsUtils.LINE_LOOK_AHEAD_MS, applied when the active line is
+                                // chosen). This style used to add an undocumented +150 ms on top of it,
+                                // so LYRICS_V2 ran 150 ms ahead of every other style on identical data.
+                                effectivePlaybackPosition = effectivePlaybackPosition,
                                 expressiveAccent = expressiveAccent,
                                 inactiveAlpha = 0.35f, 
                                 baseFontSize = lyricsTextSize,

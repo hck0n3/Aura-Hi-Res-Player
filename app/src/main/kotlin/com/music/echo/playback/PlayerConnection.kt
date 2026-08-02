@@ -165,6 +165,26 @@ class PlayerConnection(
     // True only while a crossfade swap is in progress (backed by MusicService's MutableStateFlow). The UI
     // reads this to react to the swap (e.g. suppress the spurious null-item transition the fading player fires).
     val isCrossfading: kotlinx.coroutines.flow.StateFlow<Boolean> = service.isCrossfadingFlow
+    /**
+     * Metadata of the track that is still AUDIBLE while a crossfade swap is in flight (the outgoing, fading
+     * player), null whenever no swap is in flight. Only the LYRICS view reads it: everything else — the
+     * now-playing UI, notification, widget, Android Auto — keeps following [mediaMetadata], which the swap
+     * still publishes at the exact same moment it always did.
+     */
+    val crossfadeOutgoingMetadata = service.crossfadeOutgoingMetadata
+
+    /**
+     * Live position of that outgoing player, or null when it is not readable (no swap, already committed,
+     * released). Callers MUST fall back to [player].currentPosition on null. Main thread only.
+     */
+    fun crossfadeOutgoingPositionMs(): Long? =
+        try {
+            service.crossfadeOutgoingPositionMs()
+        } catch (e: Exception) {
+            Timber.tag(TAG).e(e, "Error reading crossfade outgoing position")
+            null
+        }
+
     fun toggleVideoMode() = service.toggleVideoMode()
     fun exitVideoMode() = service.exitVideoMode()
 

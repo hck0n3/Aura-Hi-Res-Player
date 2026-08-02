@@ -355,9 +355,14 @@ private fun WordLevelCanvasLyrics(
     
     val playerConnection = LocalPlayerConnection.current
 
-    var smoothPosition by remember { mutableLongStateOf(effectivePlaybackPosition + lyricsOffset) }
-    
-    LaunchedEffect(isActiveLine) {
+    // `effectivePlaybackPosition` ALREADY contains lyricsOffset (Lyrics.kt applies it before passing
+    // this down); adding it again here seeded the sweep at position + 2×offset.
+    var smoothPosition by remember { mutableLongStateOf(effectivePlaybackPosition) }
+
+    // Keyed on lyricsOffset too: the loop below CAPTURES the offset, so keying only on isActiveLine
+    // froze it for as long as the line stayed active — moving the per-song offset slider did nothing
+    // to the line the user was actually looking at, which is the one case the slider exists for.
+    LaunchedEffect(isActiveLine, lyricsOffset) {
         if (isActiveLine && playerConnection != null) {
             
             

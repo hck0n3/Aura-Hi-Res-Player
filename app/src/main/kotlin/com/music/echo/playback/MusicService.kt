@@ -431,7 +431,35 @@ class MusicService :
     /** StateFlow of the crossfade-swap state, surfaced to the UI as PlayerConnection.isCrossfading. True only
      *  while a crossfade swap is actively in progress (performCrossfadeSwap → cleanupCrossfade). */
     val isCrossfadingFlow: kotlinx.coroutines.flow.StateFlow<Boolean> = _isCrossfading.asStateFlow()
+    // ---- LYRICS-ONLY observation of the track that is still AUDIBLE during a crossfade swap ----
+    // The swap publishes the INCOMING song at the START of the fade (the notification, widget and Android Auto
+    // depend on that and are NOT touched here), but for the whole fade the user still HEARS the outgoing one.
+    // These two members let the lyrics view — and nothing else — follow that outgoing track on its own clock
+    // until the fade commits. Pure observation: no fade math, curve, duration, swap ORDER or metadata
+    // publication is affected by either of them.
+    private val _crossfadeOutgoingMetadata =
+        MutableStateFlow<iad1tya.echo.music.models.MediaMetadata?>(null)
+    val crossfadeOutgoingMetadata: kotlinx.coroutines.flow.StateFlow<iad1tya.echo.music.models.MediaMetadata?> =
+        _crossfadeOutgoingMetadata.asStateFlow()
     private var crossfadeJob: Job? = null
+
+    /**
+     * Live playback position of the OUTGOING (fading) player, or null whenever there is no readable fade in
+     * flight — no crossfade, already committed, or the player was released. Main thread only: the same thread
+     * the UI already reads [player].currentPosition on and the same thread the crossfade itself runs on, so
+     * there is no locking and no IO here.
+     *
+     * Also SELF-HEALING: if the fade is gone, the outgoing-song override is cleared here as well, so the
+     * lyrics view can never be stranded showing a song that stopped playing.
+     */
+    fun crossfadeOutgoingPositionMs(): Long? {
+        val fp = fadingPlayer?.takeIf { isCrossfading }
+        val pos = fp?.let { runCatching { it.currentPosition }.getOrNull() }
+        if (pos == null && _crossfadeOutgoingMetadata.value != null) {
+            _crossfadeOutgoingMetadata.value = null
+        }
+        return pos
+    }
 
     private lateinit var mediaSession: MediaLibrarySession
 
@@ -7730,6 +7758,8 @@ class MusicService :
         }
         runCatching { fadingPlayer?.release() }
         fadingPlayer = null
+        // The fading player is gone, so the lyrics view's outgoing-song override must not outlive it.
+        _crossfadeOutgoingMetadata.value = null
         playerNormProcessors.clear()
         playerLimiterProcessors.clear()
         playerEqProcessors.values.forEach { eq -> equalizerService.removeAudioProcessor(eq) }
@@ -8752,6 +8782,11 @@ class MusicService :
         }
 
         fadingPlayer = currentPlayer
+        // Observation-only, for the lyrics view: this is the track the user KEEPS HEARING for the length of
+        // the fade even though the incoming one was published above. Recorded here so the lyrics can stay on
+        // it (and on its clock) until cleanupCrossfade commits. Null metadata simply leaves the override off,
+        // i.e. the lyrics behave exactly as they did before. Nothing below this line changes.
+        _crossfadeOutgoingMetadata.value = currentPlayer.currentMetadata
         // Pin the OUTGOING player to its current normalization (the companion statics still hold its
         // values right now) so when setupLoudnessEnhancer re-writes them for the incoming track, the
         // fading player keeps its own level instead of "pumping" to the new track's gain.
@@ -8928,6 +8963,9 @@ class MusicService :
         fadingPlayer = null
         isCrossfading = false
         _isCrossfading.value = false // observation-only mirror for the UI; does not alter the swap
+        // The fade committed: the incoming track is now the audible one, so the lyrics view stops following
+        // the outgoing song and returns to the live one. Observation-only, like the mirror above.
+        _crossfadeOutgoingMetadata.value = null
         // Collect the quality-change survivor here rather than at the swap: the fade is over and fadingPlayer is
         // already stopped/cleared/released above, so dropping its URL entry cannot trigger a re-open. Needed
         // because performCrossfadeSwap skips onMediaItemTransition, and with crossfade ON every advance is a

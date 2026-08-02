@@ -47,6 +47,24 @@ import iad1tya.echo.music.ui.screens.settings.LyricsPosition
 import iad1tya.echo.music.utils.rememberPreference
 
 
+/**
+ * The 350 ms whole-line ease-in used when a lyric entry has NO real per-word timings — LrcLib and KuGou hand
+ * out per-LINE timings only, i.e. most songs. The line lights up together instead of snapping on, and NO
+ * per-word timing is ever fabricated, so nothing here can drift against the audio.
+ *
+ * Single implementation, shared by every lyrics style that needs it (see EchoMusic below and Apple-Music-v2 in
+ * Lyrics.kt) so the two can never disagree on the feel.
+ */
+@Composable
+fun rememberWholeLineFillProgress(isActive: Boolean): Float {
+    val progress by animateFloatAsState(
+        targetValue = if (isActive) 1f else 0f,
+        animationSpec = tween(durationMillis = 350),
+        label = "wholeLineFill"
+    )
+    return progress
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun echomusicLyricsLine(
@@ -151,12 +169,8 @@ fun echomusicLyricsLine(
 
     // Used when the entry has NO real per-word timings: the whole line fills together on activation
     // (no fabricated left-to-right sweep). A short tween gives a soft "the line lights up" feel and
-    // drives every word's gradient progress uniformly in that case.
-    val wholeLineProgress by animateFloatAsState(
-        targetValue = if (isActive) 1f else 0f,
-        animationSpec = tween(durationMillis = 350),
-        label = "wholeLineFill"
-    )
+    // drives every word's gradient progress uniformly in that case. Shared helper — see above.
+    val wholeLineProgress = rememberWholeLineFillProgress(isActive)
 
     val itemModifier = modifier
         .fillMaxWidth()
