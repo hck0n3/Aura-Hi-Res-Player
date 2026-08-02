@@ -5204,21 +5204,9 @@ class MusicService :
             }
             val shuffledIndices = indices.toIntArray()
 
-            // Anchor the CURRENT song at the front by ROTATION, not by swapping.
-            //
-            // A swap sends whatever held slot 0 to the current song's old slot — and the current song has
-            // just been PLAYED, so its slot lives deep in the played region. Slot 0 is by construction the
-            // best UNPLAYED candidate, so the swap banishes an unheard song into played territory. It is
-            // worst exactly at the end of a cycle: with ONE unplayed song left it sits at slot 0, the swap
-            // buries it, and slot 1 — the next song to play — is already-heard. That is a repeat BEFORE
-            // the cycle closed, which also robs the exhaustion handoff of its trigger.
-            // Rotating preserves the relative order of every other entry, so the best unplayed candidate
-            // simply becomes the next one to play.
-            val currentItemIndexInShuffled = shuffledIndices.indexOf(currentIndex)
-            if (currentItemIndexInShuffled > 0) {
-                System.arraycopy(shuffledIndices, 0, shuffledIndices, 1, currentItemIndexInShuffled)
-                shuffledIndices[0] = currentIndex
-            }
+            // Anchor the CURRENT song at the front by ROTATION, not by swapping — see
+            // ShuffleOrdering.anchorCurrentFirst for why a swap repeated songs at the end of every cycle.
+            ShuffleOrdering.anchorCurrentFirst(shuffledIndices, currentIndex)
             player.setShuffleOrder(DefaultShuffleOrder(shuffledIndices, System.currentTimeMillis()))
         }
     }
