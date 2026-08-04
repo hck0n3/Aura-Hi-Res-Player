@@ -1,3 +1,4 @@
 <resources>
-  <color name="ic_launcher_background">#642CC2</color>
+  <!-- Ground of the "Muestreo" launcher icon: near-black with a blue bias. -->
+  <color name="ic_launcher_background">#080D18</color>
 </resources>

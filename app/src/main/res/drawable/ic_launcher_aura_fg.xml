@@ -1,3 +1,15 @@
+<!--
+  Aura Hi-Res launcher icon - "Muestreo" (Sampling), foreground layer.
+
+  The faint arc is the AURA; the discrete dots riding it are the SAMPLES, and
+  their density is the resolution - the "Hi-Res" half of the name. The arc stays
+  secondary (50% alpha, thin), the dots stay crisp and countable, and the centre
+  dot is the peak of the curve, so it must remain visibly the largest.
+
+  Everything sits inside the adaptive-icon safe circle (r=33 around 54,54): the
+  furthest painted pixel is at 32.59, so no launcher mask can eat the two outer
+  samples that make the mark read as sampling.
+-->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
@@ -5,33 +17,40 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- Vinyl disc body -->
-    <path android:fillColor="#0E0F12"
-        android:pathData="M52,24 a32,32 0 1,0 0,64 a32,32 0 1,0 0,-64 Z"/>
-    <!-- Grooves -->
-    <path android:strokeColor="#33373F" android:strokeWidth="1.6" android:fillColor="#00000000"
-        android:pathData="M52,29 a27,27 0 1,0 0,54 a27,27 0 1,0 0,-54 Z"/>
-    <path android:strokeColor="#33373F" android:strokeWidth="1.6" android:fillColor="#00000000"
-        android:pathData="M52,34 a22,22 0 1,0 0,44 a22,22 0 1,0 0,-44 Z"/>
-    <path android:strokeColor="#33373F" android:strokeWidth="1.6" android:fillColor="#00000000"
-        android:pathData="M52,39 a17,17 0 1,0 0,34 a17,17 0 1,0 0,-34 Z"/>
-
-    <!-- Center label (new gradient) -->
-    <path android:pathData="M52,45.5 a10.5,10.5 0 1,0 0,21 a10.5,10.5 0 1,0 0,-21 Z">
-        <aapt:attr name="android:fillColor">
-            <gradient android:type="linear" android:startX="41" android:startY="45" android:endX="63" android:endY="67">
-                <item android:offset="0" android:color="#FF36E0C8"/>
-                <item android:offset="1" android:color="#FF6A7BFF"/>
+    <!-- The aura: soft, secondary, behind the samples -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeWidth="3.78"
+        android:strokeAlpha="0.5"
+        android:strokeLineCap="round"
+        android:pathData="M28.57,68.08 C38.95,68.08 43.44,41.15 54.00,41.15 C64.56,41.15 69.05,68.08 79.43,68.08">
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:type="linear"
+                android:startX="28.48"
+                android:startY="69.66"
+                android:endX="79.52"
+                android:endY="45.02">
+                <item android:offset="0" android:color="#FF3FE7CE" />
+                <item android:offset="0.5" android:color="#FF2FA6F0" />
+                <item android:offset="1" android:color="#FF6A5BFF" />
             </gradient>
         </aapt:attr>
     </path>
-    <!-- Center hole -->
-    <path android:fillColor="#0E0F12"
-        android:pathData="M52,54 a2,2 0 1,0 0,4 a2,2 0 1,0 0,-4 Z"/>
 
-    <!-- Sound waves (top-right) -->
-    <path android:strokeColor="#FFFFFF" android:strokeWidth="3" android:strokeLineCap="round" android:fillColor="#00000000"
-        android:pathData="M75,41 a11,11 0 0,1 9,10"/>
-    <path android:strokeColor="#FFFFFF" android:strokeWidth="3" android:strokeLineCap="round" android:fillColor="#00000000"
-        android:pathData="M79,35 a18,18 0 0,1 14,16"/>
+    <!-- The samples: seven discrete points, the centre one largest -->
+    <path android:pathData="M25.05,68.08 a3.52,3.52 0 1,0 7.04,0 a3.52,3.52 0 1,0 -7.04,0 Z M33.50,65.18 a3.52,3.52 0 1,0 7.04,0 a3.52,3.52 0 1,0 -7.04,0 Z M42.03,52.94 a3.52,3.52 0 1,0 7.04,0 a3.52,3.52 0 1,0 -7.04,0 Z M49.25,41.15 a4.75,4.75 0 1,0 9.50,0 a4.75,4.75 0 1,0 -9.50,0 Z M58.93,52.94 a3.52,3.52 0 1,0 7.04,0 a3.52,3.52 0 1,0 -7.04,0 Z M67.46,65.18 a3.52,3.52 0 1,0 7.04,0 a3.52,3.52 0 1,0 -7.04,0 Z M75.91,68.08 a3.52,3.52 0 1,0 7.04,0 a3.52,3.52 0 1,0 -7.04,0 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="28.48"
+                android:startY="69.66"
+                android:endX="79.52"
+                android:endY="45.02">
+                <item android:offset="0" android:color="#FF3FE7CE" />
+                <item android:offset="0.5" android:color="#FF2FA6F0" />
+                <item android:offset="1" android:color="#FF6A5BFF" />
+            </gradient>
+        </aapt:attr>
+    </path>
 </vector>
