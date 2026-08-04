@@ -958,4 +958,10 @@
     <!-- 0.6.92 Historial de actividad -->
     <string name="activity_history">Resumen de escucha</string>
     <string name="total_listening_time">Tiempo total de escucha</string>
+
+    <!-- Aleatorio mejorado: se pregunta solo si el contexto ya tiene memoria de reproducidas. -->
+    <string name="shuffle_memory_title">Ya escuchaste parte de esta lista</string>
+    <string name="shuffle_memory_message">Llevas %1$d de %2$d canciones reproducidas. ¿Continuar sin repetirlas, o empezar de cero?</string>
+    <string name="shuffle_memory_continue">Continuar</string>
+    <string name="shuffle_memory_reset">Empezar de cero</string>
 </resources>

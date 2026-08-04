@@ -107,6 +107,7 @@ import iad1tya.echo.music.ui.component.LocalMenuState
 import iad1tya.echo.music.ui.component.SongListItem
 import iad1tya.echo.music.ui.component.EnhancedShuffleChip
 import iad1tya.echo.music.ui.component.rememberPlayedShuffleSet
+import iad1tya.echo.music.ui.component.rememberShuffleMemoryPrompt
 import iad1tya.echo.music.ui.component.SortHeader
 import iad1tya.echo.music.ui.menu.AutoPlaylistMenu
 import iad1tya.echo.music.ui.menu.SelectionSongMenu
@@ -705,22 +706,34 @@ private fun AutoPlaylistHeader(
         ) {
             
             val playedForStart = rememberPlayedShuffleSet(contextId)
-            androidx.compose.material3.Button(
-                onClick = {
-                    // UNPLAYED-FIRST start: guarantees the opener is an unheard song while any remain
-                    // (uniform pick started with a repeat P/T of the time — the reported symptom).
+            // Ask "continue or start over" only when this context already has no-repeat memory.
+            val onShuffleClick = rememberShuffleMemoryPrompt(
+                contextId = contextId,
+                playedCount = songs.count { it.id in playedForStart },
+                totalCount = songs.size,
+            ) { resetMemory ->
+                // UNPLAYED-FIRST start: guarantees the opener is an unheard song while any remain
+                // (uniform pick started with a repeat P/T of the time — the reported symptom).
+                // After a reset the memory is empty, so a plain shuffle IS the unplayed-first order.
+                val ordered = if (resetMemory) {
+                    songs.shuffled()
+                } else {
                     val (unheard, heard) = songs.partition { it.id !in playedForStart }
-                    playerConnection.playQueue(
-                        ListQueue(
-                            title = name,
-                            items = (unheard.shuffled() + heard.shuffled()).map { it.toMediaItem() },
-                            contextId = contextId,
-                            // Turn shuffle MODE on so the enhanced no-repeat memory drives the order and
-                            // records plays (pre-shuffling alone bypassed it → replayed played songs).
-                            startShuffled = true,
-                        ),
-                    )
-                },
+                    unheard.shuffled() + heard.shuffled()
+                }
+                playerConnection.playQueue(
+                    ListQueue(
+                        title = name,
+                        items = ordered.map { it.toMediaItem() },
+                        contextId = contextId,
+                        // Turn shuffle MODE on so the enhanced no-repeat memory drives the order and
+                        // records plays (pre-shuffling alone bypassed it → replayed played songs).
+                        startShuffled = true,
+                    ),
+                )
+            }
+            androidx.compose.material3.Button(
+                onClick = onShuffleClick,
                 shape = androidx.compose.material3.ButtonDefaults.shape,
                 colors = androidx.compose.material3.ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.surfaceVariant,

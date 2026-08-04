@@ -50,6 +50,7 @@ import iad1tya.echo.music.ui.component.LocalMenuState
 import iad1tya.echo.music.ui.component.SongListItem
 import iad1tya.echo.music.ui.component.SortHeader
 import iad1tya.echo.music.ui.component.rememberPlayedShuffleSet
+import iad1tya.echo.music.ui.component.rememberShuffleMemoryPrompt
 import iad1tya.echo.music.ui.menu.SongMenu
 import iad1tya.echo.music.ui.utils.backToMain
 import iad1tya.echo.music.utils.listItemShape
@@ -209,14 +210,25 @@ fun ArtistSongsScreen(
         HideOnScrollFAB(
             lazyListState = lazyListState,
             icon = R.drawable.shuffle,
-            onClick = {
+            onClick = rememberShuffleMemoryPrompt(
+                // Ask "continue or start over" only when this artist already has no-repeat memory.
+                contextId = artistShuffleContextId,
+                playedCount = songs.count { it.id in artistPlayedForStart },
+                totalCount = songs.size,
+            ) { resetMemory ->
                 // UNPLAYED-FIRST start: the opener is guaranteed to be an unheard song while any
                 // remain (a uniform scramble could re-open with something just heard).
-                val (unheard, heard) = songs.partition { it.id !in artistPlayedForStart }
+                // After a reset the memory is empty, so a plain shuffle IS the unplayed-first order.
+                val ordered = if (resetMemory) {
+                    songs.shuffled()
+                } else {
+                    val (unheard, heard) = songs.partition { it.id !in artistPlayedForStart }
+                    unheard.shuffled() + heard.shuffled()
+                }
                 playerConnection.playQueue(
                     ListQueue(
                         title = artist?.artist?.name,
-                        items = (unheard.shuffled() + heard.shuffled()).map { it.toMediaItem() },
+                        items = ordered.map { it.toMediaItem() },
                         contextId = artistShuffleContextId,
                         // Turn shuffle MODE on so Enhanced Shuffle actually drives the order and
                         // records plays. Pre-shuffling alone left the mode off: the icon stayed

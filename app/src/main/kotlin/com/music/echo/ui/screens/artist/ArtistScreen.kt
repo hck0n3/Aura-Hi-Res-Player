@@ -119,6 +119,7 @@ import iad1tya.echo.music.ui.component.SongListItem
 import iad1tya.echo.music.ui.component.YouTubeGridItem
 import iad1tya.echo.music.ui.component.YouTubeListItem
 import iad1tya.echo.music.ui.component.rememberPlayedShuffleSet
+import iad1tya.echo.music.ui.component.rememberShuffleMemoryPrompt
 import iad1tya.echo.music.ui.component.shimmer.ButtonPlaceholder
 import iad1tya.echo.music.ui.component.shimmer.ListItemPlaceHolder
 import iad1tya.echo.music.ui.utils.rememberIsTvOrCar
@@ -697,34 +698,46 @@ fun ArtistScreen(
                                         // Nothing prunes "AR:%", so the memory survives process death.
                                         val artistShuffleContextId = libraryArtist?.id?.let { "AR:$it" }
                                         val artistPlayedForStart = rememberPlayedShuffleSet(artistShuffleContextId)
+                                        // Ask "continue or start over" only when this artist already has
+                                        // no-repeat memory.
+                                        val onArtistShuffleClick = rememberShuffleMemoryPrompt(
+                                            contextId = artistShuffleContextId,
+                                            playedCount = allLibrarySongs.count { it.id in artistPlayedForStart },
+                                            totalCount = allLibrarySongs.size,
+                                        ) { resetMemory ->
+                                        // Shuffle the artist's FULL local catalogue. `librarySongs`
+                                        // is artistSongsPreview(previewSize = 3) — shuffling it
+                                        // could only ever pick from three songs.
+                                        //
+                                        // UNPLAYED-FIRST start: the opener is guaranteed to be an
+                                        // unheard song while any remain (a uniform scramble could
+                                        // re-open with something just heard). After a reset the
+                                        // memory is empty, so a plain shuffle already is that order.
+                                        val shuffledSongs = if (resetMemory) {
+                                            allLibrarySongs.shuffled()
+                                        } else {
+                                            val (unheard, heard) =
+                                                allLibrarySongs.partition { it.id !in artistPlayedForStart }
+                                            unheard.shuffled() + heard.shuffled()
+                                        }
+                                        if (shuffledSongs.isNotEmpty()) {
+                                            playerConnection.playQueue(
+                                                ListQueue(
+                                                    title = libraryArtist?.artist?.name ?: "Unknown Artist",
+                                                    items = shuffledSongs.map { it.toMediaItem() },
+                                                    contextId = artistShuffleContextId,
+                                                    // Turn shuffle MODE on so Enhanced Shuffle actually
+                                                    // drives the order and records plays. Pre-shuffling
+                                                    // alone left the mode off: the icon stayed off and
+                                                    // the order was a frozen scramble.
+                                                    startShuffled = true,
+                                                )
+                                            )
+                                        }
+                                        }
                                         ToggleButton(
                                             checked = false,
-                                            onCheckedChange = {
-                                                // Shuffle the artist's FULL local catalogue. `librarySongs`
-                                                // is artistSongsPreview(previewSize = 3) — shuffling it
-                                                // could only ever pick from three songs.
-                                                //
-                                                // UNPLAYED-FIRST start: the opener is guaranteed to be an
-                                                // unheard song while any remain (a uniform scramble could
-                                                // re-open with something just heard).
-                                                val (unheard, heard) =
-                                                    allLibrarySongs.partition { it.id !in artistPlayedForStart }
-                                                val shuffledSongs = unheard.shuffled() + heard.shuffled()
-                                                if (shuffledSongs.isNotEmpty()) {
-                                                    playerConnection.playQueue(
-                                                        ListQueue(
-                                                            title = libraryArtist?.artist?.name ?: "Unknown Artist",
-                                                            items = shuffledSongs.map { it.toMediaItem() },
-                                                            contextId = artistShuffleContextId,
-                                                            // Turn shuffle MODE on so Enhanced Shuffle actually
-                                                            // drives the order and records plays. Pre-shuffling
-                                                            // alone left the mode off: the icon stayed off and
-                                                            // the order was a frozen scramble.
-                                                            startShuffled = true,
-                                                        )
-                                                    )
-                                                }
-                                            },
+                                            onCheckedChange = { onArtistShuffleClick() },
                                             modifier = Modifier
                                                 .weight(1f)
                                                 .height(52.dp)

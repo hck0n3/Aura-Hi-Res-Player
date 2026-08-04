@@ -97,6 +97,7 @@ import iad1tya.echo.music.ui.component.LocalMenuState
 import iad1tya.echo.music.ui.component.SongListItem
 import iad1tya.echo.music.ui.component.SortHeader
 import iad1tya.echo.music.ui.component.rememberPlayedShuffleSet
+import iad1tya.echo.music.ui.component.rememberShuffleMemoryPrompt
 import iad1tya.echo.music.ui.menu.CachePlaylistMenu
 import iad1tya.echo.music.ui.menu.SelectionSongMenu
 import iad1tya.echo.music.ui.menu.SongMenu
@@ -581,23 +582,35 @@ private fun CachePlaylistHeader(
 
             
             val playedForStart = rememberPlayedShuffleSet(contextId)
-            TextButton(
-                onClick = {
-                    // UNPLAYED-FIRST start: guarantees the opener is an unheard song while any remain
-                    // (a uniform pick started with an already-heard song most of the time).
+            // Ask "continue or start over" only when this context already has no-repeat memory.
+            val onShuffleClick = rememberShuffleMemoryPrompt(
+                contextId = contextId,
+                playedCount = songs.count { it.id in playedForStart },
+                totalCount = songs.size,
+        ) { resetMemory ->
+                // UNPLAYED-FIRST start: guarantees the opener is an unheard song while any remain
+                // (a uniform pick started with an already-heard song most of the time).
+                // After a reset the memory is empty, so a plain shuffle IS the unplayed-first order.
+                val ordered = if (resetMemory) {
+                    songs.shuffled()
+                } else {
                     val (unheard, heard) = songs.partition { it.id !in playedForStart }
-                    playerConnection.playQueue(
-                        ListQueue(
-                            title = context.getString(R.string.cached_playlist),
-                            items = (unheard.shuffled() + heard.shuffled()).map { it.toMediaItem() },
-                            contextId = contextId,
-                            // Turn shuffle MODE on so Enhanced Shuffle actually drives the order and
-                            // records plays. Pre-shuffling alone left the mode off: the icon stayed
-                            // off and the order was a frozen scramble.
-                            startShuffled = true,
-                        )
+                    unheard.shuffled() + heard.shuffled()
+                }
+                playerConnection.playQueue(
+                    ListQueue(
+                        title = context.getString(R.string.cached_playlist),
+                        items = ordered.map { it.toMediaItem() },
+                        contextId = contextId,
+                        // Turn shuffle MODE on so Enhanced Shuffle actually drives the order and
+                        // records plays. Pre-shuffling alone left the mode off: the icon stayed
+                        // off and the order was a frozen scramble.
+                        startShuffled = true,
                     )
-                },
+                    )
+            }
+            TextButton(
+                onClick = onShuffleClick,
                 modifier = Modifier
                     .weight(1f)
                     .height(48.dp),

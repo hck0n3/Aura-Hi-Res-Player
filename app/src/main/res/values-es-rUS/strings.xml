@@ -423,4 +423,7 @@
     <string name="qobuz_err_bad_credentials">Correo o contraseña incorrectos.</string>
     <string name="qobuz_err_bad_token">El token de Qobuz no es válido o caducó.</string>
     <string name="qobuz_err_probe">No se pudo verificar la cuenta de Qobuz. Inténtalo de nuevo.</string>
+    <!-- Aprender géneros con datos móviles (puerta de enriquecimiento de GenreCache) -->
+    <string name="genre_enrich_on_mobile">Aprender géneros con datos móviles</string>
+    <string name="genre_enrich_on_mobile_desc">Usa datos móviles para aprender los géneros de tus artistas — pequeñas consultas, solo cuando hace falta. Desactivado = solo con WiFi.</string>
 </resources>

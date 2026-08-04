@@ -77,6 +77,7 @@ import androidx.compose.runtime.remember
 import iad1tya.echo.music.ui.component.EnhancedShuffleChip
 import iad1tya.echo.music.ui.component.SongListItem
 import iad1tya.echo.music.ui.component.rememberPlayedShuffleSet
+import iad1tya.echo.music.ui.component.rememberShuffleMemoryPrompt
 import iad1tya.echo.music.ui.component.SortHeader
 import iad1tya.echo.music.ui.menu.SongMenu
 import iad1tya.echo.music.utils.listItemShape
@@ -469,27 +470,40 @@ fun LibrarySongsScreen(
                 }
         }
 
+        // Shared by both FABs: ask "continue or start over" only when this tab already has no-repeat
+        // memory; with none, the tap plays straight away exactly as before.
+        val onShuffleClick = rememberShuffleMemoryPrompt(
+            contextId = libraryContextId,
+            playedCount = filteredSongs.count { it.id in shufflePlayedSet },
+            totalCount = filteredSongs.size,
+        ) { resetMemory ->
+            // UNPLAYED-FIRST start: the opener must be an unheard song while any remain (a uniform
+            // pick over the whole tab started with a repeat). After a reset the memory is empty, so a
+            // plain shuffle already is that order.
+            val ordered = if (resetMemory) {
+                filteredSongs.shuffled()
+            } else {
+                val (unheard, heard) = filteredSongs.partition { it.id !in shufflePlayedSet }
+                unheard.shuffled() + heard.shuffled()
+            }
+            playerConnection.playQueue(
+                ListQueue(
+                    title = context.getString(R.string.queue_all_songs),
+                    items = ordered.map { it.toMediaItem() },
+                    contextId = libraryContextId,
+                    // Enhanced shuffle: enable shuffle MODE (memory-aware order + recording).
+                    startShuffled = true,
+                ),
+            )
+        }
+
         when (viewType) {
             LibraryViewType.LIST ->
                 HideOnScrollFAB(
                     visible = filteredSongs.isNotEmpty(),
                     lazyListState = lazyListState,
                     icon = R.drawable.shuffle,
-                    onClick = {
-                        playerConnection.playQueue(
-                            ListQueue(
-                                title = context.getString(R.string.queue_all_songs),
-                                // UNPLAYED-FIRST start: the opener must be an unheard song while any
-                                // remain (a uniform pick over the whole tab started with a repeat).
-                                items = filteredSongs.partition { it.id !in shufflePlayedSet }
-                                    .let { (unheard, heard) -> unheard.shuffled() + heard.shuffled() }
-                                    .map { it.toMediaItem() },
-                                contextId = libraryContextId,
-                                // Enhanced shuffle: enable shuffle MODE (memory-aware order + recording).
-                                startShuffled = true,
-                            ),
-                        )
-                    },
+                    onClick = onShuffleClick,
                 )
 
             LibraryViewType.GRID ->
@@ -497,21 +511,7 @@ fun LibrarySongsScreen(
                     visible = filteredSongs.isNotEmpty(),
                     lazyListState = lazyGridState,
                     icon = R.drawable.shuffle,
-                    onClick = {
-                        playerConnection.playQueue(
-                            ListQueue(
-                                title = context.getString(R.string.queue_all_songs),
-                                // UNPLAYED-FIRST start: the opener must be an unheard song while any
-                                // remain (a uniform pick over the whole tab started with a repeat).
-                                items = filteredSongs.partition { it.id !in shufflePlayedSet }
-                                    .let { (unheard, heard) -> unheard.shuffled() + heard.shuffled() }
-                                    .map { it.toMediaItem() },
-                                contextId = libraryContextId,
-                                // Enhanced shuffle: enable shuffle MODE (memory-aware order + recording).
-                                startShuffled = true,
-                            ),
-                        )
-                    },
+                    onClick = onShuffleClick,
                 )
         }
     }

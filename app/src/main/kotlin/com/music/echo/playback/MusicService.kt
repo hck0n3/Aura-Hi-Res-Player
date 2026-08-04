@@ -3022,7 +3022,15 @@ class MusicService :
             // (WiFi-only, GenreCache bounds to 40 + semaphore 4 — mirrors the Path A learn site) so the
             // profile's coverage of THIS context warms up within the session. No cache-bias violation:
             // we enrich exactly the population we score (registry #39).
-            if (contextProfile == null && radioSeedPool.isNotEmpty()) {
+            // Rebuild on EVERY re-seed, not once per context: the profile froze the genre shares at build
+            // time, and the enrich below keeps teaching GenreCache new artists — so a profile built from a
+            // cold cache (fresh install, WiFi-only gate, first listen to a genre) stayed blind for the
+            // whole context life while the cluster step right next to it already saw the fresh snapshot,
+            // and the off-context sink judged with stale shares. The build is pure and bounded, runs on
+            // IO, fires only at re-seed time (not per boundary), and the `radioSeedPool !== pool` identity
+            // guard below discards a build that a context switch overtook. Monotonic cache growth means an
+            // active profile can only get MORE informed — fail-neutral in every direction.
+            if (radioSeedPool.isNotEmpty()) {
                 runCatching {
                     val pool = radioSeedPool
                     val built = withContext(Dispatchers.IO) {
@@ -3072,7 +3080,79 @@ class MusicService :
                 // hard-disliked artist), and the old order — remove-then-append — truncated the queue to the
                 // current track and appended nothing, leaving the resume seekTo() pointing past the end. Never
                 // destroy the tail before we know we have something to put in its place.
-                val toAppend = items.orderedByTaste()
+                // OFF-CONTEXT DROP (the reason "smart queue" predictions felt unrelated): the steering
+                // term is a bounded NUDGE — clamped to [-4,+6] against an index-dominated key, it can
+                // displace a candidate ~10 ranks but can never REMOVE it, so when YouTube returns a bad
+                // batch for a niche context (salsa, worship), the wrong songs still played, just slightly
+                // later. This drops candidates whose genre is KNOWN and has ZERO share in the context —
+                // and only those. Hard constraints, in order of the registry rules they serve:
+                //  • unknown-genre candidates stay ELIGIBLE untouched (#39/#41: a cache-derived signal
+                //    must never drop unknowns, or the infinite queue collapses onto the library);
+                //  • candidates from EVERY context lane survive (any share > 0), so a mixed playlist
+                //    never collapses onto its dominant genre;
+                //  • the drop applies only when >= 10 candidates survive (stricter than the pagination
+                //    path's >= 2 because this feeds the big primary injection) — otherwise the batch is
+                //    kept unfiltered, and appendSeed's callers already fall through to the next source,
+                //    so never-silence holds;
+                //  • gated on the same user toggle (default ON) that gates the shipped pagination drop,
+                //    making the defense symmetric instead of new; ONE GenreCache snapshot per batch.
+                val profile = contextProfile
+                val laneOrdered = if (
+                    contextSteerActive && keepGenreLaneHint &&
+                    profile != null && profile.active && profile.genreShare.isNotEmpty()
+                ) {
+                    val genres = withContext(Dispatchers.IO) {
+                        runCatching { iad1tya.echo.music.reco.GenreCache.snapshot(this@MusicService) }
+                            .getOrDefault(emptyMap())
+                    }
+                    // SINK, never drop. iTunes labels vary WITHIN a genre ("Salsa y Tropical" vs "Pop" on
+                    // Marc Anthony himself), so an exact-lane DROP removed legitimate adjacent artists —
+                    // worse than the weak steering it replaced. This is an UNCONDITIONAL stable partition
+                    // (no survivor threshold, no removal): known-off-context candidates go to the batch
+                    // tail AND their ids are handed to orderedByTaste, which is what actually keeps them
+                    // there. Tail position by itself is not enough — the pull cap lifts up to 8 ranks and
+                    // the exploration quota promotes fresh artists to the front. Never-silence holds
+                    // trivially: nothing is removed, so the batch can never shrink to empty here.
+                    val (inContext, offContext) = items.partition { mi ->
+                        val m = mi.metadata
+                        // Context ARTISTS are never off-context, whatever label iTunes gave them — the
+                        // profile's own steerTerm has the same precedence, and dropping/sinking an artist
+                        // who is IN the playlist would be self-evidently wrong (finding: frozen shares vs
+                        // fresh snapshot resolved playlist artists into lanes the profile never counted).
+                        val ctxArtist = m?.artists?.any { a -> a.name.trim().lowercase() in profile.artistSet } == true
+                        if (ctxArtist) return@partition true
+                        val lane = iad1tya.echo.music.reco.GenreLane.laneOfTrack(
+                            genres,
+                            m?.artists?.firstOrNull()?.name.orEmpty(),
+                            m?.title.orEmpty(),
+                            m?.album?.title,
+                        )
+                        when {
+                            // Unknown lane: untouched (#39/#41 — cache-derived signal never judges unknowns).
+                            lane == null -> true
+                            (profile.genreShare[lane] ?: 0.0) > 0.0 -> true
+                            // CHRISTIAN is the strict keyword lane, and an artist NAME alone can fabricate
+                            // it ("Cristian Castro"). Sink only when the track's OWN text earns the lane;
+                            // any other origin keeps steerTerm's +6 push (shipped behaviour), never a sink.
+                            lane == iad1tya.echo.music.reco.GenreLane.CHRISTIAN ->
+                                !iad1tya.echo.music.reco.GenreLane.isKeywordChristian(
+                                    m?.title.orEmpty(), null, m?.album?.title,
+                                )
+                            else -> false
+                        }
+                    }
+                    if (offContext.isNotEmpty()) {
+                        Timber.tag(TAG).i(
+                            "CTX_SINK appendSeed: sank %d/%d off-context candidates to the tail",
+                            offContext.size, items.size,
+                        )
+                    }
+                    // The ids travel WITH the order: tail position alone was not enough, because the
+                    // exploration quota downstream promotes a fresh artist to the front and an
+                    // off-context candidate is fresh almost by definition — the sink was being undone.
+                    (inContext + offContext) to offContext.mapNotNullTo(HashSet()) { it.mediaId }
+                } else items to emptySet<String>()
+                val toAppend = laneOrdered.first.orderedByTaste(laneOrdered.second)
                 if (toAppend.isEmpty()) return false
                 // Truncate the tail ONLY when playing in order. `liveIndex` is a TIMELINE index, but under
                 // shuffle playback follows the shuffle order, so "everything after liveIndex" is an arbitrary
@@ -3595,7 +3675,17 @@ class MusicService :
      * let taste only NUDGE a song up/down a few spots, instead of fully re-sorting by taste — which scrambled the
      * relatedness and made the radio feel unrelated to what was just playing. Disliked songs/artists are dropped.
      */
-    private suspend fun List<MediaItem>.orderedByTaste(): List<MediaItem> {
+    /**
+     * @param deprioritized ids that must end up BEHIND everything else (off-context candidates the caller
+     * sank). Tail position alone is not enough: `pull` can lift an item up to 8 ranks and the exploration
+     * quota promotes a FRESH artist straight to the front — and an off-context candidate is fresh almost
+     * by definition, so the sink was being undone by the very pass that follows it. A +1000 offset is
+     * strictly larger than every other term combined, so no pull, jitter or quota can reorder across it,
+     * and within the group the normal ordering still applies.
+     */
+    private suspend fun List<MediaItem>.orderedByTaste(
+        deprioritized: Set<String> = emptySet(),
+    ): List<MediaItem> {
         if (size < 2) return this
         val disliked = runCatching { dislikeStore.snapshot() }
             .getOrDefault(iad1tya.echo.music.dislike.DislikeStore.Disliked())
@@ -3662,7 +3752,10 @@ class MusicService :
             // nudge within the same few-spot class, never re-sort the batch.
             val jitter = if (p == null) 0.0 else rnd.nextDouble() * 1.5
             val pull = (taste * 4.0 + coRel * 2.0).coerceAtMost(8.0)
-            val key = index.toDouble() - pull + soft + jitter + ctx
+            // See [deprioritized]: dominates every other term so a sunk off-context candidate can never be
+            // lifted back into the head by the pull cap or the exploration quota.
+            val sunk = if (m != null && m.id in deprioritized) 1000.0 else 0.0
+            val key = index.toDouble() - pull + soft + jitter + ctx + sunk
             // NO-REPEAT: "heard" is now SESSION-WIDE ([sessionPlayedIds] — everything played OR appended this
             // session), broadened beyond the last-~60 [recentSnapshot] and the ~5-min DB [playedHistory].
             val heard = m != null && (m.id in sessionPlayedIds || m.id in recentSnapshot || m.id in playedHistory)
@@ -3918,7 +4011,12 @@ class MusicService :
                     }
                 }
 
-                player.setShuffleOrder(DefaultShuffleOrder(finalOrder, System.currentTimeMillis()))
+                applyingShuffleOrder = true
+                try {
+                    player.setShuffleOrder(DefaultShuffleOrder(finalOrder, System.currentTimeMillis()))
+                } finally {
+                    applyingShuffleOrder = false
+                }
             }
         }
         
@@ -4407,6 +4505,10 @@ class MusicService :
     /** When [pendingExternalShuffle] was armed, so a request that never lands cannot fire much later. */
     @Volatile private var pendingExternalShuffleAt = 0L
 
+    /** Landing signature of the external queue being adopted — see [adoptExternalQueue]. */
+    @Volatile private var externalExpectedCount = 0
+    @Volatile private var externalExpectedFirstId: String? = null
+
     /**
      * Adopts a queue that did NOT come through [playQueue].
      *
@@ -4417,10 +4519,22 @@ class MusicService :
      * source with no persistent bucket (search, an album, a radio): no memory is better than wrong
      * memory.
      */
-    fun adoptExternalQueue(contextId: String?, shuffle: Boolean) {
+    fun adoptExternalQueue(
+        contextId: String?,
+        shuffle: Boolean,
+        expectedCount: Int = 0,
+        expectedFirstId: String? = null,
+    ) {
         shuffleContextId = contextId
         pendingExternalShuffle = shuffle
         pendingExternalShuffleAt = android.os.SystemClock.elapsedRealtime()
+        // LANDING SIGNATURE: the arm below is consumed by onTimelineChanged, which fires for EVERY
+        // timeline mutation in the window — a radio append, a restore, our own playQueue. Consuming it on
+        // the WRONG landing measured a foreign timeline into the external context (poisoning its coverage
+        // AND its memory via the shuffle-session start). The signature pins consumption to THIS queue's
+        // actual arrival; a non-matching change leaves the arm armed so the real landing is still caught.
+        externalExpectedCount = expectedCount
+        externalExpectedFirstId = expectedFirstId
         // COVERAGE — the half of the job this function used to skip entirely. It adopted the context but
         // left the coverage of the PREVIOUS in-app queue in place (or, on a fresh process, none at all),
         // and coverage is what proves a list really finished. Consequences, both real: with no coverage the
@@ -4431,23 +4545,76 @@ class MusicService :
         // Zero = unknown until the items land; onTimelineChanged fills it in.
         contextCoverageId = contextId
         contextCoverageSize = 0
-        externalCoverageArmedAt = if (contextId != null) pendingExternalShuffleAt else 0L
+        // Armed even for a NULL context (search, a loose song): the arm is what rebuilds the radio seed
+        // pool from the landed items, and a null-context queue needs that just as much — without it the
+        // continuation after a car search fell back to last-song seeding while the pool sat empty.
+        externalCoverageArmedAt = pendingExternalShuffleAt
+        // RADIO SEEDS — the other half this function used to skip. radioSeedPool / contextProfile were
+        // written ONLY by playQueue, which external queues never traverse, so when a car queue finished,
+        // the smart continuation seeded and STEERED from the phone's LAST in-app collection — yesterday's
+        // playlist deciding today's recommendations, which users read as "predictions unrelated to what I
+        // am listening to". Cleared here (not rebuilt: the items have not landed yet); onTimelineChanged
+        // refills the pool from the real timeline. Until then tryContextRadio bails on the empty pool and
+        // the continuation degrades to last-song seeding — related to the CAR's song, which is honest.
+        radioSeedPool = emptyList()
+        contextProfile = null
+        contextSteerActive = false
     }
 
     override fun onTimelineChanged(timeline: androidx.media3.common.Timeline, reason: Int) {
-        queueDirty = true
+        // Self-inflicted shuffle-order re-applies change NOTHING the queue file stores (timeline order)
+        // and must not schedule the next re-apply — see [applyingShuffleOrder].
+        if (!applyingShuffleOrder) {
+            queueDirty = true
+            shuffleOrderStale = true
+        }
         // COVERAGE for an EXTERNALLY adopted queue: this is the first instant its items ARE the timeline,
         // so it is the only place the size of the car's list can be learned (onSetMediaItems hands them
         // straight to media3, never touching playQueue). Armed by adoptExternalQueue and consumed here —
         // exactly once, and only while its arm is fresh — so an in-app queue landing later can never be
         // measured into the external context. Runs for a LINEAR external queue too: the user can toggle
         // shuffle from the car afterwards, and the coverage must already be there when he does.
-        if (externalCoverageArmedAt != 0L) {
+        if (externalCoverageArmedAt != 0L && !applyingShuffleOrder) {
             if (android.os.SystemClock.elapsedRealtime() - externalCoverageArmedAt > EXTERNAL_SHUFFLE_ARM_TIMEOUT_MS) {
                 externalCoverageArmedAt = 0L
-            } else if (player.mediaItemCount > 0 && contextCoverageId != null && contextCoverageId == shuffleContextId) {
+            } else if (
+                // contextCoverageId may legitimately be NULL (a car search, a loose song): the coverage
+                // number is then meaningless, but the seed-pool rebuild below is not — that queue still
+                // deserves a real continuation. Require only that the coverage id still MATCHES the live
+                // context, which is trivially true for the null case and still rejects a stale one.
+                player.mediaItemCount > 0 && contextCoverageId == shuffleContextId &&
+                // LANDING SIGNATURE match: only THE adopted queue's arrival consumes the arm. Any other
+                // timeline change in the window (a radio append, a restore, an in-app queue landing)
+                // leaves it ARMED so the real landing is still measured — consuming on a foreign landing
+                // used to measure that foreign timeline into the external context, wipe the live
+                // session's memory via the session start below, and poison the external bucket.
+                (externalExpectedCount == 0 ||
+                    (player.mediaItemCount == externalExpectedCount &&
+                        runCatching { player.getMediaItemAt(0).mediaId }.getOrNull() == externalExpectedFirstId))
+            ) {
                 contextCoverageSize = player.mediaItemCount
                 externalCoverageArmedAt = 0L
+                // Multi-seed parity with in-app queues: now that the car's items ARE the timeline, they
+                // become the radio seed pool, so the continuation after this queue draws from the WHOLE
+                // collection the user chose — not from the last song alone, and never from the previous
+                // in-app queue (adoptExternalQueue cleared that). Bounded by the timeline size itself.
+                radioSeedPool = (0 until player.mediaItemCount)
+                    .mapNotNull { i -> runCatching { player.getMediaItemAt(i).metadata }.getOrNull() }
+                // A plain tap (no shuffle action) with shuffle mode REMEMBERED ON: media3 never fires
+                // onShuffleModeEnabledChanged (the value did not change), so without this the session ran
+                // with the PREVIOUS queue's played set — ids overlapping across queues could read the car
+                // queue as exhausted after a song or two. Mirrors what playQueue does for in-app queues.
+                // isUserActivation = true: a deliberate list start is the owner's rule condition (b), so a
+                // FINISHED list resets and replays instead of handing off after one song; an unfinished
+                // list's memory is untouched (shouldResetForNewCycle guarantees it).
+                if (!pendingExternalShuffle && player.shuffleModeEnabled && enhancedShuffleHint) {
+                    // Posted, not called inline: this callback runs inside media3's ListenerSet flush, and
+                    // applyShuffleOrder invoked from INSIDE a flush has its own onTimelineChanged DEFERRED
+                    // past the applyingShuffleOrder window — the self-event would then re-arm stale/dirty
+                    // as if a real mutation happened. One message later the flush is over and the
+                    // suppression works as documented.
+                    scope.launch { beginShuffleSession(isUserActivation = true) }
+                }
             }
         }
         // An external controller's items have landed: NOW the shuffle session can start. Enabling the
@@ -4461,7 +4628,13 @@ class MusicService :
                 pendingExternalShuffle = false
             } else if (player.mediaItemCount > 0) {
                 pendingExternalShuffle = false
-                if (player.shuffleModeEnabled) beginShuffleSession() else player.shuffleModeEnabled = true
+                // beginShuffleSession posted out of the listener flush — same reasoning as the coverage
+                // branch above. setShuffleModeEnabled stays inline: its own listener dispatch handles it.
+                if (player.shuffleModeEnabled) {
+                    scope.launch { beginShuffleSession() }
+                } else {
+                    player.shuffleModeEnabled = true
+                }
             }
         }
         // Invalidates any preloaded crossfade secondary: its queue COPY becomes the live queue at the
@@ -4558,6 +4731,15 @@ class MusicService :
         // BEFORE the add below: the trace must report whether this song was ALREADY played when it
         // started, and recording it first would make every line read "repeat=YES".
         traceNoRepeat("transition")
+
+        // A manual jump (queue-sheet tap, previous-press) is order-relevant even though it mutates no
+        // timeline: landing on an already-played song puts the play head INSIDE the sunk played tail, and
+        // with the stale-skip the next boundaries would walk that tail — up to the whole tail of repeats
+        // where the old per-boundary re-apply allowed exactly one. Arm the re-apply so the next boundary
+        // re-sinks the tail behind the unplayed remainder.
+        if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_SEEK && player.shuffleModeEnabled) {
+            shuffleOrderStale = true
+        }
 
         // B5: remember what we've played this shuffle session (consumed by applyShuffleOrder to avoid repeats).
         if (player.shuffleModeEnabled) {
@@ -4911,7 +5093,17 @@ class MusicService :
             periodicPersistJob?.cancel()
             periodicPersistJob = null
             if (dataStore.get(PersistentQueueKey, true)) {
-                scope.launch { runCatching { savePlaybackPositionToDisk() } }
+                // Same dirty split every other writer uses. This was the one UNGATED position write left:
+                // pause right after a queue mutation and the position file described a timeline the queue
+                // file did not have yet — and while PAUSED nothing else flushes for up to 30 s, so a kill
+                // in that window restored onto the wrong song. Flushing here also lets the slow paused
+                // loop skip an already-done save.
+                if (queueDirty) {
+                    queueDirty = false
+                    runCatching { saveQueueToDisk() }
+                } else {
+                    scope.launch { runCatching { savePlaybackPositionToDisk() } }
+                }
             }
         }
     }
@@ -4988,6 +5180,29 @@ class MusicService :
     @Volatile private var queueDirty = true
 
     /**
+     * True while there is an ORDER-RELEVANT change the shuffle order has not absorbed yet (an append, a
+     * toggle, the DB seed landing, a user queue edit). The per-boundary re-apply in beginCrossfadeSwap
+     * consumes it; when it is false the re-apply is SKIPPED — re-scoring and re-sorting the whole queue on
+     * the Main thread at every song boundary, then re-broadcasting the order to Android Auto over Binder,
+     * was the per-boundary burst car users heard as micro-stutters. Starts true so the first apply runs.
+     */
+    @Volatile private var shuffleOrderStale = true
+
+    /**
+     * True only while WE are inside player.setShuffleOrder. media3 dispatches onTimelineChanged
+     * SYNCHRONOUSLY on this same (Main) thread, so this plain flag is race-free. It stops our own
+     * order re-applies from (a) marking the queue dirty — PersistQueue stores items in TIMELINE order,
+     * so those full saves rewrote identical bytes, pure Main-thread churn + flash wear per boundary —
+     * and (b) marking the shuffle order stale, which would make every re-apply schedule the next one.
+     *
+     * CONTRACT: the synchronous dispatch holds ONLY when setShuffleOrder is called OUTSIDE a media3
+     * listener callback — from inside a ListenerSet flush the self-event is DEFERRED past this window.
+     * That is why every beginShuffleSession call that originates in a listener callback is POSTED
+     * (scope.launch) instead of called inline.
+     */
+    private var applyingShuffleOrder = false
+
+    /**
      * True only while playQueue is programmatically clearing shuffle for a NEW queue, so
      * onShuffleModeEnabledChanged can tell that reset apart from a real user toggle and skip
      * persisting it. Without this the app's own reset overwrote ShuffleModeKey with false and
@@ -5020,14 +5235,13 @@ class MusicService :
                     if (ok) {
                         // COHERENCE: while queueDirty the queue FILE still describes the OLD timeline, so a
                         // position written now would point INTO a queue that no longer matches — restore
-                        // then lands on the wrong song. The state-change writer already guards this; this
-                        // second, periodic writer did not, which reopened the same window every 10 s.
-                        // Flush the queue first so the pair on disk always describes the same timeline.
-                        if (queueDirty) {
-                            queueDirty = false
-                            withContext(Dispatchers.Main) { saveQueueToDisk() }
-                        }
-                        runCatching { savePlaybackPositionToDisk() }
+                        // then lands on the wrong song. This tick used to FLUSH the whole queue here
+                        // (a full triple-graph snapshot on Main) to close that window, but the dedicated
+                        // coherence loop already flushes dirty queues on its own 10 s cadence — doing it
+                        // from BOTH writers doubled the Main-thread churn for nothing. Now: skip the
+                        // position write while dirty (never write an incoherent pair) and let the
+                        // dedicated loop do the one flush.
+                        if (!queueDirty) runCatching { savePlaybackPositionToDisk() }
                     }
                 }
             }
@@ -5228,7 +5442,13 @@ class MusicService :
         if (shuffleModeEnabled) {
             // Every enable that reaches this callback is a USER activation (a toggle, a Shuffle button,
             // the car) EXCEPT the queue restore, which announces itself with suppressShuffleActivationReset.
-            beginShuffleSession(isUserActivation = !suppressShuffleActivationReset)
+            // Captured NOW (the flag's contract is synchronous dispatch), applied one message later:
+            // this callback runs inside media3's ListenerSet flush, and applyShuffleOrder invoked from
+            // inside a flush gets its self-onTimelineChanged DEFERRED past the applyingShuffleOrder
+            // window, re-arming stale/dirty as if a real mutation happened. Posting exits the flush; the
+            // queue file stores TIMELINE order, so nothing below observes the order's timing.
+            val isUserActivation = !suppressShuffleActivationReset
+            scope.launch { beginShuffleSession(isUserActivation = isUserActivation) }
         }
 
 
@@ -5500,7 +5720,13 @@ class MusicService :
             // leftovers so a re-heard tail can never outrank something still unheard.
             originalPlayed.forEach { shuffledIndices[pos++] = it }
             addedPlayed.forEach { shuffledIndices[pos++] = it }
-            player.setShuffleOrder(DefaultShuffleOrder(shuffledIndices, System.currentTimeMillis()))
+            applyingShuffleOrder = true
+            try {
+                player.setShuffleOrder(DefaultShuffleOrder(shuffledIndices, System.currentTimeMillis()))
+            } finally {
+                applyingShuffleOrder = false
+            }
+            shuffleOrderStale = false
         } else {
             val indices = (0 until totalCount).toMutableList()
             // B5 anti-repeat: which queue items were already played this shuffle session? If EVERY item has
@@ -5629,7 +5855,13 @@ class MusicService :
             // Anchor the CURRENT song at the front by ROTATION, not by swapping — see
             // ShuffleOrdering.anchorCurrentFirst for why a swap repeated songs at the end of every cycle.
             ShuffleOrdering.anchorCurrentFirst(shuffledIndices, currentIndex)
-            player.setShuffleOrder(DefaultShuffleOrder(shuffledIndices, System.currentTimeMillis()))
+            applyingShuffleOrder = true
+            try {
+                player.setShuffleOrder(DefaultShuffleOrder(shuffledIndices, System.currentTimeMillis()))
+            } finally {
+                applyingShuffleOrder = false
+            }
+            shuffleOrderStale = false
         }
     }
 
@@ -8628,8 +8860,37 @@ class MusicService :
                 // takes over (its items sort ahead; the tail stays sunk via the !radioSeedInFlight reset
                 // gate). Accepted: bounded, self-healing, and never silence.
             } else {
-                val shufflePlaylistFirst = dataStore.get(ShufflePlaylistFirstKey, false)
-                applyShuffleOrder(player.currentMediaItemIndex, player.mediaItemCount, shufflePlaylistFirst)
+                // LAP-COMPLETION probe: with the stale-skip below, the all-played self-reset and the
+                // cycle-complete mark inside applyShuffleOrder would be unreachable in configs where the
+                // exhaustion handoff above does not fire (repeat-all, continuation off) — shuffle would
+                // simply never re-shuffle again. O(1) precheck first so the common mid-lap swap stays
+                // scan-free; the O(N) confirm runs at most once per completed lap. REPEAT_ONE loops the
+                // same song and needs no re-shuffle; radioSeedInFlight defers to the seed's own re-apply.
+                if (!shuffleOrderStale &&
+                    player.repeatMode != REPEAT_MODE_ONE &&
+                    !radioSeedInFlight &&
+                    shufflePlayedIds.size >= player.mediaItemCount &&
+                    player.mediaItemCount > 0
+                ) {
+                    val allPlayed = (0 until player.mediaItemCount).all { i ->
+                        runCatching { player.getMediaItemAt(i).mediaId }.getOrNull()?.let { it in shufflePlayedIds } != false
+                    }
+                    if (allPlayed) shuffleOrderStale = true
+                }
+                if (shuffleOrderStale) {
+                    // Re-apply ONLY when something order-relevant actually changed (an append, a toggle,
+                    // the DB seed landing, a manual SEEK, a completed lap). Re-running the full O(N)
+                    // scoring + sort + spacing on the MAIN thread at EVERY song boundary — during the 5 s
+                    // dual-player fade, with media3 then re-broadcasting the whole shuffle order to
+                    // Android Auto over Binder — was the per-boundary burst car users heard as
+                    // micro-stutters. Deferring the just-played sink is safe within a lap because the
+                    // incoming player CARRIES the in-force curated order (see prepareSecondaryPlayer):
+                    // every unplayed item stays ahead of the play head, so no-repeat holds going forward
+                    // and the sink lands on the next real mutation.
+                    shuffleOrderStale = false
+                    val shufflePlaylistFirst = dataStore.get(ShufflePlaylistFirstKey, false)
+                    applyShuffleOrder(player.currentMediaItemIndex, player.mediaItemCount, shufflePlaylistFirst)
+                }
             }
         }
     }
@@ -8665,6 +8926,31 @@ class MusicService :
         sec.volume = 0f
         sec.repeatMode = player.repeatMode
         sec.shuffleModeEnabled = player.shuffleModeEnabled
+        // CARRY THE IN-FORCE SHUFFLE ORDER ONTO THE SECONDARY. Without this, each secondary rolls media3's
+        // OWN uniform-random permutation (setMediaItems + shuffleModeEnabled builds a fresh
+        // DefaultShuffleOrder) — the curated order lives only inside the LIVE ExoPlayer object and dies
+        // with it at the swap. The per-boundary re-apply used to repaint it microseconds after every swap,
+        // which masked this; with the stale-skip in place nothing repaints it, and shuffle would degenerate
+        // to memoryless random-with-replacement: repeats mid-lap, no artist spacing, premature radio
+        // handoff — the exact bug class rows 90/92/94/96/101/102 exist to prevent. The walk is the same
+        // pointer chase playNext uses; O(N), no scoring, no Binder re-broadcast (the secondary is not the
+        // MediaSession player), and the copy is made microseconds after setMediaItems on this same Main
+        // thread, so the length cannot mismatch.
+        if (player.shuffleModeEnabled && items.isNotEmpty()) {
+            runCatching {
+                val liveTimeline = player.currentTimeline
+                val order = IntArray(items.size)
+                var oi = 0
+                var w = liveTimeline.getFirstWindowIndex(true)
+                while (w != C.INDEX_UNSET && oi < order.size) {
+                    order[oi++] = w
+                    w = liveTimeline.getNextWindowIndex(w, Player.REPEAT_MODE_OFF, true)
+                }
+                if (oi == order.size) {
+                    sec.setShuffleOrder(DefaultShuffleOrder(order, System.currentTimeMillis()))
+                }
+            }
+        }
         // Carry the USER's playback settings across the swap. Speed/pitch and the chosen audio output are
         // set on the player object, not on a preference — so with crossfade ON (the default) every
         // auto-advance silently reset 1.25x/+2 semitones back to normal and dropped the selected output.

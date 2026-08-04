@@ -730,4 +730,7 @@
     <string name="qobuz_err_bad_credentials">Wrong email or password.</string>
     <string name="qobuz_err_bad_token">The Qobuz token is invalid or has expired.</string>
     <string name="qobuz_err_probe">Could not verify the Qobuz account. Try again.</string>
+    <!-- Genre learning over mobile data (GenreCache enrichment gate) -->
+    <string name="genre_enrich_on_mobile">Learn genres on mobile data</string>
+    <string name="genre_enrich_on_mobile_desc">Uses mobile data to learn your artists\' genres — tiny lookups, only when needed. Off = Wi-Fi only.</string>
 </resources>

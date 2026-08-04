@@ -327,6 +327,27 @@ class AxionEqViewModel @Inject constructor(
         if (_enabled.value) applyToService()
     }
 
+    /**
+     * SAFETY NET: whatever the user left on screen is persisted when the EQ screen goes away, even if
+     * they never saved a preset and never triggered a settle.
+     *
+     * Almost every edit already persists on its own (slider release -> commit, add/remove/reset PEQ ->
+     * commitPeq, band type / preamp -> immediate prefs write). The gap was the live edits that persist
+     * only on "value settle": drag a PEQ frequency/Q field and leave the screen without the settle
+     * firing, and the tuning the user was listening to was gone next launch. The owner's rule is that the
+     * EQ always comes back exactly as he left it, saved preset or not.
+     *
+     * Device-assigned profiles are deliberately NOT affected: applyEqForCurrentOutput re-applies the
+     * profile bound to the current output and overwrites the unsaved one, which is the intended
+     * precedence — an output with its own tuning keeps it.
+     */
+    override fun onCleared() {
+        super.onCleared()
+        if (_isDirty.value) {
+            runCatching { commit() }
+        }
+    }
+
     /** Persist the PEQ bands JSON — call on text-field focus loss / value settle (or via [commit]). */
     fun commitPeq() {
         persistPeqBands()

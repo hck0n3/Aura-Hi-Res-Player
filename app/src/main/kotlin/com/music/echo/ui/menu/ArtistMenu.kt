@@ -43,6 +43,7 @@ import iad1tya.echo.music.ui.component.Material3MenuItemData
 import iad1tya.echo.music.ui.component.NewAction
 import iad1tya.echo.music.ui.component.NewActionGrid
 import iad1tya.echo.music.ui.component.rememberPlayedShuffleSet
+import iad1tya.echo.music.ui.component.rememberShuffleMemoryPrompt
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -69,6 +70,44 @@ fun ArtistMenu(
     // `playlist` row, which would erase the memory on each launch. Nothing prunes "AR:%".
     val menuShuffleContextId = "AR:" + artist.id
     val menuPlayedSet = rememberPlayedShuffleSet(menuShuffleContextId)
+    // Hoisted out of the action list on purpose: the actions are built conditionally, and a
+    // remember/rememberSaveable inside a conditional branch would lose its slot when the condition
+    // flips. The sheet is only dismissed from inside the callback, so closing it can't kill the dialog.
+    // The song list is loaded off the main thread, so the counters use the artist's own songCount.
+    val onMenuShuffleClick = rememberShuffleMemoryPrompt(
+        contextId = menuShuffleContextId,
+        playedCount = minOf(menuPlayedSet.size, artist.songCount),
+        totalCount = artist.songCount,
+    ) { resetMemory ->
+        coroutineScope.launch {
+            val songs = withContext(Dispatchers.IO) {
+                val all = database
+                    .artistSongs(artist.id, ArtistSongSortType.CREATE_DATE, true)
+                    .first()
+                // UNPLAYED-FIRST start: the opener is guaranteed to be an unheard song while any
+                // remain. After a reset the memory is empty, so a plain shuffle already is that order.
+                if (resetMemory) {
+                    all.shuffled().map { it.toMediaItem() }
+                } else {
+                    val (unheard, heard) = all.partition { it.id !in menuPlayedSet }
+                    (unheard.shuffled() + heard.shuffled()).map { it.toMediaItem() }
+                }
+            }
+            playerConnection.playQueue(
+                ListQueue(
+                    title = artist.artist.name,
+                    items = songs,
+                    // Persistent per-artist no-repeat memory: without a contextId it lives only in RAM
+                    // and dies with the process (app killed → the same songs come back next morning).
+                    contextId = menuShuffleContextId,
+                    // See AlbumMenu: without this the mode stays OFF and the scramble is frozen,
+                    // bypassing the whole anti-repeat system.
+                    startShuffled = true,
+                ),
+            )
+        }
+        onDismiss()
+    }
 
     ArtistListItem(
         artist = artist,
@@ -138,35 +177,7 @@ fun ArtistMenu(
                                         )
                                     },
                                     text = stringResource(R.string.shuffle),
-                                    onClick = {
-                                        coroutineScope.launch {
-                                            val songs = withContext(Dispatchers.IO) {
-                                                val all = database
-                                                    .artistSongs(artist.id, ArtistSongSortType.CREATE_DATE, true)
-                                                    .first()
-                                                // UNPLAYED-FIRST start: the opener is guaranteed to be an
-                                                // unheard song while any remain.
-                                                val (unheard, heard) =
-                                                    all.partition { it.id !in menuPlayedSet }
-                                                (unheard.shuffled() + heard.shuffled())
-                                                    .map { it.toMediaItem() }
-                                            }
-                                            playerConnection.playQueue(
-                                                ListQueue(
-                                                    title = artist.artist.name,
-                                                    items = songs,
-                                                    // Persistent per-artist no-repeat memory: without a
-                                                    // contextId it lives only in RAM and dies with the process
-                                                    // (app killed → the same songs come back next morning).
-                                                    contextId = menuShuffleContextId,
-                                                    // See AlbumMenu: without this the mode stays OFF and the
-                                                    // scramble is frozen, bypassing the whole anti-repeat system.
-                                                    startShuffled = true,
-                                                ),
-                                            )
-                                        }
-                                        onDismiss()
-                                    }
+                                    onClick = { onMenuShuffleClick() }
                                 )
                             )
                         }

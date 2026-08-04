@@ -489,16 +489,12 @@ constructor(
                 MusicService.ARTIST -> path.getOrNull(1)?.let { "AR:$it" }
                 else -> null
             }
-            // Guarded on purpose: every other use of `service` in this file tests isInitialized, because
-            // the field went years unassigned. It IS assigned now (MusicService wires it before building
-            // the session), so this is defence in depth — but an unguarded read here would make every
-            // external play request throw, and media3's failure callback for onSetMediaItems has an EMPTY
-            // body: no items, no play, no log. A silent dead tap in the car, repeatable forever.
-            if (this@MediaLibrarySessionCallback::service.isInitialized) {
-                service.adoptExternalQueue(externalContextId, shuffle = isShuffleAction)
-            }
-
-            when (path.firstOrNull()) {
+            // The adopt call moved BELOW the resolution on purpose: adopting up front re-pointed
+            // shuffleContextId (and cleared the radio seeds) even when the branch then failed or resolved
+            // EMPTY — a list that never played would own the live context. Now only a successful, non-empty
+            // resolution adopts, and it carries a LANDING SIGNATURE (count + first id) so onTimelineChanged
+            // can tell THIS queue's arrival apart from any other timeline change in the arm window.
+            val resolved = when (path.firstOrNull()) {
                 MusicService.SONG -> {
                     val songId = path.getOrNull(1) ?: return@future defaultResult
                     val allSongs = database.songsByCreateDateAsc().first()
@@ -683,6 +679,21 @@ constructor(
 
                 else -> defaultResult
             }
+
+            // Guarded on purpose: every other use of `service` in this file tests isInitialized, because
+            // the field went years unassigned. It IS assigned now (MusicService wires it before building
+            // the session), so this is defence in depth — but an unguarded read here would make every
+            // external play request throw, and media3's failure callback for onSetMediaItems has an EMPTY
+            // body: no items, no play, no log. A silent dead tap in the car, repeatable forever.
+            if (this@MediaLibrarySessionCallback::service.isInitialized && resolved.mediaItems.isNotEmpty()) {
+                service.adoptExternalQueue(
+                    externalContextId,
+                    shuffle = isShuffleAction,
+                    expectedCount = resolved.mediaItems.size,
+                    expectedFirstId = resolved.mediaItems.firstOrNull()?.mediaId,
+                )
+            }
+            resolved
         }
 
     private fun drawableUri(

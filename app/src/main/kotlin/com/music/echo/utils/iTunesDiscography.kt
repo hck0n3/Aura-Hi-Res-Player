@@ -6,6 +6,7 @@ import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.request.get
 import io.ktor.client.request.parameter
 import io.ktor.client.statement.bodyAsText
+import io.ktor.http.isSuccess
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
@@ -127,22 +128,36 @@ object iTunesDiscography {
 
     /**
      * Primary genre for [artistName] per iTunes (e.g. "Christian & Gospel", "Latin", "Rock", "Hip-Hop/Rap"),
-     * taken from their most relevant album. Null if unknown. Used to give the taste engine a real genre
-     * signal beyond the built-in keyword lanes.
+     * taken from their most relevant album. Used to give the taste engine a real genre signal beyond the
+     * built-in keyword lanes.
+     *
+     * FAILURE vs MISS contract (GenreCache depends on it — do not blur it again):
+     *  - non-blank string  -> the genre.
+     *  - ""                -> DEFINITIVE MISS: iTunes answered 2xx with a parsed `results` array that is
+     *                         empty or carries no usable `primaryGenreName`. Safe to cache as "unknown".
+     *  - null              -> FAILURE: exception, non-2xx status, unparseable body (captive portal), or a
+     *                         2xx without a `results` array (throttle/error page). Callers must NOT cache
+     *                         null — a transient outage must never be persisted as "this artist has no
+     *                         genre".
      */
     suspend fun fetchArtistGenre(artistName: String, country: String = "us"): String? =
         runCatching {
-            val text = client.get("https://itunes.apple.com/search") {
+            val response = client.get("https://itunes.apple.com/search") {
                 parameter("term", artistName)
                 parameter("entity", "album")
                 parameter("attribute", "artistTerm")
                 parameter("limit", "1")
                 parameter("country", country)
-            }.bodyAsText()
+            }
+            if (!response.status.isSuccess()) return@runCatching null
 
-            json.parseToJsonElement(text).jsonObject["results"]?.jsonArray
-                ?.firstOrNull()?.jsonObject?.get("primaryGenreName")?.jsonPrimitive?.contentOrNull
+            val results = json.parseToJsonElement(response.bodyAsText())
+                .jsonObject["results"]?.jsonArray
+                ?: return@runCatching null // 2xx but no results array = error/throttle page, not a miss
+
+            results.firstOrNull()?.jsonObject?.get("primaryGenreName")?.jsonPrimitive?.contentOrNull
                 ?.takeIf { it.isNotBlank() }
+                ?: "" // iTunes genuinely answered and knows no genre -> definitive miss
         }.getOrNull()
 
     private val PARENTHETICAL = Regex("\\(.*?\\)")

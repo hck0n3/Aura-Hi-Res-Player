@@ -174,6 +174,11 @@ fun ContentSettings(
         iad1tya.echo.music.constants.KeepGenreLaneKey,
         defaultValue = true
     )
+    // Default OFF = WiFi-only genre learning (GenreCache), today's behaviour until the user opts in.
+    val (genreEnrichOnMobile, onGenreEnrichOnMobileChange) = rememberPreference(
+        iad1tya.echo.music.constants.GenreEnrichOnMobileKey,
+        defaultValue = false
+    )
     val (offlineMode, onOfflineModeChange) = rememberPreference(
         iad1tya.echo.music.constants.OfflineModeKey,
         defaultValue = false
@@ -1172,6 +1177,27 @@ fun ContentSettings(
                         )
                     },
                     onClick = { onKeepGenreLaneChange(!keepGenreLane) }
+                ),
+                Material3SettingsItem(
+                    icon = painterResource(R.drawable.network_node),
+                    title = { Text(stringResource(R.string.genre_enrich_on_mobile)) },
+                    description = { Text(stringResource(R.string.genre_enrich_on_mobile_desc)) },
+                    trailingContent = {
+                        Switch(
+                            checked = genreEnrichOnMobile,
+                            onCheckedChange = onGenreEnrichOnMobileChange,
+                            thumbContent = {
+                                Icon(
+                                    painter = painterResource(
+                                        id = if (genreEnrichOnMobile) R.drawable.check else R.drawable.close
+                                    ),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(SwitchDefaults.IconSize)
+                                )
+                            }
+                        )
+                    },
+                    onClick = { onGenreEnrichOnMobileChange(!genreEnrichOnMobile) }
                 ),
                 Material3SettingsItem(
                     icon = painterResource(R.drawable.shuffle),

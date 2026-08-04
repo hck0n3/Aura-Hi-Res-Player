@@ -145,6 +145,7 @@ import iad1tya.echo.music.ui.component.OverlayEditButton
 import iad1tya.echo.music.ui.component.SongListItem
 import iad1tya.echo.music.ui.component.EnhancedShuffleChip
 import iad1tya.echo.music.ui.component.rememberPlayedShuffleSet
+import iad1tya.echo.music.ui.component.rememberShuffleMemoryPrompt
 import iad1tya.echo.music.ui.component.SortHeader
 import iad1tya.echo.music.ui.component.TextFieldDialog
 import iad1tya.echo.music.ui.menu.CustomThumbnailMenu
@@ -1432,24 +1433,36 @@ fun LocalPlaylistHeader(
 
             
             val playedForStart = rememberPlayedShuffleSet("PL:" + playlist.playlist.id)
-            TextButton(
-                onClick = {
-                    // UNPLAYED-FIRST start: slot 0 is what actually PLAYS first, and a uniform pick over
-                    // the whole list started with an already-heard song P/T of the time (the owner's
-                    // "repeats when I activate" symptom). Partitioning keeps the full list (the memory-
-                    // aware order re-sorts #2..N anyway) but guarantees an unheard opener while any remain.
+            // Ask "continue or start over" only when this playlist already has no-repeat memory.
+            val onShuffleClick = rememberShuffleMemoryPrompt(
+                contextId = "PL:" + playlist.playlist.id,
+                playedCount = songs.count { it.song.id in playedForStart },
+                totalCount = songs.size,
+            ) { resetMemory ->
+                // UNPLAYED-FIRST start: slot 0 is what actually PLAYS first, and a uniform pick over
+                // the whole list started with an already-heard song P/T of the time (the owner's
+                // "repeats when I activate" symptom). Partitioning keeps the full list (the memory-
+                // aware order re-sorts #2..N anyway) but guarantees an unheard opener while any remain.
+                // After a reset the memory is empty, so a plain shuffle IS the unplayed-first order.
+                val ordered = if (resetMemory) {
+                    songs.shuffled()
+                } else {
                     val (unheard, heard) = songs.partition { it.song.id !in playedForStart }
-                    playerConnection.playQueue(
-                        ListQueue(
-                            title = playlist.playlist.name,
-                            items = (unheard.shuffled() + heard.shuffled()).map { it.song.toMediaItem() },
-                            contextId = "PL:" + playlist.playlist.id,
-                            // Turn shuffle MODE on so the enhanced no-repeat memory drives the order and
-                            // records plays (pre-shuffling alone bypassed it → replayed played songs).
-                            startShuffled = true,
-                        )
+                    unheard.shuffled() + heard.shuffled()
+                }
+                playerConnection.playQueue(
+                    ListQueue(
+                        title = playlist.playlist.name,
+                        items = ordered.map { it.song.toMediaItem() },
+                        contextId = "PL:" + playlist.playlist.id,
+                        // Turn shuffle MODE on so the enhanced no-repeat memory drives the order and
+                        // records plays (pre-shuffling alone bypassed it → replayed played songs).
+                        startShuffled = true,
                     )
-                },
+                )
+            }
+            TextButton(
+                onClick = onShuffleClick,
                 modifier = Modifier
                     .weight(1f)
                     .height(48.dp)

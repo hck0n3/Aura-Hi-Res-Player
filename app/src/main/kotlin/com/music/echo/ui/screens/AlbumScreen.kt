@@ -125,6 +125,7 @@ import iad1tya.echo.music.ui.component.NavigationTitle
 import iad1tya.echo.music.ui.component.SongListItem
 import iad1tya.echo.music.ui.component.YouTubeGridItem
 import iad1tya.echo.music.ui.component.rememberPlayedShuffleSet
+import iad1tya.echo.music.ui.component.rememberShuffleMemoryPrompt
 import iad1tya.echo.music.ui.menu.AlbumMenu
 import iad1tya.echo.music.ui.menu.SelectionSongMenu
 import iad1tya.echo.music.ui.menu.SongMenu
@@ -619,38 +620,48 @@ fun AlbumScreen(
                         // would lose its no-repeat memory on every launch. Nothing prunes "AL:%".
                         val albumShuffleContextId = "AL:" + albumWithSongs.album.id
                         val albumPlayedForStart = rememberPlayedShuffleSet(albumShuffleContextId)
+                        // Ask "continue or start over" only when this album already has no-repeat memory.
+                        val onAlbumShuffleClick = rememberShuffleMemoryPrompt(
+                            contextId = albumShuffleContextId,
+                            playedCount = albumWithSongs.songs.count { it.id in albumPlayedForStart },
+                            totalCount = albumWithSongs.songs.size,
+                        ) { resetMemory ->
+                            playerConnection.service.getAutomix(playlistId)
+                            // Shuffle the RAW album, not the display list: `filteredSongs` is
+                            // liked-first, and shuffling it would still bias the result. The
+                            // hide-explicit / hide-video prefs are applied by MusicService.playQueue.
+                            //
+                            // Still a LocalAlbumRadio: contextId now lives on the Queue interface, so
+                            // the album keeps YouTube's album-radio continuation (what plays AFTER the
+                            // album) and gains persistent no-repeat memory. Converting it to a
+                            // ListQueue would have silently swapped that continuation for Aura's own
+                            // radio — a behaviour change nobody asked for.
+                            //
+                            // UNPLAYED-FIRST start: the opener is guaranteed to be an unheard track
+                            // while any remain (a uniform pick could re-open with a just-heard song).
+                            // After a reset the memory is empty, so any track is a valid opener.
+                            val (unheard, heard) = if (resetMemory) {
+                                albumWithSongs.songs to emptyList()
+                            } else {
+                                albumWithSongs.songs.partition { it.id !in albumPlayedForStart }
+                            }
+                            val openerId = (unheard.ifEmpty { heard }).randomOrNull()?.id
+                            playerConnection.playQueue(
+                                LocalAlbumRadio(
+                                    albumWithSongs = albumWithSongs,
+                                    startIndex = openerId
+                                        ?.let { id -> albumWithSongs.songs.indexOfFirst { it.id == id } }
+                                        ?.coerceAtLeast(0)
+                                        ?: 0,
+                                    contextId = albumShuffleContextId,
+                                    // Turn shuffle MODE on once the items land — the pre-scramble alone
+                                    // left the shuffle icon off and the order frozen.
+                                    startShuffled = true,
+                                ),
+                            )
+                        }
                         Surface(
-                            onClick = {
-                                playerConnection.service.getAutomix(playlistId)
-                                // Shuffle the RAW album, not the display list: `filteredSongs` is
-                                // liked-first, and shuffling it would still bias the result. The
-                                // hide-explicit / hide-video prefs are applied by MusicService.playQueue.
-                                //
-                                // Still a LocalAlbumRadio: contextId now lives on the Queue interface, so
-                                // the album keeps YouTube's album-radio continuation (what plays AFTER the
-                                // album) and gains persistent no-repeat memory. Converting it to a
-                                // ListQueue would have silently swapped that continuation for Aura's own
-                                // radio — a behaviour change nobody asked for.
-                                //
-                                // UNPLAYED-FIRST start: the opener is guaranteed to be an unheard track
-                                // while any remain (a uniform pick could re-open with a just-heard song).
-                                val (unheard, heard) =
-                                    albumWithSongs.songs.partition { it.id !in albumPlayedForStart }
-                                val openerId = (unheard.ifEmpty { heard }).randomOrNull()?.id
-                                playerConnection.playQueue(
-                                    LocalAlbumRadio(
-                                        albumWithSongs = albumWithSongs,
-                                        startIndex = openerId
-                                            ?.let { id -> albumWithSongs.songs.indexOfFirst { it.id == id } }
-                                            ?.coerceAtLeast(0)
-                                            ?: 0,
-                                        contextId = albumShuffleContextId,
-                                        // Turn shuffle MODE on once the items land — the pre-scramble alone
-                                        // left the shuffle icon off and the order frozen.
-                                        startShuffled = true,
-                                    ),
-                                )
-                            },
+                            onClick = onAlbumShuffleClick,
                             shape = CircleShape,
                             color = MaterialTheme.colorScheme.surfaceVariant,
                             modifier = Modifier.size(48.dp).tvFocusable(isTvOrCar, scaleFocused = 1f)

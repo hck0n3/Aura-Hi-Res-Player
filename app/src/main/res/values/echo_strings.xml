@@ -1062,4 +1062,10 @@
     <!-- Improve low quality (declip + HF regeneration) -->
     <string name="audio_enhance_low_quality">Improve low quality</string>
     <string name="audio_enhance_low_quality_desc">Softens clipping and regenerates highs on low-bitrate songs. Turn it off for already-clean tracks.</string>
+
+    <!-- Enhanced Shuffle: asked only when the context already has played-song memory. -->
+    <string name="shuffle_memory_title">You already heard part of this list</string>
+    <string name="shuffle_memory_message">You are %1$d of %2$d songs in. Continue without repeating them, or start over?</string>
+    <string name="shuffle_memory_continue">Continue</string>
+    <string name="shuffle_memory_reset">Start over</string>
 </resources>

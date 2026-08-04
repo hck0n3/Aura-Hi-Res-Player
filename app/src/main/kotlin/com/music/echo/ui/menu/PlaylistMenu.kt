@@ -66,6 +66,7 @@ import iad1tya.echo.music.playback.queues.ListQueue
 import iad1tya.echo.music.playback.queues.YouTubeQueue
 import iad1tya.echo.music.ui.component.DefaultDialog
 import iad1tya.echo.music.ui.component.rememberPlayedShuffleSet
+import iad1tya.echo.music.ui.component.rememberShuffleMemoryPrompt
 import iad1tya.echo.music.ui.component.Material3MenuGroup
 import iad1tya.echo.music.ui.component.Material3MenuItemData
 import iad1tya.echo.music.ui.component.NewAction
@@ -118,6 +119,38 @@ fun PlaylistMenu(
             if (songList != null) {
                 songs = songList
             }
+        }
+    }
+
+    // Hoisted out of the action list on purpose: the actions are built conditionally, and a
+    // remember/rememberSaveable inside a conditional branch would lose its slot when the condition
+    // flips. The dialog lives in the sheet's own composition (like the rename/delete dialogs above) and
+    // the sheet is only dismissed from inside the callback, so closing it can't kill the dialog.
+    val onMenuShuffleClick = rememberShuffleMemoryPrompt(
+        contextId = menuShuffleContextId,
+        playedCount = songs.count { it.id in menuPlayedSet },
+        totalCount = songs.size,
+    ) { resetMemory ->
+        onDismiss()
+        if (songs.isNotEmpty()) {
+            // UNPLAYED-FIRST start: opener must be unheard while any remain. After a reset the memory
+            // is empty, so a plain shuffle already is that order.
+            val ordered = if (resetMemory) {
+                songs.shuffled()
+            } else {
+                val (unheard, heard) = songs.partition { it.id !in menuPlayedSet }
+                unheard.shuffled() + heard.shuffled()
+            }
+            playerConnection.playQueue(
+                ListQueue(
+                    title = playlist.playlist.name,
+                    items = ordered.map(Song::toMediaItem),
+                    // Enhanced shuffle: this menu's Shuffle used to bypass the whole no-repeat system
+                    // (no context, shuffle MODE off) → replayed played songs — the owner's reported path.
+                    contextId = menuShuffleContextId,
+                    startShuffled = true,
+                )
+            )
         }
     }
 
@@ -456,24 +489,7 @@ fun PlaylistMenu(
                                 )
                             },
                             text = stringResource(R.string.shuffle),
-                            onClick = {
-                                onDismiss()
-                                if (songs.isNotEmpty()) {
-                                    // UNPLAYED-FIRST start: opener must be unheard while any remain.
-                                    val (unheard, heard) = songs.partition { it.id !in menuPlayedSet }
-                                    playerConnection.playQueue(
-                                        ListQueue(
-                                            title = playlist.playlist.name,
-                                            items = (unheard.shuffled() + heard.shuffled()).map(Song::toMediaItem),
-                                            // Enhanced shuffle: this menu's Shuffle used to bypass the whole
-                                            // no-repeat system (no context, shuffle MODE off) → replayed
-                                            // played songs — the owner's reported path.
-                                            contextId = menuShuffleContextId,
-                                            startShuffled = true,
-                                        )
-                                    )
-                                }
-                            }
+                            onClick = { onMenuShuffleClick() }
                         ))
                     }
                     add(NewAction(

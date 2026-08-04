@@ -43,6 +43,12 @@ val DislikedItemsKey = stringPreferencesKey("dislikedItems")
 // "Mantener el estilo": keep autoplay in the same lane as what's playing (e.g. Christian -> Christian,
 // not jumping to secular). On by default; best-effort keyword heuristic, never dead-ends playback.
 val KeepGenreLaneKey = booleanPreferencesKey("keepGenreLane")
+// Allow GenreCache to fetch artist genres from iTunes over MOBILE data too. Default OFF = WiFi-only,
+// today's exact behaviour — without opting in, mobile-only users never populate the genre cache and the
+// smart queue's genre steering stays silently dead for them. The requests are tiny (~1 KB each, bounded
+// per run), so opting in fixes that at negligible data cost. Read INSIDE GenreCache.enrich so its call
+// sites (MusicService, HomeViewModel) stay untouched.
+val GenreEnrichOnMobileKey = booleanPreferencesKey("genreEnrichOnMobile")
 // Scheduled Spotify playlist sync: how often to re-import (days; 0 = off) and which source ids (CSV).
 val SpotifyAutoSyncFreqDaysKey = intPreferencesKey("spotifyAutoSyncFreqDays")
 val SpotifyAutoSyncSourceIdsKey = stringPreferencesKey("spotifyAutoSyncSourceIds")

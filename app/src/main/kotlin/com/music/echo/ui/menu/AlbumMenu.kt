@@ -87,6 +87,7 @@ import iad1tya.echo.music.ui.component.NewAction
 import iad1tya.echo.music.ui.component.NewActionGrid
 import iad1tya.echo.music.ui.component.SongListItem
 import iad1tya.echo.music.ui.component.rememberPlayedShuffleSet
+import iad1tya.echo.music.ui.component.rememberShuffleMemoryPrompt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
@@ -117,6 +118,46 @@ fun AlbumMenu(
     }
 
     val coroutineScope = rememberCoroutineScope()
+
+    // Hoisted out of the action list on purpose: the actions are built conditionally, and a
+    // remember/rememberSaveable inside a conditional branch would lose its slot when the condition
+    // flips. The dialog therefore lives in the sheet's own composition and the sheet is only dismissed
+    // from inside the callback (same pattern as this menu's existing ListDialogs).
+    val onMenuShuffleClick = rememberShuffleMemoryPrompt(
+        contextId = menuShuffleContextId,
+        playedCount = songs.count { it.id in menuPlayedSet },
+        totalCount = songs.size,
+    ) { resetMemory ->
+        onDismiss()
+        if (songs.isNotEmpty()) {
+            album.album.playlistId?.let { playlistId ->
+                playerConnection.service.getAutomix(playlistId)
+            }
+            // UNPLAYED-FIRST start: the opener is guaranteed to be an unheard track while any remain.
+            // After a reset the memory is empty, so a plain shuffle already is that order.
+            val ordered = if (resetMemory) {
+                songs.shuffled()
+            } else {
+                val (unheard, heard) = songs.partition { it.id !in menuPlayedSet }
+                unheard.shuffled() + heard.shuffled()
+            }
+            playerConnection.playQueue(
+                ListQueue(
+                    title = album.album.title,
+                    items = ordered.map(Song::toMediaItem),
+                    // Persistent per-album no-repeat memory: without a contextId the whole anti-repeat
+                    // system is in-memory only and dies with the process (the phone kills the app → the
+                    // same songs come back).
+                    contextId = menuShuffleContextId,
+                    // A pre-scrambled list with shuffle MODE still OFF is a FROZEN order: the anti-repeat
+                    // system never runs, so tapping this again re-scrambles uniformly and can replay what
+                    // was just heard. Registry rows 92(b)/94(b) fixed exactly this for the playlist menu;
+                    // the album/artist menus were left behind.
+                    startShuffled = true,
+                )
+            )
+        }
+    }
 
     LaunchedEffect(Unit) {
         database.albumSongs(album.id).collect {
@@ -352,33 +393,7 @@ fun AlbumMenu(
                                 )
                             },
                             text = stringResource(R.string.shuffle),
-                            onClick = {
-                                onDismiss()
-                                if (songs.isNotEmpty()) {
-                                    album.album.playlistId?.let { playlistId ->
-                                        playerConnection.service.getAutomix(playlistId)
-                                    }
-                                    // UNPLAYED-FIRST start: the opener is guaranteed to be an unheard
-                                    // track while any remain.
-                                    val (unheard, heard) = songs.partition { it.id !in menuPlayedSet }
-                                    playerConnection.playQueue(
-                                        ListQueue(
-                                            title = album.album.title,
-                                            items = (unheard.shuffled() + heard.shuffled()).map(Song::toMediaItem),
-                                            // Persistent per-album no-repeat memory: without a contextId the
-                                            // whole anti-repeat system is in-memory only and dies with the
-                                            // process (the phone kills the app → the same songs come back).
-                                            contextId = menuShuffleContextId,
-                                            // A pre-scrambled list with shuffle MODE still OFF is a FROZEN
-                                            // order: the anti-repeat system never runs, so tapping this again
-                                            // re-scrambles uniformly and can replay what was just heard.
-                                            // Registry rows 92(b)/94(b) fixed exactly this for the playlist
-                                            // menu; the album/artist menus were left behind.
-                                            startShuffled = true,
-                                        )
-                                    )
-                                }
-                            }
+                            onClick = { onMenuShuffleClick() }
                         ))
                     }
                     add(NewAction(
