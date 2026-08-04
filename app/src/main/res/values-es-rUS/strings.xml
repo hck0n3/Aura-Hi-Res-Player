@@ -30,7 +30,7 @@
     <string name="most_played_artists">Artistas más reproducidos</string>
     <string name="most_played_albums">Álbumes más reproducidos</string>
     <string name="search">Buscar</string>
-    <string name="search_yt_music">Buscar música en YouTube…</string>
+    <string name="search_yt_music">Buscar en Aura Hi-Res…</string>
     <string name="search_library">Buscar biblioteca…</string>
     <string name="filter_library">Biblioteca</string>
     <string name="filter_liked">Favoritos</string>
@@ -65,7 +65,7 @@
     <string name="couldnt_load_playlist">No se pudo cargar la lista. Revisa tu conexión.</string>
     <string name="couldnt_load_artist">No se pudo cargar el artista. Revisa tu conexión.</string>
     <string name="couldnt_load_album">No se pudo cargar el álbum. Revisa tu conexión.</string>
-    <string name="album_no_longer_available">Este álbum ya no está disponible en YouTube Music.</string>
+    <string name="album_no_longer_available">Este álbum ya no está disponible.</string>
     <string name="radio">Radio</string>
     <string name="shuffle">Aleatorio</string>
     <string name="reset">Reiniciar</string>
@@ -314,7 +314,7 @@
     <string name="listen_together_connection_failed">No se pudo conectar a la sala. Revisa tu conexión a internet e inténtalo de nuevo.</string>
     <!-- Migración de listas (Tidal / Deezer / archivo / Apple -> YouTube Music) -->
     <string name="migrate_playlist">Migrar lista</string>
-    <string name="migrate_pick_source_desc">Trae una lista de otro servicio a tu biblioteca de YouTube Music. Cada canción se busca en YouTube Music.</string>
+    <string name="migrate_pick_source_desc">Trae una lista de otro servicio a tu biblioteca de YouTube Music. Cada canción se busca en Aura Hi-Res.</string>
     <string name="migrate_source_group">Elige el origen</string>
     <string name="migrate_needs_youtube">Inicia sesión en YouTube Music (Ajustes -> Cuentas) para migrar: la lista se crea en tu cuenta de YouTube Music.</string>
     <string name="migrate_youtube_login">Iniciar sesión en YouTube Music</string>
@@ -333,7 +333,7 @@
     <string name="migrate_deezer_public_note">Tu perfil de Deezer debe ser PÚBLICO (app de Deezer → Ajustes → Privacidad). Un perfil privado no se puede leer.</string>
     <string name="migrate_confirm_count">Se migrarán %d canciones.</string>
     <string name="migrate_confirm_count_unknown">Se migrarán las canciones de la lista.</string>
-    <string name="migrate_confirm_network_note">Cada canción se busca en YouTube Music, una por una.</string>
+    <string name="migrate_confirm_network_note">Cada canción se busca en Aura Hi-Res, una por una.</string>
     <string name="migrate_confirm_datasaver">El Ahorro de datos está activado: esta importación usa la red para cada canción.</string>
     <string name="migrate_confirm_large">Es una importación grande y tardará un rato.</string>
     <string name="migrate_running_title">Migrando…</string>

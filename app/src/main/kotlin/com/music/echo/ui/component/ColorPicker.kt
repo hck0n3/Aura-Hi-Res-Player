@@ -100,15 +100,32 @@ object ColorPickerConversions {
         return "%06X".format(argb and 0xFFFFFF)
     }
 
+    /** Only hex digits — nothing else may reach [String.toInt]. */
+    private val HEX_DIGITS = Regex("[0-9a-fA-F]+")
+
     /**
-     * Parses a RRGGBB hex string (optionally prefixed with '#') to an opaque [Color],
-     * or null if the input is not a valid 6-digit hex color.
+     * Parses a hex colour to an opaque [Color], or null if the input is malformed. Never throws, so
+     * a half-typed or pasted-garbage field can only ever show an inline error.
+     *
+     * Accepts, case-insensitively and with surrounding whitespace: `RRGGBB`, `RGB` (CSS shorthand,
+     * each digit doubled), each optionally prefixed with `#` or `0x`. The digit check is an explicit
+     * regex rather than [String.toIntOrNull] because that helper also accepts a leading `+`/`-`, so
+     * `-FFFFF` used to parse into a nonsense colour instead of being rejected.
      */
     fun parseHexColor(hex: String): Color? {
-        val cleaned = hex.trim().removePrefix("#")
-        if (cleaned.length != 6) return null
-        val rgb = cleaned.toIntOrNull(16) ?: return null
-        return Color(0xFF000000.toInt() or rgb)
+        val cleaned = hex.trim()
+            .removePrefix("#")
+            .removePrefix("0x")
+            .removePrefix("0X")
+        if (!HEX_DIGITS.matches(cleaned)) return null
+
+        val rgb = when (cleaned.length) {
+            6 -> cleaned
+            // CSS shorthand: #4AF -> #44AAFF.
+            3 -> cleaned.map { "$it$it" }.joinToString("")
+            else -> return null
+        }
+        return Color(0xFF000000.toInt() or rgb.toInt(16))
     }
 }
 

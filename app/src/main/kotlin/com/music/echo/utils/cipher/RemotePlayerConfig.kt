@@ -327,11 +327,22 @@ object RemotePlayerConfig {
             if (code == HttpURLConnection.HTTP_NOT_MODIFIED) {
                 return FetchResult(body = null, etag = ifNoneMatch, notModified = true)
             }
-            if (code !in 200..299) return null
+            if (code !in 200..299) {
+                // This is the SELF-HEALING channel: publishing one JSON is how a YouTube cipher
+                // rotation gets fixed for every user without an app update. A silent failure here means
+                // the fix never arrives and nobody ever finds out why the repair "didn't work".
+                Timber.tag("RESOLVE_CIPHER").w("remote player config fetch HTTP $code")
+                return null
+            }
             val body = conn.inputStream.bufferedReader().use { it.readText() }
-            if (body.length > MAX_BODY_BYTES) null
-            else FetchResult(body = body, etag = conn.getHeaderField("ETag"), notModified = false)
+            if (body.length > MAX_BODY_BYTES) {
+                Timber.tag("RESOLVE_CIPHER").w("remote player config too large (${body.length} bytes), ignored")
+                null
+            } else {
+                FetchResult(body = body, etag = conn.getHeaderField("ETag"), notModified = false)
+            }
         } catch (e: Exception) {
+            Timber.tag("RESOLVE_CIPHER").w("remote player config unreachable: ${e.javaClass.simpleName}: ${e.message}")
             null
         } finally {
             runCatching { conn?.disconnect() }

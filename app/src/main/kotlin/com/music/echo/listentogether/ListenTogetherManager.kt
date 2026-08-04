@@ -2,7 +2,11 @@
 
 package iad1tya.echo.music.listentogether
 
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.media.AudioManager
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import com.music.innertube.YouTube
@@ -27,6 +31,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -42,13 +47,28 @@ class ListenTogetherManager @Inject constructor(
 ) {
     companion object {
         private const val TAG = "ListenTogetherManager"
-        
-        
+
+        /**
+         * Diagnostic tag for every room publish and every room apply. Emitted at Timber INFO because
+         * AppLogger only persists >= INFO, so a desync can be read off a shared log instead of guessed
+         * at. NEVER carries the session token, the server URL, the room code or a username — only media
+         * ids, queue indices, positions and wall-clock deltas.
+         */
+        private const val TRACE_TAG = "LISTEN_TOGETHER"
+
+        /**
+         * Android's (undocumented but universal) system broadcast fired whenever a stream's volume
+         * changes — including from the hardware buttons. Protected system broadcast, so no export flag
+         * is needed. The player screen already observes it the same way.
+         */
+        private const val VOLUME_CHANGED_ACTION = "android.media.VOLUME_CHANGED_ACTION"
+
+
         private const val SYNC_DEBOUNCE_THRESHOLD_MS = 1000L
-        
-        
+
+
         private const val POSITION_TOLERANCE_MS = 2000L
-        
+
 
         private const val PLAYBACK_POSITION_TOLERANCE_MS = 3000L
 
@@ -57,6 +77,47 @@ class ListenTogetherManager @Inject constructor(
     }
 
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+
+    /**
+     * One line per publish (host) and per apply (guest): what track, where in the queue, at what
+     * position, and how stale the data was by the time it was used. `deltaMs` is the wall-clock gap
+     * between capture and use measured on ONE device's clock, so it is the buffer/plumbing lag only —
+     * host->guest network latency is not in it (see the serverTime note in [handlePlaybackSync]).
+     */
+    private fun trace(
+        phase: String,
+        action: String,
+        mediaId: String?,
+        queueIndex: Int,
+        positionMs: Long,
+        deltaMs: Long,
+        extra: String = "",
+    ) {
+        Timber.tag(TRACE_TAG).i(
+            "%s %s id=%s idx=%d pos=%dms delta=%dms%s",
+            phase,
+            action,
+            mediaId ?: "-",
+            queueIndex,
+            positionMs,
+            deltaMs,
+            if (extra.isEmpty()) "" else " $extra",
+        )
+    }
+
+    private fun safeQueueIndex(player: Player?): Int =
+        try {
+            player?.currentMediaItemIndex ?: -1
+        } catch (e: Exception) {
+            -1
+        }
+
+    private fun safePosition(player: Player?): Long =
+        try {
+            player?.currentPosition ?: -1L
+        } catch (e: Exception) {
+            -1L
+        }
 
     init {
         initialize()
@@ -68,13 +129,38 @@ class ListenTogetherManager @Inject constructor(
     private var roleCollectorJob: Job? = null
     private var queueObserverJob: Job? = null
     private var volumeObserverJob: Job? = null
+    private var playerSwapObserverJob: Job? = null
     private var playerListenerRegistered = false
+
+    /**
+     * The exact ExoPlayer instance [playerListener] is attached to. MusicService REPLACES its player
+     * object on a crossfade swap (performCrossfadeSwap) and on the instant video swap, and neither path
+     * fires onMediaItemTransition — so a listener attached once by instance is silently orphaned onto a
+     * player that is about to be released, and the host stops publishing anything at all. Tracked here so
+     * [observePlayerSwaps] can move the listener the moment the service republishes.
+     */
+    private var listenerAttachedTo: Player? = null
 
     private val syncHostVolumeEnabled = MutableStateFlow(true)
     private val smartResyncEnabled = MutableStateFlow(true)
     private var lastSyncedVolume: Float? = null
     private var previousMuteState: Boolean? = null
     private var muteForcedByPreference = false
+
+    /**
+     * The guest's OWN app volume, saved when it joins and restored when it leaves. Without this a guest
+     * that followed a quiet host keeps that attenuation forever: MusicService persists playerVolume to
+     * the datastore a second after it changes, so the host's level silently becomes the guest's new
+     * default for solo listening too.
+     */
+    private var previousPlayerVolume: Float? = null
+
+    /**
+     * When the guest last applied an ABSOLUTE track change (CHANGE_TRACK / full state). A relative
+     * SKIP_NEXT / SKIP_PREV arriving right behind one is the second half of a double-publish and must be
+     * dropped, or the guest advances twice. See [ListenTogetherSync.shouldApplyRelativeSkip].
+     */
+    private var lastTrackChangeAppliedAt: Long = 0L
 
     private var lastRole: RoomRole = RoomRole.NONE
     
@@ -170,10 +256,12 @@ class ListenTogetherManager @Inject constructor(
                 
                 if (playWhenReady) {
                     Timber.tag(TAG).d("Host sending PLAY at position $position")
+                    trace("PUBLISH", "PLAY", player.currentMediaItem?.mediaId, safeQueueIndex(player), position, 0L)
                     client.sendPlaybackAction(PlaybackActions.PLAY, position = position)
                     lastSyncedIsPlaying = true
                 } else if (!playWhenReady && (lastSyncedIsPlaying == true)) {
                     Timber.tag(TAG).d("Host sending PAUSE at position $position")
+                    trace("PUBLISH", "PAUSE", player.currentMediaItem?.mediaId, safeQueueIndex(player), position, 0L)
                     client.sendPlaybackAction(PlaybackActions.PAUSE, position = position)
                     lastSyncedIsPlaying = false
                 }
@@ -194,21 +282,27 @@ class ListenTogetherManager @Inject constructor(
                 if (trackId == lastSyncedTrackId) return
                 
                 lastSyncedTrackId = trackId
-                
+
                 lastSyncedIsPlaying = false
-                
-                
+
+
                 player.currentMetadata?.let { metadata ->
                     Timber.tag(TAG).d("Host sending track change: ${metadata.title}")
+                    trace(
+                        "PUBLISH", "CHANGE_TRACK", trackId,
+                        safeQueueIndex(player), safePosition(player), 0L,
+                        "reason=$reason",
+                    )
                     sendTrackChange(metadata)
-                    
-                    
-                    
+
+
+
                     val isPlaying = player.playWhenReady
                     if (isPlaying) {
                         Timber.tag(TAG).d("Host is playing during track change, sending PLAY")
                         lastSyncedIsPlaying = true
                         val position = player.currentPosition
+                        trace("PUBLISH", "PLAY", trackId, safeQueueIndex(player), position, 0L)
                         client.sendPlaybackAction(PlaybackActions.PLAY, position = position)
                     }
                 }
@@ -216,7 +310,7 @@ class ListenTogetherManager @Inject constructor(
                 Timber.tag(TAG).e(e, "Error in onMediaItemTransition")
             }
         }
-        
+
         override fun onPositionDiscontinuity(
             oldPosition: Player.PositionInfo,
             newPosition: Player.PositionInfo,
@@ -224,10 +318,24 @@ class ListenTogetherManager @Inject constructor(
         ) {
             try {
                 if (isSyncing || !isHost || !isInRoom) return
-                
-                
+
+
                 if (reason == Player.DISCONTINUITY_REASON_SEEK) {
+                    // A seek that CROSSES media items (skip next/previous, tapping another queue row) is
+                    // already fully described by the CHANGE_TRACK that onMediaItemTransition published for
+                    // the destination — that message carries the track identity, the queue and position 0.
+                    // Publishing a bare SEEK for it too made the guest seek its still-current OLD track to
+                    // the new track's position before the track change landed. Only WITHIN-track seeks are
+                    // meaningful as a relative SEEK.
+                    if (oldPosition.mediaItemIndex != newPosition.mediaItemIndex) {
+                        Timber.tag(TAG).d("Skipping SEEK publish: discontinuity crossed media items")
+                        return
+                    }
                     Timber.tag(TAG).d("Host sending SEEK to ${newPosition.positionMs}")
+                    trace(
+                        "PUBLISH", "SEEK", newPosition.mediaItem?.mediaId ?: lastSyncedTrackId,
+                        newPosition.mediaItemIndex, newPosition.positionMs, 0L,
+                    )
                     client.sendPlaybackAction(PlaybackActions.SEEK, position = newPosition.positionMs)
                 }
             } catch (e: Exception) {
@@ -236,21 +344,89 @@ class ListenTogetherManager @Inject constructor(
         }
     }
 
-    
+    /**
+     * Attach [playerListener] to the service's CURRENT player instance, moving it if the service has
+     * swapped players since last time. Idempotent.
+     */
+    private fun attachPlayerListener() {
+        val player = try {
+            playerConnection?.player
+        } catch (e: Exception) {
+            Timber.tag(TAG).e(e, "Failed to read player for listener attach")
+            null
+        } ?: return
+        if (playerListenerRegistered && listenerAttachedTo === player) return
+        try {
+            listenerAttachedTo?.takeIf { it !== player }?.removeListener(playerListener)
+            player.addListener(playerListener)
+            listenerAttachedTo = player
+            playerListenerRegistered = true
+            Timber.tag(TAG).d("Player listener attached to $player")
+        } catch (e: Exception) {
+            Timber.tag(TAG).e(e, "Failed to attach player listener")
+            playerListenerRegistered = false
+            listenerAttachedTo = null
+        }
+    }
+
+    /** Detach [playerListener] from whichever instance currently holds it. Idempotent. */
+    private fun detachPlayerListener() {
+        try {
+            listenerAttachedTo?.removeListener(playerListener)
+        } catch (e: Exception) {
+            Timber.tag(TAG).e(e, "Error removing player listener")
+        }
+        listenerAttachedTo = null
+        playerListenerRegistered = false
+    }
+
+    /**
+     * Follow MusicService's player swaps. A crossfade swap (performCrossfadeSwap) and the instant video
+     * swap both replace the player object and republish `playerFlow` WITHOUT firing
+     * onMediaItemTransition — the callback-skipping path this codebase has been bitten by repeatedly. A
+     * listener bound to the old instance would then be attached to a player that is about to be released,
+     * so the host would go permanently silent: no track changes, no play/pause, no seeks.
+     *
+     * Crossfade is force-disabled while a room exists (MusicService gates crossfadeEnabled on
+     * roomState == null), but a swap already scheduled when the room is created still commits — and the
+     * video swap is not gated at all. Following the flow makes the wiring correct regardless.
+     */
+    private fun observePlayerSwaps() {
+        if (playerSwapObserverJob?.isActive == true) return
+        val connection = playerConnection ?: return
+        playerSwapObserverJob = scope.launch {
+            connection.service.playerFlow.collect { newPlayer ->
+                if (newPlayer == null) return@collect
+                if (playerConnection !== connection) return@collect
+                if (!isInRoom || !isHost) return@collect
+                if (listenerAttachedTo === newPlayer) return@collect
+                Timber.tag(TAG).d("Service swapped player instance - moving room listener")
+                trace(
+                    "PUBLISH", "PLAYER_SWAP", newPlayer.currentMediaItem?.mediaId,
+                    safeQueueIndex(newPlayer), safePosition(newPlayer), 0L,
+                    "listener re-attached",
+                )
+                attachPlayerListener()
+            }
+        }
+    }
+
+    private fun stopPlayerSwapObservation() {
+        playerSwapObserverJob?.cancel()
+        playerSwapObserverJob = null
+    }
+
+
     fun setPlayerConnection(connection: PlayerConnection?) {
         Timber.tag(TAG).d("setPlayerConnection: ${connection != null}, isInRoom: $isInRoom")
-        
+
         try {
-            
+
             val oldConnection = playerConnection
             if (playerListenerRegistered && oldConnection != null) {
-                try {
-                    oldConnection.player.removeListener(playerListener)
-                } catch (e: Exception) {
-                    Timber.tag(TAG).e(e, "Error removing old player listener")
-                }
-                playerListenerRegistered = false
+                detachPlayerListener()
             }
+            stopPlayerSwapObservation()
             oldConnection?.shouldBlockPlaybackChanges = null
             oldConnection?.onSkipPrevious = null
             oldConnection?.onSkipNext = null
@@ -266,31 +442,41 @@ class ListenTogetherManager @Inject constructor(
             
             
             if (connection != null && isInRoom) {
-                try {
-                    connection.player.addListener(playerListener)
-                    playerListenerRegistered = true
-                    Timber.tag(TAG).d("Added player listener for room sync")
-                } catch (e: Exception) {
-                    Timber.tag(TAG).e(e, "Failed to add player listener")
-                    playerListenerRegistered = false
-                }
+                attachPlayerListener()
+
                 
-                
+                // DEFECT 1 (guest lands one song ahead). These callbacks fire from
+                // PlayerConnection.seekToNext/seekToPrevious AFTER `player.seekToNext()` has already
+                // returned — and media3 flushes its listener events synchronously inside that call, so
+                // playerListener.onMediaItemTransition above has ALREADY published an absolute
+                // CHANGE_TRACK naming the destination track. Publishing a relative SKIP_NEXT on top made
+                // the guest apply both: it landed on the destination and then skipped once more, i.e.
+                // exactly one song ahead of the host, every time. The absolute message is strictly better
+                // (it carries the media id and the queue, so it is idempotent and survives queue
+                // divergence), so these now only trace.
                 connection.onSkipPrevious = {
                     try {
                         if (isHost && !isSyncing) {
-                            Timber.tag(TAG).d("Host Skip Previous triggered")
-                            client.sendPlaybackAction(PlaybackActions.SKIP_PREV)
+                            val p = playerConnection?.player
+                            trace(
+                                "PUBLISH", "SKIP_PREV_SUPPRESSED", p?.currentMediaItem?.mediaId,
+                                safeQueueIndex(p), safePosition(p), 0L,
+                                "absolute CHANGE_TRACK already published",
+                            )
                         }
                     } catch (e: Exception) {
                         Timber.tag(TAG).e(e, "Error in onSkipPrevious")
                     }
                 }
                 connection.onSkipNext = {
-                try {
+                    try {
                         if (isHost && !isSyncing) {
-                            Timber.tag(TAG).d("Host Skip Next triggered")
-                            client.sendPlaybackAction(PlaybackActions.SKIP_NEXT)
+                            val p = playerConnection?.player
+                            trace(
+                                "PUBLISH", "SKIP_NEXT_SUPPRESSED", p?.currentMediaItem?.mediaId,
+                                safeQueueIndex(p), safePosition(p), 0L,
+                                "absolute CHANGE_TRACK already published",
+                            )
                         }
                     } catch (e: Exception) {
                         Timber.tag(TAG).e(e, "Error in onSkipNext")
@@ -315,10 +501,12 @@ class ListenTogetherManager @Inject constructor(
                 startQueueSyncObservation()
                 startHeartbeat()
                 startVolumeSyncObservation()
+                observePlayerSwaps()
             } else {
                 stopQueueSyncObservation()
                 stopHeartbeat()
                 stopVolumeSyncObservation()
+                stopPlayerSwapObservation()
             }
             updateGuestMuteState()
         } catch (e: Exception) {
@@ -379,21 +567,15 @@ class ListenTogetherManager @Inject constructor(
                             startQueueSyncObservation()
                             startHeartbeat()
                             startVolumeSyncObservation()
-                            
-                            if (!playerListenerRegistered) {
-                                try {
-                                    connection.player.addListener(playerListener)
-                                    playerListenerRegistered = true
-                                } catch (e: Exception) {
-                                    Timber.tag(TAG).e(e, "Failed to add player listener on role change")
-                                }
-                            }
+                            attachPlayerListener()
+                            observePlayerSwaps()
                         }
                     } else if (newRole != RoomRole.HOST && wasHost) {
                         Timber.tag(TAG).d("Role changed from HOST, stopping sync services")
                         stopQueueSyncObservation()
                         stopHeartbeat()
                         stopVolumeSyncObservation()
+                        stopPlayerSwapObservation()
                     }
                     updateGuestMuteState()
                 } catch (e: Exception) {
@@ -415,16 +597,9 @@ class ListenTogetherManager @Inject constructor(
                     
                     val connection = playerConnection
                     val player = connection?.player
-                    if (player != null && !playerListenerRegistered) {
-                        try {
-                            player.addListener(playerListener)
-                            playerListenerRegistered = true
-                            Timber.tag(TAG).d("Added player listener as host")
-                        } catch (e: Exception) {
-                            Timber.tag(TAG).e(e, "Failed to add player listener on room create")
-                        }
-                    }
-                    
+                    attachPlayerListener()
+                    observePlayerSwaps()
+
                     lastSyncedIsPlaying = player?.playWhenReady
                     lastSyncedTrackId = player?.currentMediaItem?.mediaId
 
@@ -454,15 +629,18 @@ class ListenTogetherManager @Inject constructor(
                 Timber.tag(TAG).d("Join approved for room: ${event.roomCode}")
                 
                 saveMuteStateOnJoin()
-                
+
                 applyPlaybackState(
                     currentTrack = event.state.currentTrack,
                     isPlaying = event.state.isPlaying,
-                    position = event.state.position,
+                    // Same rule as every other apply path: a position captured while the host was
+                    // playing has to be advanced by however long it took to reach us, or the guest
+                    // starts the session already behind. handleSyncState has always done this.
+                    position = compensatedRoomStatePosition(event.state.position, event.state.lastUpdate, event.state.isPlaying),
                     queue = event.state.queue
-                    
+
                 )
-                applyHostVolumeIfNeeded(event.state.volume)
+                applyHostVolumeIfNeeded(event.state.volume, fromAggregateState = true)
                 updateGuestMuteState()
             }
             
@@ -542,18 +720,11 @@ class ListenTogetherManager @Inject constructor(
                     
                     val connection = playerConnection
                     val player = connection?.player
-                    if (player != null && !playerListenerRegistered) {
-                        try {
-                            player.addListener(playerListener)
-                            playerListenerRegistered = true
-                            Timber.tag(TAG).d("Re-added player listener after reconnect")
-                        } catch (e: Exception) {
-                            Timber.tag(TAG).e(e, "Failed to re-add player listener after reconnect")
-                        }
-                    }
-                    
-                    
+                    attachPlayerListener()
+
+
                     if (event.isHost) {
+                        observePlayerSwaps()
                         
                         lastSyncedIsPlaying = player?.playWhenReady
                         lastSyncedTrackId = player?.currentMediaItem?.mediaId
@@ -591,11 +762,11 @@ class ListenTogetherManager @Inject constructor(
                         applyPlaybackState(
                             currentTrack = event.state.currentTrack,
                             isPlaying = event.state.isPlaying,
-                            position = event.state.position,
+                            position = compensatedRoomStatePosition(event.state.position, event.state.lastUpdate, event.state.isPlaying),
                             queue = event.state.queue,
-                            bypassBuffer = true  
+                            bypassBuffer = true
                         )
-                        applyHostVolumeIfNeeded(event.state.volume)
+                        applyHostVolumeIfNeeded(event.state.volume, fromAggregateState = true)
                         
                         
                         
@@ -632,33 +803,27 @@ class ListenTogetherManager @Inject constructor(
                     Timber.tag(TAG).d("Local user lost host role")
                     stopQueueSyncObservation()
                     stopVolumeSyncObservation()
-                    if (playerListenerRegistered) {
-                        playerConnection?.player?.removeListener(playerListener)
-                        playerListenerRegistered = false
-                    }
-                    
+                    stopPlayerSwapObservation()
+                    detachPlayerListener()
+
                     updateGuestMuteState()
                 } else if (!wasHost && nowIsHost) {
                     
                     Timber.tag(TAG).d("Local user gained host role")
-                    updateGuestMuteState() 
+                    updateGuestMuteState()
+                    // No longer following anyone: take our own level back BEFORE the observation below
+                    // starts, so the first thing we publish as host is our volume, not the old host's.
+                    restoreGuestVolume()
 
-                    
+
                     val connection = playerConnection
                     val player = connection?.player
-                    if (player != null && !playerListenerRegistered) {
-                        try {
-                            player.addListener(playerListener)
-                            playerListenerRegistered = true
-                            Timber.tag(TAG).d("Added player listener as new host")
-                        } catch (e: Exception) {
-                            Timber.tag(TAG).e(e, "Failed to add player listener on host transfer")
-                        }
-                    }
+                    attachPlayerListener()
 
-                    
+
                     startQueueSyncObservation()
                     startVolumeSyncObservation()
+                    observePlayerSwaps()
 
                     
                     val metadata = player?.currentMetadata
@@ -709,24 +874,24 @@ class ListenTogetherManager @Inject constructor(
     private fun cleanup() {
         if (lastRole == RoomRole.GUEST) {
             restoreGuestMuteState()
+            restoreGuestVolume()
         }
-        if (playerListenerRegistered) {
-            playerConnection?.player?.removeListener(playerListener)
-            playerListenerRegistered = false
-        }
+        detachPlayerListener()
         stopQueueSyncObservation()
         stopHeartbeat()
         stopVolumeSyncObservation()
-        
+        stopPlayerSwapObservation()
+
         lastSyncedIsPlaying = null
         lastSyncedTrackId = null
         bufferingTrackId = null
         isSyncing = false
         bufferCompleteReceivedForTrack = null
         lastRole = RoomRole.NONE
-        lastSyncActionTime = 0L  
-        ++currentTrackGeneration  
-        _chatMessages.value = emptyList() 
+        lastSyncActionTime = 0L
+        lastTrackChangeAppliedAt = 0L
+        ++currentTrackGeneration
+        _chatMessages.value = emptyList()
     }
 
     private fun updateGuestMuteState() {
@@ -767,12 +932,80 @@ class ListenTogetherManager @Inject constructor(
         muteForcedByPreference = false
     }
 
-    private fun applyHostVolumeIfNeeded(volume: Float?) {
+    /**
+     * Guests only. Applies the host's published level to the guest's OWN app attenuation
+     * (MusicService.playerVolume) — never to the guest's system stream volume.
+     *
+     * Why this target and not the device volume: playerVolume feeds the single writer
+     * `combine(playerVolume, isMuted) { ... }.collectLatest { player.volume = it }` in MusicService, the
+     * exact same path the in-app volume slider already uses, so nothing new can fight the crossfade
+     * ramp (which writes player.volume directly during a swap — and which is force-disabled outright
+     * while a room exists). Writing the guest's STREAM_MUSIC instead would change the device globally
+     * for every app, pop the system volume HUD, and cannot be undone when the room ends.
+     */
+    private fun applyHostVolumeIfNeeded(volume: Float?, fromAggregateState: Boolean = false) {
         if (!syncHostVolumeEnabled.value || isHost || !isInRoom) return
         val connection = playerConnection ?: return
+        // RoomState/SyncState are built by the server and encoded with proto3, where an unset float
+        // decodes as 0.0 — indistinguishable from "the host wants silence". Never mute a joining guest on
+        // that ambiguity; an explicit SET_VOLUME action is the only message allowed to carry a real 0.
+        if (fromAggregateState && volume != null && volume <= 0f) {
+            Timber.tag(TAG).d("Ignoring volume 0 from aggregate room state (likely an unset proto field)")
+            return
+        }
         val target = volume?.coerceIn(0f, 1f) ?: return
+        saveVolumeStateOnJoin()
         connection.service.playerVolume.value = target
+        trace(
+            "APPLY", "SET_VOLUME", connection.player.currentMediaItem?.mediaId,
+            safeQueueIndex(connection.player), safePosition(connection.player), 0L,
+            "volume=$target",
+        )
     }
+
+    /** Remember the guest's own attenuation once, before the host's level overwrites it. */
+    private fun saveVolumeStateOnJoin() {
+        val connection = playerConnection ?: return
+        if (previousPlayerVolume == null) {
+            previousPlayerVolume = try {
+                connection.service.playerVolume.value
+            } catch (e: Exception) {
+                Timber.tag(TAG).e(e, "Could not read player volume on join")
+                null
+            }
+            Timber.tag(TAG).d("Saved player volume on join: $previousPlayerVolume")
+        }
+    }
+
+    /**
+     * Put the guest's own attenuation back when the room ends. Without this the host's level sticks:
+     * MusicService persists playerVolume to the datastore a second after any change, so a quiet host
+     * would silently become the guest's new default for solo listening.
+     */
+    private fun restoreGuestVolume() {
+        val connection = playerConnection ?: return
+        val saved = previousPlayerVolume ?: return
+        try {
+            Timber.tag(TAG).d("Restoring player volume on leave: $saved")
+            connection.service.playerVolume.value = saved
+        } catch (e: Exception) {
+            Timber.tag(TAG).e(e, "Failed to restore player volume on leave")
+        }
+        previousPlayerVolume = null
+    }
+
+    /**
+     * Advance a position that a SERVER-built RoomState reported at [lastUpdate] to now. Server clock vs
+     * ours, so this can only ever be approximate — compensatedPosition floors the delta at 0 so a guest
+     * whose clock runs behind never seeks backwards. A missing [lastUpdate] means no compensation.
+     */
+    private fun compensatedRoomStatePosition(position: Long, lastUpdate: Long, isPlaying: Boolean): Long =
+        ListenTogetherSync.compensatedPosition(
+            basePositionMs = position,
+            capturedAtMs = lastUpdate,
+            nowMs = System.currentTimeMillis(),
+            isPlaying = isPlaying,
+        )
 
     private fun applyPendingSyncIfReady() {
         val pending = pendingSyncState ?: return
@@ -787,13 +1020,38 @@ class ListenTogetherManager @Inject constructor(
         Timber.tag(TAG).d("Applying pending sync: track=$pendingTrackId, pos=${pending.position}, play=${pending.isPlaying}")
         isSyncing = true
 
-        val targetPos = pending.position
-        val posDiff = kotlin.math.abs(player.currentPosition - targetPos)
         val willPlay = pending.isPlaying
-        
-        
+        // DEFECT 3 (they desync on the next track). The position in `pending` was captured when the
+        // host's message ARRIVED; it is only applied now, after the track buffered and the server's
+        // BUFFER_COMPLETE fan-in came back — routinely seconds later. Applying it verbatim baked that
+        // whole wait in as permanent lag, which is why the pair started together and drifted apart from
+        // the first automatic advance onward. The other apply path (handleSyncState) has always done this
+        // compensation; this one never did. Both timestamps are this device's own clock, so the
+        // arithmetic is safe (see the serverTime note in handlePlaybackSync).
+        val now = System.currentTimeMillis()
+        val staleMs = if (pending.lastUpdate > 0L) (now - pending.lastUpdate).coerceAtLeast(0L) else 0L
+        val duration = try {
+            player.duration.takeIf { it != androidx.media3.common.C.TIME_UNSET } ?: 0L
+        } catch (e: Exception) {
+            0L
+        }
+        val targetPos = ListenTogetherSync.compensatedPosition(
+            basePositionMs = pending.position,
+            capturedAtMs = pending.lastUpdate,
+            nowMs = now,
+            isPlaying = willPlay,
+            durationMs = duration,
+        )
+        val posDiff = kotlin.math.abs(player.currentPosition - targetPos)
+
+
         val tolerance = if (willPlay && player.playWhenReady) PLAYBACK_POSITION_TOLERANCE_MS else POSITION_TOLERANCE_MS
-        
+
+        trace(
+            "APPLY", "PENDING_SYNC", pendingTrackId, safeQueueIndex(player), targetPos, staleMs,
+            "raw=${pending.position} play=$willPlay diff=${posDiff}ms tol=${tolerance}ms",
+        )
+
         if (posDiff > tolerance) {
             Timber.tag(TAG).d("Applying pending sync: seeking ${player.currentPosition} -> $targetPos (diff ${posDiff}ms > ${tolerance}ms)")
             connection.seekTo(targetPos)
@@ -837,11 +1095,23 @@ class ListenTogetherManager @Inject constructor(
                 PlaybackActions.PLAY -> {
                     val basePos = action.position ?: 0L
                     val now = System.currentTimeMillis()
+                    // NOTE (host->guest network latency): serverTime is meant to be stamped by the room
+                    // server so this subtraction measures one clock against itself. Nothing populates it
+                    // today — the client never sends it and the protobuf codec turns 0 back into null —
+                    // so this branch is inert and one-way latency is NOT compensated. It must stay that
+                    // way until there is a real clock-offset handshake (RTT over PING/PONG): stamping it
+                    // with a raw host wall clock and subtracting the guest's would inject the two
+                    // devices' clock skew straight into the seek position.
                     val adjustedPos = action.serverTime?.let { serverTime ->
                         basePos + kotlin.math.max(0L, now - serverTime)
                     } ?: basePos
 
                     Timber.tag(TAG).d("Guest: PLAY at position $adjustedPos, currently playing=${player.playWhenReady}")
+                    trace(
+                        "APPLY", "PLAY", player.currentMediaItem?.mediaId, safeQueueIndex(player),
+                        adjustedPos, 0L,
+                        "local=${safePosition(player)} buffering=${bufferingTrackId != null}",
+                    )
 
                     if (bufferingTrackId != null) {
                         pendingSyncState = (pendingSyncState ?: SyncStatePayload(
@@ -894,6 +1164,10 @@ class ListenTogetherManager @Inject constructor(
                     val now = System.currentTimeMillis()
                     
                     Timber.tag(TAG).d("Guest: PAUSE at position $pos, currently playing=${player.playWhenReady}")
+                    trace(
+                        "APPLY", "PAUSE", player.currentMediaItem?.mediaId, safeQueueIndex(player),
+                        pos, 0L, "local=${safePosition(player)}",
+                    )
 
                     if (bufferingTrackId != null) {
                         pendingSyncState = (pendingSyncState ?: SyncStatePayload(
@@ -938,8 +1212,12 @@ class ListenTogetherManager @Inject constructor(
                 PlaybackActions.SEEK -> {
                     val pos = action.position ?: 0L
                     val now = System.currentTimeMillis()
-                    
-                    
+
+                    trace(
+                        "APPLY", "SEEK", player.currentMediaItem?.mediaId, safeQueueIndex(player),
+                        pos, 0L, "local=${safePosition(player)}",
+                    )
+
                     if (now - lastSyncActionTime < SYNC_DEBOUNCE_THRESHOLD_MS) {
                         Timber.tag(TAG).d("Guest: SEEK debounced (only ${now - lastSyncActionTime}ms since last sync)")
                         return
@@ -958,10 +1236,19 @@ class ListenTogetherManager @Inject constructor(
                 PlaybackActions.CHANGE_TRACK -> {
                     action.trackInfo?.let { track ->
                         Timber.tag(TAG).d("Guest: CHANGE_TRACK to ${track.title}, queue size=${action.queue?.size}")
-                        
-                        
+
+                        // Absolute anchor applied: any relative SKIP_NEXT/SKIP_PREV arriving right
+                        // behind this one is the second half of a host double-publish (see
+                        // ListenTogetherSync.SKIP_SUPPRESSION_WINDOW_MS) and must not move us again.
+                        lastTrackChangeAppliedAt = System.currentTimeMillis()
+                        trace(
+                            "APPLY", "CHANGE_TRACK", track.id, safeQueueIndex(player),
+                            safePosition(player), 0L, "queue=${action.queue?.size ?: 0}",
+                        )
+
+
                         lastSyncActionTime = 0L
-                        
+
                         
                         if (action.queue != null && action.queue.isNotEmpty()) {
                             val queueTitle = action.queueTitle
@@ -980,14 +1267,41 @@ class ListenTogetherManager @Inject constructor(
                     }
                 }
                 
+                // Relative skips are no longer published by this build (the absolute CHANGE_TRACK that
+                // media3's transition callback already emitted describes the same move by identity).
+                // They are still ACCEPTED, so a room hosted by an older build keeps working — but only
+                // when no absolute track change just landed, otherwise applying both would move the
+                // guest two songs, which is defect 1 exactly.
                 PlaybackActions.SKIP_NEXT -> {
-                    Timber.tag(TAG).d("Guest: SKIP_NEXT")
-                    connection.seekToNext()
+                    val now = System.currentTimeMillis()
+                    if (ListenTogetherSync.shouldApplyRelativeSkip(now, lastTrackChangeAppliedAt)) {
+                        Timber.tag(TAG).d("Guest: SKIP_NEXT")
+                        trace("APPLY", "SKIP_NEXT", player.currentMediaItem?.mediaId, safeQueueIndex(player), safePosition(player), 0L)
+                        connection.seekToNext()
+                    } else {
+                        Timber.tag(TAG).d("Guest: SKIP_NEXT ignored - absolute track change just applied")
+                        trace(
+                            "APPLY", "SKIP_NEXT_IGNORED", player.currentMediaItem?.mediaId,
+                            safeQueueIndex(player), safePosition(player), now - lastTrackChangeAppliedAt,
+                            "double-advance guard",
+                        )
+                    }
                 }
 
                 PlaybackActions.SKIP_PREV -> {
-                    Timber.tag(TAG).d("Guest: SKIP_PREV")
-                    connection.seekToPrevious()
+                    val now = System.currentTimeMillis()
+                    if (ListenTogetherSync.shouldApplyRelativeSkip(now, lastTrackChangeAppliedAt)) {
+                        Timber.tag(TAG).d("Guest: SKIP_PREV")
+                        trace("APPLY", "SKIP_PREV", player.currentMediaItem?.mediaId, safeQueueIndex(player), safePosition(player), 0L)
+                        connection.seekToPrevious()
+                    } else {
+                        Timber.tag(TAG).d("Guest: SKIP_PREV ignored - absolute track change just applied")
+                        trace(
+                            "APPLY", "SKIP_PREV_IGNORED", player.currentMediaItem?.mediaId,
+                            safeQueueIndex(player), safePosition(player), now - lastTrackChangeAppliedAt,
+                            "double-advance guard",
+                        )
+                    }
                 }
 
                 PlaybackActions.QUEUE_ADD -> {
@@ -1062,9 +1376,13 @@ class ListenTogetherManager @Inject constructor(
                 PlaybackActions.SYNC_QUEUE -> {
                     val queue = action.queue
                     val queueTitle = action.queueTitle
-                    if (queue != null) {
+                    // An EMPTY queue must never be applied. Over protobuf an absent queue decodes as an
+                    // empty list rather than null (MessageCodec.decodeProtobufPayload), so the old
+                    // `queue != null` test let a queue-less message through and called
+                    // setMediaItems(emptyList()) — wiping the guest's whole queue mid-song.
+                    if (!queue.isNullOrEmpty()) {
                         Timber.tag(TAG).d("Guest: SYNC_QUEUE size=${queue.size}")
-                        
+
                         activeSyncJob?.cancel()
                         
                         scope.launch(Dispatchers.Main) {
@@ -1076,16 +1394,21 @@ class ListenTogetherManager @Inject constructor(
                                 track.toMediaMetadata().toMediaItem()
                             }
                             
-                            
+
+                            // Identity anchor: keep playing the song we are on, wherever it now sits.
                             val currentId = player.currentMediaItem?.mediaId
-                            var newIndex = -1
-                            if (currentId != null) {
-                                newIndex = mediaItems.indexOfFirst { it.mediaId == currentId }
-                            }
-                            
+                            val newIndex = ListenTogetherSync.resolveStartIndex(
+                                mediaItems.map { it.mediaId },
+                                currentId,
+                            )
+
                             val currentPos = player.currentPosition
                             val wasPlaying = player.isPlaying
-                            
+                            trace(
+                                "APPLY", "SYNC_QUEUE", currentId, newIndex, currentPos, 0L,
+                                "queue=${mediaItems.size}",
+                            )
+
                             connection.allowInternalSync = true
                             if (newIndex != -1) {
                                 player.setMediaItems(mediaItems, newIndex, currentPos)
@@ -1120,13 +1443,23 @@ class ListenTogetherManager @Inject constructor(
     
     private fun handleSyncState(state: SyncStatePayload) {
         val now = System.currentTimeMillis()
-        val adjustedPos = if (state.isPlaying) {
-            state.position + kotlin.math.max(0L, now - state.lastUpdate)
-        } else {
-            state.position
-        }
+        // Same rule as applyPendingSyncIfReady: a position captured while the host is PLAYING has to be
+        // advanced by however long it took to get here. state.lastUpdate comes from the server, so this
+        // one does mix clocks — it always has; coerceAtLeast(0) inside compensatedPosition keeps a guest
+        // clock that is behind from ever seeking backwards.
+        val adjustedPos = ListenTogetherSync.compensatedPosition(
+            basePositionMs = state.position,
+            capturedAtMs = state.lastUpdate,
+            nowMs = now,
+            isPlaying = state.isPlaying,
+        )
 
         Timber.tag(TAG).d("handleSyncState: playing=${state.isPlaying}, pos=${state.position} -> adj=$adjustedPos, track=${state.currentTrack?.id}")
+        trace(
+            "APPLY", "SYNC_STATE", state.currentTrack?.id, -1, adjustedPos,
+            (now - state.lastUpdate).coerceAtLeast(0L),
+            "raw=${state.position} play=${state.isPlaying} queue=${state.queue?.size ?: 0}",
+        )
         
         applyPlaybackState(
             currentTrack = state.currentTrack,
@@ -1135,7 +1468,7 @@ class ListenTogetherManager @Inject constructor(
             queue = state.queue,
             bypassBuffer = true  
         )
-        applyHostVolumeIfNeeded(state.volume)
+        applyHostVolumeIfNeeded(state.volume, fromAggregateState = true)
     }
 
     private fun applyPlaybackState(
@@ -1191,8 +1524,11 @@ class ListenTogetherManager @Inject constructor(
         }
 
         bufferingTrackId = currentTrack.id
+        // Every path into here (CHANGE_TRACK, join, reconnect, SYNC_STATE) is an ABSOLUTE anchor, so it
+        // arms the double-advance guard for relative skips. See handlePlaybackSync's SKIP_NEXT branch.
+        lastTrackChangeAppliedAt = System.currentTimeMillis()
         val generation = ++currentTrackGeneration
-        
+
         scope.launch(Dispatchers.Main) {
             
             if (currentTrackGeneration != generation) {
@@ -1214,17 +1550,25 @@ class ListenTogetherManager @Inject constructor(
                 
                 if (queue != null && queue.isNotEmpty()) {
                     val mediaItems = queue.map { it.toMediaMetadata().toMediaItem() }
-                    
-                    
-                    var startIndex = mediaItems.indexOfFirst { it.mediaId == currentTrack.id }
+
+                    // IDENTITY, never position: the two queues differ by an item the moment the radio
+                    // appends or shuffle reorders, and a positional anchor then lands on the wrong song.
+                    val startIndex = ListenTogetherSync.resolveStartIndex(
+                        mediaItems.map { it.mediaId },
+                        currentTrack.id,
+                    )
                     if (startIndex == -1) {
                         Timber.tag(TAG).w("Current track ${currentTrack.id} not found in queue, defaulting to 0")
                         val singleItem = currentTrack.toMediaMetadata().toMediaItem()
-                        
+
                         player.setMediaItems(listOf(singleItem), 0, position)
                     } else {
                         player.setMediaItems(mediaItems, startIndex, position)
                     }
+                    trace(
+                        "APPLY", "STATE", currentTrack.id, startIndex, position, 0L,
+                        "queue=${mediaItems.size} play=$isPlaying bypassBuffer=$bypassBuffer",
+                    )
                 } else {
                     
                     
@@ -1563,22 +1907,93 @@ class ListenTogetherManager @Inject constructor(
         }
     }
 
+    /**
+     * DEFECT 2 (guests never follow the host's volume). This used to observe ONLY
+     * MusicService.playerVolume — the app's internal attenuation, which is written by exactly one
+     * control: the slider inside the player's overflow menu (PlayerMenu/OldPlayerMenu). The volume the
+     * user actually moves — the slider on the player screen and the hardware volume buttons — is
+     * Android's STREAM_MUSIC level (Player.kt writes it with AudioManager.setStreamVolume), which
+     * nothing here ever read. So a host turning the volume down published nothing at all, and the
+     * feature looked dead even though the whole wire protocol for it exists.
+     *
+     * Now the host publishes its EFFECTIVE level: internal attenuation x device stream fraction, zeroed
+     * by the app's mute toggle (a host mute was previously invisible too, since muting does not change
+     * playerVolume). Device volume is picked up from the system's VOLUME_CHANGED_ACTION broadcast —
+     * event-driven, no polling loop, so no new battery or thermal cost.
+     */
     private fun startVolumeSyncObservation() {
         if (volumeObserverJob?.isActive == true) return
 
         Timber.tag(TAG).d("Starting volume sync observation")
         volumeObserverJob = scope.launch {
-            playerConnection?.service?.playerVolume
-                ?.collectLatest { volume ->
-                    if (!isHost || !isInRoom || !syncHostVolumeEnabled.value) return@collectLatest
+            val connection = playerConnection ?: return@launch
+            val service = connection.service
+            // MusicService.playerVolume is a lateinit backing field; if the service is bound but has not
+            // finished onCreate yet, reading it throws. Never let that kill the room.
+            val internalVolume = try {
+                service.playerVolume
+            } catch (e: Exception) {
+                Timber.tag(TAG).w(e, "Player volume not ready yet; volume sync will start on the next trigger")
+                return@launch
+            }
+            val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
 
-                    val normalized = volume.coerceIn(0f, 1f)
-                    val last = lastSyncedVolume
-                    if (last != null && kotlin.math.abs(last - normalized) < 0.01f) return@collectLatest
-
-                    lastSyncedVolume = normalized
-                    client.sendPlaybackAction(PlaybackActions.SET_VOLUME, volume = normalized)
+            val deviceVolume = MutableStateFlow(readDeviceVolumeFraction(audioManager))
+            val receiver = object : BroadcastReceiver() {
+                override fun onReceive(ctx: Context?, intent: Intent?) {
+                    if (intent?.action == VOLUME_CHANGED_ACTION) {
+                        deviceVolume.value = readDeviceVolumeFraction(audioManager)
+                    }
                 }
+            }
+            // VOLUME_CHANGED_ACTION is a protected system broadcast, so it needs no export flag (the
+            // player screen registers it exactly like this already).
+            val registered = runCatching {
+                context.registerReceiver(receiver, IntentFilter(VOLUME_CHANGED_ACTION))
+            }.isSuccess
+            if (!registered) {
+                Timber.tag(TAG).w("Could not observe device volume; falling back to in-app volume only")
+            }
+
+            try {
+                combine(
+                    internalVolume,
+                    service.isMuted,
+                    deviceVolume,
+                ) { internal, muted, device ->
+                    ListenTogetherSync.effectiveHostVolume(internal, muted, device)
+                }
+                    .distinctUntilChanged()
+                    .collectLatest { effective ->
+                        if (!isHost || !isInRoom || !syncHostVolumeEnabled.value) return@collectLatest
+                        if (!ListenTogetherSync.volumeChangedEnough(lastSyncedVolume, effective)) {
+                            return@collectLatest
+                        }
+                        lastSyncedVolume = effective
+                        val p = try { connection.player } catch (e: Exception) { null }
+                        trace(
+                            "PUBLISH", "SET_VOLUME", p?.currentMediaItem?.mediaId,
+                            safeQueueIndex(p), safePosition(p), 0L,
+                            "volume=$effective",
+                        )
+                        client.sendPlaybackAction(PlaybackActions.SET_VOLUME, volume = effective)
+                    }
+            } finally {
+                if (registered) {
+                    runCatching { context.unregisterReceiver(receiver) }
+                }
+            }
+        }
+    }
+
+    private fun readDeviceVolumeFraction(audioManager: AudioManager?): Float {
+        val am = audioManager ?: return 1f
+        return try {
+            val max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+            if (max <= 0) 1f else am.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat() / max
+        } catch (e: Exception) {
+            Timber.tag(TAG).e(e, "Failed to read device volume")
+            1f
         }
     }
 

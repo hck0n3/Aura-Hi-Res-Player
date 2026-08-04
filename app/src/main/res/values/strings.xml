@@ -50,7 +50,7 @@
 
     <!-- Search -->
     <string name="search">Search</string>
-    <string name="search_yt_music">Search YouTube Music…</string>
+    <string name="search_yt_music">Search Aura Hi-Res…</string>
     <string name="search_library">Search library…</string>
     <string name="filter_library">Library</string>
     <string name="filter_liked">Liked</string>
@@ -510,7 +510,7 @@
     <string name="voice_search">Voice search</string>
     <string name="voice_search_unavailable">Voice recognition not available on this device</string>
     <string name="open_links_title">Open links</string>
-    <string name="open_links_summary">Set Echo as default to open YouTube Music links</string>
+    <string name="open_links_summary">Set Aura as default to open YouTube Music links</string>
 
     <!-- AI text-to-playlist -->
     <string name="ai_playlist_title">AI Playlist</string>
@@ -554,14 +554,14 @@
     <string name="couldnt_load_playlist">Couldn\'t load the playlist. Check your connection.</string>
     <string name="couldnt_load_artist">Couldn\'t load the artist. Check your connection.</string>
     <string name="couldnt_load_album">Couldn\'t load the album. Check your connection.</string>
-    <string name="album_no_longer_available">This album is no longer available on YouTube Music.</string>
+    <string name="album_no_longer_available">This album is no longer available.</string>
     <string name="preview_unavailable">Preview unavailable right now</string>
     <string name="featured_artists">Featured Artists</string>
     <string name="from_replay">From Replay</string>
     <string name="recently_added">Recently Added</string>
     <string name="refresh">Refresh</string>
     <string name="add_selected">Add (%1$d)</string>
-    <string name="search_youtube_music">Search YouTube Music</string>
+    <string name="search_youtube_music">Search Aura Hi-Res</string>
     <string name="your_library">Your Library</string>
     <string name="add_music_no_results">No results</string>
 
@@ -572,7 +572,7 @@
     <string name="recognition_notification_processing">Identifying…</string>
     <string name="recognition_notification_no_match">No match found</string>
     <string name="recognition_notification_failed">Recognition failed</string>
-    <string name="recognition_resolve_failed">Song not found on YouTube Music</string>
+    <string name="recognition_resolve_failed">Song not found in Aura Hi-Res</string>
     <string name="listen_on_aura">Listen on Aura</string>
 
     <!-- 0.6.92 Historial de actividad -->
@@ -584,8 +584,8 @@
     <string name="ambient_mode_desc">Full-screen lean-back view with an animated glow</string>
 
     <!-- 0.6.92 Descifrado de YouTube -->
-    <string name="youtube_decryption_settings">YouTube decryption</string>
-    <string name="youtube_decryption_desc">Self-healing YouTube stream decryption</string>
+    <string name="youtube_decryption_settings">Playback decryption</string>
+    <string name="youtube_decryption_desc">Self-healing stream decryption</string>
     <string name="force_update_cipher">Force decryption update</string>
     <string name="force_update_cipher_desc">Fetch the latest player configuration now</string>
     <string name="cipher_updating">Updating decryption…</string>
@@ -598,7 +598,7 @@
     <string name="cipher_applied_configs">Active configurations</string>
     <string name="cipher_applied_configs_count">%1$d self-healing configuration(s) applied</string>
     <string name="cipher_cooldown">Please wait %1$s before updating again</string>
-    <string name="youtube_decryption_info">Aura keeps YouTube playback working on its own: it refreshes the decryption when you open the app and heals automatically when YouTube rotates its player. Use this only if playback stops working — forcing an update fetches the newest configuration right away.</string>
+    <string name="youtube_decryption_info">Aura keeps playback working on its own: it refreshes the decryption when you open the app and heals automatically when the streaming provider rotates its player. Use this only if playback stops working — forcing an update fetches the newest configuration right away.</string>
 
     <!-- 0.6.92 Scrobbling -->
     <string name="scrobbling">Scrobbling</string>
@@ -621,7 +621,7 @@
     <string name="listen_together_connection_failed">Couldn\'t connect to the room. Check your internet connection and try again.</string>
     <!-- Playlist migration (Tidal / Deezer / file / Apple -> YouTube Music) -->
     <string name="migrate_playlist">Migrate playlist</string>
-    <string name="migrate_pick_source_desc">Bring a playlist from another service into your YouTube Music library. Each track is matched on YouTube Music.</string>
+    <string name="migrate_pick_source_desc">Bring a playlist from another service into your YouTube Music library. Each track is matched in Aura Hi-Res.</string>
     <string name="migrate_source_group">Choose the source</string>
     <string name="migrate_needs_youtube">Sign in to YouTube Music (Settings -> Accounts) to migrate: the playlist is created in your YouTube Music account.</string>
     <string name="migrate_youtube_login">Sign in to YouTube Music</string>
@@ -640,7 +640,7 @@
     <string name="migrate_deezer_public_note">Your Deezer profile must be PUBLIC (Deezer app → Settings → Privacy). A private profile can\'t be read.</string>
     <string name="migrate_confirm_count">%d songs will be migrated.</string>
     <string name="migrate_confirm_count_unknown">The playlist\'s songs will be migrated.</string>
-    <string name="migrate_confirm_network_note">Each song is searched on YouTube Music, one at a time.</string>
+    <string name="migrate_confirm_network_note">Each song is searched in Aura Hi-Res, one at a time.</string>
     <string name="migrate_confirm_datasaver">Data Saver is on: this import uses the network for every song.</string>
     <string name="migrate_confirm_large">This is a large import and will take a while.</string>
     <string name="migrate_running_title">Migrating…</string>

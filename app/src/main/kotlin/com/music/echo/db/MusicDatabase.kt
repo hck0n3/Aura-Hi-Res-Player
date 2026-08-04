@@ -116,7 +116,7 @@ class MusicDatabase(
         SortedSongAlbumMap::class,
         PlaylistSongMapPreview::class,
     ],
-    version = 39,
+    version = 40,
     exportSchema = true,
     autoMigrations = [
         AutoMigration(from = 2, to = 3),
@@ -157,6 +157,7 @@ class MusicDatabase(
         AutoMigration(from = 36, to = 37),
         // 37 -> 38: additive index on event.timestamp (P39). Handled by MIGRATION_37_38 below.
         // 38 -> 39: additive Enhanced Shuffle tables. Handled by MIGRATION_38_39 below.
+        // 39 -> 40: additive artist.followedByUserAt / ytmSyncedAt / unfollowedByUserAt. See MIGRATION_39_40.
     ],
 )
 @TypeConverters(Converters::class)
@@ -180,6 +181,7 @@ abstract class InternalDatabase : RoomDatabase() {
                         MIGRATION_27_28,
                         MIGRATION_37_38,
                         MIGRATION_38_39,
+                        MIGRATION_39_40,
                     )
 
                     .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
@@ -816,5 +818,33 @@ val MIGRATION_38_39 =
                     "`cycleCount` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, " +
                     "PRIMARY KEY(`contextId`))"
             )
+        }
+    }
+
+// 39 -> 40: three nullable columns on `artist` that carry the whole YouTube subscription state
+// machine (see ArtistEntity's kdoc and iad1tya.echo.music.utils.ArtistSyncPolicy).
+//  - `followedByUserAt`   a DELIBERATE follow, as opposed to the incidental bookmark
+//                         `followArtistsWithContent()` puts on every artist that has a song in the
+//                         library. Only these are ever subscribed on the real account — pushing every
+//                         bookmarked artist up produced "me aparecen muchas suscripciones de cantantes
+//                         que no sigo".
+//  - `ytmSyncedAt`        the account currently HAS this subscription. Makes the upload idempotent.
+//  - `unfollowedByUserAt` POSITIVE evidence that the user removed a follow. The ONLY thing that can
+//                         authorise an unsubscribe. Without it the destructive direction was inferred
+//                         from an absence, and every local wipe (logout, reset, restore, interrupted
+//                         migration) looked exactly like "the user unsubscribed from all of these".
+//
+// Purely additive nullable columns: no data can be lost, and every existing row starts as all-null =
+// "incidental, never touch upstream", which is the safe default. We deliberately do NOT backfill in
+// SQL — at migration time there is no way to know which artists the user really follows. The backfill
+// happens on the next artist down-sync, which reads the account's REAL subscription list
+// (FEmusic_library_corpus_artists) and stamps exactly those rows, and which by construction can never
+// write the pending-unsubscribe shape.
+val MIGRATION_39_40 =
+    object : Migration(39, 40) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `artist` ADD COLUMN `followedByUserAt` INTEGER")
+            db.execSQL("ALTER TABLE `artist` ADD COLUMN `ytmSyncedAt` INTEGER")
+            db.execSQL("ALTER TABLE `artist` ADD COLUMN `unfollowedByUserAt` INTEGER")
         }
     }

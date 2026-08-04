@@ -263,6 +263,19 @@ constructor(
                             }
                         }
 
+                        // media3 hands us the cause of the failure and it used to be dropped on the
+                        // floor: the DB simply recorded "not downloaded". The user then reports a song
+                        // that never finishes downloading and later "doesn't play offline", and there
+                        // was no record anywhere of whether it was a 403, a full disk, or a dead
+                        // network. `failureReason` distinguishes a genuine failure from a user pause.
+                        if (download.state == Download.STATE_FAILED) {
+                            timber.log.Timber.tag("DOWNLOAD").e(
+                                "failed id=${download.request.id} reason=${download.failureReason} " +
+                                    "bytes=${download.bytesDownloaded} " +
+                                    "${finalException?.javaClass?.simpleName}: ${finalException?.message?.take(180)}"
+                            )
+                        }
+
                         scope.launch {
                             when (download.state) {
                                 Download.STATE_COMPLETED -> {

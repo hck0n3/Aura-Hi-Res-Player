@@ -243,7 +243,7 @@
     <string name="add_to_library_desc">Salvar na sua biblioteca</string>
     <string name="download_desc">Tornar disponível para reprodução offline</string>
     <string name="add_to_playlist_desc">Adicionar a uma de suas listas de reprodução</string>
-    <string name="refetch_desc">Obter os metadados mais recentes do YouTube Music</string>
+    <string name="refetch_desc">Obter os metadados mais recentes do Aura Hi-Res</string>
     <string name="share_desc">Compartilhar o link deste item</string>
     <string name="delete_desc">Remover permanentemente este item</string>
     <string name="advanced_desc">Mudar o andamento e o tom da música</string>
@@ -461,7 +461,7 @@
     <string name="listen_together_background_disconnect_note">Nota: Você pode ser desconectado se criar uma sala e trocar para outro aplicativo enquanto nunhuma música estiver tocando.</string>
     <string name="listen_together_not_configured">Ouvir Juntos não está configurado. Por favor configure o URL do servidor nas configurações → Integrações → Ouvir Juntos.</string>
     <string name="listen_together_room_created">Sala criada: %s</string>
-    <string name="hide_youtube_shorts">Ocultar vídeos curtos do YouTube</string>
+    <string name="hide_youtube_shorts">Ocultar vídeos curtos</string>
     <string name="listen_together_view_logs_desc">Depurar conexão e mensagens</string>
     <string name="listen_together_no_logs">Sem registros ainda</string>
     <string name="listen_together_suggestion_received">%1$s Solicitado %2$s</string>

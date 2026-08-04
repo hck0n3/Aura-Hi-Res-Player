@@ -273,7 +273,7 @@
     <string name="add_to_library_desc">Lagra i biblioteket ditt</string>
     <string name="download_desc">Gjer tilgjengeleg for fråkopla avspeling</string>
     <string name="add_to_playlist_desc">Legg til i ei av dine spelelister</string>
-    <string name="refetch_desc">Henta dei siste metadataa frå YouTube Music</string>
+    <string name="refetch_desc">Henta dei siste metadataa frå Aura Hi-Res</string>
     <string name="share_desc">Del ei lenkje til denne songen</string>
     <string name="delete_desc">Tak bort denne songen permanent</string>
     <string name="advanced_desc">Brigd snøggleiken og tonehøgd på songen</string>

@@ -52,7 +52,14 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 sealed class SyncOperation {
-    data object FullSync : SyncOperation()
+    /**
+     * [includeUpload] gates the Aura -> YouTube upload pass. It is FALSE for the passive
+     * [SyncUtils.tryAutoSync] path, which runs whenever Home/Library is opened (cooldown aside) — the
+     * owner's standing battery/thermal gate means a whole-library upload must never ride along with an
+     * app start. It is TRUE only for deliberate actions: the manual "Sincronizar todo", the
+     * user-configured scheduled sync, and the explicit upload button.
+     */
+    data class FullSync(val includeUpload: Boolean = true) : SyncOperation()
     data object LikedSongs : SyncOperation()
     data object LibrarySongs : SyncOperation()
     data object UploadedSongs : SyncOperation()
@@ -91,6 +98,7 @@ data class SyncState(
 class SyncUtils @Inject constructor(
     @ApplicationContext private val context: Context,
     private val database: MusicDatabase,
+    private val libraryUploadSync: LibraryUploadSync,
 ) {
     private val exceptionHandler = CoroutineExceptionHandler { _, throwable ->
         if (throwable !is CancellationException) {
@@ -156,7 +164,7 @@ class SyncUtils @Inject constructor(
 
     private suspend fun processOperation(operation: SyncOperation) {
         when (operation) {
-            is SyncOperation.FullSync -> executeFullSync()
+            is SyncOperation.FullSync -> executeFullSync(operation.includeUpload)
             is SyncOperation.LikedSongs -> executeSyncLikedSongs()
             is SyncOperation.LibrarySongs -> executeSyncLibrarySongs()
             is SyncOperation.UploadedSongs -> executeSyncUploadedSongs()
@@ -274,9 +282,10 @@ class SyncUtils @Inject constructor(
         }
     }
 
+    /** Deliberate "Sincronizar todo": pulls everything down AND pushes the library up. */
     fun performFullSync() {
         syncScope.launch {
-            syncChannel.send(SyncOperation.FullSync)
+            syncChannel.send(SyncOperation.FullSync(includeUpload = true))
         }
     }
 
@@ -285,7 +294,7 @@ class SyncUtils @Inject constructor(
             Timber.w("Skipping full sync - user not logged in")
             return
         }
-        executeFullSync()
+        executeFullSync(includeUpload = true)
     }
 
     fun tryAutoSync() {
@@ -309,7 +318,12 @@ class SyncUtils @Inject constructor(
                 return@launch
             }
 
-            syncChannel.send(SyncOperation.FullSync)
+            // DOWN-ONLY. This fires from HomeViewModel/LibraryViewModels, i.e. effectively on app
+            // start (30-min cooldown aside). Uploading a whole library from here would put hundreds of
+            // network writes behind opening the app — exactly what the battery/thermal gate forbids.
+            // The upload runs on deliberate actions only (manual "Sincronizar todo", the scheduled
+            // sync, the explicit button, or right after an import).
+            syncChannel.send(SyncOperation.FullSync(includeUpload = false))
 
             context.dataStore.edit { settings ->
                 settings[LastFullSyncKey] = LocalDateTime.now().toEpochSecond(ZoneOffset.UTC)
@@ -463,7 +477,7 @@ class SyncUtils @Inject constructor(
 
     
 
-    private suspend fun executeFullSync() = withContext(Dispatchers.IO) {
+    private suspend fun executeFullSync(includeUpload: Boolean) = withContext(Dispatchers.IO) {
         if (!isLoggedIn()) {
             Timber.w("Skipping full sync - user not logged in")
             return@withContext
@@ -499,6 +513,18 @@ class SyncUtils @Inject constructor(
             executeSyncUploadedAlbums()
 
             executeSyncArtistsSubscriptions()
+
+            // UPLOAD last: every step above has just refreshed what the account already has, so the
+            // uploader writes the smallest possible difference. It is bounded (see
+            // LibraryUploadSync.MAX_REQUESTS_PER_RUN), no-ops when the user turned it off, and never
+            // throws out of here — a failed upload must not mark the whole sync as failed.
+            if (includeUpload) {
+                runCatching { libraryUploadSync.runUploadPass() }
+                    .onFailure {
+                        if (it is CancellationException) throw it
+                        Timber.w(it, "Library upload pass failed during full sync")
+                    }
+            }
 
             updateState { copy(overallStatus = SyncStatus.Completed, currentOperation = "") }
             // C3: stamp the REAL completion time (single source of truth for "last synced X ago"). Reached only
@@ -1056,29 +1082,24 @@ class SyncUtils @Inject constructor(
                 try {
                     val remoteArtists = page.items.filterIsInstance<ArtistItem>()
                     val remoteIds = remoteArtists.map { it.id }.toSet()
-                    val localArtists = database.artistsBookmarkedByNameAsc().first()
 
-                    // Local follows not yet on YouTube (e.g. the artists picked during onboarding):
-                    // push them UP — subscribe them on the user's YouTube account instead of dropping
-                    // them locally. This keeps the user's chosen artists AND makes YouTube's algorithm
-                    // (home feed) reflect their taste from the start.
-                    localArtists.filterNot { it.id in remoteIds }.forEach { artist ->
-                        try {
-                            val channelId = artist.artist.channelId
-                                ?: if (artist.id.startsWith("UC")) {
-                                    runCatching { YouTube.getChannelId(artist.id) }.getOrNull()?.takeIf { it.isNotEmpty() }
-                                } else null
-                            if (!channelId.isNullOrEmpty()) {
-                                runCatching { YouTube.subscribeChannel(channelId, true) }
-                            }
-                        } catch (e: Exception) {
-                            // Never swallow coroutine cancellation: doing so let the sync loop keep
-                            // running after its job was cancelled, blasting through every song and
-                            // flooding logs / pegging the CPU (made playback fail right after a restore).
-                            if (e is CancellationException) throw e
-                            Timber.e(e, "Failed to subscribe artist on YouTube: ${artist.id}")
-                        }
-                    }
+                    // REMOVED — this pushed local follows UP as real YouTube subscriptions, and it was
+                    // subscribing the user to artists they never chose.
+                    //
+                    // The intent was narrow (the handful of artists picked during onboarding), but the
+                    // source it read is not: `artistsBookmarkedByNameAsc()` returns every artist with a
+                    // bookmarkedAt, and `followArtistsWithContent()` sets that flag on EVERY artist that
+                    // has so much as one song or album in the library — it runs after a liked-songs sync,
+                    // after a Spotify import, after a library migration. So the chain was:
+                    //   one song lands in the library -> its artist is auto-"followed" locally
+                    //   -> the next sync SUBSCRIBES that artist on the user's real YouTube account.
+                    // The owner reported exactly that: "me aparecen muchas suscripciones de cantantes que
+                    // no sigo". Writing to someone's account is not a sync detail — it needs an explicit
+                    // action, and there is no UI that asks for one.
+                    //
+                    // Syncing DOWN is untouched below: real YouTube subscriptions still populate "tus
+                    // artistas". Local-only follows simply stay local, which is the safe direction.
+                    // A deliberate "subscribe on YouTube" action can be added later as an explicit button.
 
                     // Decide new/changed in memory against one pre-loaded snapshot (no N+1 `artist(id)`
                     // reads), then write in batched transactions so "your artists" fills a block at a time
@@ -1114,6 +1135,17 @@ class SyncUtils @Inject constructor(
                                     )
                                 )
                             } else {
+                                // The user UNFOLLOWED this artist in Aura and the unsubscribe has not
+                                // reached YouTube yet. Re-bookmarking it here would undo their unfollow
+                                // on every sync — the same trap the saved-playlists sync already guards
+                                // against with its tombstone check. Refresh the metadata, but leave the
+                                // follow alone; LibraryUploadSync will finish the unsubscribe.
+                                //
+                                // Keyed off the POSITIVE intent marker, not off "bookmarkedAt is gone".
+                                // A missing bookmark is also what a logout, a reset, a restore from an
+                                // old backup or an artist row created incidentally by a song looks
+                                // like, and none of those is a request to unsubscribe.
+                                val pendingUnfollow = dbArtist.unfollowedByUserAt != null
                                 val needsChannelIdUpdate = dbArtist.channelId == null && channelId != null
                                 if (dbArtist.bookmarkedAt == null || needsChannelIdUpdate ||
                                     dbArtist.name != artist.title || dbArtist.thumbnailUrl != artist.thumbnail) {
@@ -1122,7 +1154,8 @@ class SyncUtils @Inject constructor(
                                             name = artist.title,
                                             thumbnailUrl = artist.thumbnail,
                                             channelId = channelId ?: dbArtist.channelId,
-                                            bookmarkedAt = dbArtist.bookmarkedAt ?: now,
+                                            bookmarkedAt = if (pendingUnfollow) null
+                                            else dbArtist.bookmarkedAt ?: now,
                                             lastUpdateTime = now
                                         )
                                     )
@@ -1143,8 +1176,33 @@ class SyncUtils @Inject constructor(
                         database.withTransaction { updateArtists(block) }
                     }
 
+                    // BACKFILL for the v39->v40 follow markers, and the thing that keeps the upload
+                    // idempotent. These ids come from FEmusic_library_corpus_artists — the account's
+                    // REAL channel subscriptions — so each one is, by definition, a follow the user
+                    // made: stamp it followedByUserAt (if it had none) AND ytmSyncedAt. Consequences:
+                    // LibraryUploadSync never re-subscribes them, and unfollowing one in Aura now
+                    // correctly unsubscribes it upstream. Artists that are merely bookmarked by
+                    // followArtistsWithContent() are NOT in this list and stay untouched — that is the
+                    // whole point of the split ("suscripciones de cantantes que no sigo").
+                    //
+                    // This page can be PARTIAL (a paginated read that timed out returns fewer ids).
+                    // That is now harmless: the statement only ever stamps rows towards "in sync", and
+                    // an id that never arrives simply keeps its previous state. Nothing here can put a
+                    // row into the pending-UNSUBSCRIBE state.
+                    if (remoteIds.isNotEmpty()) {
+                        runCatching {
+                            remoteIds.toList().chunked(SQL_IN_CHUNK).forEach { chunk ->
+                                database.markArtistsSubscribedOnYtm(chunk, now)
+                            }
+                        }.onFailure { Timber.w(it, "Could not stamp subscribed artists") }
+                    }
+
                     // Follow EVERY imported artist (also those from liked/library content, not just
                     // channel subscriptions) so they all appear under "your artists", like Spotify.
+                    // Artists carrying a pending unfollow are excluded by the query itself: this runs
+                    // in the same pass that just cleared their bookmark on purpose (see the
+                    // `pendingUnfollow` branch above), and re-bookmarking them here made the artist pop
+                    // back into "tus artistas" while the queued unsubscribe was still going to fire.
                     runCatching { database.followArtistsWithContent(LocalDateTime.now()) }
                     updateState { copy(artists = SyncStatus.Completed) }
                     Timber.d("Synced ${remoteArtists.size} artist subscriptions")

@@ -37,7 +37,10 @@ import iad1tya.echo.music.constants.AccountNameKey
 import iad1tya.echo.music.constants.DataSyncIdKey
 import iad1tya.echo.music.constants.InnerTubeCookieKey
 import iad1tya.echo.music.constants.VisitorDataKey
+import iad1tya.echo.music.db.MusicDatabaseEntryPoint
 import iad1tya.echo.music.utils.dataStore
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.datastore.preferences.core.edit
 import androidx.compose.ui.platform.LocalContext
 import android.app.Activity
@@ -162,6 +165,39 @@ fun LoginScreen(
                                         clearHistory()
                                         clearCache(true)
                                         clearFormData()
+                                    }
+
+                                    // ATTACHING an account is as much of a boundary as detaching one.
+                                    //
+                                    // `App.forgetAccount` clears the account-scoped artist markers on
+                                    // the way OUT, which covers every logout and account switch made
+                                    // on this device. It does not cover a database that arrived here
+                                    // WITHOUT passing through a logout — and Android hands us exactly
+                                    // that on a "copy apps & data" transfer, a cloud restore or an
+                                    // `adb restore`: song.db is restored (it is not excluded from the
+                                    // backup rules, deliberately — see App.classifyInstallOrigin) while
+                                    // datastore/settings.preferences_pb, which holds the cookie, IS
+                                    // excluded. The app comes up signed out, carrying account A's
+                                    // `unfollowedByUserAt` + `ytmSyncedAt` markers, and the moment the
+                                    // user signs into account B those markers become 50 real
+                                    // `subscribeChannel(id, false)` calls per pass against B.
+                                    //
+                                    // So: any database reaching a login without having passed through
+                                    // a logout is by definition carrying markers written under an
+                                    // account we cannot identify. Drop them. Re-logging into the SAME
+                                    // account is a no-op — the subscription read-back re-stamps
+                                    // `ytmSyncedAt` from the account's real list on the next sync —
+                                    // and `followedByUserAt` / `bookmarkedAt` are untouched, so the
+                                    // library and the user's own follows survive intact.
+                                    //
+                                    // Best-effort: a database problem must never block a sign-in.
+                                    runCatching {
+                                        withContext(Dispatchers.IO) {
+                                            MusicDatabaseEntryPoint.get(context)
+                                                .clearArtistAccountSyncMarkers()
+                                        }
+                                    }.onFailure { e ->
+                                        Timber.w(e, "Login: could not clear the artist account-sync markers")
                                     }
 
                                     // Persist the session synchronously, then cold-restart so every

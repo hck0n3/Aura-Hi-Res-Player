@@ -304,7 +304,11 @@ class MessageCodec(
                     insertNext = pb.insertNext,
                     queue = pb.queueList.map { protoToTrackInfo(it) },
                     queueTitle = pb.queueTitle.let { if (it.isEmpty()) null else it },
-                    volume = pb.volume.let { if (it <= 0) null else it },
+                    // Volume 0 is a LEGITIMATE value ("the host silenced it"), unlike the other fields
+                    // where proto3's absent-is-zero makes 0 indistinguishable from unset. Dropping it as
+                    // null meant a host at the bottom of the slider, or muted, never reached anyone. Only
+                    // a genuinely negative value is nonsense, and only SET_VOLUME reads this field.
+                    volume = pb.volume.let { if (it < 0f) null else it },
                     serverTime = pb.serverTime.let { if (it <= 0) null else it }
                 )
             }
@@ -336,6 +340,10 @@ class MessageCodec(
                     position = pb.position,
                     lastUpdate = pb.lastUpdate,
                     queue = pb.queueList.map { protoToTrackInfo(it) },
+                    // Deliberately NOT relaxed to `< 0` the way SYNC_PLAYBACK's was. This payload is
+                    // built by the SERVER, and proto3 makes an unset float indistinguishable from 0.0,
+                    // so accepting 0 here would silence every guest whenever the server omits the field.
+                    // A host that genuinely wants silence sends an explicit SET_VOLUME, which does carry 0.
                     volume = pb.volume.let { if (it <= 0) null else it }
                 )
             }

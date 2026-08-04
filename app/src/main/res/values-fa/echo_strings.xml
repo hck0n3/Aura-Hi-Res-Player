@@ -376,7 +376,7 @@
     <string name="scrobble_delay_percent">درصد تاخیر اسکرابل</string>
     <string name="scrobble_delay_minutes">دقیقه تاخیر اسکرابل</string>
     <string name="hide_video_songs">پنهان کردن موزیک‌ویدیوها</string>
-    <string name="hide_youtube_shorts">پنهان کردن یوتیوب شورتس (Shorts)</string>
+    <string name="hide_youtube_shorts">پنهان کردن شورتس (Shorts)</string>
 
     <string name="details_desc">مشاهده اطلاعات آهنگ</string>
     <string name="edit_desc">تغییر عنوان یا هنرمند</string>
@@ -402,7 +402,7 @@
     <string name="export_channel_name">خروجی موسیقی</string>
     <string name="filter_exported">خروجی گرفته شده</string>
     <string name="add_to_playlist_desc">افزودن به یکی از لیست‌های پخش شما</string>
-    <string name="refetch_desc">دریافت آخرین متاداده‌ها از یوتیوب موزیک</string>
+    <string name="refetch_desc">دریافت آخرین متاداده‌ها از Aura Hi-Res</string>
     <string name="share_desc">اشتراک‌گذاری لینک این آیتم</string>
     <string name="delete_desc">حذف دائمی این آیتم</string>
     <string name="advanced_desc">تغییر سرعت و گام (Pitch) آهنگ</string>

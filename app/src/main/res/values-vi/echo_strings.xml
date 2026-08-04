@@ -411,7 +411,7 @@
     <string name="add_to_library_desc">Lưu vào thư viện</string>
     <string name="download_desc">Cho phép phát lại ngoại tuyến</string>
     <string name="add_to_playlist_desc">Lưu vào danh sách nhạc</string>
-    <string name="refetch_desc">Lấy dữ liệu mới nhất từ Youtube Music</string>
+    <string name="refetch_desc">Lấy dữ liệu mới nhất từ Aura Hi-Res</string>
     <string name="share_desc">Chia sẻ liên kết của vật này</string>
     <string name="delete_desc">Xóa vĩnh viễn vật này</string>
     <string name="advanced_desc">Đổi nhịp độ và cao độ của bài hát</string>

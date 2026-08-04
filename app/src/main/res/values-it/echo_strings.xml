@@ -241,7 +241,7 @@
     <string name="add_to_library_desc">Salva nella libreria</string>
     <string name="download_desc">Rendi disponibile per l\'ascolto offline</string>
     <string name="add_to_playlist_desc">Aggiungi a una delle tue playlist</string>
-    <string name="refetch_desc">Ottieni gli ultimi metadata da YouTube Music</string>
+    <string name="refetch_desc">Ottieni gli ultimi metadata da Aura Hi-Res</string>
     <string name="share_desc">Condividi un collegamento con questo elemento</string>
     <string name="delete_desc">Rimuovi definitivamente questo elemento</string>
     <string name="advanced_desc">Cambia il tempo e la tonalità del brano</string>
@@ -586,7 +586,7 @@
     <string name="crossfade_beta_title">Funzionalità Beta</string>
     <string name="crossfade_beta_message">La dissolvenza incrociata è una nuova funzionalità e potrebbe contenere bug. Se riscontri problemi, segnalali.\n\nQuesta funzionalità disabilita lo scaricamento dell\'audio a causa di limitazioni tecniche.</string>
     <string name="audio_offload_disabled_by_crossfade">Disabilitato perché Crossfade è attivo</string>
-    <string name="hide_youtube_shorts">Nascondi gli Shorts di YouTube</string>
+    <string name="hide_youtube_shorts">Nascondi gli Shorts</string>
     <string name="listen_together_in_top_bar">Ascolta Insieme nella barra in alto</string>
     <string name="listen_together_in_top_bar_desc">Mostra Ascolta insieme nella barra dell\'app in alto anziché nella barra di navigazione</string>
     <string name="ai_translation_literal_desc">Traduci il significato nella lingua di destinazione</string>

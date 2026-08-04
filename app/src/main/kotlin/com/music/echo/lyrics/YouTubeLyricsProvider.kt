@@ -7,7 +7,7 @@ import com.music.innertube.YouTube
 import com.music.innertube.models.WatchEndpoint
 
 object YouTubeLyricsProvider : LyricsProvider {
-    override val name = "YouTube Music"
+    override val name = "Aura Hi-Res"
 
     override fun isEnabled(context: Context) = true
 

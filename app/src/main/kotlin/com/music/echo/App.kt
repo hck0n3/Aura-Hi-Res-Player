@@ -27,6 +27,7 @@ import com.music.innertube.models.IpVersion
 import com.music.innertube.models.YouTubeLocale
 import com.music.kugou.KuGou
 import iad1tya.echo.music.constants.*
+import iad1tya.echo.music.db.MusicDatabaseEntryPoint
 import iad1tya.echo.music.di.ApplicationScope
 import iad1tya.echo.music.extensions.toEnum
 import iad1tya.echo.music.extensions.toInetSocketAddress
@@ -419,6 +420,31 @@ class App : Application(), SingletonImageLoader.Factory, androidx.work.Configura
         // SEPARATE (EQ repo + echo_eq_prefs side effects, own two-phase commit on seed success).
         migrateAudioDefaultsV2(settings)
 
+        // Establish, at most ONCE per install, where this data came from — and clean up after a
+        // platform restore before anything is allowed to act on the restored rows. Must run before
+        // batch B, which uses the answer to decide whether Aura may write to a Google account.
+        //
+        // The guard flag lives in the DataStore, which the backup rules exclude, so a restored install
+        // arrives without it and this block runs again on the new phone. That is deliberate: that
+        // launch is the only one that can tell the artist markers apart from this device's own.
+        val originAlreadyResolved =
+            settings[iad1tya.echo.music.constants.InstallOriginResolvedV1Key] == true
+        val installOrigin = if (originAlreadyResolved) {
+            // Already classified on an earlier launch. Nothing here re-runs, and the conservative
+            // value is the one that forces no defaults.
+            iad1tya.echo.music.utils.InstallOrigin.UPDATED
+        } else {
+            classifyInstallOrigin().also { origin ->
+                Timber.i("Install origin: $origin")
+                if (origin == iad1tya.echo.music.utils.InstallOrigin.RESTORED) {
+                    untrustRestoredArtistMarkers()
+                }
+                runCatching {
+                    dataStore.edit { it[iad1tya.echo.music.constants.InstallOriginResolvedV1Key] = true }
+                }.onFailure { reportException(it) }
+            }
+        }
+
         // Batch B — pure-DataStore migrations that MUST run AFTER migrateAudioDefaultsV2 (Safe Volume forced ON
         // wins over it). Both are two-phase in the original; in one transaction value+flag are written atomically,
         // so the flag is still never set without the value being applied.
@@ -426,14 +452,19 @@ class App : Application(), SingletonImageLoader.Factory, androidx.work.Configura
             settings[iad1tya.echo.music.constants.SafeVolumeDefaultOnAppliedKey] != true ||
             settings[iad1tya.echo.music.constants.InfinitePlaybackForcedOnKey] != true ||
             settings[iad1tya.echo.music.constants.SessionRefreshedFor104Key] != true ||
-            settings[iad1tya.echo.music.constants.LyricsAppleDefaultFor104Key] != true
+            settings[iad1tya.echo.music.constants.LyricsAppleDefaultFor104Key] != true ||
+            settings[iad1tya.echo.music.constants.YtmUploadOptInV1AppliedKey] != true
         if (batchBPending) {
+            // Only a genuinely blank slate counts as fresh. A RESTORED install is somebody moving
+            // phones, not somebody setting Aura up, and must not have account writes switched on.
+            val freshInstall = installOrigin == iad1tya.echo.music.utils.InstallOrigin.FRESH
             runCatching {
                 dataStore.edit { p ->
                     applySafeVolumeDefaultOn(p, settings)
                     applyInfinitePlaybackOn(p, settings)
                     applySessionRefreshFor104(p, settings)
                     applyLyricsAppleDefaultFor104(p, settings)
+                    applyLibraryUploadOptInV1(p, settings, freshInstall)
                 }
             }.onFailure { reportException(it) }
         }
@@ -956,6 +987,101 @@ class App : Application(), SingletonImageLoader.Factory, androidx.work.Configura
     }
 
     /**
+     * Work out whether this process woke up on a genuinely blank slate, on this device's own data, or
+     * on data Android restored from ANOTHER device — see
+     * [iad1tya.echo.music.utils.InstallOriginClassifier] for the reasoning and for why `song.db` stays
+     * inside the backup rules.
+     *
+     * `firstInstallTime == lastUpdateTime` used to be the whole test, and it is TRUE on a restored
+     * install: the APK really is the first one installed on the new phone. That made a phone transfer
+     * look like somebody setting Aura up from scratch and switched writing-to-your-Google-account ON
+     * for them, which contradicts the whole point of the opt-in.
+     *
+     * Two extra signals close it. A SharedPreferences marker (in a file the backup rules INCLUDE, so
+     * it travels with the restore, unlike the DataStore) and, for the cohort that has never run a build
+     * carrying that marker, the presence of songs in a database that should be empty.
+     *
+     * Falls back to [InstallOrigin.UPDATED] — the conservative side, no forced defaults, no trust — if
+     * anything cannot be read.
+     */
+    private suspend fun classifyInstallOrigin(): iad1tya.echo.music.utils.InstallOrigin = runCatching {
+        val neverUpdated = packageManager.getPackageInfo(packageName, 0)
+            .let { it.firstInstallTime == it.lastUpdateTime }
+        val prefs = getSharedPreferences(INSTALL_MARKER_PREFS, MODE_PRIVATE)
+        val markerSeen = prefs.getBoolean(INSTALL_MARKER_KEY, false)
+        val hasExistingLibrary = if (neverUpdated && !markerSeen) {
+            // Only worth asking in the one case the marker cannot answer. Never on the hot path of an
+            // ordinary launch.
+            runCatching {
+                withContext(Dispatchers.IO) { MusicDatabaseEntryPoint.get(this@App).hasAnySong() }
+            }.getOrDefault(false)
+        } else {
+            false
+        }
+        // Leave the marker behind for every future launch AND for whatever device this data is
+        // restored onto next.
+        if (!markerSeen) prefs.edit().putBoolean(INSTALL_MARKER_KEY, true).apply()
+        iad1tya.echo.music.utils.InstallOriginClassifier
+            .classify(neverUpdated, markerSeen, hasExistingLibrary)
+    }.getOrDefault(iad1tya.echo.music.utils.InstallOrigin.UPDATED)
+
+    /**
+     * A database that Android restored from another device carries artist markers written against an
+     * account whose credentials did NOT travel with it (the DataStore holding the cookie is excluded
+     * from the backup rules on purpose). Those markers are therefore claims about, and instructions
+     * aimed at, an account this install cannot identify — and `unfollowedByUserAt` + `ytmSyncedAt` is
+     * the shape the uploader turns into real `subscribeChannel(id, false)` calls, 50 per pass.
+     *
+     * So a restored database is detached from its account exactly as a logout would detach it: the two
+     * account-scoped columns go, `bookmarkedAt` and `followedByUserAt` stay, so the user still gets
+     * their library and their own follows on the new phone.
+     */
+    private suspend fun untrustRestoredArtistMarkers() {
+        runCatching {
+            withContext(Dispatchers.IO) {
+                MusicDatabaseEntryPoint.get(this@App).clearArtistAccountSyncMarkers()
+            }
+        }.onSuccess {
+            Timber.i("Restored install: artist account-sync markers cleared (they belong to another account)")
+        }.onFailure {
+            Timber.w(it, "Restored install: could not clear the artist account-sync markers")
+        }
+    }
+
+    /**
+     * One-time (V1, FRESH key): establish an EXPLICIT value for the library-upload master switch
+     * ([iad1tya.echo.music.constants.YtmUploadSyncKey]), which is the switch that lets Aura WRITE to
+     * the user's real YouTube Music account (create playlists, subscribe to channels, mirror likes).
+     *
+     * The tension this resolves. The owner asked for playlist sync to happen by default, without being
+     * asked ("que ahora las playlist que haga no pregunte si las quiero sincronizar con youtube music,
+     * que eso ya lo haga por default"), and that is right for anyone setting the app up now — the sync
+     * screen is the first thing they configure and nothing has happened behind their back. But this
+     * release ships to paying customers who installed a version that never touched their Google
+     * account. Tapping "update" is not consent to start writing to it, and the result (new playlists,
+     * new channel subscriptions) is invisible to them until they open YouTube. So:
+     *
+     *   fresh install  -> ON   (the owner's default, for people who are choosing Aura right now)
+     *   updated install-> OFF  (nobody is enrolled into remote writes by the act of updating;
+     *                           the same switch is one tap away in Ajustes ▸ Sincronización)
+     *
+     * A FRESH flag key is mandatory: a set flag or a versionCode bump alone will not re-run a
+     * migration, and the switch previously had an implicit `?: true` default rather than a stored
+     * value — which is exactly why every reader now falls back to FALSE and relies on this.
+     * One-time only: whatever the user picks afterwards sticks.
+     */
+    private fun applyLibraryUploadOptInV1(
+        p: androidx.datastore.preferences.core.MutablePreferences,
+        settings: androidx.datastore.preferences.core.Preferences,
+        freshInstall: Boolean,
+    ) {
+        if (settings[iad1tya.echo.music.constants.YtmUploadOptInV1AppliedKey] == true) return
+        p[iad1tya.echo.music.constants.YtmUploadSyncKey] = iad1tya.echo.music.utils.LibraryUploadOptIn
+            .decide(stored = settings[iad1tya.echo.music.constants.YtmUploadSyncKey], freshInstall = freshInstall)
+        p[iad1tya.echo.music.constants.YtmUploadOptInV1AppliedKey] = true
+    }
+
+    /**
      * One-time (V1, FRESH key): seed the standard-layout lyrics blur ON. The default lyric style is
      * APPLE_V2 (seeded in [applySeedDefaults]), and its Apple-style blur is gated on
      * [iad1tya.echo.music.constants.LyricsStandardBlurKey] — the always-visible "standard lyrics blur"
@@ -1127,6 +1253,40 @@ class App : Application(), SingletonImageLoader.Factory, androidx.work.Configura
         // sync with the preference. INERT unless the owner linked Qobuz (QobuzHiRes.isActive also checks the
         // token), so this changes nothing for users without a Qobuz account.
         runCatching { iad1tya.echo.music.qobuz.QobuzHiRes.attach(qobuzTokenStore) }
+
+        // DIAGNOSTICS: keep the shared-log header's settings snapshot current, and write the per-launch
+        // header once the first real values are in hand.
+        //
+        // A settings COLLECTOR rather than a one-shot read in initializeSettings, because the value the
+        // owner needs is the one in force when the fault happened: a user who turns crossfade off and
+        // then crashes must not send a header claiming it was on. distinctUntilChanged means this only
+        // wakes when one of these six actually changes, so it costs nothing while music plays.
+        //
+        // `loggedIn` is a BOOLEAN derived from the cookie and the cookie itself never leaves this lambda
+        // — the owner needs to know whether an account is attached, never which one.
+        applicationScope.launch(Dispatchers.IO) {
+            var headerWritten = false
+            dataStore.data
+                .map {
+                    iad1tya.echo.music.utils.DiagnosticHeader.Settings(
+                        crossfadeEnabled = it[iad1tya.echo.music.constants.CrossfadeEnabledKey] ?: true,
+                        crossfadeSeconds = it[iad1tya.echo.music.constants.CrossfadeDurationKey] ?: 5f,
+                        enhancedShuffle = it[iad1tya.echo.music.constants.EnhancedShuffleKey] ?: false,
+                        safeVolume = it[iad1tya.echo.music.constants.SafeVolumeEnabledKey] ?: false,
+                        audioOffload = it[iad1tya.echo.music.constants.AudioOffload] ?: false,
+                        loggedIn = !it[InnerTubeCookieKey].isNullOrBlank(),
+                    )
+                }
+                .distinctUntilChanged()
+                .collect { snapshot ->
+                    iad1tya.echo.music.utils.DiagnosticHeader.updateSettings(snapshot)
+                    if (!headerWritten) {
+                        headerWritten = true
+                        iad1tya.echo.music.utils.AppLogger.logSessionHeader(applicationContext)
+                    }
+                }
+        }
+
         applicationScope.launch(Dispatchers.IO) {
             dataStore.data
                 .map { it[iad1tya.echo.music.constants.UseOwnQobuzHiResKey] ?: false }
@@ -1285,6 +1445,18 @@ class App : Application(), SingletonImageLoader.Factory, androidx.work.Configura
         private const val IMAGE_CACHE_MIRROR_PREFS = "image_loader_prefs"
         private const val IMAGE_CACHE_MIRROR_KEY = "max_image_cache_size_mb"
 
+        /**
+         * "Aura has already run on the data you are looking at."
+         *
+         * MUST stay INCLUDED in `res/xml/backup_rules.xml` and `res/xml/data_extraction_rules.xml` —
+         * unlike the DataStore and the licence prefs, which are excluded. Its whole job is to TRAVEL
+         * with a platform restore, so that a first-ever APK install which nonetheless finds this flag
+         * can recognise itself as restored rather than fresh. Excluding it silently reopens the hole.
+         * Holds nothing sensitive: one boolean.
+         */
+        private const val INSTALL_MARKER_PREFS = "aura_install_marker"
+        private const val INSTALL_MARKER_KEY = "install_seen"
+
         @Volatile
         private var imageCacheSizeMbMirror: Int = DEFAULT_IMAGE_CACHE_SIZE_MB
 
@@ -1360,10 +1532,44 @@ class App : Application(), SingletonImageLoader.Factory, androidx.work.Configura
             }
         }
 
+        /**
+         * Detach the YouTube account. THE single choke point: both logout buttons ("mantener datos"
+         * and "borrar datos"), every account switch (all four `navigate("login")` entry points are
+         * gated on being signed OUT, so a switch must pass through a logout first) and the collector
+         * that gives up on an unparseable cookie all land here.
+         */
         suspend fun forgetAccount(context: Context) {
             Timber.d("forgetAccount: Starting logout process")
 
-            
+            // Cut every artist row loose from the account BEFORE the credentials go, so a process death
+            // mid-logout can never leave account-scoped markers next to a signed-out (or, worse, a
+            // re-signed-in) app.
+            //
+            // Without this, "cerrar sesión (mantener datos)" cleared nothing in the database at all: it
+            // removes six DataStore keys and stops. An artist the user unfollowed on account A stays in
+            // the pending-UNSUBSCRIBE shape forever (the live unsubscribe fires but never clears the
+            // markers, and the only consumer that does is the upload pass, which is OFF by default for
+            // every existing customer). Sign into account B, turn the switch on, and the queue flushes
+            // `subscribeChannel(id, false)` against B — 50 channels a pass — for artists B's owner never
+            // unfollowed, irreversibly and invisibly until they open YouTube.
+            //
+            // `bookmarkedAt` and `followedByUserAt` are deliberately left alone: the first IS the
+            // library that "mantener datos" promises to keep, and dropping the second would silently
+            // lose the follows that had not been pushed up yet. `followedByUserAt` is NOT
+            // account-neutral though — markArtistsSubscribedOnYtm copies it from the attached account's
+            // remote list — so what stops it reaching the NEXT account is the upload-switch revocation
+            // a few lines below. See ArtistSyncPolicy.afterAccountDetached for the full reasoning.
+            // Best-effort: a database problem must never strand the user in a half-logged-out state.
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    MusicDatabaseEntryPoint.get(context).clearArtistAccountSyncMarkers()
+                }
+            }.onSuccess {
+                Timber.d("forgetAccount: Artist account-sync markers cleared")
+            }.onFailure {
+                Timber.w(it, "forgetAccount: Could not clear the artist account-sync markers")
+            }
+
             Timber.d("forgetAccount: Clearing DataStore preferences")
             context.dataStore.edit { settings ->
                 settings.remove(InnerTubeCookieKey)
@@ -1372,6 +1578,32 @@ class App : Application(), SingletonImageLoader.Factory, androidx.work.Configura
                 settings.remove(AccountNameKey)
                 settings.remove(AccountEmailKey)
                 settings.remove(AccountChannelHandleKey)
+                // REVOKE the library-upload consent along with the session. The switch authorises Aura
+                // to WRITE to a Google account; the consent was given for the account being detached
+                // here, and it does not transfer to the next one.
+                //
+                // Without this line, "cerrar sesión (mantener datos)" left the switch ON while
+                // `clearArtistAccountSyncMarkers` deliberately KEEPS `followedByUserAt` (see
+                // ArtistSyncPolicy.afterAccountDetached — dropping it would destroy follows that were
+                // never pushed). Every one of account A's follows therefore survived as a pending
+                // SUBSCRIBE, and the first sync after signing into account B pushed them: hundreds of
+                // `subscribeChannel(id, true)` calls against an account whose owner never followed any
+                // of them, invisible until they open YouTube and permanent in their recommendations.
+                // That is the owner's own original complaint ("me aparecen muchas suscripciones de
+                // cantantes que no sigo") aimed at a different account.
+                //
+                // An EXPLICIT false, not a `remove`: `applyLibraryUploadOptInV1` decides `stored ?:
+                // freshInstall`, so an absent key could be re-defaulted ON, and on a fresh install it
+                // IS ON without the user ever being asked. A stored false survives that unconditionally.
+                // The new account's owner turns it on themselves in Ajustes ▸ Sincronización — which is
+                // exactly what ArtistSyncPolicy.afterAccountDetached claims, and now actually holds.
+                //
+                // This does NOT weaken the live requirement: `ArtistEntity.toggleLike`,
+                // `SongEntity.toggleLike` and `LibraryUploadSync.flushPendingUnsubscribes` never read
+                // this switch, so a follow/unfollow/like the user taps while signed in still reaches
+                // the account immediately.
+                settings[iad1tya.echo.music.constants.YtmUploadSyncKey] =
+                    iad1tya.echo.music.utils.LibraryUploadOptIn.onAccountDetached()
             }
             Timber.d("forgetAccount: DataStore preferences cleared")
 

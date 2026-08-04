@@ -64,6 +64,10 @@ object AppModule {
             // v38->v39: Enhanced Shuffle tables. MUST be here too — 0.6.117 registered it ONLY on the dead
             // MusicDatabase.newInstance builder, so every 38->39 update crashed with "migration not found".
             iad1tya.echo.music.db.MIGRATION_38_39,
+            // v39->v40: artist.followedByUserAt + artist.ytmSyncedAt (deliberate follow vs incidental
+            // bookmark, and the subscription upload state). Same rule as above — THIS is the builder
+            // Hilt injects, so a migration missing here is a universal "migration not found" crash.
+            iad1tya.echo.music.db.MIGRATION_39_40,
         )
 
         .setJournalMode(androidx.room.RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)

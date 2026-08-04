@@ -415,6 +415,30 @@ class BackupRestoreViewModel @Inject constructor(
 
             // Best-effort: drop stale cached formats so first playback re-resolves cleanly.
             runCatching { handle.execSQL("DELETE FROM format") }
+
+            // Cut the incoming artist rows loose from whatever YouTube account they were written under.
+            //
+            // A restore is the one account-detach route that never passes through App.forgetAccount:
+            // section 3b deliberately does NOT restore settings.preferences_pb, so the device keeps its
+            // OWN live login while the whole song.db — including the artist sync markers — is replaced
+            // wholesale. Restore a backup taken on account A onto a phone signed into account B and B
+            // inherits A's pending unsubscribes; the next upload pass then removes subscriptions from
+            // an account whose owner never unfollowed anything.
+            //
+            // Same two columns and same reasoning as ArtistSyncPolicy.afterAccountDetached: the
+            // account-scoped claims go, the library (`bookmarkedAt`) and the user's own follows
+            // (`followedByUserAt`) are kept, so a restore onto the SAME account loses nothing.
+            //
+            // Best-effort by design: a pre-v40 backup has no such columns, execSQL throws, and that is
+            // the correct outcome — those rows cannot carry a marker in the first place.
+            runCatching {
+                handle.execSQL(
+                    "UPDATE artist SET ytmSyncedAt = NULL, unfollowedByUserAt = NULL " +
+                        "WHERE ytmSyncedAt IS NOT NULL OR unfollowedByUserAt IS NOT NULL",
+                )
+            }.onFailure {
+                Timber.tag("RESTORE").d("No artist sync markers to neutralise (pre-v40 backup?)")
+            }
         }
         // Remove any journal siblings the throwaway open may have created so only the clean .db is copied.
         java.io.File(file.path + "-wal").delete()
@@ -541,7 +565,29 @@ class BackupRestoreViewModel @Inject constructor(
                         // played their songs, bookmarkedAt = null) would be skipped and never followed. update()
                         // after it sets bookmarkedAt on that existing row → the artist is actually re-followed.
                         insert(entity)
-                        update(entity)
+                        // Carry the YouTube-upload markers over from the existing row instead of blanking
+                        // them: `entity` is rebuilt from the backup, which has no idea about them. Blanking
+                        // ytmSyncedAt would make the uploader re-subscribe artists the account already has.
+                        //
+                        // We deliberately do NOT set followedByUserAt here. A backup's `bookmarkedAt` also
+                        // covers the artists followArtistsWithContent() bookmarked just for having a song in
+                        // the library, so treating a restore as a deliberate follow would push exactly the
+                        // wrong set up as subscriptions. The next artist down-sync marks the real ones from
+                        // the account's own subscription list.
+                        //
+                        // `unfollowedByUserAt` is carried over for the same reason as the other two: a
+                        // backup file has no idea about these columns, so rebuilding the row from it would
+                        // otherwise blank them. Note the direction that matters — a restore can only ever
+                        // LOSE the unfollow marker, never create one, so no restore (of any vintage,
+                        // including a pre-v40 bundle) can produce an unsubscribe.
+                        val existing = getArtistById(a.id)
+                        update(
+                            entity.copy(
+                                followedByUserAt = existing?.followedByUserAt,
+                                ytmSyncedAt = existing?.ytmSyncedAt,
+                                unfollowedByUserAt = existing?.unfollowedByUserAt,
+                            )
+                        )
                     }
                 }
                 bundle.eqPresets.forEachIndexed { index, p ->

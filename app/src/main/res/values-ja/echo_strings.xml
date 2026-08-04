@@ -275,7 +275,7 @@
     <string name="add_to_library_desc">ライブラリに保存します</string>
     <string name="download_desc">オフライン再生用に保存します</string>
     <string name="add_to_playlist_desc">プレイリストに追加します</string>
-    <string name="refetch_desc">YouTube Musicから最新のメタデータを取得します</string>
+    <string name="refetch_desc">Aura Hi-Resから最新のメタデータを取得します</string>
     <string name="share_desc">このコンテンツのリンクを共有します</string>
     <string name="delete_desc">このコンテンツを完全に削除します</string>
     <string name="advanced_desc">曲の再生速度と音程を変更します</string>
@@ -575,7 +575,7 @@
     <string name="column_label">列%d</string>
     <string name="csv_import_failed">CSVファイルのインポートに失敗しました</string>
     <string name="csv_preview_failed">CSVファイルのプレビューに失敗しました</string>
-    <string name="hide_youtube_shorts">YouTubeショートを非表示</string>
+    <string name="hide_youtube_shorts">ショートを非表示</string>
     <string name="listen_together_in_top_bar">トップバーにListen Togetherを表示</string>
     <string name="listen_together_in_top_bar_desc">Listen Togetherをナビゲーションバーから非表示にし、トップバーに表示します</string>
     <string name="prevent_duplicate_tracks_in_queue">キュー内の重複トラックを防ぐ</string>

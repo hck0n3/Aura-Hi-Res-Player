@@ -252,7 +252,7 @@
     <string name="add_to_library_desc">保存到您的媒体库</string>
     <string name="download_desc">提供离线播放功能</string>
     <string name="add_to_playlist_desc">添加到您的播放列表</string>
-    <string name="refetch_desc">从 YouTube Music 获取最新元数据</string>
+    <string name="refetch_desc">从 Aura Hi-Res 获取最新元数据</string>
     <string name="share_desc">展示此歌曲的链接</string>
     <string name="delete_desc">完全移除此歌曲</string>
     <string name="advanced_desc">改变歌曲的节奏和音调</string>
@@ -576,7 +576,7 @@
     <string name="crossfade_beta_title">测试功能</string>
     <string name="crossfade_beta_message">淡入淡出是一项新功能，可能存在错误。如果您遇到任何问题，请及时反馈。\n\n由于技术限制，此功能会禁用省电播放。</string>
     <string name="audio_offload_disabled_by_crossfade">因淡入淡出已启用而禁用</string>
-    <string name="hide_youtube_shorts">隐藏 YouTube Shorts 短视频</string>
+    <string name="hide_youtube_shorts">隐藏 Shorts 短视频</string>
     <string name="listen_together_in_top_bar">在顶部栏显示“一起听”</string>
     <string name="listen_together_in_top_bar_desc">在顶部应用栏显示“一起听”，而非在导航栏显示</string>
     <string name="prevent_duplicate_tracks_in_queue">防止队列中出现重复曲目</string>

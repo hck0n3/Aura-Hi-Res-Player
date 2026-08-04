@@ -37,6 +37,7 @@ class YtmSyncWorker(
     @InstallIn(SingletonComponent::class)
     interface YtmSyncEntryPoint {
         fun syncUtils(): SyncUtils
+        fun libraryUploadSync(): LibraryUploadSync
     }
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
@@ -47,9 +48,9 @@ class YtmSyncWorker(
                 // Not signed in → nothing to sync (don't retry forever).
                 return@withContext Result.success()
             }
-            val sync = EntryPointAccessors
+            val entryPoint = EntryPointAccessors
                 .fromApplication(ctx, YtmSyncEntryPoint::class.java)
-                .syncUtils()
+            val sync = entryPoint.syncUtils()
 
             when (inputData.getString(KEY_TYPE)) {
                 TYPE_LIKED_SONGS -> sync.syncLikedSongsSuspend()
@@ -61,6 +62,7 @@ class YtmSyncWorker(
                     sync.syncUploadedSongsSuspend()
                     sync.syncUploadedAlbumsSuspend()
                 }
+                TYPE_UPLOAD_LIBRARY -> runUploadPass(ctx, entryPoint.libraryUploadSync())
                 else -> sync.performFullSyncSuspend()
             }
             Result.success()
@@ -73,6 +75,32 @@ class YtmSyncWorker(
         }
     }
 
+    /**
+     * One bounded upload pass, plus — only if the pass ran out of its request budget with work still
+     * pending — ONE delayed continuation. This is what makes a whole-library backfill finish without
+     * ever becoming a burst: each pass is capped at [LibraryUploadSync.MAX_REQUESTS_PER_RUN] writes,
+     * and passes are spaced [UPLOAD_CONTINUATION_DELAY_MIN] minutes apart. The chain stops when the
+     * library is fully synced, when nothing moved, or after [MAX_UPLOAD_CONTINUATIONS] hops — it can
+     * never turn into an unbounded background loop, and nothing here runs at app start.
+     */
+    private suspend fun runUploadPass(context: Context, uploader: LibraryUploadSync) {
+        uploader.restorePersistedProgress()
+        val done = uploader.runUploadPass()
+        if (done) return
+
+        val hop = inputData.getInt(KEY_UPLOAD_HOP, 0)
+        val state = uploader.progress.value
+        // Only continue when there really is more to do AND the pass was cut short by its own budget.
+        // A pass that stopped because the user is offline/signed out/opted out just waits for the next
+        // explicit request instead of burning wakeups.
+        if (!state.moreWorkPending || state.stoppedReason != null) return
+        if (hop >= MAX_UPLOAD_CONTINUATIONS) {
+            Timber.tag(TAG).i("Upload continuation limit reached; the rest waits for the next sync")
+            return
+        }
+        enqueueUploadContinuation(context, hop + 1)
+    }
+
     companion object {
         private const val TAG = "YtmSyncWorker"
         const val KEY_TYPE = "type"
@@ -83,6 +111,17 @@ class YtmSyncWorker(
         const val TYPE_PLAYLISTS = "playlists"
         const val TYPE_LIBRARY = "library"
         const val TYPE_UPLOADS = "uploads"
+
+        /** Push the local library UP to the YouTube account (playlists, follows, likes, albums). */
+        const val TYPE_UPLOAD_LIBRARY = "upload_library"
+
+        private const val KEY_UPLOAD_HOP = "upload_hop"
+
+        /** Upper bound on chained upload passes. 20 hops x 400 writes covers a very large library. */
+        private const val MAX_UPLOAD_CONTINUATIONS = 20
+
+        /** Spacing between chained passes — keeps the whole backfill a trickle, not a burst. */
+        private const val UPLOAD_CONTINUATION_DELAY_MIN = 15L
 
         /** Enqueue a background, restart-surviving, auto-retrying sync of [type]. */
         fun enqueue(context: Context, type: String) {
@@ -98,6 +137,31 @@ class YtmSyncWorker(
             // running one already covers it (and WorkManager will keep retrying it to completion).
             WorkManager.getInstance(context)
                 .enqueueUniqueWork("ytm_sync_$type", ExistingWorkPolicy.KEEP, request)
+        }
+
+        /**
+         * Continue a library upload that ran out of budget. REPLACE (not KEEP) because the previous
+         * hop has finished by the time this is called, and the unique name keeps the chain single —
+         * two overlapping upload chains could double the request cost.
+         * Battery-friendly by construction: network-constrained, not expedited, and delayed.
+         */
+        private fun enqueueUploadContinuation(context: Context, hop: Int) {
+            val constraints = Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .setRequiresBatteryNotLow(true)
+                .build()
+            val request = OneTimeWorkRequestBuilder<YtmSyncWorker>()
+                .setConstraints(constraints)
+                .setInitialDelay(UPLOAD_CONTINUATION_DELAY_MIN, TimeUnit.MINUTES)
+                .setInputData(workDataOf(KEY_TYPE to TYPE_UPLOAD_LIBRARY, KEY_UPLOAD_HOP to hop))
+                .setBackoffCriteria(BackoffPolicy.LINEAR, 5, TimeUnit.MINUTES)
+                .build()
+            WorkManager.getInstance(context)
+                .enqueueUniqueWork(
+                    "ytm_sync_$TYPE_UPLOAD_LIBRARY",
+                    ExistingWorkPolicy.REPLACE,
+                    request,
+                )
         }
     }
 }

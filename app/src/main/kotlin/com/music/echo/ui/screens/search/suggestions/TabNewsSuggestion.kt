@@ -133,8 +133,8 @@ fun SuggestionsTabContent(
                     TrendingAppleMusicSection(
                         tracks = topYt,
                         countryCode = regionCode,
-                        title = "YouTube Music Top",
-                        moreLabel = "Ver más en YouTube Music",
+                        title = "Top global",
+                        moreLabel = "Ver más",
                         onTrackClick = { track ->
                             android.widget.Toast.makeText(context, "Cargando ${track.title}...", android.widget.Toast.LENGTH_SHORT).show()
                             viewModel.playTrack(track, playerConnection)

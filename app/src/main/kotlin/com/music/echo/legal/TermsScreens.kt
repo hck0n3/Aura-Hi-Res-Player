@@ -357,10 +357,15 @@ private fun TermsLine(raw: String) {
     val line = raw.trimEnd()
     when {
         line.isBlank() -> Spacer(Modifier.height(6.dp))
+        // Explicit onSurface on every heading level. "##" already set a theme colour, but "#" and "###"
+        // set none and inherited whatever LocalContentColor the container happened to provide — which
+        // defaults to BLACK when no Surface supplies one, so on a dark first-run screen those headings
+        // were nearly invisible while the "##" ones showed fine.
         line.startsWith("### ") -> Text(
             text = parseInlineBold(line.removePrefix("### ")),
             style = MaterialTheme.typography.titleSmall,
             fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.padding(top = 8.dp, bottom = 2.dp),
         )
         line.startsWith("## ") -> Text(
@@ -374,6 +379,7 @@ private fun TermsLine(raw: String) {
             text = parseInlineBold(line.removePrefix("# ")),
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.padding(bottom = 4.dp),
         )
         line.startsWith("---") -> HorizontalDivider(

@@ -648,6 +648,15 @@ class MusicService :
     // shuffling, not-yet-played songs are ordered ahead of these, so nothing repeats until the whole pool is
     // exhausted (then it auto-resets for a new cycle). Reset whenever shuffle is (re)enabled.
     private val shufflePlayedIds = LinkedHashSet<String>()
+    // ARTIST SPACING across re-applies: the normalized primary artists of the last few songs actually
+    // PLAYED this shuffle session, OLDEST first. applyShuffleOrder rebuilds the entire order from scratch
+    // on every mutation — a radio append, the DB seed landing, a manual jump — which with crossfade ON is
+    // roughly once per song, and the spacing pass used to start each rebuild with an EMPTY history. The
+    // song it put right after the current one was therefore chosen with no knowledge of what had just been
+    // heard, so an artist could legitimately land at slots 1, 4, 7… of successive rebuilds and the owner
+    // heard "bastante seguido el mismo artista". Capped at the largest gap spacing will ever ask for.
+    // Main-thread only (same thread as applyShuffleOrder and both recording sites).
+    private val recentShuffleArtists = ArrayDeque<String>()
     // Enhanced Shuffle: the persistent context id of the CURRENT queue (e.g. "PL:<id>", "LIBRARY"), or null
     // when the queue has no enhanced memory (raw YT radio, album/artist, etc.) → classic in-memory shuffle.
     // Set in playQueue from the ListQueue's contextId (carried across restart via PersistQueue.contextId).
@@ -1295,6 +1304,25 @@ class MusicService :
                 ctx != null && ctx in completedShuffleContexts,
             )
         }
+    }
+
+    /**
+     * Records the primary artist of a song that just STARTED, so the next shuffle-order rebuild knows what
+     * was actually heard (see [recentShuffleArtists]). Called from BOTH advance paths — the normal
+     * transition and the crossfade swap, which bypasses `onMediaItemTransition` entirely and is the path
+     * every auto-advance takes with crossfade ON (the default).
+     *
+     * Consecutive duplicates are collapsed: two songs in a row by the same artist say exactly what one
+     * says for a "how long ago" metric, and collapsing keeps an older artist in scope instead of letting a
+     * repeat shift it out.
+     */
+    private fun rememberShuffleArtist(item: MediaItem?) {
+        val artist = (item?.metadata ?: player.currentMetadata)
+            ?.artists?.firstOrNull()?.name?.trim()?.lowercase()
+        if (artist.isNullOrEmpty()) return
+        if (recentShuffleArtists.lastOrNull() == artist) return
+        recentShuffleArtists.addLast(artist)
+        while (recentShuffleArtists.size > ShuffleOrdering.MAX_ARTIST_WINDOW) recentShuffleArtists.removeFirst()
     }
 
     /**
@@ -1953,25 +1981,74 @@ class MusicService :
                 if (!enabled) SpectrumBus.clear()
             }
 
+        // AUDIO OFFLOAD GATE — reduced to terms backed by LIVE code (0.6.142).
+        //
+        // Offload hands the ENCODED stream to the DSP hardware: the decoder stops producing PCM on the CPU,
+        // so no AudioProcessor runs at all. Anything that really processes audio must therefore veto it.
+        //
+        // The previous gate vetoed on a seven-term OR, four of whose terms named processors that DO NOTHING:
+        //   AudioNormalizationKey  -> NormalizationGainAudioProcessor.isActive() == false (inert stub); the key
+        //                             only writes the dead NormalizationGainAudioProcessor.gain /
+        //                             TruePeakLimiterAudioProcessor.loudnessMakeup statics. Every path that
+        //                             actually moves the volume is gated on safeVolumeEnabledHint, not on this.
+        //   AuraSignatureToneEnabledKey + JrLoudness/JrExciter/JrStereoWidth/JrDialogue
+        //                          -> JrDspAudioProcessor, which is an inert stub AND is never inserted into any
+        //                             AudioProcessorChain (createRenderersFactory builds the chain from
+        //                             silence/eq/norm/limiter only); MusicService just assigns its static config.
+        //   AudioEnhanceEnabledKey -> AudioEnhanceProcessor.isActive() == false, also never in any chain.
+        // Worse, the toggles for AudioNormalizationKey and AuraSignatureToneEnabledKey were removed from
+        // SoundSettings, so both were pinned at their `true` default with no way back — the OR could never be
+        // false and the "Audio offload" switch in PlayerSettings was a placebo for 100% of users.
+        //
+        // What survives, each verified to process audio for real:
+        //   - Crossfade: two ExoPlayers plus continuous volume ramps, AND the sink-level PCM tap the
+        //     level-based segue reads — none of which exist on an offloaded (still encoded) stream.
+        //     Behaviour untouched; this is still the term the PlayerSettings copy refers to. Read as
+        //     "crossfade is actually RUNNING", not "the key is set": High-Performance Mode force-disables
+        //     crossfade at every live site (the crossfadeEnabled collector below ANDs !HighPerformanceMode,
+        //     and beginCrossfadeSwap / maybeStartCrossfade / prepareSecondaryPlayer each re-check
+        //     highPerformanceModeHint), so under HPM no second player is ever built and the key alone is a
+        //     dead veto — on exactly the weak devices offload helps most. The Listen Together room state,
+        //     which also suppresses crossfade, is deliberately NOT read here: it flips mid-session and
+        //     offload changes are a track re-selection, so a room join would cost an audible re-init for a
+        //     saving that lasts as long as the room. Vetoing through it is the conservative direction.
+        //   - Safe Volume: a LIVE native Superpowered stage (applySafeVolume -> setSafeVolume) inside
+        //     CustomEqualizerAudioProcessor. Default ON.
+        //   - The EQ actually being active. This is NOT a preference key — the DSP source of truth is the
+        //     eqProfileRepository profile the collector above feeds to applyProfile()/disable(). The old gate
+        //     never mentioned the EQ at all and only shielded it by accident, through the dead
+        //     AuraSignatureToneEnabledKey term. Reading the repository makes the veto explicit and, because
+        //     these are hot Flows, re-evaluates the moment the user changes or clears the profile mid-session
+        //     (the DataStore flows do the same for crossfade and Safe Volume — this gate is never stale).
+        //
+        // INTERACTION WITH THE hiResDsp FLOAT TAKEOVER (createRenderersFactory's ForwardingAudioSink): the two
+        // are mutually exclusive BY CONSTRUCTION and cannot both claim the stream. The takeover only arms when
+        // MimeTypes.AUDIO_RAW == inputFormat.sampleMimeType; an offloaded track reaches the sink still encoded
+        // (audio/mp4a-latm, audio/opus, ...), so delegateWouldSkipChain is false, hiResDsp stays null and the
+        // takeover does not run. Offload OFF -> the decoder emits raw PCM and the EQ runs either in media3's
+        // int16 chain or, on hi-res float, in the takeover. So "offload ON" always means "no DSP wanted", which
+        // is exactly what this gate now guarantees. Getting this wrong in either direction would silently
+        // bypass the EQ again — the bug the takeover was added to fix.
+        //
+        // This gate decides only the offload MODE. What the app needs offload to be CAPABLE of —
+        // gapless always, speed change while tempo/pitch are non-default — is folded in by
+        // setOffloadEnabled itself, which reads the player's current playback parameters on every
+        // call. That keeps this collector and the onPlaybackParametersChanged re-publish from ever
+        // producing two different requests, and it can only make the selector refuse offload, never
+        // accept it where this gate said no.
         combine(
             dataStore.data.map { it[AudioOffload] ?: false }.distinctUntilChanged(),
-            // Audio offload streams compressed audio straight to the DSP hardware, BYPASSING the whole
-            // AudioProcessor chain — EQ, JR DSP / Aura signature, AudioEnhance, loudness normalization AND the
-            // true-peak limiter. With any of those active, offload would make them silently do nothing (and a
-            // loud master could clip). So offload is only allowed when the ENTIRE chain is off. The Aura
-            // signature is ON by default, so offload stays off by default (the safe direction).
             dataStore.data.map { p ->
-                (p[CrossfadeEnabledKey] ?: false) ||
-                    (p[AudioNormalizationKey] ?: true) ||
-                    (p[iad1tya.echo.music.constants.AuraSignatureToneEnabledKey] ?: true) ||
-                    (p[AudioEnhanceEnabledKey] ?: false) ||
-                    (p[iad1tya.echo.music.constants.JrLoudnessEnabledKey] ?: false) ||
-                    (p[iad1tya.echo.music.constants.JrExciterEnabledKey] ?: false) ||
-                    (p[iad1tya.echo.music.constants.JrStereoWidthEnabledKey] ?: false) ||
-                    (p[iad1tya.echo.music.constants.JrDialogueEnabledKey] ?: false)
+                val crossfadeRunning = (p[CrossfadeEnabledKey] ?: false) &&
+                    !(p[iad1tya.echo.music.constants.HighPerformanceModeKey] ?: false)
+                crossfadeRunning || (p[SafeVolumeEnabledKey] ?: true)
             }.distinctUntilChanged(),
-        ) { offloadPref, chainActive ->
-            if (chainActive) false else offloadPref
+            combine(
+                eqProfileRepository.activeProfile,
+                eqProfileRepository.unsavedProfile,
+            ) { active, unsaved -> (unsaved ?: active) != null }.distinctUntilChanged(),
+        ) { offloadPref, prefsVeto, eqActive ->
+            if (prefsVeto || eqActive) false else offloadPref
         }.distinctUntilChanged()
         .collectLatest(scope) { useOffload ->
              audioOffloadHint = useOffload
@@ -2913,6 +2990,9 @@ class MusicService :
                 // enhanced setting so classic-shuffle (setting OFF) behavior stays byte-identical.
                 if (enhancedShuffleHint) {
                     shufflePlayedIds.clear()
+                    // Same reset for the artist history: it described the PREVIOUS queue.
+                    recentShuffleArtists.clear()
+                    rememberShuffleArtist(player.currentMediaItem)
                     player.currentMetadata?.id?.let { cur ->
                         shufflePlayedIds.add(cur)
                         // Persist the opener too: a process death before its natural transition-insert
@@ -4745,6 +4825,8 @@ class MusicService :
         if (player.shuffleModeEnabled) {
             val playedId = (mediaItem?.mediaId ?: player.currentMetadata?.id)
             playedId?.let { shufflePlayedIds.add(it) }
+            // …and WHOSE song it was, so the next order rebuild can keep spacing that artist out.
+            rememberShuffleArtist(mediaItem)
         }
         // Enhanced Shuffle: record the play into the PERSISTENT per-context memory — ONE single-row IGNORE
         // insert per transition, routed through the single-lane writer so it can never commit AFTER a
@@ -5494,6 +5576,9 @@ class MusicService :
 
             // B5: start a fresh anti-repeat session each time shuffle is enabled; the current song counts as played.
             shufflePlayedIds.clear()
+            // A new session starts with no artist history; the opener re-seeds it below.
+            recentShuffleArtists.clear()
+            rememberShuffleArtist(player.currentMediaItem)
             player.currentMetadata?.id?.let { cur ->
                 shufflePlayedIds.add(cur)
                 // Enhanced Shuffle: persist the CURRENT song too. Both DB insert sites record the newly-
@@ -5677,12 +5762,131 @@ class MusicService :
         }
     }
 
+    /**
+     * ONE walk of the timeline feeding everything the shuffle order needs: the media ids (the
+     * played/unplayed split), the cached taste score, and an INTERNED primary-artist key per index
+     * ([ShuffleOrdering.ARTIST_UNKNOWN] when the item has no usable artist), plus how many DISTINCT
+     * artists the queue holds so the caller can size the spacing window.
+     *
+     * Both branches of [applyShuffleOrder] used to walk the timeline for themselves — the "playlist
+     * first" branch twice, once per played-check — and only the main one ever looked at artists at all.
+     * Sharing a single walk pays for the artist keys the other branch never had.
+     *
+     * Reuses [shuffleScoreCache] (mediaId -> taste + primary artist): with crossfade ON this runs on the
+     * Main thread at song boundaries, and scoring thousands of items from scratch there was a measured
+     * 20-60 ms stall. Artist names are trimmed + lowercased so a stray space cannot split one artist in
+     * two and defeat the spacing.
+     */
+    private class ShuffleItemKeys(
+        val mediaIds: Array<String?>,
+        val taste: DoubleArray,
+        val artistKey: IntArray,
+        val interned: Map<String, Int>,
+        /** How many songs the QUEUE'S BUSIEST artist holds — the constraint that binds artist spacing. */
+        val densestArtistCount: Int,
+    ) {
+        val distinctArtists: Int get() = interned.size
+    }
+
+    private fun shuffleItemKeys(totalCount: Int, p: iad1tya.echo.music.reco.TasteProfile?): ShuffleItemKeys {
+        val mediaIds = arrayOfNulls<String>(totalCount)
+        val taste = DoubleArray(totalCount)
+        val artistKey = IntArray(totalCount)
+        val interned = HashMap<String, Int>()
+        // Interned ids are handed out as 1..distinct, so an IntArray indexed by id counts them with no
+        // per-item allocation (this loop walks thousands of items on the Main thread).
+        val perArtistCount = IntArray(totalCount + 1)
+        var densest = 0
+        for (i in 0 until totalCount) {
+            val item = runCatching { player.getMediaItemAt(i) }.getOrNull()
+            val itemId = item?.mediaId
+            mediaIds[i] = itemId
+            val scored = itemId?.let { shuffleScoreCache[it] } ?: run {
+                val m = item?.metadata
+                val t = if (p != null && m != null) p.scoreNames(m.artists.map { it.name }, m.title) else 0.0
+                val a = m?.artists?.firstOrNull()?.name?.trim()?.lowercase().orEmpty()
+                (t to a).also { pair ->
+                    if (itemId != null) {
+                        if (shuffleScoreCache.size > 20_000) shuffleScoreCache.clear()
+                        shuffleScoreCache[itemId] = pair
+                    }
+                }
+            }
+            taste[i] = scored.first
+            val name = scored.second
+            if (name.isEmpty()) {
+                artistKey[i] = ShuffleOrdering.ARTIST_UNKNOWN
+            } else {
+                val id = interned.getOrPut(name) { interned.size + 1 }
+                artistKey[i] = id
+                val c = perArtistCount[id] + 1
+                perArtistCount[id] = c
+                if (c > densest) densest = c
+            }
+        }
+        return ShuffleItemKeys(mediaIds, taste, artistKey, interned, densest)
+    }
+
+    /**
+     * The artists heard just BEFORE this order, oldest first, translated into [keys]' interned ids.
+     *
+     * Lookup only — an artist that is not in the current queue cannot collide with anything in it, and
+     * interning it here would inflate the distinct-artist count the spacing window is derived from.
+     */
+    private fun recentArtistSeed(keys: ShuffleItemKeys): IntArray =
+        IntArray(recentShuffleArtists.size) { i ->
+            keys.interned[recentShuffleArtists[i]] ?: ShuffleOrdering.ARTIST_UNKNOWN
+        }
+
+    /**
+     * One INFO line per applied order describing the artist adjacency it actually produced, so
+     * "me pone bastante seguido el mismo artista" stops being unfalsifiable. INFO because AppLogger only
+     * PERSISTS >= INFO — at DEBUG the line would exist only in a debug build, i.e. exactly where the bug
+     * does not happen. `gap1` > 0 on a queue with several artists is a real spacing failure; `gap1` > 0
+     * with `artists=1` is a single-artist list, where spacing has nothing to work with.
+     */
+    private fun traceShuffleSpacing(branch: String, order: IntArray, keys: ShuffleItemKeys, window: Int) {
+        runCatching {
+            val adj = ShuffleOrdering.artistAdjacency(order, keys.artistKey)
+            Timber.tag(TAG).i(
+                "SHUFFLE_SPACING %s n=%d artists=%d window=%d head=%d headArtists=%d gap1=%d gap2=%d minGap=%d topArtist=%d",
+                branch,
+                order.size,
+                keys.distinctArtists,
+                window,
+                adj.measured,
+                adj.distinct,
+                adj.gap1,
+                adj.gap2,
+                adj.minGap,
+                adj.topArtistCount,
+            )
+        }
+    }
+
     private fun applyShuffleOrder(
         currentIndex: Int,
         totalCount: Int,
         shufflePlaylistFirst: Boolean
     ) {
         if (totalCount == 0) return
+
+        // SCORE CACHE (thermal audit): with crossfade ON this whole function re-runs on EVERY
+        // auto-advance, and scoring 5000 items (scoreNames + lowercase allocations each) cost 20-60 ms on
+        // the Main thread per advance. Taste and primary artist are stable per mediaId for a given taste
+        // profile — cache them and only the cheap random term is fresh per apply. Hoisted above the branch
+        // because BOTH branches now need artist keys.
+        val cachedProfile = cachedTaste
+        if (shuffleScoreCacheProfile !== cachedProfile) {
+            shuffleScoreCache.clear()
+            shuffleScoreCacheProfile = cachedProfile
+        }
+        val itemKeys = shuffleItemKeys(totalCount, cachedProfile)
+        val artistWindow = ShuffleOrdering.artistWindowFor(
+            distinctArtists = itemKeys.distinctArtists,
+            totalItems = totalCount,
+            densestArtistCount = itemKeys.densestArtistCount,
+        )
 
         if (shufflePlaylistFirst && originalQueueSize > 0 && originalQueueSize < totalCount) {
             // "Playlist first" keeps original songs ahead of appended (radio) ones — but this branch used
@@ -5691,8 +5895,7 @@ class MusicService :
             // no-repeat promise was absent under this setting. Same partition as B5: within the original
             // group, unplayed precede played; the appended group (fresh radio) sits between them.
             val playedSnapshot = HashSet(shufflePlayedIds)
-            fun idxPlayed(i: Int): Boolean =
-                runCatching { player.getMediaItemAt(i).mediaId }.getOrNull()?.let { it in playedSnapshot } == true
+            fun idxPlayed(i: Int): Boolean = itemKeys.mediaIds.getOrNull(i)?.let { it in playedSnapshot } == true
 
             val originalAll = (0 until originalQueueSize).filter { it != currentIndex }
             val originalUnplayed = originalAll.filterNot(::idxPlayed).toMutableList()
@@ -5712,6 +5915,15 @@ class MusicService :
             addedPlayed.shuffle()
 
             val shuffledIndices = IntArray(totalCount)
+            // Swap groups for the spacing pass below: the four partitions are ordered blocks that encode
+            // both the "playlist first" intent and the no-repeat sink, so spacing may reorder WITHIN a
+            // partition and must never move an entry across one. The current song gets a group of its own
+            // (it is frozen at slot 0 anyway).
+            val groupByIndex = IntArray(totalCount) { 4 }
+            originalUnplayed.forEach { groupByIndex[it] = 0 }
+            addedUnplayed.forEach { groupByIndex[it] = 1 }
+            originalPlayed.forEach { groupByIndex[it] = 2 }
+            addedPlayed.forEach { groupByIndex[it] = 3 }
             var pos = 0
             shuffledIndices[pos++] = currentIndex
             originalUnplayed.forEach { shuffledIndices[pos++] = it }
@@ -5720,6 +5932,19 @@ class MusicService :
             // leftovers so a re-heard tail can never outrank something still unheard.
             originalPlayed.forEach { shuffledIndices[pos++] = it }
             addedPlayed.forEach { shuffledIndices[pos++] = it }
+            // ARTIST SPACING — this branch had NONE. "Playlist first" shuffled each partition uniformly and
+            // handed the result straight to media3, so with the setting ON the owner's "me pone bastante
+            // seguido el mismo artista" was simply what uniform random looks like. Same best-effort pass the
+            // main branch uses, with the current song frozen at slot 0 seeding the history.
+            ShuffleOrdering.spaceArtists(
+                order = shuffledIndices,
+                artistKey = itemKeys.artistKey,
+                groupKey = groupByIndex,
+                window = artistWindow,
+                startAt = 1,
+                seedRecent = recentArtistSeed(itemKeys),
+            )
+            traceShuffleSpacing("playlist-first", shuffledIndices, itemKeys, artistWindow)
             applyingShuffleOrder = true
             try {
                 player.setShuffleOrder(DefaultShuffleOrder(shuffledIndices, System.currentTimeMillis()))
@@ -5736,9 +5961,7 @@ class MusicService :
             // in that window is premature and the reset would un-sink the played tail right before fresh
             // songs land (the exhaustion handoffs deliberately keep the set intact through the handoff).
             if (playedSnapshot.isNotEmpty() && !radioSeedInFlight &&
-                (0 until totalCount).all { i ->
-                    runCatching { player.getMediaItemAt(i).mediaId }.getOrNull()?.let { it in playedSnapshot } == true
-                }
+                (0 until totalCount).all { i -> itemKeys.mediaIds[i]?.let { it in playedSnapshot } == true }
             ) {
                 // IN-MEMORY reset — the "keep the music flowing" fallback, and ONLY when the handoff to the
                 // infinite radio is not available for this context (continuation disabled, repeat on, no
@@ -5776,85 +5999,58 @@ class MusicService :
             // artist's whole block sorted to the front and re-toggling shuffle recomputed the same bias:
             // the owner's exact "me bombardea el mismo artista / eso no tiene nada de aleatorio". Capped
             // taste contribution is now ±0.255 vs random's 1.0 (~4:1): a mild nudge, visibly shuffled.
-            val p = cachedTaste
             val rnd = java.util.Random()
-            // SCORE CACHE (thermal audit): with crossfade ON this whole function re-runs on EVERY
-            // auto-advance, and scoring 5000 items (scoreNames + lowercase allocations each) cost
-            // 20-60 ms on the Main thread per advance. Taste and primary artist are stable per mediaId
-            // for a given taste profile — cache them and only the cheap random term is fresh per apply.
-            if (shuffleScoreCacheProfile !== p) {
-                shuffleScoreCache.clear()
-                shuffleScoreCacheProfile = p
-            }
-            // Precompute each index's key ONCE (rnd inside the comparator would crash TimSort).
-            val keys = HashMap<Int, Double>(indices.size)
-            val unplayedGroup = HashMap<Int, Boolean>(indices.size)
-            val primaryArtist = HashMap<Int, String>(indices.size)
+            // Precompute each index's key ONCE (rnd inside the comparator would crash TimSort). A flat
+            // DoubleArray, not a HashMap<Int, Double>: this runs on the Main thread at every song boundary
+            // and the map boxed two objects per queue item — thousands of short-lived allocations per
+            // advance, which is the same thermal budget the score cache exists to protect.
+            val keys = DoubleArray(totalCount)
+            // Swap groups for the spacing pass: 0 = not yet played, 1 = already played. GROUP MEMBERSHIP,
+            // not the key threshold: a much-skipped artist's unplayed song can carry a NEGATIVE taste term
+            // and land under 1000, so a `key >= 1000` test misread it as played — the scan then crossed
+            // into real played territory and could lift an already-played song above the boundary (a repeat
+            // before the cycle closed). The recorded membership can't be fooled by the key's value.
+            val groupByIndex = IntArray(totalCount)
             indices.forEach { i ->
-                val item = runCatching { player.getMediaItemAt(i) }.getOrNull()
-                val itemId = item?.mediaId
-                val cachedScore = itemId?.let { shuffleScoreCache[it] }
-                val scored = cachedScore ?: run {
-                    val m = item?.metadata
-                    val t = if (p != null && m != null) p.scoreNames(m.artists.map { it.name }, m.title) else 0.0
-                    val a = m?.artists?.firstOrNull()?.name?.lowercase().orEmpty()
-                    (t to a).also { pair ->
-                        if (itemId != null) {
-                            if (shuffleScoreCache.size > 20_000) shuffleScoreCache.clear()
-                            shuffleScoreCache[itemId] = pair
-                        }
-                    }
-                }
-                val tasteScore = scored.first
-                var key = tasteScore.coerceIn(-1.7, 1.7) * 0.15 + rnd.nextDouble()
+                val itemId = itemKeys.mediaIds[i]
+                var key = itemKeys.taste[i].coerceIn(-1.7, 1.7) * 0.15 + rnd.nextDouble()
                 // Anti-repeat: already-played songs sink BELOW all not-yet-played ones (big offset), so the
                 // whole pool is exhausted before anything repeats. Within each group the smart order applies.
                 val isUnplayed = itemId == null || itemId !in playedSnapshot
                 if (isUnplayed) key += 1000.0
                 keys[i] = key
-                unplayedGroup[i] = isUnplayed
-                primaryArtist[i] = scored.second
+                groupByIndex[i] = if (isUnplayed) 0 else 1
             }
-            indices.sortByDescending { keys[it] ?: 0.0 }
-            // ARTIST SPACING (owner reports: "cuando va por un cantante solo de ese cantante me pone",
-            // then "me bombardea el mismo artista, eso no tiene nada de aleatorio"): enforce a MINIMUM
-            // GAP of 2 — a song's primary artist must differ from BOTH previous picks. The old pass only
-            // broke up adjacent pairs with a 20-slot lookahead, so a dense favourite-artist block (taste
-            // clustering + big catalogs) sailed straight through: every candidate within 20 was the same
-            // artist and the pass gave up (its 20-slot lookahead was too short for dense blocks; the gap
-            // was only 1). Lookahead is now 60 with a minimum gap of 2. Still bounded (O(n·60), cheap
-            // ops on precomputed maps). GROUP MEMBERSHIP, not the key threshold: a much-skipped artist's
-            // unplayed song can carry a NEGATIVE taste term and land under 1000, so `key >= 1000` misread
-            // it as played — the scan then crossed into real played territory and could lift an
-            // already-played song above the boundary (a repeat before the cycle closed). The recorded
-            // membership can't be fooled by the key's value. When a stretch is genuinely all one artist
-            // (playlist composition), no swap exists and it stays — spacing can't invent variety the
-            // pool doesn't have.
-            run {
-                fun sameGroup(a: Int, b: Int): Boolean = unplayedGroup[a] == unplayedGroup[b]
-                for (i in 1 until indices.size) {
-                    val prev1 = primaryArtist[indices[i - 1]].orEmpty()
-                    val prev2 = if (i >= 2) primaryArtist[indices[i - 2]].orEmpty() else ""
-                    val cur = primaryArtist[indices[i]].orEmpty()
-                    if (cur.isEmpty() || (cur != prev1 && cur != prev2)) continue
-                    val maxJ = (i + 60).coerceAtMost(indices.size - 1)
-                    for (j in (i + 1)..maxJ) {
-                        if (!sameGroup(indices[i], indices[j])) break
-                        val cand = primaryArtist[indices[j]].orEmpty()
-                        if (cand != prev1 && cand != prev2) {
-                            val tmp = indices[i]
-                            indices[i] = indices[j]
-                            indices[j] = tmp
-                            break
-                        }
-                    }
-                }
-            }
+            indices.sortByDescending { keys[it] }
             val shuffledIndices = indices.toIntArray()
 
             // Anchor the CURRENT song at the front by ROTATION, not by swapping — see
             // ShuffleOrdering.anchorCurrentFirst for why a swap repeated songs at the end of every cycle.
+            //
+            // ORDER MATTERS: anchor FIRST, space SECOND. It used to be the other way round, and that was
+            // the defect behind the owner's third report of "me ponía bastante seguido el mismo artista":
+            // the rotation manufactures a brand-new `(current, next)` adjacency that the spacing pass — run
+            // before it — had never seen. `order[1]` is literally the next song media3 will play, so the
+            // single most audible adjacency in the whole order was the ONLY one nobody checked. Spacing now
+            // runs on the final layout with slot 0 frozen (startAt = 1), so the current song constrains its
+            // successor instead of being invisible to it.
             ShuffleOrdering.anchorCurrentFirst(shuffledIndices, currentIndex)
+            // ARTIST SPACING (owner reports: "cuando va por un cantante solo de ese cantante me pone",
+            // "me bombardea el mismo artista, eso no tiene nada de aleatorio", and now "a cada rato en modo
+            // aleatorio me ponía bastante seguido el mismo artista"). See ShuffleOrdering.spaceArtists for
+            // why it maximises the achieved gap instead of enforcing a fixed one, and why the previous
+            // fixed-gap-of-2 version failed closed on dense pools. [recentArtistSeed] is the other half of
+            // the fix: this whole function is rebuilt from scratch on every mutation (with crossfade ON,
+            // about once per song), and each rebuild used to start with an EMPTY artist history.
+            ShuffleOrdering.spaceArtists(
+                order = shuffledIndices,
+                artistKey = itemKeys.artistKey,
+                groupKey = groupByIndex,
+                window = artistWindow,
+                startAt = 1,
+                seedRecent = recentArtistSeed(itemKeys),
+            )
+            traceShuffleSpacing("smart", shuffledIndices, itemKeys, artistWindow)
             applyingShuffleOrder = true
             try {
                 player.setShuffleOrder(DefaultShuffleOrder(shuffledIndices, System.currentTimeMillis()))
@@ -5867,6 +6063,25 @@ class MusicService :
 
     override fun onPlaybackParametersChanged(playbackParameters: PlaybackParameters) {
         super.onPlaybackParametersChanged(playbackParameters)
+        // Tempo/pitch is something the offload path can only deliver on a HAL that advertises
+        // offloadVariableRateSupported=1; media3 otherwise swallows the AudioTrack failure and the
+        // Tempo & pitch dialog becomes a placebo (full evidence in setOffloadEnabled). Re-publish
+        // the offload request so the track selector re-evaluates it with the speed requirement this
+        // value implies: offload is declined while a non-default tempo/pitch is set on a device that
+        // cannot honour it — the decoder then emits PCM and media3's own Sonic does the stretch —
+        // and offload comes back by itself as soon as the user returns to 1.0x, so the battery cost
+        // lasts exactly as long as the feature is in use. This is the ONLY listener hook needed:
+        // it fires for every writer of playbackParameters, not just the dialog.
+        //
+        // Guarded on audioOffloadHint because it is only meaningful while the app is actually asking
+        // for offload. With the hint false the mode is already AUDIO_OFFLOAD_MODE_DISABLED and the
+        // selector short-circuits before it ever reads the flag, and the settings collector above
+        // rebuilds the full request — reading these same playback parameters — whenever the gate
+        // flips. Re-applying here anyway would only cost a pointless track reselection.
+        if (audioOffloadHint) {
+            player.setOffloadEnabled(true)
+            secondaryPlayer?.setOffloadEnabled(true)
+        }
         if (playbackParameters.speed != lastPlaybackSpeed) {
             lastPlaybackSpeed = playbackParameters.speed
             discordUpdateJob?.cancel()
@@ -7705,12 +7920,34 @@ class MusicService :
                 // touched); the processor itself no-ops when the in-chain path already feeds it. handleBuffer
                 // is re-called with the SAME buffer until consumed, so only the not-yet-measured region is
                 // fed (identity + high-water mark) — re-measuring would inflate the silence counters.
+                // HI-RES DSP RESCUE (same root cause, second half): the float branch skips the chain for the
+                // WHOLE chain, not just the silence detector — so on hi-res the 10-band EQ, its preamp, the
+                // de-esser, Safe Volume and the -1 dBFS limiter (all inside CustomEqualizerAudioProcessor)
+                // never ran either, while the EQ screen kept drawing its curve. Verified from the media3
+                // 1.10.1 bytecode: DefaultAudioSink.configure builds its pipeline as
+                //   addAll(availableAudioProcessors)                     // [trimming, channelMapping]
+                //   if (shouldUseFloatOutput(pcmEncoding)) { add(toFloatPcm); goto BUILD }   // <-- skips below
+                //   add(toInt16Pcm); add(audioProcessorChain.getAudioProcessors())           // ONLY call site
+                // and shouldUseFloatOutput = enableFloatOutput && Util.isEncodingHighResolutionPcm(enc)
+                // (24-bit / 32-bit / float, either endianness). So when the sink is about to take that branch
+                // we run the chain HERE instead, in 32-bit float — which is Superpowered's native domain
+                // (SuperpoweredBridge.processAudio's encoding==4 path skips the short<->float conversions the
+                // 16-bit path pays) — and hand the sink float, exactly what its own toFloatPcm would have
+                // produced. Nothing is downsampled: 24-bit ints are exact in a float32 mantissa.
                 object : androidx.media3.exoplayer.audio.ForwardingAudioSink(delegateSink) {
                     private var tapEncoding = C.ENCODING_INVALID
                     private var tapSampleRate = 0
                     private var tapChannels = 0
                     private var tapLastBuffer: java.nio.ByteBuffer? = null
                     private var tapMeasuredEnd = -1
+
+                    /** Non-null only while the delegate would take its float branch: the custom chain,
+                     *  driven from here because the sink refuses to. Null = the sink's own int16 pipeline
+                     *  owns the chain (unchanged, proven path) or this is a passthrough/offload stream. */
+                    private var hiResDsp: androidx.media3.common.audio.AudioProcessingPipeline? = null
+                    private var hiResPtUs = 0L
+                    private var hiResAccessUnits = 0
+                    private var hiResEosQueued = false
 
                     override fun configure(
                         inputFormat: androidx.media3.common.Format,
@@ -7722,7 +7959,61 @@ class MusicService :
                         tapChannels = inputFormat.channelCount
                         tapLastBuffer = null
                         tapMeasuredEnd = -1
-                        super.configure(inputFormat, specifiedBufferSize, outputChannels)
+
+                        // Mirror of DefaultAudioSink.configure's own decision. Guards, in order:
+                        //  - !lowEnd            : matches setEnableFloatOutput(!lowEnd) above.
+                        //  - AUDIO_RAW          : the sink only builds a processor pipeline for raw PCM;
+                        //                         encoded passthrough/offload has no chain at all.
+                        //  - highResolutionPcm  : the exact predicate that makes the sink skip the chain.
+                        //  - outputChannels null: a channel map keeps ChannelMappingAudioProcessor active,
+                        //                         which is 16-bit-only — leave that (already broken upstream
+                        //                         on float) exactly as it behaves today.
+                        val delegateWouldSkipChain = !lowEnd &&
+                            androidx.media3.common.MimeTypes.AUDIO_RAW == inputFormat.sampleMimeType &&
+                            androidx.media3.common.util.Util.isEncodingHighResolutionPcm(inputFormat.pcmEncoding) &&
+                            outputChannels == null
+                        var delegateFormat = inputFormat
+                        var pipeline: androidx.media3.common.audio.AudioProcessingPipeline? = null
+                        if (delegateWouldSkipChain) {
+                            // ToFloatPcmAudioProcessor is media3's own converter and self-bypasses when the
+                            // input is already float, so a float decoder output costs zero extra work.
+                            // normProcessor/limiterProcessor are deliberately NOT here: both are inert stubs
+                            // (isActive() == false) that an AudioProcessingPipeline would drop anyway.
+                            val built = androidx.media3.common.audio.AudioProcessingPipeline(
+                                com.google.common.collect.ImmutableList.of(
+                                    androidx.media3.exoplayer.audio.ToFloatPcmAudioProcessor(),
+                                    eqProcessor,
+                                ),
+                            )
+                            val outFormat = try {
+                                built.configure(
+                                    androidx.media3.common.audio.AudioProcessor.AudioFormat(inputFormat),
+                                )
+                            } catch (e: androidx.media3.common.audio.AudioProcessor.UnhandledAudioFormatException) {
+                                throw androidx.media3.exoplayer.audio.AudioSink.ConfigurationException(e, inputFormat)
+                            }
+                            // Only take over when the chain is provably rate/channel/format preserving —
+                            // that invariant is what lets handleBuffer forward presentationTimeUs unchanged
+                            // and skip any position/latency correction.
+                            if (outFormat.encoding == C.ENCODING_PCM_FLOAT &&
+                                outFormat.sampleRate == inputFormat.sampleRate &&
+                                outFormat.channelCount == inputFormat.channelCount
+                            ) {
+                                built.flush() // activates the processors; the pipeline is inert until this
+                                pipeline = built
+                                delegateFormat = inputFormat.buildUpon()
+                                    .setPcmEncoding(C.ENCODING_PCM_FLOAT)
+                                    .build()
+                            } else {
+                                // Defensive: leave the shared EQ processor in a clean state and fall back to
+                                // today's behaviour rather than feeding the sink something it didn't expect.
+                                built.reset()
+                            }
+                        }
+                        hiResDsp = pipeline
+                        hiResEosQueued = false
+                        super.configure(delegateFormat, specifiedBufferSize, outputChannels)
+                        logAudioPath(inputFormat, delegateFormat, pipeline != null)
                     }
 
                     override fun handleBuffer(
@@ -7747,14 +8038,126 @@ class MusicService :
                                 tapMeasuredEnd = end
                             }
                         }
-                        return super.handleBuffer(buffer, presentationTimeUs, encodedAccessUnitCount)
+                        val dsp = hiResDsp
+                            ?: return super.handleBuffer(buffer, presentationTimeUs, encodedAccessUnitCount)
+                        // Same drain-then-feed loop DefaultAudioSink runs for its own pipeline. The delegate
+                        // is handed the pipeline's OUTPUT buffer (a stable instance until drained, which its
+                        // `buffer == inputBuffer` assertion requires) and the timestamp of the input that
+                        // produced it — the chain is 1:1 and zero-latency, so that timestamp is exact.
+                        while (true) {
+                            val pendingOutput = dsp.output
+                            if (pendingOutput.hasRemaining()) {
+                                if (!super.handleBuffer(pendingOutput, hiResPtUs, hiResAccessUnits)) return false
+                                continue
+                            }
+                            if (!buffer.hasRemaining()) return true
+                            val remainingBefore = buffer.remaining()
+                            hiResPtUs = presentationTimeUs
+                            hiResAccessUnits = encodedAccessUnitCount
+                            dsp.queueInput(buffer)
+                            // Took nothing and produced nothing: report "not consumed" so the renderer
+                            // re-offers the same buffer next cycle instead of spinning on the audio thread.
+                            if (buffer.remaining() == remainingBefore) return false
+                        }
                     }
 
                     override fun playToEndOfStream() {
                         // FLOAT pipeline never calls the processor's queueEndOfStream (it isn't in the
                         // chain) — mirror the EOS trailing-silence snapshot from here. Idempotent.
                         runCatching { silenceProcessor.markEndOfStreamExternal() }
+                        val dsp = hiResDsp
+                        if (dsp != null && dsp.isOperational) {
+                            if (!hiResEosQueued) {
+                                dsp.queueEndOfStream()
+                                hiResEosQueued = true
+                            }
+                            // Drain before the delegate latches end-of-stream. The chain has no tail, so this
+                            // is normally a no-op; if the delegate is full we return and get called again.
+                            // InitializationException is NOT declared by playToEndOfStream and the renderer
+                            // does not catch it here — abandoning the (empty) drain is the only safe answer;
+                            // the sink raises its own error on the next cycle.
+                            try {
+                                while (true) {
+                                    val pendingOutput = dsp.output
+                                    if (!pendingOutput.hasRemaining()) break
+                                    if (!super.handleBuffer(pendingOutput, hiResPtUs, hiResAccessUnits)) return
+                                }
+                            } catch (e: androidx.media3.exoplayer.audio.AudioSink.InitializationException) {
+                                Timber.tag(TAG).e(e, "Hi-res DSP: end-of-stream drain aborted")
+                            }
+                        }
                         super.playToEndOfStream()
+                    }
+
+                    override fun flush() {
+                        hiResDsp?.flush()
+                        hiResEosQueued = false
+                        // Seek/discontinuity: the next buffer is unrelated to the measured region, and the
+                        // decoder may hand back the SAME ByteBuffer instance with new content.
+                        tapLastBuffer = null
+                        tapMeasuredEnd = -1
+                        super.flush()
+                    }
+
+                    override fun reset() {
+                        // Releases the native Superpowered processor, mirroring what the sink's own
+                        // pipeline.reset() does for the int16 path. configure() always precedes the next
+                        // handleBuffer, so dropping the reference here can only fall back to passthrough.
+                        hiResDsp?.reset()
+                        hiResDsp = null
+                        hiResEosQueued = false
+                        tapLastBuffer = null
+                        tapMeasuredEnd = -1
+                        super.reset()
+                    }
+
+                    override fun release() {
+                        // release() does NOT route through reset(), and on this path the delegate's own
+                        // pipeline does not contain the EQ processor — so without this the native
+                        // Superpowered instance (~270 KB + 64 filters) would leak once per released player,
+                        // i.e. on every crossfade/video swap. Idempotent after reset().
+                        hiResDsp?.reset()
+                        hiResDsp = null
+                        super.release()
+                    }
+
+                    /** One INFO line per audio-configuration change so a shared log PROVES whether the EQ /
+                     *  Safe Volume chain is in the path, instead of it being inferred from the UI. */
+                    private fun logAudioPath(
+                        inputFormat: androidx.media3.common.Format,
+                        delegateFormat: androidx.media3.common.Format,
+                        rescued: Boolean,
+                    ) {
+                        val isRaw = androidx.media3.common.MimeTypes.AUDIO_RAW == inputFormat.sampleMimeType
+                        val path = when {
+                            rescued -> "SINK_FLOAT_DSP"
+                            !isRaw -> "PASSTHROUGH_NO_DSP"
+                            else -> "MEDIA3_INT16_CHAIN"
+                        }
+                        Timber.tag(TAG).i(
+                            "AUDIO_PATH mime=%s enc=%s rate=%d ch=%d floatOutEnabled=%b sinkEnc=%s path=%s superpowered=%s eqOn=%b",
+                            inputFormat.sampleMimeType ?: "?",
+                            pcmEncodingName(inputFormat.pcmEncoding),
+                            inputFormat.sampleRate,
+                            inputFormat.channelCount,
+                            !lowEnd,
+                            pcmEncodingName(delegateFormat.pcmEncoding),
+                            path,
+                            if (isRaw) "IN_PATH" else "BYPASSED",
+                            eqProcessor.isEnabled(),
+                        )
+                    }
+
+                    private fun pcmEncodingName(encoding: Int): String = when (encoding) {
+                        C.ENCODING_PCM_8BIT -> "PCM_8BIT($encoding)"
+                        C.ENCODING_PCM_16BIT -> "PCM_16BIT($encoding)"
+                        C.ENCODING_PCM_16BIT_BIG_ENDIAN -> "PCM_16BIT_BE($encoding)"
+                        C.ENCODING_PCM_24BIT -> "PCM_24BIT($encoding)"
+                        C.ENCODING_PCM_24BIT_BIG_ENDIAN -> "PCM_24BIT_BE($encoding)"
+                        C.ENCODING_PCM_32BIT -> "PCM_32BIT($encoding)"
+                        C.ENCODING_PCM_32BIT_BIG_ENDIAN -> "PCM_32BIT_BE($encoding)"
+                        C.ENCODING_PCM_FLOAT -> "PCM_FLOAT($encoding)"
+                        else -> "enc($encoding)"
                     }
                 }
             }
@@ -8824,6 +9227,9 @@ class MusicService :
             // order so played songs correctly sink and the cycle-exhaustion self-reset counts them.
             val playedId = player.currentMediaItem?.mediaId ?: player.currentMetadata?.id
             playedId?.let { shufflePlayedIds.add(it) }
+            // ARTIST SPACING mirror: this path skips onMediaItemTransition, so without this line the
+            // artist history would only ever fill with crossfade OFF — i.e. never, for this owner.
+            rememberShuffleArtist(player.currentMediaItem)
             val ctx = shuffleContextId
             if (enhancedShuffleHint && ctx != null && playedId != null) {
                 val now = System.currentTimeMillis()

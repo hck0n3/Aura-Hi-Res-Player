@@ -14,7 +14,19 @@ import timber.log.Timber
 class PoTokenGenerator {
     private val TAG = "PoTokenGenerator"
 
-    private val webViewSupported by lazy { runCatching { CookieManager.getInstance() }.isSuccess }
+    // `.isSuccess` discarded the throwable. On a device whose WebView is missing, disabled or mid-update
+    // this silently disables poToken for the WHOLE process, every poToken client then fails, and the
+    // customer reports "songs don't play on my phone" while an identical build works everywhere else —
+    // with nothing in the log to distinguish it from a YouTube-side outage.
+    private val webViewSupported by lazy {
+        runCatching { CookieManager.getInstance() }
+            .onFailure {
+                Timber.tag("RESOLVE_FAIL").e(
+                    "WebView unavailable, poToken disabled for this process: ${it.javaClass.simpleName}: ${it.message}"
+                )
+            }
+            .isSuccess
+    }
     private var webViewBadImpl = false // whether the system has a bad WebView implementation
 
     private val webPoTokenGenLock = Mutex()

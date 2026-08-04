@@ -92,15 +92,19 @@ class CipherWebView private constructor(
                 val msg = m.message()
                 val src = "${m.sourceId()}:${m.lineNumber()}"
 
-                // Log all console messages for debugging
+                // TRUNCATED, and only ERROR persists — same reasoning as PoTokenWebView. This is console
+                // output from YouTube's ~2 MB player.js operating on the signature and `n` values, so
+                // the message can carry those values, and a chatty player.js can burst fast enough to
+                // rotate the 256 KB log away on its own. The error identity is what is actionable when
+                // YouTube rotates the cipher; the payload never was.
                 when (m.messageLevel()) {
                     ConsoleMessage.MessageLevel.ERROR -> {
                         if (!msg.contains("is not defined")) {
-                            Timber.tag(TAG).e("JS ERROR: $msg at $src")
+                            Timber.tag(TAG).e("JS ERROR: ${msg.take(200)} at $src")
                         }
                     }
                     ConsoleMessage.MessageLevel.WARNING -> {
-                        Timber.tag(TAG).w("JS WARN: $msg at $src")
+                        Timber.tag(TAG).d("JS WARN: $msg at $src")
                     }
                     else -> {
                         Timber.tag(TAG).v("JS LOG: $msg")

@@ -397,8 +397,12 @@ fun LyricsImageCard(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth()
                 ) {
+                    // ic_launcher_foreground is an adaptive-icon layer: a quarter of it
+                    // per side is bleed the launcher crops, so at 22dp the mark would
+                    // render at roughly half size. ic_launcher_nobg is the same brand
+                    // mark trimmed to its own bounds, which is what a badge needs.
                     Image(
-                        painter = painterResource(id = R.drawable.ic_launcher_foreground),
+                        painter = painterResource(id = R.drawable.ic_launcher_nobg),
                         contentDescription = null,
                         modifier = Modifier.size(22.dp)
                     )

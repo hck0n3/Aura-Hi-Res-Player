@@ -72,6 +72,9 @@ class OnboardingViewModel @Inject constructor(
             selected.value.forEach { id ->
                 val item = selectedItems[id] ?: return@forEach
                 val existing = database.artist(item.id).first()?.artist
+                // followedByUserAt: the user TAPPED these artists, so this is a deliberate follow and
+                // it may be pushed up as a real YouTube subscription (LibraryUploadSync does that,
+                // batched). Artists merely bookmarked by followArtistsWithContent never get this mark.
                 if (existing == null) {
                     insert(
                         ArtistEntity(
@@ -80,12 +83,16 @@ class OnboardingViewModel @Inject constructor(
                             thumbnailUrl = item.thumbnail,
                             channelId = item.channelId,
                             bookmarkedAt = now,
+                            followedByUserAt = now,
                         )
                     )
                 } else {
                     update(
                         existing.copy(
                             bookmarkedAt = existing.bookmarkedAt ?: now,
+                            followedByUserAt = existing.followedByUserAt ?: now,
+                            // A fresh follow supersedes any queued unsubscribe for this artist.
+                            unfollowedByUserAt = null,
                             lastUpdateTime = now,
                         )
                     )

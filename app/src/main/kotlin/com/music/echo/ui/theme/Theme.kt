@@ -30,16 +30,29 @@ fun echomusicTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     pureBlack: Boolean = false,
     themeColor: Color = DefaultThemeColor,
+    vividness: AccentVividness = AccentVividness.SOFT,
+    preset: ThemePreset = ThemePreset.NONE,
     content: @Composable () -> Unit,
 ) {
     val context = LocalContext.current
 
-    val useSystemDynamicColor =
+    // A named preset ("Muestreo") is a LITERAL scheme, so it short-circuits the whole seed engine —
+    // there is no seed that makes TonalSpot emit the icon's #080D18 ground. Null when NONE, which is
+    // every existing user, so nothing below changes for them.
+    val presetScheme = preset.colorSchemeOrNull(darkTheme)
+
+    val useSystemDynamicColor = presetScheme == null &&
         (themeColor == DefaultThemeColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
 
     val baseColorScheme = if (useSystemDynamicColor) {
         if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+    } else if (presetScheme != null) {
+        presetScheme
     } else {
+        // PaletteStyle.TonalSpot throws the seed's chroma away and re-derives it at a fixed 36 — the
+        // single reason every accent came out pastel. The seed still sets the HUE here (and all the
+        // surface/error roles), and [ColorScheme.withAccent] below puts the saturation back on the
+        // accent roles when the user asks for it. See [AccentVividness].
         rememberDynamicColorScheme(
             seedColor = themeColor,
             isDark = darkTheme,
@@ -48,12 +61,27 @@ fun echomusicTheme(
         )
     }
 
-    val colorScheme = remember(baseColorScheme, pureBlack, darkTheme) {
-        when {
+    // Material You derives its accent from the WALLPAPER, not from themeColor (themeColor is the
+    // "no manual colour picked" sentinel in that branch), so re-tinting it from the sentinel would
+    // paint the default red over the user's system theme. Vividness only applies to a real accent.
+    // A preset is a finished, contrast-verified scheme; re-tinting its accents from the seed would
+    // undo exactly the work that makes it readable. Same reasoning as the Material You branch.
+    val effectiveVividness =
+        if (useSystemDynamicColor || presetScheme != null) AccentVividness.SOFT else vividness
+
+    val colorScheme = remember(baseColorScheme, presetScheme, pureBlack, darkTheme, themeColor, effectiveVividness) {
+        // Surfaces FIRST: withAccent measures its legibility clamp against the final surface, so the
+        // AMOLED/deep-teal/soft-light substitutions have to be in place before it runs.
+        val surfaced = when {
             darkTheme && pureBlack -> baseColorScheme.pureBlack(true)
+            // A preset brings its OWN surfaces (the icon's ground is the whole point), so the generic
+            // deep-teal / soft-light substitutions must not overwrite them. AMOLED still wins above:
+            // it is a separate, explicit user toggle.
+            baseColorScheme === presetScheme -> baseColorScheme
             darkTheme -> baseColorScheme.deepTeal()
             else -> baseColorScheme.softLight()
         }
+        surfaced.withAccent(themeColor, effectiveVividness)
     }
 
     MaterialTheme(

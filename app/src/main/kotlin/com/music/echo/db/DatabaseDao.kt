@@ -1267,8 +1267,53 @@ interface DatabaseDao {
     @Query("UPDATE album SET bookmarkedAt = NULL WHERE bookmarkedAt IS NOT NULL")
     suspend fun clearAllLikedAlbums()
 
-    @Query("UPDATE artist SET bookmarkedAt = NULL WHERE bookmarkedAt IS NOT NULL")
+    // Clears the upload markers TOO, and deliberately without a WHERE on bookmarkedAt. This is a LOCAL
+    // reset (logout, "borrar contenido sincronizado", account switch) — it must never turn into a mass
+    // unsubscribe on the user's real YouTube account. Wiping local state is not a statement about that
+    // account, so every marker goes at once and the reconciler is left with nothing to act on in
+    // either direction. Mirror of ArtistSyncPolicy.afterLocalReset.
+    @Query("UPDATE artist SET bookmarkedAt = NULL, followedByUserAt = NULL, ytmSyncedAt = NULL, unfollowedByUserAt = NULL WHERE bookmarkedAt IS NOT NULL OR followedByUserAt IS NOT NULL OR ytmSyncedAt IS NOT NULL OR unfollowedByUserAt IS NOT NULL")
     suspend fun clearAllBookmarkedArtists()
+
+    /**
+     * Cut every artist row loose from the YouTube ACCOUNT that is being detached — logout (BOTH
+     * buttons), account switch, unparseable cookie, or a library restored from someone else's backup.
+     * Mirror of `ArtistSyncPolicy.afterAccountDetached`; change one, change both.
+     *
+     * Deliberately does NOT touch `bookmarkedAt` (that is the library, and "cerrar sesión (mantener
+     * datos)" promises to keep it) and does NOT touch `followedByUserAt` — clearing that would silently
+     * destroy a follow that had not been pushed up yet, since the subscription read-back can only
+     * re-stamp ids the account actually returns.
+     *
+     * `followedByUserAt` is NOT account-neutral, whatever an earlier version of this comment said:
+     * [markArtistsSubscribedOnYtm] writes it wholesale from the attached account's remote list, so
+     * most of the markers left standing here are a copy of the DETACHED account's follows. They are a
+     * pending-SUBSCRIBE shape aimed at whoever signs in next. What keeps that harmless is that
+     * `App.forgetAccount` revokes the library-upload switch in the same breath
+     * (`LibraryUploadOptIn.onAccountDetached`), so no bulk push can run until the new account's owner
+     * consents. See `ArtistSyncPolicy.afterAccountDetached`.
+     *
+     * The two columns it does clear are the account-scoped ones, and clearing them is what closes the
+     * blocker: a row left in the pending-UNSUBSCRIBE shape (`unfollowedByUserAt` + `ytmSyncedAt`) after
+     * a keep-data logout was later flushed against a DIFFERENT account, unsubscribing channels that
+     * account's owner had never unfollowed.
+     */
+    @Query(
+        """
+        UPDATE artist SET ytmSyncedAt = NULL, unfollowedByUserAt = NULL
+        WHERE ytmSyncedAt IS NOT NULL OR unfollowedByUserAt IS NOT NULL
+        """
+    )
+    suspend fun clearArtistAccountSyncMarkers()
+
+    /**
+     * Cheap "did this database arrive with data already in it?" probe, used ONCE at startup by
+     * `App.classifyInstallOrigin`. A genuine first-ever launch has an empty song table; a database
+     * restored by a device-to-device transfer or a cloud backup does not. `EXISTS ... LIMIT 1` stops at
+     * the first row, so this costs nothing even on a huge library.
+     */
+    @Query("SELECT EXISTS(SELECT 1 FROM song LIMIT 1)")
+    suspend fun hasAnySong(): Boolean
 
     @Query("UPDATE song SET isUploaded = 0 WHERE isUploaded = 1")
     suspend fun clearAllUploadedSongs()
@@ -1419,11 +1464,19 @@ interface DatabaseDao {
     fun insert(artist: ArtistEntity)
 
     /** Follow (bookmark) every artist that has songs or albums in the library but isn't followed yet —
-     *  so artists imported/synced from YouTube Music show up under "your artists", like Spotify follows. */
+     *  so artists imported/synced from YouTube Music show up under "your artists", like Spotify follows.
+     *
+     *  Skips rows carrying a pending unfollow. The artist sync clears `bookmarkedAt` on those on
+     *  purpose (the user unfollowed them and the unsubscribe has not reached YouTube yet); this
+     *  statement runs later in the SAME pass and used to put them straight back into "tus artistas"
+     *  while the queued unsubscribe was still going to fire. The user saw the artist reappear and then
+     *  vanish from YouTube. Their own unfollow is the newer instruction, so it wins until it has been
+     *  honoured — at which point `clearArtistsSyncedToYtm` drops the marker and a later song of theirs
+     *  can bookmark them again exactly as before. */
     @Query(
         """
         UPDATE artist SET bookmarkedAt = :now
-        WHERE bookmarkedAt IS NULL AND id IN (
+        WHERE bookmarkedAt IS NULL AND unfollowedByUserAt IS NULL AND id IN (
             SELECT artistId FROM song_artist_map
             UNION
             SELECT artistId FROM album_artist_map
@@ -1431,6 +1484,190 @@ interface DatabaseDao {
         """
     )
     fun followArtistsWithContent(now: java.time.LocalDateTime)
+
+    // ---- Library UPLOAD sync (Aura -> YouTube Music) -------------------------------------------
+    // These queries are the ONLY source the uploader reads, and every one of them is a mirror of
+    // `iad1tya.echo.music.utils.ArtistSyncPolicy` — change one, change both.
+    //
+    // Two rules, both learnt the hard way:
+    //  1. NEVER key off `bookmarkedAt`. followArtistsWithContent() sets it on every artist that merely
+    //     has a song in the library; uploading that set is what caused "me aparecen muchas
+    //     suscripciones de cantantes que no sigo".
+    //  2. NEVER infer the destructive direction from an ABSENCE. An unsubscribe requires the positive
+    //     `unfollowedByUserAt` marker. A missing follow marker is what a logout, a "borrar contenido
+    //     sincronizado", a restore from an old backup, an account switch and a half-written down-sync
+    //     all produce — and a local clear must never be readable as "unsubscribe me from all of these".
+
+    /** Deliberate follows that YouTube does not have a subscription for yet -> pending SUBSCRIBE. */
+    @Query(
+        """
+        SELECT * FROM artist
+        WHERE followedByUserAt IS NOT NULL AND ytmSyncedAt IS NULL AND unfollowedByUserAt IS NULL
+          AND isLocal = 0
+        ORDER BY followedByUserAt LIMIT :limit
+        """
+    )
+    suspend fun artistsPendingSubscribe(limit: Int): List<ArtistEntity>
+
+    /**
+     * Rows the user deliberately UNFOLLOWED while we still hold a subscription for them -> pending
+     * UNSUBSCRIBE. This is the ONLY query that can lead to removing something from the account.
+     *
+     * It matches on `unfollowedByUserAt` — written exclusively by [ArtistEntity.localToggleLike] when
+     * the user unfollows an artist they had deliberately followed. Nothing that merely LOSES local
+     * state can set it, which is what makes a local wipe inert instead of catastrophic. The two
+     * absence conditions are kept as belt and braces: a re-follow supersedes the queued unsubscribe,
+     * and a row we hold no subscription for has nothing to remove.
+     */
+    @Query(
+        """
+        SELECT * FROM artist
+        WHERE unfollowedByUserAt IS NOT NULL AND followedByUserAt IS NULL AND ytmSyncedAt IS NOT NULL
+          AND isLocal = 0
+        LIMIT :limit
+        """
+    )
+    suspend fun artistsPendingUnsubscribe(limit: Int): List<ArtistEntity>
+
+    @Query("SELECT COUNT(*) FROM artist WHERE followedByUserAt IS NOT NULL AND isLocal = 0")
+    suspend fun countDeliberateFollows(): Int
+
+    @Query("SELECT COUNT(*) FROM artist WHERE followedByUserAt IS NOT NULL AND ytmSyncedAt IS NOT NULL AND isLocal = 0")
+    suspend fun countFollowsSyncedToYtm(): Int
+
+    /** Must stay identical to the predicate of [artistsPendingUnsubscribe] or the report lies. */
+    @Query(
+        """
+        SELECT COUNT(*) FROM artist
+        WHERE unfollowedByUserAt IS NOT NULL AND followedByUserAt IS NULL AND ytmSyncedAt IS NOT NULL
+          AND isLocal = 0
+        """
+    )
+    suspend fun countPendingUnsubscribes(): Int
+
+    /** Stamp artists as "the account has this subscription" after a confirmed subscribe. */
+    @Query("UPDATE artist SET ytmSyncedAt = :now WHERE id IN (:ids)")
+    suspend fun markArtistsSyncedToYtm(ids: List<String>, now: java.time.LocalDateTime)
+
+    /**
+     * Clear the subscription state after a confirmed unsubscribe. The INTENT marker goes with it: it
+     * has been honoured, and leaving it set would make a later re-follow ambiguous (and would keep the
+     * row queued for an unsubscribe forever).
+     */
+    @Query("UPDATE artist SET ytmSyncedAt = NULL, unfollowedByUserAt = NULL WHERE id IN (:ids)")
+    suspend fun clearArtistsSyncedToYtm(ids: List<String>)
+
+    /**
+     * Retire ONE queued unfollow that the LIVE call in [ArtistEntity.toggleLike] has just carried out
+     * successfully. Mirror of `ArtistSyncPolicy.liveCallHonouredTheUnfollow` +
+     * `ArtistSyncPolicy.afterUnsubscribed`; change one, change both.
+     *
+     * Without it, `toggleLike` was fire-and-forget and an unfollow it had already delivered stayed on
+     * the row as a standing order with `ytmSyncedAt` null — a shape [artistsPendingUnsubscribe] cannot
+     * see (it requires `ytmSyncedAt IS NOT NULL`), so the STALE_INTENT retirement never reached it
+     * either. If the user re-subscribed to that artist on YouTube itself within the TTL, the read-back
+     * stamped `ytmSyncedAt`, the row became a genuine-looking pending unsubscribe, and Aura reversed
+     * the subscription the user had just made.
+     *
+     * ### Why the three extra conditions, instead of updating by id alone
+     * The live call is asynchronous, so the user can act again before it returns:
+     *  - `followedByUserAt IS NULL` — they re-followed in the meantime. `localToggleLike` already
+     *    cleared the marker and set the follow; blanking `ytmSyncedAt`/the marker here is harmless but
+     *    writing at all is not, so stay out of the way and let the newest action win.
+     *  - `unfollowedByUserAt IS NOT NULL AND unfollowedByUserAt <= :unfollowedAt` — they unfollowed
+     *    AGAIN (re-follow, unfollow) while this call was in flight. That newer instruction has not
+     *    been delivered, and clearing it would be exactly the silent loss this column exists to stop.
+     *
+     * A targeted UPDATE rather than an entity write: the caller holds a snapshot taken before the
+     * network call, and persisting it would also stomp any `name`/`thumbnailUrl`/`channelId` a
+     * down-sync refreshed in between.
+     */
+    @Query(
+        """
+        UPDATE artist SET ytmSyncedAt = NULL, unfollowedByUserAt = NULL
+        WHERE id = :artistId
+          AND followedByUserAt IS NULL
+          AND unfollowedByUserAt IS NOT NULL
+          AND unfollowedByUserAt <= :unfollowedAt
+        """
+    )
+    suspend fun confirmArtistUnsubscribed(artistId: String, unfollowedAt: java.time.LocalDateTime)
+
+    /**
+     * Backfill for the v39->v40 columns and for every artist down-sync: record that the account really
+     * IS subscribed to these artists. Only ids read back from FEmusic_library_corpus_artists get here,
+     * so each one is a subscription that demonstrably exists on the user's account.
+     *
+     * Mirror of [iad1tya.echo.music.utils.ArtistSyncPolicy.afterRemoteSubscriptionSeen]. Two properties
+     * matter more than anything else in this file:
+     *
+     *  - It does NOT read `bookmarkedAt`. The previous version did, and stamped `ytmSyncedAt` while
+     *    leaving `followedByUserAt` NULL for every row whose bookmark had been cleared or never set —
+     *    manufacturing the old pending-UNSUBSCRIBE signature out of thin air. Since the uploader reads
+     *    the account list and flushes unsubscribes IN THE SAME PASS, that turned a logout, a restore or
+     *    a plain incidental artist row into a real, irreversible mass unsubscribe.
+     *  - It can never PRODUCE the pending-unsubscribe shape. `followedByUserAt` is stamped alongside
+     *    `ytmSyncedAt` — except on rows that already carry a genuine `unfollowedByUserAt`, where the
+     *    queued unfollow is preserved so an unsubscribe that never reached YouTube (offline, expired
+     *    cookie) is retried instead of being silently lost.
+     */
+    @Query(
+        """
+        UPDATE artist SET
+            followedByUserAt = CASE
+                WHEN unfollowedByUserAt IS NOT NULL THEN followedByUserAt
+                ELSE COALESCE(followedByUserAt, :now)
+            END,
+            ytmSyncedAt = :now
+        WHERE id IN (:ids)
+        """
+    )
+    suspend fun markArtistsSubscribedOnYtm(ids: List<String>, now: java.time.LocalDateTime)
+
+    /**
+     * Playlists that live only in Aura and should be created on the account ("las que ya tenga creadas
+     * las asocie a mi cuenta"). A playlist that already has a browseId is already linked and is
+     * EXCLUDED here — that is what makes re-running the upload unable to duplicate anything.
+     * Excludes local-file playlists and the regenerated auto-recommendations playlist (a fixed-id row
+     * this app rewrites in the background; uploading it would churn the account).
+     */
+    @Query(
+        """
+        SELECT * FROM playlist
+        WHERE browseId IS NULL AND bookmarkedAt IS NOT NULL AND isLocal = 0
+          AND isEditable = 1 AND id != 'AURA_AI_RECS'
+        ORDER BY bookmarkedAt LIMIT :limit
+        """
+    )
+    suspend fun playlistsPendingUpload(limit: Int): List<PlaylistEntity>
+
+    @Query(
+        """
+        SELECT COUNT(*) FROM playlist
+        WHERE browseId IS NULL AND bookmarkedAt IS NOT NULL AND isLocal = 0
+          AND isEditable = 1 AND id != 'AURA_AI_RECS'
+        """
+    )
+    suspend fun countPlaylistsPendingUpload(): Int
+
+    @Query("SELECT COUNT(*) FROM playlist WHERE browseId IS NOT NULL AND bookmarkedAt IS NOT NULL AND isLocal = 0")
+    suspend fun countPlaylistsLinkedToYtm(): Int
+
+    @Query("SELECT COUNT(*) FROM song WHERE liked = 1 AND isLocal = 0")
+    suspend fun countLikedSongsSyncable(): Int
+
+    @Query("SELECT id FROM song WHERE liked = 1 AND isLocal = 0")
+    suspend fun likedSongIdsSyncable(): List<String>
+
+    @Query("SELECT COUNT(*) FROM album WHERE bookmarkedAt IS NOT NULL AND isLocal = 0")
+    suspend fun countLikedAlbumsSyncable(): Int
+
+    @Query("SELECT * FROM album WHERE bookmarkedAt IS NOT NULL AND isLocal = 0 AND playlistId IS NOT NULL")
+    suspend fun likedAlbumsSyncable(): List<AlbumEntity>
+
+    /** Song ids of a playlist in position order — the payload for uploading a local-only playlist. */
+    @Query("SELECT songId FROM playlist_song_map WHERE playlistId = :playlistId ORDER BY position")
+    suspend fun playlistSongIdsInOrder(playlistId: String): List<String>
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     fun insert(album: AlbumEntity): Long

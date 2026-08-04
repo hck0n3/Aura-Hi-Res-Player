@@ -373,6 +373,8 @@
     <string name="audio_offload">Enable offload</string>
     <string name="audio_offload_description">Use the offload audio path for audio playback. Disabling this may increase power usage but can be useful if you experience issues with audio playback or post processing</string>
     <string name="audio_offload_disabled_by_crossfade">Disabled because Crossfade is active</string>
+    <string name="audio_offload_disabled_by_safe_volume">Disabled because Safe Volume is active</string>
+    <string name="audio_offload_disabled_by_equalizer">Disabled because the equalizer is active</string>
 
     <!-- Google Cast -->
     <string name="google_cast">Google Cast</string>
@@ -398,7 +400,7 @@
     <string name="scrobble_delay_percent">Scrobble delay percent</string>
     <string name="scrobble_delay_minutes">Scrobble delay minutes</string>
     <string name="hide_video_songs">Hide video songs</string>
-    <string name="hide_youtube_shorts">Hide YouTube Shorts</string>
+    <string name="hide_youtube_shorts">Hide Shorts</string>
 
     <string name="details_desc">View the song\'s information</string>
     <string name="edit_desc">Change the title or artist</string>
@@ -424,7 +426,7 @@
     <string name="export_channel_name">Music export</string>
     <string name="filter_exported">Exported</string>
     <string name="add_to_playlist_desc">Add to one of your playlists</string>
-    <string name="refetch_desc">Fetch the latest metadata from YouTube Music</string>
+    <string name="refetch_desc">Fetch the latest metadata from Aura Hi-Res</string>
     <string name="share_desc">Share a link to this item</string>
     <string name="delete_desc">Permanently remove this item</string>
     <string name="advanced_desc">Change the song\'s tempo and pitch</string>
@@ -1068,4 +1070,78 @@
     <string name="shuffle_memory_message">You are %1$d of %2$d songs in. Continue without repeating them, or start over?</string>
     <string name="shuffle_memory_continue">Continue</string>
     <string name="shuffle_memory_reset">Start over</string>
+
+    <!-- Accent intensity + manual colour picker (ThemeScreen) -->
+    <string name="accent_intensity">Colour intensity</string>
+    <string name="accent_intensity_desc">Material tones wash the chosen colour out on purpose. Raise the intensity to keep its saturation.</string>
+    <string name="accent_intensity_needs_color">Pick a colour above (or turn off the dynamic theme) for the intensity to apply.</string>
+    <string name="accent_intensity_fixed_theme">Muestreo ships its own finished colours, so the intensity does not apply. Pick another colour above to use it.</string>
+    <string name="accent_intensity_soft">Soft</string>
+    <string name="accent_intensity_soft_desc">Material tones (default)</string>
+    <string name="accent_intensity_vivid">Vivid</string>
+    <string name="accent_intensity_vivid_desc">Full saturation</string>
+    <string name="accent_intensity_exact">Faithful</string>
+    <string name="accent_intensity_exact_desc">Your exact colour</string>
+    <string name="accent_custom_color">Custom colour</string>
+    <string name="accent_custom_color_desc">Type a hex code. #RRGGBB or the short #RGB, with or without the hash.</string>
+    <string name="accent_hex_label">Hex code</string>
+    <string name="accent_hex_placeholder">#RRGGBB</string>
+    <string name="accent_hex_invalid">Invalid code. Use #RRGGBB or #RGB.</string>
+    <string name="accent_hex_apply">Apply colour</string>
+    <string name="accent_preview">Colour preview</string>
+
+    <!-- Saturated presets -->
+    <!-- Name of the app-icon theme. A proper noun (the icon concept is called "Muestreo"), so it
+         reads the same in every locale, but it is declared alongside the other palette names in the
+         same three files they use, not special-cased. -->
+    <string name="palette_muestreo">Muestreo</string>
+    <string name="palette_vivid_red">Vivid Red</string>
+    <string name="palette_vivid_orange">Vivid Orange</string>
+    <string name="palette_vivid_amber">Vivid Amber</string>
+    <string name="palette_vivid_yellow">Vivid Yellow</string>
+    <string name="palette_vivid_lime">Vivid Lime</string>
+    <string name="palette_vivid_green">Vivid Green</string>
+    <string name="palette_vivid_mint">Vivid Mint</string>
+    <string name="palette_vivid_cyan">Vivid Cyan</string>
+    <string name="palette_vivid_azure">Vivid Azure</string>
+    <string name="palette_vivid_violet">Vivid Violet</string>
+    <string name="palette_vivid_magenta">Vivid Magenta</string>
+    <string name="palette_vivid_pink">Vivid Pink</string>
+
+    <!-- Deep and neutral presets -->
+    <string name="palette_dark_red">Dark Red</string>
+    <string name="palette_dark_amber">Dark Amber</string>
+    <string name="palette_dark_green">Dark Green</string>
+    <string name="palette_dark_teal">Dark Teal</string>
+    <string name="palette_dark_navy">Navy</string>
+    <string name="palette_dark_violet">Dark Violet</string>
+    <string name="palette_dark_plum">Plum</string>
+    <string name="palette_charcoal">Charcoal</string>
+    <string name="palette_ivory">Ivory</string>
+    <!-- ===== Library upload sync (Aura -> YouTube Music) ===== -->
+    <string name="ytm_upload_section_title">Backup to YouTube Music</string>
+    <string name="ytm_upload_toggle_title">Sync my library to my account</string>
+    <string name="ytm_upload_toggle_desc">Playlists, artists you follow, likes and albums are saved to your YouTube Music account. New playlists sync automatically, without asking.</string>
+    <string name="ytm_upload_run_now">Sync my whole library now</string>
+    <string name="ytm_upload_run_now_desc">Uploads everything still missing. Runs in the background, in batches, and picks up where it left off.</string>
+    <string name="ytm_upload_started">Syncing your library to YouTube Music…</string>
+    <string name="ytm_upload_needs_login">Sign in to YouTube Music first</string>
+    <string name="ytm_upload_disabled_hint">Turn on "Sync my library to my account" to upload your library.</string>
+    <string name="ytm_upload_cat_playlists">Playlists</string>
+    <string name="ytm_upload_cat_artists">Artists you follow</string>
+    <string name="ytm_upload_cat_liked_songs">Liked songs</string>
+    <string name="ytm_upload_cat_liked_albums">Liked albums</string>
+    <string name="ytm_upload_count_synced">%1$d of %2$d synced</string>
+    <string name="ytm_upload_count_pending">%1$d left</string>
+    <string name="ytm_upload_in_progress">Syncing…</string>
+    <string name="ytm_upload_category_done">Done</string>
+    <string name="ytm_upload_nothing_to_sync">Nothing to sync</string>
+    <string name="ytm_upload_all_done">Your whole library is on YouTube Music</string>
+    <string name="ytm_upload_all_done_desc">Sign in with this account on a new device and everything will already be there.</string>
+    <string name="ytm_upload_pending_summary">%1$d items still to sync</string>
+    <string name="ytm_upload_continues_background">It continues in the background, a batch at a time, so it does not drain your battery.</string>
+    <string name="ytm_upload_last_completed">Fully synced: %1$s</string>
+    <string name="ytm_upload_never_completed">Never fully synced yet</string>
+    <string name="ytm_upload_requests_last_run">%1$d requests on the last run</string>
+    <string name="ytm_upload_only_followed_note">Only artists you actually followed are subscribed on your account — never artists that just happen to have a song in your library.</string>
 </resources>

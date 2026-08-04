@@ -180,7 +180,7 @@ fun YouTubeArtistMenu(
                             database.query {
                                 val libraryArtist = libraryArtist
                                 if (libraryArtist != null) {
-                                    update(libraryArtist.artist.toggleLike())
+                                    update(libraryArtist.artist.toggleLike(database::confirmArtistUnsubscribed))
                                 } else {
                                     insert(
                                         ArtistEntity(
@@ -188,7 +188,7 @@ fun YouTubeArtistMenu(
                                             name = artist.title,
                                             channelId = artist.channelId,
                                             thumbnailUrl = artist.thumbnail,
-                                        ).toggleLike()
+                                        ).toggleLike(database::confirmArtistUnsubscribed)
                                     )
                                 }
                             }

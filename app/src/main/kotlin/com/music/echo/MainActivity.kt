@@ -241,6 +241,7 @@ import iad1tya.echo.music.ui.screens.WelcomeDialog
 import iad1tya.echo.music.ui.screens.navigationBuilder
 import iad1tya.echo.music.ui.screens.settings.DarkMode
 import iad1tya.echo.music.ui.screens.settings.NavigationTab
+import iad1tya.echo.music.ui.theme.AccentVividness
 import iad1tya.echo.music.ui.theme.BrandAccent
 import iad1tya.echo.music.ui.theme.ColorSaver
 import iad1tya.echo.music.ui.theme.DefaultThemeColor
@@ -659,6 +660,18 @@ class MainActivity : ComponentActivity() {
 
         val (selectedThemeColorInt) = rememberPreference(SelectedThemeColorKey, defaultValue = DefaultThemeColor.toArgb())
         val selectedThemeColor = Color(selectedThemeColorInt)
+        // How literally the accent is applied (see AccentVividness). SOFT == the Material 3 tonal look
+        // the app has always had, so an update changes nothing until the user opts in.
+        val accentVividness by rememberEnumPreference(
+            iad1tya.echo.music.constants.AccentVividnessKey,
+            defaultValue = AccentVividness.SOFT,
+        )
+        // Named theme ("Muestreo"). NONE by default, so this is a no-op for everyone who has not
+        // opted in; when set it replaces the whole scheme, surfaces included.
+        val themePreset by rememberEnumPreference(
+            iad1tya.echo.music.constants.AppThemePresetKey,
+            defaultValue = iad1tya.echo.music.ui.theme.ThemePreset.NONE,
+        )
 
         var themeColor by rememberSaveable(stateSaver = ColorSaver) {
             mutableStateOf(selectedThemeColor)
@@ -728,6 +741,8 @@ class MainActivity : ComponentActivity() {
             darkTheme = useDarkTheme,
             pureBlack = pureBlack,
             themeColor = themeColor,
+            vividness = accentVividness,
+            preset = themePreset,
         ) {
             BoxWithConstraints(
                 modifier = Modifier

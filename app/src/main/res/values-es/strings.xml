@@ -33,7 +33,7 @@
     <string name="most_played_artists">Artistas más reproducidos</string>
     <string name="most_played_albums">Álbumes más reproducidos</string>
     <string name="search">Buscar</string>
-    <string name="search_yt_music">Buscar en YouTube Music…</string>
+    <string name="search_yt_music">Buscar en Aura Hi-Res…</string>
     <string name="search_library">Buscar en la biblioteca…</string>
     <string name="filter_library">Biblioteca</string>
     <string name="filter_liked">Me gusta</string>
@@ -457,7 +457,7 @@
     <string name="voice_search">Búsqueda por voz</string>
     <string name="voice_search_unavailable">Reconocimiento de voz no disponible en este dispositivo</string>
     <string name="open_links_title">Abrir enlaces</string>
-    <string name="open_links_summary">Predeterminar Echo para abrir enlaces de YouTube Music</string>
+    <string name="open_links_summary">Establece Aura como predeterminada para abrir enlaces de YouTube Music</string>
 
     <!-- Lista AI por texto -->
     <string name="ai_playlist_title">Lista AI</string>
@@ -501,14 +501,14 @@
     <string name="couldnt_load_playlist">No se pudo cargar la lista. Revisa tu conexión.</string>
     <string name="couldnt_load_artist">No se pudo cargar el artista. Revisa tu conexión.</string>
     <string name="couldnt_load_album">No se pudo cargar el álbum. Revisa tu conexión.</string>
-    <string name="album_no_longer_available">Este álbum ya no está disponible en YouTube Music.</string>
+    <string name="album_no_longer_available">Este álbum ya no está disponible.</string>
     <string name="preview_unavailable">Vista previa no disponible por ahora</string>
     <string name="featured_artists">Artistas destacados</string>
     <string name="from_replay">Desde Replay</string>
     <string name="recently_added">Agregado recientemente</string>
     <string name="refresh">Actualizar</string>
     <string name="add_selected">Agregar (%1$d)</string>
-    <string name="search_youtube_music">Buscar en YouTube Music</string>
+    <string name="search_youtube_music">Buscar en Aura Hi-Res</string>
     <string name="your_library">Tu biblioteca</string>
     <string name="add_music_no_results">Sin resultados</string>
 
@@ -519,15 +519,15 @@
     <string name="recognition_notification_processing">Identificando…</string>
     <string name="recognition_notification_no_match">No se encontró ninguna coincidencia</string>
     <string name="recognition_notification_failed">Error de reconocimiento</string>
-    <string name="recognition_resolve_failed">No se encontró la canción en YouTube Music</string>
+    <string name="recognition_resolve_failed">No se encontró la canción en Aura Hi-Res</string>
     <string name="listen_on_aura">Escuchar en Aura</string>
     <!-- 0.6.92 Modo Ambiente -->
     <string name="ambient_mode">Modo Ambiente</string>
     <string name="ambient_mode_desc">Vista a pantalla completa con un resplandor animado</string>
 
     <!-- 0.6.92 Descifrado de YouTube -->
-    <string name="youtube_decryption_settings">Descifrado de YouTube</string>
-    <string name="youtube_decryption_desc">Descifrado autorreparable de las transmisiones de YouTube</string>
+    <string name="youtube_decryption_settings">Descifrado de reproducción</string>
+    <string name="youtube_decryption_desc">Descifrado autorreparable de las transmisiones</string>
     <string name="force_update_cipher">Forzar actualización del descifrado</string>
     <string name="force_update_cipher_desc">Obtiene ahora la configuración más reciente del reproductor</string>
     <string name="cipher_updating">Actualizando el descifrado…</string>
@@ -540,7 +540,7 @@
     <string name="cipher_applied_configs">Configuraciones activas</string>
     <string name="cipher_applied_configs_count">%1$d configuración(es) autorreparable(s) aplicada(s)</string>
     <string name="cipher_cooldown">Espera %1$s antes de volver a actualizar</string>
-    <string name="youtube_decryption_info">Aura mantiene la reproducción de YouTube por sí sola: actualiza el descifrado al abrir la app y se repara automáticamente cuando YouTube cambia su reproductor. Úsalo solo si la reproducción deja de funcionar — al forzar la actualización se obtiene de inmediato la configuración más reciente.</string>
+    <string name="youtube_decryption_info">Aura mantiene la reproducción por sí sola: actualiza el descifrado al abrir la app y se repara automáticamente cuando el proveedor de streaming cambia su reproductor. Úsalo solo si la reproducción deja de funcionar — al forzar la actualización se obtiene de inmediato la configuración más reciente.</string>
 
     <!-- 0.6.92 Scrobbling -->
     <string name="scrobbling">Scrobbling</string>
@@ -563,7 +563,7 @@
     <string name="listen_together_connection_failed">No se pudo conectar a la sala. Revisa tu conexión a internet e inténtalo de nuevo.</string>
     <!-- Migración de listas (Tidal / Deezer / archivo / Apple -> YouTube Music) -->
     <string name="migrate_playlist">Migrar lista</string>
-    <string name="migrate_pick_source_desc">Trae una lista de otro servicio a tu biblioteca de YouTube Music. Cada canción se busca en YouTube Music.</string>
+    <string name="migrate_pick_source_desc">Trae una lista de otro servicio a tu biblioteca de YouTube Music. Cada canción se busca en Aura Hi-Res.</string>
     <string name="migrate_source_group">Elige el origen</string>
     <string name="migrate_needs_youtube">Inicia sesión en YouTube Music (Ajustes -> Cuentas) para migrar: la lista se crea en tu cuenta de YouTube Music.</string>
     <string name="migrate_youtube_login">Iniciar sesión en YouTube Music</string>
@@ -582,7 +582,7 @@
     <string name="migrate_deezer_public_note">Tu perfil de Deezer debe ser PÚBLICO (app de Deezer → Ajustes → Privacidad). Un perfil privado no se puede leer.</string>
     <string name="migrate_confirm_count">Se migrarán %d canciones.</string>
     <string name="migrate_confirm_count_unknown">Se migrarán las canciones de la lista.</string>
-    <string name="migrate_confirm_network_note">Cada canción se busca en YouTube Music, una por una.</string>
+    <string name="migrate_confirm_network_note">Cada canción se busca en Aura Hi-Res, una por una.</string>
     <string name="migrate_confirm_datasaver">El Ahorro de datos está activado: esta importación usa la red para cada canción.</string>
     <string name="migrate_confirm_large">Es una importación grande y tardará un rato.</string>
     <string name="migrate_running_title">Migrando…</string>

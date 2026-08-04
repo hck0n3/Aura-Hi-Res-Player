@@ -276,7 +276,7 @@
     <string name="scrobble_delay_percent">เปอร์เซ็นต์หน่วงเวลาก่อน Scrobble</string>
     <string name="scrobble_delay_minutes">หน่วงเวลาก่อน Scrobble (นาที)</string>
     <string name="hide_video_songs">ซ่อนเพลงที่เป็นวิดีโอ</string>
-    <string name="hide_youtube_shorts">ซ่อน YouTube Shorts</string>
+    <string name="hide_youtube_shorts">ซ่อน Shorts</string>
     <string name="details_desc">ดูข้อมูลเพลง</string>
     <string name="edit_desc">เปลี่ยนชื่อเพลงหรือศิลปิน</string>
     <string name="start_radio_desc">สร้างสถานีจากรายการนี้</string>
@@ -285,7 +285,7 @@
     <string name="add_to_library_desc">บันทึกไปยังคลังของคุณ</string>
     <string name="download_desc">ดาวน์โหลดเพื่อฟังแบบออฟไลน์</string>
     <string name="add_to_playlist_desc">เพิ่มไปยังเพลย์ลิสต์ของคุณ</string>
-    <string name="refetch_desc">ดึงข้อมูลล่าสุดจาก YouTube Music</string>
+    <string name="refetch_desc">ดึงข้อมูลล่าสุดจาก Aura Hi-Res</string>
     <string name="share_desc">แชร์ลิงก์ของรายการนี้</string>
     <string name="delete_desc">ลบรายการนี้อย่างถาวร</string>
     <string name="advanced_desc">ปรับความเร็วและคีย์เสียงของเพลง</string>

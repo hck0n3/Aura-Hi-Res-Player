@@ -61,7 +61,11 @@ class CrashHandler private constructor(
             AppLogger.writeCrash(
                 applicationContext,
                 "PRELIMINARY REPORT — the full one could not be built (likely out of memory)\n" +
-                    "App: ${iad1tya.echo.music.BuildConfig.VERSION_NAME} (${iad1tya.echo.music.BuildConfig.VERSION_CODE})\n" +
+                    // Flavor + build type are compile-time constants, so naming them costs nothing
+                    // beyond the concat and answers "which build is this?" even when this stub is all
+                    // that survives.
+                    "App: ${iad1tya.echo.music.BuildConfig.VERSION_NAME} (${iad1tya.echo.music.BuildConfig.VERSION_CODE}) " +
+                    "${iad1tya.echo.music.BuildConfig.FLAVOR_variant}/${iad1tya.echo.music.BuildConfig.BUILD_TYPE}\n" +
                     "Device: ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}, Android ${android.os.Build.VERSION.RELEASE}\n" +
                     "Thread: ${thread.name}\n" +
                     "Exception: $throwable\n"
@@ -95,7 +99,18 @@ class CrashHandler private constructor(
         }
     }
 
-    private fun buildCrashLog(throwable: Throwable, thread: Thread? = null): String {
+    /**
+     * REDACTED AT THE END, not by the caller. `AppLogger.writeCrash` scrubs what it writes to
+     * `last_crash.txt`, but this same string is ALSO handed to CrashActivity through an Intent extra,
+     * and that screen lets the user copy and share it — so relying on the file writer alone left a
+     * fully unredacted copy on the one screen a customer is most likely to send from. Scrubbing here
+     * covers both consumers, and the exception message, every `Caused by:` line and the whole
+     * printStackTrace (which routinely embeds the failing URL) go through it.
+     */
+    private fun buildCrashLog(throwable: Throwable, thread: Thread? = null): String =
+        LogRedaction.redact(buildCrashLogRaw(throwable, thread))
+
+    private fun buildCrashLogRaw(throwable: Throwable, thread: Thread? = null): String {
         val stackTrace = StringWriter().apply {
             throwable.printStackTrace(PrintWriter(this))
         }.toString()
@@ -105,14 +120,15 @@ class CrashHandler private constructor(
         }.getOrDefault("Aura Hi-Res Player")
         return buildString {
             appendLine("$appName Crash Report")
-            appendLine("=".repeat(50))
+            // The FULL header (flavor, build type, ABI, locale, free storage, battery saver, battery
+            // optimisation, and the settings that change behaviour) instead of the four fields this used
+            // to carry. The old header could not answer "is this the foss build?", "was the phone in
+            // battery saver?" or "was crossfade on?" — each of which was a round-trip to the customer
+            // before the crash could even be classified. Guarded so a missing system service still
+            // leaves the stack trace intact.
+            runCatching { append(DiagnosticHeader.build(applicationContext, "crash")) }
             appendLine()
-            appendLine("Manufacturer: ${Build.MANUFACTURER}")
-            appendLine("Device: ${Build.MODEL}")
-            appendLine("Android version: ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})")
-            appendLine("App version: ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
             appendLine("Thread: ${thread?.name ?: Thread.currentThread().name}")
-            appendLine("Uptime: ${android.os.SystemClock.elapsedRealtime() / 1000}s since boot")
             // Explicit exception line incl. MESSAGE and each cause's message — some report viewers trim
             // the stacktrace header, and a bare exception class alone is nearly undiagnosable.
             appendLine("Exception: $throwable")

@@ -30,6 +30,7 @@ import iad1tya.echo.music.R
 import iad1tya.echo.music.ui.component.IconButton
 import iad1tya.echo.music.ui.utils.backToMain
 import iad1tya.echo.music.utils.AppLogger
+import iad1tya.echo.music.utils.DiagnosticHeader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -52,11 +53,17 @@ fun LogsScreen(
 
     val logText by produceState(initialValue = "", tab, reloadTrigger) {
         value = withContext(Dispatchers.IO) {
-            when (tab) {
+            val body = when (tab) {
                 LogTab.APP -> AppLogger.readRecentLog(context)
                 LogTab.CRASH -> AppLogger.readLastCrash(context)
                 LogTab.SYSTEM_EXITS -> AppLogger.readExitReasons(context)
             }
+            // Prepend the diagnostic header HERE, not in each action, so the on-screen text, the copy
+            // button and the share button are the same bytes — the user sees exactly what they send,
+            // and neither path can be the one that forgot it. Built on IO with the body, never on the
+            // main thread. `exit_reasons.txt` in particular carried no header at all before: a
+            // LOW_MEMORY kill arrived with no way to tell which build or which device produced it.
+            if (body.isBlank()) "" else DiagnosticHeader.build(context, "shared log") + "\n" + body
         }
     }
 

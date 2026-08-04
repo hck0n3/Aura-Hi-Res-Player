@@ -273,7 +273,7 @@
     <string name="add_to_library_desc">Mentés a könyvtárba</string>
     <string name="download_desc">Offline lejátszás engedélyezése</string>
     <string name="add_to_playlist_desc">Hozzáadás lejátszási listához</string>
-    <string name="refetch_desc">Legújabb metaadat lekérése YouTube Music-ról</string>
+    <string name="refetch_desc">Legújabb metaadat lekérése az Aura Hi-Res-ről</string>
     <string name="share_desc">Link megosztása</string>
     <string name="delete_desc">Elem végleges eltávolítása</string>
     <string name="advanced_desc">Tempó és hangmagasság módosítása</string>

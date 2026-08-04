@@ -745,8 +745,17 @@ class MigrationViewModel @Inject constructor(
                 delay(TRACK_THROTTLE_MS)
             }
 
-            // Push the new follows up to the account on the existing retried sync path.
+            // Push the new follows up to the account. syncArtistsSubscriptions() only pulls DOWN, so
+            // the upload pass is what actually subscribes them — and it only touches rows carrying
+            // followedByUserAt, which bookmarkArtist() above set because these came from the source
+            // account's real "followed artists" list. Bounded, batched and resumable.
             runCatching { syncUtils.syncArtistsSubscriptions() }
+            runCatching {
+                iad1tya.echo.music.utils.YtmSyncWorker.enqueue(
+                    context,
+                    iad1tya.echo.music.utils.YtmSyncWorker.TYPE_UPLOAD_LIBRARY,
+                )
+            }
 
             _uiState.value = _uiState.value.copy(
                 phase = MigrationPhase.DONE,
@@ -795,6 +804,10 @@ class MigrationViewModel @Inject constructor(
                         channelId = channelId,
                         // MANDATORY: "Biblioteca -> Artistas" filters WHERE bookmarkedAt IS NOT NULL.
                         bookmarkedAt = now,
+                        // DELIBERATE follow: this row comes from the source account's real
+                        // "followed artists" list, which the user explicitly chose to import — not
+                        // from followArtistsWithContent. Only these are pushed up as subscriptions.
+                        followedByUserAt = now,
                     ),
                 )
             } else {
@@ -805,6 +818,9 @@ class MigrationViewModel @Inject constructor(
                         channelId = channelId ?: existing.channelId,
                         // Never re-stamp: keep the date the user originally followed them.
                         bookmarkedAt = existing.bookmarkedAt ?: now,
+                        followedByUserAt = existing.followedByUserAt ?: now,
+                        // A fresh follow supersedes any queued unsubscribe for this artist.
+                        unfollowedByUserAt = null,
                         lastUpdateTime = now,
                     ),
                 )

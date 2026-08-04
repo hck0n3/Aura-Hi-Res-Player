@@ -299,7 +299,7 @@
     <string name="add_to_library_desc">Guardar na sua biblioteca</string>
     <string name="download_desc">Disponibilizar para reprodução \"offline\"</string>
     <string name="add_to_playlist_desc">Adicionar a uma das suas listas de reprodução</string>
-    <string name="refetch_desc">Obter os metadados mais recentes do YouTube Music</string>
+    <string name="refetch_desc">Obter os metadados mais recentes do Aura Hi-Res</string>
     <string name="share_desc">Partilhar um \"link\" para este item</string>
     <string name="delete_desc">Remover este item permanentemente</string>
     <string name="advanced_desc">Alterar o tempo e o tom da música</string>

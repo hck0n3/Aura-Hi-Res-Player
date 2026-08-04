@@ -174,4 +174,17 @@ Download the latest signed APK from the **[Releases page](https://github.com/hck
 
 ## License
 
-Licensed under **[GPL-3.0](LICENSE)**.
+Aura's own source code is licensed under **[GPL-3.0](LICENSE)**.
+
+**This does not cover everything in this repository.** The real-time equalizer and Safe Volume stages
+are built on the **Superpowered Audio SDK**, whose proprietary static libraries and headers live in
+`app/src/main/cpp/superpowered/`. Those files belong to Superpowered Inc., are **not** GPL-3.0, and are
+licensed to this project under the [SUPERPOWERED SDKS MASTER LICENSE AGREEMENT](docs/licenses/SUPERPOWERED_SDKS_MASTER_LICENSE_AGREEMENT_2019-10-16.pdf)
+(effective 16 October 2019), a copy of which is included in this repository.
+
+> Aura Hi-Res Player uses Superpowered SDKs. Superpowered.com
+> Copyright 2013 – 2026, Superpowered, Inc. All rights reserved.
+
+A Superpowered licence is per-application and non-transferable: cloning or forking this repository does
+**not** give you the right to use those binaries. See **[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)**
+for the full picture, and contact <licensing@superpowered.com> for your own licence.

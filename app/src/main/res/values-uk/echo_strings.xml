@@ -244,7 +244,7 @@
     <string name="add_to_library_desc">Зберегти у своїй бібліотеці</string>
     <string name="download_desc">Зробити доступним для відтворення офлайн</string>
     <string name="add_to_playlist_desc">Додати до одного зі своїх плейлистів</string>
-    <string name="refetch_desc">Отримати найновіші метадані з YouTube Music</string>
+    <string name="refetch_desc">Отримати найновіші метадані з Aura Hi-Res</string>
     <string name="share_desc">Поділитися посиланням на цей елемент</string>
     <string name="delete_desc">Вилучити цей елемент назавжди</string>
     <string name="advanced_desc">Змінити темп і висоту тону пісні</string>

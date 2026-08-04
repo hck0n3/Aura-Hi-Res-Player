@@ -336,10 +336,10 @@ fun getAllSearchableSettings(): List<Triple<String, String, String>> {
             Triple(stringResource(R.string.keep_screen_on_when_player_is_expanded), "Reproductor", "settings/player"),
             Triple(stringResource(R.string.player_and_audio), "Reproductor", "settings/player"),
             // --- Descifrado de YouTube (settings/youtube_decryption) : 4 ---
-            Triple(stringResource(R.string.youtube_decryption_settings), "Descifrado de YouTube", "settings/youtube_decryption"),
-            Triple(stringResource(R.string.youtube_decryption_desc), "Descifrado de YouTube", "settings/youtube_decryption"),
-            Triple(stringResource(R.string.force_update_cipher), "Descifrado de YouTube", "settings/youtube_decryption"),
-            Triple(stringResource(R.string.cipher_last_updated), "Descifrado de YouTube", "settings/youtube_decryption"),
+            Triple(stringResource(R.string.youtube_decryption_settings), "Descifrado de reproducción", "settings/youtube_decryption"),
+            Triple(stringResource(R.string.youtube_decryption_desc), "Descifrado de reproducción", "settings/youtube_decryption"),
+            Triple(stringResource(R.string.force_update_cipher), "Descifrado de reproducción", "settings/youtube_decryption"),
+            Triple(stringResource(R.string.cipher_last_updated), "Descifrado de reproducción", "settings/youtube_decryption"),
             // --- Sonido y ecualizacion (settings/sound) : 2 ---
             Triple(stringResource(R.string.echo_equalizer), "Sonido y ecualización", "settings/sound"),
             Triple(stringResource(R.string.echo_equalizer_desc), "Sonido y ecualización", "settings/sound"),

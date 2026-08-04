@@ -60,7 +60,7 @@ fun PlaybackError(
         isAgeRestricted ->
             "This app does not support playing age-restricted songs. We are working on fixing this issue."
         isAccessOrSession ->
-            "YouTube rejected the request for this song. Check your connection and retry — if it keeps happening, sign out and back in."
+            "The server rejected the request for this song. Check your connection and retry — if it keeps happening, sign out and back in."
         else -> rawErrorMessage
     }
     

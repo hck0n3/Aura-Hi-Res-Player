@@ -194,7 +194,7 @@
     <string name="add_to_library_desc">Opslaan in bibliotheek</string>
     <string name="download_desc">Beschikbaar maken voor offline afspelen</string>
     <string name="add_to_playlist_desc">Toevoegen aan afspeellijst</string>
-    <string name="refetch_desc">Opnieuw YouTube Music metadata ophalen</string>
+    <string name="refetch_desc">Opnieuw Aura Hi-Res metadata ophalen</string>
     <string name="advanced_desc">Nummer tempo en toonhoogte aanpassen</string>
     <string name="equalizer_desc">Audio equalizer aanpassen</string>
     <string name="enable_dynamic_icon">Dynamisch app pictogram</string>

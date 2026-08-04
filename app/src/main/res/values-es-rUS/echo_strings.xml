@@ -278,7 +278,7 @@
     <string name="persistent_shuffle_title">Aleatorio persistente</string>
     <string name="persistent_shuffle_desc">Mantener el modo aleatorio activado al iniciar nuevas canciones o listas de reproducción</string>
     <string name="add_to_playlist_desc">Añadir a una de tus listas de reproducción</string>
-    <string name="refetch_desc">Obtener los metadatos más recientes de YouTube Music</string>
+    <string name="refetch_desc">Obtener los metadatos más recientes de Aura Hi-Res</string>
     <string name="share_desc">Compartir un enlace a este elemento</string>
     <string name="delete_desc">Remover este elemento permanentemente</string>
     <string name="advanced_desc">Cambiar la velocidad y el tono de la canción</string>
@@ -479,8 +479,10 @@
     <string name="lyrics_romanize_hindi">Romanizar letras Hindi</string>
     <string name="lyrics_romanize_punjabi">Romanizar letras Punjabi</string>
     <string name="audio_offload_disabled_by_crossfade">Deshabilitado porque el desvanecido esta activo</string>
+    <string name="audio_offload_disabled_by_safe_volume">Desactivado porque el Volumen seguro está activo</string>
+    <string name="audio_offload_disabled_by_equalizer">Desactivado porque el ecualizador está activo</string>
     <string name="lyrics_romanize_as_main">Mostrar letras romanizadas como principales</string>
-    <string name="hide_youtube_shorts">Ocultar Youtube Shorts</string>
+    <string name="hide_youtube_shorts">Ocultar Shorts</string>
     <string name="not_playing">No se está reproduciendo ninguna canción</string>
     <string name="tap_to_play">Toca para abrir Aura Hi-Res Player</string>
     <string name="widget_music_player">Reproductor de Música</string>
@@ -650,4 +652,75 @@
     <string name="shuffle_memory_message">Llevas %1$d de %2$d canciones reproducidas. ¿Continuar sin repetirlas, o empezar de cero?</string>
     <string name="shuffle_memory_continue">Continuar</string>
     <string name="shuffle_memory_reset">Empezar de cero</string>
+
+    <!-- Intensidad del acento + selector manual de color (ThemeScreen) -->
+    <string name="accent_intensity">Intensidad del color</string>
+    <string name="accent_intensity_desc">Los tonos de Material apagan el color elegido a propósito. Sube la intensidad para conservar su saturación.</string>
+    <string name="accent_intensity_needs_color">Elige un color arriba (o desactiva el tema dinámico) para que se aplique la intensidad.</string>
+    <string name="accent_intensity_fixed_theme">Muestreo trae sus propios colores ya definidos, así que la intensidad no se aplica. Elige otro color arriba para usarla.</string>
+    <string name="accent_intensity_soft">Suave</string>
+    <string name="accent_intensity_soft_desc">Tonos de Material (predeterminado)</string>
+    <string name="accent_intensity_vivid">Vívido</string>
+    <string name="accent_intensity_vivid_desc">Saturación completa</string>
+    <string name="accent_intensity_exact">Fiel</string>
+    <string name="accent_intensity_exact_desc">Tu color exacto</string>
+    <string name="accent_custom_color">Color personalizado</string>
+    <string name="accent_custom_color_desc">Escribe un código hexadecimal. #RRGGBB o el corto #RGB, con o sin numeral.</string>
+    <string name="accent_hex_label">Código hexadecimal</string>
+    <string name="accent_hex_placeholder">#RRGGBB</string>
+    <string name="accent_hex_invalid">Código no válido. Usa #RRGGBB o #RGB.</string>
+    <string name="accent_hex_apply">Aplicar color</string>
+    <string name="accent_preview">Vista previa del color</string>
+
+    <!-- Colores saturados -->
+    <string name="palette_muestreo">Muestreo</string>
+    <string name="palette_vivid_red">Rojo vivo</string>
+    <string name="palette_vivid_orange">Naranja vivo</string>
+    <string name="palette_vivid_amber">Ámbar vivo</string>
+    <string name="palette_vivid_yellow">Amarillo vivo</string>
+    <string name="palette_vivid_lime">Lima vivo</string>
+    <string name="palette_vivid_green">Verde vivo</string>
+    <string name="palette_vivid_mint">Menta vivo</string>
+    <string name="palette_vivid_cyan">Cian vivo</string>
+    <string name="palette_vivid_azure">Azul vivo</string>
+    <string name="palette_vivid_violet">Violeta vivo</string>
+    <string name="palette_vivid_magenta">Magenta vivo</string>
+    <string name="palette_vivid_pink">Rosa vivo</string>
+
+    <!-- Colores oscuros y neutros -->
+    <string name="palette_dark_red">Rojo oscuro</string>
+    <string name="palette_dark_amber">Ámbar oscuro</string>
+    <string name="palette_dark_green">Verde oscuro</string>
+    <string name="palette_dark_teal">Verde azulado oscuro</string>
+    <string name="palette_dark_navy">Azul marino</string>
+    <string name="palette_dark_violet">Violeta oscuro</string>
+    <string name="palette_dark_plum">Ciruela</string>
+    <string name="palette_charcoal">Carbón</string>
+    <string name="palette_ivory">Marfil</string>
+    <!-- ===== Sincronización de la biblioteca hacia YouTube Music ===== -->
+    <string name="ytm_upload_section_title">Copia de seguridad en YouTube Music</string>
+    <string name="ytm_upload_toggle_title">Sincronizar mi biblioteca con mi cuenta</string>
+    <string name="ytm_upload_toggle_desc">Tus playlists, artistas seguidos, me gusta y álbumes se guardan en tu cuenta de YouTube Music. Las playlists nuevas se sincronizan solas, sin preguntarte.</string>
+    <string name="ytm_upload_run_now">Sincronizar toda mi biblioteca ahora</string>
+    <string name="ytm_upload_run_now_desc">Sube todo lo que falte. Corre en segundo plano, por tandas, y continúa donde se quedó.</string>
+    <string name="ytm_upload_started">Sincronizando tu biblioteca con YouTube Music…</string>
+    <string name="ytm_upload_needs_login">Primero inicia sesión en YouTube Music</string>
+    <string name="ytm_upload_disabled_hint">Activa "Sincronizar mi biblioteca con mi cuenta" para subir tu biblioteca.</string>
+    <string name="ytm_upload_cat_playlists">Playlists</string>
+    <string name="ytm_upload_cat_artists">Artistas que sigues</string>
+    <string name="ytm_upload_cat_liked_songs">Me gusta (canciones)</string>
+    <string name="ytm_upload_cat_liked_albums">Álbumes que te gustan</string>
+    <string name="ytm_upload_count_synced">%1$d de %2$d sincronizadas</string>
+    <string name="ytm_upload_count_pending">faltan %1$d</string>
+    <string name="ytm_upload_in_progress">Sincronizando…</string>
+    <string name="ytm_upload_category_done">Listo</string>
+    <string name="ytm_upload_nothing_to_sync">Nada que sincronizar</string>
+    <string name="ytm_upload_all_done">Toda tu biblioteca ya está en YouTube Music</string>
+    <string name="ytm_upload_all_done_desc">Inicia sesión con esta cuenta en otro dispositivo y todo estará allí, sin volver a migrar nada.</string>
+    <string name="ytm_upload_pending_summary">Faltan %1$d elementos por sincronizar</string>
+    <string name="ytm_upload_continues_background">Continúa en segundo plano, por tandas, para no gastarte batería.</string>
+    <string name="ytm_upload_last_completed">Sincronizada por completo: %1$s</string>
+    <string name="ytm_upload_never_completed">Aún no se ha sincronizado por completo</string>
+    <string name="ytm_upload_requests_last_run">%1$d peticiones en la última tanda</string>
+    <string name="ytm_upload_only_followed_note">Solo se suscriben en tu cuenta los artistas que tú seguiste — nunca los que simplemente tienen una canción en tu biblioteca.</string>
 </resources>

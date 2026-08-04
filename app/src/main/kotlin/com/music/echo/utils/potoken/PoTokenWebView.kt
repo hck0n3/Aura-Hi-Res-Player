@@ -74,17 +74,30 @@ class PoTokenWebView private constructor(
         webView.webChromeClient = object : WebChromeClient() {
             override fun onConsoleMessage(m: ConsoleMessage): Boolean {
                 val msg = m.message()
-                // Log all console messages for debugging
+                // TRUNCATED, and only the ERROR level persists.
+                //
+                // This is raw console output from YouTube's BotGuard attestation VM: it can echo
+                // challenge and integrity-token payloads, and ERROR/WARNING both land at a level
+                // AppLogger writes to the file the user shares. It can also burst at hundreds of
+                // messages per second, which on a 256 KB capped log means the real diagnostic context
+                // is rotated away by JS noise. 200 chars keeps the identity of the error (which is all
+                // that has ever been actionable) without carrying a payload, and the WARNING level —
+                // pure noise from a third-party script we do not control — drops to DEBUG so it stays
+                // available in a debug build and never reaches disk in release.
                 when (m.messageLevel()) {
-                    ConsoleMessage.MessageLevel.ERROR -> Timber.tag(TAG).e("JS: $msg")
-                    ConsoleMessage.MessageLevel.WARNING -> Timber.tag(TAG).w("JS: $msg")
+                    ConsoleMessage.MessageLevel.ERROR -> Timber.tag(TAG).e("JS: ${msg.take(200)}")
                     else -> Timber.tag(TAG).d("JS: $msg")
                 }
 
                 if (msg.contains("Uncaught")) {
                     val fmt = "\"$msg\", source: ${m.sourceId()} (${m.lineNumber()})"
                     val exception = BadWebViewException(fmt)
-                    Timber.tag(TAG).e("This WebView implementation is broken: $fmt")
+                    // Source + line identify the break; the message itself is bounded for the same
+                    // payload reason as above.
+                    Timber.tag(TAG).e(
+                        "This WebView implementation is broken: \"${msg.take(200)}\", " +
+                            "source: ${m.sourceId()} (${m.lineNumber()})"
+                    )
 
                     onInitializationErrorCloseAndCancel(exception)
                     // runCatching: a continuation may have been resumed/cancelled concurrently (timeout,
@@ -251,7 +264,14 @@ class PoTokenWebView private constructor(
             // time instead of blocking the playback path indefinitely. The pending continuation is
             // removed by its invokeOnCancellation handler (keyed by reqId).
             isDead = true
-            Timber.tag(TAG).e("generatePoToken($identifier) timed out")
+            // NEVER log `identifier` here. On the streaming path it IS the session id — dataSyncId when
+            // logged in, visitorData otherwise — and this line is at ERROR, which AppLogger PERSISTS to
+            // the file the user shares from Ajustes ▸ Registros. A credential in a log a customer emails
+            // is a real leak, and the timeout fires exactly on the slow devices whose owners send logs.
+            // (The sibling truncations elsewhere in this flow are safe only because they sit at DEBUG,
+            // which never reaches disk; at INFO+ the rule is no value at all.) The length still tells us
+            // which token wedged — a videoId is 11 chars, a session id is long — without exposing it.
+            Timber.tag(TAG).e("generatePoToken timed out after ${GENERATE_TIMEOUT_MS}ms (idLen=${identifier.length})")
             throw PoTokenException("poToken generation timed out")
         }
     }

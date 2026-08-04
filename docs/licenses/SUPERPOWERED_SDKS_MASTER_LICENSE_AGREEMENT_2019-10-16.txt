@@ -1,0 +1,459 @@
+                     SUPERPOWERED SDKS MASTER LICENSE AGREEMENT
+
+                                                         Effective Date: October 16, 2019
+
+INTRODUCTION
+
+Superpowered Inc. develops and markets the following four SDKs:
+
+     1. SUPERPOWERED AUDIO SDK ("Audio SDK"),
+     2. SUPERPOWERED NETWORKING SDK ("Net SDK"),
+     3. SUPERPOWERED CRYPTOGRAPHICS SDK ("Crypto SDK"), and
+     4. SUPERPOWERED WEB AUDIO JAVASCRIPT & WEBASSEMBLY SDK ("JS/WASM SDK").
+
+The aforementioned Audio SDK, Net SDK, Crypto SDK, and JS/WASM SDK are collectively referred to herein as
+the "Superpowered SDKs") and a list of their respective features can be found at https://superpowered.com.
+
+To make use of Superpowered SDKs, the following licenses are available:
+
+1. Evaluation License
+2. Starter License
+3. White Label Licenses (including Embedded Hardware License & 3rd Party SDK License)
+
+NOTE
+
+For avoidance of doubt, there is no longer a free license available that allows public release and all licensees
+regardless of the date of use must immediately switch to one of the three licenses listed above or discontinue use of
+Superpowered.
+
+Unauthorized and/or unlicensed usage of the Superpowered SDKs or any other Superpowered technologies may
+result in interruption of service without notice, nor is Superpowered Inc. is required to provide notice of imminent
+discontinued service to those who are not in compliance with these Superpowered SDKs Master License
+requirements.
+
+If you have any questions or concerns, please contact licensing@superpowered.com.
+
+LICENSE DETAILS AND DESCRIPTIONS
+
+Evaluation License
+
+The Evaluation License is offered for internal, private experimentation and R&D purposes only and does not allow
+for public release. It supports a maximum of 1,000 app-installs (as determined by Superpowered analytics). Once an
+app breaches the 1,000 app-install mark, the Superpowered licensing system will disable usage.
+
+Starter License
+
+The Starter License requires both annual license fees as well as the proper implementation of the Superpowered
+splash screen (for apps) or the Superpowered web-widget (for web-sites or web-apps). App-installs and/or web
+traffic are unlimited.
+
+White Label License
+
+The White Label License requires annual license fees and has no splash screen or web widget requirement. App-
+installs are unlimited.
+
+                                                                                                       Superpowered Inc.
+                                                                                           600 Congress Ave, 14th Floor
+
+                                                                                                         Austin, TX 78701
+                                                                                                                         USA
+
+                                                                                           licensing@superpowered.com
+                                                                                                          +1-512-298-3900
+
+SUPERPOWERED SDKS MASTER LICENSE AGREEMENT
+This license can be found at superpowered.com/licensing
+October 16, 2019
+WHICH LICENSE DO I NEED?
+
+Do you intend to integrate Superpowered into or in concert with an embedded application or hardware device? Or as
+part of a pre-bundled or pre-installed application on a device?
+
+Then you must purchase a White Label Embedded License.
+
+Do you intend to integrate Superpowered into a web-app, website or native app and make it available to the public?
+
+Then you must purchase either a Starter License or White Label License.
+
+Do you intend to integrate Superpowered into or in concert with a 3rd party SDK (platform application)? Or do you
+wish to sublicense use of Superpowered?
+
+Then you must purchase a White Label 3rd Party SDK License.
+
+Licenses can be purchased by contacting licensing@superpowered.com.
+
+WHAT IF I HAVE MORE THAN ONE APPLICATION?
+
+You must have a license for each Application (as defined below), regardless of how you subdivide or commercialize
+your technology. Each distributed application must have its own license.
+
+PREAMBLE
+
+Before downloading or using any Superpowered SDKs, you are required to read, understand and agree to these
+terms. (Capitalized terms not immediately defined are located in Section 10 below.)
+
+This SUPERPOWERED SDKS MASTER LICENSE AGREEMENT (this "Agreement") is a legal agreement
+between you individually if you are agreeing to it in your own capacity, or if you are authorized to acquire the
+Superpowered SDKs on behalf of your company or organization, between the entity for whose benefit you act
+("You" or "Licensee") and Superpowered Inc. ("Superpowered").
+
+By clicking on the appropriate button below, or by downloading, installing, activating or using any of the
+Superpowered SDKs, you are agreeing to be bound by the terms of this Agreement. If you have any questions or
+concerns about the terms of this Agreement, please contact us at licensing@superpowered.com.
+
+If you decide you are unwilling to agree to the terms of this Agreement, you have no right to use any of the
+Superpowered SDKs and furthermore acknowledge you have no expectation of uninterrupted ongoing service and
+access to Superpowered technology.
+
+The most current version of the SUPERPOWERED SDKS MASTER LICENSE AGREEMENT will be posted at
+https://superpowered.com/licensing ("Current Version"). If the Current Version has a more recent effective date
+than this document, then this document is replaced by the Current Version and by clicking on the appropriate button
+below, or by downloading, installing, activating or using any of the Superpowered SDKs, or any other update
+method Superpowered may choose, you are agreeing to be bound by the Current Version. You may not use an old
+version of any Superpowered SDK if you have not agreed to the Current Version.
+
+                                                                     Superpowered Inc.
+                                                         600 Congress Ave, 14th Floor
+
+                                                                       Austin, TX 78701
+                                                                                       USA
+
+                                                         licensing@superpowered.com
+                                                                        +1-512-298-3900
+
+SUPERPOWERED SDKS MASTER LICENSE AGREEMENT
+This license can be found at superpowered.com/licensing
+October 16, 2019
+STANDARD TERMS AND CONDITIONS                                    (f) Superpowered requires use of a license key for use of
+                                                                 the Superpowered SDKs, which use shall be determined by
+1.1 License Grant.                                               Superpowered in its sole discretion. Licensee agrees to
+                                                                 download and validate such license key in order to use the
+(a) In accordance with the terms herein, Superpowered            Superpowered SDKs and provide accurate and complete
+grants to Licensee a limited, non-exclusive, non-                information as requested by Superpowered. In the event a
+transferable, non-sublicensable license to install and use a     license key is required for any Superpowered SDK, you
+reasonable number of copies of the applicable                    may not continue to use the applicable Superpowered SDK
+Superpowered SDKs to be used for an Application solely in        even if it is a prior version (including a version that did not
+the manner described in the documentation contained in the       require a license key) unless you receive written
+applicable Superpowered SDK, if any.                             permissions from Superpowered. You acknowledge any or
+                                                                 all Superpowered SDKs may require use of a licensee key
+(b) Licensee may distribute Applications provided that,          and the applicable Superpowered SDK may not work
+except as expressly permitted herein, Licensee does not          without such license key. Superpowered does not any track
+directly or indirectly market, rent, distribute, transfer,       personally identifiable information ("PII") but does monitor
+license, sublicense, sell, or furnish to any third party all or  usage for unauthorized or illegal usage. Superpowered
+any part of, the Superpowered SDKs or copies of any part         makes no representation that it will be able to detect nor
+thereof including in conjunction with or as part of              does it covenant to inform you if it discovers misuse of PII.
+Applications. For greater clarity the rights granted
+hereunder are solely with respect to Licensee's use of the       2.1 Open Source. The Superpowered SDKs may be
+applicable Superpowered SDK and in no event shall there          embedded into open-source, source-code and/or source-
+be an implied license under any Superpowered intellectual        code repo, provided such use in compliance with the terms
+property rights. Licensee may not copy the Superpowered          of this Agreement.
+SDKs or any portion thereof except as expressly permitted
+herein. For the purposes of this provision "copy" shall not      (a) Licensee acknowledges that if any of the Superpowered
+include copying of statements and instructions of the            SDKs are used in this manner, the following limitations
+Superpowered SDKs or any portion thereof that naturally          apply: (i) Superpowered must be mentioned in the
+occurs during normal program execution when used in              README, and (ii) a copy of this Agreement must be
+accordance with and for the purposes described in the            included.
+documentation or in the course of making unmodified
+copies of the Superpowered SDKs or documentation as part         2.2 Use. Licensee is responsible for all activities with
+of the regular back-up of the Superpowered SDKs in               respect to the Superpowered SDKs undertaken by Licensee
+accordance with standard industry business practices.            and Licensee's Authorized Users and will ensure that:
+Notwithstanding the foregoing, if Superpowered has
+terminated any license granted to Licensee for the               (a) the Superpowered SDKs and Application(s) will be
+Superpowered SDKs, no right to use the Superpowered              used in accordance with this Agreement, all applicable laws
+SDKs is granted to Licensee hereunder.                           and regulations, and the documentation provided by
+                                                                 Superpowered;
+(c) To the extent that Distributable Source Code is provided
+as part of the Superpowered SDKs, Licensee may use,              (b) the Superpowered SDKs (or components thereof) will
+modify and compile the Distributable Source Code solely          not be sublicensed or incorporated into any other platform
+for the purposes of developing Licensee's Applications.          or SDK or API or embedded device, without written
+Notwithstanding the foregoing, Licensee may not modify           permission and license from Superpowered;
+any header files included in the Superpowered SDKs.
+                                                                 (c) Licensee has the right and authority to enter into this
+(d) Licensee must require users of Licensee's Applications,      Agreement, either on Licensee's own behalf or on behalf of
+in the license terms applicable to Licensee's Applications,      a company or other entity, and Licensee, if an individual, is
+to agree not to Reverse Engineer Licensee's Applications         over the age of majority;
+(including the Superpowered SDKs), except to the extent
+that Licensee is expressly precluded by law from imposing        (d) Licensee and Licensee's Authorized Users will not
+such restriction.                                                knowingly develop or distribute Applications or make any
+                                                                 products, services or content available through Licensee's
+(e) Notwithstanding anything contained herein to the             Applications, the use of which in isolation or with any
+contrary, Licensee may not combine, distribute, or               other software, system, network, or data would contain
+otherwise use the Superpowered SDKs with any code or             functionality that could be used for inappropriate or
+other content which is covered by a license that would           improper purposes or interfere with the proper operation of,
+directly or indirectly require that all or part of the           degrade, cause damage to or adversely affect any software,
+Superpowered SDKs be governed under any terms other              hardware, services, system, network or data used by any
+than those of this Agreement.
+                                                                                                                                                     Superpowered Inc.
+SUPERPOWERED SDKS MASTER LICENSE AGREEMENT                                                                                                600 Congress Ave, 14th Floor
+This license can be found at superpowered.com/licensing
+October 16, 2019                                                                                                                                        Austin, TX 78701
+                                                                                                                                                                        USA
+
+                                                                                                                                         licensing@superpowered.com
+                                                                                                                                                        +1-512-298-3900
+person including Superpowered, or otherwise have a                subject to export, import, and/or use controls by
+detrimental effect upon Superpowered, or any of its               governmental authorities by way of law or regulation.
+customers or products or services, and Licensee will              Licensee agrees that the Superpowered SDKs will not be
+immediately cease any such activity;                              exported, imported, used, transferred, or re-exported except
+                                                                  in compliance with the laws and regulations of the national
+(e) Licensee and Licensee's Authorized Users will not use         and/or other government authorities with authority over the
+the Superpowered SDKs to develop any Applications or              country(ies) and/or territory(ies) from which the
+make any products, services or content, which are intended        Superpowered SDKs are being exported or to which the
+to be used to commit or would be used predominantly to            Superpowered SDKs are being imported. Notwithstanding
+commit any crime or other illegal or tortious acts and            any agreement with a third-party or any provision of law,
+without limiting the foregoing, Applications will not             regulation or policy, if Licensee is any agency of the
+contain or link to any content, or perform any function, that     government of the United States of America, then
+is illegal (e.g. against any criminal, civil or statutory law or  Licensee's rights in respect of the Superpowered SDKs
+regulation), any libel or defamation, obscene,                    shall not exceed the rights provided under this Agreement,
+objectionable, harassing, hateful, profane, indecent,             unless expressly agreed upon by Superpowered in a
+offensive, breach of privacy, infringement or                     separate written agreement.
+misappropriation of any intellectual property rights and/or
+other proprietary rights of any party (including, without         3.1 Compensation.
+limitation, unlawfully circumventing any digital rights
+management protections);                                          (a) Available Licenses; Marketing and Fees; Press Release.
+
+(f) Applications and any products, services or content made       (i) Evaluation License Requirements: There is no fee for
+available through Licensee's Applications will not contain        the use of the Superpowered SDKs, if and only if,
+any: (i) virus, Trojan horse, worm, backdoor, shutdown            Licensee's use of the Superpowered SDKs is in a Software
+mechanism, malicious code, sniffer, bot, drop dead                Application that is not publically distributed or publically
+mechanism, or spyware; or (ii) any other software, code, or       accessible, and has fewer than 1,000 app-installs.
+program that is likely to or is intended to: (A) have an
+adverse impact on the performance of, (B) disable, corrupt,       For the purpose of determining the amount of installs of
+or cause damage to, or (C) cause or facilitate unauthorized       any Application, the aggregate number of installs across
+access to or deny authorized access to, or cause to be used       target operating systems/platforms shall be used.
+for any unauthorized or inappropriate purposes, any
+software, hardware, network, services, systems, or data;          For example, if "Foo App" has 100,000 app installs on iOS
+                                                                  and 200,000 app installs on Android, then Foo App shall
+(g) Licensee will not develop or distribute any Application       have 300,000 app installs for purposes of this Agreement.
+or make available any products, services or content
+available through any Application that infringes any              Superpowered may cancel or modify the Evaluation
+Superpowered, affiliate or third party copyrights,                License for the Superpowered SDKs set forth in this
+trademarks, industrial design rights, rights of privacy and       section at any time with or without notice.
+publicity, trade secrets, patents, or other proprietary or legal
+rights;                                                           However, the Superpowered SDKs are not open-source and
+                                                                  the Licensee is still subject to all of the terms as set forth on
+(h) Applications that offer or are used in conjunction with       the first page of this Agreement. Furthermore,
+location based services or functionality will obtain consent      Superpowered may make qualification determinations of
+before Licensee collects, transmits, processes, displays,         the Evaluation license requirements in its sole discretion.
+discloses, maintains, or uses location data in any manner
+whatsoever, and notwithstanding the generality of the             (ii) White Label and Starter Licenses: If, Licensee is using
+foregoing Licensee shall comply with applicable privacy           the Superpowered SDKs in tandem or in connection with
+and data protection legislation in respect of such                an Embedded Application or Pre-Bundled or Pre-Installed
+information; and                                                  or Platform Application or within a 3rd Party SDK, or has
+                                                                  more than 1,000 app-installs (including all versions of the
+(i) Licensee will ensure that the Applications and all            Software Application) or otherwise does not qualify for the
+development work directly or indirectly related to the            Evaluation license pursuant to Section 3.1(a)(i) above, prior
+Superpowered SDKs shall be performed and provided in a            to use of the Superpowered SDKs the Licensee must
+professional and highly competent manner, to the best and         purchase a White Lable License or Starter License from
+full limit of Licensee's (and its Authorized User's) abilities    Superpowered from Superpowered by contacting
+and in accordance with the highest standards in the               licensing@superpowered.com.
+Licensee's industry.
+                                                                  (iii) Licensee acknowledges that public distribution of an
+2.3 Export Restrictions. Licensee acknowledges that the           Application or other technology using the Superpowered
+Superpowered SDKs may include software that may be                SDKs without a fully paid up White Label License or
+
+SUPERPOWERED SDKS MASTER LICENSE AGREEMENT                                                                                                            Superpowered Inc.
+This license can be found at superpowered.com/licensing                                                                                    600 Congress Ave, 14th Floor
+October 16, 2019
+                                                                                                                                                         Austin, TX 78701
+                                                                                                                                                                         USA
+
+                                                                                                                                          licensing@superpowered.com
+                                                                                                                                                         +1-512-298-3900
+Starter License (3.1(a)(ii)), from date of public distribution,        NOTE: A proper implementation entails that the splash
+as applicable, renders any licenses granted by                         screen video play in its entirety (including audio) every
+Superpowered hereunder void and invalid. Licensee                      time the app is launched. The Superpowered splash screen
+acknowledges it has no expectation of uninterrupted                    must be the first splash screen to play and must precede any
+ongoing service and access to Superpowered technology                  other splash screens. The splash screen cannot be altered or
+(including without limitation the Superpowered SDKs) if                edited. No other logo may appear on screen or interfere
+such licenses granted by Superpowered hereunder are void               with the playing of the video. The splash screen video may
+and invalid, with or without notice, due to Licensee's                 not be speeded up or slowed down. A proper
+failure to comply with the terms of this Agreement.                    implementation of the Superpowered web-widget entails
+                                                                       that the web-widget is visible and clickable at all times in
+(b) Attribution. Licensee will comply with Section 5.2 to              the web-app or web-site. And that nothing interferes with
+the exclusive approval of Superpowered. Superpowered                   its function.
+may use Licensee's and/or its Application's name and logo
+for external marketing, such as on its website and press               b) You agree to place the following notices in the credits
+releases.                                                              for any Software Application (replacing xxxx with the
+                                                                       current year):
+4.1 Intellectual Property.
+                                                                       "[Software Application] uses Superpowered SDKs.
+(a) This Agreement does not transfer or assign to Licensee,            Superpowered.com"
+any intellectual property right including any patent, design,
+industrial design, trademark, service mark, copyright or               Copyright 2013 ­ xxxx, Superpowered, Inc. All rights
+rights in any confidential information or trade secrets, in or         reserved."
+related to the Superpowered SDKs or any part thereof. The
+Superpowered SDKs and all copies thereof remain the                    5.3 Marketing. Licensee agrees that Superpowered may
+property of Superpowered and are only licensed under this              refer to Licensee by trade name and trademark, and may
+Agreement. Licensee acknowledges that there are no                     briefly describe Licensee's use of the Superpowered SDKs,
+implied licenses granted under this Agreement, and all                 in marketing and on its website.
+rights, save for those license rights expressly granted to
+Licensee hereunder, shall remain with Superpowered.                    6.1 Warranty. Except as expressly set forth in this
+Licensee agrees that nothing in this Agreement shall                   agreement, the Superpowered SDKs are provided "As Is"
+adversely affect any rights and recourse to remedies,                  without warranty of any kind. Except to the extent required
+including without limitation, injunctive relief that                   by applicable law, Superpowered disclaims all warranties,
+Superpowered may have under any applicable laws relating               whether express, implied or statutory, regarding the
+to the protection of Superpowered's intellectual property or           Superpowered SDKs, including without limitation any and
+other rights.                                                          all implied warranties of merchantability, accuracy, results
+                                                                       of use, reliability, fitness for a particular purpose, title,
+(b) Any feedback or suggestions provided to Superpowered               interference with quiet enjoyment, and non-infringement of
+by Licensee relating to the Superpowered SDKs, shall be                third-party rights. Further, Superpowered disclaims any
+owned by Superpowered and Licensee hereby assigns to                   warranty that Licensee's use of the Superpowered SDKs
+Superpowered all such feedback and suggestions.                        will be uninterrupted or error free.
+
+5.1 Confidentiality. Other than as incorporated in the                 6.2 Exclusion of Liability. In no event shall Superpowered
+Applications' documentation, Licensee shall not sell,                  be liable for any damages whatsoever directly or indirectly
+transfer, publish, disclose, display or otherwise make                 arising out of or related to this agreement or in connection
+available the Superpowered SDKs or copies thereof to                   with the transactions contemplated by this agreement or
+others. Licensee shall use reasonable efforts to secure and            any products, services or content made available through
+protect the Superpowered SDKs, documentation and copies                Licensee's applications, whether or not such damages could
+thereof and to take appropriate action by instruction or               reasonably be foreseen or their likelihood has been
+agreement with its Authorized Users.                                   disclosed to Superpowered. In no event shall any officer,
+                                                                       director, employee, agent, supplier, independent contractor,
+5.2 Superpowered Attribution for Use of Superpowered                   or any merchants of record of Superpowered or any
+SDKs with Starter or White Label Licenses.                             Superpowered affiliate have any liability arising from or
+                                                                       related to this agreement.
+(a) To maintain continued service of the Superpowered
+                                                                       6.3 Limitation of Liability. In no event shall Superpowered
+SDKs under a Starter or White Lable License, Licensee                  be liable for any damages that exceed, in the aggregate for
+                                                                       all claims arising from or related to this Agreement, the
+shall include the proper implementation of a mandatory                 sum of any amounts Licensee has paid Superpowered for
+
+Superpowered splash screen (for apps ) or web-widget (for                                                                                                  Superpowered Inc.
+                                                                                                                                                600 Congress Ave, 14th Floor
+websites or web-apps) with Superpowered animated logo at
+                                                                                                                                                              Austin, TX 78701
+all times (available at https://superpowered.com/logo) in                                                                                                                     USA
+
+their  Software                                          Application.                                                                          licensing@superpowered.com
+                                                                                                                                                              +1-512-298-3900
+
+SUPERPOWERED SDKS MASTER LICENSE AGREEMENT
+This license can be found at superpowered.com/licensing
+October 16, 2019
+the applicable Superpowered SDK from which such claim           condition herein; or (2) Licensee or any Authorized User
+arose.                                                          interferes with Superpowered's customer service or
+                                                                business operations; or (3) Licensee materially breaches
+6.4 Exceptions. Some jurisdictions do not allow limitations     any other agreement that Licensee may have with
+or exclusions of certain types of damages and/or warranties     Superpowered. Superpowered may terminate at any time
+and conditions. The limitations, exclusions and disclaimers     for convenience, and shall provide a pro rata refund for
+set forth in this Agreement shall not apply if and only if and  amounts paid for unused periods, and only in this
+to the extent that the laws of a competent jurisdiction         circumstance. No remedy herein conferred upon
+require liabilities beyond and despite these limitations,       Superpowered is intended to be, nor shall it be construed to
+exclusions and disclaimers.                                     be, exclusive of any other remedy provided herein or as
+                                                                allowed by law or in equity, but all such remedies shall be
+7.1 Indemnification by Licensee. Licensee shall indemnify,      cumulative. In the event of the termination of this
+hold harmless, and if requested by Superpowered, defend,        Agreement pursuant to this Section 8.2 for cause, Licensee
+Superpowered, Superpowered's affiliates, agents and their       shall pay to Superpowered all attorney fees, collection fees,
+respective successors, assigns, directors, officers,            and related expenses, expended or incurred by
+employees and independent contractors (each a                   Superpowered in the enforcement of any right or privilege
+"Superpowered Indemnified Party") from any claims,              hereunder.
+costs, damages, losses, settlement fees, and expenses
+(including without limitation attorney fees and                 (b) Section 3 (to the extent any amounts are owed to
+disbursements) incurred directly or indirectly by a             Superpowered), 4, 5, 6, 7, 8, and 9 hereof shall survive any
+Superpowered Indemnified Party as a result of Licensee's        termination of this Agreement.
+or Licensee's Authorized Users' breach of this Agreement
+and/or as a result of any third party claim, proceeding, suit,  9.1 Amendment/Modification. This Agreement is the
+judgment, settlement, or cause of action ("Claim"): (a)         complete and exclusive statement of the agreement
+alleging the infringement, violation or misappropriation of     between the parties, which supersedes and merges all prior
+any intellectual property right including a patent, design,     proposals, understandings and all other agreements, oral
+industrial design, copyright, trade secret or trademark or      and written, between the parties relating to this Agreement.
+other proprietary right by: (a) Licensee's Application(s) or    This Agreement can be modified or amended upon the
+the use thereof, or the combination of Licensee's               mutual written consent of both the parties.
+Application(s) with the Superpowered SDKs or any other
+portion thereof with any hardware, software, or system, or      9.2 Non-Circumvention. The parties of this Agreement
+service; or (b) otherwise related to or arising from Licensee   acknowledge that no effort shall be made to circumvent its
+or Licensee's Authorized Users' use of the Superpowered         terms in an attempt to gain fees, remunerations, or
+SDKs (except for any third party claim based solely on          considerations to the benefit of any of the parties of this
+Superpowered technology included in the Superpowered            Agreement, while excluding equal or agreed to benefits to
+SDKs) or any use or distribution of Licensee's Applications     any of the other parties.
+(including Licensee's development of Applications).
+                                                                9.3 Governing Law. This Agreement and performance
+8.1 Term. This Agreement shall be effective upon                hereunder shall be governed by the laws of the State of
+Licensee's agreement to be bound by the terms of this           Texas The parties agree that any litigation arising out of or
+Agreement, (as manifested by the conduct described in the       related to this Agreement must be brought in a Texas court
+first paragraph above) and shall end upon termination of        located in Travis County, Texas, as the exclusive and
+this Agreement in accordance with the provisions set out        mandatory venue and jurisdiction for any litigation arising
+herein, or in the case of an White Label or Starter License,    out of or related to this Agreement.
+upon the end of the agreed-to license term for such White
+Label or Starter License, as applicable.                        9.4 Class Action Waiver. Licensee agrees not to bring or
+                                                                participate in a class or representative action, private
+Upon the termination of this Agreement, or applicable           attorney general action, or collective arbitration related to
+license term,the license shall immediately terminate and        the Superpowered SDKs or this Agreement.
+Licensee shall promptly stop all use of the applicable
+Superpowered SDKs and delete all such copies.                   9.5 Severability. If any provision of this Agreement is
+                                                                invalid under any applicable statute or rule of law, it is to
+8.2 Termination. Licensee may terminate this Agreement at       that extent to be deemed omitted.
+will and without notice for any reason whatsoever.
+                                                                9.6 Assignment. The Licensee may not assign or sub-
+(a) If Licensee or any Authorized User breaches any             license, without the prior written consent of Superpowered,
+provision of this Agreement, Superpowered may terminate         its rights, duties or obligations under this Agreement to any
+this Agreement and the license granted hereunder. Licensee      person or entity, in whole or in part. Superpowered may
+will be deemed to be in breach of this Agreement if: (1)        assign this agreement without the prior written consent of
+Licensee fails to comply with or perform a term or              Licensee.
+
+SUPERPOWERED SDKS MASTER LICENSE AGREEMENT                                                                                                          Superpowered Inc.
+This license can be found at superpowered.com/licensing                                                                                  600 Congress Ave, 14th Floor
+October 16, 2019
+                                                                                                                                                       Austin, TX 78701
+                                                                                                                                                                       USA
+
+                                                                                                                                        licensing@superpowered.com
+                                                                                                                                                       +1-512-298-3900
+9.7 Attorneys Fees. In the event of dispute between the       industrial or consumer device or any other type of technical
+parties hereto regarding this Agreement, the prevailing       equipment (e.g., wearable/hardware companies and
+party shall be entitled to recover reasonable attorneys fees  OEMs), developed (or repackaged) by Licensee and which
+incurred in connection with the dispute in addition to any    incorporates the Superpowered SDKs. For the use of this
+other relief to which it may be entitled.                     license, Embedded Application also means "Pre-Bundled"
+                                                              or "Pre-Installed" or "Platform" software applications.
+9.8 Waiver. The waiver or failure of Superpowered to
+exercise in any respect any right provided for herein shall   (f) "Reverse Engineer" includes, without limitation, any
+not be deemed a waiver of any further right hereunder.        act of reverse engineering, translating, disassembling,
+                                                              decompiling, decrypting or deconstructing (including any
+9.9 Relationship of Parties. The parties are not employees,   aspect of "dumping of RAM/ROM or persistent storage",
+agents, partners or joint venturers of each other. Neither    "cable or wireless link sniffing", or "black box" reverse
+party shall have the right to enter into any agreement on     engineering) data, software (including interfaces, protocols,
+behalf of the other.                                          and any other data included in or used in conjunction with
+                                                              programs that may or may not technically be considered
+9.10 Headings and Titles. The headings and titles of this     software code), service, or hardware or any method or
+Agreement are for convenience only and are not intended       process of obtaining or converting any information, data or
+to define, limit or construe the contents of the various      software from one form into a human-readable form.
+sections.
+                                                              (g) "Software Application" means a software application
+10.1 Defined Terms.                                           that consumers can install on their personal device (e.g.,
+                                                              through an app store or via download), developed (or
+(a) "API" means an application programming interface.         repackaged) by Licensee and which incorporates the
+                                                              Superpowered SDKs.
+(b) "Application" means either an Embedded/Pre-
+bundled/Pre-Installed/Platform Application or a Software      (h) "SDK" means any programming package (including
+Application.                                                  any APIs, programming tools or documentation) that
+                                                              enables the development of applications for any type of
+(c) "Authorized Users" means: (i) any of Licensee's           platform, framework or system.
+employees; or (b) any consultants, independent contractors
+and any other persons Licensee authorizes to use or to        (i) "Superpowered SDKs" means the Audio SDK, the Net
+whom Licensee otherwise makes available the                   SDK, and Crypto SDK, including all respective software
+Superpowered SDKs, in each case to use on Licensee's          (including programs, tools, sample code, templates,
+behalf to develop Applications.                               libraries, and interfaces), updates, APIs, information, data,
+                                                              files, documentation, and other materials, whether tangible
+(d) "Distributable Source Code" means certain                 or intangible, in whatever form or medium (including on-
+application templates, code stubs, code snippets, example     line tools), provided to Licensee at any time, either by way
+applications, sample code and code fragments in source        of downloading from Superpowered or otherwise provided
+code form either included as part of the Superpowered         to Licensee, for any development purposes (unless such
+SDKs or otherwise provided to Licensee.                       materials are provided pursuant to a separate license
+                                                              agreement for such materials by Superpowered and/or its
+(e) "Embedded Application" means any software                 affiliates).
+application or system that may permanently reside in an
+
+                                                                          Superpowered Inc.
+                                                              600 Congress Ave, 14th Floor
+
+                                                                            Austin, TX 78701
+                                                                                            USA
+
+                                                              licensing@superpowered.com
+                                                                             +1-512-298-3900
+
+SUPERPOWERED SDKS MASTER LICENSE AGREEMENT
+This license can be found at superpowered.com/licensing
+October 16, 2019
+

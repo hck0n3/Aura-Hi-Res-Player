@@ -86,6 +86,13 @@ class ExoDownloadService : DownloadService(
             finalException: Exception?,
         ) {
             if (download.state == Download.STATE_FAILED) {
+                // The user gets a "download failed" notification; without this line the owner got no
+                // cause at all for it. Same reason as DownloadUtil's listener — media3 supplies the
+                // exception and it was being discarded.
+                timber.log.Timber.tag("DOWNLOAD").e(
+                    "failed (notified) id=${download.request.id} reason=${download.failureReason} " +
+                        "${finalException?.javaClass?.simpleName}: ${finalException?.message?.take(180)}"
+                )
                 val notification = notificationHelper.buildDownloadFailedNotification(
                     context,
                     R.drawable.error,

@@ -353,7 +353,7 @@
     <string name="scrobble_delay_percent">Scrobble gecikme yüzdesi</string>
     <string name="scrobble_delay_minutes">Scrobble gecikme dakikaları</string>
     <string name="hide_video_songs">Video şarkılarını gizle</string>
-    <string name="hide_youtube_shorts">YouTube Shorts\'u gizle</string>
+    <string name="hide_youtube_shorts">Shorts\'u gizle</string>
 
     <string name="details_desc">Şarkının bilgilerini görüntüle</string>
     <string name="edit_desc">Başlığı veya sanatçıyı değiştirme</string>
@@ -363,7 +363,7 @@
     <string name="add_to_library_desc">Kitaplığınıza kaydedin</string>
     <string name="download_desc">Çevrimdışı oynatma için kullanılabilir hale getir</string>
     <string name="add_to_playlist_desc">Oynatma listelerinizden birine ekleyin</string>
-    <string name="refetch_desc">YouTube Music\'ten en son meta verileri alın</string>
+    <string name="refetch_desc">Aura Hi-Res\'ten en son meta verileri alın</string>
     <string name="share_desc">Bu öğenin bağlantısını paylaşın</string>
     <string name="delete_desc">Bu öğeyi kalıcı olarak kaldır</string>
     <string name="advanced_desc">Şarkının temposunu ve perdesini değiştirin</string>

@@ -28,6 +28,7 @@ import com.music.innertube.YouTube
 import iad1tya.echo.music.LocalDatabase
 import iad1tya.echo.music.R
 import iad1tya.echo.music.constants.InnerTubeCookieKey
+import iad1tya.echo.music.constants.YtmUploadSyncKey
 import iad1tya.echo.music.db.entities.PlaylistEntity
 import iad1tya.echo.music.extensions.isSyncEnabled
 import iad1tya.echo.music.utils.rememberPreference
@@ -46,11 +47,28 @@ fun CreatePlaylistDialog(
 ) {
     val database = LocalDatabase.current
     val coroutineScope = rememberCoroutineScope()
-    var syncedPlaylist by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
     val innerTubeCookie by rememberPreference(InnerTubeCookieKey, "")
     val isSignedIn = innerTubeCookie.isNotEmpty()
+
+    // "Que las playlists que haga no pregunte si las quiero sincronizar — que eso ya lo haga por
+    // default." When the library upload sync is on we do NOT ask: a new playlist is created on the
+    // YouTube account silently. The opt-out lives in Ajustes ▸ Sincronizar con YouTube Music; turning
+    // it OFF brings the old per-playlist switch back (defaulting to off), so the user never loses the
+    // ability to keep a playlist local.
+    //
+    // The fallback here is FALSE and must stay false: the stored value is written explicitly, once,
+    // by the YtmUploadOptInV1AppliedKey migration (ON for fresh installs — the owner's default — OFF
+    // for installs that were merely updated). Reading a `true` fallback would silently upload a
+    // playlist for an existing user before that migration lands.
+    val uploadSyncEnabled by rememberPreference(YtmUploadSyncKey, false)
+    // `allowSyncing = false` still means "no YouTube playlist from this dialog" (Backup & Restore
+    // passes it): honouring it keeps that caller's contract. Those playlists are not lost to the
+    // account either — LibraryUploadSync's backfill sweeps every local-only playlist later.
+    val autoSync = allowSyncing && uploadSyncEnabled && isSignedIn
+    var syncedPlaylist by remember { mutableStateOf(false) }
+    val showSyncSwitch = allowSyncing && !uploadSyncEnabled
 
     TextFieldDialog(
         icon = { Icon(painter = painterResource(R.drawable.add), contentDescription = null) },
@@ -59,12 +77,23 @@ fun CreatePlaylistDialog(
         onDismiss = onDismiss,
         onDone = { playlistName ->
             coroutineScope.launch(Dispatchers.IO) {
-                val browseId = if (syncedPlaylist && isSignedIn) {
-                    YouTube.createPlaylist(playlistName)
-                } else if (syncedPlaylist) {
-                    Logger.getLogger("CreatePlaylistDialog").warning("Not signed in")
-                    return@launch
-                } else null
+                val wantsRemote = autoSync || (syncedPlaylist && isSignedIn)
+                // runCatching is LOAD-BEARING now that this is the default path: YouTube.createPlaylist
+                // wraps runBlocking and does NOT catch — an offline tap used to throw here and the
+                // playlist was never created locally either ("crear playlist no hace nada"). Falling
+                // back to browseId = null keeps the playlist; LibraryUploadSync links it to the account
+                // on the next run.
+                val browseId = if (wantsRemote) {
+                    runCatching { YouTube.createPlaylist(playlistName) }
+                        .onFailure {
+                            Logger.getLogger("CreatePlaylistDialog")
+                                .warning("Remote playlist creation failed, keeping it local: ${it.message}")
+                        }
+                        .getOrNull()
+                } else {
+                    if (syncedPlaylist) Logger.getLogger("CreatePlaylistDialog").warning("Not signed in")
+                    null
+                }
 
                 val playlistEntity = PlaylistEntity(
                     name = playlistName,
@@ -72,7 +101,7 @@ fun CreatePlaylistDialog(
                     bookmarkedAt = LocalDateTime.now(),
                     isEditable = true,
                 )
-                
+
                 database.query {
                     insert(playlistEntity)
                 }
@@ -84,7 +113,7 @@ fun CreatePlaylistDialog(
             }
         },
         extraContent = {
-            if (allowSyncing) {
+            if (showSyncSwitch) {
                 Row(
                     modifier = Modifier.padding(vertical = 16.dp, horizontal = 40.dp)
                 ) {

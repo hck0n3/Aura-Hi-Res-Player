@@ -23,6 +23,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -129,6 +130,41 @@ fun PlayerSettings(
         key = AudioOffload,
         defaultValue = false
     )
+
+    // AUDIO OFFLOAD BLOCKERS — must mirror the gate in MusicService.onCreate exactly.
+    // Offload hands the ENCODED stream to the DSP hardware, so the decoder stops producing PCM and NO
+    // AudioProcessor runs. The service therefore vetoes offload while anything that really processes audio
+    // is on. Until 0.6.142 this screen only knew about crossfade, because the other veto terms named dead
+    // stubs; now that the gate was reduced to live terms, showing only crossfade would make the switch lie:
+    // the user turns crossfade off, flips offload on, sees it "on", and the engine still refuses because
+    // Safe Volume or the EQ is active. Both extra terms are read here so the reason shown is the real one.
+    val (safeVolumeEnabled, _) = rememberPreference(
+        key = iad1tya.echo.music.constants.SafeVolumeEnabledKey,
+        defaultValue = true
+    )
+    val offloadGateContext = androidx.compose.ui.platform.LocalContext.current
+    val eqProfileRepository = remember(offloadGateContext) {
+        iad1tya.echo.music.eq.data.EQProfileRepositoryEntryPoint.get(offloadGateContext)
+    }
+    val eqActiveProfile by eqProfileRepository.activeProfile.collectAsState()
+    val eqUnsavedProfile by eqProfileRepository.unsavedProfile.collectAsState()
+    // Same precedence as MusicService and EqualizerService: an unsaved edit wins over the saved profile.
+    val eqActive = (eqUnsavedProfile ?: eqActiveProfile) != null
+
+    // Same "actually running" reading as the service gate: High-Performance Mode force-disables crossfade,
+    // so under HPM the crossfade key must not block offload here either or the switch would stay greyed out
+    // for a reason that no longer applies.
+    val (highPerformanceMode, _) = rememberPreference(
+        key = iad1tya.echo.music.constants.HighPerformanceModeKey,
+        defaultValue = false
+    )
+
+    val offloadBlockedReason: String? = when {
+        crossfadeEnabled && !highPerformanceMode -> stringResource(R.string.audio_offload_disabled_by_crossfade)
+        safeVolumeEnabled -> stringResource(R.string.audio_offload_disabled_by_safe_volume)
+        eqActive -> stringResource(R.string.audio_offload_disabled_by_equalizer)
+        else -> null
+    }
 
 
     val (preloadNextSongEnabled, onPreloadNextSongEnabledChange) = rememberPreference(
@@ -300,7 +336,7 @@ fun PlayerSettings(
             values = iad1tya.echo.music.constants.DownloadQuality.values().toList(),
             valueText = {
                 when (it) {
-                    iad1tya.echo.music.constants.DownloadQuality.YOUTUBE -> "YouTube Music (AAC/Default)"
+                    iad1tya.echo.music.constants.DownloadQuality.YOUTUBE -> "Aura Hi-Res (AAC/Predeterminado)"
                     iad1tya.echo.music.constants.DownloadQuality.SAAVN -> "Saavn (320kbps)"
                     iad1tya.echo.music.constants.DownloadQuality.LOSSLESS -> "Qobuz (Lossless)"
                 }
@@ -386,7 +422,7 @@ fun PlayerSettings(
                     }
                 }
             ) {
-                Text("This feature uses JioSaavn and may not always work. If Saavn playback fails, the app will automatically fall back to YouTube Music's Opus stream.")
+                Text("This feature uses JioSaavn and may not always work. If Saavn playback fails, the app will automatically fall back to the default Aura Hi-Res Opus stream.")
             }
         }
 
@@ -496,7 +532,7 @@ fun PlayerSettings(
                     description = {
                         Text(
                             when (downloadQuality) {
-                                iad1tya.echo.music.constants.DownloadQuality.YOUTUBE -> "YouTube Music (AAC/Default)"
+                                iad1tya.echo.music.constants.DownloadQuality.YOUTUBE -> "Aura Hi-Res (AAC/Predeterminado)"
                                 iad1tya.echo.music.constants.DownloadQuality.SAAVN -> "Saavn (320kbps)"
                                 iad1tya.echo.music.constants.DownloadQuality.LOSSLESS -> "Qobuz (Lossless)"
                             }
@@ -649,20 +685,17 @@ fun PlayerSettings(
                     icon = painterResource(R.drawable.graphic_eq),
                     title = { Text(stringResource(R.string.audio_offload)) },
                     description = {
-                        Text(
-                            if (crossfadeEnabled) stringResource(R.string.audio_offload_disabled_by_crossfade)
-                            else stringResource(R.string.audio_offload_description)
-                        )
+                        Text(offloadBlockedReason ?: stringResource(R.string.audio_offload_description))
                     },
                     trailingContent = {
                         Switch(
-                            checked = if (crossfadeEnabled) false else audioOffload,
+                            checked = if (offloadBlockedReason != null) false else audioOffload,
                             onCheckedChange = onAudioOffloadChange,
-                            enabled = !crossfadeEnabled,
+                            enabled = offloadBlockedReason == null,
                             thumbContent = {
                                 Icon(
                                     painter = painterResource(
-                                        id = if (!crossfadeEnabled && audioOffload) R.drawable.check else R.drawable.close
+                                        id = if (offloadBlockedReason == null && audioOffload) R.drawable.check else R.drawable.close
                                     ),
                                     contentDescription = null,
                                     modifier = Modifier.size(SwitchDefaults.IconSize)
@@ -670,7 +703,7 @@ fun PlayerSettings(
                             }
                         )
                     },
-                    onClick = { if (!crossfadeEnabled) onAudioOffloadChange(!audioOffload) }
+                    onClick = { if (offloadBlockedReason == null) onAudioOffloadChange(!audioOffload) }
                 ))
                 
 

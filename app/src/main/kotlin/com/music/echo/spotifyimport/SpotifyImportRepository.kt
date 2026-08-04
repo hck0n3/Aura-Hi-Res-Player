@@ -337,6 +337,16 @@ class SpotifyImportRepository @Inject constructor(
                     syncUtils.syncLikedSongs()
                     syncUtils.syncLibrarySongs()
                 }
+                // "Todas las playlists que importe de otra cuenta ya me queden en mi cuenta de YouTube
+                // Music": the Spotify importer only mirrors playlists locally (browseId = null), so
+                // hand them to the library uploader, which creates or links each one on the account.
+                // Bounded + batched + resumable, and a no-op if the user turned the upload off.
+                runCatching {
+                    iad1tya.echo.music.utils.YtmSyncWorker.enqueue(
+                        context,
+                        iad1tya.echo.music.utils.YtmSyncWorker.TYPE_UPLOAD_LIBRARY,
+                    )
+                }
             }
 
             SpotifyImportSummaryUi(summaries)
@@ -819,6 +829,11 @@ class SpotifyImportRepository @Inject constructor(
                         thumbnailUrl = thumbnail,
                         channelId = channelId,
                         bookmarkedAt = now,
+                        // DELIBERATE follow: this artist came from Spotify's "followed artists" list,
+                        // which the user explicitly selected as an import source. Only rows carrying
+                        // followedByUserAt are ever subscribed on the real YouTube account —
+                        // followArtistsWithContent's blanket bookmarks never are.
+                        followedByUserAt = now,
                     ),
                 )
             } else {
@@ -828,6 +843,9 @@ class SpotifyImportRepository @Inject constructor(
                         thumbnailUrl = thumbnail ?: existing.thumbnailUrl,
                         channelId = channelId,
                         bookmarkedAt = existing.bookmarkedAt ?: now,
+                        followedByUserAt = existing.followedByUserAt ?: now,
+                        // A fresh follow supersedes any queued unsubscribe for this artist.
+                        unfollowedByUserAt = null,
                         lastUpdateTime = now,
                     ),
                 )
@@ -836,6 +854,17 @@ class SpotifyImportRepository @Inject constructor(
 
         if (channelId.isNotEmpty()) {
             runCatching { YouTube.subscribeChannel(channelId, true) }
+                .onSuccess {
+                    // Confirmed on the account — record it so the library upload sync treats this
+                    // artist as already synced and never re-subscribes it.
+                    runCatching {
+                        database.withTransaction {
+                            getArtistById(match.id)?.let { row ->
+                                update(row.copy(ytmSyncedAt = LocalDateTime.now()))
+                            }
+                        }
+                    }
+                }
                 .onFailure { error ->
                     if (error is CancellationException) throw error
                     reportException(error)

@@ -43,7 +43,14 @@ class NewPipeDownloaderImpl(
             })
             .proxySelector(object : ProxySelector() {
                 override fun select(uri: URI?): List<Proxy> = listOfNotNull(YouTube.proxy ?: Proxy.NO_PROXY)
-                override fun connectFailed(uri: URI?, sa: SocketAddress?, ioe: IOException?) {}
+                // Was an empty body, so a proxy user got ZERO signal: every NewPipe deobfuscation
+                // request failed invisibly and the report read as "nothing plays". Host only —
+                // never the full URI, whose query string carries the credentials.
+                override fun connectFailed(uri: URI?, sa: SocketAddress?, ioe: IOException?) {
+                    timber.log.Timber.tag("RESOLVE_CIPHER").w(
+                        "proxy connect failed host=${uri?.host}: ${ioe?.javaClass?.simpleName}: ${ioe?.message}"
+                    )
+                }
             })
             .proxyAuthenticator { _, response ->
                 YouTube.proxyAuth?.let { auth ->
@@ -134,7 +141,16 @@ class NewPipeUtils(
                 url,
             )
         } catch (e: Exception) {
-            // Don't print stack trace - caller handles errors
+            // THE cipher-rotation blind spot. "Caller handles errors" was true only in the sense that
+            // the caller turned this null into a generic "no stream URL" — so when YouTube rotates
+            // player.js and signature/throttling deobfuscation starts failing for EVERY user at once,
+            // the shared log said nothing more than "song unavailable". Naming the exception class and
+            // message is what separates "YouTube rotated the cipher, publish a player_configs.json"
+            // from "this one song is region-locked". ERROR so AppLogger persists it; itag and videoId
+            // only — no URL, which would carry the credentialed query string.
+            timber.log.Timber.tag("RESOLVE_CIPHER").e(
+                "deobfuscation failed videoId=$videoId itag=${format.itag}: ${e.javaClass.simpleName}: ${e.message}"
+            )
             null
         }
 }
@@ -182,7 +198,12 @@ object NewPipeExtractor {
                 (it.itagItem?.id ?: return@mapNotNull null) to it.content
             }
         } catch (e: Exception) {
-            // Don't print stack trace - caller handles errors
+            // The LAST-RESORT stream source. When this returns empty the song is skipped as NO_STREAM,
+            // so a silent failure here is the final step of "no reproduce" — and the one place that
+            // could still have explained why.
+            timber.log.Timber.tag("RESOLVE_CIPHER").e(
+                "newPipePlayer failed videoId=$videoId: ${e.javaClass.simpleName}: ${e.message}"
+            )
             emptyList()
         }
     }

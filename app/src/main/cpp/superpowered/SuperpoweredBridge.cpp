@@ -3,8 +3,12 @@
 #include <string>
 #include <vector>
 #include <mutex>
+#include <atomic>
 #include <cmath>
+#include <cstdint>
+#include <cstring>
 #include <cstdlib>
+#include <algorithm>
 
 #if __has_include("Superpowered.h")
 #define HAS_SUPERPOWERED 1
@@ -28,6 +32,123 @@
 static std::mutex globalInitMutex;
 static bool isSuperpoweredInitialized = false;
 
+// Engine health, decided ONCE right after Superpowered::Initialize() by an empirical DSP probe.
+// Superpowered::Initialize() returns void and the SDK exposes no "am I licensed?" query, so a rejected
+// or disabled license key is otherwise completely silent: initSuperpowered still returns a valid
+// pointer and processAudio still runs, while the EQ and Safe Volume quietly stop altering the audio.
+// The probe below answers the question the SDK refuses to: does the DSP actually change audio?
+// Values are mirrored by ENGINE_* in CustomEqualizerAudioProcessor.kt.
+#define SP_ENGINE_UNKNOWN  0
+#define SP_ENGINE_HEALTHY  1
+#define SP_ENGINE_DEGRADED 2
+static int superpoweredEngineHealth = SP_ENGINE_UNKNOWN;
+
+/// Empirical proof-of-life for the Superpowered DSP.
+///
+/// Pushes a 1 kHz sine through a throwaway +12 dB parametric filter centred on that exact frequency and
+/// checks the output actually got louder. A licensed, working engine multiplies the level by ~4x; an
+/// engine that has been disabled, silenced or turned into a pass-through does not. The margin is
+/// enormous (4.0 expected vs a 1.05 threshold), so this cannot realistically false-alarm on a healthy
+/// engine, and it catches silence, pass-through and NaN/garbage output alike.
+///
+/// Runs exactly once per process, on a throwaway Filter instance — it never touches the EQ's own filters,
+/// the limiter, the user's audio or any tuned DSP parameter. Cost is ~8k samples through one biquad
+/// (tens of microseconds, once), so it is thermally and battery-wise free.
+static bool probeSuperpoweredDsp(unsigned int samplerate) {
+    // Defensive: a nonsense sample rate would make the probe tone meaningless and could report a
+    // healthy engine as broken. Refusing to judge is always better than a false accusation here,
+    // because this verdict can grey out the user's EQ.
+    if (samplerate < 8000 || samplerate > 768000) {
+        LOGI("Superpowered DSP probe skipped: implausible sample rate %u Hz.", samplerate);
+        return true;
+    }
+
+    const unsigned int frames = 256;   // multiple of 4, >= 64, as the SDK recommends
+    const unsigned int blocks = 16;    // let the filter's parameter smoothing settle before measuring
+    const float probeHz = 1000.0f;
+    const float amplitude = 0.25f;     // well clear of full scale, so a +12 dB boost cannot clip
+
+    Superpowered::Filter probe(Superpowered::Filter::Parametric, samplerate);
+    probe.frequency = probeHz;
+    probe.octave = 1.0f;
+    probe.decibel = 12.0f;
+    probe.enabled = true;
+
+    std::vector<float> in(frames * 2), out(frames * 2);
+    const double step = 2.0 * M_PI * (double)probeHz / (double)samplerate;
+    double phase = 0.0;
+    bool processed = false;
+    double rmsIn = 0.0, rmsOut = 0.0;
+
+    for (unsigned int b = 0; b < blocks; ++b) {
+        for (unsigned int i = 0; i < frames; ++i) {
+            const float s = amplitude * (float)sin(phase);
+            phase += step;
+            in[i * 2] = s;
+            in[i * 2 + 1] = s;
+        }
+        // Zero the output each block so a no-op process() (which leaves output untouched) reads as
+        // silence rather than as whatever the previous block happened to leave behind.
+        std::fill(out.begin(), out.end(), 0.0f);
+        processed = probe.process(in.data(), out.data(), frames);
+
+        if (b == blocks - 1) { // measure only the settled block
+            for (unsigned int i = 0; i < frames * 2; ++i) {
+                rmsIn += (double)in[i] * (double)in[i];
+                rmsOut += (double)out[i] * (double)out[i];
+            }
+            rmsIn = sqrt(rmsIn / (double)(frames * 2));
+            rmsOut = sqrt(rmsOut / (double)(frames * 2));
+        }
+    }
+
+    if (!processed) {
+        LOGE("Superpowered DSP probe: process() returned false - engine is not producing output.");
+        return false;
+    }
+    if (!std::isfinite(rmsOut) || !std::isfinite(rmsIn) || rmsIn <= 0.0) {
+        LOGE("Superpowered DSP probe: non-finite or empty signal - engine output is unusable.");
+        return false;
+    }
+    const double ratio = rmsOut / rmsIn;
+    if (ratio < 1.05) {
+        LOGE("Superpowered DSP probe FAILED: +12 dB boost produced a level ratio of only %.3f "
+             "(expected ~4.0). The engine is not processing audio - the license key is the likely cause.",
+             ratio);
+        return false;
+    }
+    LOGI("Superpowered DSP probe passed: level ratio %.3f (expected ~4.0).", ratio);
+    return true;
+}
+
+// Native filter slots: 24-band EQ + AutoEQ bands.
+#define NUM_EQ_FILTERS 64
+
+/// One EQ band's COMPLETE parameter set, as a plain value type.
+/// Data only — it never references a Superpowered object, so it can be copied freely between threads.
+struct BandParams {
+    float frequency = 1000.0f;
+    float decibel = 0.0f;
+    float octave = 2.0f;
+    float slope = 0.6f;
+    Superpowered::Filter::FilterType type = Superpowered::Filter::Parametric;
+    bool enabled = false;
+};
+
+/// Everything the audio thread needs in order to configure the DSP for a block. Published as ONE
+/// indivisible unit (see the triple buffer below), so the audio thread can never act on a mixture of
+/// an old and a new configuration.
+struct EqSnapshot {
+    BandParams bands[NUM_EQ_FILTERS];
+    float preampMultiplier = 1.0f;
+    bool safeVolumeEnabled = false;
+    float safeVolumeGain = 1.0f;
+    /// Bumped by writers ONLY when a band actually changed (setEqBand / disableAllBands). Lets the audio
+    /// thread skip re-writing all 64 filters for a publication that only moved a scalar — most importantly
+    /// the per-track Safe Volume update, which must not touch EQ coefficients at all.
+    uint32_t bandsRevision = 0;
+};
+
 class SuperpoweredProcessor {
 public:
     std::vector<Superpowered::Filter*> filters;
@@ -38,29 +159,145 @@ public:
     float conversionBuffer[MAX_BUFFER_SIZE];
     float deEsserBuffer[MAX_BUFFER_SIZE];
 
-    float currentDeEsserDb = 0.0f;
     unsigned int currentSamplerate = 44100;
-    float currentPreampMultiplier = 1.0f;
-    // Optional "Safe Volume" stage (user opt-in, default off): a per-track loudness-normalization
-    // gain (attenuate-only, in (0,1]) + the limiter/soft-clip below, run even when the EQ is off so
-    // loud masters are brought toward a reference instead of blasting at full native level.
-    bool safeVolumeEnabled = false;
-    // TARGET gain (what Kotlin asked for) and the CURRENT gain actually being applied. They differ only
-    // while ramping — see the Safe Volume stage in processAudio. Stepping straight to a new target is what
-    // makes a mid-song gain change audible as a jump, and now that the gain can BOOST (not just attenuate)
-    // those steps can be +16 dB or more: the sanctioned "real loudness arrived within 8 s" upgrade goes
-    // from the unknown-default attenuation straight to a boosted value, and toggling Safe Volume on is an
-    // instant jump from unity. Ramping makes every one of them inaudible.
-    float safeVolumeGain = 1.0f;
-    float safeVolumeGainCurrent = 1.0f;
+
+    // ------------------------------------------------------------------------------------------
+    // AUDIO-THREAD-OWNED STATE. Touched ONLY from processAudio. No other thread may read or write
+    // it, so it needs no synchronization of any kind.
+    // ------------------------------------------------------------------------------------------
+    float currentDeEsserDb = 0.0f;
     // De-esser detector envelope (RMS follower over the sibilance band), for smoother, level-relative
     // detection than the old block-peak binary gate.
     float deEsserEnv = 0.0f;
-    std::mutex eqMutex;
+    // TARGET gain (what Kotlin asked for, mirrored into activeSafeVolumeGain by the snapshot) and the
+    // CURRENT gain actually being applied. They differ only while ramping — see the Safe Volume stage in
+    // processAudio. Stepping straight to a new target is what makes a mid-song gain change audible as a
+    // jump, and now that the gain can BOOST (not just attenuate) those steps can be +16 dB or more: the
+    // sanctioned "real loudness arrived within 8 s" upgrade goes from the unknown-default attenuation
+    // straight to a boosted value, and toggling Safe Volume on is an instant jump from unity. Ramping
+    // makes every one of them inaudible.
+    float safeVolumeGainCurrent = 1.0f;
+    // The most recently APPLIED snapshot values (the audio thread's private working copy).
+    float activePreampMultiplier = 1.0f;
+    // Optional "Safe Volume" stage (user opt-in): a per-track loudness-normalization gain + the
+    // limiter/soft-clip below, run even when the EQ is off so loud masters are brought toward a
+    // reference instead of blasting at full native level.
+    bool activeSafeVolumeEnabled = false;
+    float activeSafeVolumeGain = 1.0f;
+    /// bandsRevision of the snapshot whose band parameters are currently loaded into the filter objects.
+    uint32_t appliedBandsRevision = 0;
+
+    // ------------------------------------------------------------------------------------------
+    // LOCK-FREE PARAMETER PUBLICATION  (UI / service threads  ->  audio thread)
+    //
+    // The audio thread MUST NOT take a lock. A UI thread preempted by the scheduler while holding it
+    // stalls the audio callback for as long as it takes to be scheduled again, which is a dropout —
+    // and the UI hammers these setters at slider-drag rate, so the window is hit often.
+    //
+    // But the audio thread must ALSO never observe a half-updated coefficient set: a torn read of a
+    // filter's parameters (new frequency against an old type, say) is an audible CLICK. That is what
+    // the old mutex bought, and it may not be given up.
+    //
+    // Both are satisfied by a three-slot single-producer/single-consumer buffer:
+    //
+    //  * The three slot indices {0,1,2} are permanently partitioned between `writerSlot` (owned by
+    //    writers), the index parked inside `readySlot`, and `audioSlot` (owned by the audio thread).
+    //    Both handovers are a SINGLE atomic exchange, so an index can never be duplicated or lost.
+    //    A writer therefore can never write the slot the audio thread is reading, and vice versa —
+    //    with no lock between them and no possibility of the reader waiting.
+    //
+    //  * A writer fills its private slot with a COMPLETE set, then release-exchanges its index into
+    //    `readySlot`. The audio thread acquire-loads `readySlot` and, only if the dirty bit is set,
+    //    acquire-exchanges its own index in. That acquire synchronizes-with the writer's release, so
+    //    every store into the slot happens-before the audio thread's reads of it. The audio thread
+    //    sees the whole new set or the whole previous one — never a mixture.
+    //
+    // The release/acquire pairing is load-bearing, not decoration. Every shipped ABI is ARM
+    // (armeabi-v7a / arm64-v8a), which is WEAKLY ORDERED: with a plain field, a `volatile`, or a
+    // RELAXED atomic, both the compiler and the CPU are free to make the flag store visible before
+    // the coefficient stores that precede it, and the audio thread would then apply a mixture of the
+    // two sets — exactly the click this design exists to prevent.
+    //
+    // Cost on the audio thread: one acquire load per block, plus one exchange only on blocks where
+    // parameters actually changed. No allocation, no waiting, no CAS retry loop — wait-free.
+    // Writers still serialize among THEMSELVES on `writerMutex`; the audio thread never touches it.
+    // ------------------------------------------------------------------------------------------
+    static constexpr uint32_t kSlotMask = 0x3u;
+    static constexpr uint32_t kDirtyFlag = 0x4u;
+
+    EqSnapshot slots[3];
+    // Own cache line: keeps the audio thread's per-block acquire load off any line a writer is dirtying.
+    alignas(64) std::atomic<uint32_t> readySlot{0};
+
+    int writerSlot = 1;      // owned by writers (only valid under writerMutex)
+    int audioSlot = 2;       // owned by the audio thread
+    EqSnapshot staging;      // writer-side accumulator (only valid under writerMutex)
+    std::mutex writerMutex;  // writers only — the audio thread NEVER takes this
+    int batchDepth = 0;      // >0 while a multi-call apply is being accumulated
+
+    /// Publish `staging` as the new complete set. Caller MUST hold writerMutex.
+    void publishLocked() {
+        slots[writerSlot] = staging;
+        const uint32_t prev =
+                readySlot.exchange((uint32_t) writerSlot | kDirtyFlag, std::memory_order_acq_rel);
+        writerSlot = (int) (prev & kSlotMask);
+    }
+
+    /// Publish unless we are inside a begin/endEqBatch pair. Caller MUST hold writerMutex.
+    void publishIfNotBatchingLocked() {
+        if (batchDepth == 0) publishLocked();
+    }
+
+    /// AUDIO THREAD ONLY. Picks up a newly published set, if any, and applies it to the DSP objects.
+    ///
+    /// Applying happens HERE, on the audio thread, rather than in the JNI setters, because
+    /// SuperpoweredFilter.h:32 requires it: "Changing the filter type often involves changing other
+    /// parameters as well. Therefore in a real-time context change the parameters and the type in the
+    /// same thread with the process() call." Individual property writes are documented as safe from
+    /// any thread (SuperpoweredFilter.h:49) but a type + companion-parameter change is NOT, and this
+    /// EQ changes type (peak <-> shelf) together with slope/octave. Doing the whole apply on the
+    /// process() thread satisfies the header's stronger requirement.
+    void consumeAndApplySnapshot() {
+        if ((readySlot.load(std::memory_order_acquire) & kDirtyFlag) == 0) return;
+        const uint32_t prev = readySlot.exchange((uint32_t) audioSlot, std::memory_order_acq_rel);
+        audioSlot = (int) (prev & kSlotMask);
+
+        const EqSnapshot& s = slots[audioSlot];
+
+        // Scalars are cheap and always refreshed.
+        activePreampMultiplier = s.preampMultiplier;
+        activeSafeVolumeEnabled = s.safeVolumeEnabled;
+        activeSafeVolumeGain = s.safeVolumeGain;
+
+        // Filter objects are touched ONLY when a band genuinely changed. A publication caused purely by
+        // Safe Volume (which happens on every track) therefore leaves the EQ's coefficients completely
+        // alone, exactly as before this change.
+        if (s.bandsRevision == appliedBandsRevision) return;
+        appliedBandsRevision = s.bandsRevision;
+
+        for (int i = 0; i < NUM_EQ_FILTERS; ++i) {
+            Superpowered::Filter* f = filters[i];
+            const BandParams& b = s.bands[i];
+            f->frequency = b.frequency;
+            f->decibel = b.decibel;
+            f->type = b.type;
+            // Write only the width parameter that is EFFECTIVE for this type, exactly as the old
+            // per-call code did. SuperpoweredFilter.h:21-23 documents the effective parameters as
+            // frequency/slope/decibel for LowShelf+HighShelf and frequency/octave/decibel for
+            // Parametric, so the other one is ignored — but not writing it keeps this byte-for-byte
+            // equivalent to the previous behaviour and leaves no room for doubt.
+            if (b.type == Superpowered::Filter::LowShelf || b.type == Superpowered::Filter::HighShelf) {
+                f->slope = b.slope;
+            } else {
+                f->octave = b.octave;
+            }
+            f->enabled = b.enabled;
+        }
+    }
 
     SuperpoweredProcessor(unsigned int samplerate) : currentSamplerate(samplerate) {
         // Allocate 64 filters to support 24-band EQ + AutoEQ bands
-        for (int i = 0; i < 64; ++i) {
+        for (int i = 0; i < NUM_EQ_FILTERS; ++i) {
             auto* filter = new Superpowered::Filter(Superpowered::Filter::Parametric, currentSamplerate);
             filter->enabled = false; // Disabled until configured
             filters.push_back(filter);
@@ -107,10 +344,16 @@ Java_iad1tya_echo_music_eq_audio_CustomEqualizerAudioProcessor_initSuperpowered(
         std::lock_guard<std::mutex> lock(globalInitMutex);
         if (!isSuperpoweredInitialized) {
             const char *key = env->GetStringUTFChars(license_key, 0);
+            // NEVER log `key` (or any prefix/length of it) - it is a credential and the app log is
+            // user-shareable. Only the pass/fail VERDICT below is ever recorded.
             Superpowered::Initialize(key);
             env->ReleaseStringUTFChars(license_key, key);
             isSuperpoweredInitialized = true;
-            LOGI("Superpowered initialized globally.");
+            superpoweredEngineHealth =
+                    probeSuperpoweredDsp((unsigned int) samplerate) ? SP_ENGINE_HEALTHY
+                                                                    : SP_ENGINE_DEGRADED;
+            LOGI("Superpowered initialized globally. Engine health: %s",
+                 superpoweredEngineHealth == SP_ENGINE_HEALTHY ? "HEALTHY" : "DEGRADED");
         }
     }
 
@@ -123,29 +366,43 @@ Java_iad1tya_echo_music_eq_audio_CustomEqualizerAudioProcessor_initSuperpowered(
 #endif
 }
 
+/// Result of the one-shot DSP probe run at Initialize time. See SP_ENGINE_* above.
+/// Returns SP_ENGINE_UNKNOWN if the SDK is absent or initSuperpowered has not run yet.
+extern "C" JNIEXPORT jint JNICALL
+Java_iad1tya_echo_music_eq_audio_CustomEqualizerAudioProcessor_getEngineHealth(JNIEnv *env, jobject thiz) {
+#if HAS_SUPERPOWERED
+    std::lock_guard<std::mutex> lock(globalInitMutex);
+    return (jint) superpoweredEngineHealth;
+#else
+    return (jint) 0;
+#endif
+}
+
 extern "C" JNIEXPORT void JNICALL
 Java_iad1tya_echo_music_eq_audio_CustomEqualizerAudioProcessor_setEqBand(JNIEnv *env, jobject thiz, jlong ptr, jint index, jfloat frequency, jfloat gainDb, jfloat Q, jint filterType) {
 #if HAS_SUPERPOWERED
     auto* processor = reinterpret_cast<SuperpoweredProcessor*>(ptr);
     if (!processor) return;
 
-    std::lock_guard<std::mutex> lock(processor->eqMutex);
-    if (index >= 0 && index < (int)processor->filters.size()) {
-        Superpowered::Filter* f = processor->filters[index];
-        f->frequency = frequency;
-        f->decibel = gainDb;
+    std::lock_guard<std::mutex> lock(processor->writerMutex);
+    if (index >= 0 && index < NUM_EQ_FILTERS) {
+        // Stage the band's parameters. They reach the DSP when the set is published (below, or at
+        // endEqBatch) and are applied by the audio thread itself — see consumeAndApplySnapshot.
+        BandParams& b = processor->staging.bands[index];
+        b.frequency = frequency;
+        b.decibel = gainDb;
         // filterType matches the Kotlin FilterType mapping: 1 = low shelf, 2 = high shelf, else parametric.
         // Shelves (SDK LowShelf/HighShelf) hold their gain out to DC / Nyquist instead of rolling off like a
         // peak — the correct choice for the lowest/highest graphic-EQ bands (fixes the "edges roll off oddly"
         // and makes the audio match the shelf curve drawn in the UI).
         if (filterType == 1) {
-            f->type = Superpowered::Filter::LowShelf;
-            f->slope = 0.6f;
+            b.type = Superpowered::Filter::LowShelf;
+            b.slope = 0.6f;
         } else if (filterType == 2) {
-            f->type = Superpowered::Filter::HighShelf;
-            f->slope = 0.6f;
+            b.type = Superpowered::Filter::HighShelf;
+            b.slope = 0.6f;
         } else {
-            f->type = Superpowered::Filter::Parametric;
+            b.type = Superpowered::Filter::Parametric;
             // Convert Q -> octave BANDWIDTH (the SDK's Parametric width unit). Q and octave are different
             // physical quantities; passing Q raw as `octave` made every band wider/more overlapping than
             // designed, and made a high-Q parametric notch (Q=10) turn into the WIDEST filter (octave clamped
@@ -153,10 +410,46 @@ Java_iad1tya_echo_music_eq_audio_CustomEqualizerAudioProcessor_setEqBand(JNIEnv 
             float oct = 2.0f;
             if (Q > 0.0001f) oct = (2.0f / logf(2.0f)) * asinhf(1.0f / (2.0f * Q));
             if (oct < 0.05f) oct = 0.05f; else if (oct > 5.0f) oct = 5.0f;
-            f->octave = oct;
+            b.octave = oct;
         }
-        f->enabled = true;
+        b.enabled = true;
+        processor->staging.bandsRevision++;
     }
+    processor->publishIfNotBatchingLocked();
+#endif
+}
+
+/// Begin accumulating parameter changes WITHOUT publishing them. Every setter called until the
+/// matching endEqBatch lands in the staging set only, so the whole profile reaches the audio thread
+/// as ONE atomic publication.
+///
+/// This also removes a long-standing artifact: applyProfile used to issue disableAllBands + setPreamp
+/// + N x setEqBand as separate locked calls, so the audio thread could run a block in the middle of
+/// the sequence — most audibly right after disableAllBands, when every filter was off and that block
+/// lost all EQ shaping (a dip on preset switch). Batched, no such intermediate state is ever visible.
+/// Nesting is counted, and Kotlin calls endEqBatch from a finally block, so a throw mid-apply can
+/// never leave the EQ permanently unpublished.
+extern "C" JNIEXPORT void JNICALL
+Java_iad1tya_echo_music_eq_audio_CustomEqualizerAudioProcessor_beginEqBatch(JNIEnv *env, jobject thiz, jlong ptr) {
+#if HAS_SUPERPOWERED
+    auto* processor = reinterpret_cast<SuperpoweredProcessor*>(ptr);
+    if (!processor) return;
+
+    std::lock_guard<std::mutex> lock(processor->writerMutex);
+    processor->batchDepth++;
+#endif
+}
+
+/// Close a beginEqBatch and publish the accumulated set (when the outermost batch closes).
+extern "C" JNIEXPORT void JNICALL
+Java_iad1tya_echo_music_eq_audio_CustomEqualizerAudioProcessor_endEqBatch(JNIEnv *env, jobject thiz, jlong ptr) {
+#if HAS_SUPERPOWERED
+    auto* processor = reinterpret_cast<SuperpoweredProcessor*>(ptr);
+    if (!processor) return;
+
+    std::lock_guard<std::mutex> lock(processor->writerMutex);
+    if (processor->batchDepth > 0) processor->batchDepth--;
+    if (processor->batchDepth == 0) processor->publishLocked();
 #endif
 }
 
@@ -166,8 +459,9 @@ Java_iad1tya_echo_music_eq_audio_CustomEqualizerAudioProcessor_setPreamp(JNIEnv 
     auto* processor = reinterpret_cast<SuperpoweredProcessor*>(ptr);
     if (!processor) return;
     
-    std::lock_guard<std::mutex> lock(processor->eqMutex);
-    processor->currentPreampMultiplier = powf(10.0f, preampDb / 20.0f);
+    std::lock_guard<std::mutex> lock(processor->writerMutex);
+    processor->staging.preampMultiplier = powf(10.0f, preampDb / 20.0f);
+    processor->publishIfNotBatchingLocked();
 #endif
 }
 
@@ -177,8 +471,8 @@ Java_iad1tya_echo_music_eq_audio_CustomEqualizerAudioProcessor_setSafeVolume(JNI
     auto* processor = reinterpret_cast<SuperpoweredProcessor*>(ptr);
     if (!processor) return;
 
-    std::lock_guard<std::mutex> lock(processor->eqMutex);
-    processor->safeVolumeEnabled = (enabled == JNI_TRUE);
+    std::lock_guard<std::mutex> lock(processor->writerMutex);
+    processor->staging.safeVolumeEnabled = (enabled == JNI_TRUE);
     // Safe Volume levels in BOTH directions: attenuate loud masters AND bring quiet tracks up toward the
     // reference, which is what makes a library play at a consistent volume. This used to clamp to < 1.0,
     // silently discarding every boost — so the feature only ever turned things DOWN, and a quiet track
@@ -192,8 +486,9 @@ Java_iad1tya_echo_music_eq_audio_CustomEqualizerAudioProcessor_setSafeVolume(JNI
     // to 1.0 (that would be an audible level change if the cap upstream ever moves). NaN fails both
     // comparisons and lands on 1.0, which is the correct safe default.
     const float kMaxSafeVolumeGain = 4.0f; // +12 dB, matching loudnessMakeupDb's cap
-    processor->safeVolumeGain =
+    processor->staging.safeVolumeGain =
         (gainLinear > 0.0f) ? ((gainLinear > kMaxSafeVolumeGain) ? kMaxSafeVolumeGain : gainLinear) : 1.0f;
+    processor->publishIfNotBatchingLocked();
 #endif
 }
 
@@ -203,10 +498,12 @@ Java_iad1tya_echo_music_eq_audio_CustomEqualizerAudioProcessor_disableAllBands(J
     auto* processor = reinterpret_cast<SuperpoweredProcessor*>(ptr);
     if (!processor) return;
     
-    std::lock_guard<std::mutex> lock(processor->eqMutex);
-    for (auto* filter : processor->filters) {
-        filter->enabled = false;
+    std::lock_guard<std::mutex> lock(processor->writerMutex);
+    for (int i = 0; i < NUM_EQ_FILTERS; ++i) {
+        processor->staging.bands[i].enabled = false;
     }
+    processor->staging.bandsRevision++;
+    processor->publishIfNotBatchingLocked();
 #endif
 }
 
@@ -219,6 +516,12 @@ Java_iad1tya_echo_music_eq_audio_CustomEqualizerAudioProcessor_processAudio(JNIE
     void* output = env->GetDirectBufferAddress(output_buffer);
 
     if (!input || !output || num_frames <= 0) return;
+
+    // Wait-free parameter intake. One acquire load; the exchange + apply only run on blocks where the
+    // UI actually published something new. Done BEFORE any decision that depends on EQ / Safe Volume
+    // state so a freshly published set takes effect on this very block. No lock is taken here — see
+    // the publication contract on SuperpoweredProcessor.
+    if (processor) processor->consumeAndApplySnapshot();
 
     int requiredSize = num_frames * channels;
     if (requiredSize > MAX_BUFFER_SIZE) {
@@ -259,9 +562,11 @@ Java_iad1tya_echo_music_eq_audio_CustomEqualizerAudioProcessor_processAudio(JNIE
     // Also run while Safe Volume is ramping BACK to unity after being switched off — otherwise disabling it
     // would skip the chain outright and drop the gain in one step, the very jump the ramp exists to avoid.
     bool runChain = runEq ||
-        (processor && (processor->safeVolumeEnabled || processor->safeVolumeGainCurrent != 1.0f));
+        (processor && (processor->activeSafeVolumeEnabled || processor->safeVolumeGainCurrent != 1.0f));
     if (runChain && workBuffer && processor) {
-        std::lock_guard<std::mutex> lock(processor->eqMutex);
+        // NO LOCK HERE. Parameters were taken in above via consumeAndApplySnapshot, which is wait-free
+        // and delivers a complete set or nothing at all. Everything read below is either that applied
+        // set or audio-thread-private state.
 
         // FRONT gain = the EQ preamp ONLY. The limiter below (thresholdDb -3) catches its peaks, and a
         // positive preamp raises the body audibly.
@@ -274,7 +579,7 @@ Java_iad1tya_echo_music_eq_audio_CustomEqualizerAudioProcessor_processAudio(JNIE
         // is worst exactly on DYNAMIC masters (classical/jazz/hi-res): low integrated loudness means a
         // large makeup while peaks already sit near full scale, so the limiter would ride ~10 dB of gain
         // reduction on every transient — the "saturation / boxy / pumping" complaint on record.
-        float frontGain = processor->currentPreampMultiplier;
+        float frontGain = processor->activePreampMultiplier;
         if (frontGain != 1.0f) {
             for (int i = 0; i < num_frames * channels; ++i) {
                 workBuffer[i] *= frontGain;
@@ -333,8 +638,8 @@ Java_iad1tya_echo_music_eq_audio_CustomEqualizerAudioProcessor_processAudio(JNIE
         // Applied through a RAMP, never as a step: the target can change mid-song (the sanctioned
         // real-loudness-arrived upgrade, or the user toggling Safe Volume), and an instantaneous multiplier
         // change is exactly the audible level jump this feature exists to avoid.
-        if (processor->safeVolumeEnabled || processor->safeVolumeGainCurrent != 1.0f) {
-            float target = processor->safeVolumeEnabled ? processor->safeVolumeGain : 1.0f;
+        if (processor->activeSafeVolumeEnabled || processor->safeVolumeGainCurrent != 1.0f) {
+            float target = processor->activeSafeVolumeEnabled ? processor->activeSafeVolumeGain : 1.0f;
             // MONO: never amplify. The limiter below is stereo-only, so a boost here would have nothing but
             // the 0.95 tanh knee between it and audible distortion — and that knee is a hard clipper above
             // ~1.5x, not a limiter. ATTENUATION stays allowed (it cannot clip), so a loud mono master is

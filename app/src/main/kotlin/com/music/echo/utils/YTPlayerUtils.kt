@@ -53,6 +53,25 @@ import kotlinx.coroutines.flow.first
 
 object YTPlayerUtils {
     private const val logTag = "YTPlayerUtils"
+
+    /**
+     * Records WHICH client failed and WHY, at a level [AppLogger] persists.
+     *
+     * "No reproduce" was undiagnosable because every client failure went through `.getOrNull()` and
+     * the reason was thrown away — the log showed a song that did not play and nothing else. With one
+     * line per attempted client, the shared log now spells the cascade out ("ANDROID_MUSIC 403, then
+     * TVHTML5 parse error, then IOS ok"), which is the difference between "YouTube changed something,
+     * ship a fix" and "one song is region-locked, ignore it".
+     *
+     * WARNING, not ERROR: a single client failing is normal and expected — that is exactly what the
+     * fallback cascade is for. Only the final give-up is an error. Video id + exception class +
+     * message only; no URL, which would carry the credentialed query string.
+     */
+    private fun logClientFailure(clientName: String, videoId: String, error: Throwable) {
+        Timber.tag("RESOLVE_FAIL").w(
+            "client=$clientName videoId=$videoId ${error.javaClass.simpleName}: ${error.message?.take(180)}"
+        )
+    }
     private const val TAG = "YTPlayerUtils"
     private var hasShownLosslessToast = false
     private var hasShownSaavnToast = false
@@ -110,7 +129,12 @@ object YTPlayerUtils {
         .proxySelector(object : ProxySelector() {
             override fun select(uri: URI?): List<Proxy> = listOfNotNull(YouTube.proxy ?: Proxy.NO_PROXY)
             override fun connectFailed(uri: URI?, sa: SocketAddress?, ioe: IOException?) {
-                Timber.tag(TAG).e(ioe, "Proxy connection failed for URI: $uri")
+                // HOST ONLY, never the URI. This selector serves the client that fetches googlevideo
+                // stream URLs, whose query string carries `pot=` and `sig=`. OkHttp happens to pass a
+                // query-stripped Address.url today, so this did not leak — but it is one library
+                // behaviour change away from writing credentials into the file the user shares, and
+                // the attached throwable's own message was going in unbounded. Do not restore `$uri`.
+                Timber.tag(TAG).e("Proxy connection failed for host=${uri?.host}: ${ioe?.javaClass?.simpleName}: ${ioe?.message?.take(180)}")
             }
         })
         .proxyAuthenticator { _, response ->
@@ -936,16 +960,20 @@ object YTPlayerUtils {
                 val mainClient = if (preferVideo) VIDEO_CLIENT else MAIN_CLIENT
                 val mainSts = if (mainClient.useSignatureTimestamp) awaitSts().timestamp else null
                 val mainCallStartMs = SystemClock.elapsedRealtime()
+                // .onFailure BEFORE .getOrNull(): the main client's real error (403, a parse break, a
+                // rejected poToken) used to be destroyed here, so a fleet-wide main-client outage and a
+                // single region-locked song produced the SAME log line — "no response". Naming the
+                // client and the exception is what makes those two distinguishable without guessing.
                 val response = if (preferVideo) {
                     YouTube.player(
                         videoId, playlistId, VIDEO_CLIENT,
                         mainSts, null, noLogin = noLogin,
-                    ).getOrNull()
+                    ).onFailure { logClientFailure(VIDEO_CLIENT.clientName, videoId, it) }.getOrNull()
                 } else {
                     YouTube.player(
                         videoId, playlistId, MAIN_CLIENT,
                         mainSts, poToken?.playerRequestPoToken, noLogin = noLogin,
-                    ).getOrNull()
+                    ).onFailure { logClientFailure(MAIN_CLIENT.clientName, videoId, it) }.getOrNull()
                 }
                 timing?.let {
                     it.playerMs += SystemClock.elapsedRealtime() - mainCallStartMs
@@ -986,7 +1014,7 @@ object YTPlayerUtils {
         if (isAgeRestrictedFromResponse && isLoggedIn) {
 
             Timber.tag(logTag).d("Age-restricted detected, using WEB_CREATOR")
-            Log.i(TAG, "Age-restricted: using WEB_CREATOR for videoId=$videoId")
+            Timber.tag(TAG).i("Age-restricted: using WEB_CREATOR for videoId=$videoId")
             val creatorResponse = YouTube.player(videoId, playlistId, WEB_CREATOR, null, null, noLogin = noLogin).getOrNull()
             if (creatorResponse?.playabilityStatus?.status == "OK") {
                 Timber.tag(logTag).d("WEB_CREATOR works for age-restricted content")
@@ -998,7 +1026,7 @@ object YTPlayerUtils {
             // dead-end on age-restricted content. The TV embedded player commonly serves age-gated streams
             // WITHOUT auth — try it so age restriction isn't a guaranteed dead-end for guests.
             Timber.tag(logTag).d("Age-restricted (guest), trying embedded player TVHTML5_SIMPLY_EMBEDDED_PLAYER")
-            Log.i(TAG, "Age-restricted (guest): using TVHTML5_SIMPLY_EMBEDDED_PLAYER for videoId=$videoId")
+            Timber.tag(TAG).i("Age-restricted (guest): using TVHTML5_SIMPLY_EMBEDDED_PLAYER for videoId=$videoId")
             val embedResponse = YouTube.player(videoId, playlistId, TVHTML5_SIMPLY_EMBEDDED_PLAYER, null, null, noLogin = noLogin).getOrNull()
             if (embedResponse?.playabilityStatus?.status == "OK") {
                 Timber.tag(logTag).d("Embedded player works for age-restricted (guest) content")
@@ -1038,7 +1066,7 @@ object YTPlayerUtils {
 
         if (isAgeRestricted) {
             Timber.tag(logTag).d("Content is still age-restricted (status: $currentStatus), will try fallback clients")
-            Log.i(TAG, "Age-restricted content detected: videoId=$videoId, status=$currentStatus")
+            Timber.tag(TAG).i("Age-restricted content detected: videoId=$videoId, status=$currentStatus")
         }
 
 
@@ -1107,7 +1135,9 @@ object YTPlayerUtils {
                     else awaitSts().timestamp
                 val clientCallStartMs = SystemClock.elapsedRealtime()
                 streamPlayerResponse =
-                    YouTube.player(videoId, playlistId, client, clientSigTimestamp, clientPoToken, noLogin = noLogin).getOrNull()
+                    YouTube.player(videoId, playlistId, client, clientSigTimestamp, clientPoToken, noLogin = noLogin)
+                        .onFailure { logClientFailure(client.clientName, videoId, it) }
+                        .getOrNull()
                 timing?.let {
                     it.playerMs += SystemClock.elapsedRealtime() - clientCallStartMs
                     it.playerCalls++
@@ -1212,7 +1242,12 @@ object YTPlayerUtils {
                     } else {
                         Timber.tag(logTag).d("Using last fallback client without validation: ${STREAM_FALLBACK_CLIENTS[clientIndex].clientName}")
                     }
-                    Log.i(TAG, "Playback: client=${currentClient.clientName}, videoId=$videoId, private=$isPrivatelyOwned")
+                    // WHICH CLIENT ACTUALLY SERVED THE STREAM — the single most useful playback
+                    // diagnostic in the app, and it used to go through android.util.Log, which reaches
+                    // logcat and NOTHING else. A customer cannot send logcat. Timber routes it into
+                    // app.log, so "no reproduce" reports now say which of the twelve clients worked (or
+                    // that none did) instead of leaving the owner to guess the cascade.
+                    Timber.tag(TAG).i("Playback: client=${currentClient.clientName}, videoId=$videoId, private=$isPrivatelyOwned")
                     timing?.winner = currentClient.clientName
                     break
                 }
@@ -1231,7 +1266,7 @@ object YTPlayerUtils {
                     Timber.tag(logTag).d("Stream validated successfully with client: ${currentClient.clientName}")
                     PlaybackLogManager.log(PlaybackLogLevel.INFO, "Stream validated", currentClient.clientName)
 
-                    Log.i(TAG, "Playback: client=${currentClient.clientName}, videoId=$videoId")
+                    Timber.tag(TAG).i("Playback: client=${currentClient.clientName}, videoId=$videoId")
                     timing?.winner = currentClient.clientName
                     break
                 } else {
@@ -1258,7 +1293,7 @@ object YTPlayerUtils {
                                     Timber.tag(logTag).d("N-transformed URL VALIDATED OK!")
                                     streamUrl = nTransformed
                                     nTransformWorked = true
-                                    Log.i(TAG, "Playback: client=${currentClient.clientName}, videoId=$videoId (cipher n-transform)")
+                                    Timber.tag(TAG).i("Playback: client=${currentClient.clientName}, videoId=$videoId (cipher n-transform)")
                                 }
                             }
                         } catch (e: Exception) {
@@ -1535,7 +1570,7 @@ object YTPlayerUtils {
                     error.cause?.message?.contains("age-restricted", ignoreCase = true) == true
                 if (isAgeRestricted) {
                     Timber.tag(logTag).d("Age-restricted content detected from NewPipe")
-                    Log.i(TAG, "Age-restricted detected early via NewPipe: videoId=$videoId")
+                    Timber.tag(TAG).i("Age-restricted detected early via NewPipe: videoId=$videoId")
                 } else {
                     Timber.tag(logTag).e(error, "Failed to get signature timestamp")
                     // Network-shaped failures (offline start, flaky link) are expected operating

@@ -276,7 +276,7 @@
     <string name="add_to_library_desc">Shrani v knjižnico</string>
     <string name="download_desc">Omogoči predvajanje brez povezave</string>
     <string name="add_to_playlist_desc">Dodaj na enega od seznamov predvajanja</string>
-    <string name="refetch_desc">Pridobi najnovejše metapodatke iz YouTube Music</string>
+    <string name="refetch_desc">Pridobi najnovejše metapodatke iz Aura Hi-Res</string>
     <string name="share_desc">Deli povezavo do tega elementa</string>
     <string name="delete_desc">Trajno odstrani ta element</string>
     <string name="advanced_desc">Spremeni tempo in višino tona skladbe</string>

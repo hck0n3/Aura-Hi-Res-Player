@@ -254,7 +254,7 @@
     <string name="add_to_library_desc">Guarda a la teua biblioteca</string>
     <string name="download_desc">Habilita per a la reproducció sense xarxa</string>
     <string name="add_to_playlist_desc">Afig a una de les teues llistes de reproducció</string>
-    <string name="refetch_desc">Obtindre les últimes metadades de YouTube Music</string>
+    <string name="refetch_desc">Obtindre les últimes metadades de Aura Hi-Res</string>
     <string name="share_desc">Compartir un enllaç a aquest element</string>
     <string name="delete_desc">Eliminar element de manera permanent</string>
     <string name="advanced_desc">Canviar tempo i to de la cançó</string>
@@ -559,7 +559,7 @@
     <string name="crossfade_beta_title">Funcionalitat Beta</string>
     <string name="crossfade_beta_message">El transicionat suau es una nova funcionalitat que pot presentar errors. Si trobes cap problema, per favor, informa\'ns.\n\nAquesta funcionalitat deshabilita la descarrega d\'àudio a causa de limitacions tècniques.</string>
     <string name="audio_offload_disabled_by_crossfade">Deshabilitat per que el transicionat suau està actiu</string>
-    <string name="hide_youtube_shorts">Amaga Youtube Shorts</string>
+    <string name="hide_youtube_shorts">Amaga els Shorts</string>
     <string name="listen_together_in_top_bar">Escoltar Junts a la barra superior</string>
     <string name="listen_together_in_top_bar_desc">Mostra l\'opció d\'Escoltar Junts a la barra superior de l\'aplicació en lloc de a la barra de navegació</string>
     <string name="ai_translation_literal_desc">Tradueix el significat a l\'idioma objectiu</string>

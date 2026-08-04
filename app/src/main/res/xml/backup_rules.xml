@@ -10,6 +10,14 @@
     <exclude
         domain="sharedpref"
         path="jr_license.xml" />
+    <!-- NOTE on song.db: it is deliberately NOT excluded. Excluding it would close the
+         restored-markers hole outright, but at the cost of every customer losing their whole library
+         on a phone transfer — a bigger and far likelier harm. The library travels; the RESTORED data
+         is treated as untrusted instead (App.classifyInstallOrigin clears the account-scoped artist
+         markers on a restored first launch, exactly as a logout does).
+         The sharedpref "aura_install_marker" MUST stay INCLUDED — it is the flag that lets that
+         launch recognise itself as restored. Do not add an exclude for it. -->
+
     <exclude
         domain="file"
         path="./exoplayer" />

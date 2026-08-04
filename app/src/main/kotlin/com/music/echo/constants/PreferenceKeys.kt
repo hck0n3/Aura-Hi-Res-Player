@@ -57,6 +57,46 @@ val YtmAutoSyncFreqDaysKey = intPreferencesKey("ytmAutoSyncFreqDays")
 // Last time a YouTube Music full sync actually completed (epoch millis; 0 = never). Surfaced in the sync
 // screen so a scheduled sync that silently no-ops (e.g. an expired session) is visible, not a placebo.
 val YtmLastSyncKey = longPreferencesKey("ytmLastSyncEpochMs")
+// ---- Library UPLOAD sync (Aura -> YouTube Music), so the account works as a real backup ----------
+// Master switch for pushing the library UP: new playlists are created on the account without asking,
+// existing local-only playlists get linked, deliberate follows become channel subscriptions, and
+// liked songs/albums are mirrored up. Turning it off restores the "ask me per playlist" behaviour and
+// stops every upload.
+//
+// THE VALUE IS ALWAYS EXPLICIT — there is no implicit default. Every read falls back to FALSE, and
+// [YtmUploadOptInV1AppliedKey] below writes the real value once, per install. Reason: this switch
+// writes to a real Google account, and "the update turned it on for you" is not something a paying
+// stranger can consent to after the fact.
+val YtmUploadSyncKey = booleanPreferencesKey("ytmUploadSync")
+// One-time (V1, FRESH key — a set flag or a versionCode bump alone will not re-run a migration) that
+// decides the value of [YtmUploadSyncKey] exactly once, on the first launch that sees it:
+//   - FRESH install (firstInstallTime == lastUpdateTime): ON. This is the owner's explicit request —
+//     "que ahora las playlist que haga no pregunte si las quiero sincronizar con youtube music, que
+//     eso ya lo haga por default" — and it is honest for someone setting the app up now: the sync
+//     screen is right there, it is the first thing a new user configures, and nothing has been
+//     uploaded behind their back yet.
+//   - RESTORED install (a device-to-device transfer, a cloud backup, `adb restore`): OFF, same as an
+//     update. `firstInstallTime == lastUpdateTime` is TRUE here too — the APK really is the first one
+//     on the new phone — so this used to be misread as FRESH and switched account writes ON for
+//     somebody who was NOT setting Aura up from scratch. See [iad1tya.echo.music.utils.InstallOrigin].
+//   - EXISTING install being UPDATED: OFF. These users installed an Aura that never wrote to their
+//     YouTube account. Merely tapping "update" is not consent to start doing so, and the damage
+//     (playlists appearing, channels subscribed) is invisible to them until they open YouTube. They
+//     get the same switch, defaulted off, one tap away in Ajustes -> Sincronización.
+// Both cases end with an explicit stored value, so the owner keeps his default and no existing
+// customer is enrolled into remote writes by the act of updating.
+val YtmUploadOptInV1AppliedKey = booleanPreferencesKey("ytm_upload_opt_in_v1_applied")
+// Set once [iad1tya.echo.music.utils.InstallOrigin] has been established for this install and any
+// restore clean-up has run. It lives in the DataStore ON PURPOSE: the backup rules exclude
+// `datastore/settings.preferences_pb`, so a database restored onto another phone arrives WITHOUT this
+// flag and the classification re-runs there — which is exactly the launch that has to notice it is
+// looking at somebody else's account markers.
+val InstallOriginResolvedV1Key = booleanPreferencesKey("install_origin_resolved_v1")
+// Last time a FULL library upload finished with nothing left pending (epoch millis; 0 = never).
+val YtmUploadLastCompletedKey = longPreferencesKey("ytmUploadLastCompletedEpochMs")
+// Persisted snapshot of the upload progress report (compact JSON), so the sync screen shows accurate
+// "ya sincronizadas / sincronizando" counts across app restarts instead of only per session.
+val YtmUploadProgressKey = stringPreferencesKey("ytmUploadProgress")
 // Saved/pinned podcast shows (JSON array of {id,title,author,artworkUrl,feedUrl}).
 val PinnedPodcastsKey = stringPreferencesKey("pinnedPodcasts")
 // Region (2-letter) the user picked for the podcast charts (persisted across sessions).
@@ -187,6 +227,20 @@ val DynamicThemeKey = booleanPreferencesKey("dynamicTheme")
 // Aura Hi-Res theme: opt-in audiophile palette derived from the brand purple. Default off (current
 // look stays the default). Wired into echomusicTheme in MainActivity.
 val SelectedThemeColorKey = intPreferencesKey("selectedThemeColor")
+// The accent the user picked BY HAND (hex field / HSV wheel in ThemeScreen), kept so the "custom"
+// swatch keeps showing their colour and the picker reopens on it even after they try a preset.
+// FRESH key on purpose: [SelectedThemeColorKey] stays the one live accent seed the whole theme
+// pipeline reads, so nobody's existing colour moves or resets on update (project rule: never
+// repurpose a key). 0 == never set a custom colour, which is exactly today's behaviour.
+val CustomAccentColorKey = intPreferencesKey("customAccentColorArgb")
+// How literally the accent seed is applied — see [iad1tya.echo.music.ui.theme.AccentVividness].
+// FRESH key, default SOFT == byte-for-byte today's Material 3 tonal look.
+val AccentVividnessKey = stringPreferencesKey("accentVividness")
+// Named, hand-authored app theme — see [iad1tya.echo.music.ui.theme.ThemePreset]. FRESH key, default
+// NONE == byte-for-byte today's seed-driven look, so an update repaints nobody. Set to MUESTREO the
+// whole colour scheme (surfaces included) comes from the app icon's palette instead of the seed
+// engine; selecting any swatch, Dynamic or a typed hex puts it back to NONE.
+val AppThemePresetKey = stringPreferencesKey("appThemePreset")
 val DarkModeKey = stringPreferencesKey("darkMode")
 val PureBlackKey = booleanPreferencesKey("pureBlack")
 val PureBlackMiniPlayerKey = booleanPreferencesKey("pureBlackMiniPlayer")

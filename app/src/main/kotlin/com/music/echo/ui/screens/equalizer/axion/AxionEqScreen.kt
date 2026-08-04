@@ -47,6 +47,9 @@ import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Refresh
 import iad1tya.echo.music.R
+import androidx.compose.foundation.shape.RoundedCornerShape
+import iad1tya.echo.music.eq.audio.CustomEqualizerAudioProcessor
+import iad1tya.echo.music.eq.audio.SuperpoweredEngineStatus
 import iad1tya.echo.music.eq.data.EqConstants
 import iad1tya.echo.music.eq.data.EqMode
 import iad1tya.echo.music.eq.data.FactoryPreset
@@ -160,6 +163,7 @@ fun AxionEqScreen(
                     .padding(horizontal = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
+                EngineUnavailableBanner()
                 EqMainContent(
                     viewModel = viewModel,
                     enabled = enabled,
@@ -176,6 +180,49 @@ fun AxionEqScreen(
                     onDeviceClick = { showDeviceDialog = true },
                 )
             }
+        }
+    }
+}
+
+/**
+ * Tells the user, on the EQ screen itself, when the native Superpowered engine is not actually
+ * processing audio — so the sliders and the response curve are never a placebo.
+ *
+ * The Superpowered SDK can stop working without any warning to us: their agreement lets them disable a
+ * non-compliant licence key "with or without notice", and `Superpowered::Initialize` returns void, so
+ * nothing in the API would tell us. `CustomEqualizerAudioProcessor` therefore proves the DSP is alive
+ * empirically and publishes the verdict here.
+ *
+ * Deliberately silent while the status is UNKNOWN (no audio configured yet) or HEALTHY — a banner that
+ * appears on a working install would be worse than no banner at all.
+ */
+@Composable
+private fun EngineUnavailableBanner() {
+    val status by CustomEqualizerAudioProcessor.engineStatus.collectAsState()
+    if (status != SuperpoweredEngineStatus.DEGRADED && status != SuperpoweredEngineStatus.UNAVAILABLE) return
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.errorContainer,
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                text = "El ecualizador no está sonando",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onErrorContainer,
+            )
+            Text(
+                text = "El motor de audio no se está aplicando en este dispositivo, así que mover estas " +
+                    "bandas no cambia nada de lo que oyes. Preferimos decírtelo a dejarte un control que " +
+                    "no hace nada. Envía el registro desde Ajustes ▸ Registros para que podamos verlo.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onErrorContainer,
+            )
         }
     }
 }

@@ -1,7 +1,9 @@
 package iad1tya.echo.music.ui.screens.settings
 
 import android.widget.Toast
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -14,12 +16,16 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -36,10 +42,12 @@ import iad1tya.echo.music.R
 import iad1tya.echo.music.constants.InnerTubeCookieKey
 import iad1tya.echo.music.constants.YtmAutoSyncFreqDaysKey
 import iad1tya.echo.music.constants.YtmLastSyncKey
+import iad1tya.echo.music.constants.YtmUploadSyncKey
 import iad1tya.echo.music.ui.component.IconButton
 import iad1tya.echo.music.ui.component.Material3SettingsGroup
 import iad1tya.echo.music.ui.component.Material3SettingsItem
 import iad1tya.echo.music.ui.utils.backToMain
+import iad1tya.echo.music.utils.UploadCategoryProgress
 import iad1tya.echo.music.utils.rememberPreference
 import iad1tya.echo.music.viewmodels.AccountSettingsViewModel
 
@@ -262,6 +270,215 @@ fun YtmSyncScreen(
             )
 
             Spacer(Modifier.height(24.dp))
+
+            LibraryUploadSection(
+                viewModel = viewModel,
+                isLoggedIn = isLoggedIn,
+                onToast = ::toast,
+            )
+
+            Spacer(Modifier.height(24.dp))
+        }
+    }
+}
+
+/**
+ * "Copia de seguridad en YouTube Music" — the upward half of the sync, and the answer to
+ * *"que informe cuáles ya están sincronizadas y cuáles se están sincronizando, y que también informe
+ * cuando termine de sincronizar toda la biblioteca"*.
+ *
+ * Every number here comes from [iad1tya.echo.music.utils.LibraryUploadSync]'s StateFlow, which is
+ * recomputed from the database and persisted to DataStore — so the report is accurate after a cold
+ * start, not just within the session that ran the sync.
+ */
+@Composable
+private fun LibraryUploadSection(
+    viewModel: AccountSettingsViewModel,
+    isLoggedIn: Boolean,
+    onToast: (String) -> Unit,
+) {
+    val context = LocalContext.current
+    // FALSE fallback on purpose — the stored value is always explicit (see YtmUploadOptInV1AppliedKey).
+    // The switch shown here is the opt-in for anyone the one-time migration defaulted to off.
+    val (uploadEnabled, setUploadEnabled) = rememberPreference(YtmUploadSyncKey, false)
+    val progress by viewModel.uploadProgress.collectAsState()
+
+    // Network-free: reads the persisted snapshot and recounts from the DB. Never uploads anything.
+    LaunchedEffect(Unit) { viewModel.refreshUploadProgress() }
+
+    Text(
+        text = stringResource(R.string.ytm_upload_section_title),
+        style = MaterialTheme.typography.titleSmall,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(start = 6.dp, bottom = 8.dp),
+    )
+
+    Material3SettingsGroup(
+        items = listOf(
+            Material3SettingsItem(
+                icon = painterResource(R.drawable.backup),
+                title = { Text(stringResource(R.string.ytm_upload_toggle_title)) },
+                description = {
+                    Text(
+                        if (uploadEnabled) stringResource(R.string.ytm_upload_toggle_desc)
+                        else stringResource(R.string.ytm_upload_disabled_hint),
+                    )
+                },
+                trailingContent = {
+                    Switch(
+                        checked = uploadEnabled,
+                        onCheckedChange = { setUploadEnabled(it) },
+                    )
+                },
+                onClick = { setUploadEnabled(!uploadEnabled) },
+            ),
+            Material3SettingsItem(
+                icon = painterResource(R.drawable.sync),
+                title = { Text(stringResource(R.string.ytm_upload_run_now)) },
+                description = { Text(stringResource(R.string.ytm_upload_run_now_desc)) },
+                onClick = {
+                    when {
+                        !isLoggedIn -> onToast(context.getString(R.string.ytm_upload_needs_login))
+                        !uploadEnabled -> onToast(context.getString(R.string.ytm_upload_disabled_hint))
+                        else -> {
+                            // Explicit request only — an upload NEVER starts by itself on app launch.
+                            iad1tya.echo.music.utils.YtmSyncWorker.enqueue(
+                                context,
+                                iad1tya.echo.music.utils.YtmSyncWorker.TYPE_UPLOAD_LIBRARY,
+                            )
+                            onToast(context.getString(R.string.ytm_upload_started))
+                        }
+                    }
+                },
+            ),
+        ),
+    )
+
+    Spacer(Modifier.height(12.dp))
+
+    UploadCategoryRow(stringResource(R.string.ytm_upload_cat_playlists), progress.playlists)
+    UploadCategoryRow(stringResource(R.string.ytm_upload_cat_artists), progress.artists)
+    UploadCategoryRow(stringResource(R.string.ytm_upload_cat_liked_songs), progress.likedSongs)
+    UploadCategoryRow(stringResource(R.string.ytm_upload_cat_liked_albums), progress.likedAlbums)
+
+    Spacer(Modifier.height(12.dp))
+
+    // The completion notice he asked for explicitly, and its honest counterpart while work remains.
+    // Nothing is claimed until the counts have actually been computed (`counted`) — an all-zero
+    // default would otherwise flash "todo sincronizado" before a single row had been read.
+    if (!progress.counted) {
+        Text(
+            text = stringResource(R.string.ytm_upload_in_progress),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 6.dp),
+        )
+    } else if (progress.everythingSynced) {
+        Text(
+            text = stringResource(R.string.ytm_upload_all_done),
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(start = 6.dp),
+        )
+        Text(
+            text = stringResource(R.string.ytm_upload_all_done_desc),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 6.dp, top = 2.dp),
+        )
+    } else {
+        Text(
+            text = stringResource(R.string.ytm_upload_pending_summary, progress.totalPending),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 6.dp),
+        )
+        Text(
+            text = stringResource(R.string.ytm_upload_continues_background),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 6.dp, top = 2.dp),
+        )
+    }
+
+    // Why a pass stopped early (offline, signed out, switched off) — never a silent no-op.
+    progress.stoppedReason?.let { reason ->
+        Text(
+            text = reason,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+            modifier = Modifier.padding(start = 6.dp, top = 6.dp),
+        )
+    }
+
+    Spacer(Modifier.height(8.dp))
+    Text(
+        text = if (progress.lastCompletedEpochMs > 0L) {
+            stringResource(
+                R.string.ytm_upload_last_completed,
+                android.text.format.DateUtils.getRelativeTimeSpanString(
+                    progress.lastCompletedEpochMs,
+                    System.currentTimeMillis(),
+                    android.text.format.DateUtils.MINUTE_IN_MILLIS,
+                ).toString(),
+            )
+        } else {
+            stringResource(R.string.ytm_upload_never_completed)
+        },
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(start = 6.dp),
+    )
+    if (progress.requestsLastRun > 0) {
+        Text(
+            text = stringResource(R.string.ytm_upload_requests_last_run, progress.requestsLastRun),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 6.dp, top = 2.dp),
+        )
+    }
+
+    Spacer(Modifier.height(8.dp))
+    Text(
+        text = stringResource(R.string.ytm_upload_only_followed_note),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(start = 6.dp),
+    )
+}
+
+/** One "X de Y sincronizadas / faltan N / Sincronizando…" line, plus a progress bar. */
+@Composable
+private fun UploadCategoryRow(label: String, state: UploadCategoryProgress) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 6.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(text = label, style = MaterialTheme.typography.bodyMedium)
+            Text(
+                text = when {
+                    state.running -> stringResource(R.string.ytm_upload_in_progress)
+                    state.total == 0 -> stringResource(R.string.ytm_upload_nothing_to_sync)
+                    state.isComplete -> stringResource(R.string.ytm_upload_category_done)
+                    else -> stringResource(R.string.ytm_upload_count_pending, state.pending)
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = if (state.isComplete) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        if (state.total > 0) {
+            Text(
+                text = stringResource(R.string.ytm_upload_count_synced, state.synced, state.total),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(4.dp))
+            LinearProgressIndicator(
+                progress = { state.synced.toFloat() / state.total.toFloat() },
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
     }
 }

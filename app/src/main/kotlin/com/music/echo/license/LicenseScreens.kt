@@ -55,6 +55,14 @@ import androidx.compose.ui.unit.sp
 import iad1tya.echo.music.R
 import kotlinx.coroutines.launch
 
+/**
+ * The single source of truth for the advertised subscription price. Two screens hardcoded it
+ * independently and had drifted apart ($3.74 on the subscribe screen, $10 on the device-blocked one),
+ * so the price a paying customer saw depended on which screen they happened to reach. Anything that
+ * shows the price must read this constant, and it must match the actual Gumroad product.
+ */
+const val SUBSCRIPTION_PRICE = "$3.74"
+
 private const val GUMROAD_URL = "https://toberto.gumroad.com/l/JR-MUSIC-PRO-OFFICIAL"
 
 // Aura dark gradient: a subtle teal tint (matching the cyan brand accent) fading to near-black.
@@ -302,7 +310,7 @@ fun SubscriptionEntryScreen(
             onClick = { openGumroad(context) },
             modifier = Modifier.fillMaxWidth().height(48.dp),
             shape = RoundedCornerShape(16.dp),
-        ) { Text("Suscribirme por $3.74/mes", fontWeight = FontWeight.SemiBold) }
+        ) { Text("Suscribirme por $SUBSCRIPTION_PRICE/mes", fontWeight = FontWeight.SemiBold) }
         Spacer(Modifier.height(8.dp))
         Text(
             text = "Al suscribirte recibes tu licencia para seguir disfrutando de la experiencia.",
@@ -375,6 +383,6 @@ fun DeviceBlockedScreen(onRetry: () -> Unit) {
             onClick = { openGumroad(context) },
             modifier = Modifier.fillMaxWidth().height(48.dp),
             shape = RoundedCornerShape(16.dp),
-        ) { Text("Suscribirme ($10/mes)", fontWeight = FontWeight.SemiBold) }
+        ) { Text("Suscribirme ($SUBSCRIPTION_PRICE/mes)", fontWeight = FontWeight.SemiBold) }
     }
 }

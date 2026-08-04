@@ -867,7 +867,7 @@ constructor(
         } ?: browsableMediaItem(
             "${MusicService.YOUTUBE_PLAYLIST}/$playlistId",
             playlistId,
-            "YouTube Music",
+            "Aura Hi-Res",
             null,
             MediaMetadata.MEDIA_TYPE_PLAYLIST,
             singleItemStyle = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
@@ -928,7 +928,7 @@ constructor(
     private fun PlaylistItem.toBrowsableMediaItem() = browsableMediaItem(
         "${MusicService.YOUTUBE_PLAYLIST}/$id",
         title,
-        author?.name ?: "YouTube Music",
+        author?.name ?: "Aura Hi-Res",
         thumbnail?.toUri(),
         MediaMetadata.MEDIA_TYPE_PLAYLIST,
         singleItemStyle = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,

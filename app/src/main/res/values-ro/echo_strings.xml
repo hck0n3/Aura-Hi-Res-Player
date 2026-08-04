@@ -243,7 +243,7 @@
     <string name="add_to_library_desc">Salvează în biblioteca ta</string>
     <string name="download_desc">Fă disponibil pentru redarea offline</string>
     <string name="add_to_playlist_desc">Adaugă într-unul dintre playlisturile tale</string>
-    <string name="refetch_desc">Preia cele mai recente metadate de pe YouTube Music</string>
+    <string name="refetch_desc">Preia cele mai recente metadate de pe Aura Hi-Res</string>
     <string name="share_desc">Distribuie un link către acest element</string>
     <string name="delete_desc">Elimină acest element permanent</string>
     <string name="advanced_desc">Modifică tempo-ul și înălțimea melodiei</string>
@@ -588,7 +588,7 @@
     <string name="audio_offload_disabled_by_crossfade">Dezactivat, deoarece funcția Tranziție lină este activată</string>
     <string name="prevent_duplicate_tracks_in_queue">Previne piesele duplicate în coadă</string>
     <string name="prevent_duplicate_tracks_in_queue_desc">Când adaugi o piesă în coadă, elimin-o din poziția ei anterioară dacă există deja</string>
-    <string name="hide_youtube_shorts">Ascunde YouTube Shorts</string>
+    <string name="hide_youtube_shorts">Ascunde Shorts</string>
     <string name="listen_together_in_top_bar">Ascultă împreună în bara de sus</string>
     <string name="listen_together_in_top_bar_desc">Arată funcția Ascultă împreună în bara de sus în loc de în bara de navigare</string>
     <string name="ai_translation_literal_desc">Tradu sensul în limba țintă</string>

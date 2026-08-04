@@ -319,7 +319,7 @@
     <string name="add_to_library_desc">Simpan ke pustaka Anda</string>
     <string name="download_desc">Sediakan untuk pemutaran offline</string>
     <string name="add_to_playlist_desc">Tambahkan ke salah satu playlist Anda</string>
-    <string name="refetch_desc">Ambil metadata terbaru dari YouTube Music</string>
+    <string name="refetch_desc">Ambil metadata terbaru dari Aura Hi-Res</string>
     <string name="lyrics_glow_effect">Aktifkan efek cahaya lirik</string>
     <string name="lyrics_glow_effect_desc">Tambahkan animasi bercahaya dan efek memantul pada lirik yang aktif</string>
     <string name="shuffle_playlist_first">Acak playlist/album terlebih dahulu</string>
@@ -546,7 +546,7 @@
     <string name="crossfade_beta_title">Fitur Beta</string>
     <string name="crossfade_beta_message">Crossfade adalah fitur baru dan mungkin memiliki bug. Jika Anda mengalami masalah, silakan laporkan.\n\nFitur ini menonaktifkan offload audio karena keterbatasan teknis.</string>
     <string name="audio_offload_disabled_by_crossfade">Dinonaktifkan karena Crossfade aktif</string>
-    <string name="hide_youtube_shorts">Sembunyikan YouTube Shorts</string>
+    <string name="hide_youtube_shorts">Sembunyikan Shorts</string>
     <string name="listen_together_in_top_bar">Listen Together di bilah atas</string>
     <string name="listen_together_in_top_bar_desc">Tampilkan Listen Together di bilah aplikasi atas alih-alih bilah navigasi</string>
     <string name="ai_translation_literal_desc">Terjemahkan makna ke bahasa target</string>

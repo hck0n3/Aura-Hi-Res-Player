@@ -69,8 +69,8 @@ object LyricsProviderRegistry {
         "SimpMusic"       -> "SimpMusic"
         "LrcLib"          -> "LrcLib"
         "Kugou"           -> "KuGou"
-        "YouTubeSubtitle" -> "YouTube Subtitle"
-        "YouTubeMusic"    -> "YouTube Music"
+        "YouTubeSubtitle" -> "Aura Hi-Res (subtítulos)"
+        "YouTubeMusic"    -> "Aura Hi-Res"
         "Unison"          -> "Unison"
         else              -> name
     }

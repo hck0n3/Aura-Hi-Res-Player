@@ -6,7 +6,7 @@ import android.content.Context
 import com.music.innertube.YouTube
 
 object YouTubeSubtitleLyricsProvider : LyricsProvider {
-    override val name = "YouTube Subtitle"
+    override val name = "Aura Hi-Res (subtítulos)"
 
     override fun isEnabled(context: Context) = true
 

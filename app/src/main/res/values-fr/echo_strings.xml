@@ -360,7 +360,7 @@
     <string name="scrobble_delay_percent">Pourcentage de délai de scrobble</string>
     <string name="scrobble_delay_minutes">Délai de scrobble (en minutes)</string>
     <string name="hide_video_songs">Masquer les titres en vidéo</string>
-    <string name="hide_youtube_shorts">Masquer YouTube Shorts</string>
+    <string name="hide_youtube_shorts">Masquer les Shorts</string>
 
     <string name="details_desc">Afficher les informations sur le titre</string>
     <string name="edit_desc">Modifier le titre ou l\'interprète</string>
@@ -370,7 +370,7 @@
     <string name="add_to_library_desc">Ajouter à votre bibliothèque</string>
     <string name="download_desc">Rendre disponible pour une lecture hors ligne</string>
     <string name="add_to_playlist_desc">Ajouter à l\'une de vos playlists</string>
-    <string name="refetch_desc">Récupérer les dernières métadonnées depuis YouTube Music</string>
+    <string name="refetch_desc">Récupérer les dernières métadonnées depuis Aura Hi-Res</string>
     <string name="share_desc">Partager le lien vers cet article</string>
     <string name="delete_desc">Supprimer définitivement cet élément</string>
     <string name="advanced_desc">Modifier le tempo et la hauteur tonale du titre</string>

@@ -13,6 +13,11 @@
         <exclude
             domain="sharedpref"
             path="jr_license.xml" />
+        <!-- song.db stays INCLUDED on purpose (the library must survive a phone change); the restored
+             data is treated as untrusted instead — see App.classifyInstallOrigin. The sharedpref
+             "aura_install_marker" must also stay INCLUDED: it is what tells a restored first launch
+             apart from a genuinely fresh one. -->
+
         <exclude
             domain="file"
             path="./exoplayer" />
@@ -31,6 +36,9 @@
         <exclude
             domain="sharedpref"
             path="jr_license.xml" />
+        <!-- Same as cloud-backup: song.db travels, the sharedpref "aura_install_marker" travels, and
+             the restored account-scoped artist markers are cleared on arrival. -->
+
         <exclude
             domain="file"
             path="./exoplayer" />

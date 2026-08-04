@@ -572,7 +572,7 @@ fun ArtistScreen(
                                             database.transaction {
                                                 val artist = libraryArtist?.artist
                                                 if (artist != null) {
-                                                    update(artist.toggleLike())
+                                                    update(artist.toggleLike(database::confirmArtistUnsubscribed))
                                                 } else {
                                                     artistPage?.artist?.let {
                                                         insert(
@@ -581,7 +581,7 @@ fun ArtistScreen(
                                                                 name = it.title,
                                                                 channelId = it.channelId,
                                                                 thumbnailUrl = it.thumbnail,
-                                                            ).toggleLike()
+                                                            ).toggleLike(database::confirmArtistUnsubscribed)
                                                         )
                                                     }
                                                 }
