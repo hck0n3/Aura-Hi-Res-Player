@@ -22,6 +22,10 @@ import org.junit.Test
  *    hides the VOLUME (not the timeline) and is labelled `hide_player_volume`. Drop the negation and
  *    the switch inverts; the test catches it.
  *  · Swipe gate — four terms, any of which a refactor can silently drop, plus a sign convention.
+ *  · Keep-screen-on — [playerHoldsScreenOn], the Ajustes ▸ Reproductor switch that only its classic
+ *    read site honoured, so it did nothing in the new portrait player and started working after
+ *    rotating the phone. Three terms; dropping [isExpanded] or `isPlaying` leaks a wake flag (battery),
+ *    dropping the preference makes the switch inert.
  */
 class PlayerAppearancePrefsTest {
 
@@ -225,5 +229,45 @@ class PlayerAppearancePrefsTest {
         // Pins the comparison operators: turn <= / >= into < / > and both of these fail.
         assertEquals(SwipeLyricsAction.NEXT, swipeLyricsAction(-48f, 48f))
         assertEquals(SwipeLyricsAction.PREVIOUS, swipeLyricsAction(48f, 48f))
+    }
+
+    // --------------------------------------------------------------------------- keep-screen-on
+
+    @Test
+    fun `the screen is kept awake only with the player expanded, playing and the switch on`() {
+        assertTrue(
+            playerHoldsScreenOn(isExpanded = true, isPlaying = true, keepScreenOnEnabled = true)
+        )
+    }
+
+    @Test
+    fun `dropping any single term lets the screen sleep`() {
+        // One term flipped per case. Drop that term from the predicate and its case starts returning
+        // true — which for this setting means a wake flag held when it should not be, i.e. battery.
+        assertFalse(
+            "a collapsed (mini) player must never hold the screen awake",
+            playerHoldsScreenOn(isExpanded = false, isPlaying = true, keepScreenOnEnabled = true)
+        )
+        assertFalse(
+            "a paused player must let the screen sleep",
+            playerHoldsScreenOn(isExpanded = true, isPlaying = false, keepScreenOnEnabled = true)
+        )
+        assertFalse(
+            "with the switch off the flag is never taken, however the player is being used",
+            playerHoldsScreenOn(isExpanded = true, isPlaying = true, keepScreenOnEnabled = false)
+        )
+    }
+
+    @Test
+    fun `the switch is the deciding term, not a hint`() {
+        // The bug this replaced was the OPPOSITE polarity of a placebo: the new portrait player ignored
+        // the preference entirely, so the setting only took effect after rotating the phone. Both
+        // players now ask this one predicate, so ON and OFF must be visibly different for the same
+        // player state.
+        val state = { enabled: Boolean ->
+            playerHoldsScreenOn(isExpanded = true, isPlaying = true, keepScreenOnEnabled = enabled)
+        }
+        assertTrue("switch ON, player expanded and playing: the flag is held", state(true))
+        assertFalse("switch OFF, same player state: the flag is not held", state(false))
     }
 }

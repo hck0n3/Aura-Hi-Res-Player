@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -470,6 +471,12 @@ fun AuraDivider(modifier: Modifier = Modifier) {
 /**
  * Artwork placeholder / container. Pass [content] to host real cover art — or a **video surface**:
  * canvas is content, not decoration, so the player's artwork area must be able to hold a video.
+ *
+ * @param size the WIDTH of the frame. [ratio] (width ÷ height) gives the height, exactly as the classic
+ *   renderers do — `Items.ItemThumbnail`/`LocalThumbnail` take a `thumbnailRatio` and apply
+ *   `Modifier.aspectRatio`, and `YouTubeGridItem` defaults a SONG card to 16:9. This used to be a hard
+ *   `Modifier.size(size)`, so a 16:9 cover handed to it lost ~44 % of its frame to the square. Every
+ *   current caller is 1:1 (the classic counterparts are), and 1f reproduces `size(size)` exactly.
  */
 @Composable
 fun AuraArtwork(
@@ -477,12 +484,14 @@ fun AuraArtwork(
     size: Dp = 48.dp,
     shape: androidx.compose.ui.graphics.Shape = AuraShapes.Artwork,
     placeholderSeed: String? = null,
+    ratio: Float = 1f,
     content: (@Composable () -> Unit)? = null,
 ) {
     val brush: Brush = remember(placeholderSeed) { AuraPalette.coverPlaceholder(placeholderSeed) }
     Box(
         modifier = modifier
-            .size(size)
+            .width(size)
+            .aspectRatio(ratio)
             .clip(shape)
             .background(brush),
     ) {

@@ -105,7 +105,6 @@ import iad1tya.echo.music.ui.component.rememberShuffleMemoryPrompt
 import iad1tya.echo.music.ui.menu.SelectionSongMenu
 import iad1tya.echo.music.ui.menu.SongMenu
 import iad1tya.echo.music.ui.menu.TopPlaylistMenu
-import iad1tya.echo.music.ui.utils.backToMain
 import iad1tya.echo.music.utils.listItemShape
 import iad1tya.echo.music.utils.makeTimeString
 import iad1tya.echo.music.viewmodels.TopPlaylistViewModel
@@ -462,11 +461,7 @@ fun TopPlaylistScreen(
                             }
                         }
                     },
-                    onLongClick = {
-                        if (!isSearching && !inSelectMode) {
-                            navController.backToMain()
-                        }
-                    }
+                    onLongClick = null
                 ) {
                     Icon(
                         painter = painterResource(

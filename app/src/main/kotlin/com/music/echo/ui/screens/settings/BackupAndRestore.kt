@@ -51,7 +51,6 @@ import iad1tya.echo.music.ui.menu.AddToPlaylistDialogOnline
 import iad1tya.echo.music.ui.menu.CsvColumnMappingDialog
 import iad1tya.echo.music.ui.menu.CsvImportProgressDialog
 import iad1tya.echo.music.ui.menu.LoadingScreen
-import iad1tya.echo.music.ui.utils.backToMain
 import iad1tya.echo.music.viewmodels.BackupRestoreViewModel
 import iad1tya.echo.music.viewmodels.ConvertedSongLog
 import iad1tya.echo.music.viewmodels.CsvImportState
@@ -338,7 +337,7 @@ fun BackupAndRestore(
                         navController.navigateUp()
                     }
                 },
-                onLongClick = navController::backToMain,
+                onLongClick = null,
             ) {
                 Icon(
                     painterResource(R.drawable.arrow_back),

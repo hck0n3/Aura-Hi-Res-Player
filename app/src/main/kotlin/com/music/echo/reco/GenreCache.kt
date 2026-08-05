@@ -24,9 +24,9 @@ import java.util.concurrent.atomic.AtomicInteger
  *
  * Keyed by lowercased artist name so it matches both local songs and YouTube items. A blank value is a
  * cached DEFINITIVE "unknown" (iTunes answered and knows no genre) so we don't keep re-fetching the same
- * artist; transient fetch FAILURES are never persisted. Fetching is WiFi-gated by default (user
- * preference, see [GenreEnrichOnMobileKey]) and runs in the background — taste falls back gracefully to
- * artist affinity until it fills in.
+ * artist; transient fetch FAILURES are never persisted. Fetching runs in the background on any network
+ * unless the user turns it off (see [GenreEnrichOnMobileKey] and the note in [enrich]) — taste falls
+ * back gracefully to artist affinity until it fills in.
  */
 object GenreCache {
     private const val PREFS = "artist_genres"
@@ -89,18 +89,28 @@ object GenreCache {
      * never attempted stay eligible for later enrich runs.
      *
      * Network gate: `onlyWifi = true` (what every call site passes) means "honour the user's network
-     * preference" — WiFi-only by DEFAULT (today's exact behaviour), unless the user opted in to
-     * [GenreEnrichOnMobileKey]. The preference is read HERE, not by callers, precisely so the call sites
-     * (MusicService, HomeViewModel) keep compiling untouched. `onlyWifi = false` still means "no gate".
+     * preference" — which now defaults to ALLOWING mobile data (see the comment at the gate itself for
+     * why WiFi-only killed the feature in the car). The preference is read HERE, not by callers,
+     * precisely so the call sites (MusicService, HomeViewModel) keep compiling untouched.
+     * `onlyWifi = false` still means "no gate".
      */
     suspend fun enrich(context: Context, artistNames: List<String>, onlyWifi: Boolean) = withContext(Dispatchers.IO) {
         // withContext(IO) is a self-defence, not a formality: this is reachable from MusicService's scope, which
         // is Main (the player's looper). The WiFi check is a binder IPC and `has()` can force a synchronous XML
         // load — neither belongs on the playback thread, whatever the caller passes.
         if (onlyWifi && !isWifi(context)) {
-            // Not on WiFi: only proceed if the user explicitly allowed mobile-data enrichment AND there
+            // Not on WiFi: proceed unless the user turned mobile-data enrichment OFF, and only if there
             // is actually a network to talk to. (DataStore read is suspend + we're already on IO.)
-            val allowMobile = context.dataStore.data.first()[GenreEnrichOnMobileKey] ?: false
+            //
+            // DEFAULT FLIPPED TO ON. WiFi-only was chosen as the conservative default, but it made the
+            // feature dead exactly where the owner listens — in the car, on mobile data, every artist the
+            // infinite radio surfaces stayed permanently unknown for the whole drive, so the genre steer
+            // had nothing to steer with and the smart queue mixed genres. The payload it buys back is
+            // trivially small: at most [MAX_BATCH] iTunes lookups per trigger (a few KB each), only for
+            // artists we have never seen, with definitive misses cached forever — so the cost decays to
+            // zero as the cache fills. No migration key is needed: this is a read-time default, and a
+            // user who explicitly turned the switch OFF has `false` STORED, which still wins here.
+            val allowMobile = context.dataStore.data.first()[GenreEnrichOnMobileKey] ?: true
             if (!allowMobile || !hasInternet(context)) return@withContext
         }
         val pending = artistNames

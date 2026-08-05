@@ -35,6 +35,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import iad1tya.echo.music.R
+import iad1tya.echo.music.ui.newui.AuraPalette
+import iad1tya.echo.music.ui.newui.AuraShapes
+import iad1tya.echo.music.ui.newui.AuraType
+import iad1tya.echo.music.ui.newui.rememberAuraPanelSkin
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -49,11 +53,19 @@ fun ActivityHistoryBottomSheet(
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
+    // StatsScreen itself is built entirely from shared primitives (`ChoiceChipsRow`,
+    // `NavigationTitle`, `LocalSongsGrid`/`LocalArtistsGrid`/`LocalAlbumsGrid`), so the `Items.kt`
+    // restyle already reaches it. THIS sheet is the one piece of chrome it hand-rolls, so it is the
+    // one piece that needed doing. ONE flag read for the whole sheet.
+    val skin = rememberAuraPanelSkin()
+    val auraDark = skin.enabled && skin.darkGround
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         dragHandle = { BottomSheetDefaults.DragHandle() },
-        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        containerColor = if (auraDark) AuraPalette.GroundRaised
+        else MaterialTheme.colorScheme.surfaceContainerLow,
         shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
     ) {
         Column(
@@ -73,16 +85,16 @@ fun ActivityHistoryBottomSheet(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = stringResource(R.string.activity_history),
-                        style = MaterialTheme.typography.headlineSmall,
+                        style = if (skin.enabled) AuraType.SheetTitle else MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface,
+                        color = if (skin.enabled) skin.ink else MaterialTheme.colorScheme.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
                         text = periodLabel,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = if (skin.enabled) AuraType.RowSubtitle else MaterialTheme.typography.bodyMedium,
+                        color = if (skin.enabled) skin.inkMuted else MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -92,7 +104,7 @@ fun ActivityHistoryBottomSheet(
                     Icon(
                         painter = painterResource(R.drawable.close),
                         contentDescription = stringResource(R.string.close),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        tint = if (skin.enabled) skin.inkMuted else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
@@ -102,8 +114,9 @@ fun ActivityHistoryBottomSheet(
             // Total Listening Time Hero Card (Pixel Settings banner style)
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(24.dp),
-                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
+                shape = if (skin.enabled) AuraShapes.Card else RoundedCornerShape(24.dp),
+                color = if (skin.enabled) skin.accent.copy(alpha = 0.12f)
+                else MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = 24.dp, vertical = 20.dp),
@@ -120,21 +133,31 @@ fun ActivityHistoryBottomSheet(
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = stringResource(R.string.total_listening_time),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.primary,
-                            fontWeight = FontWeight.Bold,
+                            style = if (skin.enabled) AuraType.SectionLabel else MaterialTheme.typography.labelMedium,
+                            color = if (skin.enabled) skin.accent else MaterialTheme.colorScheme.primary,
+                            fontWeight = if (skin.enabled) FontWeight.Normal else FontWeight.Bold,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             text = durationText,
-                            style = MaterialTheme.typography.headlineLarge.copy(
-                                fontWeight = FontWeight.Bold,
-                                fontSize = durationFontSize,
-                                letterSpacing = (-1).sp
-                            ),
-                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            // The headline number is TECHNICAL DATA — the render sets those in
+                            // monospace. The three responsive sizes are kept exactly, so a long
+                            // "1234h 56m" still shrinks the same way on both paths.
+                            style = if (skin.enabled)
+                                AuraType.Technical.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = durationFontSize,
+                                    letterSpacing = (-1).sp,
+                                )
+                            else
+                                MaterialTheme.typography.headlineLarge.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = durationFontSize,
+                                    letterSpacing = (-1).sp
+                                ),
+                            color = if (skin.enabled) skin.ink else MaterialTheme.colorScheme.onPrimaryContainer,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -143,13 +166,16 @@ fun ActivityHistoryBottomSheet(
                     Box(
                         modifier = Modifier
                             .size(48.dp)
-                            .background(MaterialTheme.colorScheme.primary, CircleShape),
+                            .background(
+                                if (skin.enabled) skin.accent else MaterialTheme.colorScheme.primary,
+                                CircleShape
+                            ),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             painter = painterResource(R.drawable.timer),
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onPrimary,
+                            tint = if (auraDark) AuraPalette.OnAccent else MaterialTheme.colorScheme.onPrimary,
                             modifier = Modifier.size(24.dp)
                         )
                     }
@@ -163,7 +189,7 @@ fun ActivityHistoryBottomSheet(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.Center
             ) {
-                val segmentBgColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                val segmentBgColor = if (skin.enabled) skin.fill else MaterialTheme.colorScheme.surfaceContainerHigh
 
                 // Songs Segment (Rounded Start)
                 Box(
@@ -188,7 +214,7 @@ fun ActivityHistoryBottomSheet(
                         Icon(
                             painter = painterResource(R.drawable.music_note),
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
+                            tint = if (skin.enabled) skin.accent else MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(20.dp)
                         )
                         Spacer(modifier = Modifier.height(6.dp))
@@ -205,15 +231,15 @@ fun ActivityHistoryBottomSheet(
                                 fontSize = songsFontSize,
                                 letterSpacing = (-0.5).sp
                             ),
-                            color = MaterialTheme.colorScheme.onSurface,
+                            color = if (skin.enabled) skin.ink else MaterialTheme.colorScheme.onSurface,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = stringResource(R.string.songs),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = if (skin.enabled) AuraType.QualityBadge else MaterialTheme.typography.labelSmall,
+                            color = if (skin.enabled) skin.inkMuted else MaterialTheme.colorScheme.onSurfaceVariant,
                             fontWeight = FontWeight.Medium,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -241,7 +267,7 @@ fun ActivityHistoryBottomSheet(
                         Icon(
                             painter = painterResource(R.drawable.artist),
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.secondary,
+                            tint = if (skin.enabled) skin.accent else MaterialTheme.colorScheme.secondary,
                             modifier = Modifier.size(20.dp)
                         )
                         Spacer(modifier = Modifier.height(6.dp))
@@ -258,15 +284,15 @@ fun ActivityHistoryBottomSheet(
                                 fontSize = artistsFontSize,
                                 letterSpacing = (-0.5).sp
                             ),
-                            color = MaterialTheme.colorScheme.onSurface,
+                            color = if (skin.enabled) skin.ink else MaterialTheme.colorScheme.onSurface,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = stringResource(R.string.artists),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = if (skin.enabled) AuraType.QualityBadge else MaterialTheme.typography.labelSmall,
+                            color = if (skin.enabled) skin.inkMuted else MaterialTheme.colorScheme.onSurfaceVariant,
                             fontWeight = FontWeight.Medium,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -299,7 +325,7 @@ fun ActivityHistoryBottomSheet(
                         Icon(
                             painter = painterResource(R.drawable.album),
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.tertiary,
+                            tint = if (skin.enabled) skin.accent else MaterialTheme.colorScheme.tertiary,
                             modifier = Modifier.size(20.dp)
                         )
                         Spacer(modifier = Modifier.height(6.dp))
@@ -316,15 +342,15 @@ fun ActivityHistoryBottomSheet(
                                 fontSize = albumsFontSize,
                                 letterSpacing = (-0.5).sp
                             ),
-                            color = MaterialTheme.colorScheme.onSurface,
+                            color = if (skin.enabled) skin.ink else MaterialTheme.colorScheme.onSurface,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = stringResource(R.string.albums),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = if (skin.enabled) AuraType.QualityBadge else MaterialTheme.typography.labelSmall,
+                            color = if (skin.enabled) skin.inkMuted else MaterialTheme.colorScheme.onSurfaceVariant,
                             fontWeight = FontWeight.Medium,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -338,8 +364,8 @@ fun ActivityHistoryBottomSheet(
             // All-Time Total Play Time Card (Clean Wide rounded settings-style row)
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(24.dp),
-                color = MaterialTheme.colorScheme.surfaceContainerHigh
+                shape = if (skin.enabled) AuraShapes.Card else RoundedCornerShape(24.dp),
+                color = if (skin.enabled) skin.fill else MaterialTheme.colorScheme.surfaceContainerHigh
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp),
@@ -354,21 +380,21 @@ fun ActivityHistoryBottomSheet(
                         Box(
                             modifier = Modifier
                                 .size(40.dp)
-                                .background(MaterialTheme.colorScheme.secondary.copy(alpha = 0.12f), CircleShape),
+                                .background(if (skin.enabled) skin.accent.copy(alpha = 0.12f) else MaterialTheme.colorScheme.secondary.copy(alpha = 0.12f), CircleShape),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 painter = painterResource(R.drawable.timer),
                                 contentDescription = null,
-                                tint = MaterialTheme.colorScheme.secondary,
+                                tint = if (skin.enabled) skin.accent else MaterialTheme.colorScheme.secondary,
                                 modifier = Modifier.size(20.dp)
                             )
                         }
                         Column {
                             Text(
                                 text = stringResource(R.string.all_time),
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = if (skin.enabled) AuraType.QualityBadge else MaterialTheme.typography.labelMedium,
+                                color = if (skin.enabled) skin.inkMuted else MaterialTheme.colorScheme.onSurfaceVariant,
                                 fontWeight = FontWeight.Bold,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
@@ -376,7 +402,7 @@ fun ActivityHistoryBottomSheet(
                             Text(
                                 text = stringResource(R.string.total_listening_time),
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                color = if (skin.enabled) skin.inkFaint else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
@@ -397,7 +423,7 @@ fun ActivityHistoryBottomSheet(
                             fontSize = allTimeFontSize,
                             letterSpacing = (-0.5).sp
                         ),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = if (skin.enabled) skin.inkMuted else MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )

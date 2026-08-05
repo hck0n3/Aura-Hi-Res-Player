@@ -16,9 +16,10 @@ package iad1tya.echo.music.reco
  *  - [Profile.active] gates EVERY consumer: below minimum signal (coverage and known artists both low)
  *    the profile must be treated as absent and behavior stays byte-identical to today.
  *  - [steerTerm] is a BOUNDED additive score nudge ([STEER_MIN]..[STEER_MAX]) for [MusicService]'s
- *    orderedByTaste key — NEVER a filter, NEVER a drop. A candidate whose artist/genre is UNKNOWN
- *    scores exactly 0.0 (strictly neutral): GenreCache only covers known artists, so anything stronger
- *    would collapse the infinite queue onto the library.
+ *    orderedByTaste key — NEVER a filter, NEVER a drop.
+ *  - A candidate whose genre is UNKNOWN carries [UNKNOWN_GENRE_PUSH] (+1, ONE rank on an index-dominated
+ *    key) — see that constant for why "exactly 0.0" was the hole behind the owner's intermittent
+ *    genre mixing, and why +1 cannot collapse the queue onto the library.
  */
 object ContextProfile {
 
@@ -37,6 +38,49 @@ object ContextProfile {
     private const val GENRE_PULL_SCALE = -4.0
     private const val OFF_GENRE_PUSH = 6.0
     private const val LANGUAGE_TIEBREAK = -1.0
+
+    /**
+     * The nudge for a candidate whose genre is UNKNOWN, while a genre-bearing profile is steering.
+     *
+     * It used to be exactly 0.0, and that WAS the owner's "la cola inteligente me mezcla géneros":
+     * an unknown candidate scored 0.0 while an on-genre one earned up to [STEER_MIN] (-4), so a
+     * wrong-genre song at relatedness rank 2 outranked a right-genre song at rank 8. Because the cache
+     * fills in batches (WiFi-gated, capped) the SAME artist is unknown on one append and known on the
+     * next — which is exactly why he heard it as right / wrong / right / wrong instead of consistently
+     * wrong.
+     *
+     * ONE, deliberately: the sort key is `index - pull + soft + jitter + ctx`, where `index` is the
+     * relatedness rank and steps by exactly 1.0 per rank. +1 therefore moves an unknown candidate back
+     * by ONE rank — enough to lose a tie to a known on-genre candidate at the same rank, and nothing
+     * more. Registry #39/#41 still holds by construction:
+     *  - it is a NUDGE on a positional key, never a filter and never a drop — an unknown candidate is
+     *    still eligible, still played, and a batch made entirely of unknowns comes out in YouTube's
+     *    own relatedness order (every item shifted by the same +1);
+     *  - it is 6x smaller than [OFF_GENRE_PUSH], so "we don't know" is never treated as "wrong genre";
+     *  - a candidate by a CONTEXT ARTIST is matched cache-free and takes [ARTIST_PULL] instead, so the
+     *    push can never fire on the collection's own artists;
+     *  - it only applies when the profile actually knows some genres ([Profile.genreShare] non-empty)
+     *    and passed [Profile.active] — a cache that knows nothing steers nothing;
+     *  - and it buys NO exclusion anywhere: see [blocksExploration], which is deliberately gated on a
+     *    KNOWN genre so this push can never become a filter by the back door.
+     */
+    const val UNKNOWN_GENRE_PUSH = 1.0
+
+    /**
+     * May a candidate the steer pushed BACK be kept out of the exploration reserve (MusicService's
+     * `withExplorationQuota`, ~1 slot in 5 held for an artist the taste profile does not know)?
+     * ONLY when we actually KNOW its genre and know it to be off-context — [steerTerm] > 0 with a
+     * non-null [candidateGenre].
+     *
+     * REGISTRY #39/#41, the exact collision this exists to prevent: GenreCache only ever fills with
+     * artists already around the user, so an artist the radio surfaces for the FIRST time is unknown
+     * BY CONSTRUCTION. When an ABSENT genre also bought a block, `steerTerm > 0` matched EVERY new
+     * artist on a cold or partial cache — the fresh partition emptied, the quota no-opped for every
+     * automatic continuation, and each batch head was left to the taste pull, i.e. to artists the
+     * owner already has. The +1 stays a one-rank sort nudge; only a genre we can NAME excludes.
+     */
+    fun blocksExploration(steerTerm: Double, candidateGenre: String?): Boolean =
+        steerTerm > 0.0 && candidateGenre != null
 
     /** Spanish for "the profile speaks Spanish" — the only language the genre names can safely prove. */
     const val LANG_ES = "es"
@@ -122,8 +166,9 @@ object ContextProfile {
      *  - context artist          -> [ARTIST_PULL] (a few spots earlier — strongest, cache-free signal)
      *  - context genre           -> [GENRE_PULL_SCALE] * that genre's share (dominant genre pulls hardest)
      *  - KNOWN off-context genre -> [OFF_GENRE_PUSH] (a few spots later — the anti-drift push; NEVER a drop)
-     *  - unknown artist + genre  -> exactly 0.0 (registry #39/#41: unknown stays neutral and eligible,
-     *    so the exploration quota still fills and the infinite queue can never collapse)
+     *  - UNKNOWN genre           -> [UNKNOWN_GENRE_PUSH] (exactly ONE rank later — a tie-break against
+     *    known on-genre candidates, never a filter; see that constant for the #39/#41 argument)
+     *  - profile with no genres at all -> 0.0 (nothing known, nothing steered)
      *
      * The weak language tie-break ([LANGUAGE_TIEBREAK]) only ever SOFTENS/pulls (a Spanish-proving
      * candidate genre under a Spanish context), never punishes. Result clamped to [STEER_MIN]..[STEER_MAX].
@@ -137,8 +182,10 @@ object ContextProfile {
         var term = when {
             artistMatch -> ARTIST_PULL
             share != null -> GENRE_PULL_SCALE * share
-            candidateGenre != null && profile.genreShare.isNotEmpty() -> OFF_GENRE_PUSH
-            else -> 0.0
+            profile.genreShare.isEmpty() -> 0.0
+            candidateGenre != null -> OFF_GENRE_PUSH
+            // Genre unknown, not a context artist, and the profile DOES know what the collection was.
+            else -> UNKNOWN_GENRE_PUSH
         }
         if (profile.languageHint == LANG_ES && candidateGenre != null && isSpanishGenre(candidateGenre)) {
             term += LANGUAGE_TIEBREAK

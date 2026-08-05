@@ -9,6 +9,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -120,18 +123,45 @@ fun AuraLibraryScreen(navController: NavController) {
                 currentInsets.getBottom(density) + with(density) { fabColumnClearance.roundToPx() }
         }
     }
+    // The header + chip row are laid out ABOVE the tab list, so they must consume the top inset
+    // themselves and the list must not add it a second time. (Before, nothing consumed it: the chips
+    // were laid out at y = 0, i.e. behind the status bar and behind the top bar that used to be drawn
+    // here, while each tab list still reserved the full top inset below them.)
+    val topInsetOnly = remember(currentInsets) { currentInsets.only(WindowInsetsSides.Top) }
+    val tabInsets = remember(paddedInsets, currentInsets, isPlaylists) {
+        val source = if (isPlaylists) paddedInsets else currentInsets
+        object : WindowInsets {
+            override fun getLeft(density: Density, layoutDirection: LayoutDirection) =
+                source.getLeft(density, layoutDirection)
+
+            override fun getTop(density: Density) = 0
+
+            override fun getRight(density: Density, layoutDirection: LayoutDirection) =
+                source.getRight(density, layoutDirection)
+
+            override fun getBottom(density: Density) = source.getBottom(density)
+        }
+    }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .auraScreenBackground(bloom, intensity = 0.40f),
     ) {
-        Column(Modifier.fillMaxSize()) {
-            // NOTE: no "Biblioteca" title is drawn here on purpose. The render shows one, but the app
-            // SKELETON already draws it — `MainActivity`'s TopAppBar sets `currentTitle` to
-            // `R.string.filter_library` on this route. Repeating it would give the user two titles. The
-            // skeleton is inventory section 1, not one of the six screens of this beta; restyling that
-            // bar to the new language is the follow-up, not a second title here.
+        Column(
+            Modifier
+                .fillMaxSize()
+                .windowInsetsPadding(topInsetOnly),
+        ) {
+            // The render's own "Biblioteca" title. It used to be omitted because MainActivity's opaque
+            // TopAppBar drew it, and two titles would have been worse than a Material one — but that bar
+            // is exactly the "barra negra fea" of the beta verdict and is no longer drawn on this route
+            // (MainActivity gates it on `auraOwnsHeader`). So the title comes home to the content, where
+            // the render puts it, and the global actions the bar carried ride in its trailing slot.
+            AuraScreenHeader(
+                title = stringResource(R.string.filter_library),
+                trailing = { AuraTopActions() },
+            )
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
@@ -170,7 +200,7 @@ fun AuraLibraryScreen(navController: NavController) {
             }
 
             CompositionLocalProvider(
-                LocalPlayerAwareWindowInsets provides if (isPlaylists) paddedInsets else currentInsets,
+                LocalPlayerAwareWindowInsets provides tabInsets,
             ) {
                 Box(Modifier.fillMaxSize()) {
                     when (filterType) {

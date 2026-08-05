@@ -40,7 +40,6 @@ import iad1tya.echo.music.ui.component.shimmer.ShimmerHost
 import iad1tya.echo.music.ui.menu.YouTubeAlbumMenu
 import iad1tya.echo.music.ui.menu.YouTubeArtistMenu
 import iad1tya.echo.music.ui.menu.YouTubePlaylistMenu
-import iad1tya.echo.music.ui.utils.backToMain
 import iad1tya.echo.music.utils.rememberEnumPreference
 import iad1tya.echo.music.viewmodels.AccountContentType
 import iad1tya.echo.music.viewmodels.AccountViewModel
@@ -194,7 +193,7 @@ fun AccountScreen(
         navigationIcon = {
             IconButton(
                 onClick = navController::navigateUp,
-                onLongClick = navController::backToMain,
+                onLongClick = null,
             ) {
                 Icon(
                     painterResource(R.drawable.arrow_back),

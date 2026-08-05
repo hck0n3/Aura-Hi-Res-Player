@@ -78,7 +78,6 @@ import iad1tya.echo.music.ui.component.YouTubeListItem
 import iad1tya.echo.music.ui.menu.SelectionMediaMetadataMenu
 import iad1tya.echo.music.ui.menu.SongMenu
 import iad1tya.echo.music.ui.menu.YouTubeSongMenu
-import iad1tya.echo.music.ui.utils.backToMain
 import iad1tya.echo.music.utils.listItemShape
 import iad1tya.echo.music.utils.rememberPreference
 import iad1tya.echo.music.viewmodels.DateAgo
@@ -470,11 +469,7 @@ fun HistoryScreen(
                             navController.navigateUp()
                         }
                     },
-                    onLongClick = {
-                        if (!isSearching) {
-                            navController.backToMain()
-                        }
-                    }
+                    onLongClick = null
                 ) {
                     Icon(
                         painter = painterResource(R.drawable.arrow_back),

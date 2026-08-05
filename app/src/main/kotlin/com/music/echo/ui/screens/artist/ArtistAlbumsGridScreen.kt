@@ -38,7 +38,6 @@ import iad1tya.echo.music.models.toMediaMetadata
 import iad1tya.echo.music.playback.queues.YouTubeQueue
 import iad1tya.echo.music.ui.component.IconButton
 import iad1tya.echo.music.ui.component.YouTubeGridItem
-import iad1tya.echo.music.ui.utils.backToMain
 
 /**
  * Holds the already-loaded items of an artist section so they can be shown in a vertical grid even
@@ -67,7 +66,7 @@ fun ArtistAlbumsGridScreen(
         TopAppBar(
             title = { Text(title, maxLines = 1) },
             navigationIcon = {
-                IconButton(onClick = navController::navigateUp, onLongClick = navController::backToMain) {
+                IconButton(onClick = navController::navigateUp, onLongClick = null) {
                     Icon(painter = painterResource(R.drawable.arrow_back), contentDescription = null)
                 }
             },
@@ -113,6 +112,11 @@ fun ArtistAlbumsGridScreen(
                                     is PlaylistItem -> navController.navigate("online_playlist/${item.id}")
                                 }
                             },
+                            // Kept as an explicit no-op. Unlike the top-bar buttons, this is
+                            // Modifier.combinedClickable, where onLongClick was ALREADY optional —
+                            // so the empty lambda here was a choice, not boilerplate forced by a
+                            // mandatory parameter. Dropping it would make a long press play the
+                            // song / open the album, a content-behaviour change nobody asked for.
                             onLongClick = {},
                         ),
                 )

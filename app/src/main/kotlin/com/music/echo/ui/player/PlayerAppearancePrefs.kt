@@ -1,5 +1,6 @@
 package iad1tya.echo.music.ui.player
 
+import android.view.WindowManager
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.awaitHorizontalTouchSlopOrCancellation
@@ -22,6 +23,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import iad1tya.echo.music.constants.HidePlayerSliderKey
 import iad1tya.echo.music.constants.HideStatusBarOnFullscreenKey
+import iad1tya.echo.music.constants.KeepScreenOn
 import iad1tya.echo.music.constants.PlayerButtonsStyle
 import iad1tya.echo.music.constants.PlayerButtonsStyleKey
 import iad1tya.echo.music.constants.SwipeLyricsKey
@@ -40,6 +42,12 @@ import iad1tya.echo.music.utils.rememberPreference
  * Everything below is the ONE implementation of those preferences. Both players call into this file;
  * neither re-derives a colour, re-writes an insets effect or re-invents the gesture. If a fifth player
  * shape ever appears, it honours the four settings by calling these — and cannot honour them halfway.
+ *
+ * One Ajustes ▸ **Reproductor** control now lives here too — "Mantener la pantalla encendida cuando el
+ * reproductor está expandido" ([KeepScreenOnWhilePlayerExpandedEffect]). It is not an appearance
+ * setting, but it is the same shape of problem: a window-level effect that every player shape must run
+ * and that had exactly one read site, so with the new UI on it only worked after rotating the phone.
+ * The file's rule is "one implementation per player-wide preference", and that is why it is here.
  */
 
 // ── "Estilo de los botones del reproductor" (PlayerButtonsStyleKey) ───────────────────────────────
@@ -181,6 +189,99 @@ fun HideStatusBarOnFullscreenEffect(isFullScreen: Boolean) {
                 val insetsController = WindowCompat.getInsetsController(window, window.decorView)
                 insetsController.show(WindowInsetsCompat.Type.statusBars())
             }
+        }
+    }
+}
+
+// ── "Mantener la pantalla encendida cuando el reproductor está expandido" (KeepScreenOn) ──────────
+
+/**
+ * The THREE terms that must all hold before the window keeps the screen awake. Pure, so the predicate
+ * can be pinned: this is the whole meaning of the setting, and each term is one a refactor can silently
+ * drop — dropping [isPlaying] burns battery on a paused player, dropping [isExpanded] burns it behind
+ * the mini player, and dropping [keepScreenOnEnabled] makes the switch a placebo in the other direction
+ * (always on). The classic player's original expression was `(isPlaying && pref)` tested inside an
+ * `isExpanded` guard; this is the same conjunction, written where it can be read.
+ */
+fun playerHoldsScreenOn(
+    isExpanded: Boolean,
+    isPlaying: Boolean,
+    keepScreenOnEnabled: Boolean,
+): Boolean = isExpanded && isPlaying && keepScreenOnEnabled
+
+/**
+ * Holds `FLAG_KEEP_SCREEN_ON` while the player sheet is EXPANDED and playback is actually running.
+ *
+ * The row is in Ajustes ▸ Reproductor (`R.string.keep_screen_on_when_player_is_expanded`) and is
+ * reachable with either UI, but its only consumer used to be [BottomSheetPlayer]. With "Interfaz
+ * nueva" on, PORTRAIT is `AuraPortraitPlayer` and landscape / wide falls through to the classic sheet
+ * (AuraPlayer.kt), so the switch did nothing until the phone was rotated — a control that appears to
+ * work and does not, which the owner rates worse than one that never works.
+ *
+ * ## This is THE implementation — extracted, not rewritten
+ * The lines below were lifted out of the classic player's status-bar `DisposableEffect`, where the two
+ * unrelated concerns shared one block. What the old block did, exactly:
+ *  · body, guarded by `window != null && state.isExpanded`:
+ *    `if (keepScreenOn && state.isExpanded) addFlags else clearFlags`, with
+ *    `keepScreenOn = isPlaying && pref`;
+ *  · `onDispose`: `clearFlags`, unconditionally.
+ *
+ * So while COLLAPSED the body ran nothing — but `state.isExpanded` was an effect KEY, so collapsing
+ * disposed the previous instance first and that `onDispose` had already cleared the flag. Net: the flag
+ * was held exactly while `isExpanded && isPlaying && pref`, and cleared in every other state. [hold]
+ * below is that same predicate, stated once instead of split across a guard, a condition and a dispose.
+ *
+ * ## Why [currentMediaId] is a key
+ * NOT decoration, and not "in case": the shared [iad1tya.echo.music.ui.component.Lyrics] composable
+ * `addFlags` the SAME window flag while lyrics are open and `clearFlags` it on dispose. Closing the
+ * lyrics therefore drops a flag this effect is still meant to be holding. The old effect happened to
+ * re-key on `mediaMetadata?.id`, so the next track change re-asserted it; keeping that key preserves
+ * that self-healing verbatim, and now gives it to the new player too. (Both players pass their own
+ * `mediaMetadata?.id`, which is the very value the classic effect used.)
+ *
+ * The old effect also re-keyed on `playerBackground` and `useDarkTheme` — the insets half's inputs,
+ * which this half never read. Dropping them changes no state this effect puts the window in; it only
+ * removes a redundant clear-and-re-add on a theme change. Stated plainly rather than claimed as
+ * equivalence: the sole sequence in which they differ is "something external cleared the flag, and the
+ * user then changed theme/background without changing track", where the old code re-asserted a frame
+ * earlier than the new one does.
+ *
+ * ## Thermal / battery
+ * Nothing per frame. The flag is released on EVERY exit: the predicate going false, the sheet
+ * collapsing, the player leaving composition. `onDispose` clears unconditionally rather than re-testing
+ * the predicate, because a leaked KEEP_SCREEN_ON is an invisible battery drain and the cost of clearing
+ * a flag that was never set is zero.
+ *
+ * @param isExpanded the sheet's own expanded state — a collapsed (mini) player never holds the flag.
+ * @param isPlaying the LOCAL player's playing state, so a paused player lets the screen sleep.
+ * @param currentMediaId the playing track's id; see "Why [currentMediaId] is a key" above.
+ */
+@Composable
+fun KeepScreenOnWhilePlayerExpandedEffect(
+    isExpanded: Boolean,
+    isPlaying: Boolean,
+    currentMediaId: String?,
+) {
+    val context = LocalContext.current
+    val keepScreenOnEnabled by rememberPreference(KeepScreenOn, defaultValue = false)
+    val hold = playerHoldsScreenOn(
+        isExpanded = isExpanded,
+        isPlaying = isPlaying,
+        keepScreenOnEnabled = keepScreenOnEnabled,
+    )
+
+    DisposableEffect(hold, currentMediaId) {
+        val window = (context as? android.app.Activity)?.window
+        if (window != null) {
+            if (hold) {
+                window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            } else {
+                window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            }
+        }
+
+        onDispose {
+            window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         }
     }
 }

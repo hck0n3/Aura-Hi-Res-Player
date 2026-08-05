@@ -132,7 +132,6 @@ import iad1tya.echo.music.ui.menu.YouTubeAlbumMenu
 import iad1tya.echo.music.ui.menu.YouTubeArtistMenu
 import iad1tya.echo.music.ui.menu.YouTubePlaylistMenu
 import iad1tya.echo.music.ui.menu.YouTubeSongMenu
-import iad1tya.echo.music.ui.utils.backToMain
 import iad1tya.echo.music.ui.utils.fadingEdge
 import iad1tya.echo.music.ui.utils.isScrollingUp
 import iad1tya.echo.music.ui.utils.resize
@@ -913,7 +912,7 @@ fun ArtistScreen(
                                         } else {
                                             ArtistSectionBuffer.title = section.title
                                             ArtistSectionBuffer.items = section.items.distinctBy { it.id }
-                                            navController.navigate("artist/section_buffer")
+                                            navController.navigate("artist_section_buffer")
                                         }
                                     },
                                 )
@@ -1224,7 +1223,7 @@ fun ArtistScreen(
         navigationIcon = {
             IconButton(
                 onClick = navController::navigateUp,
-                onLongClick = navController::backToMain,
+                onLongClick = null,
             ) {
                 Icon(
                     painterResource(R.drawable.arrow_back),

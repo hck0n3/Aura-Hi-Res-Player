@@ -125,7 +125,6 @@ import iad1tya.echo.music.ui.menu.YouTubeArtistMenu
 import iad1tya.echo.music.ui.menu.YouTubePlaylistMenu
 import iad1tya.echo.music.ui.menu.YouTubeSelectionSongMenu
 import iad1tya.echo.music.ui.menu.YouTubeSongMenu
-import iad1tya.echo.music.ui.utils.backToMain
 import iad1tya.echo.music.ui.utils.rememberIsTvOrCar
 import iad1tya.echo.music.ui.utils.tvFocusable
 import iad1tya.echo.music.utils.listItemShape
@@ -525,11 +524,7 @@ fun OnlinePlaylistScreen(
                             navController.navigateUp()
                         }
                     },
-                    onLongClick = {
-                        if (!isSearching && !inSelectMode) {
-                            navController.backToMain()
-                        }
-                    }
+                    onLongClick = null
                 ) {
                     Icon(
                         painter = painterResource(

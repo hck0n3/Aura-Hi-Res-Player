@@ -1090,6 +1090,11 @@
     <string name="accent_hex_apply">Apply colour</string>
     <string name="accent_preview">Colour preview</string>
 
+    <!-- Restore every theme setting on this screen to its original value. -->
+    <string name="theme_reset">Restore original settings</string>
+    <string name="theme_reset_desc">Puts the theme mode, the accent colour, the intensity, the custom colour, pure black and the named theme back the way they came.</string>
+    <string name="theme_reset_confirm">This discards the theme mode, the colour, the intensity and the custom colour you chose. Restore the original settings?</string>
+
     <!-- Saturated presets -->
     <!-- Name of the app-icon theme. A proper noun (the icon concept is called "Muestreo"), so it
          reads the same in every locale, but it is declared alongside the other palette names in the

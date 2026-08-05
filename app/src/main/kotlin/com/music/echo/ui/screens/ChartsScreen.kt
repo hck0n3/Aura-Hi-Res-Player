@@ -75,7 +75,6 @@ import iad1tya.echo.music.ui.component.shimmer.ShimmerHost
 import iad1tya.echo.music.ui.component.shimmer.TextPlaceholder
 import iad1tya.echo.music.ui.menu.YouTubeSongMenu
 import iad1tya.echo.music.ui.utils.SnapLayoutInfoProvider
-import iad1tya.echo.music.ui.utils.backToMain
 import iad1tya.echo.music.utils.listItemShape
 import iad1tya.echo.music.viewmodels.ChartsViewModel
 
@@ -110,7 +109,7 @@ fun ChartsScreen(
                 navigationIcon = {
                     IconButton(
                         onClick = { navController.navigateUp() },
-                        onLongClick = { navController.backToMain() }
+                        onLongClick = null
                     ) {
                         Icon(
                             painter = painterResource(R.drawable.arrow_back),

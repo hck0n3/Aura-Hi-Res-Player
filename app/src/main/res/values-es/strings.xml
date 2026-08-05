@@ -188,6 +188,11 @@
     <string name="removed_song_from_playlist">Eliminado «%s» de la lista de reproducción</string>
     <string name="playlist_synced">Lista de reproducción sincronizada</string>
     <string name="undo">Deshacer</string>
+    <string name="previous_queue_offer">¿Volver a la cola anterior?</string>
+    <string name="previous_queue_offer_titled">¿Volver a «%s»?</string>
+    <string name="previous_queue_resume">Volver</string>
+    <string name="previous_queue_offer_setting">Ofrecer volver a la cola anterior</string>
+    <string name="previous_queue_offer_setting_desc">Cuando dejes una lista o tu biblioteca para poner un álbum o un artista, un aviso te ofrece volver a la cola que dejaste, a la misma canción y el mismo segundo. No interrumpe la reproducción y caduca a los pocos minutos</string>
     <string name="lyrics_not_found">Letras no encontradas</string>
     <string name="sleep_timer">Temporizador de apagado</string>
     <string name="end_of_song">Al finalizar la canción</string>

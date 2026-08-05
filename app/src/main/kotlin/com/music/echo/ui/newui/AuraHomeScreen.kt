@@ -338,6 +338,10 @@ fun AuraHomeScreen(
                     AuraScreenHeader(
                         label = auraGreeting(),
                         title = stringResource(R.string.home),
+                        // The global top bar is no longer drawn on this route (it was a second, opaque
+                        // header stacked over this one). Its four actions — Escuchar juntos, Historial,
+                        // Modo sin conexión and Cuenta — live here now; see [LocalAuraTopActions].
+                        trailing = { AuraTopActions() },
                     )
                 }
 

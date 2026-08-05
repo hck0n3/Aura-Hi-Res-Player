@@ -90,6 +90,60 @@ object ShuffleOrdering {
     }
 
     /**
+     * STABLE descending sort of [order] (timeline indices) by `keys[index]`, in place, with NO boxing.
+     * Returns [order].
+     *
+     * ### Why this exists
+     * `applyShuffleOrder` built its order with `(0 until n).toMutableList().sortByDescending { keys[it] }`.
+     * That is `List<Int>` + `compareByDescending`, so it allocated `n` boxed `Integer`s for the list and a
+     * boxed `Double` **per comparison** — O(n log n) short-lived objects on the Main thread, every
+     * re-apply, on a queue the infinite radio only ever grows. The keys array was deliberately made a flat
+     * `DoubleArray` for exactly this reason; the index list was the half that was missed.
+     *
+     * ### Why the ORDER is byte-identical, not merely equivalent
+     * `sortByDescending { keys[it] }` is `sortWith(compareByDescending(selector))`, whose comparator is
+     * `compareValues(keys[b], keys[a])` — i.e. **`java.lang.Double.compare(keys[b], keys[a])`**, because
+     * `compareValues` goes through boxed `Comparable`. It is backed by `Arrays.sort(Object[], Comparator)`
+     * = TimSort, which is **stable**. This is a bottom-up merge sort using that exact comparison, taking
+     * the LEFT run on ties — also stable. So it agrees element-for-element, including on `NaN` (which
+     * `Double.compare` orders as the largest value, unlike `<`/`>`) and on `-0.0` vs `0.0`. Proven by a
+     * randomised differential test over duplicate-heavy and NaN-bearing key arrays.
+     *
+     * @param order timeline indices to sort. Every entry must be a valid index into [keys].
+     * @param keys  `keys[timelineIndex]` = sort key. Higher sorts EARLIER.
+     */
+    fun sortIndicesByKeyDescending(order: IntArray, keys: DoubleArray): IntArray {
+        val n = order.size
+        if (n < 2) return order
+        var src = order
+        var dst = IntArray(n)
+        var width = 1
+        while (width < n) {
+            var lo = 0
+            while (lo < n) {
+                val mid = minOf(lo + width, n)
+                val hi = minOf(lo + width + width, n)
+                var l = lo
+                var r = mid
+                var o = lo
+                while (l < mid && r < hi) {
+                    // <= 0 keeps the LEFT run on ties, which is what makes the merge stable.
+                    dst[o++] = if (java.lang.Double.compare(keys[src[r]], keys[src[l]]) <= 0) src[l++] else src[r++]
+                }
+                while (l < mid) dst[o++] = src[l++]
+                while (r < hi) dst[o++] = src[r++]
+                lo = hi
+            }
+            val swap = src
+            src = dst
+            dst = swap
+            width += width
+        }
+        if (src !== order) System.arraycopy(src, 0, order, 0, n)
+        return order
+    }
+
+    /**
      * BEST-EFFORT artist spacing over an already-ordered [order], in place. Returns [order].
      *
      * ### What it fixes

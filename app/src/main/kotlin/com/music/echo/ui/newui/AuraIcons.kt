@@ -512,6 +512,50 @@ object AuraIcons {
         }
     }
 
+    // ── Shell (bottom navigation + the relocated global actions) ──────────────────────────────────
+    //
+    // The render draws its bottom bar with four of the symbols above (#i-home, #i-search, #i-lib,
+    // #i-cog) and does NOT draw the app's global actions, because the mockup has no history, no
+    // offline switch and no recognition. Those four controls are real and must not be lost when the
+    // opaque Material top bar goes away, so they are drawn HERE, in the same hand-drawn language —
+    // never as a Material icon dropped into an Aura row.
+
+    /** Reconocimiento (Shazam-style). Capsule + cradle + stand. */
+    val Mic: ImageVector by lazy {
+        stroked("Mic", join = StrokeJoin.Miter) {
+            roundedRect(9f, 2.6f, 6f, 11f, 3f)
+            // M5.6 11.4a6.4 6.4 0 0 0 12.8 0 — the cradle, bulging downwards.
+            moveTo(5.6f, 11.4f); arcToRelative(6.4f, 6.4f, 0f, false, false, 12.8f, 0f)
+            moveTo(12f, 17.8f); verticalLineTo(21.2f)
+            moveTo(8.6f, 21.2f); horizontalLineTo(15.4f)
+        }
+    }
+
+    /** Historial. A clock face left open at the upper-left, with the "go back" arrowhead in the gap. */
+    val History: ImageVector by lazy {
+        stroked("History", join = StrokeJoin.Miter) {
+            moveTo(3.6f, 12f); arcToRelative(8.4f, 8.4f, 0f, true, true, 2.5f, 6f)
+            moveTo(3.6f, 12f); lineTo(6.4f, 9.4f)
+            moveTo(3.6f, 12f); lineTo(6.4f, 14.8f)
+            moveTo(12f, 7.6f); verticalLineTo(12f); lineTo(15.2f, 13.9f)
+        }
+    }
+
+    /** Modo sin conexión APAGADO — a plain cloud. */
+    val Cloud: ImageVector by lazy {
+        stroked("Cloud", join = StrokeJoin.Round) {
+            cloudPath()
+        }
+    }
+
+    /** Modo sin conexión ENCENDIDO — the same cloud, struck through. */
+    val CloudOff: ImageVector by lazy {
+        stroked("CloudOff", join = StrokeJoin.Round) {
+            cloudPath()
+            moveTo(4f, 3.8f); lineTo(20f, 19.8f)
+        }
+    }
+
     // ── Builders ──────────────────────────────────────────────────────────────────────────────────
 
     private const val VIEWPORT = 24f
@@ -561,6 +605,18 @@ private fun PathBuilder.circle(cx: Float, cy: Float, r: Float) {
     moveTo(cx - r, cy)
     arcToRelative(r, r, 0f, true, true, 2f * r, 0f)
     arcToRelative(r, r, 0f, true, true, -2f * r, 0f)
+    close()
+}
+
+/**
+ * Three arcs closed by a flat base — the cloud shared by [AuraIcons.Cloud] and [AuraIcons.CloudOff]
+ * so "con conexión" and "sin conexión" are the identical shape plus a stroke.
+ */
+private fun PathBuilder.cloudPath() {
+    moveTo(6.5f, 18f)
+    arcToRelative(3.6f, 3.6f, 0f, false, true, -0.4f, -7.2f)
+    arcToRelative(5.8f, 5.8f, 0f, false, true, 11.1f, -1.1f)
+    arcToRelative(4.3f, 4.3f, 0f, false, true, -0.7f, 8.3f)
     close()
 }
 

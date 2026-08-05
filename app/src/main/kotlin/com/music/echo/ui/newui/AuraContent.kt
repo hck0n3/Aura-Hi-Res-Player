@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -53,6 +54,7 @@ import coil3.compose.AsyncImage
 import iad1tya.echo.music.LocalDownloadUtil
 import iad1tya.echo.music.LocalPlayerConnection
 import iad1tya.echo.music.R
+import iad1tya.echo.music.constants.CropAlbumArtKey
 import iad1tya.echo.music.constants.SwipeToSongKey
 import iad1tya.echo.music.db.entities.FormatEntity
 import iad1tya.echo.music.ui.utils.resize
@@ -199,6 +201,12 @@ fun AuraSectionHeader(
  *
  * @param decodeTo pixel size the thumbnail is decoded at. Small rows decode small: a list of 40
  *   full-resolution covers is the classic way to heat a phone, and the thermal gate forbids it.
+ * @param ratio width ÷ height of the drawn frame. The classic renderers are aspect-ratio aware
+ *   (`ItemThumbnail`/`LocalThumbnail` take a `thumbnailRatio` and apply `Modifier.aspectRatio`), so
+ *   this one is too: [size] is the WIDTH and the height follows. Every current caller is 1:1 because
+ *   every classic counterpart is — `HomeScreen.kt:985` overrides `YouTubeGridItem`'s 16:9 default back
+ *   to `thumbnailRatio = 1f`, and playlists/albums/artists are square everywhere — but the parameter
+ *   is what lets a non-square caller be non-square instead of silently losing 44 % of its frame.
  */
 @Composable
 fun AuraCover(
@@ -208,12 +216,21 @@ fun AuraCover(
     seed: String? = thumbnailUrl,
     shape: Shape = AuraShapes.Artwork,
     decodeTo: Int = 256,
+    ratio: Float = 1f,
     overlay: (@Composable BoxScope.() -> Unit)? = null,
 ) {
     val brush = remember(seed) { AuraPalette.coverPlaceholder(seed) }
+    // "Recortar las portadas" (CropAlbumArtKey, default OFF). EVERY classic renderer reads it —
+    // Items.kt:1371/1453/1546, Thumbnail.kt:341, MiniPlayer.kt:857 — and the first cut of the new UI
+    // hard-coded ContentScale.Crop, so a wide cover lost its edges no matter what the user had chosen.
+    // That is the "las portadas salen recortadas" of the beta verdict. OFF = Fit: the whole frame is
+    // shown and the gradient placeholder fills whatever the image does not cover, which is exactly the
+    // render's `.cv` behaviour.
+    val cropAlbumArt by rememberPreference(CropAlbumArtKey, false)
     Box(
         modifier = modifier
-            .size(size)
+            .width(size)
+            .aspectRatio(ratio)
             .clip(shape)
             .background(brush),
     ) {
@@ -221,7 +238,7 @@ fun AuraCover(
             AsyncImage(
                 model = thumbnailUrl.resize(decodeTo, decodeTo),
                 contentDescription = null,
-                contentScale = ContentScale.Crop,
+                contentScale = if (cropAlbumArt) ContentScale.Crop else ContentScale.Fit,
                 modifier = Modifier.fillMaxSize(),
             )
         }
@@ -330,6 +347,8 @@ fun AuraCoverCard(
     thumbnailUrl: String? = null,
     seed: String? = thumbnailUrl,
     width: Dp = 120.dp,
+    /** See [AuraCover.ratio]. 1:1 matches every classic grid item the new shelves replace. */
+    ratio: Float = 1f,
     shape: Shape = AuraShapes.Artwork,
     isActive: Boolean = false,
     isPlaying: Boolean = false,
@@ -359,6 +378,7 @@ fun AuraCoverCard(
             seed = seed,
             shape = shape,
             decodeTo = 512,
+            ratio = ratio,
         ) {
             if (isActive) {
                 Box(

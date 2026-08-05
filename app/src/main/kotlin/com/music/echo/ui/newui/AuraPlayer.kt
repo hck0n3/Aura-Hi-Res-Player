@@ -63,6 +63,7 @@ import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.input.pointer.util.addPointerInputChange
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.graphics.Brush
@@ -109,11 +110,12 @@ import iad1tya.echo.music.ui.component.rememberBottomSheetState
 import iad1tya.echo.music.ui.player.CanvasArtworkPlaybackCache
 import iad1tya.echo.music.ui.player.rememberCanvasAnimationEnabled
 import iad1tya.echo.music.ui.player.InlineLyricsView
-import iad1tya.echo.music.ui.player.MiniPlayer
+import iad1tya.echo.music.ui.player.PlayerVideoSurface
 import iad1tya.echo.music.ui.player.Thumbnail
 import iad1tya.echo.music.ui.player.ThumbnailHost
 import iad1tya.echo.music.ui.player.BottomSheetPlayer
 import iad1tya.echo.music.ui.player.HideStatusBarOnFullscreenEffect
+import iad1tya.echo.music.ui.player.KeepScreenOnWhilePlayerExpandedEffect
 import iad1tya.echo.music.ui.player.rememberPlayerButtonColors
 import iad1tya.echo.music.ui.player.rememberPlayerButtonsStyle
 import iad1tya.echo.music.ui.player.rememberSwipeLyricsEnabled
@@ -142,13 +144,22 @@ import kotlin.math.roundToInt
  * behaviour, so one place to fix a bug. Nothing here writes a preference the classic player does not
  * already write, and toggling the beta flag off restores classic behaviour with no migration.
  *
- * ## Shape delegation (deliberate)
- * Landscape, wide/TV/car layouts and video mode are NOT re-drawn here — they fall straight through to
- * [BottomSheetPlayer]. Those shapes carry the immersive video surface, the landscape canvas, the split
- * queue pane and the D-pad focus ring; re-implementing them would have meant re-implementing ~1500
- * lines of behaviour the inventory documents (§2.7–§2.11) with no mockup to match. Delegating keeps
- * every one of those functions bit-identical while the new look owns the portrait audio/canvas shape,
- * which is the shape the render draws.
+ * ## Shape delegation (deliberate, and NO LONGER including video)
+ * Landscape and wide/TV/car layouts are NOT re-drawn here — they fall straight through to
+ * [BottomSheetPlayer]. Those shapes carry the landscape fullscreen canvas, the split queue pane and
+ * the D-pad focus ring; re-implementing them would have meant re-implementing ~1500 lines of behaviour
+ * the inventory documents (§2.7–§2.11) with no mockup to match. Delegating keeps every one of those
+ * functions bit-identical while the new look owns the portrait shape, which is the shape the render
+ * draws.
+ *
+ * **Video mode used to be in that list and is not any more.** Canvas/video is a headline feature of
+ * this app and it triggers in PORTRAIT, so delegating on `videoMode` meant that the moment a song with
+ * a canvas played, the whole player swapped to the classic shape — whose `collapsedContent` is the
+ * classic `MiniPlayer`, which reads `MiniPlayerBackgroundStyleKey`, which the one-time high-tier
+ * migration (App.kt:818) had set to `LIQUID_GLASS`. That is exactly the complaint: "por qué me sigue
+ * saliendo el reproductor flotante y sus botones flotantes en liquid glass y eso no es parte de este
+ * diseño". Portrait video now stays in this shape and only the artwork slot changes — see
+ * `showVideoSurface` below.
  *
  * ## Thermal / battery
  * No blur, no palette extraction, no per-frame shader. The ambient bloom is [AuraBloomColors.Brand],
@@ -166,10 +177,11 @@ fun AuraPlayer(
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     val isWideLayout = rememberIsWideLayout()
-    val videoMode by playerConnection.videoMode.collectAsState()
 
     // Read unconditionally, branch afterwards: the composable call order must not shift with the shape.
-    if (isLandscape || isWideLayout || videoMode) {
+    // `videoMode` is deliberately NOT a term here any more (see the KDoc): in portrait the new shape
+    // hosts the video itself, so a canvas can never drag the classic Liquid-Glass mini back on screen.
+    if (isLandscape || isWideLayout) {
         BottomSheetPlayer(
             state = state,
             navController = navController,
@@ -305,6 +317,23 @@ private fun AuraPortraitPlayer(
         onDispose { playerConnection.setPlayerSheetExpanded(false) }
     }
 
+    // "Mantener la pantalla encendida cuando el reproductor está expandido" (Ajustes ▸ Reproductor).
+    // The row is ungated and reachable with this UI on, and its only consumer was the classic sheet —
+    // so in PORTRAIT the switch did nothing and only started working once the phone was rotated into
+    // the classic shape. The CLASSIC mechanism is reused, not re-implemented: the window flag, the
+    // predicate and the release-on-every-exit rule are the same [KeepScreenOnWhilePlayerExpandedEffect]
+    // the classic player now calls (ui/player/PlayerAppearancePrefs.kt).
+    //
+    // `isPlaying` (the local player), not `effectiveIsPlaying`: while casting, playback is on the other
+    // device and this screen has no reason to stay lit — which is also what the classic player does.
+    // Independent of the video keep-screen-on further down: that one is a per-VIEW flag
+    // (`View.keepScreenOn`), this one a WINDOW flag, so neither can clear the other's.
+    KeepScreenOnWhilePlayerExpandedEffect(
+        isExpanded = state.isExpanded,
+        isPlaying = isPlaying,
+        currentMediaId = mediaMetadata?.id,
+    )
+
     // ── Codec / bit depth / sample rate, read off the live track (never invented) ──────────────────
     val isCrossfading by playerConnection.isCrossfading.collectAsState()
     var currentAudioFormat by remember { mutableStateOf<Format?>(null) }
@@ -358,6 +387,9 @@ private fun AuraPortraitPlayer(
     var isFullScreen by rememberSaveable { mutableStateOf(false) }
     val enableLyricsThumbnailPlayPause by rememberPreference(EnableLyricsThumbnailPlayPauseKey, false)
     val swipeLyrics = rememberSwipeLyricsEnabled()
+    // "Recortar las portadas" — read once here for the lyrics-mode cover below, the same key every
+    // classic renderer reads (Thumbnail.kt:341, Items.kt:1371/1453/1546, MiniPlayer.kt:857).
+    val cropAlbumArt by rememberPreference(iad1tya.echo.music.constants.CropAlbumArtKey, false)
 
     // "Ocultar la barra de estado en pantalla completa" — SAME effect the classic player runs
     // (PlayerAppearancePrefs.kt), so this shape's own fullscreen lyrics mode obeys the switch instead
@@ -365,6 +397,30 @@ private fun AuraPortraitPlayer(
     // rememberSaveable and only the lyrics header can set it: the switch's own description says "while
     // the fullscreen LYRICS mode is active", and the bar must come back when the lyrics close.
     HideStatusBarOnFullscreenEffect(isFullScreen = isFullScreen && showInlineLyrics)
+
+    // ── VÍDEO EN VERTICAL ─────────────────────────────────────────────────────────────────────────
+    // This shape now owns portrait video instead of delegating it. Everything the delegation used to
+    // provide is provided here, from the classic player, verbatim:
+    //  · the surface itself — the SAME [PlayerVideoSurface] (one implementation, one TextureView
+    //    contract), never a second copy;
+    //  · the single-surface rule — the mini binds while the sheet is collapsed (in which case this
+    //    expanded content is not composed at all) and MainActivity's overlay owns it in PiP;
+    //  · keep-screen-on while a video is actually PLAYING (Player.kt:388);
+    //  · closing the lyrics when video starts (Player.kt:907) — one surface at a time.
+    val videoMode by playerConnection.videoMode.collectAsState()
+    val videoUrl by playerConnection.videoUrl.collectAsState()
+    val inPipMode = LocalIsInPipMode.current
+    // Both terms, like the classic player's `onImmersiveVideo`: the mode can be on while the URL is
+    // still resolving, and in that window [Thumbnail] already draws its own loading state.
+    val showVideoSurface = videoMode && !videoUrl.isNullOrEmpty()
+    val keepScreenOnView = LocalView.current
+    DisposableEffect(videoMode, isPlaying) {
+        keepScreenOnView.keepScreenOn = videoMode && isPlaying
+        onDispose { keepScreenOnView.keepScreenOn = false }
+    }
+    LaunchedEffect(showVideoSurface) {
+        if (showVideoSurface && showInlineLyrics) showInlineLyrics = false
+    }
 
     // ── Sleep timer (the merged menu's "Temporizador" opens this) ──────────────────────────────────
     var showSleepTimerDialog by remember { mutableStateOf(false) }
@@ -442,7 +498,12 @@ private fun AuraPortraitPlayer(
             playerConnection.player.clearMediaItems()
         },
         collapsedContent = {
-            MiniPlayer(
+            // Was the CLASSIC [MiniPlayer] verbatim — which is why Liquid Glass kept appearing inside
+            // the new player: the classic mini reads MiniPlayerBackgroundStyleKey, and the one-time
+            // high-tier migration in App.kt:810-822 had set that key to LIQUID_GLASS. [AuraMiniPlayer]
+            // is the render's `.mi` pill and samples no glass at all. Same position/duration state,
+            // same single-video-surface contract.
+            AuraMiniPlayer(
                 positionState = positionState,
                 durationState = durationState,
                 shouldBindVideoSurface = state.isCollapsed && !LocalIsInPipMode.current,
@@ -584,10 +645,49 @@ private fun AuraPortraitPlayer(
                             AsyncImage(
                                 model = mediaMetadata?.thumbnailUrl,
                                 contentDescription = null,
-                                contentScale = ContentScale.Crop,
+                                // "Recortar las portadas" (CropAlbumArtKey, default OFF), as every
+                                // classic renderer does — Thumbnail.kt:341 is the counterpart of this
+                                // very cover. Hard-coded Crop here was one of the three new-UI sites
+                                // that ignored the switch.
+                                contentScale = if (cropAlbumArt) ContentScale.Crop else ContentScale.Fit,
                                 modifier = Modifier.fillMaxSize(),
                             )
                         }
+                    }
+                } else if (showVideoSurface) {
+                    // The video takes the artwork slot and NOTHING else moves: the header, the title
+                    // block, the whole new transport and the new mini stay exactly where they are, so
+                    // turning video on no longer swaps the entire player (and with it, the glass).
+                    // In PiP the fullscreen overlay in MainActivity owns the one surface — binding a
+                    // second TextureView here is what used to freeze the picture on PiP exit.
+                    if (!inPipMode) {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            PlayerVideoSurface(
+                                playerConnection = playerConnection,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+                        // Back to audio, on the surface itself — the classic portrait video shape pins
+                        // the same affordance to the same corner (Player.kt:3228). Teal = video is on,
+                        // matching how the merged menu marks it (AuraPlayerMenu.kt:651). The menu entry
+                        // stays; this is the one-tap way out, not a second implementation.
+                        AuraIconButton(
+                            icon = AuraIcons.Video,
+                            // Names the DESTINATION, like the classic affordance (whose glyph is
+                            // literally `music_note`): tapping this goes back to "Música". There is no
+                            // `video` string resource in the project and inventing one would be a new
+                            // label to translate for a control that already has a correct one.
+                            contentDescription = stringResource(R.string.music),
+                            onClick = { playerConnection.toggleVideoMode() },
+                            size = 22.dp,
+                            tint = AuraPalette.Teal,
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(AuraSpacing.Gutter),
+                        )
                     }
                 } else {
                     val currentSliderPosition by rememberUpdatedState(sliderPosition)

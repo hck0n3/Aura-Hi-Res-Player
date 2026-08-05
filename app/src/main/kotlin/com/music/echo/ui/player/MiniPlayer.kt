@@ -214,7 +214,26 @@ private fun NewMiniPlayer(
         if (darkTheme == DarkMode.AUTO) isSystemInDarkTheme else darkTheme == DarkMode.ON
     }
     
-    val miniPlayerBackground by rememberEnumPreference(MiniPlayerBackgroundStyleKey, defaultValue = PlayerBackgroundStyle.DEFAULT)
+    val miniPlayerBackgroundPref by rememberEnumPreference(MiniPlayerBackgroundStyleKey, defaultValue = PlayerBackgroundStyle.DEFAULT)
+    // "Interfaz nueva": the new UI owns the look, and it draws no glass anywhere. In PORTRAIT this
+    // composable is not even reached (AuraMiniPlayer replaces it), but LANDSCAPE / wide / TV still
+    // delegate to the classic BottomSheetPlayer, whose collapsedContent is this — so without this line
+    // the Liquid-Glass mini the owner complained about twice ("por qué me sigue saliendo el reproductor
+    // flotante y sus botones flotantes en liquid glass y eso no es parte de este diseño") came back the
+    // moment he rotated the phone, because the one-time high-tier migration (App.kt:818) had written
+    // LIQUID_GLASS into MiniPlayerBackgroundStyleKey for him.
+    //
+    // Forcing DEFAULT here is the single point that neutralises it: `useGlassMiniPlayer`,
+    // `isDynamicBackground`, MiniPlayerColorExtractor and the background renderer all derive from this
+    // value, and LiquidGlassMiniPlayerEnabledKey only ever matters while the style IS LIQUID_GLASS.
+    // That is also what lets the two Ajustes rows be hidden under the new UI without lying: they are
+    // now uniformly inert with the flag on, not "inert until you rotate".
+    //
+    // GATED: with the flag OFF this is `false` and the stored preference is read exactly as today. The
+    // preference itself is never written here, so turning the beta off restores the user's choice.
+    val newUiOwnsMiniLook = iad1tya.echo.music.ui.newui.rememberNewUiEnabled()
+    val miniPlayerBackground =
+        if (newUiOwnsMiniLook) PlayerBackgroundStyle.DEFAULT else miniPlayerBackgroundPref
     // The mini-player is ALWAYS on screen while playing, yet its animated backgrounds (GLOW/LIVE_MESH)
     // had NO perf/thermal gate — unlike the full player — so picking one ran a per-frame gradient
     // forever, even in High-Performance Mode (fluidity audit). Gate it the same way: perf mode or

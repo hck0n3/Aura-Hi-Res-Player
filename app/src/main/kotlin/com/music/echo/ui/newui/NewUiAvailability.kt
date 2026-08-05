@@ -19,6 +19,30 @@ import iad1tya.echo.music.BuildConfig
  * Flip this to `true` unconditionally once the redesign covers enough of the app to stand on its own.
  */
 val NEW_UI_SWITCH_VISIBLE: Boolean =
-    BuildConfig.VERSION_NAME.contains("beta", ignoreCase = true) ||
-        BuildConfig.VERSION_NAME.contains("alpha", ignoreCase = true) ||
-        BuildConfig.DEBUG
+    isNewUiSwitchVisible(BuildConfig.VERSION_NAME, BuildConfig.DEBUG)
+
+/**
+ * The pure form of [NEW_UI_SWITCH_VISIBLE], so the rule can be pinned by a unit test instead of being
+ * re-read off whichever variant happens to have generated `BuildConfig`.
+ *
+ * `"0.6.145"` → `false`; `"0.6.146-beta1"` → `true`.
+ */
+fun isNewUiSwitchVisible(versionName: String, debugBuild: Boolean): Boolean =
+    versionName.contains("beta", ignoreCase = true) ||
+        versionName.contains("alpha", ignoreCase = true) ||
+        debugBuild
+
+/**
+ * Whether the redesigned layer may actually render.
+ *
+ * Beta and stable share the applicationId, so a stable update installs OVER a beta IN PLACE and the
+ * DataStore file survives with `new_ui_enabled = true` still in it. Availability therefore has to gate
+ * the flag itself, not merely the two places that DRAW the switch: otherwise the tester boots into the
+ * redesigned shell in a build where nothing can turn it off.
+ *
+ * The stored preference is deliberately left alone — clearing it would silently discard a tester's
+ * choice, and putting it back would need a fresh one-time migration key. Downgrade to a beta build and
+ * the answer flips back to whatever was stored.
+ */
+fun isNewUiActive(switchVisible: Boolean, storedPreference: Boolean): Boolean =
+    switchVisible && storedPreference

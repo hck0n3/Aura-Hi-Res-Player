@@ -112,7 +112,6 @@ import iad1tya.echo.music.ui.component.SortHeader
 import iad1tya.echo.music.ui.menu.AutoPlaylistMenu
 import iad1tya.echo.music.ui.menu.SelectionSongMenu
 import iad1tya.echo.music.ui.menu.SongMenu
-import iad1tya.echo.music.ui.utils.backToMain
 import iad1tya.echo.music.ui.utils.rememberIsTvOrCar
 import iad1tya.echo.music.ui.utils.tvFocusable
 import iad1tya.echo.music.utils.listItemShape
@@ -559,11 +558,7 @@ fun AutoPlaylistScreen(
                             }
                         }
                     },
-                    onLongClick = {
-                        if (!isSearching && !inSelectMode) {
-                            navController.backToMain()
-                        }
-                    }
+                    onLongClick = null
                 ) {
                     Icon(
                         painter = painterResource(

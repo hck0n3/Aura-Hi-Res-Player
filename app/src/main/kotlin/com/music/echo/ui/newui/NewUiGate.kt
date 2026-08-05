@@ -6,7 +6,16 @@ import iad1tya.echo.music.constants.NewUiEnabledKey
 import iad1tya.echo.music.utils.rememberPreference
 
 /**
- * Reads the "Interfaz nueva" master switch ([NewUiEnabledKey], default `false`).
+ * Reads the "Interfaz nueva" master switch ([NewUiEnabledKey], default `false`), ANDed with
+ * [NEW_UI_SWITCH_VISIBLE].
+ *
+ * The availability term is what keeps a beta tester from being trapped: beta and stable share the
+ * applicationId, so taking a stable update over a beta is an in-place install and the stored `true`
+ * survives it. Without the AND the tester would boot into the redesigned shell in a build where both
+ * copies of the switch are compiled out, with no way back short of clearing app data. The stored value
+ * itself is never touched, so downgrading to a beta again restores exactly what was chosen.
+ *
+ * The preference is still read UNCONDITIONALLY so the composable call order never depends on the build.
  *
  * Use [NewUiGate] instead of this wherever you are choosing between two screens — reading the flag
  * yourself and branching by hand is how per-screen fallback gets forgotten.
@@ -14,7 +23,7 @@ import iad1tya.echo.music.utils.rememberPreference
 @Composable
 fun rememberNewUiEnabled(): Boolean {
     val enabled by rememberPreference(NewUiEnabledKey, defaultValue = false)
-    return enabled
+    return isNewUiActive(NEW_UI_SWITCH_VISIBLE, enabled)
 }
 
 /**

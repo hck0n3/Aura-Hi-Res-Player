@@ -62,9 +62,40 @@ import iad1tya.echo.music.R
 // result reads "<ajuste> / Ajustes de Escuchar juntos" and is clearly not the main Escuchar juntos
 // screen. That screen had NO index row anywhere; the new Ajustes index (ui/newui/AuraSettingsScreen.kt)
 // adds one inside its "Escuchar juntos" group.
+//
+// ---------------------------------------------------------------------------------------------------
+// ORPHAN RULE ("Interfaz nueva"): this index is a SECOND DOOR into every settings destination, and it
+// was left ungated while rows were being hidden on the screens themselves. The GHOST-ENTRY RULE above
+// says a row is a promise that the text is visible on the destination -- that promise is conditional on
+// the UI flag for three rows, so the filter at the end of this function drops exactly those three while
+// the new UI is on. With the flag OFF the list is returned untouched, in the same order.
+//
+// Both leaks were the same shape and both were reachable ONLY through this index, which is why hiding
+// the visible entry rows did not close them:
+//
+//  1. LIQUID GLASS ("settings/appearance/liquidglass"). The entry row in Apariencia is hidden with the
+//     new UI on (AppearanceSettings.kt), but this index still mapped "Liquid Glass" straight to the
+//     ROUTE -- so typing "glass" into Ajustes landed the user on ~11 live-looking, wholly inert
+//     controls. The glass system has exactly two render sites in the app (FloatingNavigationToolbar,
+//     composed only on the !newUiShell branch, and MiniPlayer.kt, whose style is pinned to DEFAULT
+//     under the flag), so nothing on that screen can do anything. Filtered BY ROUTE, not by title, so a
+//     future row pointing at the same orphaned destination dies with it. The route itself is also
+//     guarded (NavigationBuilder.kt) -- an index entry is not a door lock.
+//
+//  2. THE MINI-PLAYER BACKGROUND ROW and its group heading ("Mini reproductor" /
+//     "Estilo de fondo del minirreproductor"). AppearanceSettings.kt hides that whole group under the
+//     flag because MiniPlayerBackgroundStyleKey has no renderer left, but both strings stayed indexed
+//     here -- so searching "mini" found them, and the tap landed on Apariencia where neither exists.
+//     A search hit that navigates to a screen the text is not on is the same lie as a dead switch.
+//     Filtered by TITLE, because they share "settings/appearance" with ~90 rows that are still live.
 @Composable
 fun getAllSearchableSettings(): List<Triple<String, String, String>> {
-    return listOf(
+    // Read unconditionally and before the list, so the composable call order never shifts.
+    val newUiEnabled = iad1tya.echo.music.ui.newui.rememberNewUiEnabled()
+    val miniPlayerGroupTitle = stringResource(R.string.mini_player)
+    val miniPlayerBackgroundTitle = stringResource(R.string.miniplayer_background_style)
+
+    val all = listOf(
             // --- Cuentas / fork-only screens (hardcoded labels; these screens use literal titles) ---
             Triple("YouTube Music", "Cuentas", "settings/accounts"),
             Triple("Spotify", "Cuentas", "settings/accounts"),
@@ -190,7 +221,7 @@ fun getAllSearchableSettings(): List<Triple<String, String, String>> {
             Triple(stringResource(R.string.show_top_playlist), "Apariencia", "settings/appearance"),
             Triple(stringResource(R.string.show_cached_playlist), "Apariencia", "settings/appearance"),
             Triple(stringResource(R.string.show_uploaded_playlist), "Apariencia", "settings/appearance"),
-            // --- Tema (settings/appearance/theme) : 26 ---
+            // --- Tema (settings/appearance/theme) : 28 ---
             Triple(stringResource(R.string.palette_dynamic), "Tema", "settings/appearance/theme"),
             Triple(stringResource(R.string.palette_crimson), "Tema", "settings/appearance/theme"),
             Triple(stringResource(R.string.palette_rose), "Tema", "settings/appearance/theme"),
@@ -215,6 +246,8 @@ fun getAllSearchableSettings(): List<Triple<String, String, String>> {
             Triple(stringResource(R.string.theme_mode), "Tema", "settings/appearance/theme"),
             Triple(stringResource(R.string.dark_theme_follow_system), "Tema", "settings/appearance/theme"),
             Triple(stringResource(R.string.color_palette), "Tema", "settings/appearance/theme"),
+            Triple(stringResource(R.string.theme_reset), "Tema", "settings/appearance/theme"),
+            Triple(stringResource(R.string.theme_reset_desc), "Tema", "settings/appearance/theme"),
             // --- Contenido (settings/content) : 53 ---
             Triple(stringResource(R.string.config_proxy), "Contenido", "settings/content"),
             Triple(stringResource(R.string.proxy_type), "Contenido", "settings/content"),
@@ -319,7 +352,7 @@ fun getAllSearchableSettings(): List<Triple<String, String, String>> {
             Triple(stringResource(R.string.ai_setup_guide), "Traducción de letras IA", "settings/ai"),
             Triple("Recomendado para ti (IA)", "Traducción de letras IA", "settings/ai"),
             Triple("Refrescar ahora", "Traducción de letras IA", "settings/ai"),
-            // --- Reproductor (settings/player) : 49 ---
+            // --- Reproductor (settings/player) : 51 ---
             Triple("Ahorro de datos", "Reproductor", "settings/player"),
             Triple("Modo ahorro de datos", "Reproductor", "settings/player"),
             Triple(stringResource(R.string.audio_quality), "Reproductor", "settings/player"),
@@ -361,6 +394,8 @@ fun getAllSearchableSettings(): List<Triple<String, String, String>> {
             Triple(stringResource(R.string.shuffle_playlist_first_desc), "Reproductor", "settings/player"),
             Triple(stringResource(R.string.prevent_duplicate_tracks_in_queue), "Reproductor", "settings/player"),
             Triple(stringResource(R.string.prevent_duplicate_tracks_in_queue_desc), "Reproductor", "settings/player"),
+            Triple(stringResource(R.string.previous_queue_offer_setting), "Reproductor", "settings/player"),
+            Triple(stringResource(R.string.previous_queue_offer_setting_desc), "Reproductor", "settings/player"),
             Triple(stringResource(R.string.auto_skip_next_on_error), "Reproductor", "settings/player"),
             Triple(stringResource(R.string.auto_skip_next_on_error_desc), "Reproductor", "settings/player"),
             Triple(stringResource(R.string.misc), "Reproductor", "settings/player"),
@@ -461,4 +496,25 @@ fun getAllSearchableSettings(): List<Triple<String, String, String>> {
             Triple(stringResource(R.string.listen_together_use_custom_server), "Ajustes de Escuchar juntos", "settings/integrations/listen_together"),
             Triple(stringResource(R.string.unblock), "Ajustes de Escuchar juntos", "settings/integrations/listen_together"),
     )
+
+    // Flag OFF: the exact list above, same content, same order. Nothing below runs.
+    if (!newUiEnabled) return all
+
+    // Flag ON: drop the three rows the new UI orphaned (see the ORPHAN RULE above). `filterNot`
+    // preserves the order of everything it keeps.
+    //
+    // The two title matches are ALSO pinned to "settings/appearance": it is only on THAT screen that
+    // the two strings are hidden, so a row carrying the same text under any other destination is not a
+    // ghost and must survive. Matching on title alone would have been a filter wider than the leak.
+    return all.filterNot { (title, _, route) ->
+        route == LIQUID_GLASS_ROUTE ||
+            (route == "settings/appearance" &&
+                (title == miniPlayerGroupTitle || title == miniPlayerBackgroundTitle))
+    }
 }
+
+/**
+ * The Liquid Glass destination, named once so the index filter above and the route guard in
+ * `NavigationBuilder.kt` cannot drift apart on a typo.
+ */
+const val LIQUID_GLASS_ROUTE = "settings/appearance/liquidglass"

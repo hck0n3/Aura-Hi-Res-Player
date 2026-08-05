@@ -472,4 +472,101 @@ class ShuffleOrderingTest {
         assertEquals(0, ShuffleOrdering.artistAdjacency(IntArray(0), q.artistKey).measured)
         assertEquals(2, ShuffleOrdering.artistAdjacency(intArrayOf(0, 1), q.artistKey).measured)
     }
+
+    // ---------------------------------------------------------------------------------------------
+    // sortIndicesByKeyDescending — the boxing-free replacement for applyShuffleOrder's
+    // `(0 until n).toMutableList().sortByDescending { keys[it] }`.
+    //
+    // This is a PERFORMANCE change to code that decides what the user hears next, so "equivalent" is not
+    // good enough: the differential tests below assert the output is IDENTICAL, element for element,
+    // against the exact expression that was replaced.
+    // ---------------------------------------------------------------------------------------------
+
+    /** The expression applyShuffleOrder used before the change — the reference implementation. */
+    private fun referenceSort(n: Int, keys: DoubleArray): IntArray =
+        (0 until n).toMutableList().sortedByDescending { keys[it] }.toIntArray()
+
+    private fun assertSameAsReference(keys: DoubleArray, what: String) {
+        val n = keys.size
+        val actual = ShuffleOrdering.sortIndicesByKeyDescending(IntArray(n) { it }, keys)
+        assertArrayEquals(what, referenceSort(n, keys), actual)
+    }
+
+    @Test
+    fun theSortMatchesTheOldComparatorOnRandomQueues() {
+        val rnd = Random(20260805)
+        // Queue sizes from degenerate to bigger than any real queue, incl. the merge-sort width edges.
+        for (n in listOf(0, 1, 2, 3, 4, 5, 7, 8, 9, 16, 17, 31, 32, 33, 100, 999, 4096)) {
+            repeat(5) { round ->
+                val keys = DoubleArray(n) {
+                    // The real key: capped taste nudge + uniform random, +1000 for unplayed items.
+                    val base = rnd.nextDouble(-1.7, 1.7) * 0.15 + rnd.nextDouble()
+                    if (rnd.nextBoolean()) base + 1000.0 else base
+                }
+                assertSameAsReference(keys, "n=$n round=$round")
+            }
+        }
+    }
+
+    @Test
+    fun theSortIsStableOnDuplicateKeysExactlyLikeTimSort() {
+        val rnd = Random(7)
+        // Ties are what stability is about: a coarse key set forces many of them, so any difference in
+        // tie-breaking between the merge sort and TimSort shows up immediately.
+        for (n in listOf(2, 3, 8, 33, 250, 1000)) {
+            repeat(10) { round ->
+                val keys = DoubleArray(n) { rnd.nextInt(0, 3).toDouble() }
+                assertSameAsReference(keys, "duplicate-heavy n=$n round=$round")
+            }
+        }
+        // Every key identical → the order must come out completely untouched (0, 1, 2, ...).
+        val flat = DoubleArray(50) { 1000.5 }
+        assertArrayEquals(IntArray(50) { it }, ShuffleOrdering.sortIndicesByKeyDescending(IntArray(50) { it }, flat))
+    }
+
+    @Test
+    fun theSortAgreesOnNaNAndSignedZeroToo() {
+        // compareByDescending goes through boxed Comparable, i.e. java.lang.Double.compare, which orders
+        // NaN as the LARGEST value and -0.0 below 0.0 — unlike `<`/`>`. A hand-rolled comparison that
+        // used those operators would silently disagree here, so pin it.
+        val keys = doubleArrayOf(
+            0.0, Double.NaN, -0.0, 1.0, Double.NaN, -1.0, 1000.0, Double.NaN, 0.0, -0.0,
+            Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY,
+        )
+        assertSameAsReference(keys, "NaN / signed zero")
+    }
+
+    @Test
+    fun theSortIsAPermutationAndSortsDescending() {
+        val rnd = Random(99)
+        val n = 500
+        val keys = DoubleArray(n) { rnd.nextDouble() }
+        val out = ShuffleOrdering.sortIndicesByKeyDescending(IntArray(n) { it }, keys)
+        assertEquals("no index lost or duplicated", n, out.toSet().size)
+        for (i in 1 until n) {
+            assertTrue("descending at $i", keys[out[i - 1]] >= keys[out[i]])
+        }
+    }
+
+    /**
+     * The whole point of the +1000 offset: already-played songs must stay behind every unplayed one after
+     * the sort, whatever their taste term is. Pinned here because this is the invariant the replacement
+     * sort could most plausibly have broken.
+     */
+    @Test
+    fun playedSongsStayBehindUnplayedOnesAfterTheSort() {
+        val rnd = Random(4242)
+        val n = 400
+        val unplayed = BooleanArray(n) { rnd.nextBoolean() }
+        val keys = DoubleArray(n) {
+            val base = rnd.nextDouble(-1.7, 1.7) * 0.15 + rnd.nextDouble()
+            if (unplayed[it]) base + 1000.0 else base
+        }
+        val out = ShuffleOrdering.sortIndicesByKeyDescending(IntArray(n) { it }, keys)
+        var seenPlayed = false
+        for (idx in out) {
+            if (!unplayed[idx]) seenPlayed = true
+            else assertTrue("an unplayed song sorted behind a played one", !seenPlayed)
+        }
+    }
 }

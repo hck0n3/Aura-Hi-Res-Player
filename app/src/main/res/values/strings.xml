@@ -260,6 +260,12 @@
     <string name="removed_song_from_playlist">Removed \"%s\" from playlist</string>
     <string name="playlist_synced">Playlist synced</string>
     <string name="undo">Undo</string>
+    <string name="previous_queue_offer">Go back to the previous queue?</string>
+    <string name="previous_queue_offer_titled">Go back to \"%s\"?</string>
+    <string name="previous_queue_resume">Go back</string>
+    <!-- Settings ▸ Player ▸ Queue row for the three strings above -->
+    <string name="previous_queue_offer_setting">Offer to go back to the previous queue</string>
+    <string name="previous_queue_offer_setting_desc">When you leave a playlist or your library to play an album or an artist, a message offers to return to the queue you left, at the same song and second. It never interrupts playback and it expires after a few minutes</string>
 
     <!-- Player -->
     <string name="lyrics_not_found">Lyrics not found</string>

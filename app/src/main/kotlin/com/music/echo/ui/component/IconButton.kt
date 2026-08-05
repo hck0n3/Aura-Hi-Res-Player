@@ -59,11 +59,31 @@ fun ResizableIconButton(
     )
 }
 
+/**
+ * [onLongClick] is nullable, and `null` means "no long-press handler at all".
+ *
+ * ~44 screens used to wire it to `NavController.backToMain()`: an undiscoverable ~500ms press on
+ * the back arrow that silently popped the whole chain to a tab root. A slow or resting thumb
+ * destroyed the user's place ("estaba en una playlist … me manda al inicio"). Another 7 screens
+ * passed `{}` to opt out, which was just as bad — a non-null handler makes `combinedClickable`
+ * SWALLOW the long press, so a slow tap on those buttons did nothing at all. Passing `null` is
+ * what actually disables the gesture: the press falls through to [onClick] on release, so a slow
+ * tap behaves exactly like a normal tap.
+ *
+ * ⚠️ [onLongClick] deliberately has NO DEFAULT VALUE, and must not be given one. This function
+ * differs from [androidx.compose.material3.IconButton] only by this parameter; dozens of files
+ * import BOTH. The moment `onLongClick` defaults, every remaining argument has a default too and
+ * a bare `IconButton(onClick = …) { }` matches both signatures — "Overload resolution ambiguity",
+ * hundreds of errors across ~20 files. Keeping it required is what keeps the two apart.
+ *
+ * Only pass a non-null [onLongClick] when the long press is a real, discoverable feature (e.g. a
+ * context menu). Otherwise pass `null`.
+ */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun IconButton(
     onClick: () -> Unit,
-    onLongClick: () -> Unit,
+    onLongClick: (() -> Unit)?,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     colors: IconButtonColors = IconButtonDefaults.iconButtonColors(),

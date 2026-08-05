@@ -50,6 +50,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.ripple
@@ -90,8 +91,10 @@ import iad1tya.echo.music.constants.PureBlackKey
 import iad1tya.echo.music.constants.PureBlackMiniPlayerKey
 import iad1tya.echo.music.constants.SelectedThemeColorKey
 import iad1tya.echo.music.ui.component.ColorPickerConversions
+import iad1tya.echo.music.ui.component.DefaultDialog
 import iad1tya.echo.music.ui.theme.AccentVividness
 import iad1tya.echo.music.ui.theme.DefaultThemeColor
+import iad1tya.echo.music.ui.theme.distinctFromNoAccentSentinel
 import iad1tya.echo.music.ui.theme.MuestreoBlue
 import iad1tya.echo.music.ui.theme.MuestreoDarkColorScheme
 import iad1tya.echo.music.ui.theme.MuestreoGradientStops
@@ -220,11 +223,38 @@ fun ThemeScreen(
      * The single selection channel every path goes through — a swatch, Dynamic, or a typed hex.
      * Clearing the preset HERE (rather than in each caller) is what makes a named theme fully
      * reversible: there is no way to choose another colour that leaves the preset stuck on.
+     *
+     * [autoColor] is the Dynamic entry, and it is passed EXPLICITLY rather than inferred from the
+     * colour. Inferring it (`color == DefaultThemeColor`) meant typing that colour's own hex was read
+     * back as "the user picked Dynamic": it turned wallpaper/artwork colour ON instead of applying the
+     * red that was asked for. A deliberate pick is also stored nudged off the sentinel
+     * ([distinctFromNoAccentSentinel]) so every OTHER reader of the stored value — Appearance's
+     * "custom colour?" test, the swatch selection ring, echomusicTheme's Material You branch — sees a
+     * choice rather than the absence of one.
      */
-    val handleColorSelection: (Color, ThemePreset) -> Unit = { color, preset ->
-        onSelectedThemeColorChange(color.toArgb())
-        onDynamicThemeChange(color == DefaultThemeColor && preset == ThemePreset.NONE)
+    val handleColorSelection: (Color, ThemePreset, Boolean) -> Unit = { color, preset, autoColor ->
+        onSelectedThemeColorChange(
+            if (autoColor) DefaultThemeColor.toArgb() else color.distinctFromNoAccentSentinel().toArgb()
+        )
+        onDynamicThemeChange(autoColor && preset == ThemePreset.NONE)
         onThemePresetChange(preset)
+    }
+
+    var showResetDialog by rememberSaveable { mutableStateOf(false) }
+
+    /**
+     * Every theme preference this screen can write, back to the value a fresh install has (the same
+     * ones App.kt seeds). Routed through [handleColorSelection] for the colour trio so a reset cannot
+     * drift from a normal selection, and through [onPureBlackChange] for AMOLED because pure black and
+     * the mini player's pure black MUST move together — writing only [PureBlackKey] would leave the
+     * mini player permanently black on a restored theme.
+     */
+    val resetThemeToDefaults: () -> Unit = {
+        handleColorSelection(DefaultThemeColor, ThemePreset.NONE, true)
+        onAccentVividnessChange(AccentVividness.SOFT)
+        onCustomAccentColorChange(0)
+        onDarkModeChange(DarkMode.AUTO)
+        onPureBlackChange(false)
     }
 
     Scaffold(
@@ -362,7 +392,7 @@ fun ThemeScreen(
                                 isTvOrCar = isTvOrCar,
                                 onClick = {
                                     val colorToSave = if (isDynamicPalette) DefaultThemeColor else palette.seedColor
-                                    handleColorSelection(colorToSave, palette.preset)
+                                    handleColorSelection(colorToSave, palette.preset, isDynamicPalette)
                                 }
                             )
                         }
@@ -386,12 +416,108 @@ fun ThemeScreen(
                     customAccentColorInt = customAccentColorInt,
                     isTvOrCar = isTvOrCar,
                     onApply = { color ->
-                        onCustomAccentColorChange(color.toArgb())
+                        // Stored nudged too, so reopening the picker shows the accent that is actually
+                        // in force rather than the sentinel the theme would ignore.
+                        val picked = color.distinctFromNoAccentSentinel()
+                        onCustomAccentColorChange(picked.toArgb())
                         // A typed hex is a seed, never a preset: applying one drops out of the named
                         // theme, which is the escape hatch back to the normal engine.
-                        handleColorSelection(color, ThemePreset.NONE)
+                        // Positional: Kotlin has no named arguments for function-typed values.
+                        // Third argument is `autoColor` — false, this is a deliberate pick.
+                        handleColorSelection(picked, ThemePreset.NONE, false)
                     },
                 )
+            }
+
+            item {
+                ResetThemeSection(
+                    isTvOrCar = isTvOrCar,
+                    onReset = { showResetDialog = true },
+                )
+            }
+        }
+    }
+
+    if (showResetDialog) {
+        DefaultDialog(
+            onDismiss = { showResetDialog = false },
+            icon = { Icon(painterResource(R.drawable.restore), contentDescription = null) },
+            title = { Text(stringResource(R.string.theme_reset)) },
+            buttons = {
+                TextButton(onClick = { showResetDialog = false }) {
+                    Text(stringResource(android.R.string.cancel))
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Button(
+                    onClick = {
+                        resetThemeToDefaults()
+                        showResetDialog = false
+                    }
+                ) {
+                    Text(stringResource(R.string.reset))
+                }
+            }
+        ) {
+            Text(
+                text = stringResource(R.string.theme_reset_confirm),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 8.dp),
+            )
+        }
+    }
+}
+
+/**
+ * "Restore original settings" — the escape hatch out of a theme the user no longer wants.
+ *
+ * Deliberately its own section at the BOTTOM, past everything it undoes, and behind a confirmation:
+ * it throws away real work (a hand-typed accent among it) and there is no undo.
+ */
+@Composable
+private fun ResetThemeSection(
+    isTvOrCar: Boolean,
+    onReset: () -> Unit,
+) {
+    Column {
+        Text(
+            text = stringResource(R.string.theme_reset),
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.primary,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(bottom = 4.dp, start = 4.dp)
+        )
+        Text(
+            text = stringResource(R.string.theme_reset_desc),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 16.dp, start = 4.dp)
+        )
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(28.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.6f)
+            ),
+            elevation = CardDefaults.cardElevation(0.dp),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
+        ) {
+            Column(modifier = Modifier.padding(20.dp)) {
+                Button(
+                    onClick = onReset,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .tvFocusable(isTvOrCar, scaleFocused = 1f),
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.restore),
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.theme_reset))
+                }
             }
         }
     }
@@ -550,7 +676,11 @@ private fun CustomAccentSection(
     onApply: (Color) -> Unit,
 ) {
     val startingColor = if (customAccentColorInt != 0) Color(customAccentColorInt) else selectedThemeColor
-    var hexInput by rememberSaveable { mutableStateOf(ColorPickerConversions.colorToHex(startingColor)) }
+    // Keyed on the colour in force, so "restore original settings" visibly empties this field too
+    // instead of leaving the discarded hex sitting in it as if it were still applied.
+    var hexInput by rememberSaveable(startingColor) {
+        mutableStateOf(ColorPickerConversions.colorToHex(startingColor))
+    }
 
     val parsed = ColorPickerConversions.parseHexColor(hexInput)
     val showError = hexInput.isNotBlank() && parsed == null

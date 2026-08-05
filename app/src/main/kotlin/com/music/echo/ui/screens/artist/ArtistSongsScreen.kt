@@ -52,7 +52,6 @@ import iad1tya.echo.music.ui.component.SortHeader
 import iad1tya.echo.music.ui.component.rememberPlayedShuffleSet
 import iad1tya.echo.music.ui.component.rememberShuffleMemoryPrompt
 import iad1tya.echo.music.ui.menu.SongMenu
-import iad1tya.echo.music.ui.utils.backToMain
 import iad1tya.echo.music.utils.listItemShape
 import iad1tya.echo.music.utils.rememberEnumPreference
 import iad1tya.echo.music.utils.rememberPreference
@@ -197,7 +196,7 @@ fun ArtistSongsScreen(
             navigationIcon = {
                 IconButton(
                     onClick = navController::navigateUp,
-                    onLongClick = navController::backToMain,
+                    onLongClick = null,
                 ) {
                     Icon(
                         painterResource(R.drawable.arrow_back),

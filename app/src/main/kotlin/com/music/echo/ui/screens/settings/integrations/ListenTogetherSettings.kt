@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -79,7 +80,11 @@ import iad1tya.echo.music.ui.component.DefaultDialog
 import iad1tya.echo.music.ui.component.IconButton
 import iad1tya.echo.music.ui.component.IntegrationCard
 import iad1tya.echo.music.ui.component.IntegrationCardItem
-import iad1tya.echo.music.ui.utils.backToMain
+import iad1tya.echo.music.ui.newui.AuraPanel
+import iad1tya.echo.music.ui.newui.AuraShapes
+import iad1tya.echo.music.ui.newui.AuraSpacing
+import iad1tya.echo.music.ui.newui.AuraType
+import iad1tya.echo.music.ui.newui.rememberAuraPanelSkin
 import iad1tya.echo.music.utils.rememberPreference
 import iad1tya.echo.music.viewmodels.ListenTogetherViewModel
 import kotlinx.coroutines.flow.collectLatest
@@ -186,7 +191,7 @@ fun ListenTogetherSettings(
                 },
                 trailingIcon = {
                     if (tempUsername.isNotBlank()) {
-                        IconButton(onClick = { tempUsername = "" }, onLongClick = {}) {
+                        IconButton(onClick = { tempUsername = "" }, onLongClick = null) {
                             Icon(painterResource(R.drawable.close), contentDescription = null)
                         }
                     }
@@ -370,7 +375,7 @@ fun ListenTogetherSettings(
         navigationIcon = {
             IconButton(
                 onClick = navController::navigateUp,
-                onLongClick = navController::backToMain,
+                onLongClick = null,
             ) {
                 Icon(
                     painterResource(R.drawable.arrow_back),
@@ -472,6 +477,12 @@ private fun ServerChooserDialog(
     var customUrl by rememberSaveable(currentUrl) { mutableStateOf(currentUrl) }
     val trimmedCustomUrl = customUrl.trim()
 
+    // ONE flag read for the dialog, handed to every server card below. These cards are drawn INSIDE
+    // `DefaultDialog`, i.e. on a dialog surface rather than on the page — which is exactly why
+    // `AuraPanel`'s fill is a translucent wash and not an opaque `surface`: an opaque plate would
+    // stamp a mismatched rectangle per server.
+    val skin = rememberAuraPanelSkin()
+
     DefaultDialog(
         onDismiss = onDismiss,
         icon = { Icon(painterResource(R.drawable.cloud), contentDescription = null) },
@@ -490,12 +501,14 @@ private fun ServerChooserDialog(
         ) {
             servers.forEach { server ->
                 val isSelected = server.url == currentUrl
-                Card(
+                AuraPanel(
+                    skin = skin,
                     modifier = Modifier
                         .fillMaxWidth()
+                        .then(if (skin.enabled) Modifier.sizeIn(minHeight = AuraSpacing.MinTouchTarget) else Modifier)
                         .clickable { onSelect(server) },
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(
+                    classicShape = RoundedCornerShape(16.dp),
+                    classicColors = CardDefaults.cardColors(
                         containerColor = if (isSelected) {
                             MaterialTheme.colorScheme.primaryContainer
                         } else {
@@ -506,24 +519,34 @@ private fun ServerChooserDialog(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
+                            // The SELECTED server takes the render's "SONANDO" wash instead of a
+                            // different card colour, so selection reads the same here as everywhere
+                            // else in the redesign. Painted inside the panel so the hairline stays.
+                            .then(
+                                if (skin.enabled && isSelected)
+                                    Modifier.background(skin.accent.copy(alpha = 0.10f))
+                                else Modifier
+                            )
                             .padding(12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = server.name,
-                                style = MaterialTheme.typography.titleSmall,
+                                style = if (skin.enabled) AuraType.RowTitle else MaterialTheme.typography.titleSmall,
+                                color = if (skin.enabled) skin.ink else Color.Unspecified,
                                 fontWeight = FontWeight.SemiBold
                             )
                             Text(
                                 text = "${server.location} - ${server.operator}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                style = if (skin.enabled) AuraType.RowSubtitle else MaterialTheme.typography.bodySmall,
+                                color = if (skin.enabled) skin.inkMuted else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Text(
                                 text = server.url,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                // A URL is technical data — tracked monospace in the render.
+                                style = if (skin.enabled) AuraType.QualityBadge else MaterialTheme.typography.labelSmall,
+                                color = if (skin.enabled) skin.inkFaint else MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
@@ -532,19 +555,24 @@ private fun ServerChooserDialog(
                             Icon(
                                 painter = painterResource(R.drawable.done),
                                 contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary
+                                tint = if (skin.enabled) skin.accent else MaterialTheme.colorScheme.primary
                             )
                         }
                     }
                 }
             }
 
-            HorizontalDivider()
+            if (skin.enabled) {
+                HorizontalDivider(thickness = 1.dp, color = skin.hairline)
+            } else {
+                HorizontalDivider()
+            }
 
             Text(
                 text = stringResource(R.string.listen_together_custom_server),
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold
+                style = if (skin.enabled) AuraType.MenuGroupLabel else MaterialTheme.typography.titleSmall,
+                color = if (skin.enabled) skin.inkFaint else Color.Unspecified,
+                fontWeight = if (skin.enabled) FontWeight.Normal else FontWeight.SemiBold
             )
             OutlinedTextField(
                 value = customUrl,
@@ -560,7 +588,7 @@ private fun ServerChooserDialog(
                 onClick = { onUseCustom(trimmedCustomUrl) },
                 enabled = trimmedCustomUrl.isNotBlank(),
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp)
+                shape = if (skin.enabled) AuraShapes.Pill else RoundedCornerShape(12.dp)
             ) {
                 Text(stringResource(R.string.listen_together_use_custom_server))
             }
@@ -634,6 +662,8 @@ fun BlockedUsersDialog(
     onDismiss: () -> Unit
 ) {
     val listState = rememberLazyListState()
+    // ONE flag read for the dialog; the rows below take their colours from it.
+    val skin = rememberAuraPanelSkin()
 
     DefaultDialog(
         onDismiss = onDismiss,
@@ -671,8 +701,10 @@ fun BlockedUsersDialog(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(MaterialTheme.colorScheme.surfaceVariant)
+                                .clip(if (skin.enabled) AuraShapes.Highlight else RoundedCornerShape(12.dp))
+                                .background(
+                                    if (skin.enabled) skin.fill else MaterialTheme.colorScheme.surfaceVariant
+                                )
                                 .padding(12.dp),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
@@ -684,12 +716,13 @@ fun BlockedUsersDialog(
                                     painter = painterResource(R.drawable.person),
                                     contentDescription = null,
                                     modifier = Modifier.size(20.dp),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    tint = if (skin.enabled) skin.accent else MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
                                     text = username,
-                                    style = MaterialTheme.typography.bodyMedium
+                                    style = if (skin.enabled) AuraType.RowTitle else MaterialTheme.typography.bodyMedium,
+                                    color = if (skin.enabled) skin.ink else Color.Unspecified
                                 )
                             }
                             TextButton(

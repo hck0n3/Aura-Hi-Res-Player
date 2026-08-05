@@ -46,7 +46,6 @@ import iad1tya.echo.music.constants.YtmUploadSyncKey
 import iad1tya.echo.music.ui.component.IconButton
 import iad1tya.echo.music.ui.component.Material3SettingsGroup
 import iad1tya.echo.music.ui.component.Material3SettingsItem
-import iad1tya.echo.music.ui.utils.backToMain
 import iad1tya.echo.music.utils.UploadCategoryProgress
 import iad1tya.echo.music.utils.rememberPreference
 import iad1tya.echo.music.viewmodels.AccountSettingsViewModel
@@ -77,7 +76,7 @@ fun YtmSyncScreen(
             TopAppBar(
                 title = { Text("Sincronizar desde YouTube Music") },
                 navigationIcon = {
-                    IconButton(onClick = navController::navigateUp, onLongClick = navController::backToMain) {
+                    IconButton(onClick = navController::navigateUp, onLongClick = null) {
                         Icon(painterResource(R.drawable.arrow_back), contentDescription = null)
                     }
                 },

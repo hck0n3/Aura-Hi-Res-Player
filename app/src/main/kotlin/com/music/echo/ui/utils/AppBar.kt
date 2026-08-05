@@ -13,10 +13,23 @@ import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.material3.TopAppBarState
 import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 
+/**
+ * This used to allocate a NEW [AppBarScrollBehavior] on every recomposition (no `remember`).
+ * MainActivity passes the result into the NavHost builder lambda, so an unstable instance
+ * invalidated NavHost's internal `remember` and made it re-run `createGraph()` every frame —
+ * pure waste on the busiest code path in the app.
+ *
+ * [canScroll] is wrapped in [rememberUpdatedState] rather than used as a `remember` key: the
+ * behavior instance stays stable across recompositions while still calling the LATEST lambda,
+ * so a caller whose lambda captures changing values can never read a stale one.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun appBarScrollBehavior(
@@ -24,13 +37,17 @@ fun appBarScrollBehavior(
     canScroll: () -> Boolean = { true },
     snapAnimationSpec: AnimationSpec<Float>? = spring(stiffness = Spring.StiffnessMediumLow),
     flingAnimationSpec: DecayAnimationSpec<Float>? = rememberSplineBasedDecay(),
-): TopAppBarScrollBehavior =
-    AppBarScrollBehavior(
-        state = state,
-        snapAnimationSpec = snapAnimationSpec,
-        flingAnimationSpec = flingAnimationSpec,
-        canScroll = canScroll,
-    )
+): TopAppBarScrollBehavior {
+    val currentCanScroll by rememberUpdatedState(canScroll)
+    return remember(state, snapAnimationSpec, flingAnimationSpec) {
+        AppBarScrollBehavior(
+            state = state,
+            snapAnimationSpec = snapAnimationSpec,
+            flingAnimationSpec = flingAnimationSpec,
+            canScroll = { currentCanScroll() },
+        )
+    }
+}
 
 @ExperimentalMaterial3Api
 class AppBarScrollBehavior(
@@ -51,8 +68,8 @@ class AppBarScrollBehavior(
                 state.contentOffset += consumed.y
                 if (state.heightOffset == 0f || state.heightOffset == state.heightOffsetLimit) {
                     if (consumed.y == 0f && available.y > 0f) {
-                        
-                        
+
+
                         state.contentOffset = 0f
                     }
                 }

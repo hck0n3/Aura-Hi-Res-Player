@@ -27,7 +27,6 @@ import iad1tya.echo.music.R
 import iad1tya.echo.music.constants.TidalClientIdKey
 import iad1tya.echo.music.migration.TidalAuthCallbackBus
 import iad1tya.echo.music.ui.component.IconButton
-import iad1tya.echo.music.ui.utils.backToMain
 import iad1tya.echo.music.utils.rememberPreference
 
 /**
@@ -107,7 +106,7 @@ fun MigrationTidalScreen(navController: NavController) {
                 navigationIcon = {
                     IconButton(
                         onClick = navController::navigateUp,
-                        onLongClick = navController::backToMain,
+                        onLongClick = null,
                     ) {
                         Icon(painterResource(R.drawable.arrow_back), null)
                     }

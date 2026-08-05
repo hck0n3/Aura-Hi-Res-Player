@@ -36,7 +36,6 @@ import iad1tya.echo.music.constants.SidePanelOnLeftKey
 import iad1tya.echo.music.ui.component.IconButton
 import iad1tya.echo.music.ui.component.Material3SettingsGroup
 import iad1tya.echo.music.ui.component.Material3SettingsItem
-import iad1tya.echo.music.ui.utils.backToMain
 import iad1tya.echo.music.utils.DeviceCapabilities
 import iad1tya.echo.music.utils.DeviceForm
 import iad1tya.echo.music.utils.DeviceTier
@@ -256,7 +255,7 @@ fun PerformanceSettings(
         navigationIcon = {
             IconButton(
                 onClick = navController::navigateUp,
-                onLongClick = navController::backToMain
+                onLongClick = null
             ) {
                 Icon(
                     painterResource(R.drawable.arrow_back),

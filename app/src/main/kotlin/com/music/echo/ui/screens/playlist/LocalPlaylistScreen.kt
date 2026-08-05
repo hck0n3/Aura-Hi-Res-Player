@@ -154,7 +154,6 @@ import iad1tya.echo.music.ui.menu.LocalPlaylistMenu
 import iad1tya.echo.music.ui.menu.SelectionSongMenu
 import iad1tya.echo.music.ui.menu.SongMenu
 import iad1tya.echo.music.ui.screens.settings.DarkMode
-import iad1tya.echo.music.ui.utils.backToMain
 import iad1tya.echo.music.ui.utils.rememberIsTvOrCar
 import iad1tya.echo.music.ui.utils.tvFocusable
 import iad1tya.echo.music.utils.listItemShape
@@ -938,11 +937,7 @@ fun LocalPlaylistScreen(
                                 navController.navigateUp()
                             }
                         },
-                        onLongClick = {
-                            if (!isSearching) {
-                                navController.backToMain()
-                            }
-                        }
+                        onLongClick = null
                     ) {
                         Icon(
                             painter = painterResource(R.drawable.arrow_back),

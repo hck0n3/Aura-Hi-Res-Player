@@ -54,6 +54,7 @@ import iad1tya.echo.music.constants.PauseOnMute
 import iad1tya.echo.music.constants.PersistentQueueKey
 import iad1tya.echo.music.constants.PersistentShuffleAcrossQueuesKey
 import iad1tya.echo.music.constants.EnhancedShuffleKey
+import iad1tya.echo.music.constants.PreviousQueueOfferKey
 import iad1tya.echo.music.constants.PreventDuplicateTracksInQueueKey
 import iad1tya.echo.music.constants.RememberShuffleAndRepeatKey
 import iad1tya.echo.music.constants.ResumeOnBluetoothConnectKey
@@ -77,7 +78,6 @@ import iad1tya.echo.music.ui.component.EnumDialog
 import iad1tya.echo.music.ui.component.IconButton
 import iad1tya.echo.music.ui.component.Material3SettingsGroup
 import iad1tya.echo.music.ui.component.Material3SettingsItem
-import iad1tya.echo.music.ui.utils.backToMain
 import iad1tya.echo.music.utils.rememberEnumPreference
 import iad1tya.echo.music.utils.rememberPreference
 import kotlin.math.roundToInt
@@ -244,6 +244,11 @@ fun PlayerSettings(
     )
     val (preventDuplicateTracksInQueue, onPreventDuplicateTracksInQueueChange) = rememberPreference(
         PreventDuplicateTracksInQueueKey,
+        defaultValue = true
+    )
+    // Must match MusicService.previousQueueOfferEnabledHint's default (ON) or the switch would lie.
+    val (previousQueueOffer, onPreviousQueueOfferChange) = rememberPreference(
+        PreviousQueueOfferKey,
         defaultValue = true
     )
     // Must match the ONLY consumer (MainActivity.onDestroy reads this key with default false); showing
@@ -1033,6 +1038,27 @@ fun PlayerSettings(
                     onClick = { onPreventDuplicateTracksInQueueChange(!preventDuplicateTracksInQueue) }
                 ),
                 Material3SettingsItem(
+                    icon = painterResource(R.drawable.replay),
+                    title = { Text(stringResource(R.string.previous_queue_offer_setting)) },
+                    description = { Text(stringResource(R.string.previous_queue_offer_setting_desc)) },
+                    trailingContent = {
+                        Switch(
+                            checked = previousQueueOffer,
+                            onCheckedChange = onPreviousQueueOfferChange,
+                            thumbContent = {
+                                Icon(
+                                    painter = painterResource(
+                                        id = if (previousQueueOffer) R.drawable.check else R.drawable.close
+                                    ),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(SwitchDefaults.IconSize)
+                                )
+                            }
+                        )
+                    },
+                    onClick = { onPreviousQueueOfferChange(!previousQueueOffer) }
+                ),
+                Material3SettingsItem(
                     icon = painterResource(R.drawable.skip_next),
                     title = { Text(stringResource(R.string.auto_skip_next_on_error)) },
                     description = { Text(stringResource(R.string.auto_skip_next_on_error_desc)) },
@@ -1166,7 +1192,7 @@ fun PlayerSettings(
         navigationIcon = {
             IconButton(
                 onClick = navController::navigateUp,
-                onLongClick = navController::backToMain
+                onLongClick = null
             ) {
                 Icon(
                     painterResource(R.drawable.arrow_back),

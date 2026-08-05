@@ -64,7 +64,6 @@ import iad1tya.echo.music.constants.GridThumbnailHeight
 import iad1tya.echo.music.ui.component.IconButton
 import iad1tya.echo.music.ui.component.LibraryAlbumGridItem
 import iad1tya.echo.music.ui.component.LocalMenuState
-import iad1tya.echo.music.ui.utils.backToMain
 import iad1tya.echo.music.utils.rememberEnumPreference
 import iad1tya.echo.music.viewmodels.ArtistAlbumsViewModel
 
@@ -176,7 +175,7 @@ fun ArtistAlbumsScreen(
             navigationIcon = {
                 IconButton(
                     onClick = navController::navigateUp,
-                    onLongClick = navController::backToMain
+                    onLongClick = null
                 ) {
                     Icon(
                         painter = painterResource(id = R.drawable.arrow_back),

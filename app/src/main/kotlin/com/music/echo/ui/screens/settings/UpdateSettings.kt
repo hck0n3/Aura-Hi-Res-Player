@@ -35,7 +35,6 @@ import iad1tya.echo.music.ui.component.IconButton
 import iad1tya.echo.music.ui.component.Material3SettingsGroup
 import iad1tya.echo.music.ui.component.Material3SettingsItem
 import iad1tya.echo.music.echomusic.component.UpdateInfoDialog
-import iad1tya.echo.music.ui.utils.backToMain
 import iad1tya.echo.music.echomusic.updater.getAutoUpdateCheckSetting
 import iad1tya.echo.music.echomusic.updater.saveAutoUpdateCheckSetting
 import iad1tya.echo.music.echomusic.updater.getUpdateAvailableState
@@ -199,7 +198,7 @@ fun UpdateSettings(
                     trailingContent = {
                         IconButton(
                             onClick = { showInfoDialog = true },
-                            onLongClick = {}
+                            onLongClick = null
                         ) {
                             Icon(
                                 painterResource(R.drawable.info),
@@ -238,7 +237,7 @@ fun UpdateSettings(
         navigationIcon = {
             IconButton(
                 onClick = navController::navigateUp,
-                onLongClick = navController::backToMain
+                onLongClick = null
             ) {
                 Icon(
                     painterResource(R.drawable.arrow_back),

@@ -28,7 +28,6 @@ import androidx.navigation.NavController
 import iad1tya.echo.music.LocalPlayerAwareWindowInsets
 import iad1tya.echo.music.R
 import iad1tya.echo.music.ui.component.IconButton
-import iad1tya.echo.music.ui.utils.backToMain
 import iad1tya.echo.music.utils.AppLogger
 import iad1tya.echo.music.utils.DiagnosticHeader
 import kotlinx.coroutines.Dispatchers
@@ -86,19 +85,19 @@ fun LogsScreen(
                 navigationIcon = {
                     IconButton(
                         onClick = navController::navigateUp,
-                        onLongClick = navController::backToMain,
+                        onLongClick = null,
                     ) {
                         Icon(painterResource(R.drawable.arrow_back), contentDescription = null)
                     }
                 },
                 actions = {
-                    IconButton(onClick = { copyToClipboard(context, logText) }, onLongClick = {}) {
+                    IconButton(onClick = { copyToClipboard(context, logText) }, onLongClick = null) {
                         Icon(painterResource(R.drawable.content_copy), contentDescription = stringResource(R.string.copy))
                     }
-                    IconButton(onClick = { shareLog(context, tab, logText) }, onLongClick = {}) {
+                    IconButton(onClick = { shareLog(context, tab, logText) }, onLongClick = null) {
                         Icon(painterResource(R.drawable.share), contentDescription = stringResource(R.string.share))
                     }
-                    IconButton(onClick = { AppLogger.clear(context); reloadTrigger++ }, onLongClick = {}) {
+                    IconButton(onClick = { AppLogger.clear(context); reloadTrigger++ }, onLongClick = null) {
                         Icon(painterResource(R.drawable.delete), contentDescription = stringResource(R.string.delete))
                     }
                 },

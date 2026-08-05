@@ -39,7 +39,6 @@ import iad1tya.echo.music.ui.component.IconButton
 import iad1tya.echo.music.ui.component.NavigationTitle
 import iad1tya.echo.music.ui.component.shimmer.ListItemPlaceHolder
 import iad1tya.echo.music.ui.component.shimmer.ShimmerHost
-import iad1tya.echo.music.ui.utils.backToMain
 import iad1tya.echo.music.viewmodels.MoodAndGenresViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -109,7 +108,7 @@ fun MoodAndGenresScreen(
         navigationIcon = {
             IconButton(
                 onClick = navController::navigateUp,
-                onLongClick = navController::backToMain,
+                onLongClick = null,
             ) {
                 Icon(
                     painterResource(R.drawable.arrow_back),

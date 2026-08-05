@@ -65,7 +65,12 @@ import iad1tya.echo.music.ui.component.DefaultDialog
 import iad1tya.echo.music.ui.component.IconButton
 import iad1tya.echo.music.ui.component.LocalMenuState
 import iad1tya.echo.music.ui.component.NavigationTitle
-import iad1tya.echo.music.ui.utils.backToMain
+import iad1tya.echo.music.ui.newui.AuraPalette
+import iad1tya.echo.music.ui.newui.AuraPanel
+import iad1tya.echo.music.ui.newui.AuraPanelSkin
+import iad1tya.echo.music.ui.newui.AuraShapes
+import iad1tya.echo.music.ui.newui.AuraType
+import iad1tya.echo.music.ui.newui.rememberAuraPanelSkin
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -182,14 +187,22 @@ fun RecognitionHistoryScreen(
         }
     }
 
+    // ONE flag read for the whole screen; the list rows take it as a parameter, so a 200-entry
+    // history still holds exactly one DataStore subscription.
+    val skin = rememberAuraPanelSkin()
+    val auraDark = skin.enabled && skin.darkGround
+    val ground = if (auraDark) AuraPalette.Ground else MaterialTheme.colorScheme.background
+
     Scaffold(
+        // `MaterialTheme.colorScheme.background` IS the `Scaffold` default.
+        containerColor = ground,
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.recognition_history)) },
                 navigationIcon = {
                     IconButton(
                         onClick = { navController.navigateUp() },
-                        onLongClick = { navController.backToMain() }
+                        onLongClick = null
                     ) {
                         Icon(
                             painter = painterResource(R.drawable.arrow_back),
@@ -206,6 +219,17 @@ fun RecognitionHistoryScreen(
                             )
                         }
                     }
+                },
+                colors = if (auraDark) {
+                    androidx.compose.material3.TopAppBarDefaults.topAppBarColors(
+                        containerColor = AuraPalette.Ground,
+                        titleContentColor = skin.ink,
+                        navigationIconContentColor = skin.ink,
+                        actionIconContentColor = skin.ink,
+                    )
+                } else {
+                    // The `TopAppBar` default, spelled out so the classic bar is unchanged.
+                    androidx.compose.material3.TopAppBarDefaults.topAppBarColors()
                 }
             )
         }
@@ -248,8 +272,9 @@ fun RecognitionHistoryScreen(
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 shape = RoundedCornerShape(28.dp),
                 colors = TextFieldDefaults.colors(
-                    focusedContainerColor   = MaterialTheme.colorScheme.surfaceVariant,
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    // The render's search field is the same translucent wash as its cards.
+                    focusedContainerColor   = if (skin.enabled) skin.fill else MaterialTheme.colorScheme.surfaceVariant,
+                    unfocusedContainerColor = if (skin.enabled) skin.fill else MaterialTheme.colorScheme.surfaceVariant,
                     focusedIndicatorColor   = Color.Transparent,
                     unfocusedIndicatorColor = Color.Transparent,
                     disabledIndicatorColor  = Color.Transparent,
@@ -274,13 +299,14 @@ fun RecognitionHistoryScreen(
                                 painter = painterResource(R.drawable.history),
                                 contentDescription = null,
                                 modifier = Modifier.size(64.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                tint = if (skin.enabled) skin.inkFaint
+                                else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                             )
                             Spacer(modifier = Modifier.height(16.dp))
                             Text(
                                 text = "No recognition history",
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                style = if (skin.enabled) AuraType.RowSubtitle else MaterialTheme.typography.bodyLarge,
+                                color = if (skin.enabled) skin.inkMuted else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
@@ -298,13 +324,14 @@ fun RecognitionHistoryScreen(
                                 painter = painterResource(R.drawable.search),
                                 contentDescription = null,
                                 modifier = Modifier.size(64.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                tint = if (skin.enabled) skin.inkFaint
+                                else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                             )
                             Spacer(modifier = Modifier.height(16.dp))
                             Text(
                                 text = "No results for \"${query.text}\"",
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                style = if (skin.enabled) AuraType.RowSubtitle else MaterialTheme.typography.bodyLarge,
+                                color = if (skin.enabled) skin.inkMuted else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
@@ -324,7 +351,10 @@ fun RecognitionHistoryScreen(
                                         title = label,
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .background(MaterialTheme.colorScheme.surface)
+                                            // The header is OPAQUE by construction — rows scroll under
+                                            // it — so it has to match whatever ground the screen is
+                                            // painting, or the new UI gets a light stripe on black.
+                                            .background(if (auraDark) ground else MaterialTheme.colorScheme.surface)
                                     )
                                 }
                                 items(
@@ -333,6 +363,7 @@ fun RecognitionHistoryScreen(
                                 ) { item ->
                                     RecognitionHistoryItem(
                                         item = item,
+                                        skin = skin,
                                         onClick = {
                                             val searchQuery = "${item.title} ${item.artist}"
                                             navController.navigate("search/${java.net.URLEncoder.encode(searchQuery, "UTF-8")}")
@@ -351,6 +382,7 @@ fun RecognitionHistoryScreen(
                             ) { item ->
                                 RecognitionHistoryItem(
                                     item = item,
+                                    skin = skin,
                                     onClick = {
                                         val searchQuery = "${item.title} ${item.artist}"
                                         navController.navigate("search/${java.net.URLEncoder.encode(searchQuery, "UTF-8")}")
@@ -371,20 +403,22 @@ fun RecognitionHistoryScreen(
 @Composable
 private fun RecognitionHistoryItem(
     item: RecognitionHistory,
+    skin: AuraPanelSkin,
     onClick: () -> Unit,
     onDelete: () -> Unit
 ) {
     val dateFormatter = remember { DateTimeFormatter.ofPattern("MMM dd, yyyy HH:mm") }
 
-    Card(
+    AuraPanel(
+        skin = skin,
+        classicShape = RoundedCornerShape(ThumbnailCornerRadius),
+        classicColors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        ),
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 8.dp)
             .clickable { onClick() },
-        shape = RoundedCornerShape(ThumbnailCornerRadius),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-        )
     ) {
         Row(
             modifier = Modifier
@@ -392,49 +426,53 @@ private fun RecognitionHistoryItem(
                 .padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            
+
             AsyncImage(
                 model = item.coverArtUrl,
                 contentDescription = null,
                 modifier = Modifier
                     .size(60.dp)
-                    .clip(RoundedCornerShape(ThumbnailCornerRadius)),
+                    // The render's artwork radius, matching every restyled row elsewhere.
+                    .clip(if (skin.enabled) AuraShapes.Artwork else RoundedCornerShape(ThumbnailCornerRadius)),
                 contentScale = ContentScale.Crop
             )
 
             Spacer(modifier = Modifier.width(12.dp))
 
-            
+
             Column(
                 modifier = Modifier.weight(1f)
             ) {
                 Text(
                     text = item.title,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = if (skin.enabled) AuraType.RowTitle else MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
+                    color = if (skin.enabled) skin.ink else Color.Unspecified,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     text = item.artist,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = if (skin.enabled) AuraType.RowSubtitle else MaterialTheme.typography.bodyMedium,
+                    color = if (skin.enabled) skin.inkMuted else MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     text = item.recognizedAt.format(dateFormatter),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    // A timestamp is technical data — tracked monospace in the render.
+                    style = if (skin.enabled) AuraType.Technical else MaterialTheme.typography.bodySmall,
+                    color = if (skin.enabled) skin.inkFaint
+                    else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                 )
             }
 
-            
+
             IconButton(onClick = onDelete) {
                 Icon(
                     painter = painterResource(R.drawable.delete),
                     contentDescription = stringResource(R.string.delete_from_history),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    tint = if (skin.enabled) skin.inkMuted else MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }

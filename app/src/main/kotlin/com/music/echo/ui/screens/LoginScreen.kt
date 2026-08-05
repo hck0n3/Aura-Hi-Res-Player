@@ -47,7 +47,6 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import iad1tya.echo.music.ui.component.IconButton
-import iad1tya.echo.music.ui.utils.backToMain
 import iad1tya.echo.music.utils.rememberPreference
 import iad1tya.echo.music.utils.reportException
 import kotlinx.coroutines.DelicateCoroutinesApi
@@ -256,7 +255,7 @@ fun LoginScreen(
         navigationIcon = {
             IconButton(
                 onClick = navController::navigateUp,
-                onLongClick = navController::backToMain
+                onLongClick = null
             ) {
                 Icon(
                     painterResource(R.drawable.arrow_back),

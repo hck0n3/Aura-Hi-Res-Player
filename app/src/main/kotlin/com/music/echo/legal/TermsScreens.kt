@@ -72,7 +72,6 @@ import iad1tya.echo.music.constants.TermsAcceptedAppVersionKey
 import iad1tya.echo.music.constants.TermsAcceptedAtKey
 import iad1tya.echo.music.constants.TermsAcceptedVersionKey
 import iad1tya.echo.music.ui.theme.BrandAccent
-import iad1tya.echo.music.ui.utils.backToMain
 import iad1tya.echo.music.ui.utils.rememberIsTvOrCar
 import iad1tya.echo.music.ui.utils.tvFocusable
 import iad1tya.echo.music.utils.dataStore
@@ -257,7 +256,7 @@ fun TermsScreen(
                 navigationIcon = {
                     iad1tya.echo.music.ui.component.IconButton(
                         onClick = navController::navigateUp,
-                        onLongClick = navController::backToMain,
+                        onLongClick = null,
                     ) {
                         Icon(painterResource(R.drawable.arrow_back), contentDescription = null)
                     }

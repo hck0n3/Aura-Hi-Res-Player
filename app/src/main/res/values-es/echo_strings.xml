@@ -986,6 +986,11 @@
     <string name="accent_hex_apply">Aplicar color</string>
     <string name="accent_preview">Vista previa del color</string>
 
+    <!-- Devuelve todos los ajustes de esta pantalla a su valor original. -->
+    <string name="theme_reset">Restablecer la configuración inicial</string>
+    <string name="theme_reset_desc">Devuelve el modo del tema, el color de acento, la intensidad, el color personalizado, el negro puro y el tema con nombre a como venían.</string>
+    <string name="theme_reset_confirm">Se descartarán el modo del tema, el color, la intensidad y el color personalizado que elegiste. ¿Restablecer la configuración inicial?</string>
+
     <!-- Colores saturados -->
     <string name="palette_muestreo">Muestreo</string>
     <string name="palette_vivid_red">Rojo vivo</string>

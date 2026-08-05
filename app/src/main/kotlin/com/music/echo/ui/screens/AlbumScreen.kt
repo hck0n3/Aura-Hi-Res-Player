@@ -130,7 +130,6 @@ import iad1tya.echo.music.ui.menu.AlbumMenu
 import iad1tya.echo.music.ui.menu.SelectionSongMenu
 import iad1tya.echo.music.ui.menu.SongMenu
 import iad1tya.echo.music.ui.menu.YouTubeAlbumMenu
-import iad1tya.echo.music.ui.utils.backToMain
 import iad1tya.echo.music.ui.utils.fadingEdge
 import iad1tya.echo.music.ui.utils.rememberIsTvOrCar
 import iad1tya.echo.music.ui.utils.tvFocusable
@@ -990,7 +989,7 @@ fun AlbumScreen(
             } else {
                 IconButton(
                     onClick = { navController.navigateUp() },
-                    onLongClick = { navController.backToMain() },
+                    onLongClick = null,
                     colors = IconButtonDefaults.outlinedIconButtonColors(
                         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.6f)
                     ),

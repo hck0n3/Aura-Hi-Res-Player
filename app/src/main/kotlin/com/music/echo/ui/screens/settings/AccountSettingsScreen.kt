@@ -39,7 +39,6 @@ import com.music.innertube.utils.parseCookieString
 import iad1tya.echo.music.LocalPlayerAwareWindowInsets
 import iad1tya.echo.music.constants.*
 import iad1tya.echo.music.ui.component.*
-import iad1tya.echo.music.ui.utils.backToMain
 import iad1tya.echo.music.utils.rememberPreference
 import iad1tya.echo.music.viewmodels.AccountSettingsViewModel
 import iad1tya.echo.music.viewmodels.HomeViewModel
@@ -76,7 +75,7 @@ fun AccountSettingsScreen(
                 navigationIcon = {
                     IconButton(
                         onClick = navController::navigateUp,
-                        onLongClick = navController::backToMain
+                        onLongClick = null
                     ) {
                         Icon(
                             painterResource(R.drawable.arrow_back),

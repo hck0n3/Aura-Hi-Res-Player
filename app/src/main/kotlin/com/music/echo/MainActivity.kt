@@ -72,8 +72,10 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -146,6 +148,7 @@ import androidx.lifecycle.coroutineScope
 import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
+import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -201,6 +204,8 @@ import iad1tya.echo.music.playback.DownloadUtil
 import iad1tya.echo.music.playback.MusicService
 import iad1tya.echo.music.playback.MusicService.MusicBinder
 import iad1tya.echo.music.playback.PlayerConnection
+import iad1tya.echo.music.playback.PreviousQueueOffer
+import iad1tya.echo.music.playback.PreviousQueueRule
 import iad1tya.echo.music.playback.queues.YouTubeQueue
 import iad1tya.echo.music.recognition.RecognitionForegroundService
 import iad1tya.echo.music.ui.component.AppNavigationRail
@@ -231,7 +236,12 @@ import iad1tya.echo.music.ui.component.LocalMenuState
 import iad1tya.echo.music.ui.component.rememberBottomSheetState
 import iad1tya.echo.music.ui.component.shimmer.ShimmerTheme
 import iad1tya.echo.music.ui.menu.YouTubeSongMenu
+import iad1tya.echo.music.ui.newui.AuraGlobalActions
+import iad1tya.echo.music.ui.newui.AuraNavBarHeight
+import iad1tya.echo.music.ui.newui.AuraNavigationBar
 import iad1tya.echo.music.ui.newui.BottomSheetPlayerHost
+import iad1tya.echo.music.ui.newui.LocalAuraTopActions
+import iad1tya.echo.music.ui.newui.rememberNewUiEnabled
 import iad1tya.echo.music.ui.player.NowPlayingSidePanel
 import iad1tya.echo.music.ui.screens.Screens
 import iad1tya.echo.music.widget.PlaylistWidgetReceiver
@@ -248,6 +258,7 @@ import iad1tya.echo.music.ui.theme.DefaultThemeColor
 import iad1tya.echo.music.ui.theme.echomusicTheme
 import iad1tya.echo.music.ui.theme.extractThemeColor
 import iad1tya.echo.music.ui.utils.appBarScrollBehavior
+import iad1tya.echo.music.ui.utils.navigateToReentryTarget
 import iad1tya.echo.music.ui.utils.resetHeightOffset
 import iad1tya.echo.music.utils.SyncUtils
 import iad1tya.echo.music.utils.dataStore
@@ -743,6 +754,11 @@ class MainActivity : ComponentActivity() {
             themeColor = themeColor,
             vividness = accentVividness,
             preset = themePreset,
+            // The STORED pick, not `themeColor`: with the dynamic theme on `themeColor` is the current
+            // cover's colour, and the surfaces must never follow that (the whole canvas re-hued on every
+            // track change). Passing the stored value also means a fresh pick repaints the surfaces on
+            // the same frame it is written, instead of waiting for the LaunchedEffect above to catch up.
+            selectedThemeColor = selectedThemeColor,
         ) {
             BoxWithConstraints(
                 modifier = Modifier
@@ -798,6 +814,14 @@ class MainActivity : ComponentActivity() {
                     }
                 }
                 val (useNewMiniPlayerDesign) = rememberPreference(UseNewMiniPlayerDesignKey, defaultValue = true)
+
+                // ── "Interfaz nueva": the SHELL follows the flag too ───────────────────────────────
+                // 0.6.144-beta1 rebuilt six CONTENT screens and left the frame classic, so the app still
+                // wore the old top bar, the old floating-toolbar pill, the classic mini player and two
+                // opaque strips over the gesture area. Read the flag ONCE here and gate every shell
+                // decision below on it. With the flag OFF every branch takes the classic side, so the
+                // shell is byte-identical to today; toggling writes one boolean and touches nothing else.
+                val newUiShell = rememberNewUiEnabled()
                 val defaultOpenTab = remember {
                     dataStore[DefaultOpenTabKey].toEnum(defaultValue = NavigationTab.HOME)
                 }
@@ -850,11 +874,35 @@ class MainActivity : ComponentActivity() {
                     navigationItems.map { it.route }.toSet()
                 }
 
-                val shouldShowNavigationBar = remember(currentRoute, navigationItemRoutes) {
+                val shouldShowNavigationBar = remember(currentRoute, navigationItemRoutes, newUiShell) {
                     currentRoute == null ||
                         navigationItemRoutes.contains(currentRoute) ||
-                        currentRoute!!.startsWith("search/")
+                        currentRoute!!.startsWith("search/") ||
+                        // The render makes Ajustes the FOURTH bottom-bar cell and draws that cell in
+                        // teal ON the Ajustes screen (`nv on`), i.e. under the new UI Ajustes is a
+                        // top-level destination and keeps the bar. GATED: with the flag off this term
+                        // is false and "settings" is a bar-less route exactly as it is today.
+                        (newUiShell && currentRoute == "settings")
                 }
+
+                // Routes whose NEW screen draws its own [AuraScreenHeader]. The render has no opaque
+                // title bar — the section name lives in the content — so on these routes the global
+                // TopAppBar is not drawn at all (it was stacking a second header on top of Home's) and
+                // the 64 dp phantom top inset it needs is not reserved either. Its four actions are not
+                // dropped: they move into that header through [LocalAuraTopActions] below.
+                // "settings" belongs here too, and for a slightly different reason: no TopAppBar has
+                // EVER been drawn on that route (the `currentRoute != "settings"` guard on
+                // `shouldShowTopBar` below predates the new UI), yet the 64 dp was still reserved — so
+                // AuraSettingsScreen consumed it as a Spacer and opened with 64 dp of dead black above
+                // "Ajustes". That was the third of the three new full screens still not immersive.
+                // Gated on `newUiShell`: with the flag off this is false and the classic SettingsScreen
+                // keeps the exact inset it has today.
+                val auraOwnsHeader = newUiShell &&
+                    (
+                        currentRoute == Screens.Home.route ||
+                            currentRoute == Screens.Library.route ||
+                            currentRoute == "settings"
+                        )
 
                 val isLandscape = configuration.containerDpSize.width > configuration.containerDpSize.height
 
@@ -902,14 +950,21 @@ class MainActivity : ComponentActivity() {
                     contentHasRoom &&
                     isWideLayout
 
+                // THE bottom-bar measurement, in one place. The classic shell is a 72 dp floating pill
+                // that hovers `FloatingToolbarBottomPadding` above the gesture bar; the new shell is a
+                // flush [AuraNavigationBar] of [AuraNavBarHeight] that paints its own ground through the
+                // inset. Both the slide distance and the bottom window inset are derived from this, so a
+                // shell swap can never mis-pad a list.
+                val shellNavBarHeight = if (newUiShell) AuraNavBarHeight else NavigationBarHeight
+
                 val navPadding = if (shouldShowNavigationBar && !showRail) {
-                    NavigationBarHeight + FloatingToolbarBottomPadding
+                    if (newUiShell) AuraNavBarHeight else NavigationBarHeight + FloatingToolbarBottomPadding
                 } else {
                     0.dp
                 }
 
                 val navigationBarHeight by animateDpAsState(
-                    targetValue = if (shouldShowNavigationBar && !showRail) NavigationBarHeight else 0.dp,
+                    targetValue = if (shouldShowNavigationBar && !showRail) shellNavBarHeight else 0.dp,
                     animationSpec = NavigationBarAnimationSpec,
                     label = "navBarHeight",
                 )
@@ -918,7 +973,9 @@ class MainActivity : ComponentActivity() {
                     dismissedBound = 0.dp,
                     collapsedBound = bottomInset +
                         (if (!showRail && shouldShowNavigationBar) navPadding else 0.dp) +
-                        (if (useNewMiniPlayerDesign) MiniPlayerBottomSpacing else 0.dp) +
+                        // The new shell's mini player is also a detached pill (the render's `.mi`), so it
+                        // needs the same breathing room the new classic mini design asks for.
+                        (if (useNewMiniPlayerDesign || newUiShell) MiniPlayerBottomSpacing else 0.dp) +
                         MiniPlayerHeight,
                     expandedBound = maxHeight,
                 )
@@ -944,23 +1001,31 @@ class MainActivity : ComponentActivity() {
                     shouldShowNavigationBar,
                     playerBottomSheetState.isDismissed,
                     showRail,
+                    shellNavBarHeight,
+                    auraOwnsHeader,
                 ) {
                     var bottom = bottomInset
                     if (shouldShowNavigationBar && !showRail) {
-                        bottom += NavigationBarHeight
+                        bottom += shellNavBarHeight
                     }
                     if (!playerBottomSheetState.isDismissed) bottom += MiniPlayerHeight
                     windowsInsets
                         .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Top)
-                        .add(WindowInsets(top = AppBarHeight, bottom = bottom))
+                        // IMMERSIVE: `WindowInsets(top = AppBarHeight)` is a 64 dp PHANTOM bar. Every
+                        // screen consumes this as `contentPadding`, so content could never scroll under
+                        // the status bar — the new screens looked boxed in ("la interfaz no es inmersiva,
+                        // no se muestra en pantalla completa") even though edge-to-edge itself is correct.
+                        // Reserve it only when a bar is actually drawn there. On the routes where the new
+                        // screen owns its header there is no bar, so there is nothing to reserve, and the
+                        // remaining `.only(Top)` still keeps the first row clear of the status bar while
+                        // the list scrolls behind it.
+                        .add(
+                            WindowInsets(
+                                top = if (auraOwnsHeader) 0.dp else AppBarHeight,
+                                bottom = bottom,
+                            )
+                        )
                 }
-                appBarScrollBehavior(
-                    canScroll = {
-                        !inSearchScreen &&
-                            (playerBottomSheetState.isCollapsed || playerBottomSheetState.isDismissed)
-                    }
-                )
-
                 val topAppBarScrollBehavior = appBarScrollBehavior(
                     canScroll = {
                         !inSearchScreen &&
@@ -1051,6 +1116,93 @@ class MainActivity : ComponentActivity() {
 
                 val coroutineScope = rememberCoroutineScope()
                 val snackbarHostState = remember { SnackbarHostState() }
+
+                // "¿quieres volver a la cola anterior?" — the service noticed he left a playlist to go
+                // play an album (PreviousQueueRule) and snapshotted the queue he walked away from.
+                //
+                // ARMED at the jump, SHOWN when he leaves the screen he jumped to. His words are "cuando
+                // le dé para atrás y vuelva a donde estaba… que me dé esa opción": prompting the instant
+                // he taps play on the album would ask him to undo the choice he just made, one second
+                // after making it, and the snackbar would be long gone by the time he actually wants it.
+                // So the arming records WHICH back-stack entry he was on, and the prompt waits until that
+                // entry is no longer the current one — a back press out of the album, in practice.
+                //
+                // It is OFFERED, never automatic: a snackbar interrupts no playback, steals no focus, and
+                // expires on its own; if he ignores it the snapshot is simply dropped. Compared by
+                // back-stack ENTRY (not by route pattern) so album -> album also counts as having moved
+                // on, and by reference because NavBackStackEntry.id is @RestrictTo on some versions.
+                var lastPreviousQueueOfferToken by rememberSaveable { mutableStateOf(0L) }
+                var pendingPreviousQueueOffer by remember { mutableStateOf<PreviousQueueOffer?>(null) }
+                var previousQueueOfferArmedEntry by remember { mutableStateOf<NavBackStackEntry?>(null) }
+                val previousQueueOfferMessage = stringResource(R.string.previous_queue_offer)
+                val previousQueueOfferTitled = stringResource(R.string.previous_queue_offer_titled)
+                val previousQueueResumeLabel = stringResource(R.string.previous_queue_resume)
+
+                LaunchedEffect(playerConnection) {
+                    val connection = playerConnection ?: return@LaunchedEffect
+                    connection.previousQueueOffer.collectLatest { offer ->
+                        // The token guard makes ONE detour prompt exactly ONCE — without it a rotation
+                        // would replay the StateFlow's last value and re-offer a queue already answered.
+                        if (offer == null || offer.token <= lastPreviousQueueOfferToken) {
+                            pendingPreviousQueueOffer = null
+                            previousQueueOfferArmedEntry = null
+                            return@collectLatest
+                        }
+                        pendingPreviousQueueOffer = offer
+                        previousQueueOfferArmedEntry = navBackStackEntry
+                    }
+                }
+
+                // Keyed on the BOOLEAN, not on the entry: navigating again while the snackbar is up must
+                // not restart this effect and cancel the prompt mid-air (he presses back, then taps
+                // something else a second later — extremely ordinary). The flag stays true for as long as
+                // the offer is pending and he is off the armed entry, so the snackbar survives.
+                val previousQueueOfferDue = pendingPreviousQueueOffer != null &&
+                        navBackStackEntry !== previousQueueOfferArmedEntry
+                LaunchedEffect(previousQueueOfferDue) {
+                    if (!previousQueueOfferDue) return@LaunchedEffect
+                    val offer = pendingPreviousQueueOffer ?: return@LaunchedEffect
+                    val connection = playerConnection ?: return@LaunchedEffect
+
+                    // The offer has a deadline (PreviousQueueRule.OFFER_TTL_MS from the capture) and the
+                    // service drops it on a timer — but that timer is a main-looper delay, which does not
+                    // tick through deep sleep. So check the deadline HERE too: if the phone slept through
+                    // it, raising the snackbar anyway would show a button whose action is already refused
+                    // on the service side. Answer it as a dismissal instead and show nothing.
+                    //
+                    // DISPLAY_GRACE_MS is added to "now" on purpose: a prompt raised in the last seconds
+                    // of the window would lapse WHILE he is reading it, so it is treated as already gone.
+                    // Anything actually shown is therefore still answerable when he taps it.
+                    if (PreviousQueueRule.hasLapsed(
+                            android.os.SystemClock.elapsedRealtime() + PreviousQueueRule.DISPLAY_GRACE_MS,
+                            offer.expiresAtElapsedRealtime,
+                        )
+                    ) {
+                        lastPreviousQueueOfferToken = offer.token
+                        pendingPreviousQueueOffer = null
+                        previousQueueOfferArmedEntry = null
+                        connection.dismissPreviousQueueOffer()
+                        return@LaunchedEffect
+                    }
+
+                    lastPreviousQueueOfferToken = offer.token
+                    val result = snackbarHostState.showSnackbar(
+                        message = offer.title
+                            ?.let { previousQueueOfferTitled.format(it) }
+                            ?: previousQueueOfferMessage,
+                        actionLabel = previousQueueResumeLabel,
+                        duration = SnackbarDuration.Long,
+                    )
+                    pendingPreviousQueueOffer = null
+                    // Release the held entry: nothing references it once the prompt is answered.
+                    previousQueueOfferArmedEntry = null
+                    if (result == SnackbarResult.ActionPerformed) {
+                        connection.resumePreviousQueue()
+                    } else {
+                        connection.dismissPreviousQueueOffer()
+                    }
+                }
+
                 var showSettingDialoge by remember { mutableStateOf(false) }
                 val (offlineMode, onOfflineModeChange) = rememberPreference(OfflineModeKey, defaultValue = false)
 
@@ -1140,6 +1292,48 @@ class MainActivity : ComponentActivity() {
 
                 val baseBg = if (pureBlack) Color.Black else MaterialTheme.colorScheme.surfaceContainer
 
+                // ── The four global top-bar actions, re-hosted in the new screens' own header ──────
+                // Read the two snackbar strings here (not inside the TopAppBar's `actions` scope) so the
+                // offline toggle behaves identically whichever shell renders it.
+                val offlineModeOnMessage = stringResource(R.string.offline_mode_on)
+                val offlineModeOffMessage = stringResource(R.string.offline_mode_off)
+                val auraTopActions: (@Composable () -> Unit)? = if (newUiShell) {
+                    {
+                        AuraGlobalActions(
+                            // Same condition as the classic bar: Listen Together only appears here when
+                            // the user hosts it in the top bar, because it is then filtered OUT of the
+                            // bottom navigation and this is its only entry point.
+                            showListenTogether = listenTogetherInTopBar,
+                            onListenTogetherClick = {
+                                navController.navigate(Screens.ListenTogether.route) {
+                                    launchSingleTop = true
+                                }
+                            },
+                            showHistory = showHistoryButton,
+                            onHistoryClick = { navController.navigate("history") },
+                            offlineMode = offlineMode,
+                            onOfflineToggle = {
+                                val enabled = !offlineMode
+                                onOfflineModeChange(enabled)
+                                coroutineScope.launch {
+                                    snackbarHostState.showSnackbar(
+                                        if (enabled) offlineModeOnMessage else offlineModeOffMessage
+                                    )
+                                }
+                            },
+                            accountImageUrl = accountImageUrl,
+                            onAccountClick = { showSettingDialoge = true },
+                            // Reconocimiento used to be the fourth bottom-bar cell; the render gives
+                            // that slot to Ajustes, and `navigate("recognition…")` exists in exactly
+                            // one place in the app, so the feature would have lost its only door.
+                            // Same lambda as before — it still collapses the sheet and autostarts.
+                            onRecognitionClick = onMusicRecognitionClick,
+                        )
+                    }
+                } else {
+                    null
+                }
+
                 // ── Liquid Glass (Beta) ── DEFAULT OFF. The stored master switch is AND-ed with the
                 // runtime eligibility gate (API 31+, raw tier MID/HIGH, not TV/car, Performance Mode
                 // off) so the effect can never render on excluded devices. Keyed on highPerfMode so
@@ -1207,13 +1401,21 @@ class MainActivity : ComponentActivity() {
                     LocalIsInPipMode provides inPipMode,
                     LocalGlassEffectConfig provides glassEffectConfig,
                     LocalAppBackdrop provides appBackdrop,
+                    LocalAuraTopActions provides auraTopActions,
                 ) {
 
                     Scaffold(
                         snackbarHost = { SnackbarHost(snackbarHostState) },
                         topBar = {
                             AnimatedVisibility(
-                                visible = shouldShowTopBar,
+                                // "la parte donde está el título de la app está fea, solo es una barra
+                                // negra y ya" — with the new UI on, routes that draw their own
+                                // [AuraScreenHeader] get NO global bar: it was an opaque
+                                // surfaceContainer rectangle occluding the ambient bloom, and on Inicio
+                                // it stacked a SECOND header above the new one. Its actions are not lost;
+                                // they are provided through [LocalAuraTopActions] and rendered inside
+                                // that header's trailing slot.
+                                visible = shouldShowTopBar && !auraOwnsHeader,
                                 enter = fadeIn(animationSpec = tween(durationMillis = 300)),
                                 exit = fadeOut(animationSpec = tween(durationMillis = 200))
                             ) {
@@ -1379,7 +1581,13 @@ class MainActivity : ComponentActivity() {
                                         pureBlack = pureBlack
                                     )
 
-                                    val navSlideDistance = bottomInset + FloatingToolbarBottomPadding + NavigationBarHeight
+                                    // Derived from [shellNavBarHeight], so the bar, the slide animation and
+                                    // the bottom window inset always agree about how tall the bar is.
+                                    val navSlideDistance = if (newUiShell) {
+                                        bottomInset + AuraNavBarHeight
+                                    } else {
+                                        bottomInset + FloatingToolbarBottomPadding + NavigationBarHeight
+                                    }
 
                                     val navOffsetY = if (navigationBarHeight == 0.dp) {
                                         navSlideDistance
@@ -1387,7 +1595,7 @@ class MainActivity : ComponentActivity() {
                                         val slideOffset =
                                             navSlideDistance * playerBottomSheetState.progress.coerceIn(0f, 1f)
                                         val hideOffset =
-                                            navSlideDistance * (1 - navigationBarHeight.coerceAtMost(NavigationBarHeight) / NavigationBarHeight)
+                                            navSlideDistance * (1 - navigationBarHeight.coerceAtMost(shellNavBarHeight) / shellNavBarHeight)
                                         slideOffset + hideOffset
                                     }
 
@@ -1397,6 +1605,35 @@ class MainActivity : ComponentActivity() {
                                             .height(navSlideDistance)
                                             .offset(y = navOffsetY),
                                     ) {
+                                        if (newUiShell) {
+                                            // The render's `.nav`: a flush bar on the ground with a
+                                            // hairline rule, NOT an M3 HorizontalFloatingToolbar pill
+                                            // with per-FAB glass circles ("por qué me sigue saliendo el
+                                            // reproductor flotante y sus botones flotantes en liquid
+                                            // glass"). Same items, same click contract, same recognition
+                                            // entry point — only the drawing changes.
+                                            AuraNavigationBar(
+                                                items = navigationItems,
+                                                isSelected = { screen ->
+                                                    currentRoute == screen.route ||
+                                                        currentRoute?.startsWith("${screen.route}/") == true
+                                                },
+                                                onItemClick = onNavItemClick,
+                                                bottomInset = bottomInset,
+                                                // The render's fourth cell. `launchSingleTop` so
+                                                // tapping Ajustes while already on Ajustes cannot
+                                                // stack a second copy on the back stack.
+                                                onSettingsClick = {
+                                                    navController.navigate("settings") {
+                                                        launchSingleTop = true
+                                                    }
+                                                },
+                                                settingsSelected = currentRoute == "settings",
+                                                modifier = Modifier
+                                                    .align(Alignment.BottomCenter)
+                                                    .fillMaxWidth(),
+                                            )
+                                        } else {
                                         FloatingNavigationToolbar(
                                             items = navigationItems,
                                             pureBlack = pureBlack,
@@ -1418,20 +1655,29 @@ class MainActivity : ComponentActivity() {
                                                 )
                                                 .height(NavigationBarHeight)
                                         )
+                                        }
                                     }
 
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .align(Alignment.BottomCenter)
-                                            .height(bottomInsetDp)
-                                            
-                                            .graphicsLayer {
-                                                val progress = playerBottomSheetState.progress
-                                                alpha = if (progress > 0f || (useNewMiniPlayerDesign && !shouldShowNavigationBar)) 0f else 1f
-                                            }
-                                            .background(baseBg)
-                                    )
+                                    // IMMERSIVE: an opaque `baseBg` rectangle over the gesture-nav strip.
+                                    // It cut the ambient bloom dead along the bottom edge of every new
+                                    // screen. With the new shell the [AuraNavigationBar] already paints its
+                                    // own ground through that inset when a bar is shown, and when no bar is
+                                    // shown the point is that the content reaches the bottom edge — so the
+                                    // strip is simply not drawn.
+                                    if (!newUiShell) {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .align(Alignment.BottomCenter)
+                                                .height(bottomInsetDp)
+
+                                                .graphicsLayer {
+                                                    val progress = playerBottomSheetState.progress
+                                                    alpha = if (progress > 0f || (useNewMiniPlayerDesign && !shouldShowNavigationBar)) 0f else 1f
+                                                }
+                                                .background(baseBg)
+                                        )
+                                    }
                                 }
                             } else {
                                 if (currentRoute != "update" && currentRoute != "listen_together/chat" && currentRoute != "ambient_mode") {
@@ -1474,18 +1720,24 @@ class MainActivity : ComponentActivity() {
                                     }
                                 }
 
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .align(Alignment.BottomCenter)
-                                        .height(bottomInsetDp)
-                                        
-                                        .graphicsLayer {
-                                            val progress = playerBottomSheetState.progress
-                                            alpha = if (progress > 0f || (useNewMiniPlayerDesign && !shouldShowNavigationBar)) 0f else 1f
-                                        }
-                                        .background(baseBg)
-                                )
+                                // Same opaque gesture-strip as above, on the rail / wide / TV path. The
+                                // navigation rail itself is untouched (still [AppNavigationRail]); only
+                                // this decorative rectangle is skipped, so the new player's bloom reaches
+                                // the bottom edge there too.
+                                if (!newUiShell) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .align(Alignment.BottomCenter)
+                                            .height(bottomInsetDp)
+
+                                            .graphicsLayer {
+                                                val progress = playerBottomSheetState.progress
+                                                alpha = if (progress > 0f || (useNewMiniPlayerDesign && !shouldShowNavigationBar)) 0f else 1f
+                                            }
+                                            .background(baseBg)
+                                    )
+                                }
                             }
                         },
                         modifier = Modifier
@@ -1773,25 +2025,20 @@ class MainActivity : ComponentActivity() {
         // Launcher shortcuts ("Buscar" / "Biblioteca"). A COLD start picks the start destination from the
         // same action while composing; a WARM start (the app is singleTask, so it arrives through
         // onNewIntent) never re-runs that remember(), which is why the shortcuts did nothing once the app
-        // was already open. Navigating with the bottom-bar options makes the cold-start case a no-op
-        // (launchSingleTop on the destination that is already on top).
+        // was already open. navigateToReentryTarget keeps the cold-start case a no-op AND stops the warm
+        // one from wiping the user's chain: it used to popUpTo(startDestination), so tapping a shortcut
+        // while three screens deep reset you through Home.
         if (intent.action == ACTION_SEARCH || intent.action == ACTION_LIBRARY) {
             val route = if (intent.action == ACTION_SEARCH) Screens.Search.route else Screens.Library.route
             intent.action = null
-            runCatching {
-                navController.navigate(route) {
-                    popUpTo(navController.graph.startDestinationId) {
-                        saveState = true
-                    }
-                    launchSingleTop = true
-                    restoreState = true
-                }
-            }
+            runCatching { navController.navigateToReentryTarget(route) }
             return
         }
 
         // Playlist widget: a card tap opens the app on that playlist/collection. Without this branch the
         // activity launched and the intent fell through, so the app just opened wherever it had been.
+        // navigateToReentryTarget also stops N taps on the same card from stacking N copies of the
+        // playlist (a bare launchSingleTop only de-dupes when the target is already on TOP).
         if (intent.action == ACTION_OPEN_WIDGET_TARGET) {
             val targetType = intent.getStringExtra(EXTRA_WIDGET_TARGET_TYPE)
             val targetId = intent.getStringExtra(EXTRA_WIDGET_TARGET_ID)?.takeIf { it.isNotBlank() }
@@ -1806,11 +2053,7 @@ class MainActivity : ComponentActivity() {
                 PlaylistWidgetReceiver.TARGET_TYPE_ONLINE -> targetId?.let { "online_playlist/$it" }
                 else -> null
             } ?: return
-            runCatching {
-                navController.navigate(route) {
-                    launchSingleTop = true
-                }
-            }
+            runCatching { navController.navigateToReentryTarget(route) }
             return
         }
 

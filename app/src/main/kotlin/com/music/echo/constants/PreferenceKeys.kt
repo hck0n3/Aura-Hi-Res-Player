@@ -332,6 +332,12 @@ val ShuffleModeKey = booleanPreferencesKey("shuffleMode")
 // song has played (memory survives restarts, days, and toggling shuffle off/on), then the completed cycle
 // resets and hands off to the infinite radio. Off = classic in-memory shuffle.
 val EnhancedShuffleKey = booleanPreferencesKey("enhanced_shuffle")
+// "¿Volver a la cola anterior?", default ON. When on, leaving a listening list (playlist / auto-playlist /
+// library) to play an album or an artist snapshots the outgoing queue IN MEMORY and, once the user leaves
+// the screen he jumped to, a snackbar offers to resume it at the same song and second. Off = nothing is
+// captured at all (MusicService.captureQueueForResumeOffer returns first thing), not merely a hidden
+// prompt. The snapshot expires after PreviousQueueRule.OFFER_TTL_MS and never touches disk.
+val PreviousQueueOfferKey = booleanPreferencesKey("previousQueueOffer")
 
 // AIMP-style smooth entry on MANUAL track changes (skip/next/tap): the new song fades in over ~400ms
 // instead of slamming in at full level. Default ON (owner request). Auto-advance crossfade unaffected.

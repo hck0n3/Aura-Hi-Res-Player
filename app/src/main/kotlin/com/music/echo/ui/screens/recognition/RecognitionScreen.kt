@@ -87,9 +87,13 @@ import iad1tya.echo.music.LocalSyncUtils
 import iad1tya.echo.music.R
 import iad1tya.echo.music.models.toMediaMetadata
 import iad1tya.echo.music.ui.component.IconButton
+import iad1tya.echo.music.ui.newui.AuraPalette
+import iad1tya.echo.music.ui.newui.AuraPanelSkin
+import iad1tya.echo.music.ui.newui.AuraShapes
+import iad1tya.echo.music.ui.newui.AuraType
+import iad1tya.echo.music.ui.newui.rememberAuraPanelSkin
 import iad1tya.echo.music.playback.queues.YouTubeQueue
 import iad1tya.echo.music.ui.menu.AddToPlaylistDialog
-import iad1tya.echo.music.ui.utils.backToMain
 import com.music.shazamkit.models.RecognitionResult
 import com.music.shazamkit.models.RecognitionStatus
 import kotlinx.coroutines.Dispatchers
@@ -338,14 +342,21 @@ fun RecognitionScreen(
     // flow also runs through that service). Saving here too would duplicate every entry, and a
     // retained headless Success re-rendered on screen entry would duplicate it again.
 
+    // ONE flag read for the whole screen. The recognition PIPELINE below is untouched — this is the
+    // chrome only: ground, glyph colours, type, radii.
+    val skin = rememberAuraPanelSkin()
+    val auraDark = skin.enabled && skin.darkGround
+
     Scaffold(
+        // `MaterialTheme.colorScheme.background` IS the `Scaffold` default.
+        containerColor = if (auraDark) AuraPalette.Ground else MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.recognize_music)) },
                 navigationIcon = {
                     IconButton(
                         onClick = { navController.navigateUp() },
-                        onLongClick = { navController.backToMain() }
+                        onLongClick = null
                     ) {
                         Icon(
                             painter = painterResource(R.drawable.arrow_back),
@@ -360,6 +371,17 @@ fun RecognitionScreen(
                             contentDescription = stringResource(R.string.recognition_history)
                         )
                     }
+                },
+                colors = if (auraDark) {
+                    androidx.compose.material3.TopAppBarDefaults.topAppBarColors(
+                        containerColor = AuraPalette.Ground,
+                        titleContentColor = skin.ink,
+                        navigationIconContentColor = skin.ink,
+                        actionIconContentColor = skin.ink,
+                    )
+                } else {
+                    // The `TopAppBar` default, spelled out so the classic bar is unchanged.
+                    androidx.compose.material3.TopAppBarDefaults.topAppBarColors()
                 }
             )
         }
@@ -381,19 +403,21 @@ fun RecognitionScreen(
             ) { status ->
                 when (status) {
                     is RecognitionStatus.Ready -> {
-                        ReadyState(onStartRecognition = ::startRecognition)
+                        ReadyState(skin = skin, onStartRecognition = ::startRecognition)
                     }
                     is RecognitionStatus.Listening -> {
                         ListeningState(
+                            skin = skin,
                             onCancel = ::cancelRecognition
                         )
                     }
                     is RecognitionStatus.Processing -> {
-                        ProcessingState()
+                        ProcessingState(skin = skin)
                     }
                     is RecognitionStatus.Success -> {
                         SuccessState(
                             result = status.result,
+                            skin = skin,
                             onPlayOnApp = { result -> playRecognizedSong(result) },
                             isResolving = resolvedSong == null && !resolveFailed,
                             isResolved = resolvedSong != null,
@@ -409,6 +433,7 @@ fun RecognitionScreen(
                     is RecognitionStatus.NoMatch -> {
                         NoMatchState(
                             message = status.message,
+                            skin = skin,
                             onTryAgain = {
                                 startRecognition()
                             }
@@ -417,6 +442,7 @@ fun RecognitionScreen(
                     is RecognitionStatus.Error -> {
                         ErrorState(
                             message = status.message,
+                            skin = skin,
                             onTryAgain = {
                                 startRecognition()
                             }
@@ -428,8 +454,44 @@ fun RecognitionScreen(
     }
 }
 
+/**
+ * The screen's single primary action, so it is the ONE full-colour element here — which is exactly
+ * the budget `AuraPalette.PlayButtonGradient` is meant for. Nothing else on this screen takes a
+ * saturated fill.
+ */
+@Composable
+private fun micHalo(skin: AuraPanelSkin): Brush =
+    if (skin.enabled && skin.darkGround) {
+        Brush.radialGradient(
+            colors = listOf(
+                AuraPalette.Teal.copy(alpha = 0.30f),
+                AuraPalette.Blue.copy(alpha = 0.12f),
+                Color.Transparent
+            )
+        )
+    } else {
+        Brush.radialGradient(
+            colors = listOf(
+                MaterialTheme.colorScheme.primary.copy(alpha = 0.3f),
+                MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                Color.Transparent
+            )
+        )
+    }
+
+/** Off the new skin this IS `Modifier.background(MaterialTheme.colorScheme.primary)`, unchanged. */
+@Composable
+private fun Modifier.micFill(skin: AuraPanelSkin): Modifier =
+    if (skin.enabled && skin.darkGround) background(AuraPalette.PlayButtonGradient)
+    else background(MaterialTheme.colorScheme.primary)
+
+@Composable
+private fun micInk(skin: AuraPanelSkin): Color =
+    if (skin.enabled && skin.darkGround) AuraPalette.OnAccent else MaterialTheme.colorScheme.onPrimary
+
 @Composable
 private fun ReadyState(
+    skin: AuraPanelSkin,
     onStartRecognition: () -> Unit
 ) {
     Column(
@@ -440,15 +502,7 @@ private fun ReadyState(
             modifier = Modifier
                 .size(200.dp)
                 .clip(CircleShape)
-                .background(
-                    Brush.radialGradient(
-                        colors = listOf(
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.3f),
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
-                            Color.Transparent
-                        )
-                    )
-                )
+                .background(micHalo(skin))
                 .clickable { onStartRecognition() },
             contentAlignment = Alignment.Center
         ) {
@@ -456,28 +510,29 @@ private fun ReadyState(
                 modifier = Modifier
                     .size(160.dp)
                     .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primary),
+                    .micFill(skin),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     painter = painterResource(R.drawable.mic),
                     contentDescription = null,
                     modifier = Modifier.size(64.dp),
-                    tint = MaterialTheme.colorScheme.onPrimary
+                    tint = micInk(skin)
                 )
             }
         }
-        
+
         Text(
             text = stringResource(R.string.tap_to_recognize),
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.onSurface
+            style = if (skin.enabled) AuraType.PlayerArtist else MaterialTheme.typography.titleMedium,
+            color = if (skin.enabled) skin.ink else MaterialTheme.colorScheme.onSurface
         )
     }
 }
 
 @Composable
 private fun ListeningState(
+    skin: AuraPanelSkin,
     onCancel: () -> Unit
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
@@ -506,24 +561,30 @@ private fun ListeningState(
                     .size(200.dp)
                     .scale(scale)
                     .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.2f))
+                    .background(
+                        if (skin.enabled && skin.darkGround) AuraPalette.Teal.copy(alpha = 0.14f)
+                        else MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
+                    )
             )
-            
-            
+
+
             Box(
                 modifier = Modifier
                     .size(180.dp)
                     .scale(scale * 0.9f)
                     .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
+                    .background(
+                        if (skin.enabled && skin.darkGround) AuraPalette.Teal.copy(alpha = 0.22f)
+                        else MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
+                    )
             )
-            
-            
+
+
             Box(
                 modifier = Modifier
                     .size(160.dp)
                     .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primary)
+                    .micFill(skin)
                     .clickable { onCancel() },
                 contentAlignment = Alignment.Center
             ) {
@@ -531,25 +592,29 @@ private fun ListeningState(
                     painter = painterResource(R.drawable.mic),
                     contentDescription = null,
                     modifier = Modifier.size(64.dp),
-                    tint = MaterialTheme.colorScheme.onPrimary
+                    tint = micInk(skin)
                 )
             }
         }
-        
+
         Text(
             text = stringResource(R.string.listening),
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.primary
+            // "ESCUCHANDO" is a live status, which the render sets as a tracked technical label.
+            style = if (skin.enabled) AuraType.SectionLabel else MaterialTheme.typography.titleMedium,
+            color = if (skin.enabled) skin.accent else MaterialTheme.colorScheme.primary
         )
-        
-        OutlinedButton(onClick = onCancel) {
+
+        OutlinedButton(
+            onClick = onCancel,
+            shape = if (skin.enabled) AuraShapes.Pill else androidx.compose.material3.ButtonDefaults.outlinedShape,
+        ) {
             Text(stringResource(R.string.cancel))
         }
     }
 }
 
 @Composable
-private fun ProcessingState() {
+private fun ProcessingState(skin: AuraPanelSkin) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(24.dp)
@@ -564,6 +629,7 @@ private fun ProcessingState() {
             label = "rotation"
         )
         
+        val sweepAccent = if (skin.enabled && skin.darkGround) AuraPalette.Teal else MaterialTheme.colorScheme.primary
         Box(
             modifier = Modifier.size(160.dp),
             contentAlignment = Alignment.Center
@@ -576,29 +642,29 @@ private fun ProcessingState() {
                         width = 4.dp,
                         brush = Brush.sweepGradient(
                             colors = listOf(
-                                MaterialTheme.colorScheme.primary,
-                                MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
+                                sweepAccent,
+                                sweepAccent.copy(alpha = 0.5f),
                                 Color.Transparent,
-                                MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
-                                MaterialTheme.colorScheme.primary
+                                sweepAccent.copy(alpha = 0.5f),
+                                sweepAccent
                             )
                         ),
                         shape = CircleShape
                     )
             )
-            
+
             Icon(
                 painter = painterResource(R.drawable.music_note),
                 contentDescription = null,
                 modifier = Modifier.size(48.dp),
-                tint = MaterialTheme.colorScheme.primary
+                tint = sweepAccent
             )
         }
-        
+
         Text(
             text = stringResource(R.string.processing),
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.onSurface
+            style = if (skin.enabled) AuraType.SectionLabel else MaterialTheme.typography.titleMedium,
+            color = if (skin.enabled) skin.inkMuted else MaterialTheme.colorScheme.onSurface
         )
     }
 }
@@ -698,6 +764,7 @@ private fun bestSongMatch(songs: List<SongItem>, result: RecognitionResult): Son
 @Composable
 private fun SuccessState(
     result: RecognitionResult,
+    skin: AuraPanelSkin,
     onPlayOnApp: (RecognitionResult) -> Unit,
     isResolving: Boolean,
     isResolved: Boolean,
@@ -717,8 +784,10 @@ private fun SuccessState(
             modifier = Modifier
                 .size(180.dp)
                 .aspectRatio(1f),
-            shape = RoundedCornerShape(iad1tya.echo.music.constants.ThumbnailCornerRadius),
-            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+            // The render's player artwork radius; and it is a FLAT sheet, so the 8 dp lift goes.
+            shape = if (skin.enabled) AuraShapes.PlayerArtwork
+            else RoundedCornerShape(iad1tya.echo.music.constants.ThumbnailCornerRadius),
+            elevation = CardDefaults.cardElevation(defaultElevation = if (skin.enabled) 0.dp else 8.dp)
         ) {
             AsyncImage(
                 model = result.coverArtHqUrl ?: result.coverArtUrl,
@@ -727,33 +796,35 @@ private fun SuccessState(
                 contentScale = ContentScale.Crop
             )
         }
-        
+
         Spacer(modifier = Modifier.height(8.dp))
-        
-        
+
+
         Text(
             text = result.title,
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold,
+            style = if (skin.enabled) AuraType.PlayerTitle else MaterialTheme.typography.headlineSmall,
+            fontWeight = if (skin.enabled) FontWeight.SemiBold else FontWeight.Bold,
+            color = if (skin.enabled) skin.ink else Color.Unspecified,
             textAlign = TextAlign.Center,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis
         )
-        
+
         Text(
             text = result.artist,
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = if (skin.enabled) AuraType.PlayerArtist else MaterialTheme.typography.titleMedium,
+            color = if (skin.enabled) skin.inkMuted else MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
-        
+
         result.album?.let { album ->
             Text(
                 text = album,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                style = if (skin.enabled) AuraType.CalloutSubtitle else MaterialTheme.typography.bodyMedium,
+                color = if (skin.enabled) skin.inkFaint
+                else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                 textAlign = TextAlign.Center,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -769,7 +840,10 @@ private fun SuccessState(
         ) {
             Button(
                 onClick = { onPlayOnApp(result) },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                // The render's actions are pills. Colours stay the theme's, so the button keeps
+                // following the user's accent.
+                shape = if (skin.enabled) AuraShapes.Pill else androidx.compose.material3.ButtonDefaults.shape,
             ) {
                 Icon(
                     painter = painterResource(R.drawable.play),
@@ -789,7 +863,8 @@ private fun SuccessState(
                 FilledTonalButton(
                     onClick = onToggleLike,
                     enabled = isResolved,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f),
+                    shape = if (skin.enabled) AuraShapes.Pill else androidx.compose.material3.ButtonDefaults.filledTonalShape,
                 ) {
                     if (isResolving) {
                         CircularProgressIndicator(
@@ -811,7 +886,8 @@ private fun SuccessState(
                 FilledTonalButton(
                     onClick = onAddToPlaylist,
                     enabled = isResolved,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f),
+                    shape = if (skin.enabled) AuraShapes.Pill else androidx.compose.material3.ButtonDefaults.filledTonalShape,
                 ) {
                     if (isResolving) {
                         CircularProgressIndicator(
@@ -830,7 +906,8 @@ private fun SuccessState(
 
             FilledTonalButton(
                 onClick = onTryAgain,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                shape = if (skin.enabled) AuraShapes.Pill else androidx.compose.material3.ButtonDefaults.filledTonalShape,
             ) {
                 Icon(
                     painter = painterResource(R.drawable.mic),
@@ -844,7 +921,8 @@ private fun SuccessState(
             
             OutlinedButton(
                 onClick = onClose,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                shape = if (skin.enabled) AuraShapes.Pill else androidx.compose.material3.ButtonDefaults.outlinedShape,
             ) {
                 Icon(
                     painter = painterResource(R.drawable.close),
@@ -861,12 +939,14 @@ private fun SuccessState(
 @Composable
 private fun NoMatchState(
     message: String,
+    skin: AuraPanelSkin,
     onTryAgain: () -> Unit
 ) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(24.dp)
     ) {
+        // The error disc keeps the theme's `errorContainer` on BOTH paths: its colour is the message.
         Box(
             modifier = Modifier
                 .size(120.dp)
@@ -881,22 +961,26 @@ private fun NoMatchState(
                 tint = MaterialTheme.colorScheme.onErrorContainer
             )
         }
-        
+
         Text(
             text = stringResource(R.string.no_match_found),
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold
+            style = if (skin.enabled) AuraType.PlayerTitle else MaterialTheme.typography.titleLarge,
+            fontWeight = if (skin.enabled) FontWeight.SemiBold else FontWeight.Bold,
+            color = if (skin.enabled) skin.ink else Color.Unspecified
         )
-        
+
         Text(
             text = message,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = if (skin.enabled) AuraType.RowSubtitle else MaterialTheme.typography.bodyMedium,
+            color = if (skin.enabled) skin.inkMuted else MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
             modifier = Modifier.padding(horizontal = 32.dp)
         )
-        
-        Button(onClick = onTryAgain) {
+
+        Button(
+            onClick = onTryAgain,
+            shape = if (skin.enabled) AuraShapes.Pill else androidx.compose.material3.ButtonDefaults.shape,
+        ) {
             Icon(
                 painter = painterResource(R.drawable.refresh),
                 contentDescription = null,
@@ -911,6 +995,7 @@ private fun NoMatchState(
 @Composable
 private fun ErrorState(
     message: String,
+    skin: AuraPanelSkin,
     onTryAgain: () -> Unit
 ) {
     Column(
@@ -931,22 +1016,26 @@ private fun ErrorState(
                 tint = MaterialTheme.colorScheme.onErrorContainer
             )
         }
-        
+
         Text(
             text = stringResource(R.string.recognition_error),
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold
+            style = if (skin.enabled) AuraType.PlayerTitle else MaterialTheme.typography.titleLarge,
+            fontWeight = if (skin.enabled) FontWeight.SemiBold else FontWeight.Bold,
+            color = if (skin.enabled) skin.ink else Color.Unspecified
         )
-        
+
         Text(
             text = message,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = if (skin.enabled) AuraType.RowSubtitle else MaterialTheme.typography.bodyMedium,
+            color = if (skin.enabled) skin.inkMuted else MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
             modifier = Modifier.padding(horizontal = 32.dp)
         )
-        
-        Button(onClick = onTryAgain) {
+
+        Button(
+            onClick = onTryAgain,
+            shape = if (skin.enabled) AuraShapes.Pill else androidx.compose.material3.ButtonDefaults.shape,
+        ) {
             Icon(
                 painter = painterResource(R.drawable.refresh),
                 contentDescription = null,

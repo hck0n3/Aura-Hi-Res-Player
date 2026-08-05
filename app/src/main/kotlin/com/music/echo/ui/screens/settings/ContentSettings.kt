@@ -96,7 +96,6 @@ import iad1tya.echo.music.ui.component.EnumDialog
 import iad1tya.echo.music.ui.component.IconButton
 import iad1tya.echo.music.ui.component.Material3SettingsGroup
 import iad1tya.echo.music.ui.component.Material3SettingsItem
-import iad1tya.echo.music.ui.utils.backToMain
 import iad1tya.echo.music.utils.rememberEnumPreference
 import iad1tya.echo.music.utils.rememberPreference
 import androidx.compose.ui.text.font.FontWeight
@@ -172,10 +171,12 @@ fun ContentSettings(
         iad1tya.echo.music.constants.KeepGenreLaneKey,
         defaultValue = true
     )
-    // Default OFF = WiFi-only genre learning (GenreCache), today's behaviour until the user opts in.
+    // Default ON: WiFi-only genre learning made GenreCache dead in the car (mobile data), which is where
+    // the infinite queue runs — so the genre steer had nothing to steer with. MUST stay in sync with the
+    // read-time default in GenreCache.enrich, or the switch would draw OFF while the feature runs.
     val (genreEnrichOnMobile, onGenreEnrichOnMobileChange) = rememberPreference(
         iad1tya.echo.music.constants.GenreEnrichOnMobileKey,
-        defaultValue = false
+        defaultValue = true
     )
     val (offlineMode, onOfflineModeChange) = rememberPreference(
         iad1tya.echo.music.constants.OfflineModeKey,
@@ -1367,7 +1368,7 @@ fun ContentSettings(
         navigationIcon = {
             IconButton(
                 onClick = navController::navigateUp,
-                onLongClick = navController::backToMain,
+                onLongClick = null,
             ) {
                 Icon(
                     painterResource(R.drawable.arrow_back),

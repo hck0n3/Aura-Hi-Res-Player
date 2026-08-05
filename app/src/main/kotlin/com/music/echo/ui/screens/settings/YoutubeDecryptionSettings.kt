@@ -43,7 +43,6 @@ import iad1tya.echo.music.constants.CipherManualRefreshAtKey
 import iad1tya.echo.music.ui.component.IconButton
 import iad1tya.echo.music.ui.component.Material3SettingsGroup
 import iad1tya.echo.music.ui.component.Material3SettingsItem
-import iad1tya.echo.music.ui.utils.backToMain
 import iad1tya.echo.music.utils.cipher.RemotePlayerConfig
 import iad1tya.echo.music.utils.rememberPreference
 import kotlinx.coroutines.Dispatchers
@@ -254,7 +253,7 @@ fun YoutubeDecryptionSettings(
         navigationIcon = {
             IconButton(
                 onClick = navController::navigateUp,
-                onLongClick = navController::backToMain
+                onLongClick = null
             ) {
                 Icon(
                     painterResource(R.drawable.arrow_back),

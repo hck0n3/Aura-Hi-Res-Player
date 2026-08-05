@@ -25,7 +25,6 @@ import com.aura.migration.source.apple.AppleMusicGuide
 import iad1tya.echo.music.LocalPlayerAwareWindowInsets
 import iad1tya.echo.music.R
 import iad1tya.echo.music.ui.component.IconButton
-import iad1tya.echo.music.ui.utils.backToMain
 
 /**
  * Apple Music guide. Apple has native transfer to YouTube Music from its Data & Privacy page, and since
@@ -44,7 +43,7 @@ fun MigrationAppleScreen(navController: NavController) {
                 navigationIcon = {
                     IconButton(
                         onClick = navController::navigateUp,
-                        onLongClick = navController::backToMain,
+                        onLongClick = null,
                     ) {
                         Icon(painterResource(R.drawable.arrow_back), null)
                     }

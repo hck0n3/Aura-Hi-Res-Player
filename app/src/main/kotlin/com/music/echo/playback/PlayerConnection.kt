@@ -146,6 +146,38 @@ class PlayerConnection(
     /** The chip currently steering the autoplay (default = the "related" chip of the live seed). */
     val autoplaySelectedChip: kotlinx.coroutines.flow.StateFlow<AutoplayChip?> = service.autoplaySelectedChip
 
+    /**
+     * Pending "¿volver a la cola anterior?" offer, or null. Read-only mirror of
+     * [MusicService.previousQueueOffer]; the shell shows it as a snackbar.
+     */
+    val previousQueueOffer: kotlinx.coroutines.flow.StateFlow<PreviousQueueOffer?> =
+        service.previousQueueOffer
+
+    /**
+     * Accept the offer. Blocked for a Listen Together GUEST for the same reason as
+     * [startRadioSeamlessly]: a guest must never re-point the shared queue.
+     */
+    fun resumePreviousQueue() {
+        if (shouldBlockPlaybackChanges?.invoke() == true) {
+            Timber.tag(TAG).d("resumePreviousQueue blocked - Listen Together guest")
+            return
+        }
+        try {
+            service.resumePreviousQueue()
+        } catch (e: Exception) {
+            Timber.tag(TAG).e(e, "Error in resumePreviousQueue")
+        }
+    }
+
+    /** The offer was declined or expired on its own. Never touches playback. */
+    fun dismissPreviousQueueOffer() {
+        try {
+            service.dismissPreviousQueueOffer()
+        } catch (e: Exception) {
+            Timber.tag(TAG).e(e, "Error in dismissPreviousQueueOffer")
+        }
+    }
+
     val queueTitle = MutableStateFlow<String?>(null)
     val queueWindows = MutableStateFlow<List<Timeline.Window>>(emptyList())
     val currentMediaItemIndex = MutableStateFlow(-1)

@@ -101,7 +101,6 @@ import iad1tya.echo.music.ui.component.rememberShuffleMemoryPrompt
 import iad1tya.echo.music.ui.menu.CachePlaylistMenu
 import iad1tya.echo.music.ui.menu.SelectionSongMenu
 import iad1tya.echo.music.ui.menu.SongMenu
-import iad1tya.echo.music.ui.utils.backToMain
 import iad1tya.echo.music.utils.listItemShape
 import iad1tya.echo.music.utils.makeTimeString
 import iad1tya.echo.music.utils.rememberEnumPreference
@@ -407,11 +406,7 @@ fun CachePlaylistScreen(
                             navController.navigateUp()
                         }
                     }
-                }, onLongClick = {
-                    if (!isSearching && !inSelectMode) {
-                        navController.backToMain()
-                    }
-                }) {
+                }, onLongClick = null) {
                     Icon(
                         painter = painterResource(
                             if (inSelectMode) R.drawable.close else R.drawable.arrow_back

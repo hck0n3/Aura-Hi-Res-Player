@@ -108,6 +108,7 @@ import iad1tya.echo.music.LocalListenTogetherManager
 import iad1tya.echo.music.LocalPlayerConnection
 import iad1tya.echo.music.R
 import iad1tya.echo.music.constants.AutoLoadMoreKey
+import iad1tya.echo.music.constants.CropAlbumArtKey
 import iad1tya.echo.music.constants.ListItemHeight
 import iad1tya.echo.music.constants.PlayerBackgroundStyle
 import iad1tya.echo.music.constants.QueueEditLockKey
@@ -1469,15 +1470,22 @@ private fun AuraAutomixRow(
     )
 }
 
-/** Cover art with the palette's deterministic gradient placeholder underneath while it loads. */
+/**
+ * Cover art with the palette's deterministic gradient placeholder underneath while it loads.
+ *
+ * Honours "Recortar las portadas" ([CropAlbumArtKey], default OFF) like every classic renderer
+ * (`Items.kt:1371/1453/1546`, `Thumbnail.kt:341`). Hard-coding `ContentScale.Crop` here was one of the
+ * three places the beta ignored that switch.
+ */
 @Composable
 private fun AuraCover(url: String?, seed: String?, size: Dp) {
+    val cropAlbumArt by rememberPreference(CropAlbumArtKey, false)
     AuraArtwork(size = size, placeholderSeed = seed) {
         if (url != null) {
             AsyncImage(
                 model = url,
                 contentDescription = null,
-                contentScale = ContentScale.Crop,
+                contentScale = if (cropAlbumArt) ContentScale.Crop else ContentScale.Fit,
                 modifier = Modifier.fillMaxSize(),
             )
         }

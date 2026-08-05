@@ -111,7 +111,6 @@ import iad1tya.echo.music.ui.component.SquigglySlider
 import iad1tya.echo.music.ui.component.WavySlider
 import iad1tya.echo.music.ui.theme.DefaultThemeColor
 import iad1tya.echo.music.ui.theme.PlayerSliderColors
-import iad1tya.echo.music.ui.utils.backToMain
 import iad1tya.echo.music.utils.rememberEnumPreference
 import iad1tya.echo.music.utils.rememberPreference
 import kotlin.math.roundToInt
@@ -1075,33 +1074,49 @@ fun AppearanceSettings(
             }
         )
 
-        Spacer(modifier = Modifier.height(27.dp))
+        // "Mini reproductor" → "Estilo de fondo". HIDDEN with the new UI on, and this group holds
+        // nothing else, so the whole group goes with it.
+        //
+        // Why hidden rather than wired: the ONLY renderer of MiniPlayerBackgroundStyleKey is the
+        // classic `NewMiniPlayer` (MiniPlayer.kt), and with the flag on that composable now pins the
+        // style to DEFAULT in every orientation — deliberately, because the glass it painted is the
+        // thing the owner objected to twice. In portrait the classic mini is not even reached
+        // (AuraMiniPlayer replaces it), and AuraMiniPlayer draws one fixed surface by design
+        // (AuraPalette.SurfaceFill + SurfaceLine). So under the new UI this row has no consumer at
+        // all — leaving it on screen would be a new placebo, and the owner asked for no
+        // visual-personalisation settings in the new interface.
+        //
+        // The preference is only HIDDEN, never cleared: turn the beta off and the row and the user's
+        // stored choice are both back, unchanged.
+        if (!newUiEnabled) {
+            Spacer(modifier = Modifier.height(27.dp))
 
-        Material3SettingsGroup(
-            title = stringResource(id = R.string.mini_player),
-            items = buildList {
-                add(
-                    Material3SettingsItem(
-                        icon = painterResource(R.drawable.palette),
-                        title = { Text(stringResource(R.string.miniplayer_background_style)) },
-                        description = {
-                            Text(
-                                when (miniPlayerBackground) {
-                                    PlayerBackgroundStyle.DEFAULT -> stringResource(R.string.follow_theme)
-                                    PlayerBackgroundStyle.GRADIENT -> stringResource(R.string.gradient)
-                                    PlayerBackgroundStyle.BLUR -> stringResource(R.string.player_background_blur)
-                                    PlayerBackgroundStyle.GLOW_ANIMATED -> stringResource(R.string.glow_animated)
-                                    PlayerBackgroundStyle.LIVE_MESH -> stringResource(R.string.live_mesh)
-                                    PlayerBackgroundStyle.LIQUID_GLASS -> stringResource(R.string.player_background_liquid_glass)
-                                    else -> stringResource(R.string.follow_theme)
-                                }
-                            )
-                        },
-                        onClick = { showMiniPlayerBackgroundDialog = true }
+            Material3SettingsGroup(
+                title = stringResource(id = R.string.mini_player),
+                items = buildList {
+                    add(
+                        Material3SettingsItem(
+                            icon = painterResource(R.drawable.palette),
+                            title = { Text(stringResource(R.string.miniplayer_background_style)) },
+                            description = {
+                                Text(
+                                    when (miniPlayerBackground) {
+                                        PlayerBackgroundStyle.DEFAULT -> stringResource(R.string.follow_theme)
+                                        PlayerBackgroundStyle.GRADIENT -> stringResource(R.string.gradient)
+                                        PlayerBackgroundStyle.BLUR -> stringResource(R.string.player_background_blur)
+                                        PlayerBackgroundStyle.GLOW_ANIMATED -> stringResource(R.string.glow_animated)
+                                        PlayerBackgroundStyle.LIVE_MESH -> stringResource(R.string.live_mesh)
+                                        PlayerBackgroundStyle.LIQUID_GLASS -> stringResource(R.string.player_background_liquid_glass)
+                                        else -> stringResource(R.string.follow_theme)
+                                    }
+                                )
+                            },
+                            onClick = { showMiniPlayerBackgroundDialog = true }
+                        )
                     )
-                )
-            }
-        )
+                }
+            )
+        }
 
         Spacer(modifier = Modifier.height(27.dp))
 
@@ -1231,20 +1246,30 @@ fun AppearanceSettings(
                 // devices (API < 31, LOW tier, TV/car or Performance Mode ON) it is shown
                 // disabled with an "unavailable on this device" subtitle instead of hidden,
                 // so users know why the option is missing.
-                Material3SettingsItem(
-                    icon = painterResource(R.drawable.palette),
-                    title = { Text(stringResource(R.string.liquid_glass)) },
-                    description = {
-                        Text(
-                            stringResource(
-                                if (glassEligible) R.string.liquid_glass_settings_desc
-                                else R.string.liquid_glass_unavailable
+                //
+                // HIDDEN ENTIRELY with the new UI on. The glass system has exactly TWO renderers in
+                // the whole app: the classic mini player (now pinned to DEFAULT under the new UI —
+                // MiniPlayer.kt) and FloatingNavigationToolbar (replaced by AuraNavigationBar —
+                // MainActivity.kt). With the flag on neither can draw glass, in any orientation, so
+                // every control behind this door is inert — and a door into a screen of dead switches
+                // is a worse placebo than a single dead switch. Nothing is written or cleared: turn
+                // the beta off and the entry, the screen and every stored value are back untouched.
+                if (!newUiEnabled) {
+                    Material3SettingsItem(
+                        icon = painterResource(R.drawable.palette),
+                        title = { Text(stringResource(R.string.liquid_glass)) },
+                        description = {
+                            Text(
+                                stringResource(
+                                    if (glassEligible) R.string.liquid_glass_settings_desc
+                                    else R.string.liquid_glass_unavailable
+                                )
                             )
-                        )
-                    },
-                    enabled = glassEligible,
-                    onClick = { if (glassEligible) navController.navigate("settings/appearance/liquidglass") }
-                ),
+                        },
+                        enabled = glassEligible,
+                        onClick = { if (glassEligible) navController.navigate("settings/appearance/liquidglass") }
+                    )
+                } else null,
                 Material3SettingsItem(
                     icon = painterResource(R.drawable.hide_image),
                     title = { Text(stringResource(R.string.hide_player_thumbnail)) },
@@ -2031,7 +2056,7 @@ fun AppearanceSettings(
         navigationIcon = {
             IconButton(
                 onClick = navController::navigateUp,
-                onLongClick = navController::backToMain,
+                onLongClick = null,
             ) {
                 Icon(
                     painterResource(R.drawable.arrow_back),

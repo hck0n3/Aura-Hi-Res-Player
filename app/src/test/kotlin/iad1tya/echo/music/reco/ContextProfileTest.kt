@@ -100,10 +100,63 @@ class ContextProfileTest {
     }
 
     @Test
-    fun unknownCandidateStaysExactlyNeutral() {
-        // Registry #39/#41: GenreCache only covers known artists — an unknown artist with unknown genre
-        // must score EXACTLY 0.0 so the infinite queue and the exploration quota never collapse.
-        assertEquals(0.0, ContextProfile.steerTerm(salsaProfile(), listOf("Artista Nuevo"), null), 0.0)
+    fun unknownGenreLosesExactlyOneRankNotMore() {
+        // This USED to be "exactly 0.0", and that was the hole behind the owner's intermittent genre
+        // mixing: an unknown candidate scored 0.0 while an on-genre one earned -4, so a wrong-genre song
+        // at relatedness rank 2 beat a right-genre song at rank 8. The nudge is ONE — the sort key's
+        // `index` term steps by exactly 1.0 per rank, so this is a tie-break and nothing more.
+        val p = salsaProfile()
+        assertEquals(
+            ContextProfile.UNKNOWN_GENRE_PUSH,
+            ContextProfile.steerTerm(p, listOf("Artista Nuevo"), null),
+            1e-9,
+        )
+        // Registry #39/#41 holds: it is 6x smaller than the KNOWN off-genre push, so "we don't know" is
+        // never treated as "wrong genre"...
+        assertTrue(
+            ContextProfile.steerTerm(p, listOf("Artista Nuevo"), null) <
+                ContextProfile.steerTerm(p, listOf("Queen"), "rock"),
+        )
+        // ...and a candidate BY A CONTEXT ARTIST is matched cache-free, so the push can never fire on
+        // the collection's own artists however blind the cache is.
+        assertEquals(-3.0, ContextProfile.steerTerm(p, listOf("Marc Anthony"), null), 1e-9)
+    }
+
+    @Test
+    fun aProfileThatKnowsNoGenresStillSteersNothing() {
+        // COLLAPSE GUARD. A pool the cache knows nothing about fails the activation gate outright, so it
+        // steers nothing through [Profile.active]...
+        val blind = ContextProfile.build(
+            listOf(track("Desconocido 1"), track("Desconocido 2"), track("Desconocido 3")),
+            emptyMap(),
+        )!!
+        assertFalse(blind.active)
+        assertTrue(blind.genreShare.isEmpty())
+        assertEquals(0.0, ContextProfile.steerTerm(blind, listOf("Artista Nuevo"), null), 0.0)
+        // ...and the SECOND, independent guard inside steerTerm holds even for a hand-built profile that
+        // claims to be active with no genre signal at all: with nothing known, nothing is pushed.
+        val activeButBlind = ContextProfile.Profile(
+            artistSet = setOf("alguien"),
+            genreShare = emptyMap(),
+            coverage = 1.0,
+            knownArtists = 0,
+            languageHint = null,
+        )
+        assertTrue(activeButBlind.active)
+        assertEquals(0.0, ContextProfile.steerTerm(activeButBlind, listOf("Artista Nuevo"), null), 0.0)
+        assertEquals(0.0, ContextProfile.steerTerm(activeButBlind, listOf("Queen"), "rock"), 0.0)
+    }
+
+    @Test
+    fun unknownGenreIsStillABoundedNudgeNotAFilter() {
+        // A batch where NOTHING is known comes out in YouTube's own relatedness order: every candidate
+        // takes the SAME +1, so no candidate is reordered relative to another and none is removed.
+        val p = salsaProfile()
+        val batch = listOf("Nuevo A", "Nuevo B", "Nuevo C")
+        val terms = batch.map { ContextProfile.steerTerm(p, listOf(it), null) }
+        assertEquals(1, terms.distinct().size)
+        // And it stays inside the documented clamp, like every other term.
+        terms.forEach { assertTrue(it in ContextProfile.STEER_MIN..ContextProfile.STEER_MAX) }
     }
 
     @Test
@@ -116,6 +169,43 @@ class ContextProfileTest {
         val rock = ContextProfile.build(rockPool, mapOf("queen" to "Rock"))!!
         assertNull(rock.languageHint)
         assertEquals(6.0, ContextProfile.steerTerm(rock, listOf("Bad Bunny"), "urbano latino"), 1e-9)
+    }
+
+    @Test
+    fun unknownGenreNeverBuysAnExplorationBlock() {
+        // REGISTRY #39/#41, the exact collision: profile non-empty (so the +1 unknown push is live) and a
+        // candidate whose genre we do NOT know — an artist the radio surfaces for the FIRST time is
+        // unknown BY CONSTRUCTION, because GenreCache only ever fills with artists already around the
+        // user. The steer may push it back by one rank, but it must STAY eligible for the exploration
+        // reserve; blocking on absence emptied the fresh partition on a cold cache and narrowed the
+        // infinite radio onto artists already in the taste profile.
+        val p = salsaProfile()
+        assertTrue(p.genreShare.isNotEmpty())
+        val steer = ContextProfile.steerTerm(p, listOf("Artista Nuevo"), null)
+        assertEquals(ContextProfile.UNKNOWN_GENRE_PUSH, steer, 1e-9) // it IS pushed back...
+        assertFalse(ContextProfile.blocksExploration(steer, null))   // ...and it is STILL explorable.
+        // Neither does a candidate the steer PULLED forward (context genre / context artist).
+        assertFalse(
+            ContextProfile.blocksExploration(
+                ContextProfile.steerTerm(p, listOf("La India"), "salsa y tropical"), "salsa y tropical",
+            ),
+        )
+        assertFalse(
+            ContextProfile.blocksExploration(ContextProfile.steerTerm(p, listOf("Marc Anthony"), null), null),
+        )
+    }
+
+    @Test
+    fun knownOffContextGenreStillBlocksExploration() {
+        // The owner's original "deja de mezclar géneros" fix must NOT be undone by the line above: a genre
+        // we can NAME and know to be off-context is still kept out of the reserved 1-in-5 slots, so the
+        // quota cannot hand the front of the batch back to what the steer just demoted.
+        val p = salsaProfile()
+        assertTrue(ContextProfile.blocksExploration(ContextProfile.steerTerm(p, listOf("Queen"), "rock"), "rock"))
+        // Also when the weak Spanish tie-break softens it (+6 - 1 = +5) — still a known wrong genre.
+        val softened = ContextProfile.steerTerm(p, listOf("Bad Bunny"), "urbano latino")
+        assertEquals(5.0, softened, 1e-9)
+        assertTrue(ContextProfile.blocksExploration(softened, "urbano latino"))
     }
 
     @Test

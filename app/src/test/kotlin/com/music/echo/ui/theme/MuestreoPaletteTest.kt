@@ -187,12 +187,23 @@ class MuestreoPaletteTest {
     }
 
     @Test
-    fun `vividness cannot repaint the preset - SOFT is a no-op by contract`() {
-        // echomusicTheme forces SOFT for a preset. This pins the half of that contract that lives in
-        // withAccent: SOFT returns the scheme unchanged, so the verified colours above survive.
-        val untouched = MuestreoDarkColorScheme.withAccent(Color(0xFFFF1744), AccentVividness.SOFT)
-        assertEquals(MuestreoDarkColorScheme.primary, untouched.primary)
-        assertEquals(MuestreoDarkColorScheme.secondary, untouched.secondary)
-        assertEquals(MuestreoDarkColorScheme.surface, untouched.surface)
+    fun `vividness cannot repaint the preset - the accent seed is null by contract`() {
+        // This used to be spelled "echomusicTheme forces SOFT, and SOFT is a no-op in withAccent".
+        // SOFT is now a real setting (it had to become one — as a no-op it made the whole palette
+        // inert), so the contract moved to where it belongs: with a preset there is NO seed, so
+        // echomusicTheme never calls withAccent at all and the verified colours above survive.
+        assertNull(
+            "a preset scheme was handed a seed to re-tint from",
+            accentSeedFor(Color(0xFFFF1744), usingSystemDynamicColor = false, hasPreset = true),
+        )
+        // The preset's own surfaces are protected separately: echomusicTheme's
+        // `baseColorScheme === presetScheme` branch skips deepTeal/softLight entirely, because those
+        // substitute the generic ground whether or not a seed tints it. Pinned here so that if the
+        // preset ever DOES reach deepTeal, the difference is loud rather than silent.
+        assertNotEquals(
+            "the generic dark ground is the same colour as the preset's own — this test is now blind",
+            MuestreoDarkColorScheme.surface,
+            MuestreoDarkColorScheme.deepTeal(seed = null).surface,
+        )
     }
 }

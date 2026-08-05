@@ -12,6 +12,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.TopAppBarScrollBehavior
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.navigation.NavGraphBuilder
@@ -43,6 +44,7 @@ import iad1tya.echo.music.ui.screens.settings.LogsScreen
 import iad1tya.echo.music.ui.screens.settings.AppearanceSettings
 import iad1tya.echo.music.ui.screens.settings.BackupAndRestore
 import iad1tya.echo.music.ui.screens.settings.GlassEffectSettings
+import iad1tya.echo.music.ui.screens.settings.LIQUID_GLASS_ROUTE
 import iad1tya.echo.music.ui.screens.settings.ContentSettings
 import iad1tya.echo.music.ui.screens.settings.UptimeScreen
 import iad1tya.echo.music.ui.screens.settings.DarkMode
@@ -258,7 +260,11 @@ fun NavGraphBuilder.navigationBuilder(
         ArtistItemsScreen(navController, scrollBehavior)
     }
 
-    composable("artist/section_buffer") {
+    // NOT "artist/section_buffer": that collides with the "artist/{artistId}" pattern above, and
+    // which one wins is decided by Navigation's best-match scoring rather than by registration
+    // order — so "see all" on a section with no moreEndpoint could open ArtistScreen with
+    // artistId = "section_buffer" instead of this grid. A route with no slash cannot collide.
+    composable("artist_section_buffer") {
         iad1tya.echo.music.ui.screens.artist.ArtistAlbumsGridScreen(navController, scrollBehavior)
     }
 
@@ -363,8 +369,29 @@ fun NavGraphBuilder.navigationBuilder(
         ThemeScreen(navController)
     }
 
-    composable("settings/appearance/liquidglass") {
-        GlassEffectSettings(navController, scrollBehavior)
+    // Liquid Glass: the DESTINATION is closed while "Interfaz nueva" is on, not just its doors.
+    //
+    // Hiding the entry row (AppearanceSettings.kt) and dropping the index entry (SearchableSettings.kt)
+    // closes the two ways a user can reach it, but a route that still composes is a route a restored
+    // back stack, a future caller or a deep link can still land on -- and what it composes is ~11
+    // controls with no renderer behind them under this flag (the glass system's only two render sites
+    // are FloatingNavigationToolbar, composed on the !newUiShell branch only, and MiniPlayer.kt, pinned
+    // to DEFAULT under the flag). So the guard lives HERE, at the destination, where every path in has
+    // to pass through it.
+    //
+    // `rememberNewUiEnabled()` is seeded by a synchronous DataStore read (utils/DataStore.kt), so it is
+    // already the stored value on the FIRST composition -- the screen never flashes before the bounce.
+    // navigateUp() always has somewhere to go: this route is only ever entered by navigating from
+    // inside Ajustes, so it is never the start destination.
+    //
+    // The classic path is untouched: with the flag off the branch below composes GlassEffectSettings
+    // with the same two arguments as before.
+    composable(LIQUID_GLASS_ROUTE) {
+        if (iad1tya.echo.music.ui.newui.rememberNewUiEnabled()) {
+            LaunchedEffect(Unit) { navController.navigateUp() }
+        } else {
+            GlassEffectSettings(navController, scrollBehavior)
+        }
     }
 
     composable("settings/content") {

@@ -130,6 +130,7 @@ import iad1tya.echo.music.constants.ShowLyricsKey
 import iad1tya.echo.music.constants.ShuffleModeKey
 import iad1tya.echo.music.constants.ShufflePlaylistFirstKey
 import iad1tya.echo.music.constants.EnhancedShuffleKey
+import iad1tya.echo.music.constants.PreviousQueueOfferKey
 import iad1tya.echo.music.constants.PreventDuplicateTracksInQueueKey
 import iad1tya.echo.music.constants.SimilarContent
 import iad1tya.echo.music.constants.SkipSilenceInstantKey
@@ -223,6 +224,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.plus
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.OkHttpClient
 import timber.log.Timber
 import java.io.ObjectInputStream
@@ -363,6 +365,155 @@ class MusicService :
 
     private var currentQueue: Queue = EmptyQueue
     var queueTitle: String? = null
+
+    /**
+     * "¿Quieres volver a la cola anterior?" — the ONE queue the user walked away from when he jumped out
+     * of a playlist into an album, snapshotted at the exact instant [playQueue] was about to overwrite
+     * [currentQueue].
+     *
+     * Exactly one, never a stack: he asked for "la cola anterior". In-memory only — this is a
+     * within-session courtesy, so it deliberately does NOT add a fourth object graph to
+     * [saveQueueToDisk]; a process death drops it, like the offer itself.
+     */
+    private var previousQueueSnapshot: PersistQueue? = null
+
+    /** `SystemClock.elapsedRealtime()` deadline of the armed offer; 0 when there is none. */
+    private var previousQueueExpiresAt = 0L
+
+    /**
+     * Drops the snapshot [PreviousQueueRule.OFFER_TTL_MS] after it was taken, so an offer nobody answered
+     * does not sit in memory — or resurface detached from what the user was doing — for the rest of the
+     * session. Cancelled and re-armed on every capture; cancelled on accept/dismiss.
+     */
+    private var previousQueueExpiryJob: Job? = null
+
+    private val _previousQueueOffer = MutableStateFlow<PreviousQueueOffer?>(null)
+
+    /**
+     * Emits once per detected playlist -> album detour (see [PreviousQueueRule]). The UI answers with a
+     * self-expiring snackbar: the offer never interrupts playback, never steals focus, and if it is
+     * ignored nothing happens. Cleared by [resumePreviousQueue] / [dismissPreviousQueueOffer] / the
+     * expiry timer.
+     */
+    val previousQueueOffer: kotlinx.coroutines.flow.StateFlow<PreviousQueueOffer?> =
+        _previousQueueOffer.asStateFlow()
+
+    private var previousQueueOfferToken = 0L
+
+    /**
+     * Snapshot the OUTGOING queue when the user leaves a playlist for an album, so he can be offered a
+     * way back to it. Called from [playQueue] immediately before `currentQueue = queue` — the exact
+     * instant the old queue stops being reachable.
+     *
+     * Touches nothing but its own two fields: it reads the timeline and publishes a StateFlow, so it
+     * cannot affect playback whether or not the offer is later accepted. Reuses [toPersistQueue], the
+     * same round-trip the boot restore uses, rather than inventing a second serialization.
+     */
+    private fun captureQueueForResumeOffer(newQueue: Queue, isRestore: Boolean) {
+        // The switch is honoured HERE, at the capture, not at the prompt or at the action: with it off
+        // nothing is ever snapshotted, so there is no queue held in memory and no button that could do
+        // nothing. (Same reasoning as the Listen Together guest check below.)
+        if (!previousQueueOfferEnabledHint) return
+
+        // A boot restore is the SAME queue coming back, not the user going anywhere. Its outgoing queue is
+        // EmptyQueue (null context) so the rule already declines, but say it out loud: this must never
+        // greet him with a prompt at app start.
+        if (isRestore) return
+
+        // He walked back to that list on his own (tapped it again). A pending offer would now propose
+        // returning to what is already playing — drop it silently before anything else.
+        previousQueueSnapshot?.contextId?.let { pending ->
+            if (pending == newQueue.contextId) dismissPreviousQueueOffer()
+        }
+
+        if (!PreviousQueueRule.isDetour(currentQueue.contextId, newQueue.contextId)) return
+        // Same guard saveQueueToDisk uses: an empty timeline is nothing to come back to.
+        if (player.mediaItemCount == 0) return
+        // A Listen Together GUEST does not own the queue: PlayerConnection.resumePreviousQueue would
+        // refuse to act on it, so offering the prompt would be a button that does nothing. Never offer it.
+        if (listenTogetherManager.isInRoom && !listenTogetherManager.isHost) return
+
+        val items = player.mediaItems.mapNotNull { it.metadata }
+        // mapNotNull can SHRINK the list (an item with no metadata tag), and player.currentMediaItemIndex
+        // indexes the FULL timeline — restoring the shrunken list with that index would resume on a
+        // different song, i.e. exactly the promise this feature makes ("por donde iba") broken silently.
+        // saveQueueToDisk carries the same exposure; here we simply decline to offer rather than offer a
+        // wrong answer.
+        if (items.size != player.mediaItemCount) return
+
+        val snapshot = runCatching {
+            currentQueue.toPersistQueue(
+                title = queueTitle,
+                items = items,
+                mediaItemIndex = player.currentMediaItemIndex,
+                position = player.currentPosition,
+            )
+        }.onFailure {
+            Timber.tag(TAG).w(it, "Could not snapshot the outgoing queue for the resume offer")
+        }.getOrNull() ?: return
+
+        previousQueueSnapshot = snapshot
+        previousQueueOfferToken++
+        val expiresAt = android.os.SystemClock.elapsedRealtime() + PreviousQueueRule.OFFER_TTL_MS
+        previousQueueExpiresAt = expiresAt
+        _previousQueueOffer.value =
+            PreviousQueueOffer(previousQueueOfferToken, snapshot.title, expiresAt)
+
+        // Actively DROP it when the bound passes: the offer is a within-session courtesy, and a queue's
+        // metadata held for a whole session because nobody ever answered is dead memory. The token is
+        // re-read inside the job so a NEWER capture (which re-arms this job anyway) can never be retired
+        // by an older timer.
+        val armedToken = previousQueueOfferToken
+        previousQueueExpiryJob?.cancel()
+        previousQueueExpiryJob = scope.launch {
+            delay(PreviousQueueRule.OFFER_TTL_MS)
+            if (previousQueueOfferToken == armedToken) dismissPreviousQueueOffer()
+        }
+    }
+
+    /**
+     * Accept the offer: reinstate the snapshotted queue AT THE SONG AND POSITION he left it.
+     *
+     * No seek is re-implemented here. [PersistQueue.toQueue] rebuilds a ListQueue carrying `startIndex`
+     * and `position`, and [playQueue]'s `player.setMediaItems(items, safeIndex, initialStatus.position)`
+     * already lands both — the same path the boot restore relies on.
+     */
+    fun resumePreviousQueue() {
+        val snapshot = previousQueueSnapshot ?: return
+        // Last line of defence on the bound: the expiry timer is a main-looper delay, which does not tick
+        // while the device is in deep sleep, so a tap arriving right after a long doze could otherwise
+        // reinstate a queue the user left an hour ago. Drop it instead of playing it.
+        if (PreviousQueueRule.hasLapsed(
+                android.os.SystemClock.elapsedRealtime(),
+                previousQueueExpiresAt,
+            )
+        ) {
+            dismissPreviousQueueOffer()
+            return
+        }
+        // Consume BEFORE playing: the resume itself goes through playQueue, and leaving the snapshot in
+        // place would let a stale offer survive the very action that satisfied it.
+        previousQueueSnapshot = null
+        previousQueueExpiresAt = 0L
+        previousQueueExpiryJob?.cancel()
+        previousQueueExpiryJob = null
+        _previousQueueOffer.value = null
+        runCatching { playQueue(snapshot.toQueue()) }.onFailure {
+            Timber.tag(TAG).e(it, "Failed to resume the previous queue")
+        }
+    }
+
+    /**
+     * Decline, let it lapse, or turn the setting off. Drops the offer AND the snapshot: once the prompt is
+     * gone there is no door left to open it, so keeping the items would only be dead memory.
+     */
+    fun dismissPreviousQueueOffer() {
+        previousQueueSnapshot = null
+        previousQueueExpiresAt = 0L
+        previousQueueExpiryJob?.cancel()
+        previousQueueExpiryJob = null
+        _previousQueueOffer.value = null
+    }
 
     val currentMediaMetadata = MutableStateFlow<iad1tya.echo.music.models.MediaMetadata?>(null)
     private val currentSong =
@@ -521,6 +672,12 @@ class MusicService :
     // DataStore read. Default matches EnhancedShuffleKey's default (ON).
     @Volatile private var enhancedShuffleHint: Boolean = true
 
+    // "¿Volver a la cola anterior?" master switch, mirrored the same way: playQueue is a main-thread path
+    // and must not add a blocking DataStore read to it. Default matches PreviousQueueOfferKey's (ON), and
+    // it is seeded from the cold-start prefs snapshot in onCreate so a user who turned it OFF never gets a
+    // capture in the window before the collector's first emission.
+    @Volatile private var previousQueueOfferEnabledHint: Boolean = true
+
     // AIMP-style smooth entry on MANUAL track changes. Default matches FadeOnManualChangeKey (ON).
     @Volatile private var fadeOnManualChangeHint: Boolean = true
 
@@ -536,9 +693,15 @@ class MusicService :
     private var timelineVersion = 0L
     private var secondaryTimelineVersion = -1L
 
-    // Shuffle score cache: mediaId -> (tasteScore, primaryArtistLowercase). Stable per taste-profile
-    // object; cleared when the profile instance changes. Main-thread only (applyShuffleOrder's thread).
-    private val shuffleScoreCache = HashMap<String, Pair<Double, String>>()
+    // Shuffle score cache, SPLIT by what each half actually depends on. It used to be one
+    // mediaId -> (tasteScore, primaryArtist) map cleared WHOLESALE whenever the taste profile instance
+    // changed — and the profile is rebuilt on a 5-minute TTL, so every ~5 minutes the next re-apply
+    // re-derived BOTH halves for the entire queue on the Main thread. The primary artist is a property
+    // of the media item alone and cannot change with the profile, so it now survives that invalidation:
+    // only [shuffleTasteCache] is cleared. Values are identical either way — this changes cost, not order.
+    // Main-thread only (applyShuffleOrder's thread).
+    private val shuffleTasteCache = HashMap<String, Double>()
+    private val shuffleArtistCache = HashMap<String, String>()
     private var shuffleScoreCacheProfile: Any? = null
 
     // PER-SONG SILENCE MEMORY (session-scoped, owner: "5s de MÚSICA bajando, silencio omitido — y la que
@@ -1574,6 +1737,7 @@ class MusicService :
         val prefs = runBlocking { dataStore.data.first() }
         player.repeatMode = prefs[RepeatModeKey] ?: REPEAT_MODE_OFF
         enhancedShuffleHint = prefs[EnhancedShuffleKey] ?: true
+        previousQueueOfferEnabledHint = prefs[PreviousQueueOfferKey] ?: true
         fadeOnManualChangeHint = prefs[iad1tya.echo.music.constants.FadeOnManualChangeKey] ?: true
 
 
@@ -2070,6 +2234,14 @@ class MusicService :
                 autoLoadMoreHint = prefs[AutoLoadMoreKey] ?: true
                 disableLoadMoreWhenRepeatAllHint = prefs[DisableLoadMoreWhenRepeatAllKey] ?: false
                 enhancedShuffleHint = prefs[EnhancedShuffleKey] ?: true
+                val previousQueueOfferEnabled = prefs[PreviousQueueOfferKey] ?: true
+                previousQueueOfferEnabledHint = previousQueueOfferEnabled
+                // Turning the switch OFF must also retire an offer already armed: leaving it live would
+                // hand him a prompt he just asked never to see. (This collector is on the Main scope, the
+                // same thread that writes the snapshot in playQueue.)
+                if (!previousQueueOfferEnabled && previousQueueSnapshot != null) {
+                    dismissPreviousQueueOffer()
+                }
                 fadeOnManualChangeHint = prefs[iad1tya.echo.music.constants.FadeOnManualChangeKey] ?: true
                 keepGenreLaneHint = prefs[KeepGenreLaneKey] ?: true
                 persistentQueueHint = prefs[PersistentQueueKey] ?: true
@@ -2788,6 +2960,11 @@ class MusicService :
             return
         }
 
+        // LAST instant the outgoing queue is still reachable — the next line drops it. A playlist -> album
+        // jump snapshots it here so the user can be offered a way back; every other transition (including
+        // the boot restore, whose outgoing queue is EmptyQueue with a null context) is a no-op.
+        captureQueueForResumeOffer(queue, isRestore)
+
         currentQueue = queue
         queueTitle = null
         // Arm the adoption latch: from here until the context is adopted below, the transition path must
@@ -3160,6 +3337,43 @@ class MusicService :
             // something else during the async fetch.
             suspend fun appendSeed(items: List<MediaItem>): Boolean {
                 if (items.isEmpty()) return false
+                // ENRICH BEFORE SCORING (see [ENRICH_BEFORE_SCORE_MS]) — the ROOT CAUSE of the genre
+                // mixing, as opposed to the two mitigations further down (the CTX_SINK partition and the
+                // unknown-genre nudge). Both that partition and orderedByTaste's own steer read a
+                // GenreCache SNAPSHOT; taking it before this batch's own artists had ever been looked up
+                // meant scoring a batch we knew nothing about. Launched on `scope` so the timeout cancels
+                // only the WAIT — the run itself survives and still fills the cache for the next batch,
+                // which is exactly the fire-and-forget behaviour it replaces. Skipped when the steer is
+                // off (the snapshot is unused) and when the player is parked at a true end of queue
+                // waiting for these very items (resumeAfterSeed), where a wait would be silence.
+                //
+                // FIRST, before `liveIndex` below: this suspends for up to a second and a half, and that
+                // index must be read from the LIVE player as late as possible — capturing it and then
+                // waiting is precisely the staleness its own comment exists to prevent.
+                val steerNeedsGenres = contextSteerActive && keepGenreLaneHint &&
+                    contextProfile?.active == true
+                if (steerNeedsGenres && !resumeAfterSeed) {
+                    val candidateArtists = items
+                        .flatMap { it.metadata?.artists.orEmpty() }
+                        .map { it.name }
+                        .filter { it.isNotBlank() }
+                        .distinct()
+                        .take(GENRE_LEARN_PER_RUN)
+                    if (candidateArtists.isNotEmpty()) {
+                        val enrichJob = scope.launch(Dispatchers.IO + SilentHandler) {
+                            runCatching {
+                                iad1tya.echo.music.reco.GenreCache.enrich(
+                                    this@MusicService, candidateArtists, onlyWifi = true,
+                                )
+                            }
+                        }
+                        val waited = withTimeoutOrNull(ENRICH_BEFORE_SCORE_MS) { enrichJob.join() } != null
+                        Timber.tag(TAG).i(
+                            "CTX_GENRE enrich-before-score: %d artists, completed=%b",
+                            candidateArtists.size, waited,
+                        )
+                    }
+                }
                 // Recompute the index from the LIVE player at append time (not a stale value captured before the
                 // network fetch), so we never remove items relative to a position that has since moved.
                 val liveIndex = player.currentMediaItemIndex
@@ -3797,13 +4011,32 @@ class MusicService :
         // ([iad1tya.echo.music.reco.ContextProfile.steerTerm], clamped [-4, +6]), same class as the #5
         // co-rel pull and the #7 soft push. Only while an AUTOMATIC continuation is running
         // (contextSteerActive — moods/chips clear it: an explicit steer wins) AND the profile passed its
-        // minimum-signal gate. ONE GenreCache snapshot per batch, never per candidate (battery). UNKNOWN
-        // artist/genre scores exactly 0.0 (registry #39/#41 — a nudge, never a filter; the exploration
-        // quota still fills). Null/inactive profile → ctx == 0.0 everywhere → key math identical to today.
+        // minimum-signal gate. ONE GenreCache snapshot per batch, never per candidate (battery). An
+        // UNKNOWN genre is a NUDGE of exactly one rank (ContextProfile.UNKNOWN_GENRE_PUSH), never a
+        // filter. Null/inactive profile → ctx == 0.0 everywhere → key math identical to today.
         val ctxProfile = if (contextSteerActive) contextProfile?.takeIf { it.active } else null
         val ctxGenres: Map<String, String> = if (ctxProfile == null) emptyMap() else runCatching {
             withContext(Dispatchers.IO) { iad1tya.echo.music.reco.GenreCache.snapshot(this@MusicService) }
         }.getOrDefault(emptyMap())
+        // EXPLORATION GUARD (the amplifier behind the owner's "una de un género, otra de otro"):
+        // withExplorationQuota runs AFTER the sort and hands ~1 slot in 5 to an artist the taste profile
+        // does not know — and a candidate we have no genre for is "fresh" almost by definition, so the
+        // quota lifted exactly the candidates the steer had just pushed back, straight to the front. That
+        // is the ~1-in-5 cadence he described. The codebase already knew this hazard for the CTX_SINK
+        // group (the +1000 offset below exists because of it) and simply never closed it for the ordinary
+        // steer. ONE rule covers both, and it is deliberately NARROW
+        // ([iad1tya.echo.music.reco.ContextProfile.blocksExploration]): only a candidate whose genre we
+        // actually KNOW and know to be off-context (ctx > 0 AND a non-null lane) may be kept out of a
+        // reserved exploration slot. An UNKNOWN genre buys NOTHING here — registry #39/#41: GenreCache
+        // fills only with artists already around the user, so an artist the radio surfaces for the FIRST
+        // time is unknown BY CONSTRUCTION, and blocking on absence emptied the fresh partition on a cold
+        // cache, no-opped the quota on every automatic continuation and left the batch head to the taste
+        // pull — the radio narrowing onto the library, which is the very thing #39 forbids. A blocked
+        // candidate keeps its sorted position and is never dropped; when EVERY fresh candidate is blocked
+        // the quota simply no-ops and the batch comes out in its sorted order, so nothing can collapse.
+        val explorationBlocked = HashSet<String>(deprioritized)
+        var ctxKnownGenre = 0
+        var ctxUnknownGenre = 0
         val rnd = java.util.Random()
         // Precompute the sort key ONCE per item: calling rnd inside the comparator would make it inconsistent
         // between comparisons and crash TimSort ("Comparison method violates contract").
@@ -3822,15 +4055,24 @@ class MusicService :
             // Genre-aware continuation: the candidate's context-affinity nudge. Bounded [-4, +6] inside
             // steerTerm; runCatching so a surprise in the lane lookup can never kill the batch (the term
             // just goes neutral). 0.0 whenever the profile is off — the key below is then byte-identical.
+            // The lane is hoisted OUT of the term so the exploration rule below can tell "wrong genre"
+            // from "no genre at all"; it stays null when the lookup throws, so a failure can only make
+            // the rule MORE permissive, never block a candidate we know nothing about.
+            var ctxLane: String? = null
             val ctx = if (ctxProfile == null || m == null) 0.0 else runCatching {
-                iad1tya.echo.music.reco.ContextProfile.steerTerm(
-                    ctxProfile,
-                    m.artists.map { it.name },
-                    iad1tya.echo.music.reco.GenreLane.laneOfTrack(
-                        ctxGenres, m.artists.firstOrNull()?.name, m.title, m.album?.title,
-                    ),
+                val lane = iad1tya.echo.music.reco.GenreLane.laneOfTrack(
+                    ctxGenres, m.artists.firstOrNull()?.name, m.title, m.album?.title,
                 )
+                ctxLane = lane
+                if (lane == null) ctxUnknownGenre++ else ctxKnownGenre++
+                iad1tya.echo.music.reco.ContextProfile.steerTerm(ctxProfile, m.artists.map { it.name }, lane)
             }.getOrDefault(0.0)
+            // See [explorationBlocked]: a candidate the steer pushed back for a KNOWN off-context genre
+            // must not be pulled to the front by the quota that runs after the sort. An unknown genre is
+            // NOT a reason (#39/#41). Membership only — position and eligibility unchanged.
+            if (iad1tya.echo.music.reco.ContextProfile.blocksExploration(ctx, ctxLane)) {
+                mi.mediaId?.let { explorationBlocked.add(it) }
+            }
             // Lower key = earlier. `index` (relatedness rank) DOMINATES; taste/co-rel only NUDGE a song up a few
             // spots and jitter adds variety — relatedness stays the backbone.
             // Registry #25: the `index` rank stays dominant and taste's coefficient (4.0) is unchanged. #5 adds a
@@ -3854,8 +4096,21 @@ class MusicService :
         // same-artist streaks. Phase A #3 — artist-diversity: applied LAST to the unheard pool only (not the
         // heardTail fallback below), so neither taste nor exploration can re-cluster an artist. Both passes are
         // in-memory, order- and length-preserving; null profile / no fresh → identical to today.
+        // GENRE TRACE — one INFO line per radio append (AppLogger only PERSISTS >= INFO, so DEBUG would
+        // exist only in a debug build, i.e. exactly where the bug does not happen). "how many candidates
+        // did we actually know the genre of" is the number that decides whether the steer can work at
+        // all, so a report of "me mezcla géneros" can be settled from a shared log. Same style as
+        // CTX_SINK / SHUFFLE_SPACING.
+        if (ctxProfile != null) {
+            Timber.tag(TAG).i(
+                "CTX_GENRE append: candidates=%d known=%d unknown=%d blockedFromExploration=%d " +
+                    "profile(coverage=%.2f knownArtists=%d lanes=%d cache=%d)",
+                filtered.size, ctxKnownGenre, ctxUnknownGenre, explorationBlocked.size,
+                ctxProfile.coverage, ctxProfile.knownArtists, ctxProfile.genreShare.size, ctxGenres.size,
+            )
+        }
         val unheard = keyed.filterNot { it.third }.sortedBy { it.second }.map { it.first }
-            .withExplorationQuota(p)
+            .withExplorationQuota(p, explorationBlocked)
             .spacedByArtist()
         // No fresh candidates left? Fall back to the ordered already-heard tail rather than dead-ending.
         val heardTail = keyed.filter { it.third }.sortedBy { it.second }.map { it.first }
@@ -3896,14 +4151,34 @@ class MusicService :
      * output length == input length, and each partition keeps its incoming (taste/relatedness) order. Null profile
      * (no taste yet), lists under 5, or no fresh/known split → returns the list unchanged (today's behaviour).
      * In-memory only, no network, no extra cost.
+     *
+     * [blocked] are ids that may NOT claim a reserved exploration slot: a CTX_SINK id, or a candidate the
+     * genre steer pushed back for a genre we KNOW and know to be off-context
+     * ([iad1tya.echo.music.reco.ContextProfile.blocksExploration]). Without that rule the quota undid the
+     * steer — the reserved 1-in-5 slots went to precisely the songs it had just demoted (the owner's "una
+     * del género, otra que no tiene nada que ver").
+     *
+     * An UNKNOWN genre is deliberately NOT a reason to block, and that boundary is load-bearing: "not in
+     * your taste profile" and "we have no idea what genre this is" describe the SAME candidate almost
+     * every time, so blocking on absence would empty this fresh partition on a cold or partial GenreCache
+     * and turn the discovery reserve off exactly when discovery is happening (registry #39/#41).
+     *
+     * A blocked candidate is only moved OUT of the fresh partition: it keeps its sorted position, is
+     * never dropped, and if every fresh candidate is blocked the interleave no-ops (order unchanged).
+     * Empty [blocked] (the steer is off) → byte-identical to before.
      */
-    private fun List<MediaItem>.withExplorationQuota(p: iad1tya.echo.music.reco.TasteProfile?): List<MediaItem> {
+    private fun List<MediaItem>.withExplorationQuota(
+        p: iad1tya.echo.music.reco.TasteProfile?,
+        blocked: Set<String> = emptySet(),
+    ): List<MediaItem> {
         if (p == null || size < 5) return this
         val known = ArrayList<MediaItem>(size)
         val fresh = ArrayList<MediaItem>()
         for (mi in this) {
             val artist = mi.metadata?.artists?.firstOrNull()?.name
-            if (artist != null && !p.isKnownArtist(artist)) fresh.add(mi) else known.add(mi)
+            val isFresh = artist != null && !p.isKnownArtist(artist) &&
+                (blocked.isEmpty() || mi.mediaId !in blocked)
+            if (isFresh) fresh.add(mi) else known.add(mi)
         }
         // Nothing to interleave (all known or all fresh) → preserve the existing order exactly.
         if (fresh.isEmpty() || known.isEmpty()) return this
@@ -5016,6 +5291,39 @@ class MusicService :
             scope.launch(SilentHandler) {
                 val disliked = runCatching { dislikeStore.snapshot() }.getOrDefault(iad1tya.echo.music.dislike.DislikeStore.Disliked())
                 val mediaItems = withContext(Dispatchers.IO) {
+                    var next = currentQueue.nextPage()
+                        .filterExplicit(dataStore.get(HideExplicitKey, false))
+                        .filterVideoSongs(dataStore.get(HideVideoSongsKey, false) || dataStore.get(iad1tya.echo.music.constants.DataSaverEnabledKey, false))
+                    // ENRICH BEFORE SCORING (see [ENRICH_BEFORE_SCORE_MS]). This is the enrich run that
+                    // used to fire AFTER the items were queued, moved AHEAD of the snapshot below so
+                    // the lane filter and orderedByTaste's steer are decided with what we just learned
+                    // instead of one batch late. It is launched on `scope`, so the budget bounds only
+                    // how long we WAIT: on timeout the run continues exactly as the fire-and-forget did.
+                    // The page fetch above already returned, so ~5 items (~17 min) still sit ahead of the
+                    // play head — this can never be heard.
+                    // Its INPUT is not identical to the old run's, and cannot be: the old one read the
+                    // FINAL `mediaItems` (post dislike/lane/session filters), which do not exist yet here
+                    // — they are what this run has to inform. It reads the RAW page instead: a superset in
+                    // content, still capped at GENRE_LEARN_PER_RUN, still WiFi-gated, still one `scope`
+                    // launch, so the ceiling on requests and battery is unchanged; what differs is that
+                    // some of the 12 slots can go to candidates the filters below then drop.
+                    val enrichNames = if (!keepLane) emptyList() else
+                        (curArtists + next.flatMap { it.metadata?.artists.orEmpty() }.map { it.name })
+                            .filter { it.isNotBlank() }
+                            .distinct()
+                            .take(GENRE_LEARN_PER_RUN)
+                    if (enrichNames.isNotEmpty()) {
+                        val enrichJob = scope.launch(Dispatchers.IO + SilentHandler) {
+                            runCatching {
+                                iad1tya.echo.music.reco.GenreCache.enrich(this@MusicService, enrichNames, onlyWifi = true)
+                            }
+                        }
+                        val waited = withTimeoutOrNull(ENRICH_BEFORE_SCORE_MS) { enrichJob.join() } != null
+                        Timber.tag(TAG).i(
+                            "CTX_GENRE enrich-before-score (pagination): %d artists, completed=%b",
+                            enrichNames.size, waited,
+                        )
+                    }
                     // The lane is the REAL genre of what's playing (iTunes genre per artist), not a single
                     // hardcoded style. ONE SharedPreferences read per continuation — never per candidate
                     // (battery), and none at all when the user turned "keep the style" off.
@@ -5030,9 +5338,6 @@ class MusicService :
                     } else {
                         null
                     }
-                    var next = currentQueue.nextPage()
-                        .filterExplicit(dataStore.get(HideExplicitKey, false))
-                        .filterVideoSongs(dataStore.get(HideVideoSongsKey, false) || dataStore.get(iad1tya.echo.music.constants.DataSaverEnabledKey, false))
                     // Never auto-play something the user disliked (the song or a disliked artist).
                     if (!disliked.isEmpty) {
                         next = next.filterNot { mi ->
@@ -5086,30 +5391,18 @@ class MusicService :
                         applyShuffleOrder(player.currentMediaItemIndex, player.mediaItemCount, shufflePlaylistFirst)
                     }
                 }
-                // Learn the genre of the artists autoplay actually surfaces, so the lane above stops being blind
-                // outside the library. Fire-and-forget AFTER the items are queued (never delays playback), WiFi
-                // ONLY, bounded, and misses are cached as "unknown" — so the cost decays to zero as it fills in.
+                // The genre-learning run that used to live HERE (fire-and-forget, after the items were
+                // already queued) now runs above, BEFORE the snapshot that scores them — same
+                // GENRE_LEARN_PER_RUN cap, same WiFi gate, same `scope` launch, so the ceiling on network
+                // and battery is unchanged; it necessarily reads the RAW page rather than this final list
+                // (see there). Enriching a batch after deciding its order is what made the smart queue
+                // right one batch and wrong the next.
                 //
-                // Dispatchers.IO is NOT optional: `scope` is Main (the player's looper), so without it the WiFi
-                // check (a binder IPC) and every iTunes resumption would run on the playback thread.
-                //
-                // Feed it INDIVIDUAL artist names (mediaMetadata.artist is a ", "-joined byline): iTunes is
-                // queried with attribute=artistTerm, so "Bad Bunny, Chencho Corleone" can only ever MISS — and a
-                // miss is cached forever, so we'd permanently burn a request per collab while never learning
-                // either artist. GenreCache is keyed by ONE artist name, which is what the lane looks up.
-                if (keepLane && mediaItems.isNotEmpty()) {
-                    scope.launch(Dispatchers.IO + SilentHandler) {
-                        val names = (curArtists + mediaItems.flatMap { it.metadata?.artists.orEmpty() }.map { it.name })
-                            .filter { it.isNotBlank() }
-                            .distinct()
-                            .take(GENRE_LEARN_PER_RUN)
-                        if (names.isNotEmpty()) {
-                            runCatching {
-                                iad1tya.echo.music.reco.GenreCache.enrich(this@MusicService, names, onlyWifi = true)
-                            }
-                        }
-                    }
-                }
+                // Feeding it INDIVIDUAL artist names still matters (mediaMetadata.artist is a ", "-joined
+                // byline): iTunes is queried with attribute=artistTerm, so "Bad Bunny, Chencho Corleone"
+                // can only ever MISS — and a miss is cached forever, so we would permanently burn a
+                // request per collab while never learning either artist. GenreCache is keyed by ONE
+                // artist name, which is what the lane looks up.
             }
         }
     }
@@ -5780,10 +6073,10 @@ class MusicService :
      * first" branch twice, once per played-check — and only the main one ever looked at artists at all.
      * Sharing a single walk pays for the artist keys the other branch never had.
      *
-     * Reuses [shuffleScoreCache] (mediaId -> taste + primary artist): with crossfade ON this runs on the
-     * Main thread at song boundaries, and scoring thousands of items from scratch there was a measured
-     * 20-60 ms stall. Artist names are trimmed + lowercased so a stray space cannot split one artist in
-     * two and defeat the spacing.
+     * Reuses [shuffleTasteCache] / [shuffleArtistCache]: this runs on the Main thread on every re-apply
+     * (a radio append, a toggle, a completed lap), and scoring thousands of items from scratch there was
+     * a measured 20-60 ms stall. Artist names are trimmed + lowercased so a stray space cannot split one
+     * artist in two and defeat the spacing.
      */
     private class ShuffleItemKeys(
         val mediaIds: Array<String?>,
@@ -5805,23 +6098,41 @@ class MusicService :
         // per-item allocation (this loop walks thousands of items on the Main thread).
         val perArtistCount = IntArray(totalCount + 1)
         var densest = 0
+        // ONE timeline read and ONE reusable Window for the whole walk. `player.getMediaItemAt(i)` is
+        // literally `getCurrentTimeline().getWindow(i, sharedWindow).mediaItem`, so calling it per item
+        // paid an application-thread check and a playbackInfo hop N times over — on the Main thread, on
+        // every re-apply, and the queue only grows while the infinite radio appends. Same MediaItem
+        // instances, same values; the walk just stops re-entering the player for each one. A null
+        // timeline (player released mid-walk) degrades to today's null-item path, item by item.
+        val timeline: Timeline? = runCatching { player.currentTimeline }.getOrNull()
+        val timelineWindows = timeline?.windowCount ?: 0
+        val window = Timeline.Window()
         for (i in 0 until totalCount) {
-            val item = runCatching { player.getMediaItemAt(i) }.getOrNull()
+            val item = if (i < timelineWindows) {
+                runCatching { timeline?.getWindow(i, window)?.mediaItem }.getOrNull()
+            } else {
+                null
+            }
             val itemId = item?.mediaId
             mediaIds[i] = itemId
-            val scored = itemId?.let { shuffleScoreCache[it] } ?: run {
+            // Two lookups, two lifetimes: the artist survives a taste-profile refresh, the score does not.
+            val name = itemId?.let { shuffleArtistCache[it] } ?: run {
+                val a = item?.metadata?.artists?.firstOrNull()?.name?.trim()?.lowercase().orEmpty()
+                if (itemId != null) {
+                    if (shuffleArtistCache.size > 20_000) shuffleArtistCache.clear()
+                    shuffleArtistCache[itemId] = a
+                }
+                a
+            }
+            taste[i] = itemId?.let { shuffleTasteCache[it] } ?: run {
                 val m = item?.metadata
                 val t = if (p != null && m != null) p.scoreNames(m.artists.map { it.name }, m.title) else 0.0
-                val a = m?.artists?.firstOrNull()?.name?.trim()?.lowercase().orEmpty()
-                (t to a).also { pair ->
-                    if (itemId != null) {
-                        if (shuffleScoreCache.size > 20_000) shuffleScoreCache.clear()
-                        shuffleScoreCache[itemId] = pair
-                    }
+                if (itemId != null) {
+                    if (shuffleTasteCache.size > 20_000) shuffleTasteCache.clear()
+                    shuffleTasteCache[itemId] = t
                 }
+                t
             }
-            taste[i] = scored.first
-            val name = scored.second
             if (name.isEmpty()) {
                 artistKey[i] = ShuffleOrdering.ARTIST_UNKNOWN
             } else {
@@ -5853,11 +6164,21 @@ class MusicService :
      * does not happen. `gap1` > 0 on a queue with several artists is a real spacing failure; `gap1` > 0
      * with `artists=1` is a single-artist list, where spacing has nothing to work with.
      */
-    private fun traceShuffleSpacing(branch: String, order: IntArray, keys: ShuffleItemKeys, window: Int) {
+    private fun traceShuffleSpacing(
+        branch: String,
+        order: IntArray,
+        keys: ShuffleItemKeys,
+        window: Int,
+        elapsedMs: Long,
+    ) {
         runCatching {
             val adj = ShuffleOrdering.artistAdjacency(order, keys.artistKey)
+            // `ms` is the whole re-apply (timeline walk + scoring + sort + spacing) on the MAIN thread.
+            // Reported because "en Android Auto sigo teniendo micro cortes" needs a number: this cost
+            // scales with the queue, and the infinite radio only ever grows it. Same INFO reasoning as
+            // the rest of the line — AppLogger persists >= INFO, and the bug only happens in release.
             Timber.tag(TAG).i(
-                "SHUFFLE_SPACING %s n=%d artists=%d window=%d head=%d headArtists=%d gap1=%d gap2=%d minGap=%d topArtist=%d",
+                "SHUFFLE_SPACING %s n=%d artists=%d window=%d head=%d headArtists=%d gap1=%d gap2=%d minGap=%d topArtist=%d ms=%d",
                 branch,
                 order.size,
                 keys.distinctArtists,
@@ -5868,6 +6189,7 @@ class MusicService :
                 adj.gap2,
                 adj.minGap,
                 adj.topArtistCount,
+                elapsedMs,
             )
         }
     }
@@ -5878,6 +6200,7 @@ class MusicService :
         shufflePlaylistFirst: Boolean
     ) {
         if (totalCount == 0) return
+        val applyStartNs = System.nanoTime()
 
         // SCORE CACHE (thermal audit): with crossfade ON this whole function re-runs on EVERY
         // auto-advance, and scoring 5000 items (scoreNames + lowercase allocations each) cost 20-60 ms on
@@ -5886,7 +6209,8 @@ class MusicService :
         // because BOTH branches now need artist keys.
         val cachedProfile = cachedTaste
         if (shuffleScoreCacheProfile !== cachedProfile) {
-            shuffleScoreCache.clear()
+            // Only the TASTE half depends on the profile — see the field declarations.
+            shuffleTasteCache.clear()
             shuffleScoreCacheProfile = cachedProfile
         }
         val itemKeys = shuffleItemKeys(totalCount, cachedProfile)
@@ -5952,7 +6276,10 @@ class MusicService :
                 startAt = 1,
                 seedRecent = recentArtistSeed(itemKeys),
             )
-            traceShuffleSpacing("playlist-first", shuffledIndices, itemKeys, artistWindow)
+            traceShuffleSpacing(
+                "playlist-first", shuffledIndices, itemKeys, artistWindow,
+                (System.nanoTime() - applyStartNs) / 1_000_000L,
+            )
             applyingShuffleOrder = true
             try {
                 player.setShuffleOrder(DefaultShuffleOrder(shuffledIndices, System.currentTimeMillis()))
@@ -5961,7 +6288,10 @@ class MusicService :
             }
             shuffleOrderStale = false
         } else {
-            val indices = (0 until totalCount).toMutableList()
+            // Flat IntArray, not a MutableList<Int>: the list boxed an Integer per queue item and its
+            // comparator boxed a Double per comparison — see ShuffleOrdering.sortIndicesByKeyDescending
+            // for why the replacement produces the byte-identical order.
+            val shuffledIndices = IntArray(totalCount) { it }
             // B5 anti-repeat: which queue items were already played this shuffle session? If EVERY item has
             // been played the pool is exhausted -> start a fresh cycle so shuffle keeps flowing.
             val playedSnapshot = HashSet(shufflePlayedIds)
@@ -6019,7 +6349,7 @@ class MusicService :
             // into real played territory and could lift an already-played song above the boundary (a repeat
             // before the cycle closed). The recorded membership can't be fooled by the key's value.
             val groupByIndex = IntArray(totalCount)
-            indices.forEach { i ->
+            for (i in 0 until totalCount) {
                 val itemId = itemKeys.mediaIds[i]
                 var key = itemKeys.taste[i].coerceIn(-1.7, 1.7) * 0.15 + rnd.nextDouble()
                 // Anti-repeat: already-played songs sink BELOW all not-yet-played ones (big offset), so the
@@ -6029,8 +6359,7 @@ class MusicService :
                 keys[i] = key
                 groupByIndex[i] = if (isUnplayed) 0 else 1
             }
-            indices.sortByDescending { keys[it] }
-            val shuffledIndices = indices.toIntArray()
+            ShuffleOrdering.sortIndicesByKeyDescending(shuffledIndices, keys)
 
             // Anchor the CURRENT song at the front by ROTATION, not by swapping — see
             // ShuffleOrdering.anchorCurrentFirst for why a swap repeated songs at the end of every cycle.
@@ -6058,7 +6387,10 @@ class MusicService :
                 startAt = 1,
                 seedRecent = recentArtistSeed(itemKeys),
             )
-            traceShuffleSpacing("smart", shuffledIndices, itemKeys, artistWindow)
+            traceShuffleSpacing(
+                "smart", shuffledIndices, itemKeys, artistWindow,
+                (System.nanoTime() - applyStartNs) / 1_000_000L,
+            )
             applyingShuffleOrder = true
             try {
                 player.setShuffleOrder(DefaultShuffleOrder(shuffledIndices, System.currentTimeMillis()))
@@ -8038,10 +8370,19 @@ class MusicService :
                                 start
                             }
                             if (end > fromPos) {
-                                val dup = buffer.duplicate()
-                                dup.position(fromPos)
-                                dup.limit(end)
-                                silenceProcessor.measureExternal(dup, tapEncoding, tapSampleRate, tapChannels)
+                                // ALLOCATION GATE (audio thread): duplicate() ran for EVERY buffer of
+                                // every song even when measureExternal's own first two lines would
+                                // return immediately — which is the normal 16-bit case, where this
+                                // processor is already inside the sink's chain. Same two conditions,
+                                // checked before the allocation instead of after it; no measurement
+                                // changes, and the high-water bookkeeping below is untouched so a
+                                // later latch still measures from exactly where it would have.
+                                if (silenceProcessor.needsExternalMeasure()) {
+                                    val dup = buffer.duplicate()
+                                    dup.position(fromPos)
+                                    dup.limit(end)
+                                    silenceProcessor.measureExternal(dup, tapEncoding, tapSampleRate, tapChannels)
+                                }
                                 tapLastBuffer = buffer
                                 tapMeasuredEnd = end
                             }
@@ -9322,9 +9663,30 @@ class MusicService :
         val sec = createExoPlayer(isSecondary = true)
         sec.addListener(secondaryPlayerListener)
 
-        val items = mutableListOf<MediaItem>()
-        for (i in 0 until player.mediaItemCount) {
-            items.add(player.getMediaItemAt(i))
+        // QUEUE COPY — the secondary BECOMES the live player at the swap (performCrossfadeSwap does
+        // `player = nextPlayer`), so it genuinely needs the WHOLE queue: everything the user can seek back
+        // to and everything still to come. Preparing "only the next item" would destroy the queue once per
+        // song. What CAN go is the per-item cost of reading it.
+        //
+        // ONE timeline read + ONE reusable Window, exactly as in shuffleItemKeys: `getMediaItemAt(i)` is
+        // `getCurrentTimeline().getWindow(i, sharedWindow).mediaItem` and `mediaItemCount` is
+        // `getCurrentTimeline().getWindowCount()` (both verified in the media3-common 1.10.1 bytecode), so
+        // the old loop paid an application-thread check and a playbackInfo hop per item, N+1 times over,
+        // on the Main thread, once per song, on a queue the infinite radio only grows. The ArrayList is
+        // also pre-sized now: mutableListOf() started at capacity 10 and doubled its way up, which on a
+        // four-figure queue is ~9 reallocations plus the array copies behind them.
+        //
+        // IDENTICAL RESULT: same MediaItem instances, same order, same count, handed to the same
+        // setMediaItems call. Deliberately NOT wrapped in runCatching — today this loop has no catch
+        // either, and swallowing a failure here would hand the secondary a PARTIAL queue that becomes the
+        // live one at the swap. Reusing one Window is what media3 itself does across successive
+        // getMediaItemAt calls; `.mediaItem` is a reference read, so the next getWindow cannot disturb it.
+        val liveTimeline = player.currentTimeline
+        val itemCount = liveTimeline.windowCount
+        val copyWindow = Timeline.Window()
+        val items = ArrayList<MediaItem>(itemCount)
+        for (i in 0 until itemCount) {
+            items.add(liveTimeline.getWindow(i, copyWindow).mediaItem)
         }
         sec.setMediaItems(items)
         // Stamp which live-timeline version this COPY mirrors — the reuse check in scheduleCrossfade
@@ -9352,7 +9714,10 @@ class MusicService :
         // thread, so the length cannot mismatch.
         if (player.shuffleModeEnabled && items.isNotEmpty()) {
             runCatching {
-                val liveTimeline = player.currentTimeline
+                // The SAME Timeline instance the copy above walked — not a second `player.currentTimeline`
+                // read. onTimelineChanged runs on this same Main thread, so nothing can have mutated
+                // between the two, and sharing the reference makes that guarantee structural instead of a
+                // comment. The order walk itself is unchanged, and so is the order it produces.
                 val order = IntArray(items.size)
                 var oi = 0
                 var w = liveTimeline.getFirstWindowIndex(true)
@@ -9687,6 +10052,25 @@ class MusicService :
          * without ever turning the radio into a burst of network work.
          */
         private const val GENRE_LEARN_PER_RUN = 12
+
+        /**
+         * How long a radio batch may WAIT for genre enrichment before it is scored.
+         *
+         * Root cause of the owner's "la cola inteligente me mezcla géneros": enrichment ran
+         * fire-and-forget AFTER the batch was already queued, so the batch that was actually SCORED saw
+         * the cache as it was BEFORE it learned anything about those artists — they scored as unknown
+         * and rode YouTube's raw relatedness in. The NEXT batch, enriched by the previous run, came out
+         * right. Right / wrong / right / wrong, exactly as reported.
+         *
+         * Bounded, fail-open and NEVER a source of silence:
+         *  - the enrich is launched on the SERVICE scope and only the WAIT is timed out, so a timeout
+         *    costs nothing — the run continues and still persists, i.e. today's exact behaviour;
+         *  - both call sites hold a live playback buffer when they fire (the finishing song is still
+         *    playing / at least 5 items remain in playback order), so 1.5 s is inaudible;
+         *  - the one case with NO buffer — a true end-of-queue with the player parked waiting for these
+         *    very items (resumeAfterSeed) — skips the wait entirely.
+         */
+        private const val ENRICH_BEFORE_SCORE_MS = 1500L
 
         /** Ticks (~1s each) between "does the user actually have a widget?" probes — see startWidgetUpdates. */
         private const val WIDGET_PRESENCE_PROBE_TICKS = 30

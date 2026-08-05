@@ -3,10 +3,8 @@ package iad1tya.echo.music.ui.newui
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -58,7 +56,6 @@ import iad1tya.echo.music.license.LicenseManager
 import iad1tya.echo.music.license.SubscriptionEntryScreen
 import iad1tya.echo.music.ui.screens.Screens
 import iad1tya.echo.music.ui.screens.settings.getAllSearchableSettings
-import iad1tya.echo.music.ui.utils.backToMain
 import iad1tya.echo.music.utils.rememberPreference
 
 /**
@@ -321,7 +318,6 @@ fun AuraSettingsScreen(
             // long-press that jumps home — so it is carried over rather than dropped.
             AuraBackButton(
                 onClick = navController::navigateUp,
-                onLongClick = navController::backToMain,
                 modifier = Modifier.padding(start = AuraSpacing.Gutter - 14.dp, top = 4.dp),
             )
 
@@ -709,23 +705,25 @@ private fun AuraBetaCallout(
 
 // ── Back ──────────────────────────────────────────────────────────────────────────────────────────
 
-/** Back, with the long-press-to-home the inventory records on the classic top bar. */
-@OptIn(ExperimentalFoundationApi::class)
+/**
+ * Back. Deliberately NO long-press handler: it used to mirror the classic top bar's hidden
+ * long-press-to-home, which silently popped the user's whole chain to a tab root and has been
+ * removed everywhere. With no handler the long press falls through to [onClick], so a slow tap
+ * behaves like a normal tap instead of teleporting the user to Home.
+ */
 @Composable
 private fun AuraBackButton(
     onClick: () -> Unit,
-    onLongClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Box(
         modifier = modifier
             .size(AuraSpacing.MinTouchTarget)
             .clip(AuraShapes.Pill)
-            .combinedClickable(
-                onClick = onClick,
-                onLongClick = onLongClick,
+            .clickable(
                 role = Role.Button,
                 onClickLabel = "Atrás",
+                onClick = onClick,
             ),
         contentAlignment = Alignment.Center,
     ) {

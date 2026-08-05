@@ -15,6 +15,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.painterResource
@@ -32,8 +33,13 @@ import iad1tya.echo.music.BuildConfig
 import iad1tya.echo.music.LocalPlayerAwareWindowInsets
 import iad1tya.echo.music.R
 import iad1tya.echo.music.ui.component.IconButton
+import iad1tya.echo.music.ui.newui.AuraPalette
+import iad1tya.echo.music.ui.newui.AuraPanel
+import iad1tya.echo.music.ui.newui.AuraPanelSkin
+import iad1tya.echo.music.ui.newui.AuraSpacing
+import iad1tya.echo.music.ui.newui.AuraType
+import iad1tya.echo.music.ui.newui.rememberAuraPanelSkin
 import iad1tya.echo.music.ui.theme.BrandAccent
-import iad1tya.echo.music.ui.utils.backToMain
 import java.util.Calendar
 
 private data class Feature(val icon: Int, val title: String, val subtitle: String)
@@ -143,11 +149,17 @@ fun AboutScreen(
     scrollBehavior: TopAppBarScrollBehavior,
     onBack: (() -> Unit)? = null,
 ) {
+    // ONE flag read for the whole screen — 13 panels and ~70 rows all take it as a parameter, so the
+    // screen holds exactly one DataStore subscription instead of one per card.
+    val skin = rememberAuraPanelSkin()
+    // The redesign's ground. Only on a dark theme: on a light one `darkGround` is false and the page
+    // keeps `surface`, exactly as today.
+    val ground = if (skin.enabled && skin.darkGround) AuraPalette.Ground else MaterialTheme.colorScheme.surface
     Scaffold(
         modifier = Modifier
             .fillMaxSize()
             .nestedScroll(scrollBehavior.nestedScrollConnection),
-        containerColor = MaterialTheme.colorScheme.surface,
+        containerColor = ground,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             LargeTopAppBar(
@@ -162,15 +174,18 @@ fun AboutScreen(
                 navigationIcon = {
                     IconButton(
                         onClick = { onBack?.invoke() ?: navController.navigateUp() },
-                        onLongClick = navController::backToMain,
+                        onLongClick = null,
                     ) {
                         Icon(painterResource(R.drawable.arrow_back), contentDescription = null)
                     }
                 },
                 windowInsets = TopAppBarDefaults.windowInsets,
                 colors = TopAppBarDefaults.largeTopAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+                    containerColor = ground,
+                    scrolledContainerColor = if (skin.enabled && skin.darkGround)
+                        AuraPalette.GroundRaised
+                    else
+                        MaterialTheme.colorScheme.surfaceContainer,
                 ),
                 scrollBehavior = scrollBehavior,
             )
@@ -192,68 +207,68 @@ fun AboutScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            item { AboutAppCard() }
+            item { AboutAppCard(skin) }
 
             item {
-                AboutSectionCard(title = "Reproducción y calidad de audio") {
-                    FeatureList(PLAYBACK_FEATURES)
+                AboutSectionCard(title = "Reproducción y calidad de audio", skin = skin) {
+                    FeatureList(PLAYBACK_FEATURES, skin)
                 }
             }
             item {
-                AboutSectionCard(title = "Ecualizador y sonido") {
-                    FeatureList(SOUND_FEATURES)
+                AboutSectionCard(title = "Ecualizador y sonido", skin = skin) {
+                    FeatureList(SOUND_FEATURES, skin)
                 }
             }
             item {
-                AboutSectionCard(title = "Descubrimiento y cola inteligente") {
-                    FeatureList(DISCOVERY_FEATURES)
+                AboutSectionCard(title = "Descubrimiento y cola inteligente", skin = skin) {
+                    FeatureList(DISCOVERY_FEATURES, skin)
                 }
             }
             item {
-                AboutSectionCard(title = "Letras") {
-                    FeatureList(LYRICS_FEATURES)
+                AboutSectionCard(title = "Letras", skin = skin) {
+                    FeatureList(LYRICS_FEATURES, skin)
                 }
             }
             item {
-                AboutSectionCard(title = "Biblioteca y listas") {
-                    FeatureList(LIBRARY_FEATURES)
+                AboutSectionCard(title = "Biblioteca y listas", skin = skin) {
+                    FeatureList(LIBRARY_FEATURES, skin)
                 }
             }
             item {
-                AboutSectionCard(title = "Importar y migrar") {
-                    FeatureList(IMPORT_FEATURES)
+                AboutSectionCard(title = "Importar y migrar", skin = skin) {
+                    FeatureList(IMPORT_FEATURES, skin)
                 }
             }
             item {
-                AboutSectionCard(title = "Escuchar juntos") {
-                    FeatureList(SOCIAL_FEATURES)
+                AboutSectionCard(title = "Escuchar juntos", skin = skin) {
+                    FeatureList(SOCIAL_FEATURES, skin)
                 }
             }
             item {
-                AboutSectionCard(title = "En el coche, en la tele y en tu pantalla de inicio") {
-                    FeatureList(PLATFORM_FEATURES)
+                AboutSectionCard(title = "En el coche, en la tele y en tu pantalla de inicio", skin = skin) {
+                    FeatureList(PLATFORM_FEATURES, skin)
                 }
             }
             item {
-                AboutSectionCard(title = "Reconocer y buscar") {
-                    FeatureList(RECOGNITION_FEATURES)
+                AboutSectionCard(title = "Reconocer y buscar", skin = skin) {
+                    FeatureList(RECOGNITION_FEATURES, skin)
                 }
             }
             item {
-                AboutSectionCard(title = "Apariencia y personalización") {
-                    FeatureList(APPEARANCE_FEATURES)
+                AboutSectionCard(title = "Apariencia y personalización", skin = skin) {
+                    FeatureList(APPEARANCE_FEATURES, skin)
                 }
             }
             item {
-                AboutSectionCard(title = "Privacidad, control y estabilidad") {
-                    FeatureList(TRUST_FEATURES)
+                AboutSectionCard(title = "Privacidad, control y estabilidad", skin = skin) {
+                    FeatureList(TRUST_FEATURES, skin)
                 }
             }
             item {
-                AboutSectionCard(title = "Información legal") {
-                    LegalTermsRow(onClick = { navController.navigate("settings/terms") })
-                    AboutDivider()
-                    SuperpoweredAttributionRow()
+                AboutSectionCard(title = "Información legal", skin = skin) {
+                    LegalTermsRow(skin = skin, onClick = { navController.navigate("settings/terms") })
+                    AboutDivider(skin)
+                    SuperpoweredAttributionRow(skin)
                 }
             }
         }
@@ -265,47 +280,16 @@ fun AboutScreen(
  * text the user accepted on first launch — clause 17.3 promises it is always available here).
  */
 @Composable
-private fun LegalTermsRow(onClick: () -> Unit) {
-    val tint = MaterialTheme.colorScheme.primary
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 20.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
-    ) {
-        Surface(
-            modifier = Modifier.size(42.dp),
-            shape = RoundedCornerShape(14.dp),
-            color = tint.copy(alpha = 0.10f),
-        ) {
-            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                Icon(
-                    painter = painterResource(R.drawable.info),
-                    contentDescription = null,
-                    modifier = Modifier.size(22.dp),
-                    tint = tint,
-                )
-            }
-        }
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            Text(
-                text = stringResource(R.string.terms_about_entry),
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Text(
-                text = stringResource(R.string.terms_about_entry_desc),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
+private fun LegalTermsRow(skin: AuraPanelSkin, onClick: () -> Unit) {
+    // The only clickable row on this screen. It reuses [AboutFeatureRow]'s body verbatim rather than
+    // keeping a near-copy of it, so the redesign lands on both at once.
+    AboutFeatureRow(
+        icon = painterResource(R.drawable.info),
+        title = stringResource(R.string.terms_about_entry),
+        subtitle = stringResource(R.string.terms_about_entry_desc),
+        skin = skin,
+        onClick = onClick,
+    )
 }
 
 /**
@@ -319,7 +303,7 @@ private fun LegalTermsRow(onClick: () -> Unit) {
  * the reader is looking at. The full agreement ships in the repo at docs/licenses/.
  */
 @Composable
-private fun SuperpoweredAttributionRow() {
+private fun SuperpoweredAttributionRow(skin: AuraPanelSkin) {
     val currentYear = remember { Calendar.getInstance().get(Calendar.YEAR) }
     AboutFeatureRow(
         icon = painterResource(R.drawable.graphic_eq),
@@ -328,30 +312,32 @@ private fun SuperpoweredAttributionRow() {
             "bajo licencia y con esta atribución obligatoria:\n\n" +
             "Aura Hi-Res Player uses Superpowered SDKs. Superpowered.com\n" +
             "Copyright 2013 – $currentYear, Superpowered, Inc. All rights reserved.",
+        skin = skin,
     )
 }
 
 @Composable
-private fun ColumnScope.FeatureList(features: List<Feature>) {
+private fun ColumnScope.FeatureList(features: List<Feature>, skin: AuraPanelSkin) {
     features.forEachIndexed { index, feature ->
         AboutFeatureRow(
             icon = painterResource(feature.icon),
             title = feature.title,
             subtitle = feature.subtitle,
+            skin = skin,
         )
-        if (index != features.lastIndex) AboutDivider()
+        if (index != features.lastIndex) AboutDivider(skin)
     }
 }
 
 @Composable
-private fun AboutAppCard() {
-    Card(
+private fun AboutAppCard(skin: AuraPanelSkin) {
+    AuraPanel(
+        skin = skin,
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(28.dp),
-        colors = CardDefaults.cardColors(
+        classicShape = RoundedCornerShape(28.dp),
+        classicColors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Column(
             modifier = Modifier
@@ -364,7 +350,7 @@ private fun AboutAppCard() {
                 text = buildAnnotatedString {
                     withStyle(
                         SpanStyle(
-                            color = MaterialTheme.colorScheme.onSurface,
+                            color = if (skin.enabled) skin.ink else MaterialTheme.colorScheme.onSurface,
                             fontWeight = FontWeight.Light,
                         )
                     ) {
@@ -372,7 +358,10 @@ private fun AboutAppCard() {
                     }
                     withStyle(
                         SpanStyle(
-                            color = BrandAccent,
+                            // The wordmark's accent half. On the new skin it takes the render's teal
+                            // (or the theme's primary on a light ground) so the mark matches the rest
+                            // of the redesign; off it, `BrandAccent`, unchanged.
+                            color = if (skin.enabled) skin.accent else BrandAccent,
                             fontWeight = FontWeight.SemiBold,
                         )
                     ) {
@@ -389,14 +378,17 @@ private fun AboutAppCard() {
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                // The version / build chips are TECHNICAL DATA, which the render sets in tracked
+                // monospace — the same treatment "FLAC / 24 BIT / 96 kHz" gets in the player.
                 Surface(
                     shape = RoundedCornerShape(8.dp),
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.10f),
+                    color = if (skin.enabled) skin.accent.copy(alpha = 0.10f)
+                    else MaterialTheme.colorScheme.primary.copy(alpha = 0.10f),
                 ) {
                     Text(
                         text = BuildConfig.VERSION_NAME,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary,
+                        style = if (skin.enabled) AuraType.QualityBadge else MaterialTheme.typography.labelSmall,
+                        color = if (skin.enabled) skin.accent else MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.Medium,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
                     )
@@ -408,7 +400,7 @@ private fun AboutAppCard() {
                     ) {
                         Text(
                             text = "DEBUG",
-                            style = MaterialTheme.typography.labelSmall,
+                            style = if (skin.enabled) AuraType.QualityBadge else MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.error,
                             fontWeight = FontWeight.Medium,
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
@@ -417,12 +409,13 @@ private fun AboutAppCard() {
                 } else {
                     Surface(
                         shape = RoundedCornerShape(8.dp),
-                        color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.10f),
+                        color = if (skin.enabled) skin.ink.copy(alpha = 0.08f)
+                        else MaterialTheme.colorScheme.secondary.copy(alpha = 0.10f),
                     ) {
                         Text(
                             text = BuildConfig.ARCHITECTURE.uppercase(),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.secondary,
+                            style = if (skin.enabled) AuraType.QualityBadge else MaterialTheme.typography.labelSmall,
+                            color = if (skin.enabled) skin.inkMuted else MaterialTheme.colorScheme.secondary,
                             fontWeight = FontWeight.Medium,
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
                         )
@@ -436,23 +429,27 @@ private fun AboutAppCard() {
 @Composable
 private fun AboutSectionCard(
     title: String,
+    skin: AuraPanelSkin,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
             text = title,
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.primary,
+            // The render's `.mh` group header: tracked monospace at low opacity. The STRING is never
+            // touched — no `.uppercase()`, no retype — so the Spanish and its accents stay exactly
+            // what the caller passes.
+            style = if (skin.enabled) AuraType.MenuGroupLabel else MaterialTheme.typography.titleSmall,
+            fontWeight = if (skin.enabled) FontWeight.Normal else FontWeight.Bold,
+            color = if (skin.enabled) skin.inkFaint else MaterialTheme.colorScheme.primary,
             modifier = Modifier.padding(start = 6.dp),
         )
-        Card(
+        AuraPanel(
+            skin = skin,
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(28.dp),
-            colors = CardDefaults.cardColors(
+            classicShape = RoundedCornerShape(28.dp),
+            classicColors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
             ),
-            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         ) {
             Column(
                 modifier = Modifier.padding(vertical = 4.dp),
@@ -467,26 +464,39 @@ private fun AboutFeatureRow(
     icon: Painter,
     title: String,
     subtitle: String? = null,
+    // No default: every caller resolves the skin ONCE at the screen root and passes it down. A
+    // default here would quietly allocate a fresh classic skin per row.
+    skin: AuraPanelSkin,
+    onClick: (() -> Unit)? = null,
 ) {
     val tint = MaterialTheme.colorScheme.primary
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 14.dp),
+            // Identity unless a caller passes one ([LegalTermsRow] is the only one that does), and
+            // placed exactly where that row's own `clickable` used to sit.
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            // The redesign's rhythm is tighter than the classic 14 dp; the 42 dp glyph frame already
+            // clears 48 dp with padding, but the minimum is asserted rather than assumed.
+            .then(if (skin.enabled) Modifier.sizeIn(minHeight = AuraSpacing.MinTouchTarget) else Modifier)
+            .padding(horizontal = 20.dp, vertical = if (skin.enabled) 12.dp else 14.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         Surface(
+            // The frame keeps its classic 42 dp in BOTH paths so the text column does not shift the
+            // moment the flag flips; only the plate behind the glyph goes, exactly as the render
+            // draws a bare accent glyph with no icon plate.
             modifier = Modifier.size(42.dp),
             shape = RoundedCornerShape(14.dp),
-            color = tint.copy(alpha = 0.10f),
+            color = if (skin.enabled) Color.Transparent else tint.copy(alpha = 0.10f),
         ) {
             Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
                 Icon(
                     painter = icon,
                     contentDescription = null,
                     modifier = Modifier.size(22.dp),
-                    tint = tint,
+                    tint = if (skin.enabled) skin.accent else tint,
                 )
             }
         }
@@ -496,15 +506,18 @@ private fun AboutFeatureRow(
         ) {
             Text(
                 text = title,
-                style = MaterialTheme.typography.bodyLarge,
+                style = if (skin.enabled) AuraType.RowTitle else MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface,
+                color = if (skin.enabled) skin.ink else MaterialTheme.colorScheme.onSurface,
             )
             subtitle?.let {
                 Text(
                     text = it,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    // `CalloutSubtitle` (13 sp) rather than `RowSubtitle` (14 sp): these subtitles are
+                    // long explanatory paragraphs and they are replacing a 12 sp `bodySmall`, so the
+                    // nearest Aura size is the one that reflows them least.
+                    style = if (skin.enabled) AuraType.CalloutSubtitle else MaterialTheme.typography.bodySmall,
+                    color = if (skin.enabled) skin.inkMuted else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
@@ -512,10 +525,11 @@ private fun AboutFeatureRow(
 }
 
 @Composable
-private fun AboutDivider() {
+private fun AboutDivider(skin: AuraPanelSkin) {
     HorizontalDivider(
         modifier = Modifier.padding(start = 78.dp, end = 20.dp),
         thickness = 0.5.dp,
-        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
+        color = if (skin.enabled) skin.hairline
+        else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
     )
 }

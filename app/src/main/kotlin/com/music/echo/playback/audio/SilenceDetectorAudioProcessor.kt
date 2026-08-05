@@ -125,6 +125,17 @@ class SilenceDetectorAudioProcessor(
     }
 
     /**
+     * Would [measureExternal] do anything at all? The sink tap has to build a DUPLICATE of every buffer
+     * to call it, and on the ordinary 16-bit path this processor is already inside the sink's own chain
+     * ([isActive]) — so that duplicate was being allocated ON THE AUDIO THREAD, for every buffer of every
+     * song, only to be thrown away by the first line of a call that returns immediately. Two field reads
+     * (`countingLatched` is @Volatile; `isActive` is the plain flag media3's own `isActive()` returns, and
+     * it is written on the configure path, not per buffer), no allocation, and it gates exactly the same
+     * two conditions the call itself checks first, so skipping on `false` cannot change a measurement.
+     */
+    fun needsExternalMeasure(): Boolean = !isActive && countingLatched
+
+    /**
      * SINK-LEVEL feed (ForwardingAudioSink tap). media3's DefaultAudioSink only inserts custom processors
      * on the 16-bit INT pipeline — on hi-res FLOAT content (24-bit on capable devices, the owner's
      * Lossless path) this processor is NOT in the chain at all, so long silent tails went undetected and

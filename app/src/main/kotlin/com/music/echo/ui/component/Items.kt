@@ -43,9 +43,12 @@ import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -60,7 +63,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -111,6 +116,12 @@ import iad1tya.echo.music.db.entities.Song
 import iad1tya.echo.music.extensions.toMediaItem
 import iad1tya.echo.music.models.MediaMetadata
 import iad1tya.echo.music.playback.queues.LocalAlbumRadio
+import iad1tya.echo.music.ui.newui.AuraIcons
+import iad1tya.echo.music.ui.newui.AuraPalette
+import iad1tya.echo.music.ui.newui.AuraQualityBadge
+import iad1tya.echo.music.ui.newui.AuraShapes
+import iad1tya.echo.music.ui.newui.AuraType
+import iad1tya.echo.music.ui.newui.rememberNewUiEnabled
 import iad1tya.echo.music.ui.utils.resize
 import iad1tya.echo.music.ui.utils.tvFocusable
 import iad1tya.echo.music.ui.utils.tvFocusableItem
@@ -130,6 +141,109 @@ import kotlin.math.roundToInt
 
 const val ActiveBoxAlpha = 0.6f
 
+// ── "Interfaz nueva" skin for every row and card ──────────────────────────────────────────────────
+//
+// This file is the single owner of every song / album / artist / playlist row and card in the app:
+// 56 call sites across 27 screen files (search, álbum, artista, historial, sin conexión, every
+// Biblioteca sub-screen, every playlist screen, the menus…). Restyling HERE is what makes those
+// screens adopt the redesign without rewriting them; `Library.kt` is only a set of wrappers that
+// delegate straight into these composables, so it comes along for free.
+//
+// The rules this seam exists to keep:
+//  · ONE resolution point. [rememberAuraItemSkin] is read exactly once per row / per card, published
+//    down through [LocalAuraItemSkin], and every downstream piece (the thumbnail's corner radius, the
+//    badges, the `Icon.*` glyphs — including the badge lambdas the 27 screens pass in themselves)
+//    reads it for free. Scattering `if (newUi)` through the layout, or calling `rememberPreference`
+//    again in each helper, would both bloat the classic path and add a DataStore subscription per row.
+//  · With the flag OFF every expression below reduces to the original literal, so the classic path is
+//    provably unchanged rather than merely believed to be.
+//  · The redesign is a DARK design (AuraPalette has no light variant, and all six rebuilt screens
+//    paint `AuraPalette.Ground`). These rows, unlike those screens, are drawn on whatever background
+//    the classic screen has. So the skin resolves its ink against the ambient surface: on a dark
+//    ground it is the render's `#EAF2FF` / teal; on a light one it keeps Material's ink and only the
+//    type, the rhythm and the corner radii change. Painting `OnGround` unconditionally would have put
+//    near-white text on a near-white surface for anyone running the beta in light mode.
+
+/**
+ * Everything the redesigned row needs, resolved once. [enabled] is the "Interfaz nueva" master
+ * switch; [darkGround] says whether the ambient surface can carry the render's own palette.
+ */
+@Immutable
+data class AuraItemSkin(
+    val enabled: Boolean = false,
+    val darkGround: Boolean = false,
+    /** Row/card title ink. */
+    val ink: Color = Color.Unspecified,
+    /** Subtitle / secondary ink. */
+    val inkMuted: Color = Color.Unspecified,
+    /** Teal on a dark ground, the theme's primary on a light one. Badges, ticks, active markers. */
+    val accent: Color = Color.Unspecified,
+    /**
+     * Resting row fill. The render's list is a FLAT sheet, so this is the SCREEN's own surface rather
+     * than the classic per-row `surfaceContainer` card — but it is still OPAQUE, never transparent: a
+     * see-through row shows the list underneath it while it is being dragged in a playlist, and shows
+     * the sheet behind it in the queue.
+     */
+    val fill: Color = Color.Transparent,
+    /**
+     * "SONANDO" row fill + hairline — the render's `rgba(63,231,206,.10)` / `.25`, already composited
+     * over [fill] so the wash stays opaque.
+     */
+    val activeFill: Color = Color.Transparent,
+    val activeLine: Color = Color.Transparent,
+    /** Multi-select highlight, likewise composited. */
+    val selectedFill: Color = Color.Transparent,
+)
+
+/** Classic. The default of [LocalAuraItemSkin], so anything composed outside a row stays classic. */
+private val ClassicItemSkin = AuraItemSkin()
+
+/**
+ * The skin in force for the current row / card. Provided by [ListItem] and [GridItem]; defaults to
+ * classic so a thumbnail or a badge composed on its own is never half-restyled.
+ */
+val LocalAuraItemSkin = staticCompositionLocalOf { ClassicItemSkin }
+
+/**
+ * Resolves the skin. The ONLY place in this file that reads the flag — one DataStore subscription per
+ * row instead of one per glyph.
+ */
+@Composable
+fun rememberAuraItemSkin(): AuraItemSkin {
+    val newUi = rememberNewUiEnabled()
+    val surface = MaterialTheme.colorScheme.surface
+    val onSurface = MaterialTheme.colorScheme.onSurface
+    val onSurfaceVariant = MaterialTheme.colorScheme.onSurfaceVariant
+    val primary = MaterialTheme.colorScheme.primary
+    return remember(newUi, surface, onSurface, onSurfaceVariant, primary) {
+        if (!newUi) {
+            ClassicItemSkin
+        } else {
+            val darkGround = surface.luminance() < 0.4f
+            val wash = if (darkGround) AuraPalette.Teal else primary
+            AuraItemSkin(
+                enabled = true,
+                darkGround = darkGround,
+                ink = if (darkGround) AuraPalette.OnGround else onSurface,
+                inkMuted = if (darkGround) AuraPalette.OnGroundMuted else onSurfaceVariant,
+                accent = wash,
+                fill = surface,
+                activeFill = wash.copy(alpha = 0.10f).compositeOver(surface),
+                activeLine = wash.copy(alpha = 0.25f),
+                selectedFill = wash.copy(alpha = 0.22f).compositeOver(surface),
+            )
+        }
+    }
+}
+
+/**
+ * The artwork corner radius of the redesign (`border-radius:8px` in the render, ×1.4 = 11 dp), applied
+ * to whatever [shape] the caller asked for — except a circle, which is an ARTIST avatar and must stay
+ * one. Off the new skin the caller's shape is returned untouched.
+ */
+private fun AuraItemSkin.thumbnailShape(shape: Shape): Shape =
+    if (enabled && shape != CircleShape) AuraShapes.Artwork else shape
+
 @Composable
 fun currentGridThumbnailHeight(): Dp {
     val gridItemSize by rememberEnumPreference(GridItemsSizeKey, GridItemSize.BIG)
@@ -137,11 +251,17 @@ fun currentGridThumbnailHeight(): Dp {
 }
 
 
+/**
+ * The universal list row. **Not `inline`** — it has to publish [LocalAuraItemSkin] to its own slots
+ * (`thumbnailContent`, `subtitle`, `trailingContent`), and an inline function cannot invoke its inline
+ * lambda parameters from inside `CompositionLocalProvider`'s lambda. Dropping `inline` gives the row a
+ * restart scope of its own; it changes nothing that is drawn.
+ */
 @Composable
-inline fun ListItem(
+fun ListItem(
     modifier: Modifier = Modifier,
     title: String,
-    noinline subtitle: (@Composable RowScope.() -> Unit)? = null,
+    subtitle: (@Composable RowScope.() -> Unit)? = null,
     thumbnailContent: @Composable () -> Unit,
     trailingContent: @Composable RowScope.() -> Unit = {},
     isSelected: Boolean? = false,
@@ -151,73 +271,93 @@ inline fun ListItem(
     drawHighlight: Boolean = true,
     horizontalPadding: Dp = 16.dp,
 ) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        // TV/car: a white focus ring wraps the caller's own clickable (placed outermost so onFocusChanged
-        // observes it) so the D-pad user can see which row is selected. No-op + zero overhead off-TV.
-        modifier = Modifier
-            .tvFocusableItem(iad1tya.echo.music.ui.utils.rememberIsTvOrCar())
-            .then(modifier)
-            .padding(vertical = 2.dp)
-            .height(ListItemHeight)
-            .padding(horizontal = horizontalPadding)
-            .clip(shape)
-            .background(
-                color = when {
-                    isActive -> MaterialTheme.colorScheme.secondaryContainer
-                    isSelected == true && drawHighlight -> MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
-                    else -> MaterialTheme.colorScheme.surfaceContainer
-                }
-            )
-    ) {
-        Box(
-            modifier = Modifier.padding(start = 12.dp, top = 6.dp, end = 6.dp, bottom = 6.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            thumbnailContent()
-            if (!isAvailable) {
-                Box(
-                    modifier = Modifier
-                        .size(ListThumbnailSize)
-                        .align(Alignment.Center)
-                        .background(
-                            Color.Black.copy(alpha = 0.25f),
-                            RoundedCornerShape(ThumbnailCornerRadius)
-                        )
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.offline),
-                        contentDescription = null,
-                        tint = Color.White,
-                        modifier = Modifier
-                            .size(ListThumbnailSize / 2)
-                            .align(Alignment.Center)
-                            .graphicsLayer { alpha = 1f }
-                    )
-                }
-            }
-        }
-        Column(
+    val skin = rememberAuraItemSkin()
+    // The render's sounding row is a rounded 10 px card (×1.4 = `AuraShapes.Highlight`). Only the
+    // DEFAULT `RectangleShape` is upgraded: a caller that asked for a shape of its own (the grouped
+    // playlist cards) chose it deliberately and keeps it. Off the new skin this IS `shape`.
+    val rowShape = if (skin.enabled && shape == RectangleShape) AuraShapes.Highlight else shape
+    CompositionLocalProvider(LocalAuraItemSkin provides skin) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            // TV/car: a white focus ring wraps the caller's own clickable (placed outermost so onFocusChanged
+            // observes it) so the D-pad user can see which row is selected. No-op + zero overhead off-TV.
             modifier = Modifier
-                .weight(1f)
-                .padding(horizontal = 6.dp)
+                .tvFocusableItem(iad1tya.echo.music.ui.utils.rememberIsTvOrCar())
+                .then(modifier)
+                .padding(vertical = 2.dp)
+                .height(ListItemHeight)
+                .padding(horizontal = horizontalPadding)
+                .clip(rowShape)
+                .background(
+                    // New skin: the render's list is a FLAT sheet — the resting row takes the screen's
+                    // own surface instead of the classic `surfaceContainer` card — with the sounding row
+                    // lifted by the "SONANDO" teal wash. Classic: the three Material fills, unchanged.
+                    color = if (skin.enabled) when {
+                        isActive -> skin.activeFill
+                        isSelected == true && drawHighlight -> skin.selectedFill
+                        else -> skin.fill
+                    } else when {
+                        isActive -> MaterialTheme.colorScheme.secondaryContainer
+                        isSelected == true && drawHighlight -> MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
+                        else -> MaterialTheme.colorScheme.surfaceContainer
+                    }
+                )
+                .then(
+                    // `.then(Modifier)` is identity, so the classic chain is byte-for-byte the old one.
+                    if (skin.enabled && isActive) Modifier.border(1.dp, skin.activeLine, rowShape)
+                    else Modifier
+                )
         ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-
-            if (subtitle != null) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    subtitle()
+            Box(
+                modifier = Modifier.padding(start = 12.dp, top = 6.dp, end = 6.dp, bottom = 6.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                thumbnailContent()
+                if (!isAvailable) {
+                    Box(
+                        modifier = Modifier
+                            .size(ListThumbnailSize)
+                            .align(Alignment.Center)
+                            .background(
+                                Color.Black.copy(alpha = 0.25f),
+                                skin.thumbnailShape(RoundedCornerShape(ThumbnailCornerRadius))
+                            )
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.offline),
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier
+                                .size(ListThumbnailSize / 2)
+                                .align(Alignment.Center)
+                                .graphicsLayer { alpha = 1f }
+                        )
+                    }
                 }
             }
-        }
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 6.dp)
+            ) {
+                Text(
+                    text = title,
+                    style = if (skin.enabled) AuraType.RowTitle else MaterialTheme.typography.bodyMedium,
+                    color = if (skin.enabled) skin.ink else Color.Unspecified,
+                    fontWeight = if (skin.enabled) null else FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
 
-        trailingContent()
+                if (subtitle != null) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        subtitle()
+                    }
+                }
+            }
+
+            trailingContent()
+        }
     }
 }
 
@@ -237,19 +377,27 @@ fun ListItem(
 ) = ListItem(
     title = title,
     subtitle = {
-        badges()
+        // The render puts the per-row markers at the RIGHT edge ("Calidad a la derecha. Marca de
+        // verificación = descargada"), so on the new skin `badges` is composed in the trailing cluster
+        // below instead of ahead of the subtitle. Both lambdas run INSIDE `ListItem`, i.e. inside the
+        // skin provider, so this costs no extra preference read. Off the skin, the order is the old one.
+        if (!LocalAuraItemSkin.current.enabled) badges()
         if (subtitle != null) {
+            val skin = LocalAuraItemSkin.current
             Text(
                 text = subtitle,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.secondary,
+                style = if (skin.enabled) AuraType.RowSubtitle else MaterialTheme.typography.bodyMedium,
+                color = if (skin.enabled) skin.inkMuted else MaterialTheme.colorScheme.secondary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
         }
     },
     thumbnailContent = thumbnailContent,
-    trailingContent = trailingContent,
+    trailingContent = {
+        if (LocalAuraItemSkin.current.enabled) badges()
+        trailingContent()
+    },
     modifier = modifier,
     isSelected = isSelected,
     isActive = isActive,
@@ -275,20 +423,26 @@ fun ListItem(
 ) = ListItem(
     title = title,
     subtitle = {
-        badges()
+        // See the AnnotatedString overload above: on the new skin the badges move to the trailing
+        // cluster, which is where the render draws them.
+        if (!LocalAuraItemSkin.current.enabled) badges()
 
         if (!subtitle.isNullOrEmpty()) {
+            val skin = LocalAuraItemSkin.current
             Text(
                 text = subtitle,
-                color = MaterialTheme.colorScheme.secondary,
-                style = MaterialTheme.typography.bodySmall,
+                color = if (skin.enabled) skin.inkMuted else MaterialTheme.colorScheme.secondary,
+                style = if (skin.enabled) AuraType.RowSubtitle else MaterialTheme.typography.bodySmall,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
         }
     },
     thumbnailContent = thumbnailContent,
-    trailingContent = trailingContent,
+    trailingContent = {
+        if (LocalAuraItemSkin.current.enabled) badges()
+        trailingContent()
+    },
     modifier = modifier,
     isSelected = isSelected,
     isActive = isActive,
@@ -308,45 +462,51 @@ fun GridItem(
     fillMaxWidth: Boolean = false,
     thumbnailHeightOverride: Dp? = null,
 ) {
+    val skin = rememberAuraItemSkin()
+    // `GridItemsSizeKey` (Ajustes › Apariencia, GRANDE/PEQUEÑO) still decides the card size on BOTH
+    // skins — the redesign restyles the card, it does not take the setting over.
     val gridHeight = thumbnailHeightOverride ?: currentGridThumbnailHeight()
     // TV/car: a focus ring + scale pop wraps the caller's own clickable (placed outermost so onFocusChanged
     // observes it) so the D-pad user sees which card is selected. No-op + zero overhead off-TV.
     val isTvOrCarCard = iad1tya.echo.music.ui.utils.rememberIsTvOrCar()
-    Column(
-        modifier = Modifier
-            .tvFocusable(isTvOrCarCard, RoundedCornerShape(12.dp), scaleFocused = 1.12f)
-            .then(
-                if (fillMaxWidth) {
-                    modifier
-                        .padding(12.dp)
-                        .fillMaxWidth()
-                } else {
-                    modifier
-                        .padding(12.dp)
-                        .width(gridHeight * thumbnailRatio)
-                }
-            )
-    ) {
-        BoxWithConstraints(
-            contentAlignment = Alignment.Center,
-            modifier = if (fillMaxWidth) {
-                Modifier.fillMaxWidth()
-            } else {
-                Modifier.height(gridHeight)
-            }
-                .aspectRatio(thumbnailRatio)
+    CompositionLocalProvider(LocalAuraItemSkin provides skin) {
+        Column(
+            modifier = Modifier
+                .tvFocusable(isTvOrCarCard, RoundedCornerShape(12.dp), scaleFocused = 1.12f)
+                .then(
+                    if (fillMaxWidth) {
+                        modifier
+                            .padding(12.dp)
+                            .fillMaxWidth()
+                    } else {
+                        modifier
+                            .padding(12.dp)
+                            .width(gridHeight * thumbnailRatio)
+                    }
+                )
         ) {
-            thumbnailContent()
-        }
+            BoxWithConstraints(
+                contentAlignment = Alignment.Center,
+                modifier = if (fillMaxWidth) {
+                    Modifier.fillMaxWidth()
+                } else {
+                    Modifier.height(gridHeight)
+                }
+                    .aspectRatio(thumbnailRatio)
+            ) {
+                thumbnailContent()
+            }
 
-        Spacer(modifier = Modifier.height(6.dp))
+            // Render: the shelf card leaves 6 px between the cover and its title (×1.4 ≈ 8 dp).
+            Spacer(modifier = Modifier.height(if (skin.enabled) 8.dp else 6.dp))
 
-        title()
+            title()
 
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            badges()
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                badges()
 
-            subtitle()
+                subtitle()
+            }
         }
     }
 }
@@ -363,10 +523,12 @@ fun GridItem(
 ) = GridItem(
     modifier = modifier,
     title = {
+        val skin = LocalAuraItemSkin.current
         Text(
             text = title,
-            style = MaterialTheme.typography.bodyLarge,
-            fontWeight = FontWeight.Bold,
+            style = if (skin.enabled) AuraType.RowTitle else MaterialTheme.typography.bodyLarge,
+            color = if (skin.enabled) skin.ink else Color.Unspecified,
+            fontWeight = if (skin.enabled) null else FontWeight.Bold,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Start,
@@ -374,10 +536,11 @@ fun GridItem(
         )
     },
     subtitle = {
+        val skin = LocalAuraItemSkin.current
         Text(
             text = subtitle,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.secondary,
+            style = if (skin.enabled) AuraType.RowSubtitle else MaterialTheme.typography.bodyMedium,
+            color = if (skin.enabled) skin.inkMuted else MaterialTheme.colorScheme.secondary,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
@@ -397,37 +560,50 @@ fun SongListItem(
     showDownloadIcon: Boolean = true,
     showSize: Boolean = false,
     badges: @Composable RowScope.() -> Unit = {
-        val isLossless = song.format?.codecs == "flac"
-        val is320 = song.format?.codecs?.contains("mp4a.40.2") == true && song.format.bitrate >= 320000
+        // Render, Biblioteca: the bordered LOSSLESS / 320KBPS pill becomes the mono quality badge at the
+        // right edge ("24/96" teal for hi-res, "16/44" dimmed). `AuraQualityBadge` is the SAME badge the
+        // rebuilt screens already use — it prints only what `FormatEntity` actually knows, so no number
+        // is invented. It carries the render's own low-opacity ink, so it is used only where that ink is
+        // legible; on a light ground the classic pill stays.
+        val qualitySkin = LocalAuraItemSkin.current
+        if (qualitySkin.enabled && qualitySkin.darkGround) {
+            AuraQualityBadge(
+                format = song.format,
+                modifier = Modifier.padding(end = 4.dp)
+            )
+        } else {
+            val isLossless = song.format?.codecs == "flac"
+            val is320 = song.format?.codecs?.contains("mp4a.40.2") == true && song.format.bitrate >= 320000
 
-        if (isLossless) {
-            Text(
-                text = "LOSSLESS",
-                style = MaterialTheme.typography.labelSmall.copy(
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.sp,
-                    fontSize = 8.sp
-                ),
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier
-                    .padding(end = 4.dp)
-                    .border(1.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(2.dp))
-                    .padding(horizontal = 2.dp)
-            )
-        } else if (is320) {
-            Text(
-                text = "320KBPS",
-                style = MaterialTheme.typography.labelSmall.copy(
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.sp,
-                    fontSize = 8.sp
-                ),
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier
-                    .padding(end = 4.dp)
-                    .border(1.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(2.dp))
-                    .padding(horizontal = 2.dp)
-            )
+            if (isLossless) {
+                Text(
+                    text = "LOSSLESS",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.sp,
+                        fontSize = 8.sp
+                    ),
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .padding(end = 4.dp)
+                        .border(1.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(2.dp))
+                        .padding(horizontal = 2.dp)
+                )
+            } else if (is320) {
+                Text(
+                    text = "320KBPS",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.sp,
+                        fontSize = 8.sp
+                    ),
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .padding(end = 4.dp)
+                        .border(1.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(2.dp))
+                        .padding(horizontal = 2.dp)
+                )
+            }
         }
 
         if (showLikedIcon && song.song.liked) {
@@ -493,10 +669,11 @@ fun SongListItem(
                 // "Ya reproducida" marker — suppressed on the ACTIVE row: the currently-sounding song is
                 // technically in the played-set from its first second, but dimming what's playing looks broken.
                 if (playedInShuffle && !isActive) {
+                    val shuffleSkin = LocalAuraItemSkin.current
                     androidx.compose.material3.Icon(
                         painter = painterResource(R.drawable.check),
                         contentDescription = "Ya reproducida en aleatorio",
-                        tint = MaterialTheme.colorScheme.primary,
+                        tint = if (shuffleSkin.enabled) shuffleSkin.accent else MaterialTheme.colorScheme.primary,
                         modifier = Modifier
                             .padding(end = 4.dp)
                             .size(16.dp)
@@ -549,23 +726,26 @@ fun SongGridItem(
     fillMaxWidth: Boolean = false,
 ) = GridItem(
     title = {
+        val skin = LocalAuraItemSkin.current
         Text(
             text = song.song.title,
-            style = MaterialTheme.typography.bodyLarge,
-            fontWeight = FontWeight.Bold,
+            style = if (skin.enabled) AuraType.RowTitle else MaterialTheme.typography.bodyLarge,
+            color = if (skin.enabled) skin.ink else Color.Unspecified,
+            fontWeight = if (skin.enabled) null else FontWeight.Bold,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.basicMarquee().fillMaxWidth()
         )
     },
     subtitle = {
+        val skin = LocalAuraItemSkin.current
         Text(
             text = joinByBullet(
                 song.artists.joinToString { it.name },
                 makeTimeString(song.song.duration * 1000L)
             ),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.secondary,
+            style = if (skin.enabled) AuraType.RowSubtitle else MaterialTheme.typography.bodyMedium,
+            color = if (skin.enabled) skin.inkMuted else MaterialTheme.colorScheme.secondary,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
@@ -596,10 +776,11 @@ fun ArtistListItem(
     modifier: Modifier = Modifier,
     badges: @Composable RowScope.() -> Unit = {
         if (artist.artist.bookmarkedAt != null) {
+            val skin = LocalAuraItemSkin.current
             Icon(
                 painter = painterResource(R.drawable.favorite),
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.error,
+                tint = if (skin.enabled) skin.accent else MaterialTheme.colorScheme.error,
                 modifier = Modifier
                     .size(18.dp)
                     .padding(end = 2.dp),
@@ -772,21 +953,24 @@ fun AlbumGridItem(
     subtitleYearOnly: Boolean = false,
 ) = GridItem(
     title = {
+        val skin = LocalAuraItemSkin.current
         Text(
             text = album.album.title,
-            style = MaterialTheme.typography.bodyLarge,
-            fontWeight = FontWeight.Bold,
+            style = if (skin.enabled) AuraType.RowTitle else MaterialTheme.typography.bodyLarge,
+            color = if (skin.enabled) skin.ink else Color.Unspecified,
+            fontWeight = if (skin.enabled) null else FontWeight.Bold,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.basicMarquee().fillMaxWidth()
         )
     },
     subtitle = {
+        val skin = LocalAuraItemSkin.current
         Text(
             text = if (subtitleYearOnly) (album.album.year?.toString() ?: "")
                    else album.artists.joinToString { it.name },
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.secondary,
+            style = if (skin.enabled) AuraType.RowSubtitle else MaterialTheme.typography.bodyMedium,
+            color = if (skin.enabled) skin.inkMuted else MaterialTheme.colorScheme.secondary,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis
         )
@@ -942,16 +1126,19 @@ fun PlaylistGridItem(
     fillMaxWidth: Boolean = false,
 ) = GridItem(
     title = {
+        val skin = LocalAuraItemSkin.current
         Text(
             text = playlist.playlist.name,
-            style = MaterialTheme.typography.bodyLarge,
-            fontWeight = FontWeight.Bold,
+            style = if (skin.enabled) AuraType.RowTitle else MaterialTheme.typography.bodyLarge,
+            color = if (skin.enabled) skin.ink else Color.Unspecified,
+            fontWeight = if (skin.enabled) null else FontWeight.Bold,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.basicMarquee().fillMaxWidth()
         )
     },
     subtitle = {
+        val skin = LocalAuraItemSkin.current
         val subtitle = if (autoPlaylist) {
             ""
         } else {
@@ -971,8 +1158,8 @@ fun PlaylistGridItem(
         }
         Text(
             text = subtitle,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.secondary,
+            style = if (skin.enabled) AuraType.RowSubtitle else MaterialTheme.typography.bodyMedium,
+            color = if (skin.enabled) skin.inkMuted else MaterialTheme.colorScheme.secondary,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis
         )
@@ -1192,10 +1379,12 @@ fun YouTubeGridItem(
     albumSubtitleYearOnly: Boolean = false,
 ) = GridItem(
     title = {
+        val skin = LocalAuraItemSkin.current
         Text(
             text = item.title,
-            style = MaterialTheme.typography.bodyLarge,
-            fontWeight = FontWeight.Bold,
+            style = if (skin.enabled) AuraType.RowTitle else MaterialTheme.typography.bodyLarge,
+            color = if (skin.enabled) skin.ink else Color.Unspecified,
+            fontWeight = if (skin.enabled) null else FontWeight.Bold,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             textAlign = if (item is ArtistItem) TextAlign.Center else TextAlign.Start,
@@ -1203,6 +1392,7 @@ fun YouTubeGridItem(
         )
     },
     subtitle = {
+        val skin = LocalAuraItemSkin.current
         val subtitle = when (item) {
             is SongItem -> joinByBullet(item.artists.joinToString { it.name }, makeTimeString(item.duration?.times(1000L)))
             is AlbumItem -> if (albumSubtitleYearOnly) item.year?.toString()
@@ -1213,8 +1403,8 @@ fun YouTubeGridItem(
         if (subtitle != null) {
             Text(
                 text = subtitle,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.secondary,
+                style = if (skin.enabled) AuraType.RowSubtitle else MaterialTheme.typography.bodyMedium,
+                color = if (skin.enabled) skin.inkMuted else MaterialTheme.colorScheme.secondary,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -1368,14 +1558,19 @@ fun ItemThumbnail(
     // (like the working Onboarding "pick artists" screen). Default true keeps album/song behavior.
     resize: Boolean = true
 ) {
+    // "Recortar las portadas" (default OFF) keeps deciding Crop vs Fit on BOTH skins — the redesign only
+    // changes the FRAME the cover sits in, never whether the image is cropped inside it.
     val cropAlbumArt by rememberPreference(CropAlbumArtKey, false)
-    
+    // Render: `border-radius:8px` on the artwork (×1.4 = 11 dp) instead of the classic 6 dp. Artist
+    // avatars stay circular. Resolved once and used for every clip below; off the new skin it IS `shape`.
+    val frameShape = LocalAuraItemSkin.current.thumbnailShape(shape)
+
     Box(
         contentAlignment = Alignment.Center,
         modifier = modifier
             .fillMaxSize()
             .aspectRatio(thumbnailRatio)
-            .clip(shape)
+            .clip(frameShape)
     ) {
         if (albumIndex == null) {
             AsyncImage(
@@ -1389,7 +1584,7 @@ fun ItemThumbnail(
                 contentScale = if (cropAlbumArt) ContentScale.Crop else ContentScale.Fit,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(shape)
+                    .clip(frameShape)
             )
         }
 
@@ -1412,7 +1607,7 @@ fun ItemThumbnail(
                 modifier = Modifier
                     .fillMaxSize()
                     .zIndex(1f)
-                    .clip(shape)
+                    .clip(frameShape)
                     .background(Color.Black.copy(alpha = 0.5f))
             ) {
                 Icon(
@@ -1433,7 +1628,7 @@ fun ItemThumbnail(
                         Color.Transparent
                     else
                         Color.Black.copy(alpha = ActiveBoxAlpha),
-                    shape = shape
+                    shape = frameShape
                 )
         )
     }
@@ -1451,12 +1646,14 @@ fun LocalThumbnail(
     thumbnailRatio: Float = 1f
 ) {
     val cropAlbumArt by rememberPreference(CropAlbumArtKey, false)
-    
+    // Same 11 dp artwork radius as `ItemThumbnail`; identity off the new skin.
+    val frameShape = LocalAuraItemSkin.current.thumbnailShape(shape)
+
     Box(
         contentAlignment = Alignment.Center,
         modifier = modifier
             .aspectRatio(thumbnailRatio)
-            .clip(shape)
+            .clip(frameShape)
     ) {
         AsyncImage(
             model = ImageRequest.Builder(LocalContext.current)
@@ -1479,7 +1676,7 @@ fun LocalThumbnail(
             color = Color.White,
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.4f), shape)
+                .background(Color.Black.copy(alpha = 0.4f), frameShape)
         )
 
         if (showCenterPlay) {
@@ -1544,6 +1741,8 @@ fun PlaylistThumbnail(
     fallbackThumbnails: List<String> = emptyList()
 ) {
     val cropAlbumArt by rememberPreference(CropAlbumArtKey, false)
+    // Same 11 dp artwork radius as `ItemThumbnail`; identity off the new skin.
+    val frameShape = LocalAuraItemSkin.current.thumbnailShape(shape)
 
     // A single non-null thumbnailUrl can still be DEAD (purged content:// custom cover, rotted
     // Spotify/YT mosaic link). Playlist.thumbnails can't know that — only coil finds out at load
@@ -1558,7 +1757,7 @@ fun PlaylistThumbnail(
             contentAlignment = Alignment.Center,
             modifier = Modifier
                 .size(size)
-                .clip(shape)
+                .clip(frameShape)
                 .background(MaterialTheme.colorScheme.surfaceContainer)
         ) {
             placeHolder()
@@ -1578,12 +1777,12 @@ fun PlaylistThumbnail(
             onError = { primaryFailed = true },
             modifier = Modifier
                 .size(size)
-                .clip(shape)
+                .clip(frameShape)
         )
         else -> Box(
             modifier = Modifier
                 .size(size)
-                .clip(shape)
+                .clip(frameShape)
         ) {
             listOf(
                 Alignment.TopStart,
@@ -1810,59 +2009,128 @@ data class Quadruple<A, B, C, D>(
     val fourth: D
 )
 
+/**
+ * The per-row markers. Called from this file's default `badges` lambdas AND from the custom ones the
+ * 27 screens pass in, which is why they are restyled here rather than at each call site: one edit and
+ * every screen's badges follow the render.
+ *
+ * Each one reads [LocalAuraItemSkin], published by the enclosing [ListItem] / [GridItem], so the skin
+ * costs no extra preference read per glyph. Composed outside a row the local is [ClassicItemSkin] and
+ * the classic glyph is drawn — which is exactly what a menu or a dialog should keep showing.
+ */
 object Icon {
     @Composable
     fun Favorite() {
-        Icon(
-            painter = painterResource(R.drawable.favorite),
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.error,
-            modifier = Modifier
-                .size(18.dp)
-                .padding(end = 2.dp)
-        )
+        val skin = LocalAuraItemSkin.current
+        if (skin.enabled) {
+            // Render: `#i-heart-f` filled, in the accent — not the Material error red.
+            Icon(
+                imageVector = AuraIcons.HeartFilled,
+                contentDescription = null,
+                tint = skin.accent,
+                modifier = Modifier
+                    .size(18.dp)
+                    .padding(end = 2.dp)
+            )
+        } else {
+            Icon(
+                painter = painterResource(R.drawable.favorite),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.error,
+                modifier = Modifier
+                    .size(18.dp)
+                    .padding(end = 2.dp)
+            )
+        }
     }
 
     @Composable
     fun Library() {
-        Icon(
-            painter = painterResource(R.drawable.library_add_check),
-            contentDescription = null,
-            modifier = Modifier
-                .size(18.dp)
-                .padding(end = 2.dp)
-        )
-    }
-
-    @Composable
-    fun Download(state: Int?) {
-        when (state) {
-            STATE_COMPLETED -> Icon(
-                painter = painterResource(R.drawable.offline),
+        val skin = LocalAuraItemSkin.current
+        if (skin.enabled) {
+            Icon(
+                imageVector = AuraIcons.Library,
+                contentDescription = null,
+                tint = skin.inkMuted,
+                modifier = Modifier
+                    .size(18.dp)
+                    .padding(end = 2.dp)
+            )
+        } else {
+            Icon(
+                painter = painterResource(R.drawable.library_add_check),
                 contentDescription = null,
                 modifier = Modifier
                     .size(18.dp)
                     .padding(end = 2.dp)
             )
-            STATE_QUEUED, STATE_DOWNLOADING -> CircularProgressIndicator(
-                strokeWidth = 2.dp,
-                modifier = Modifier
-                    .size(16.dp)
-                    .padding(end = 2.dp)
-            )
+        }
+    }
+
+    @Composable
+    fun Download(state: Int?) {
+        val skin = LocalAuraItemSkin.current
+        when (state) {
+            // Render, Biblioteca: "Marca de verificación = descargada".
+            STATE_COMPLETED -> if (skin.enabled) {
+                Icon(
+                    imageVector = AuraIcons.Check,
+                    contentDescription = null,
+                    tint = skin.accent,
+                    modifier = Modifier
+                        .size(18.dp)
+                        .padding(end = 2.dp)
+                )
+            } else {
+                Icon(
+                    painter = painterResource(R.drawable.offline),
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(18.dp)
+                        .padding(end = 2.dp)
+                )
+            }
+            STATE_QUEUED, STATE_DOWNLOADING -> if (skin.enabled) {
+                CircularProgressIndicator(
+                    color = skin.accent,
+                    strokeWidth = 2.dp,
+                    modifier = Modifier
+                        .size(16.dp)
+                        .padding(end = 2.dp)
+                )
+            } else {
+                CircularProgressIndicator(
+                    strokeWidth = 2.dp,
+                    modifier = Modifier
+                        .size(16.dp)
+                        .padding(end = 2.dp)
+                )
+            }
             else -> {  }
         }
     }
 
     @Composable
     fun Explicit() {
-        Icon(
-            painter = painterResource(R.drawable.explicit),
-            contentDescription = null,
-            modifier = Modifier
-                .size(18.dp)
-                .padding(end = 2.dp)
-        )
+        val skin = LocalAuraItemSkin.current
+        if (skin.enabled) {
+            Icon(
+                painter = painterResource(R.drawable.explicit),
+                contentDescription = null,
+                tint = skin.inkMuted,
+                modifier = Modifier
+                    .size(18.dp)
+                    .padding(end = 2.dp)
+            )
+        } else {
+            Icon(
+                painter = painterResource(R.drawable.explicit),
+                contentDescription = null,
+                modifier = Modifier
+                    .size(18.dp)
+                    .padding(end = 2.dp)
+            )
+        }
     }
 }
 

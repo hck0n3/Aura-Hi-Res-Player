@@ -63,7 +63,6 @@ import iad1tya.echo.music.ui.component.IconButton as AppIconButton
 import iad1tya.echo.music.ui.component.Material3SettingsGroup
 import iad1tya.echo.music.ui.component.Material3SettingsItem
 import iad1tya.echo.music.ui.component.isGlassEligible
-import iad1tya.echo.music.ui.utils.backToMain
 import iad1tya.echo.music.utils.rememberPreference
 
 /**
@@ -71,6 +70,10 @@ import iad1tya.echo.music.utils.rememberPreference
  * runtime by [isGlassEligible] (API 31+, raw tier MID/HIGH, not TV/car, Performance Mode off):
  * on ineligible devices the master switch is disabled and marked unavailable, and the effect
  * never renders regardless of the stored preferences.
+ *
+ * With "Interfaz nueva" on this screen is UNREACHABLE — the glass system has no render site left under
+ * that flag, so its route bounces (NavigationBuilder.kt) and the settings-search index drops every row
+ * pointing at it (SearchableSettings.kt). See the CORRECTION note on `newUiEnabled` below.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -140,6 +143,29 @@ fun GlassEffectSettings(
     val (navBarEnabled, onNavBarEnabledChange) = rememberPreference(
         LiquidGlassNavBarEnabledKey, defaultValue = true
     )
+    // READ-ONLY. With "Interfaz nueva" on, the two per-component switches below have no renderer left:
+    //  · mini player — the classic `NewMiniPlayer` now pins its style to DEFAULT under the flag
+    //    (MiniPlayer.kt), so LIQUID_GLASS can never be the active style and this switch cannot matter;
+    //    in portrait the composable is not even reached (AuraMiniPlayer replaces it).
+    //  · barra de navegación — `FloatingNavigationToolbar`, the sole reader of NAV_BAR, is only
+    //    composed on the `!newUiShell` branch (MainActivity.kt); the new shell draws AuraNavigationBar,
+    //    which samples no backdrop. Landscape uses the nav RAIL, so there is no orientation in which it
+    //    comes back either.
+    //
+    // CORRECTION (the previous pass's comment here was FALSE). It claimed hiding the entry row made
+    // this a "second line of defence for a deep link", which was wrong twice over: the entry row was
+    // never the only door — the settings SEARCH indexed "Liquid Glass" straight to this screen's route
+    // (SearchableSettings.kt), ungated, and the new Ajustes navigates whatever that index returns
+    // (AuraSettingsScreen.kt) — and gating two of thirteen rows was never a defence for the other
+    // eleven, which stayed live-looking and inert. Both holes are closed now, and NOT here: the index
+    // entry is filtered by route and the DESTINATION itself bounces under the flag
+    // (NavigationBuilder.kt), so with the new UI on this composable is not reached at all.
+    //
+    // The `!newUiEnabled` guards below therefore describe a state this screen can no longer be in. They
+    // are kept because they are the honest statement of which switches have a renderer, and because the
+    // route guard is one edit away from someone deleting it; they are not load-bearing and must not be
+    // described as if they were. Nothing is written or cleared, in either UI.
+    val newUiEnabled = iad1tya.echo.music.ui.newui.rememberNewUiEnabled()
 
     var showVibrancyDialog by rememberSaveable { mutableStateOf(false) }
     var showBlurRadiusDialog by rememberSaveable { mutableStateOf(false) }
@@ -301,7 +327,7 @@ fun GlassEffectSettings(
 
         Material3SettingsGroup(
             title = stringResource(R.string.liquid_glass_per_component),
-            items = listOf(
+            items = listOfNotNull(
                 // The full screen player does not render a glass surface yet (nothing calls
                 // GlassEffectConfig.isEnabledFor(GlassComponent.PLAYER)), so the switch is shown as
                 // unavailable instead of pretending to control something. The preference is kept so the
@@ -326,46 +352,51 @@ fun GlassEffectSettings(
                         )
                     }
                 ),
-                Material3SettingsItem(
-                    icon = painterResource(R.drawable.music_note),
-                    title = { Text(stringResource(R.string.liquid_glass_mini_player)) },
-                    trailingContent = {
-                        Switch(
-                            checked = miniPlayerEnabled,
-                            onCheckedChange = onMiniPlayerEnabledChange,
-                            thumbContent = {
-                                Icon(
-                                    painter = painterResource(
-                                        id = if (miniPlayerEnabled) R.drawable.check else R.drawable.close
-                                    ),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(SwitchDefaults.IconSize)
-                                )
-                            }
-                        )
-                    },
-                    onClick = { onMiniPlayerEnabledChange(!miniPlayerEnabled) }
-                ),
-                Material3SettingsItem(
-                    icon = painterResource(R.drawable.nav_bar),
-                    title = { Text(stringResource(R.string.liquid_glass_nav_bar)) },
-                    trailingContent = {
-                        Switch(
-                            checked = navBarEnabled,
-                            onCheckedChange = onNavBarEnabledChange,
-                            thumbContent = {
-                                Icon(
-                                    painter = painterResource(
-                                        id = if (navBarEnabled) R.drawable.check else R.drawable.close
-                                    ),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(SwitchDefaults.IconSize)
-                                )
-                            }
-                        )
-                    },
-                    onClick = { onNavBarEnabledChange(!navBarEnabled) }
-                ),
+                // Both hidden with "Interfaz nueva" on — see the comment on `newUiEnabled` above.
+                if (!newUiEnabled) {
+                    Material3SettingsItem(
+                        icon = painterResource(R.drawable.music_note),
+                        title = { Text(stringResource(R.string.liquid_glass_mini_player)) },
+                        trailingContent = {
+                            Switch(
+                                checked = miniPlayerEnabled,
+                                onCheckedChange = onMiniPlayerEnabledChange,
+                                thumbContent = {
+                                    Icon(
+                                        painter = painterResource(
+                                            id = if (miniPlayerEnabled) R.drawable.check else R.drawable.close
+                                        ),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(SwitchDefaults.IconSize)
+                                    )
+                                }
+                            )
+                        },
+                        onClick = { onMiniPlayerEnabledChange(!miniPlayerEnabled) }
+                    )
+                } else null,
+                if (!newUiEnabled) {
+                    Material3SettingsItem(
+                        icon = painterResource(R.drawable.nav_bar),
+                        title = { Text(stringResource(R.string.liquid_glass_nav_bar)) },
+                        trailingContent = {
+                            Switch(
+                                checked = navBarEnabled,
+                                onCheckedChange = onNavBarEnabledChange,
+                                thumbContent = {
+                                    Icon(
+                                        painter = painterResource(
+                                            id = if (navBarEnabled) R.drawable.check else R.drawable.close
+                                        ),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(SwitchDefaults.IconSize)
+                                    )
+                                }
+                            )
+                        },
+                        onClick = { onNavBarEnabledChange(!navBarEnabled) }
+                    )
+                } else null,
             )
         )
 
@@ -512,7 +543,7 @@ fun GlassEffectSettings(
         navigationIcon = {
             AppIconButton(
                 onClick = navController::navigateUp,
-                onLongClick = navController::backToMain,
+                onLongClick = null,
             ) {
                 Icon(
                     painterResource(R.drawable.arrow_back),

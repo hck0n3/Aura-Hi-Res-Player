@@ -7,7 +7,6 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
-import android.view.WindowManager
 import android.widget.Toast
 import android.content.BroadcastReceiver
 import android.content.IntentFilter
@@ -189,7 +188,6 @@ import iad1tya.echo.music.constants.CropAlbumArtKey
 import iad1tya.echo.music.constants.DarkModeKey
 import iad1tya.echo.music.constants.HidePlayerThumbnailKey
 import iad1tya.echo.music.constants.EnableLyricsThumbnailPlayPauseKey
-import iad1tya.echo.music.constants.KeepScreenOn
 import iad1tya.echo.music.constants.PlayerBackgroundStyle
 import iad1tya.echo.music.constants.PlayerBackgroundStyleKey
 import iad1tya.echo.music.constants.PlayerButtonsStyle
@@ -409,8 +407,17 @@ fun BottomSheetPlayer(
     }
     val swipeLyrics by rememberPreference(SwipeLyricsKey, false)
     val enableLyricsThumbnailPlayPause by rememberPreference(EnableLyricsThumbnailPlayPauseKey, false)
-    val isKeepScreenOn by rememberPreference(KeepScreenOn, false)
-    val keepScreenOn = isPlaying && isKeepScreenOn
+
+    // "Mantener la pantalla encendida cuando el reproductor está expandido". The predicate, the window
+    // flag and the release-on-every-exit rule used to live inline in the insets DisposableEffect below;
+    // they now live ONCE in [KeepScreenOnWhilePlayerExpandedEffect], which the new portrait player calls
+    // too — it could not honour the switch at all before, so it only worked after rotating the phone.
+    // Same preference, same predicate (isExpanded && isPlaying && pref), same track key.
+    KeepScreenOnWhilePlayerExpandedEffect(
+        isExpanded = state.isExpanded,
+        isPlaying = isPlaying,
+        currentMediaId = mediaMetadata?.id,
+    )
 
     // TV / car: when the player opens, land the D-pad on the play/pause button so the user sees where they are
     // and can control playback immediately (Material3 gives no initial focus on a remote). No-op off-TV.
@@ -431,29 +438,27 @@ fun BottomSheetPlayer(
         }
     }
 
-    DisposableEffect(playerBackground, state.isExpanded, useDarkTheme, keepScreenOn, mediaMetadata?.id) {
+    // Status-bar ICON colour only. The KEEP_SCREEN_ON half of this effect moved to
+    // [KeepScreenOnWhilePlayerExpandedEffect] above (one implementation, shared with the new player);
+    // `keepScreenOn` is gone from the key list because nothing left in here reads it — the insets
+    // branch depends on playerBackground / useDarkTheme / the track's locality and never did.
+    DisposableEffect(playerBackground, state.isExpanded, useDarkTheme, mediaMetadata?.id) {
         val window = (context as? android.app.Activity)?.window
         if (window != null && state.isExpanded) {
             val insetsController = WindowCompat.getInsetsController(window, window.decorView)
-            
+
             val isLocal = mediaMetadata?.id?.isLocalMediaId() == true
             if (isLocal || playerBackground in listOf(PlayerBackgroundStyle.BLUR, PlayerBackgroundStyle.GRADIENT, PlayerBackgroundStyle.GLOW_ANIMATED, PlayerBackgroundStyle.APPLE_MUSIC, PlayerBackgroundStyle.LIVE_MESH, PlayerBackgroundStyle.LIQUID_GLASS)) {
                 insetsController.isAppearanceLightStatusBars = false
             } else {
                 insetsController.isAppearanceLightStatusBars = !useDarkTheme
             }
-
-            if (keepScreenOn && state.isExpanded)
-                window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-            else
-                window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         }
-        
+
         onDispose {
             if (window != null) {
                 val insetsController = WindowCompat.getInsetsController(window, window.decorView)
                 insetsController.isAppearanceLightStatusBars = !useDarkTheme
-                window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             }
         }
     }

@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.lazy.LazyColumn
@@ -78,6 +79,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
@@ -97,8 +99,13 @@ import iad1tya.echo.music.ui.component.ListDialog
 import iad1tya.echo.music.ui.component.Material3SettingsGroup
 import iad1tya.echo.music.ui.component.Material3SettingsItem
 import iad1tya.echo.music.ui.component.IconButton
-import iad1tya.echo.music.ui.component.IconButton
-import iad1tya.echo.music.ui.utils.backToMain
+import iad1tya.echo.music.ui.newui.AuraPalette
+import iad1tya.echo.music.ui.newui.AuraPanel
+import iad1tya.echo.music.ui.newui.AuraPanelSkin
+import iad1tya.echo.music.ui.newui.AuraShapes
+import iad1tya.echo.music.ui.newui.AuraSpacing
+import iad1tya.echo.music.ui.newui.AuraType
+import iad1tya.echo.music.ui.newui.rememberAuraPanelSkin
 import iad1tya.echo.music.utils.rememberPreference
 import kotlinx.coroutines.launch
 
@@ -262,11 +269,16 @@ fun ListenTogetherScreen(
         }
     }
 
+    // ONE flag read for the whole screen; every panel below takes it as a parameter. The Listen
+    // Together PROTOCOL and its state machine are untouched — this is chrome only.
+    val skin = rememberAuraPanelSkin()
+    val auraDark = skin.enabled && skin.darkGround
+
     LazyColumn(
         state = lazyListState,
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(if (auraDark) AuraPalette.Ground else MaterialTheme.colorScheme.background)
             .imePadding(),
         contentPadding = PaddingValues(
             start = 16.dp,
@@ -280,8 +292,8 @@ fun ListenTogetherScreen(
             item {
                 Text(
                     text = stringResource(R.string.listen_together_background_disconnect_note),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = if (skin.enabled) AuraType.CalloutSubtitle else MaterialTheme.typography.bodySmall,
+                    color = if (skin.enabled) skin.inkMuted else MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -295,6 +307,7 @@ fun ListenTogetherScreen(
                     RoomStatusCard(
                         roomCode = room.roomCode,
                         isHost = isHost,
+                        skin = skin,
                         context = context,
                         navController = navController
                     )
@@ -307,6 +320,7 @@ fun ListenTogetherScreen(
                     ConnectedUsersSection(
                         users = connectedUsers,
                         isHost = isHost,
+                        skin = skin,
                         currentUserId = currentUserIdValue,
                         onUserClick = { clickedUserId, username ->
                             if (isHost && clickedUserId != currentUserIdValue) {
@@ -322,6 +336,7 @@ fun ListenTogetherScreen(
                     item {
                         PendingJoinRequestsSection(
                             requests = pendingJoinRequests,
+                            skin = skin,
                             onApprove = { listenTogetherManager.approveJoin(it) },
                             onReject = { listenTogetherManager.rejectJoin(it, "Rejected by host") }
                         )
@@ -333,6 +348,7 @@ fun ListenTogetherScreen(
                     item {
                         PendingSuggestionsSection(
                             suggestions = pendingSuggestions,
+                            skin = skin,
                             onApprove = { listenTogetherManager.approveSuggestion(it) },
                             onReject = { listenTogetherManager.rejectSuggestion(it, "Rejected by host") }
                         )
@@ -345,9 +361,11 @@ fun ListenTogetherScreen(
                         onClick = { listenTogetherManager.leaveRoom() },
                         modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.buttonColors(
+                            // Stays the theme's error colour: leaving a room is a destructive action
+                            // and its colour is the warning.
                             containerColor = MaterialTheme.colorScheme.error
                         ),
-                        shape = RoundedCornerShape(16.dp)
+                        shape = if (skin.enabled) AuraShapes.Pill else RoundedCornerShape(16.dp)
                     ) {
                         Icon(
                             painter = painterResource(R.drawable.logout),
@@ -366,6 +384,7 @@ fun ListenTogetherScreen(
             
             item {
                 JoinCreateRoomSection(
+                    skin = skin,
                     usernameInput = usernameInput,
                     onUsernameChange = { usernameInput = it },
                     roomCodeInput = roomCodeInput,
@@ -427,13 +446,13 @@ fun ListenTogetherScreen(
         
         if (!isInRoom) {
             item {
-                Card(
+                AuraPanel(
+                    skin = skin,
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(24.dp),
-                    colors = CardDefaults.cardColors(
+                    classicShape = RoundedCornerShape(24.dp),
+                    classicColors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
                     ),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
                 ) {
                     Column(
                         modifier = Modifier
@@ -443,24 +462,27 @@ fun ListenTogetherScreen(
                     ) {
                         Text(
                             text = "How it Works",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
+                            style = if (skin.enabled) AuraType.MenuGroupLabel else MaterialTheme.typography.titleLarge,
+                            fontWeight = if (skin.enabled) FontWeight.Normal else FontWeight.Bold,
+                            color = if (skin.enabled) skin.inkFaint else MaterialTheme.colorScheme.primary
                         )
-                        
+
                         InstructionStep(
                             title = "1. Create a Room",
-                            description = "Start a session and share the unique room code with your friends."
+                            description = "Start a session and share the unique room code with your friends.",
+                            skin = skin
                         )
-                        
+
                         InstructionStep(
                             title = "2. Join a Friend",
-                            description = "Enter their room code to join their session instantly."
+                            description = "Enter their room code to join their session instantly.",
+                            skin = skin
                         )
-                        
+
                         InstructionStep(
                             title = "3. Sync Playback",
-                            description = "The host controls the music. Everyone listens in perfect sync!"
+                            description = "The host controls the music. Everyone listens in perfect sync!",
+                            skin = skin
                         )
                     }
                 }
@@ -474,7 +496,7 @@ fun ListenTogetherScreen(
             navigationIcon = {
                 IconButton(
                     onClick = navController::navigateUp,
-                    onLongClick = navController::backToMain
+                    onLongClick = null
                 ) {
                     Icon(
                         painterResource(R.drawable.arrow_back),
@@ -497,31 +519,44 @@ fun ListenTogetherScreen(
                             .padding(end = 16.dp)
                             .size(20.dp),
                         strokeWidth = 2.dp,
-                        color = MaterialTheme.colorScheme.primary
+                        color = if (skin.enabled) skin.accent else MaterialTheme.colorScheme.primary
                     )
                 }
+            },
+            colors = if (auraDark) {
+                androidx.compose.material3.TopAppBarDefaults.topAppBarColors(
+                    containerColor = AuraPalette.Ground,
+                    titleContentColor = skin.ink,
+                    navigationIconContentColor = skin.ink,
+                    actionIconContentColor = skin.ink,
+                )
+            } else {
+                // The `TopAppBar` default, spelled out so the classic bar is unchanged.
+                androidx.compose.material3.TopAppBarDefaults.topAppBarColors()
             }
         )
     }
 }
 
 @Composable
-private fun InstructionStep(title: String, description: String) {
+private fun InstructionStep(title: String, description: String, skin: AuraPanelSkin) {
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         Text(
             text = title,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurface
+            style = if (skin.enabled) AuraType.RowTitle else MaterialTheme.typography.titleMedium,
+            fontWeight = if (skin.enabled) FontWeight.SemiBold else FontWeight.Bold,
+            color = if (skin.enabled) skin.ink else MaterialTheme.colorScheme.onSurface
         )
         Text(
             text = description,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            lineHeight = 20.sp
+            style = if (skin.enabled) AuraType.RowSubtitle else MaterialTheme.typography.bodyMedium,
+            color = if (skin.enabled) skin.inkMuted else MaterialTheme.colorScheme.onSurfaceVariant,
+            // `RowSubtitle` carries its own 18 sp leading; the classic 20 sp override only applies to
+            // the `bodyMedium` it replaces.
+            lineHeight = if (skin.enabled) TextUnit.Unspecified else 20.sp
         )
     }
 }
@@ -687,16 +722,17 @@ private fun ConnectionStatusCard(
 private fun RoomStatusCard(
     roomCode: String,
     isHost: Boolean,
+    skin: AuraPanelSkin,
     context: Context,
     navController: NavController
 ) {
-    Card(
+    AuraPanel(
+        skin = skin,
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(
+        classicShape = RoundedCornerShape(24.dp),
+        classicColors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
             modifier = Modifier
@@ -706,15 +742,21 @@ private fun RoomStatusCard(
         ) {
             Text(
                 text = stringResource(R.string.room_code),
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = if (skin.enabled) AuraType.SectionLabel else MaterialTheme.typography.labelLarge,
+                color = if (skin.enabled) skin.inkFaint else MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = roomCode,
-                style = MaterialTheme.typography.displaySmall,
-                color = MaterialTheme.colorScheme.primary,
+                // The code is the one thing on this card the user has to read out loud, so under the
+                // new skin it becomes what the render uses for technical data: tracked monospace, at
+                // display size. The existing 6 sp tracking is kept on both paths.
+                style = if (skin.enabled)
+                    AuraType.Technical.copy(fontSize = 34.sp, lineHeight = 40.sp)
+                else
+                    MaterialTheme.typography.displaySmall,
+                color = if (skin.enabled) skin.accent else MaterialTheme.colorScheme.primary,
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 6.sp,
                 textAlign = TextAlign.Center
@@ -725,8 +767,8 @@ private fun RoomStatusCard(
                     stringResource(R.string.listen_together_you_are_host)
                 else
                     stringResource(R.string.listen_together_you_are_guest),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = if (skin.enabled) AuraType.RowSubtitle else MaterialTheme.typography.bodyMedium,
+                color = if (skin.enabled) skin.inkMuted else MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center
             )
 
@@ -734,11 +776,12 @@ private fun RoomStatusCard(
 
             Button(
                 onClick = { navController.navigate("listen_together/chat") },
-                shape = RoundedCornerShape(12.dp),
+                shape = if (skin.enabled) AuraShapes.Pill else RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth(0.8f),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
-                    contentColor = MaterialTheme.colorScheme.primary
+                    containerColor = if (skin.enabled) skin.accent.copy(alpha = 0.12f)
+                    else MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                    contentColor = if (skin.enabled) skin.accent else MaterialTheme.colorScheme.primary
                 )
             ) {
                 Icon(
@@ -766,6 +809,7 @@ private fun RoomStatusCard(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     FilledTonalButton(
+                        shape = if (skin.enabled) AuraShapes.Pill else RoundedCornerShape(12.dp),
                         onClick = {
                             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                             // The BARE link: this button is labelled "copy link", so pasting it into a URL
@@ -774,7 +818,6 @@ private fun RoomStatusCard(
                             clipboard.setPrimaryClip(clip)
                             Toast.makeText(context, R.string.copied_to_clipboard, Toast.LENGTH_SHORT).show()
                         },
-                        shape = RoundedCornerShape(12.dp)
                     ) {
                         Icon(
                             painter = painterResource(R.drawable.link),
@@ -786,13 +829,13 @@ private fun RoomStatusCard(
                     }
 
                     FilledTonalButton(
+                        shape = if (skin.enabled) AuraShapes.Pill else RoundedCornerShape(12.dp),
                         onClick = {
                             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                             val clip = android.content.ClipData.newPlainText("Room Code", roomCode)
                             clipboard.setPrimaryClip(clip)
                             Toast.makeText(context, R.string.copied_to_clipboard, Toast.LENGTH_SHORT).show()
                         },
-                        shape = RoundedCornerShape(12.dp)
                     ) {
                         Icon(
                             painter = painterResource(R.drawable.content_copy),
@@ -812,25 +855,26 @@ private fun RoomStatusCard(
 private fun ConnectedUsersSection(
     users: List<UserInfo>,
     isHost: Boolean,
+    skin: AuraPanelSkin,
     currentUserId: String,
     onUserClick: (String, String) -> Unit
 ) {
-    Card(
+    AuraPanel(
+        skin = skin,
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(
+        classicShape = RoundedCornerShape(24.dp),
+        classicColors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
             modifier = Modifier.padding(16.dp)
         ) {
             Text(
                 text = "${stringResource(R.string.connected_users)} (${users.size})",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
+                style = if (skin.enabled) AuraType.MenuGroupLabel else MaterialTheme.typography.titleMedium,
+                fontWeight = if (skin.enabled) FontWeight.Normal else FontWeight.Bold,
+                color = if (skin.enabled) skin.inkFaint else MaterialTheme.colorScheme.primary
             )
             Spacer(modifier = Modifier.height(12.dp))
 
@@ -845,6 +889,7 @@ private fun ConnectedUsersSection(
                         user = user,
                         isCurrentUser = user.userId == currentUserId,
                         isClickable = isHost && user.userId != currentUserId,
+                        skin = skin,
                         onClick = { onUserClick(user.userId, user.username) }
                     )
                 }
@@ -858,6 +903,7 @@ private fun UserAvatar(
     user: UserInfo,
     isCurrentUser: Boolean,
     isClickable: Boolean,
+    skin: AuraPanelSkin,
     onClick: () -> Unit
 ) {
     Column(
@@ -872,10 +918,13 @@ private fun UserAvatar(
             Surface(
                 modifier = Modifier.size(56.dp),
                 shape = CircleShape,
+                // Host = teal, you = blue, everyone else = the card's own wash. Three ROLES, three
+                // stops of the render's own ramp, instead of three unrelated Material containers.
                 color = when {
-                    user.isHost -> MaterialTheme.colorScheme.primary
-                    isCurrentUser -> MaterialTheme.colorScheme.secondary
-                    else -> MaterialTheme.colorScheme.surfaceVariant
+                    user.isHost -> if (skin.enabled) skin.accent else MaterialTheme.colorScheme.primary
+                    isCurrentUser -> if (skin.enabled && skin.darkGround) AuraPalette.Blue
+                    else MaterialTheme.colorScheme.secondary
+                    else -> if (skin.enabled) skin.fill else MaterialTheme.colorScheme.surfaceVariant
                 }
             ) {
                 Box(
@@ -884,12 +933,14 @@ private fun UserAvatar(
                 ) {
                     Text(
                         text = user.username.take(1).uppercase(),
-                        style = MaterialTheme.typography.titleLarge,
+                        style = if (skin.enabled) AuraType.PlayerTitle else MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
                         color = when {
-                            user.isHost -> MaterialTheme.colorScheme.onPrimary
-                            isCurrentUser -> MaterialTheme.colorScheme.onSecondary
-                            else -> MaterialTheme.colorScheme.onSurfaceVariant
+                            user.isHost -> if (skin.enabled && skin.darkGround) AuraPalette.OnAccent
+                            else MaterialTheme.colorScheme.onPrimary
+                            isCurrentUser -> if (skin.enabled && skin.darkGround) AuraPalette.OnAccent
+                            else MaterialTheme.colorScheme.onSecondary
+                            else -> if (skin.enabled) skin.inkMuted else MaterialTheme.colorScheme.onSurfaceVariant
                         }
                     )
                 }
@@ -902,7 +953,12 @@ private fun UserAvatar(
                         .offset(x = 4.dp, y = 4.dp)
                         .size(20.dp),
                     shape = CircleShape,
-                    color = if (user.isHost) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary
+                    color = if (user.isHost) {
+                        if (skin.enabled) skin.accent else MaterialTheme.colorScheme.primary
+                    } else {
+                        if (skin.enabled && skin.darkGround) AuraPalette.Blue
+                        else MaterialTheme.colorScheme.secondary
+                    }
                 ) {
                     Box(
                         contentAlignment = Alignment.Center,
@@ -913,7 +969,8 @@ private fun UserAvatar(
                                 if (user.isHost) R.drawable.crown else R.drawable.person
                             ),
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onPrimary,
+                            tint = if (skin.enabled && skin.darkGround) AuraPalette.OnAccent
+                            else MaterialTheme.colorScheme.onPrimary,
                             modifier = Modifier.size(12.dp)
                         )
                     }
@@ -925,9 +982,13 @@ private fun UserAvatar(
 
         Text(
             text = user.username,
-            style = MaterialTheme.typography.labelMedium,
+            style = if (skin.enabled) AuraType.MiniTitle else MaterialTheme.typography.labelMedium,
             fontWeight = if (isCurrentUser) FontWeight.Bold else FontWeight.Medium,
-            color = if (user.isHost) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+            color = if (user.isHost) {
+                if (skin.enabled) skin.accent else MaterialTheme.colorScheme.primary
+            } else {
+                if (skin.enabled) skin.ink else MaterialTheme.colorScheme.onSurface
+            },
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Center
@@ -936,14 +997,16 @@ private fun UserAvatar(
         if (user.isHost) {
             Text(
                 text = stringResource(R.string.host_label),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)
+                style = if (skin.enabled) AuraType.QualityBadge else MaterialTheme.typography.labelSmall,
+                color = if (skin.enabled) skin.accent.copy(alpha = 0.8f)
+                else MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)
             )
         } else if (isCurrentUser) {
             Text(
                 text = stringResource(R.string.you_label),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.8f)
+                style = if (skin.enabled) AuraType.QualityBadge else MaterialTheme.typography.labelSmall,
+                color = if (skin.enabled && skin.darkGround) AuraPalette.Blue.copy(alpha = 0.8f)
+                else MaterialTheme.colorScheme.secondary.copy(alpha = 0.8f)
             )
         }
     }
@@ -952,25 +1015,26 @@ private fun UserAvatar(
 @Composable
 private fun PendingJoinRequestsSection(
     requests: List<JoinRequestPayload>,
+    skin: AuraPanelSkin,
     onApprove: (String) -> Unit,
     onReject: (String) -> Unit
 ) {
-    Card(
+    AuraPanel(
+        skin = skin,
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(
+        classicShape = RoundedCornerShape(24.dp),
+        classicColors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
             modifier = Modifier.padding(16.dp)
         ) {
             Text(
                 text = stringResource(R.string.listen_together_join_requests),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
+                style = if (skin.enabled) AuraType.MenuGroupLabel else MaterialTheme.typography.titleMedium,
+                fontWeight = if (skin.enabled) FontWeight.Normal else FontWeight.Bold,
+                color = if (skin.enabled) skin.inkFaint else MaterialTheme.colorScheme.primary
             )
             Spacer(modifier = Modifier.height(12.dp))
 
@@ -979,12 +1043,15 @@ private fun PendingJoinRequestsSection(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
                         .fillMaxWidth()
+                        // Identity on the classic path; asserts the touch minimum on the new one.
+                        .then(if (skin.enabled) Modifier.sizeIn(minHeight = AuraSpacing.MinTouchTarget) else Modifier)
                         .padding(vertical = 8.dp)
                 ) {
                     Surface(
                         modifier = Modifier.size(40.dp),
                         shape = CircleShape,
-                        color = MaterialTheme.colorScheme.secondary
+                        color = if (skin.enabled && skin.darkGround) AuraPalette.Blue
+                        else MaterialTheme.colorScheme.secondary
                     ) {
                         Box(
                             contentAlignment = Alignment.Center,
@@ -992,24 +1059,26 @@ private fun PendingJoinRequestsSection(
                         ) {
                             Text(
                                 text = request.username.take(1).uppercase(),
-                                style = MaterialTheme.typography.titleMedium,
+                                style = if (skin.enabled) AuraType.RowTitle else MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSecondary
+                                color = if (skin.enabled && skin.darkGround) AuraPalette.OnAccent
+                                else MaterialTheme.colorScheme.onSecondary
                             )
                         }
                     }
                     Spacer(Modifier.width(12.dp))
                     Text(
                         text = request.username,
-                        style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = FontWeight.Medium,
+                        style = if (skin.enabled) AuraType.RowTitle else MaterialTheme.typography.bodyLarge,
+                        fontWeight = if (skin.enabled) FontWeight.SemiBold else FontWeight.Medium,
+                        color = if (skin.enabled) skin.ink else Color.Unspecified,
                         modifier = Modifier.weight(1f)
                     )
                     MaterialIconButton(onClick = { onApprove(request.userId) }) {
                         Icon(
                             painter = painterResource(R.drawable.check),
                             contentDescription = stringResource(R.string.approve),
-                            tint = MaterialTheme.colorScheme.primary,
+                            tint = if (skin.enabled) skin.accent else MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(24.dp)
                         )
                     }
@@ -1030,25 +1099,26 @@ private fun PendingJoinRequestsSection(
 @Composable
 private fun PendingSuggestionsSection(
     suggestions: List<SuggestionReceivedPayload>,
+    skin: AuraPanelSkin,
     onApprove: (String) -> Unit,
     onReject: (String) -> Unit
 ) {
-    Card(
+    AuraPanel(
+        skin = skin,
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(
+        classicShape = RoundedCornerShape(24.dp),
+        classicColors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
             modifier = Modifier.padding(16.dp)
         ) {
             Text(
                 text = stringResource(R.string.pending_suggestions),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
+                style = if (skin.enabled) AuraType.MenuGroupLabel else MaterialTheme.typography.titleMedium,
+                fontWeight = if (skin.enabled) FontWeight.Normal else FontWeight.Bold,
+                color = if (skin.enabled) skin.inkFaint else MaterialTheme.colorScheme.primary
             )
             Spacer(modifier = Modifier.height(12.dp))
 
@@ -1057,27 +1127,29 @@ private fun PendingSuggestionsSection(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
                         .fillMaxWidth()
+                        .then(if (skin.enabled) Modifier.sizeIn(minHeight = AuraSpacing.MinTouchTarget) else Modifier)
                         .padding(vertical = 8.dp)
                 ) {
                     Icon(
                         painter = painterResource(R.drawable.queue_music),
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
+                        tint = if (skin.enabled) skin.accent else MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(24.dp)
                     )
                     Spacer(Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = suggestion.trackInfo.title,
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Medium,
+                            style = if (skin.enabled) AuraType.RowTitle else MaterialTheme.typography.bodyMedium,
+                            fontWeight = if (skin.enabled) FontWeight.SemiBold else FontWeight.Medium,
+                            color = if (skin.enabled) skin.ink else Color.Unspecified,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                         Text(
                             text = suggestion.fromUsername,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = if (skin.enabled) AuraType.RowSubtitle else MaterialTheme.typography.bodySmall,
+                            color = if (skin.enabled) skin.inkMuted else MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -1086,7 +1158,7 @@ private fun PendingSuggestionsSection(
                         Icon(
                             painter = painterResource(R.drawable.check),
                             contentDescription = stringResource(R.string.approve),
-                            tint = MaterialTheme.colorScheme.primary,
+                            tint = if (skin.enabled) skin.accent else MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(24.dp)
                         )
                     }
@@ -1106,6 +1178,7 @@ private fun PendingSuggestionsSection(
 
 @Composable
 private fun JoinCreateRoomSection(
+    skin: AuraPanelSkin,
     usernameInput: String,
     onUsernameChange: (String) -> Unit,
     roomCodeInput: String,
@@ -1121,13 +1194,13 @@ private fun JoinCreateRoomSection(
 ) {
     var selectedTab by rememberSaveable { mutableStateOf(0) }
 
-    Card(
+    AuraPanel(
+        skin = skin,
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(
+        classicShape = RoundedCornerShape(24.dp),
+        classicColors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
             modifier = Modifier
@@ -1136,20 +1209,30 @@ private fun JoinCreateRoomSection(
             verticalArrangement = Arrangement.spacedBy(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            // Crear / Unirse: a two-way segmented control, which the render draws as a pill track.
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(MaterialTheme.colorScheme.surfaceContainerLow),
+                    .clip(if (skin.enabled) AuraShapes.Pill else RoundedCornerShape(16.dp))
+                    .background(
+                        if (skin.enabled) skin.fill else MaterialTheme.colorScheme.surfaceContainerLow
+                    ),
                 horizontalArrangement = Arrangement.spacedBy(0.dp)
             ) {
                 Button(
                     onClick = { selectedTab = 0 },
                     modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(16.dp),
+                    shape = if (skin.enabled) AuraShapes.Pill else RoundedCornerShape(16.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = if (selectedTab == 0) MaterialTheme.colorScheme.primary else Color.Transparent,
-                        contentColor = if (selectedTab == 0) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                        containerColor = if (selectedTab == 0) {
+                            if (skin.enabled) skin.accent else MaterialTheme.colorScheme.primary
+                        } else Color.Transparent,
+                        contentColor = if (selectedTab == 0) {
+                            if (skin.enabled && skin.darkGround) AuraPalette.OnAccent
+                            else MaterialTheme.colorScheme.onPrimary
+                        } else {
+                            if (skin.enabled) skin.inkMuted else MaterialTheme.colorScheme.onSurfaceVariant
+                        }
                     ),
                     elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp)
                 ) {
@@ -1164,10 +1247,20 @@ private fun JoinCreateRoomSection(
                 Button(
                     onClick = { selectedTab = 1 },
                     modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(16.dp),
+                    shape = if (skin.enabled) AuraShapes.Pill else RoundedCornerShape(16.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = if (selectedTab == 1) MaterialTheme.colorScheme.tertiary else Color.Transparent,
-                        contentColor = if (selectedTab == 1) MaterialTheme.colorScheme.onTertiary else MaterialTheme.colorScheme.onSurfaceVariant
+                        // The second stop of the render's ramp, so the two tabs read as one control
+                        // rather than two unrelated Material roles.
+                        containerColor = if (selectedTab == 1) {
+                            if (skin.enabled && skin.darkGround) AuraPalette.Blue
+                            else MaterialTheme.colorScheme.tertiary
+                        } else Color.Transparent,
+                        contentColor = if (selectedTab == 1) {
+                            if (skin.enabled && skin.darkGround) AuraPalette.OnAccent
+                            else MaterialTheme.colorScheme.onTertiary
+                        } else {
+                            if (skin.enabled) skin.inkMuted else MaterialTheme.colorScheme.onSurfaceVariant
+                        }
                     ),
                     elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp)
                 ) {
@@ -1201,12 +1294,13 @@ private fun JoinCreateRoomSection(
                     }
                 },
                 singleLine = true,
-                shape = RoundedCornerShape(16.dp),
+                shape = if (skin.enabled) AuraShapes.Card else RoundedCornerShape(16.dp),
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = MaterialTheme.colorScheme.primary,
-                    unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
-                    focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow
+                    focusedBorderColor = if (skin.enabled) skin.accent else MaterialTheme.colorScheme.primary,
+                    unfocusedBorderColor = if (skin.enabled) skin.line
+                    else MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                    focusedContainerColor = if (skin.enabled) skin.fill else MaterialTheme.colorScheme.surfaceContainerLow,
+                    unfocusedContainerColor = if (skin.enabled) skin.fill else MaterialTheme.colorScheme.surfaceContainerLow
                 ),
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1238,12 +1332,13 @@ private fun JoinCreateRoomSection(
                         }
                     },
                     singleLine = true,
-                    shape = RoundedCornerShape(16.dp),
+                    shape = if (skin.enabled) AuraShapes.Card else RoundedCornerShape(16.dp),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = MaterialTheme.colorScheme.primary,
-                        unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
-                        focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow
+                        focusedBorderColor = if (skin.enabled) skin.accent else MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = if (skin.enabled) skin.line
+                        else MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                        focusedContainerColor = if (skin.enabled) skin.fill else MaterialTheme.colorScheme.surfaceContainerLow,
+                        unfocusedContainerColor = if (skin.enabled) skin.fill else MaterialTheme.colorScheme.surfaceContainerLow
                     ),
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1259,8 +1354,9 @@ private fun JoinCreateRoomSection(
             ) {
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.primaryContainer
+                    shape = if (skin.enabled) AuraShapes.Card else RoundedCornerShape(12.dp),
+                    color = if (skin.enabled) skin.accent.copy(alpha = 0.12f)
+                    else MaterialTheme.colorScheme.primaryContainer
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -1272,13 +1368,13 @@ private fun JoinCreateRoomSection(
                         CircularProgressIndicator(
                             modifier = Modifier.size(20.dp),
                             strokeWidth = 2.dp,
-                            color = MaterialTheme.colorScheme.primary
+                            color = if (skin.enabled) skin.accent else MaterialTheme.colorScheme.primary
                         )
                         Spacer(modifier = Modifier.width(12.dp))
                         Text(
                             text = waitingForApprovalText,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            style = if (skin.enabled) AuraType.RowSubtitle else MaterialTheme.typography.bodyMedium,
+                            color = if (skin.enabled) skin.ink else MaterialTheme.colorScheme.onPrimaryContainer,
                             fontWeight = FontWeight.Medium,
                             textAlign = TextAlign.Center
                         )
@@ -1291,9 +1387,10 @@ private fun JoinCreateRoomSection(
                 enter = fadeIn() + slideInVertically(),
                 exit = fadeOut() + slideOutVertically()
             ) {
+                // The error banner keeps `errorContainer` on both paths: its colour is the message.
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
+                    shape = if (skin.enabled) AuraShapes.Card else RoundedCornerShape(12.dp),
                     color = MaterialTheme.colorScheme.errorContainer
                 ) {
                     Row(
@@ -1329,9 +1426,11 @@ private fun JoinCreateRoomSection(
                     onClick = onCreateRoom,
                     modifier = Modifier.fillMaxWidth(),
                     enabled = hasUsername,
-                    shape = RoundedCornerShape(16.dp),
+                    shape = if (skin.enabled) AuraShapes.Pill else RoundedCornerShape(16.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary
+                        containerColor = if (skin.enabled) skin.accent else MaterialTheme.colorScheme.primary,
+                        contentColor = if (skin.enabled && skin.darkGround) AuraPalette.OnAccent
+                        else MaterialTheme.colorScheme.onPrimary
                     )
                 ) {
                     Icon(
@@ -1347,9 +1446,12 @@ private fun JoinCreateRoomSection(
                     onClick = onJoinRoom,
                     modifier = Modifier.fillMaxWidth(),
                     enabled = hasUsername && hasRoomCode,
-                    shape = RoundedCornerShape(16.dp),
+                    shape = if (skin.enabled) AuraShapes.Pill else RoundedCornerShape(16.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.tertiary
+                        containerColor = if (skin.enabled && skin.darkGround) AuraPalette.Blue
+                        else MaterialTheme.colorScheme.tertiary,
+                        contentColor = if (skin.enabled && skin.darkGround) AuraPalette.OnAccent
+                        else MaterialTheme.colorScheme.onTertiary
                     )
                 ) {
                     Icon(

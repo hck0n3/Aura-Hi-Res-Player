@@ -56,7 +56,6 @@ import iad1tya.echo.music.ui.component.NavigationTitle
 import iad1tya.echo.music.ui.menu.AlbumMenu
 import iad1tya.echo.music.ui.menu.ArtistMenu
 import iad1tya.echo.music.ui.menu.SongMenu
-import iad1tya.echo.music.ui.utils.backToMain
 import iad1tya.echo.music.utils.joinByBullet
 import iad1tya.echo.music.utils.makeTimeString
 import iad1tya.echo.music.viewmodels.StatsViewModel
@@ -421,7 +420,7 @@ fun StatsScreen(
             navigationIcon = {
                 IconButton(
                     onClick = navController::navigateUp,
-                    onLongClick = navController::backToMain,
+                    onLongClick = null,
                 ) {
                     Icon(
                         painterResource(R.drawable.arrow_back),
