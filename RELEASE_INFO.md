@@ -1,24 +1,28 @@
-# Aura Hi-Res Player 0.6.143
+# Aura Hi-Res Player 0.6.144-beta1
 
-Versión de limpieza y protección. No trae funciones nuevas: **quita lo que aparentaba funcionar y no hacía nada**, y **protege el motor de audio**. Se auditó la app entera —1.718 controles en unas 95 pantallas, uno a uno contra el código— y de ahí salió todo lo de abajo.
+Beta **privada**: la **interfaz nueva**, con su interruptor para volver atrás. Todo lo de 0.6.143 va dentro.
 
 ---
 
-## 🧹 Fuera lo que mentía
-- **El visualizador de espectro no dibujaba nada.** Su código era un contenedor vacío, y venía **activado por defecto** en todos los móviles decentes, sin interruptor para apagarlo.
-- **Cuatro archivos de componentes sin un solo uso** en toda la app: 920 líneas entre primitivas de ajustes, una barra de búsqueda, una barra de navegación y componentes de menú.
-- **22 claves de configuración fantasma**: ni control que las escribiera, ni código que las leyera.
-- **Seis pantallas inalcanzables y tres rutas muertas.** Una de ellas, de 402 líneas, apuntaba al repositorio del proyecto del que Aura partió.
-- **Diálogos que nada podía abrir** y una **entrada fantasma en el buscador de ajustes**: buscabas "enviar me gusta", te lo ofrecía, navegabas, y no existía.
-- **1.717 líneas eliminadas en total, y ni una sola función perdida** — verificado control por control por un revisor independiente, que encontró de paso cuatro filas más de las declaradas.
+## 🎛️ Cómo se enciende y cómo se apaga
+- **Ajustes ▸ abajo del todo ▸ "Interfaz nueva".** Enciéndela y apágala cuando quieras.
+- **Apagarla no toca nada**: ni tu base de datos, ni tus ajustes, ni la cola, ni la reproducción. Vuelves exactamente a la app que ya conoces, con tus colores y tu tema intactos.
+- El interruptor está **en las dos interfaces**, así que nunca te quedas atrapado sin poder volver.
 
-## 🔒 El motor de audio, protegido
-- **La clave de licencia ya no está en el código fuente.** Se inyecta al compilar desde un secreto; quien clone el repositorio obtiene un valor vacío y una app sin motor.
-- **Y va atada al certificado de firma.** Un clon repackado y firmado con otro certificado reconstruye un valor inválido y se queda sin motor; el original sigue.
-- **Con red de seguridad**: si algo falla, la música **sigue sonando intacta**, sin ecualizador, con aviso claro en pantalla y una línea en el registro. Nunca muda, nunca distorsionada.
-- **Si el motor se detecta degradado**, ahora se libera y el audio se enruta por fuera, en vez de seguir alimentando un motor probadamente inerte.
+## 📱 Qué está rehecho (6 pantallas de unas 95)
+- **Reproductor** — con la portada y el **Canvas animado**, los cinco accesos rápidos y la barra de estado del motor (EQ, Volumen Seguro, techo del limitador).
+- **Menú del reproductor** — 17 acciones agrupadas por intención. Trae entradas de **los dos menús** que existían: Modo ambiente, Ecualizador y Velocidad y tono vivían **solo** en el menú de la cola y ahora están aquí.
+- **Cola** — separa visualmente **lo que queda de tu lista** de **lo que añade la radio infinita**. Esa distinción ya existía en el motor y nunca se había mostrado. Con asas de arrastre visibles y deslizar para quitar.
+- **Inicio**, **Biblioteca** (con la calidad de cada pista siempre a la vista) y el **índice de Ajustes**.
 
-## 🩹 Arreglos
-- Restaurado el acceso al **Ecualizador desde el buscador de ajustes**.
-- Corregida la etiqueta de **"ocultar control de volumen"**, que decía otra cosa de la que hacía.
-- Los cuatro estilos de barra de progreso ahora viven en **una sola implementación** compartida — y el estado "deshabilitado" se aplica por igual en todos, así que un invitado en Escuchar Juntos ya no puede arrastrar la línea de tiempo en unos estilos y en otros no.
+**El resto de la app sigue como hoy.** No se ha perdido ninguna función: las pantallas que aún no están rehechas conservan su aspecto actual y funcionan igual.
+
+## ⚠️ Lo que vas a notar, y es esperado
+- **Las costuras.** Tocas "Buscar" desde el Inicio nuevo y aterrizas en el diseño clásico. Inevitable con seis pantallas de noventa y cinco.
+- **Al girar el móvil** vuelve el reproductor clásico. En horizontal, vídeo, TV y coche se delega al de siempre — funciona, pero el diseño nuevo desaparece.
+- **La cabecera "Reproduciendo ahora"** ocupa espacio arriba de la portada. Dime si sobra.
+
+## 🔍 Qué mirar con atención
+- Que **el ecualizador, el códec, los estilos de barra y el resto de ajustes sigan funcionando** con la interfaz nueva puesta. Se cazaron **once controles** que no hacían nada antes de llegar aquí.
+- Que **el Canvas se mueva** en la portada.
+- Y sobre todo: **si se siente premium de verdad**, que es lo único que ningún test puede decirme.
