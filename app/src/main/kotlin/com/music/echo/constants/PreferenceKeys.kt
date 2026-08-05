@@ -13,7 +13,6 @@ import java.time.ZoneOffset
 
 import com.music.innertube.models.IpVersion
 
-val IsFirstRunKey = booleanPreferencesKey("isFirstRun")
 // Data Saver mode (default OFF): one switch that forces Opus audio quality and gates every
 // background data consumer (preload, auto lyrics, video items, speculative video prefetch,
 // canvas animations, scrobbling). It NEVER overrides the user's chosen quality upward — the
@@ -111,9 +110,6 @@ val SeedVersionKey = intPreferencesKey("seed_version")
 val JrDefaultsAppliedKey = booleanPreferencesKey("jr_defaults_applied_v2")
 // One-time guard: defaults the in-app language to Spanish unless the user picked a language.
 val SpanishDefaultAppliedKey = booleanPreferencesKey("spanish_default_applied")
-// One-time guard: flips the cover "canvas" animations (player + album) OFF by default, for existing
-// installs too, without re-seeding everything. Runs once.
-val CanvasDefaultOffAppliedKey = booleanPreferencesKey("canvas_default_off_applied")
 // One-time migration to force the canvas toggles ON (user request: all canvas/lienzo toggles enabled).
 val CanvasDefaultOnAppliedKey = booleanPreferencesKey("canvas_default_on_applied")
 // One-time (fresh key): auto-enable High-Performance Mode for existing users on LOW-tier / TV / car devices.
@@ -172,8 +168,6 @@ val Defaults0132GaplessOffAppliedKey = booleanPreferencesKey("defaults_0_6_132_g
 /** 0.6.136 one-time repair of the legacy seeded accent (0xFF36C5E0) that made the app look like the user
  *  had picked a custom colour, hiding the dynamic-theme switch and every palette selection. */
 val ThemeAccentRepairV1AppliedKey = booleanPreferencesKey("theme_accent_repair_v1_applied")
-// One-time: seed EQ ON + Audiophile preset + preamp 0.0 dB for everyone on this update.
-val EqAudiophileDefaultAppliedKey = booleanPreferencesKey("eq_audiophile_default_applied")
 // One-time (V2, FRESH key): re-apply ALL audio defaults — EQ Audiophile + preamp 0.0, crossfade 9s
 // equal-power, Safe Volume OFF — for EVERYONE, including users whose per-feature flags were already set by
 // the brief 0.6.75/0.6.76 builds (so the settings actually land on this update).
@@ -220,7 +214,6 @@ val SpotifyAccountNameKey = stringPreferencesKey("spotify_account_name")
 val SpotifyAccountAvatarUrlKey = stringPreferencesKey("spotify_account_avatar_url")
 val SpotifyAccessTokenKey = stringPreferencesKey("spotify_access_token")
 val SpotifyAccessTokenExpiresAtKey = longPreferencesKey("spotify_access_token_expires_at")
-val EnableDynamicIconKey = booleanPreferencesKey("enableDynamicIcon")
 val EnableLegacyIconKey = booleanPreferencesKey("enableLegacyIcon")
 val EnableHighRefreshRateKey = booleanPreferencesKey("enableHighRefreshRate")
 val DynamicThemeKey = booleanPreferencesKey("dynamicTheme")
@@ -244,9 +237,7 @@ val AppThemePresetKey = stringPreferencesKey("appThemePreset")
 val DarkModeKey = stringPreferencesKey("darkMode")
 val PureBlackKey = booleanPreferencesKey("pureBlack")
 val PureBlackMiniPlayerKey = booleanPreferencesKey("pureBlackMiniPlayer")
-val MiniPlayerOutlineKey = booleanPreferencesKey("miniPlayerOutline")
 val DensityScaleKey = floatPreferencesKey("density_scale_factor")
-val CustomDensityScaleKey = floatPreferencesKey("custom_density_scale_value")
 
 enum class DensityScale(val value: Float, val label: String) {
     NATIVE(1.0f, "Native (100%)"),
@@ -261,7 +252,6 @@ enum class DensityScale(val value: Float, val label: String) {
 }
 
 val DefaultOpenTabKey = stringPreferencesKey("defaultOpenTab")
-val SlimNavBarKey = booleanPreferencesKey("slimNavBar")
 val GridItemsSizeKey = stringPreferencesKey("gridItemSize")
 val SliderStyleKey = stringPreferencesKey("sliderStyle")
 val SquigglySliderKey = booleanPreferencesKey("squigglySlider")
@@ -279,7 +269,6 @@ val SeekExtraSeconds = booleanPreferencesKey("seekExtraSeconds")
 val PauseOnMute = booleanPreferencesKey("pauseOnMute")
 val ResumeOnBluetoothConnectKey = booleanPreferencesKey("resumeOnBluetoothConnect")
 val KeepScreenOn = booleanPreferencesKey("keepScreenOn")
-val DeveloperModeKey = booleanPreferencesKey("developerMode")
 
 enum class SliderStyle {
     DEFAULT,
@@ -313,7 +302,6 @@ val ProxyTypeKey = stringPreferencesKey("proxyType")
 val ProxyUsernameKey = stringPreferencesKey("proxyUsername")
 val ProxyPasswordKey = stringPreferencesKey("proxyPassword")
 val YtmSyncKey = booleanPreferencesKey("ytmSync")
-val SelectedYtmPlaylistsKey = stringPreferencesKey("selectedYtmPlaylists")
 
 val ShowAudioFallbackToastKey = booleanPreferencesKey("show_audio_fallback_toast")
 val AudioQualityKey = stringPreferencesKey("audioQuality")
@@ -388,12 +376,8 @@ val PauseSearchHistoryKey = booleanPreferencesKey("pauseSearchHistory")
 val DisableScreenshotKey = booleanPreferencesKey("disableScreenshot")
 
 val DiscordTokenKey = stringPreferencesKey("discordToken")
-val DiscordInfoDismissedKey = booleanPreferencesKey("discordInfoDismissed")
-val DiscordUsernameKey = stringPreferencesKey("discordUsername")
-val DiscordNameKey = stringPreferencesKey("discordName")
 val EnableDiscordRPCKey = booleanPreferencesKey("discordRPCEnable")
 val DiscordUseDetailsKey = booleanPreferencesKey("discordUseDetails")
-val DiscordAvatarKey = stringPreferencesKey("discordAvatar")
 val DiscordStatusKey = stringPreferencesKey("discordStatus")
 val DiscordButton1TextKey = stringPreferencesKey("discordButton1Text")
 val DiscordButton1VisibleKey = booleanPreferencesKey("discordButton1Visible")
@@ -409,7 +393,6 @@ val EnableGoogleCastKey = booleanPreferencesKey("enableGoogleCast")
 
 val ListenTogetherServerUrlKey = stringPreferencesKey("listenTogetherServerUrl")
 val ListenTogetherUsernameKey = stringPreferencesKey("listenTogetherUsername")
-val EnableListenTogetherKey = booleanPreferencesKey("enableListenTogether")
 val ListenTogetherAutoApprovalKey = booleanPreferencesKey("listenTogetherAutoApproval")
 val ListenTogetherSyncVolumeKey = booleanPreferencesKey("listenTogetherSyncVolume")
 val ListenTogetherSmartResyncKey = booleanPreferencesKey("listenTogetherSmartResync")
@@ -450,8 +433,6 @@ val SongSortTypeKey = stringPreferencesKey("songSortType")
 val SongSortDescendingKey = booleanPreferencesKey("songSortDescending")
 val PlaylistSongSortTypeKey = stringPreferencesKey("playlistSongSortType")
 val PlaylistSongSortDescendingKey = booleanPreferencesKey("playlistSongSortDescending")
-val AutoPlaylistSongSortTypeKey = stringPreferencesKey("autoPlaylistSongSortType")
-val AutoPlaylistSongSortDescendingKey = booleanPreferencesKey("autoPlaylistSongSortDescending")
 val ArtistSortTypeKey = stringPreferencesKey("artistSortType")
 val ArtistSortDescendingKey = booleanPreferencesKey("artistSortDescending")
 val AlbumSortTypeKey = stringPreferencesKey("albumSortType")
@@ -477,11 +458,6 @@ val SongFilterKey = stringPreferencesKey("songFilter")
 val ArtistFilterKey = stringPreferencesKey("artistFilter")
 val AlbumFilterKey = stringPreferencesKey("albumFilter")
 
-val LastLikeSongSyncKey = longPreferencesKey("last_like_song_sync")
-val LastLibSongSyncKey = longPreferencesKey("last_library_song_sync")
-val LastAlbumSyncKey = longPreferencesKey("last_album_sync")
-val LastArtistSyncKey = longPreferencesKey("last_artist_sync")
-val LastPlaylistSyncKey = longPreferencesKey("last_playlist_sync")
 val LastFullSyncKey = longPreferencesKey("last_full_sync")
 
 
@@ -506,7 +482,6 @@ val ShowExportedPlaylistKey = booleanPreferencesKey("show_exported_playlist")
 val ShowTopPlaylistKey = booleanPreferencesKey("show_top_playlist")
 val ShowCachedPlaylistKey = booleanPreferencesKey("show_cached_playlist")
 val ShowUploadedPlaylistKey = booleanPreferencesKey("show_uploaded_playlist")
-val EnablePlayerSwipeKey = booleanPreferencesKey("enable_player_swipe")
 val ShowSpeedDialKey = booleanPreferencesKey("showSpeedDial")
 val ShowCommentButtonKey = booleanPreferencesKey("show_comment_button")
 
@@ -723,7 +698,6 @@ val LyricsRomanizeHindiKey = booleanPreferencesKey("lyricsRomanizeHindi")
 val LyricsRomanizePunjabiKey = booleanPreferencesKey("lyricsRomanizePunjabi")
 val LyricsRomanizeAsMainKey = booleanPreferencesKey("lyricsRomanizeAsMain")
 val LyricsRomanizeCyrillicByLineKey = booleanPreferencesKey("lyricsRomanizeCyrillicByLine")
-val TranslateLyricsKey = booleanPreferencesKey("translateLyrics")
 // Opt-in (default false): when the lyrics of an English-looking song open, prompt "¿Traducir?"
 // and translate via the FREE keyless AI on confirm. Off = no prompt (previous behavior).
 val AskTranslateLyricsOnOpenKey = booleanPreferencesKey("askTranslateLyricsOnOpen")
@@ -1049,7 +1023,6 @@ val SuggestionRegionSlugToName =
         "il" to "Israel"
     )
 
-val SpectrumVisualizerEnabledKey = booleanPreferencesKey("spectrum_visualizer_enabled")
 // High-Performance Mode: master toggle for low-end devices (Android car head units, cheap tablets, <=4GB RAM,
 // Android TV). When ON, all heavy VISUALS + video decode + memory are cut (canvas/visualizer/artist-video off,
 // video decode capped to 1280p, next-song preload off, video mode disabled, smaller buffers/image cache) while
@@ -1111,3 +1084,17 @@ val TidalClientIdKey = stringPreferencesKey("tidal_client_id")
 // user choices win afterwards. Gated additionally on being linked (QobuzHiRes.isActive), so a stray ON
 // value with no token is inert.
 val UseOwnQobuzHiResKey = booleanPreferencesKey("use_own_qobuz_hires")
+
+// ── "Interfaz nueva" (new UI beta, ui/newui) ──
+// Single master switch for the redesigned presentation layer. DEFAULT FALSE: the app boots into the
+// classic UI exactly as before, so an unsuspecting user never sees the beta.
+//
+// Contract (do not weaken it):
+//  · PRESENTATION ONLY. The new screens reuse every existing ViewModel/repository/action lambda; no
+//    business logic is duplicated, so a bug fixed in one is fixed in both.
+//  · PER-SCREEN FALLBACK. Every gated screen goes through a *Host composable in ui/newui/NewUiHosts.kt.
+//    If a screen has no new implementation yet it renders the classic one, flag or not.
+//  · TOGGLING IS INERT. Flipping this key must not touch the database, playback, the queue, or any other
+//    preference. Turning it OFF returns the app to byte-identical classic behaviour.
+// NEVER seed this key from an App.kt defaults migration — it is a beta opt-in, not a forced default.
+val NewUiEnabledKey = booleanPreferencesKey("new_ui_enabled")

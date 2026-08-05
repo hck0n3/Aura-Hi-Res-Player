@@ -2,25 +2,21 @@ package iad1tya.echo.music.ui.screens.settings
 
 import android.content.Context
 import kotlinx.coroutines.*
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import iad1tya.echo.music.BuildConfig
 import timber.log.Timber
-import java.util.concurrent.atomic.AtomicBoolean
 
 object ListenBrainzManager {
     private const val logTag = "ListenBrainzManager"
     private const val clientName = "Aura Hi-Res Player"
-    private const val clientVersion = "0.6.92"
-    private const val userAgent = "AuraHiRes/0.6.92"
-    private val started = AtomicBoolean(false)
+    // Was hardcoded to "0.6.92" and never updated, so every listen submitted to ListenBrainz reported a
+    // client version the app had not been on for dozens of releases. Read the real one.
+    private val clientVersion = BuildConfig.VERSION_NAME
+    private val userAgent = "AuraHiRes/${BuildConfig.VERSION_NAME}"
     private val httpClient = OkHttpClient()
-
-    private val _lastSubmitTime = MutableStateFlow<Long?>(null)
-    val lastSubmitTimeFlow = _lastSubmitTime.asStateFlow()
 
     suspend fun submitPlayingNow(
         context: Context,
@@ -59,7 +55,6 @@ object ListenBrainzManager {
                 httpClient.newCall(request).execute().use { resp ->
                     val success = resp.isSuccessful
                     if (success) {
-                        _lastSubmitTime.value = System.currentTimeMillis()
                         Timber.tag(logTag).d("playing_now submitted for %s", title)
                     } else {
                         val respBody =
@@ -123,7 +118,6 @@ object ListenBrainzManager {
                 httpClient.newCall(request).execute().use { resp ->
                     val success = resp.isSuccessful
                     if (success) {
-                        _lastSubmitTime.value = System.currentTimeMillis()
                         Timber.tag(logTag).d("finished listen submitted for %s", title)
                     } else {
                         val respBody =
@@ -144,6 +138,4 @@ object ListenBrainzManager {
     }
 
     private fun escapeJson(s: String): String = s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")
-
-    fun isRunning(): Boolean = started.get()
 }

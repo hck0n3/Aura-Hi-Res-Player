@@ -7,11 +7,8 @@ import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
@@ -24,7 +21,6 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextOverflow
 import iad1tya.echo.music.ui.screens.Screens
 import iad1tya.echo.music.ui.utils.rememberIsTvOrCar
 import iad1tya.echo.music.ui.utils.tvFocusable
@@ -122,97 +118,5 @@ fun AppNavigationRail(
         }
         
         Spacer(modifier = Modifier.weight(1f))
-    }
-}
-
-@Composable
-fun AppNavigationBar(
-    navigationItems: List<Screens>,
-    currentRoute: String?,
-    onItemClick: (Screens, Boolean) -> Unit,
-    modifier: Modifier = Modifier,
-    pureBlack: Boolean = false,
-    slimNav: Boolean = false,
-    onSearchLongClick: (() -> Unit)? = null
-) {
-    // Liquid Glass (Beta): transparent container + backdrop-sampling glass surface. Content color
-    // is theme-adaptive (glassContentColor) so nav text/icons stay legible in light AND dark themes.
-    val glassConfig = LocalGlassEffectConfig.current
-    val useGlass = glassConfig.isEnabledFor(GlassComponent.NAV_BAR) && isGlassSupported()
-    val containerColor = if (useGlass) Color.Transparent else if (pureBlack) Color.Black else MaterialTheme.colorScheme.surfaceContainer
-    val contentColor = if (useGlass) glassContentColor(glassConfig) else if (pureBlack) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
-    val haptics = LocalHapticFeedback.current
-    val viewConfiguration = LocalViewConfiguration.current
-
-    val navModifier = if (useGlass) modifier.liquidGlass(config = glassConfig) else modifier
-
-    NavigationBar(
-        modifier = navModifier,
-        containerColor = containerColor,
-        contentColor = contentColor
-    ) {
-        navigationItems.forEach { screen ->
-            val isSelected = remember(currentRoute, screen.route) {
-                isRouteSelected(currentRoute, screen.route, navigationItems)
-            }
-            val iconRes = remember(isSelected, screen) {
-                if (isSelected) screen.iconIdActive else screen.iconIdInactive
-            }
-            
-            val isSearchItem = screen == Screens.Search && onSearchLongClick != null
-            val interactionSource = remember { MutableInteractionSource() }
-            
-            
-            if (isSearchItem) {
-                LaunchedEffect(interactionSource) {
-                    var isLongClick = false
-                    interactionSource.interactions.collectLatest { interaction ->
-                        when (interaction) {
-                            is PressInteraction.Press -> {
-                                isLongClick = false
-                                delay(viewConfiguration.longPressTimeoutMillis)
-                                isLongClick = true
-                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                onSearchLongClick.invoke()
-                            }
-                            is PressInteraction.Release -> {
-                                if (!isLongClick) {
-                                    onItemClick(screen, isSelected)
-                                }
-                            }
-                            is PressInteraction.Cancel -> {
-                                isLongClick = false
-                            }
-                        }
-                    }
-                }
-            }
-            
-            NavigationBarItem(
-                selected = isSelected,
-                onClick = { 
-                    if (!isSearchItem) {
-                        onItemClick(screen, isSelected)
-                    }
-                    
-                },
-                interactionSource = interactionSource,
-                icon = {
-                    Icon(
-                        painter = painterResource(id = iconRes),
-                        contentDescription = stringResource(screen.titleId)
-                    )
-                },
-                label = if (!slimNav) {
-                    {
-                        Text(
-                            text = stringResource(screen.titleId),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                } else null
-            )
-        }
     }
 }

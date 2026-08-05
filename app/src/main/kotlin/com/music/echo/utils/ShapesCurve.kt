@@ -3,20 +3,11 @@
 package iad1tya.echo.music.utils
 
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.ListItemColors
-import androidx.compose.material3.ListItemDefaults
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.dp
 
 private const val ConnectedCornerRadius = 4
 private const val EndCornerRadius = 16
-
-@Composable
-fun listItemColors(): ListItemColors {
-    return ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)
-}
 
 fun leadingItemShape(): RoundedCornerShape = RoundedCornerShape(
     topStart = EndCornerRadius.dp,

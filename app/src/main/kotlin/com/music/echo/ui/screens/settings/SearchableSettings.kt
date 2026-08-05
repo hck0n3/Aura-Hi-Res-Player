@@ -14,11 +14,58 @@ import iad1tya.echo.music.R
 // NOTE: the upstream "scroll-to-highlight the exact row" refinement is intentionally NOT ported here
 // -- it would require editing every destination settings screen (out of scope), so a result navigates
 // to its parent screen instead of the individual row.
+// GHOST-ENTRY RULE (0.6.14x anti-placebo pass): a row here is a PROMISE that the text is visible on
+// the destination screen. If a control is deleted, its row MUST go too, or the user searches it, finds
+// it, navigates -- and it is not there. Removed on that basis: last_fm_send_likes (the switch is
+// deliberately not shipped, see LastFMSettingsScreen), and the Listen Together create/join-room rows
+// (those dialogs were unreachable dead code; the live flows live in ListenTogetherScreen / PlayerMenu
+// and are indexed under their own screens).
+//
+// DUPLICATE RULE: a result renders as title + section only, so two rows with the SAME title AND the
+// SAME section are indistinguishable. Removed four such pairs (Ecualizador, Predeterminado, Ondulado,
+// Aura Hi-Res Update). Same title under DIFFERENT sections is fine and kept -- the section tells them
+// apart ("Otros" x4, "Copiar" x2, ...).
+//
+// DESCRIPTION ROWS ARE KEPT ON PURPOSE: rows whose text is a setting's subtitle ("Salta patrocinios,
+// autopromocion ...") are how a user finds a setting by what it DOES rather than by its name. They
+// route to a real screen where that exact text is on display, so they are not ghosts. Dialog bodies and
+// conditional subtitles are kept for the same reason -- they are one tap from the row they describe.
+//
+// ---------------------------------------------------------------------------------------------------
+// 0.6.14x "Interfaz nueva" pass -- three more rules, 21 rows removed (388 -> 367):
+//
+// INDEX-ECHO RULE (new): SettingsScreen renders its own 17 index rows FIRST and then appends the
+// matches from this list. A row here whose title AND route are identical to one of those 17 therefore
+// draws the same destination twice, one above the other, and the second one looks like a bug. Removed
+// 11: Cuentas, Scrobbling, Rendimiento, Apariencia, Contenido, Traduccion de letras con IA,
+// Almacenamiento, Privacidad, Copias de seguridad y restauracion, Acerca de, Registros. Their
+// destinations stay reachable -- they are the top-level rows.
+// NOT removed: listen_together -> "settings/integrations/listen_together". Same title, DIFFERENT route
+// (the index row goes to the Listen Together MAIN screen), and it is the only entry that reaches the
+// Listen Together settings screen at all.
+//
+// NON-TEXT RULE (new): a row must be a control or a caption the user can READ on the destination, not
+// an accessibility label, an unformatted format string, a toast, an error or an empty state. Removed
+// 9: cd_back ("Atras", a contentDescription), cd_palette_item ("Paleta %1$s", rendered raw),
+// sensitivity_percentage ("%1$d%%", rendered raw), copied_to_clipboard + export_directory_picker_-
+// unavailable (toasts), no_logs_yet + listen_together_no_logs (empty states), app_name (the app's own
+// name is not a setting), and R.string.settings under Listen Together (a bare "Ajustes" row).
+// Also removed "Ecualizador grafico": that string exists nowhere but here -- the row on
+// settings/sound is titled echo_equalizer ("Ecualizador"), which is already indexed.
+// CORRECTION (anti-placebo follow-up): that removal took the LAST row pointing at settings/equalizer
+// with it, so searching the equalizer could no longer reach the equalizer screen -- with either UI. A
+// row titled with the screen's own title (echo_equalizer) under the section "Ecualizador" is back
+// below. A destination that exists and is registered must stay reachable from this index.
+//
+// SECTION-NAME RULE (new): the section is the only thing that tells two same-titled results apart, so
+// it must be Spanish and unambiguous. "Listen Together" -> "Ajustes de Escuchar juntos" (21 rows), so a
+// result reads "<ajuste> / Ajustes de Escuchar juntos" and is clearly not the main Escuchar juntos
+// screen. That screen had NO index row anywhere; the new Ajustes index (ui/newui/AuraSettingsScreen.kt)
+// adds one inside its "Escuchar juntos" group.
 @Composable
 fun getAllSearchableSettings(): List<Triple<String, String, String>> {
     return listOf(
             // --- Cuentas / fork-only screens (hardcoded labels; these screens use literal titles) ---
-            Triple("Cuentas", "Cuentas", "settings/accounts"),
             Triple("YouTube Music", "Cuentas", "settings/accounts"),
             Triple("Spotify", "Cuentas", "settings/accounts"),
             Triple("Iniciar sesión", "Cuentas", "settings/accounts"),
@@ -29,11 +76,9 @@ fun getAllSearchableSettings(): List<Triple<String, String, String>> {
             Triple("Scrobbling", "Cuentas", "settings/accounts"),
             Triple("Importar de Spotify", "Cuentas", "settings/spotify_import"),
             // --- Scrobbling (settings/lastfm) ---
-            Triple(stringResource(R.string.scrobbling), "Scrobbling", "settings/lastfm"),
             Triple(stringResource(R.string.lastfm_integration), "Scrobbling", "settings/lastfm"),
             Triple(stringResource(R.string.enable_scrobbling), "Scrobbling", "settings/lastfm"),
             Triple(stringResource(R.string.lastfm_now_playing), "Scrobbling", "settings/lastfm"),
-            Triple(stringResource(R.string.last_fm_send_likes), "Scrobbling", "settings/lastfm"),
             Triple(stringResource(R.string.scrobbling_configuration), "Scrobbling", "settings/lastfm"),
             Triple(stringResource(R.string.scrobble_min_track_duration), "Scrobbling", "settings/lastfm"),
             Triple(stringResource(R.string.scrobble_delay_percent), "Scrobbling", "settings/lastfm"),
@@ -41,12 +86,9 @@ fun getAllSearchableSettings(): List<Triple<String, String, String>> {
             Triple(stringResource(R.string.listenbrainz_scrobbling), "Scrobbling", "settings/lastfm"),
             Triple(stringResource(R.string.set_listenbrainz_token), "Scrobbling", "settings/lastfm"),
             // --- Sonido / Rendimiento extras (these screens use hardcoded Spanish titles) ---
-            Triple("Ecualizador", "Sonido y ecualización", "settings/sound"),
-            Triple("Ecualizador gráfico", "Sonido y ecualización", "settings/equalizer"),
             Triple("Auto-EQ (por auricular)", "Sonido y ecualización", "settings/sound/autoeq"),
             Triple("Volumen seguro", "Sonido y ecualización", "settings/sound"),
             Triple("Modo alto rendimiento", "Rendimiento", "settings/performance"),
-            Triple("Rendimiento", "Rendimiento", "settings/performance"),
             Triple("Vista dividida estilo Spotify", "Rendimiento", "settings/performance"),
             Triple("Mostrar el panel del reproductor", "Rendimiento", "settings/performance"),
             Triple("Panel del reproductor a la izquierda", "Rendimiento", "settings/performance"),
@@ -95,10 +137,8 @@ fun getAllSearchableSettings(): List<Triple<String, String, String>> {
             Triple(stringResource(R.string.big), "Apariencia", "settings/appearance"),
             Triple(stringResource(R.string.small), "Apariencia", "settings/appearance"),
             Triple(stringResource(R.string.density_restart_message), "Apariencia", "settings/appearance"),
-            Triple(stringResource(R.string.default_), "Apariencia", "settings/appearance"),
             Triple(stringResource(R.string.wavy), "Apariencia", "settings/appearance"),
             Triple(stringResource(R.string.slim), "Apariencia", "settings/appearance"),
-            Triple(stringResource(R.string.squiggly), "Apariencia", "settings/appearance"),
             Triple(stringResource(R.string.theme), "Apariencia", "settings/appearance"),
             Triple(stringResource(R.string.theme_desc), "Apariencia", "settings/appearance"),
             Triple(stringResource(R.string.enable_high_refresh_rate), "Apariencia", "settings/appearance"),
@@ -123,7 +163,6 @@ fun getAllSearchableSettings(): List<Triple<String, String, String>> {
             Triple(stringResource(R.string.show_comment_button), "Apariencia", "settings/appearance"),
             Triple(stringResource(R.string.show_comment_button_description), "Apariencia", "settings/appearance"),
             Triple(stringResource(R.string.swipe_sensitivity), "Apariencia", "settings/appearance"),
-            Triple(stringResource(R.string.sensitivity_percentage), "Apariencia", "settings/appearance"),
             Triple(stringResource(R.string.lyrics), "Apariencia", "settings/appearance"),
             Triple(stringResource(R.string.lyrics_glow_effect), "Apariencia", "settings/appearance"),
             Triple(stringResource(R.string.lyrics_glow_effect_desc), "Apariencia", "settings/appearance"),
@@ -151,7 +190,6 @@ fun getAllSearchableSettings(): List<Triple<String, String, String>> {
             Triple(stringResource(R.string.show_top_playlist), "Apariencia", "settings/appearance"),
             Triple(stringResource(R.string.show_cached_playlist), "Apariencia", "settings/appearance"),
             Triple(stringResource(R.string.show_uploaded_playlist), "Apariencia", "settings/appearance"),
-            Triple(stringResource(R.string.appearance), "Apariencia", "settings/appearance"),
             // --- Tema (settings/appearance/theme) : 26 ---
             Triple(stringResource(R.string.palette_dynamic), "Tema", "settings/appearance/theme"),
             Triple(stringResource(R.string.palette_crimson), "Tema", "settings/appearance/theme"),
@@ -174,11 +212,9 @@ fun getAllSearchableSettings(): List<Triple<String, String, String>> {
             Triple(stringResource(R.string.palette_grey), "Tema", "settings/appearance/theme"),
             Triple(stringResource(R.string.palette_blue_grey), "Tema", "settings/appearance/theme"),
             Triple(stringResource(R.string.theme_colors), "Tema", "settings/appearance/theme"),
-            Triple(stringResource(R.string.cd_back), "Tema", "settings/appearance/theme"),
             Triple(stringResource(R.string.theme_mode), "Tema", "settings/appearance/theme"),
             Triple(stringResource(R.string.dark_theme_follow_system), "Tema", "settings/appearance/theme"),
             Triple(stringResource(R.string.color_palette), "Tema", "settings/appearance/theme"),
-            Triple(stringResource(R.string.cd_palette_item), "Tema", "settings/appearance/theme"),
             // --- Contenido (settings/content) : 53 ---
             Triple(stringResource(R.string.config_proxy), "Contenido", "settings/content"),
             Triple(stringResource(R.string.proxy_type), "Contenido", "settings/content"),
@@ -232,7 +268,6 @@ fun getAllSearchableSettings(): List<Triple<String, String, String>> {
             Triple(stringResource(R.string.playback_logs_desc), "Contenido", "settings/content"),
             Triple(stringResource(R.string.service_uptime), "Contenido", "settings/content"),
             Triple(stringResource(R.string.service_uptime_desc), "Contenido", "settings/content"),
-            Triple(stringResource(R.string.content), "Contenido", "settings/content"),
             // --- Romanizacion (settings/content/romanization) : 20 ---
             Triple(stringResource(R.string.general), "Romanización", "settings/content/romanization"),
             Triple(stringResource(R.string.lyrics_romanize_as_main), "Romanización", "settings/content/romanization"),
@@ -282,7 +317,6 @@ fun getAllSearchableSettings(): List<Triple<String, String, String>> {
             Triple(stringResource(R.string.ai_playlist_enabled_title), "Traducción de letras IA", "settings/ai"),
             Triple(stringResource(R.string.ai_playlist_enabled_desc), "Traducción de letras IA", "settings/ai"),
             Triple(stringResource(R.string.ai_setup_guide), "Traducción de letras IA", "settings/ai"),
-            Triple(stringResource(R.string.ai_lyrics_translation), "Traducción de letras IA", "settings/ai"),
             Triple("Recomendado para ti (IA)", "Traducción de letras IA", "settings/ai"),
             Triple("Refrescar ahora", "Traducción de letras IA", "settings/ai"),
             // --- Reproductor (settings/player) : 49 ---
@@ -343,11 +377,19 @@ fun getAllSearchableSettings(): List<Triple<String, String, String>> {
             // --- Sonido y ecualizacion (settings/sound) : 2 ---
             Triple(stringResource(R.string.echo_equalizer), "Sonido y ecualización", "settings/sound"),
             Triple(stringResource(R.string.echo_equalizer_desc), "Sonido y ecualización", "settings/sound"),
+            // --- Ecualizador (settings/equalizer) : 1 ---
+            // The EQ screen itself. Removing the old "Ecualizador grafico" row left NOTHING in this index
+            // routing to settings/equalizer, so the search shortcut to the equalizer was gone even with the
+            // classic UI on -- reachable only via settings/sound or a player menu. The label is the screen's
+            // OWN title (AxionEqScreen renders R.string.echo_equalizer), so the row is not a ghost, and the
+            // section differs from the row above it, so the two results stay distinguishable per the
+            // DUPLICATE RULE: "Ecualizador / Sonido y ecualizacion" (the settings row) vs
+            // "Ecualizador / Ecualizador" (the screen).
+            Triple(stringResource(R.string.echo_equalizer), "Ecualizador", "settings/equalizer"),
             // --- Rendimiento (settings/performance) : 0 ---
             // --- Almacenamiento (settings/storage) : 21 ---
             Triple(stringResource(R.string.song_cache), "Almacenamiento", "settings/storage"),
             Triple(stringResource(R.string.image_cache), "Almacenamiento", "settings/storage"),
-            Triple(stringResource(R.string.export_directory_picker_unavailable), "Almacenamiento", "settings/storage"),
             Triple(stringResource(R.string.clear_all_downloads), "Almacenamiento", "settings/storage"),
             Triple(stringResource(R.string.clear_downloads_dialog), "Almacenamiento", "settings/storage"),
             Triple(stringResource(R.string.clear_song_cache), "Almacenamiento", "settings/storage"),
@@ -357,7 +399,6 @@ fun getAllSearchableSettings(): List<Triple<String, String, String>> {
             Triple(stringResource(R.string.cache_size_warning_title), "Almacenamiento", "settings/storage"),
             Triple(stringResource(R.string.cache_size_warning_message), "Almacenamiento", "settings/storage"),
             Triple(stringResource(R.string.cache_size_warning_confirm), "Almacenamiento", "settings/storage"),
-            Triple(stringResource(R.string.storage), "Almacenamiento", "settings/storage"),
             Triple(stringResource(R.string.downloaded_songs), "Almacenamiento", "settings/storage"),
             Triple(stringResource(R.string.export_directory), "Almacenamiento", "settings/storage"),
             Triple(stringResource(R.string.auto_download_on_like), "Almacenamiento", "settings/storage"),
@@ -378,19 +419,13 @@ fun getAllSearchableSettings(): List<Triple<String, String, String>> {
             Triple(stringResource(R.string.misc), "Privacidad", "settings/privacy"),
             Triple(stringResource(R.string.disable_screenshot), "Privacidad", "settings/privacy"),
             Triple(stringResource(R.string.disable_screenshot_desc), "Privacidad", "settings/privacy"),
-            Triple(stringResource(R.string.privacy), "Privacidad", "settings/privacy"),
             // --- Copia y restauracion (settings/backup_restore) : 2 ---
-            Triple(stringResource(R.string.app_name), "Copia y restauración", "settings/backup_restore"),
-            Triple(stringResource(R.string.backup_restore), "Copia y restauración", "settings/backup_restore"),
             // --- Acerca de (settings/about) : 1 ---
-            Triple(stringResource(R.string.about), "Acerca de", "settings/about"),
             // --- Registros (settings/logs) : 6 ---
-            Triple(stringResource(R.string.logs), "Registros", "settings/logs"),
             Triple(stringResource(R.string.copy), "Registros", "settings/logs"),
             Triple(stringResource(R.string.share), "Registros", "settings/logs"),
             Triple(stringResource(R.string.app_log), "Registros", "settings/logs"),
             Triple(stringResource(R.string.last_crash), "Registros", "settings/logs"),
-            Triple(stringResource(R.string.no_logs_yet), "Registros", "settings/logs"),
             // --- Actualizacion (settings/update) : 12 ---
             Triple(stringResource(R.string.app_updates_title), "Actualización", "settings/update"),
             Triple(stringResource(R.string.system_update), "Actualización", "settings/update"),
@@ -403,38 +438,27 @@ fun getAllSearchableSettings(): List<Triple<String, String, String>> {
             Triple(stringResource(R.string.update_notifications_subtitle), "Actualización", "settings/update"),
             Triple(stringResource(R.string.clear_downloaded_updates), "Actualización", "settings/update"),
             Triple(stringResource(R.string.clear_downloaded_updates_desc), "Actualización", "settings/update"),
-            Triple(stringResource(R.string.update_settings_title), "Actualización", "settings/update"),
             // --- Listen Together (settings/integrations/listen_together) : 31 ---
-            Triple(stringResource(R.string.listen_together_username), "Listen Together", "settings/integrations/listen_together"),
-            Triple(stringResource(R.string.listen_together_create_room), "Listen Together", "settings/integrations/listen_together"),
-            Triple(stringResource(R.string.error_username_empty), "Listen Together", "settings/integrations/listen_together"),
-            Triple(stringResource(R.string.create), "Listen Together", "settings/integrations/listen_together"),
-            Triple(stringResource(R.string.listen_together_create_room_desc), "Listen Together", "settings/integrations/listen_together"),
-            Triple(stringResource(R.string.listen_together_join_room), "Listen Together", "settings/integrations/listen_together"),
-            Triple(stringResource(R.string.join), "Listen Together", "settings/integrations/listen_together"),
-            Triple(stringResource(R.string.listen_together_room_code), "Listen Together", "settings/integrations/listen_together"),
-            Triple(stringResource(R.string.settings), "Listen Together", "settings/integrations/listen_together"),
-            Triple(stringResource(R.string.listen_together_blocked_users), "Listen Together", "settings/integrations/listen_together"),
-            Triple(stringResource(R.string.listen_together_blocked_users_count), "Listen Together", "settings/integrations/listen_together"),
-            Triple(stringResource(R.string.listen_together_no_blocked_users), "Listen Together", "settings/integrations/listen_together"),
-            Triple(stringResource(R.string.listen_together_server_url), "Listen Together", "settings/integrations/listen_together"),
-            Triple(stringResource(R.string.listen_together_cannot_edit_username_in_room), "Listen Together", "settings/integrations/listen_together"),
-            Triple(stringResource(R.string.listen_together_auto_approval), "Listen Together", "settings/integrations/listen_together"),
-            Triple(stringResource(R.string.listen_together_auto_approval_desc), "Listen Together", "settings/integrations/listen_together"),
-            Triple(stringResource(R.string.listen_together_sync_volume), "Listen Together", "settings/integrations/listen_together"),
-            Triple(stringResource(R.string.listen_together_sync_volume_desc), "Listen Together", "settings/integrations/listen_together"),
-            Triple(stringResource(R.string.listen_together_smart_resync), "Listen Together", "settings/integrations/listen_together"),
-            Triple(stringResource(R.string.listen_together_smart_resync_desc), "Listen Together", "settings/integrations/listen_together"),
-            Triple(stringResource(R.string.listen_together_view_logs), "Listen Together", "settings/integrations/listen_together"),
-            Triple(stringResource(R.string.listen_together_view_logs_desc), "Listen Together", "settings/integrations/listen_together"),
-            Triple(stringResource(R.string.listen_together), "Listen Together", "settings/integrations/listen_together"),
-            Triple(stringResource(R.string.listen_together_logs), "Listen Together", "settings/integrations/listen_together"),
-            Triple(stringResource(R.string.copied_to_clipboard), "Listen Together", "settings/integrations/listen_together"),
-            Triple(stringResource(R.string.copy), "Listen Together", "settings/integrations/listen_together"),
-            Triple(stringResource(R.string.listen_together_no_logs), "Listen Together", "settings/integrations/listen_together"),
-            Triple(stringResource(R.string.listen_together_choose_server), "Listen Together", "settings/integrations/listen_together"),
-            Triple(stringResource(R.string.listen_together_custom_server), "Listen Together", "settings/integrations/listen_together"),
-            Triple(stringResource(R.string.listen_together_use_custom_server), "Listen Together", "settings/integrations/listen_together"),
-            Triple(stringResource(R.string.unblock), "Listen Together", "settings/integrations/listen_together"),
+            Triple(stringResource(R.string.listen_together_username), "Ajustes de Escuchar juntos", "settings/integrations/listen_together"),
+            Triple(stringResource(R.string.listen_together_blocked_users), "Ajustes de Escuchar juntos", "settings/integrations/listen_together"),
+            Triple(stringResource(R.string.listen_together_blocked_users_count), "Ajustes de Escuchar juntos", "settings/integrations/listen_together"),
+            Triple(stringResource(R.string.listen_together_no_blocked_users), "Ajustes de Escuchar juntos", "settings/integrations/listen_together"),
+            Triple(stringResource(R.string.listen_together_server_url), "Ajustes de Escuchar juntos", "settings/integrations/listen_together"),
+            Triple(stringResource(R.string.listen_together_cannot_edit_username_in_room), "Ajustes de Escuchar juntos", "settings/integrations/listen_together"),
+            Triple(stringResource(R.string.listen_together_auto_approval), "Ajustes de Escuchar juntos", "settings/integrations/listen_together"),
+            Triple(stringResource(R.string.listen_together_auto_approval_desc), "Ajustes de Escuchar juntos", "settings/integrations/listen_together"),
+            Triple(stringResource(R.string.listen_together_sync_volume), "Ajustes de Escuchar juntos", "settings/integrations/listen_together"),
+            Triple(stringResource(R.string.listen_together_sync_volume_desc), "Ajustes de Escuchar juntos", "settings/integrations/listen_together"),
+            Triple(stringResource(R.string.listen_together_smart_resync), "Ajustes de Escuchar juntos", "settings/integrations/listen_together"),
+            Triple(stringResource(R.string.listen_together_smart_resync_desc), "Ajustes de Escuchar juntos", "settings/integrations/listen_together"),
+            Triple(stringResource(R.string.listen_together_view_logs), "Ajustes de Escuchar juntos", "settings/integrations/listen_together"),
+            Triple(stringResource(R.string.listen_together_view_logs_desc), "Ajustes de Escuchar juntos", "settings/integrations/listen_together"),
+            Triple(stringResource(R.string.listen_together), "Ajustes de Escuchar juntos", "settings/integrations/listen_together"),
+            Triple(stringResource(R.string.listen_together_logs), "Ajustes de Escuchar juntos", "settings/integrations/listen_together"),
+            Triple(stringResource(R.string.copy), "Ajustes de Escuchar juntos", "settings/integrations/listen_together"),
+            Triple(stringResource(R.string.listen_together_choose_server), "Ajustes de Escuchar juntos", "settings/integrations/listen_together"),
+            Triple(stringResource(R.string.listen_together_custom_server), "Ajustes de Escuchar juntos", "settings/integrations/listen_together"),
+            Triple(stringResource(R.string.listen_together_use_custom_server), "Ajustes de Escuchar juntos", "settings/integrations/listen_together"),
+            Triple(stringResource(R.string.unblock), "Ajustes de Escuchar juntos", "settings/integrations/listen_together"),
     )
 }

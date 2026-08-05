@@ -7,3 +7,23 @@
 # sdk.dir=C\:\\Users\\username\\AppData\\Local\\Android\\sdk
 
 sdk.dir=YOUR_ANDROID_SDK_PATH
+
+# ---------------------------------------------------------------------------------------------
+# Superpowered commercial licence key (optional).
+#
+# This is a PAID, per-application credential. It is deliberately not in the source tree: a key
+# visible in a public repository gets used by builds Superpowered has no contract with, and they
+# may then disable it "with or without notice" - which silently kills the EQ and Safe Volume for
+# every user of the real app at once.
+#
+# Leave it unset and the app still builds and plays music perfectly; the equalizer simply reports
+# itself as unavailable instead of drawing a control that does nothing.
+#
+# In CI, supply the same value as the repository secret SUPERPOWERED_LICENSE_KEY.
+# ---------------------------------------------------------------------------------------------
+# SUPERPOWERED_LICENSE_KEY=your-superpowered-key
+
+# Optional override for the release signing certificate the licence key is bound to (SHA-256 of the
+# DER certificate, 64 hex chars). Normally NOT needed: the build reads it straight out of
+# app/keystore/release.keystore using STORE_PASSWORD / KEY_ALIAS.
+# SUPERPOWERED_CERT_SHA256=

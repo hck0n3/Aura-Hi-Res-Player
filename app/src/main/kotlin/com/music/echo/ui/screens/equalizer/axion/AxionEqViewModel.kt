@@ -1,6 +1,7 @@
 package iad1tya.echo.music.ui.screens.equalizer.axion
 
 import android.content.Context
+import android.content.SharedPreferences
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import iad1tya.echo.music.eq.EqualizerService
@@ -188,7 +189,26 @@ class AxionEqViewModel @Inject constructor(
         profiles.filter { it.isCustom && it.id != "echo_tuning" }
     }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
+    /**
+     * Keeps [enabled] honest when the flag is written from OUTSIDE this instance.
+     *
+     * `echo_eq_prefs["enabled"]` has three writers: this view model, [MusicService.applyEqForCurrentOutput]
+     * (per-output profiles, MusicService.kt:1385) and the seeding migration (App.kt:900). `_enabled` was a
+     * one-shot read taken at construction, so any of those made this flow stale — and every read site that
+     * asks the view model instead of the file (the EQ screen switch, and now the new player's engine bar)
+     * would show a lie until the screen was rebuilt.
+     *
+     * Read-only sync: it assigns the flow and NOTHING else. It never calls [applyToService] / [setEnabled],
+     * so it cannot write a preference, re-emit a profile or touch the DSP — reacting to an external write
+     * must not become a second write. Held in a field because SharedPreferences keeps only weak references
+     * to its listeners.
+     */
+    private val enabledSync = SharedPreferences.OnSharedPreferenceChangeListener { p, key ->
+        if (key == null || key == "enabled") _enabled.value = p.getBoolean("enabled", false)
+    }
+
     init {
+        prefs.registerOnSharedPreferenceChangeListener(enabledSync)
         // Migrated users from before the stacking change have autoeq_active=true but no autoeq_bands JSON
         // (their old Auto-EQ curve lives in the manual band24_* gains). Reconcile so they don't see a phantom
         // "Auto-EQ activo" chip for a correction stage that doesn't exist.
@@ -343,6 +363,7 @@ class AxionEqViewModel @Inject constructor(
      */
     override fun onCleared() {
         super.onCleared()
+        runCatching { prefs.unregisterOnSharedPreferenceChangeListener(enabledSync) }
         if (_isDirty.value) {
             runCatching { commit() }
         }

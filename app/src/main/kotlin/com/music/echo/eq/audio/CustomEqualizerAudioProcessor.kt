@@ -1,5 +1,6 @@
 package iad1tya.echo.music.eq.audio
 
+import android.content.Context
 import androidx.media3.common.C
 import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.audio.AudioProcessor.UnhandledAudioFormatException
@@ -29,10 +30,16 @@ enum class SuperpoweredEngineStatus {
     /** The probe confirmed the DSP measurably alters audio. */
     HEALTHY,
 
-    /** The engine loaded but the probe proved it is NOT altering audio (license rejection is the likely cause). */
+    /**
+     * The engine loaded but the probe proved it is NOT altering audio (license rejection is the likely
+     * cause). The processor stops routing audio through it and falls back to a straight bypass.
+     */
     DEGRADED,
 
-    /** The native library or processor is absent entirely; the processor is a straight bypass. */
+    /**
+     * The engine was never started: the native library or processor is absent, or this build has no
+     * licence key it can trust (see [SuperpoweredLicense]). The processor is a straight bypass.
+     */
     UNAVAILABLE,
 }
 
@@ -44,8 +51,20 @@ enum class SuperpoweredEngineStatus {
  */
 private const val EQ_LIMITER_HEADROOM_MARGIN_DB = 1.5
 
+/**
+ * @param context any Context; only the application context is retained, and only so the Superpowered
+ *   licence key can be resolved lazily on the playback thread (see [SuperpoweredLicense]). The key
+ *   used to be a hardcoded default parameter here, which put a paid commercial credential in the
+ *   source of a public repository — the exact thing that gets a key disabled for everyone at once.
+ */
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
-class CustomEqualizerAudioProcessor(private val licenseKey: String = "akloSTZUT1k4N2ZGeGE5N2RhOGU3OWYyOGU4M2RkMGQxOGNmNjA4MDA5MjcwMjNlM2NjNzJoT0R4OGtwem1OamRtSGpFaHFG") : BaseAudioProcessor() {
+class CustomEqualizerAudioProcessor(context: Context) : BaseAudioProcessor() {
+
+    /**
+     * Application context (never an Activity/Service instance), so holding it for the lifetime of the
+     * processor cannot leak anything. Used for exactly one thing: resolving the licence key.
+     */
+    private val appContext: Context = context.applicationContext
 
     /**
      * True only if the native "superpowered-bridge" library loaded successfully. If it failed to load,
@@ -279,6 +298,12 @@ class CustomEqualizerAudioProcessor(private val licenseKey: String = "akloSTZUT1
             throw UnhandledAudioFormatException(inputAudioFormat)
         }
         
+        // Resolved BEFORE taking eqApplyLock, and on this thread (media3 playback) rather than in the
+        // constructor on the main thread: the first call does a PackageManager binder lookup and writes
+        // one line to the on-disk log, neither of which belongs inside a lock the UI thread also takes.
+        // Cached process-wide, so every later call is just a volatile read. "" means "no key we trust".
+        val licenseKey = if (nativeLibLoaded) SuperpoweredLicense.resolveKey(appContext) else ""
+
         // Re-initialize if pointer was lost or not created. Only touch the native side if the bridge library
         // actually loaded — otherwise initSuperpowered (an external/JNI call) throws an uncaught
         // UnsatisfiedLinkError and crashes playback. When it didn't load we leave nativePtr = 0L /
@@ -297,18 +322,47 @@ class CustomEqualizerAudioProcessor(private val licenseKey: String = "akloSTZUT1
                 releaseSuperpowered(stalePtr)
             }
             if (nativeLibLoaded && nativePtr == 0L) {
-                try {
-                    nativePtr = initSuperpowered(licenseKey, inputAudioFormat.sampleRate)
-                    nativeSampleRate = inputAudioFormat.sampleRate
-                } catch (e: UnsatisfiedLinkError) {
-                    // Defensive: should not happen once nativeLibLoaded is true, but never let it crash playback.
-                    e.printStackTrace()
+                // The engine has already been PROVEN inert once in this process (see below); re-creating a
+                // native processor we are only going to throw away again is pure waste.
+                val engineProvenInert = _engineStatus.value == SuperpoweredEngineStatus.DEGRADED
+
+                if (licenseKey.isEmpty() || engineProvenInert) {
+                    // SAFETY NET. No trustworthy licence key (a clone, a fork's build, or a signing
+                    // certificate we could not read) means we do NOT start the engine at all. An
+                    // unlicensed Superpowered engine is not contractually obliged to pass audio through
+                    // cleanly, whereas leaving nativePtr at 0 is: queueInput's else-branch copies the
+                    // bytes untouched. Bit-identical audio beats a maybe-silent, maybe-distorted engine.
                     nativePtr = 0L
+                    pendingEngineStatus = if (engineProvenInert) {
+                        SuperpoweredEngineStatus.DEGRADED
+                    } else {
+                        SuperpoweredEngineStatus.UNAVAILABLE
+                    }
+                } else {
+                    try {
+                        nativePtr = initSuperpowered(licenseKey, inputAudioFormat.sampleRate)
+                        nativeSampleRate = inputAudioFormat.sampleRate
+                    } catch (e: UnsatisfiedLinkError) {
+                        // Defensive: should not happen once nativeLibLoaded is true, but never let it crash playback.
+                        e.printStackTrace()
+                        nativePtr = 0L
+                    }
+                    // Read the verdict here (it needs nativePtr, which is guarded by this lock) but PUBLISH it
+                    // after the lock: publishing appends to the on-disk log, and file I/O has no business
+                    // happening while the audio-configuration lock is held.
+                    val verdict = readEngineStatus()
+                    if (verdict == SuperpoweredEngineStatus.DEGRADED) {
+                        // The probe proved the engine is NOT altering audio — the signature of a licence
+                        // that was rejected or disabled. It is inert either way, so stop routing audio
+                        // through it: the bypass is guaranteed clean, the engine is not. This is what makes
+                        // the "el ecualizador no está sonando" banner literally true instead of optimistic.
+                        val inertPtr = nativePtr
+                        nativePtr = 0L
+                        nativeSampleRate = 0
+                        if (inertPtr != 0L) releaseSuperpowered(inertPtr)
+                    }
+                    pendingEngineStatus = verdict
                 }
-                // Read the verdict here (it needs nativePtr, which is guarded by this lock) but PUBLISH it
-                // after the lock: publishing appends to the on-disk log, and file I/O has no business
-                // happening while the audio-configuration lock is held.
-                pendingEngineStatus = readEngineStatus()
             }
             isInitialized = nativePtr != 0L
 
@@ -465,12 +519,14 @@ class CustomEqualizerAudioProcessor(private val licenseKey: String = "akloSTZUT1
                 SuperpoweredEngineStatus.DEGRADED ->
                     Timber.e(
                         "SUPERPOWERED engine=DEGRADED dsp_probe=failed — the native engine loaded but is " +
-                            "NOT altering audio. The EQ and Safe Volume are inert. Most likely cause: the " +
-                            "Superpowered license key was rejected or disabled.",
+                            "NOT altering audio. Most likely cause: the Superpowered license key was " +
+                            "rejected or disabled. Audio has been routed AROUND it (untouched passthrough); " +
+                            "the EQ and Safe Volume do nothing.",
                     )
                 SuperpoweredEngineStatus.UNAVAILABLE ->
                     Timber.e(
-                        "SUPERPOWERED engine=UNAVAILABLE — native bridge or processor missing; the audio " +
+                        "SUPERPOWERED engine=UNAVAILABLE — the engine was never started (native bridge or " +
+                            "processor missing, or no usable license key for this build); the audio " +
                             "processor is a straight bypass. The EQ and Safe Volume do nothing.",
                     )
                 SuperpoweredEngineStatus.UNKNOWN -> Unit

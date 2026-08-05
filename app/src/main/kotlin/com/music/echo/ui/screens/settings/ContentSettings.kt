@@ -45,7 +45,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -121,7 +120,6 @@ fun ContentSettings(
     scrollBehavior: TopAppBarScrollBehavior,
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
 
     
     val (appLanguage, onAppLanguageChange) = rememberPreference(key = AppLanguageKey, defaultValue = SYSTEM_DEFAULT)
@@ -379,7 +377,6 @@ fun ContentSettings(
     if (showProviderPriorityDialog) {
         val defaultOrder = LyricsProviderRegistry.getDefaultProviderOrder()
         
-        val userToggleable = setOf("YouLyPlus", "Paxsenix", "BetterLyrics", "SimpMusic", "LrcLib", "Kugou", "Unison")
         val enabledProviders = setOfNotNull(
             "LrcLib".takeIf { enableLrclib },
             "Kugou".takeIf { enableKugou },

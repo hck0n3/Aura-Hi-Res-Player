@@ -82,8 +82,6 @@ import iad1tya.echo.music.ui.component.middleItemShape
 import iad1tya.echo.music.ui.component.endItemShape
 import iad1tya.echo.music.ui.component.detachedItemShape
 import iad1tya.echo.music.ui.component.parseMarkdown
-import iad1tya.echo.music.ui.component.endItemShape
-import iad1tya.echo.music.ui.component.detachedItemShape
 import iad1tya.echo.music.ui.component.AnimatedActionButton
 import iad1tya.echo.music.ui.component.ExpressiveIconButton
 import iad1tya.echo.music.ui.component.ErrorSnackbar

@@ -9,6 +9,7 @@ import android.os.Build
 import android.provider.Settings
 import android.widget.Toast
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.height
@@ -19,7 +20,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
@@ -40,6 +43,9 @@ import androidx.core.net.toUri
 import androidx.navigation.NavController
 import iad1tya.echo.music.BuildConfig
 import iad1tya.echo.music.LocalPlayerAwareWindowInsets
+import iad1tya.echo.music.constants.NewUiEnabledKey
+import iad1tya.echo.music.ui.newui.NEW_UI_SWITCH_VISIBLE
+import iad1tya.echo.music.utils.rememberPreference
 import iad1tya.echo.music.ui.component.IconButton
 import iad1tya.echo.music.ui.component.Material3SettingsGroup
 import iad1tya.echo.music.ui.component.Material3SettingsItem
@@ -102,6 +108,10 @@ fun SettingsScreen(
     val aboutText = stringResource(R.string.about)
     val updateText = "Aura Hi-Res Update"
     val subscribeText = "Suscripción Pro"
+    // Wording taken verbatim from the reference render — do not paraphrase.
+    val newUiText = "Interfaz nueva"
+    val newUiSubtitle = "Apágala y vuelve a la clásica"
+    val (newUiEnabled, onNewUiEnabledChange) = rememberPreference(NewUiEnabledKey, defaultValue = false)
     val noResultsText = stringResource(R.string.settings_search_no_results, searchQuery)
 
     val scrollState = rememberScrollState()
@@ -348,7 +358,57 @@ fun SettingsScreen(
         } else {
             Material3SettingsGroup(items = finalItemsList)
         }
-        
+
+        // ── "Interfaz nueva" (beta) ──────────────────────────────────────────────────────────────
+        // The single master switch of the redesigned presentation layer, worded exactly as the
+        // reference render. It lives HERE, in the classic settings screen, on purpose: it is the only
+        // way back, so it must stay reachable no matter which UI is showing. Toggling it writes ONE
+        // boolean and nothing else — no database, no playback, no queue, no other preference.
+        // Beta builds only. The redesigned layer ships inert in stable releases so a public update can
+        // never drop a customer into a half-migrated interface: only six of ~95 screens are rebuilt, so
+        // tapping "Buscar" from the new Inicio still lands on the classic design. Gating on the version
+        // name rather than splitting the release keeps ONE codebase and one set of tests behind both
+        // tags — the alternative was hand-separating intertwined files, which is where changes get lost.
+        // Flip this to always-visible when the redesign covers enough of the app to stand on its own.
+        if (NEW_UI_SWITCH_VISIBLE &&
+            (newUiText.lowercase().contains(searchLower) ||
+                newUiSubtitle.lowercase().contains(searchLower))
+        ) {
+            Spacer(modifier = Modifier.height(16.dp))
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = Color(0xFF7A5CFF).copy(alpha = 0.12f)
+                ),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = newUiText,
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Text(
+                            text = newUiSubtitle,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = newUiEnabled,
+                        onCheckedChange = onNewUiEnabledChange,
+                    )
+                }
+            }
+        }
+
         Spacer(modifier = Modifier.height(50.dp))
     }
 

@@ -188,7 +188,6 @@ import iad1tya.echo.music.constants.AudioQualityKey
 import iad1tya.echo.music.constants.CropAlbumArtKey
 import iad1tya.echo.music.constants.DarkModeKey
 import iad1tya.echo.music.constants.HidePlayerThumbnailKey
-import iad1tya.echo.music.constants.HideStatusBarOnFullscreenKey
 import iad1tya.echo.music.constants.EnableLyricsThumbnailPlayPauseKey
 import iad1tya.echo.music.constants.KeepScreenOn
 import iad1tya.echo.music.constants.PlayerBackgroundStyle
@@ -197,9 +196,6 @@ import iad1tya.echo.music.constants.PlayerButtonsStyle
 import iad1tya.echo.music.constants.PlayerButtonsStyleKey
 import iad1tya.echo.music.constants.PlayerHorizontalPadding
 import iad1tya.echo.music.constants.QueuePeekHeight
-import iad1tya.echo.music.constants.SliderStyle
-import iad1tya.echo.music.constants.SliderStyleKey
-import iad1tya.echo.music.constants.SquigglySliderKey
 import iad1tya.echo.music.constants.SwipeLyricsKey
 import iad1tya.echo.music.constants.ThumbnailCornerRadius
 import iad1tya.echo.music.constants.UseNewPlayerDesignKey
@@ -221,10 +217,9 @@ import iad1tya.echo.music.ui.component.CastButton
 import iad1tya.echo.music.ui.component.LocalBottomSheetPageState
 import iad1tya.echo.music.ui.component.LocalMenuState
 import iad1tya.echo.music.ui.component.Lyrics
+import iad1tya.echo.music.ui.component.PlayerProgressSlider
 import iad1tya.echo.music.ui.component.PlayerSliderTrack
 import iad1tya.echo.music.ui.component.ResizableIconButton
-import iad1tya.echo.music.ui.component.SquigglySlider
-import iad1tya.echo.music.ui.component.WavySlider
 import iad1tya.echo.music.ui.component.rememberBottomSheetState
 import iad1tya.echo.music.ui.menu.OldPlayerMenu
 import iad1tya.echo.music.ui.menu.PlayerMenu
@@ -336,7 +331,6 @@ fun BottomSheetPlayer(
     val immersiveCanvasOnRotate by rememberPreference(
         iad1tya.echo.music.constants.ImmersiveCanvasOnRotateKey, false,
     )
-    val spectrumVisualizerEnabled = iad1tya.echo.music.utils.rememberPerfGatedBoolean(iad1tya.echo.music.constants.SpectrumVisualizerEnabledKey, false).value && !deviceThrottle
     val (hidePlayerThumbnail, onHidePlayerThumbnailChange) = rememberPreference(HidePlayerThumbnailKey, false)
     val cropAlbumArt by rememberPreference(CropAlbumArtKey, false)
     val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
@@ -488,12 +482,10 @@ fun BottomSheetPlayer(
         AudioQualityKey,
         defaultValue = AudioQuality.OPUS
     )
-    val sliderStyle by rememberEnumPreference(SliderStyleKey, SliderStyle.DEFAULT)
-    // Perf mode: the squiggly/wavy slider draws a complex animated Path every frame — fall back to the plain
-    // linear slider (rememberPerfGatedBoolean = raw && !perfOn).
-    val squigglySlider by iad1tya.echo.music.utils.rememberPerfGatedBoolean(SquigglySliderKey, false)
-    
-    
+    // The slider style / squiggly preferences are read inside [PlayerProgressSlider] — the one read
+    // site both player shapes share. (Perf mode still degrades the animated wave to the plain slider:
+    // that gate lives with the read, in rememberPerfGatedBoolean.)
+
     val listenTogetherManager = LocalListenTogetherManager.current
     val listenTogetherRoleState = listenTogetherManager?.role?.collectAsState(initial = RoomRole.NONE)
     val isListenTogetherGuest = listenTogetherRoleState?.value == RoomRole.GUEST
@@ -767,60 +759,27 @@ fun BottomSheetPlayer(
         }
     }
 
-    val (textButtonColor, iconButtonColor) = when {
+    // "Estilo de los botones del reproductor" — the derivation moved to [rememberPlayerButtonColors]
+    // (PlayerAppearancePrefs.kt) VERBATIM, so the "Interfaz nueva" transport can reuse the same colours
+    // instead of growing a second copy that drifts. The values produced here are unchanged: the
+    // over-dark condition below is the same list of backgrounds this `when` used to spell out.
+    val playerButtonColors = rememberPlayerButtonColors(
+        style = playerButtonsStyle,
         // Perf mode paints a dark-scrimmed cover background -> use the light (over-dark) button colors.
-        highPerfMode ||
-        isLocalMedia ||
-        playerBackground == PlayerBackgroundStyle.BLUR ||
-        playerBackground == PlayerBackgroundStyle.GRADIENT ||
-        playerBackground == PlayerBackgroundStyle.GLOW_ANIMATED ||
-        playerBackground == PlayerBackgroundStyle.APPLE_MUSIC ||
-        playerBackground == PlayerBackgroundStyle.LIVE_MESH ||
-        playerBackground == PlayerBackgroundStyle.LIQUID_GLASS -> {
-            when (playerButtonsStyle) {
-                PlayerButtonsStyle.DEFAULT -> Pair(Color.White, Color.Black)
-                PlayerButtonsStyle.PRIMARY -> Pair(
-                    MaterialTheme.colorScheme.primary,
-                    MaterialTheme.colorScheme.onPrimary
-                )
-                PlayerButtonsStyle.TERTIARY -> Pair(
-                    MaterialTheme.colorScheme.tertiary,
-                    MaterialTheme.colorScheme.onTertiary
-                )
-            }
-        }
-        else -> {
-            when (playerButtonsStyle) {
-                PlayerButtonsStyle.DEFAULT ->
-                    if (useDarkTheme) Pair(Color.White, Color.Black)
-                    else Pair(Color.Black, Color.White)
-                PlayerButtonsStyle.PRIMARY -> Pair(
-                    MaterialTheme.colorScheme.primary,
-                    MaterialTheme.colorScheme.onPrimary
-                )
-                PlayerButtonsStyle.TERTIARY -> Pair(
-                    MaterialTheme.colorScheme.tertiary,
-                    MaterialTheme.colorScheme.onTertiary
-                )
-            }
-        }
-    }
-
-    
-    val (sideButtonContainerColor, sideButtonContentColor) = when (playerButtonsStyle) {
-        PlayerButtonsStyle.DEFAULT -> Pair(
-            Color.White.copy(alpha = 0.2f),
-            Color.White
-        )
-        PlayerButtonsStyle.PRIMARY -> Pair(
-            MaterialTheme.colorScheme.primaryContainer,
-            MaterialTheme.colorScheme.onPrimaryContainer
-        )
-        PlayerButtonsStyle.TERTIARY -> Pair(
-            MaterialTheme.colorScheme.tertiaryContainer,
-            MaterialTheme.colorScheme.onTertiaryContainer
-        )
-    }
+        overDarkBackground = highPerfMode ||
+            isLocalMedia ||
+            playerBackground == PlayerBackgroundStyle.BLUR ||
+            playerBackground == PlayerBackgroundStyle.GRADIENT ||
+            playerBackground == PlayerBackgroundStyle.GLOW_ANIMATED ||
+            playerBackground == PlayerBackgroundStyle.APPLE_MUSIC ||
+            playerBackground == PlayerBackgroundStyle.LIVE_MESH ||
+            playerBackground == PlayerBackgroundStyle.LIQUID_GLASS,
+        useDarkTheme = useDarkTheme,
+    )
+    val textButtonColor = playerButtonColors.textButtonColor
+    val iconButtonColor = playerButtonColors.iconButtonColor
+    val sideButtonContainerColor = playerButtonColors.sideButtonContainerColor
+    val sideButtonContentColor = playerButtonColors.sideButtonContentColor
 
     val download by LocalDownloadUtil.current.getDownload(mediaMetadata?.id ?: "")
         .collectAsState(initial = null)
@@ -958,27 +917,10 @@ fun BottomSheetPlayer(
     // while composed and resets it to true on dispose (non-immersive layouts always see true).
     var immersiveControlsVisible by remember { mutableStateOf(true) }
 
-    val hideStatusBarOnFullscreen by rememberPreference(HideStatusBarOnFullscreenKey, defaultValue = true)
-
-    DisposableEffect(isFullScreen, hideStatusBarOnFullscreen) {
-        val window = (context as? android.app.Activity)?.window
-        if (window != null) {
-            val insetsController = WindowCompat.getInsetsController(window, window.decorView)
-            if (isFullScreen && hideStatusBarOnFullscreen) {
-                insetsController.hide(WindowInsetsCompat.Type.statusBars())
-                insetsController.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-            } else {
-                insetsController.show(WindowInsetsCompat.Type.statusBars())
-            }
-        }
-        
-        onDispose {
-            if (window != null) {
-                val insetsController = WindowCompat.getInsetsController(window, window.decorView)
-                insetsController.show(WindowInsetsCompat.Type.statusBars())
-            }
-        }
-    }
+    // "Ocultar la barra de estado en pantalla completa" — the effect moved to
+    // [HideStatusBarOnFullscreenEffect] (PlayerAppearancePrefs.kt) unchanged, so the "Interfaz nueva"
+    // player's own fullscreen lyrics mode obeys the same switch instead of ignoring it.
+    HideStatusBarOnFullscreenEffect(isFullScreen = isFullScreen)
 
     
     
@@ -1898,6 +1840,24 @@ fun BottomSheetPlayer(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .fillMaxWidth()
+                    // "Deslizar en la letra para cambiar de canción" (SwipeLyricsKey). The switch has
+                    // existed for releases, was read once at the top of this file and then NEVER used —
+                    // dead in the classic player too. This is the gesture its own description promises:
+                    // swipe the artist/title block while the lyrics are full screen to change track.
+                    .swipeLyricsToChangeSong(
+                        // Same four-term gate the new player uses, one definition
+                        // (PlayerAppearancePrefs.kt). `lyricsVisible = true` because in THIS shape
+                        // `isFullScreen` is only ever set from the lyrics UI (Player.kt:1640/1770), so it
+                        // already implies the lyrics are up — the expression is unchanged.
+                        enabled = swipeLyricsGestureArmed(
+                            swipeLyricsEnabled = swipeLyrics,
+                            lyricsVisible = true,
+                            lyricsFullScreen = isFullScreen,
+                            isListenTogetherGuest = isListenTogetherGuest,
+                        ),
+                        onPrevious = { if (canSkipPrevious) playerConnection.seekToPrevious() },
+                        onNext = { if (canSkipNext) playerConnection.seekToNext() },
+                    )
                     .padding(horizontal = PlayerHorizontalPadding),
             ) {
                 Column(modifier = Modifier.weight(1f)) {
@@ -2127,171 +2087,39 @@ fun BottomSheetPlayer(
             // Tighter gap so the title sits lower, closer to the progress bar (one-handed reach).
             Spacer(Modifier.height(8.dp))
 
-            if (spectrumVisualizerEnabled) {
-                iad1tya.echo.music.ui.component.SpectrumVisualizer(
-                    color = textButtonColor,
-                    modifier = Modifier.padding(horizontal = PlayerHorizontalPadding),
-                )
-                Spacer(Modifier.height(8.dp))
-            }
-
-            when (sliderStyle) {
-                SliderStyle.DEFAULT -> {
-                    Slider(
-                        value = (sliderPosition ?: effectivePosition).toFloat(),
-                        valueRange = 0f..(if (duration == C.TIME_UNSET) 0f else duration.toFloat()),
-                        onValueChange = {
-                            if (!isListenTogetherGuest) {
-                                sliderPosition = it.toLong()
-                            }
-                        },
-                        onValueChangeFinished = {
-                            if (!isListenTogetherGuest) {
-                                sliderPosition?.let {
-                                    if (isCasting) {
-                                        castHandler?.seekTo(it)
-                                        lastManualSeekTime = System.currentTimeMillis()
-                                    } else {
-                                        playerConnection.player.seekTo(it)
-                                    }
-                                    position = it
-                                }
-                                sliderPosition = null
-                            }
-                        },
-                        enabled = !isListenTogetherGuest,
-                        colors = PlayerSliderColors.getSliderColors(
-                            activeColor = if (useNewPlayerDesign) textButtonColor else textButtonColor.copy(alpha = 0.7f),
-                            playerBackground = playerBackground,
-                            useDarkTheme = useDarkTheme
-                        ),
-                        modifier = Modifier
-                            .padding(horizontal = PlayerHorizontalPadding)
-                            // TV/car: visible D-pad focus ring around the timeline (Material's Slider shows no
-                            // focus affordance on a remote). D-pad left/right seeks once focused. No-op off-TV.
-                            .tvFocusable(isTvOrCar, RoundedCornerShape(12.dp)),
-                    )
-                }
-
-                SliderStyle.WAVY -> {
-                    if (squigglySlider) {
-                        SquigglySlider(
-                            value = (sliderPosition ?: effectivePosition).toFloat(),
-                            valueRange = 0f..(if (duration == C.TIME_UNSET) 0f else duration.toFloat()),
-                            onValueChange = {
-                                sliderPosition = it.toLong()
-                            },
-                            onValueChangeFinished = {
-                                sliderPosition?.let {
-                                    if (isCasting) {
-                                        castHandler?.seekTo(it)
-                                        lastManualSeekTime = System.currentTimeMillis()
-                                    } else {
-                                        playerConnection.player.seekTo(it)
-                                    }
-                                    position = it
-                                }
-                                sliderPosition = null
-                            },
-                            modifier = Modifier
-                                .padding(horizontal = PlayerHorizontalPadding)
-                                .tvFocusable(isTvOrCar, RoundedCornerShape(12.dp)),
-                            colors = PlayerSliderColors.getSliderColors(
-                                activeColor = if (useNewPlayerDesign) textButtonColor else textButtonColor.copy(alpha = 0.7f),
-                                playerBackground = playerBackground,
-                                useDarkTheme = useDarkTheme
-                            ),
-                            isPlaying = effectiveIsPlaying,
-                        )
-                    } else {
-                        WavySlider(
-                            value = (sliderPosition ?: effectivePosition).toFloat(),
-                            valueRange = 0f..(if (duration == C.TIME_UNSET) 0f else duration.toFloat()),
-                            onValueChange = {
-                                sliderPosition = it.toLong()
-                            },
-                            onValueChangeFinished = {
-                                sliderPosition?.let {
-                                    if (isCasting) {
-                                        castHandler?.seekTo(it)
-                                        lastManualSeekTime = System.currentTimeMillis()
-                                    } else {
-                                        playerConnection.player.seekTo(it)
-                                    }
-                                    position = it
-                                }
-                                sliderPosition = null
-                            },
-                            colors = PlayerSliderColors.getSliderColors(
-                                activeColor = if (useNewPlayerDesign) textButtonColor else textButtonColor.copy(alpha = 0.7f),
-                                playerBackground = playerBackground,
-                                useDarkTheme = useDarkTheme
-                            ),
-                            modifier = Modifier
-                                .padding(horizontal = PlayerHorizontalPadding)
-                                .tvFocusable(isTvOrCar, RoundedCornerShape(12.dp)),
-                            isPlaying = effectiveIsPlaying
-                        )
+            // The four styles live in ONE place now — [PlayerProgressSlider] is the single read site of
+            // SliderStyleKey/SquigglySliderKey, so the classic player and the "Interfaz nueva" player
+            // cannot disagree about what the setting does.
+            PlayerProgressSlider(
+                value = (sliderPosition ?: effectivePosition).toFloat(),
+                valueRange = 0f..(if (duration == C.TIME_UNSET) 0f else duration.toFloat()),
+                onValueChange = { sliderPosition = it.toLong() },
+                onValueChangeFinished = {
+                    sliderPosition?.let {
+                        if (isCasting) {
+                            castHandler?.seekTo(it)
+                            lastManualSeekTime = System.currentTimeMillis()
+                        } else {
+                            playerConnection.player.seekTo(it)
+                        }
+                        position = it
                     }
-                }
-
-                SliderStyle.SLIM -> {
-                    val trackInteractionSource = remember { MutableInteractionSource() }
-                    val isTrackDragged by trackInteractionSource.collectIsDraggedAsState()
-                    val isTrackPressed by trackInteractionSource.collectIsPressedAsState()
-                    val isTrackActive = (isTrackDragged || isTrackPressed) && !useNewPlayerDesign
-
-                    val trackHeight by animateDpAsState(
-                        targetValue = if (isTrackActive) 16.dp else 10.dp,
-                        animationSpec = spring(
-                            dampingRatio = Spring.DampingRatioMediumBouncy,
-                            stiffness = Spring.StiffnessMedium
-                        ),
-                        label = "trackHeight"
-                    )
-
-                    Slider(
-                        value = (sliderPosition ?: effectivePosition).toFloat(),
-                        valueRange = 0f..(if (duration == C.TIME_UNSET) 0f else duration.toFloat()),
-                        onValueChange = {
-                            if (!isListenTogetherGuest) {
-                                sliderPosition = it.toLong()
-                            }
-                        },
-                        onValueChangeFinished = {
-                            if (!isListenTogetherGuest) {
-                                sliderPosition?.let {
-                                    if (isCasting) {
-                                        castHandler?.seekTo(it)
-                                        lastManualSeekTime = System.currentTimeMillis()
-                                    } else {
-                                        playerConnection.player.seekTo(it)
-                                    }
-                                    position = it
-                                }
-                                sliderPosition = null
-                            }
-                        },
-                        enabled = !isListenTogetherGuest,
-                        interactionSource = trackInteractionSource,
-                        thumb = { Spacer(modifier = Modifier.size(0.dp)) },
-                        track = { sliderState ->
-                            PlayerSliderTrack(
-                                sliderState = sliderState,
-                                trackHeight = trackHeight,
-                                colors = PlayerSliderColors.getSliderColors(
-                                    activeColor = if (useNewPlayerDesign) textButtonColor else textButtonColor.copy(alpha = 0.7f),
-                                    playerBackground = playerBackground,
-                                    useDarkTheme = useDarkTheme
-                                )
-                            )
-                        },
-                        modifier = Modifier
-                            .padding(horizontal = PlayerHorizontalPadding)
-                            .tvFocusable(isTvOrCar, RoundedCornerShape(12.dp))
-                    )
-                }
-            }
+                    sliderPosition = null
+                },
+                enabled = !isListenTogetherGuest,
+                colors = PlayerSliderColors.getSliderColors(
+                    activeColor = if (useNewPlayerDesign) textButtonColor else textButtonColor.copy(alpha = 0.7f),
+                    playerBackground = playerBackground,
+                    useDarkTheme = useDarkTheme
+                ),
+                isPlaying = effectiveIsPlaying,
+                slimTrackGrowsOnDrag = !useNewPlayerDesign,
+                modifier = Modifier
+                    .padding(horizontal = PlayerHorizontalPadding)
+                    // TV/car: visible D-pad focus ring around the timeline (Material's Slider shows no
+                    // focus affordance on a remote). D-pad left/right seeks once focused. No-op off-TV.
+                    .tvFocusable(isTvOrCar, RoundedCornerShape(12.dp)),
+            )
             Spacer(Modifier.height(4.dp))
 
             Row(
@@ -2737,7 +2565,7 @@ fun BottomSheetPlayer(
 
                         }
 
-                        if (!hidePlayerSlider) {
+                        if (showPlayerVolumeControl(hidePlayerSlider)) {
                             Spacer(modifier = Modifier.height(8.dp)) 
 
                             Row(

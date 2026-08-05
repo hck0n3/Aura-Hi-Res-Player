@@ -59,6 +59,11 @@ jobs:
       - name: Build universal GMS debug APK
         # Universal (all ABIs) so the test APK installs on EVERY device — phones, Android TV, car head
         # units and older 32-bit / x86 boxes — for verifying High-Performance Mode across form factors.
+        env:
+          # Debug builds are signed with the Android debug certificate, so the licence is embedded
+          # UNBOUND here on purpose — binding it would leave every test build without an EQ. Without
+          # the secret the test APK simply has no DSP engine and reports it on the EQ screen.
+          SUPERPOWERED_LICENSE_KEY: ${{ secrets.SUPERPOWERED_LICENSE_KEY }}
         run: ./gradlew assembleUniversalGmsDebug --console=plain
 
       - name: Rename APK

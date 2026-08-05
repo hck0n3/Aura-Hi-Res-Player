@@ -75,6 +75,11 @@ jobs:
           KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD || 'jrmusicpro' }}
           LASTFM_API_KEY: ${{ secrets.LASTFM_API_KEY }}
           LASTFM_SECRET: ${{ secrets.LASTFM_SECRET }}
+          # Paid Superpowered licence. Never in source. Release builds embed it XORed with the SHA-256
+          # of the certificate that signs THIS build, so only an APK signed with our keystore can undo
+          # it. When the secret is missing the build still succeeds — the shipped app simply has no DSP
+          # engine and says so on the EQ screen (Gradle logs a warning).
+          SUPERPOWERED_LICENSE_KEY: ${{ secrets.SUPERPOWERED_LICENSE_KEY }}
         run: ./gradlew assembleUniversalGmsRelease
 
       - name: Rename and Organize APKs
@@ -166,6 +171,7 @@ jobs:
           KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD || 'jrmusicpro' }}
           LASTFM_API_KEY: ${{ secrets.LASTFM_API_KEY }}
           LASTFM_SECRET: ${{ secrets.LASTFM_SECRET }}
+          SUPERPOWERED_LICENSE_KEY: ${{ secrets.SUPERPOWERED_LICENSE_KEY }}
         run: |
           rm -f app/google-services.json
           ./gradlew assembleArm64FossRelease -Pnosub=true

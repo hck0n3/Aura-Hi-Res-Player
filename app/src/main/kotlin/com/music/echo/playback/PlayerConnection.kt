@@ -162,6 +162,15 @@ class PlayerConnection(
     val videoMode = service.videoMode
     val videoUrl = service.videoUrl
     val mixActive = service.mixActive
+
+    /**
+     * Timeline boundary between the user's own list and the infinite radio: a queue window whose
+     * `firstPeriodIndex` is `< listQueueSize` came from the list he started, anything at or after it was
+     * appended by the radio. `0` means "no list context" (a radio/mix queue, or an externally adopted
+     * one) — treat the whole queue as one block then. Read-only mirror of MusicService.listQueueSize.
+     */
+    val listQueueSize = service.listQueueSize
+
     // True only while a crossfade swap is in progress (backed by MusicService's MutableStateFlow). The UI
     // reads this to react to the swap (e.g. suppress the spurious null-item transition the fading player fires).
     val isCrossfading: kotlinx.coroutines.flow.StateFlow<Boolean> = service.isCrossfadingFlow

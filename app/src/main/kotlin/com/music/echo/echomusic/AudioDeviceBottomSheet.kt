@@ -24,8 +24,6 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animate
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
@@ -41,7 +39,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.runtime.key
 import iad1tya.echo.music.echomusic.shapes.RoundedStarShape
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -90,14 +87,11 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.ToggleButton
 import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.rememberModalBottomSheetState
-import androidx.compose.material3.rememberSliderState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -105,7 +99,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -130,8 +123,6 @@ import iad1tya.echo.music.LocalPlayerConnection
 import iad1tya.echo.music.constants.AudioQuality
 import iad1tya.echo.music.constants.AudioQualityKey
 import iad1tya.echo.music.utils.rememberEnumPreference
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.launch
 
 data class AudioDevice(
     val name: String,
@@ -556,7 +547,7 @@ fun AudioDeviceBottomSheet(onDismiss: () -> Unit, modifier: Modifier = Modifier)
 
                     Spacer(modifier = Modifier.height(24.dp))
 
-                    AudioQualitySelector(context)
+                    AudioQualitySelector()
 
                     Spacer(modifier = Modifier.height(24.dp))
                     
@@ -628,48 +619,15 @@ fun VolumeControlRow(
     onDragEnd: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
-    val coroutineScope = rememberCoroutineScope()
-    val sliderState = rememberSliderState(
-        valueRange = 0f..maxVolume.toFloat(),
-    )
-
-    val snapAnimationSpec = MaterialTheme.motionScheme.fastEffectsSpec<Float>()
+    // The volume fill is driven entirely by currentValue + the tap/drag pointerInput below; there is no
+    // Material Slider here. A fully wired rememberSliderState (with a snap animation) used to live here and
+    // was never passed to anything — removed as dead code.
     var currentValue by rememberSaveable { mutableFloatStateOf(volume) }
-    var animateJob: Job? by remember { mutableStateOf(null) }
 
     LaunchedEffect(volume) {
-        if (!sliderState.isDragging) {
-            currentValue = volume
-            sliderState.value = volume
-        }
+        currentValue = volume
     }
 
-    sliderState.onValueChange = { newValue ->
-        currentValue = newValue
-        if (sliderState.isDragging) {
-            onDragStart()
-            animateJob?.cancel()
-            sliderState.value = newValue
-            onVolumeChange(newValue)
-        }
-    }
-
-    sliderState.onValueChangeFinished = {
-        animateJob = coroutineScope.launch {
-            animate(
-                initialValue = sliderState.value,
-                targetValue = currentValue,
-                animationSpec = snapAnimationSpec
-            ) { value, _ ->
-                sliderState.value = value
-            }
-        }
-        onDragEnd()
-    }
-
-    val interactionSource = remember { MutableInteractionSource() }
-
-    
     Surface(
         modifier = modifier
             .fillMaxWidth()
@@ -768,7 +726,7 @@ fun VolumeControlRow(
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-fun AudioQualitySelector(context: Context) {
+fun AudioQualitySelector() {
     val (audioQuality, onAudioQualityChange) = rememberEnumPreference(
         key = AudioQualityKey,
         defaultValue = AudioQuality.OPUS
@@ -815,7 +773,6 @@ fun AudioQualitySelector(context: Context) {
                             else -> AudioQuality.OPUS
                         }
                         onAudioQualityChange(newQuality)
-                        applyAudioQuality(context, newQuality)
                     },
                     shapes = when (index) {
                         0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
@@ -907,11 +864,6 @@ fun DownloadQualitySelector() {
     }
 }
 
-
-
-fun applyAudioQuality(context: Context, quality: AudioQuality) {
-    
-}
 
 private fun loadDevices(
     context: Context,

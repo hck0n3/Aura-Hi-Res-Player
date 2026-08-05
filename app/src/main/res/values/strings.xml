@@ -181,6 +181,15 @@
     <string name="hide_status_bar_on_fullscreen">Hide status bar on fullscreen</string>
     <string name="hide_status_bar_on_fullscreen_desc">Hide the status bar when lyrics fullscreen mode is active</string>
 
+    <!-- The legacy preference key is "hidePlayerSlider", but it has never hidden the timeline: it hides
+         the player's VOLUME control. The label states what the switch actually does. -->
+    <string name="hide_player_volume">Hide volume control</string>
+    <string name="hide_player_volume_desc">Hides the volume control in the player</string>
+    <string name="apple_music_inspired">Apple Music inspired</string>
+    <string name="apple_music_inspired_desc">Use the Apple Music-style player layout</string>
+    <string name="apple_music_inspired_desc_new_ui">With the new interface on, this only changes the landscape, tablet/TV and video player</string>
+    <string name="player_background_style_desc_new_ui">With the new interface on, this only applies to the landscape, tablet/TV and video player: the new portrait player keeps its own ambient background</string>
+
     <string name="edit_lyrics">Edit lyrics</string>
     <string name="search_lyrics">Search lyrics</string>
     <string name="lyrics_swipe_to_change_song">Swipe to change song</string>

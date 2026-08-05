@@ -110,11 +110,8 @@ fun ListenTogetherSettings(
     
     var showServerUrlDialog by rememberSaveable { mutableStateOf(false) }
     var showUsernameDialog by rememberSaveable { mutableStateOf(false) }
-    var showCreateRoomDialog by rememberSaveable { mutableStateOf(false) }
-    var showJoinRoomDialog by rememberSaveable { mutableStateOf(false) }
     var showLogsDialog by rememberSaveable { mutableStateOf(false) }
     var showBlockedUsersDialog by rememberSaveable { mutableStateOf(false) }
-    var roomCodeInput by rememberSaveable { mutableStateOf("") }
     
     
     LaunchedEffect(Unit) {
@@ -200,114 +197,12 @@ fun ListenTogetherSettings(
         }
     }
     
-    if (showCreateRoomDialog) {
-        var createUsername by rememberSaveable(showCreateRoomDialog) { mutableStateOf(username) }
+    // The "Crear sala" / "Unirse a la sala" dialogs used to live here, guarded by
+    // showCreateRoomDialog / showJoinRoomDialog — two flags that were declared and read but never
+    // set to true by anything, so neither dialog could ever open from this screen. The feature
+    // itself is NOT lost: the live create/join flows are in ListenTogetherScreen.kt (:388/:407) and
+    // PlayerMenu.kt (:2050/:2087). Removed as unreachable duplicates.
 
-        DefaultDialog(
-            onDismiss = { showCreateRoomDialog = false },
-            icon = { Icon(painterResource(R.drawable.add), contentDescription = null) },
-            title = { Text(stringResource(R.string.listen_together_create_room)) },
-            buttons = {
-                TextButton(onClick = { showCreateRoomDialog = false }) {
-                    Text(stringResource(android.R.string.cancel))
-                }
-                Spacer(modifier = Modifier.width(8.dp))
-                Button(
-                    onClick = {
-                        val finalUsername = createUsername.trim()
-                        if (finalUsername.isNotBlank()) {
-                            username = finalUsername
-                            viewModel.createRoom(finalUsername)
-                            showCreateRoomDialog = false
-                        } else {
-                            Toast.makeText(context, R.string.error_username_empty, Toast.LENGTH_SHORT).show()
-                        }
-                    },
-                    enabled = createUsername.trim().isNotBlank()
-                ) {
-                    Text(stringResource(R.string.create))
-                }
-            }
-        ) {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Text(
-                    text = stringResource(R.string.listen_together_create_room_desc),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                OutlinedTextField(
-                    value = createUsername,
-                    onValueChange = { createUsername = it },
-                    label = { Text(stringResource(R.string.listen_together_username)) },
-                    leadingIcon = {
-                        Icon(painterResource(R.drawable.person), contentDescription = null)
-                    },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-        }
-    }
-    
-    if (showJoinRoomDialog) {
-        var joinUsername by rememberSaveable(showJoinRoomDialog) { mutableStateOf(username) }
-
-        DefaultDialog(
-            onDismiss = { showJoinRoomDialog = false },
-            icon = { Icon(painterResource(R.drawable.group_add), contentDescription = null) },
-            title = { Text(stringResource(R.string.listen_together_join_room)) },
-            buttons = {
-                TextButton(onClick = { showJoinRoomDialog = false }) {
-                    Text(stringResource(android.R.string.cancel))
-                }
-                Spacer(modifier = Modifier.width(8.dp))
-                Button(
-                    onClick = {
-                        val finalUsername = joinUsername.trim()
-                        if (finalUsername.isNotBlank() && roomCodeInput.length == 8) {
-                            username = finalUsername
-                            viewModel.joinRoom(roomCodeInput, finalUsername)
-                            showJoinRoomDialog = false
-                            roomCodeInput = ""
-                        } else {
-                            Toast.makeText(context, R.string.error_username_empty, Toast.LENGTH_SHORT).show()
-                        }
-                    },
-                    enabled = joinUsername.trim().isNotBlank() && roomCodeInput.length == 8
-                ) {
-                    Text(stringResource(R.string.join))
-                }
-            }
-        ) {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                OutlinedTextField(
-                    value = joinUsername,
-                    onValueChange = { joinUsername = it },
-                    label = { Text(stringResource(R.string.listen_together_username)) },
-                    leadingIcon = {
-                        Icon(painterResource(R.drawable.person), contentDescription = null)
-                    },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = roomCodeInput,
-                    onValueChange = { roomCodeInput = it.uppercase().filter { c -> c.isLetterOrDigit() }.take(8) },
-                    label = { Text(stringResource(R.string.listen_together_room_code)) },
-                    leadingIcon = {
-                        Icon(painterResource(R.drawable.key), contentDescription = null)
-                    },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-        }
-    }
-    
     if (showLogsDialog) {
         LogsDialog(
             logs = logs,
@@ -675,8 +570,6 @@ private fun ServerChooserDialog(
 
 @Composable
 fun LogEntryItem(log: LogEntry) {
-    val context = LocalContext.current
-
     Column(
         modifier = Modifier
             .fillMaxWidth()

@@ -1,26 +1,24 @@
-# Aura Hi-Res Player 0.6.143-beta1
+# Aura Hi-Res Player 0.6.143
 
-Beta **privada**. Trae todo lo de 0.6.142 más las dos cosas que hay que ver en pantalla antes de publicarlas: el **icono nuevo** y el **tema Muestreo**.
-
----
-
-## 🎨 Icono nuevo: Muestreo
-- El anterior era un **disco de vinilo**. A 40 píxeles los surcos se fundían en una mancha y quedaba un círculo negro; en monocromo —el que Android 13+ usa para los iconos temáticos— era literalmente **un punto**. El detalle que lo hacía un vinilo solo existía al tamaño en el que nadie lo mira.
-- El nuevo lleva **las dos mitades del nombre**: la curva tenue es el **aura**, y los puntos son las **muestras** — su densidad *es* la resolución.
-- Comprobado a los tres tamaños que importan: 128 px, los 40 px reales del lanzador, y monocromo.
-- **Qué mirar**: cómo se ve en tu pantalla de inicio entre los demás iconos, y con el tema oscuro del sistema activado.
-
-## 🌈 Tema Muestreo
-- Mismas tonalidades del icono: turquesa, azul y violeta sobre un negro con sesgo azul — **no negro puro**, que es lo que hace que se sienta caro y no apagado.
-- Es **un tema más de la lista**: no cambia nada hasta que lo elijas, y se vuelve atrás sin dejar rastro.
-- **Qué mirar**: si se siente premium de verdad, y si en tema claro se lee bien.
+Versión de limpieza y protección. No trae funciones nuevas: **quita lo que aparentaba funcionar y no hacía nada**, y **protege el motor de audio**. Se auditó la app entera —1.718 controles en unas 95 pantallas, uno a uno contra el código— y de ahí salió todo lo de abajo.
 
 ---
 
-## ⚠️ Solo para esta beta
-- **No cierres sesión y entres con otra cuenta de Google mientras pruebas.** Esa ruta se acaba de cerrar en 0.6.142 y prefiero que no la pises hasta que la hayas actualizado.
+## 🧹 Fuera lo que mentía
+- **El visualizador de espectro no dibujaba nada.** Su código era un contenedor vacío, y venía **activado por defecto** en todos los móviles decentes, sin interruptor para apagarlo.
+- **Cuatro archivos de componentes sin un solo uso** en toda la app: 920 líneas entre primitivas de ajustes, una barra de búsqueda, una barra de navegación y componentes de menú.
+- **22 claves de configuración fantasma**: ni control que las escribiera, ni código que las leyera.
+- **Seis pantallas inalcanzables y tres rutas muertas.** Una de ellas, de 402 líneas, apuntaba al repositorio del proyecto del que Aura partió.
+- **Diálogos que nada podía abrir** y una **entrada fantasma en el buscador de ajustes**: buscabas "enviar me gusta", te lo ofrecía, navegabas, y no existía.
+- **1.717 líneas eliminadas en total, y ni una sola función perdida** — verificado control por control por un revisor independiente, que encontró de paso cuatro filas más de las declaradas.
 
-## 🔊 Y lo importante que ya va dentro (de 0.6.142)
-- El **ecualizador, el Volumen Seguro y todo el procesado no se estaban aplicando** en alta resolución. Ahora sí. Pon un archivo de 24 bits con el ecualizador puesto — y ojo, **el Volumen Seguro actúa ahí por primera vez**, así que puede sonar a un nivel distinto al que estabas acostumbrado.
-- El **aleatorio** deja de poner al mismo artista seguido.
-- **Escuchar Juntos** vuelve a ir sincronizado: el invitado ya no aparece una canción por delante, el volumen se sigue, y no se desincronizan al cambiar de tema.
+## 🔒 El motor de audio, protegido
+- **La clave de licencia ya no está en el código fuente.** Se inyecta al compilar desde un secreto; quien clone el repositorio obtiene un valor vacío y una app sin motor.
+- **Y va atada al certificado de firma.** Un clon repackado y firmado con otro certificado reconstruye un valor inválido y se queda sin motor; el original sigue.
+- **Con red de seguridad**: si algo falla, la música **sigue sonando intacta**, sin ecualizador, con aviso claro en pantalla y una línea en el registro. Nunca muda, nunca distorsionada.
+- **Si el motor se detecta degradado**, ahora se libera y el audio se enruta por fuera, en vez de seguir alimentando un motor probadamente inerte.
+
+## 🩹 Arreglos
+- Restaurado el acceso al **Ecualizador desde el buscador de ajustes**.
+- Corregida la etiqueta de **"ocultar control de volumen"**, que decía otra cosa de la que hacía.
+- Los cuatro estilos de barra de progreso ahora viven en **una sola implementación** compartida — y el estado "deshabilitado" se aplica por igual en todos, así que un invitado en Escuchar Juntos ya no puede arrastrar la línea de tiempo en unos estilos y en otros no.

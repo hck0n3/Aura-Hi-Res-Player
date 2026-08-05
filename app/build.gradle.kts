@@ -1,5 +1,9 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.util.Properties
+import java.util.Base64
+import java.util.Collections
+import java.security.KeyStore
+import java.security.MessageDigest
 import java.net.URL
 
 val localProperties = Properties()
@@ -21,6 +25,171 @@ val hasGoogleServicesConfig = file("google-services.json").exists()
 if (hasGoogleServicesConfig) {
     apply(plugin = "com.google.gms.google-services")
     apply(plugin = "com.google.firebase.crashlytics")
+}
+
+// ---------------------------------------------------------------------------------------------
+// SUPERPOWERED COMMERCIAL LICENCE KEY
+//
+// Unlike the Last.fm / Tidal / Qobuz values above, this one is a real, paid, per-application
+// credential. Superpowered's agreement lets them disable a key they see used by applications with
+// no contract — "with or without notice" — and a disabled key does not fail loudly: the engine
+// still initializes and still runs, it just quietly stops altering audio. A key pasted into a
+// public repository is therefore a single point of failure for EVERY paying customer at once.
+//
+// So it is NEVER in source. It comes from local.properties (owner's machine) or the
+// SUPERPOWERED_LICENSE_KEY environment variable (CI repository secret). A clone gets "" and, at
+// runtime, an EQ that is cleanly reported as unavailable instead of a silent placebo.
+// ---------------------------------------------------------------------------------------------
+val superpoweredLicenseKey: String = run {
+    val raw = localProperties.getProperty("SUPERPOWERED_LICENSE_KEY")?.takeIf { it.isNotBlank() }
+        ?: System.getenv("SUPERPOWERED_LICENSE_KEY")?.takeIf { it.isNotBlank() }
+        ?: ""
+    val trimmed = raw.trim()
+    // Every Superpowered key is Base64 text. Reject anything that could not survive being written
+    // into a generated Java string literal (or reconstructed byte-for-byte at runtime) rather than
+    // emitting a BuildConfig that does not compile, or one that compiles into the wrong key.
+    if (trimmed.isNotEmpty() && trimmed.any { it.code !in 0x21..0x7E || it == '"' || it == '\\' }) {
+        logger.warn(
+            "SUPERPOWERED: the configured licence key contains characters outside printable ASCII " +
+                "(or a quote/backslash) and was IGNORED. Expected the Base64 key Superpowered issued.",
+        )
+        ""
+    } else {
+        trimmed
+    }
+}
+
+/**
+ * SHA-256 (hex, lowercase) of the DER-encoded certificate that will sign RELEASE builds, or null
+ * when it cannot be determined at build time.
+ *
+ * This is the ground truth for the runtime binding: the same bytes Android hands back from
+ * `PackageInfo.signingInfo.apkContentsSigners[i].toByteArray()` (see `ApkSignatureVerifier`).
+ * Read straight from the keystore that the release signingConfig points at, so it automatically
+ * follows whatever key actually signs the build (including the workflow's fallback CI keystore).
+ * `SUPERPOWERED_CERT_SHA256` is a manual override for setups where the keystore is not readable
+ * during the build.
+ */
+val releaseSigningCertSha256: String? = run {
+    val fromKeystore: String? = runCatching {
+        val storeFile = file("keystore/release.keystore")
+        if (!storeFile.exists()) return@runCatching null
+        val storePassword = (System.getenv("STORE_PASSWORD")
+            ?: localProperties.getProperty("STORE_PASSWORD"))?.takeIf { it.isNotBlank() }
+            ?: return@runCatching null
+        val preferredAlias = (System.getenv("KEY_ALIAS")
+            ?: localProperties.getProperty("KEY_ALIAS"))?.takeIf { it.isNotBlank() }
+        // JDK 9+ writes PKCS12 by default but older release keystores are JKS; try both.
+        var digest: String? = null
+        for (type in listOf("PKCS12", "JKS")) {
+            digest = runCatching {
+                val ks = KeyStore.getInstance(type)
+                storeFile.inputStream().use { ks.load(it, storePassword.toCharArray()) }
+                val aliases = Collections.list(ks.aliases())
+                val alias = preferredAlias?.takeIf { ks.containsAlias(it) && ks.getCertificate(it) != null }
+                    ?: aliases.firstOrNull { ks.getCertificate(it) != null }
+                    ?: return@runCatching null
+                val der = ks.getCertificate(alias)?.encoded ?: return@runCatching null
+                MessageDigest.getInstance("SHA-256").digest(der)
+                    .joinToString("") { b -> "%02x".format(b) }
+            }.getOrNull()
+            if (digest != null) break
+        }
+        digest
+    }.getOrNull()
+
+    fromKeystore
+        ?: (localProperties.getProperty("SUPERPOWERED_CERT_SHA256") ?: System.getenv("SUPERPOWERED_CERT_SHA256"))
+            ?.replace(":", "")?.replace(" ", "")?.trim()?.lowercase()
+            ?.takeIf { hex -> hex.length == 64 && hex.all { it in "0123456789abcdef" } }
+}
+
+/**
+ * XOR the licence key with a keystream derived from the signing certificate's SHA-256.
+ *
+ * MUST stay byte-for-byte identical to `SuperpoweredLicense.keystream` in
+ * `eq/audio/SuperpoweredLicense.kt` — that function is the only thing that can undo this.
+ */
+fun superpoweredBind(keyBytes: ByteArray, certDigest: ByteArray): ByteArray {
+    val out = ByteArray(keyBytes.size)
+    var offset = 0
+    var counter = 0
+    while (offset < keyBytes.size) {
+        val md = MessageDigest.getInstance("SHA-256")
+        md.update("aura-sp-v1".toByteArray(Charsets.UTF_8))
+        md.update(certDigest)
+        md.update(
+            byteArrayOf(
+                (counter ushr 24).toByte(),
+                (counter ushr 16).toByte(),
+                (counter ushr 8).toByte(),
+                counter.toByte(),
+            ),
+        )
+        val block = md.digest()
+        var i = 0
+        while (i < block.size && offset < keyBytes.size) {
+            out[offset] = (keyBytes[offset].toInt() xor block[i].toInt()).toByte()
+            offset++
+            i++
+        }
+        counter++
+    }
+    return out
+}
+
+// The transformed blob shipped in RELEASE builds, plus a 32-bit checksum of the ORIGINAL key so the
+// runtime can prove it reconstructed the right thing before handing anything to the engine. 32 bits
+// of SHA-256 is far too little to recover a key from, and it is never logged.
+val superpoweredBoundBlob: String? = run {
+    val certHex = releaseSigningCertSha256
+    val key = superpoweredLicenseKey
+    if (key.isEmpty() || certHex == null) return@run null
+    val certDigest = ByteArray(32) { i -> certHex.substring(i * 2, i * 2 + 2).toInt(16).toByte() }
+    Base64.getEncoder().encodeToString(superpoweredBind(key.toByteArray(Charsets.UTF_8), certDigest))
+}
+
+val superpoweredKeyChecksum: String =
+    if (superpoweredLicenseKey.isEmpty()) {
+        ""
+    } else {
+        MessageDigest.getInstance("SHA-256")
+            .digest(superpoweredLicenseKey.toByteArray(Charsets.UTF_8))
+            .take(4).joinToString("") { b -> "%02x".format(b) }
+    }
+
+// GOLDEN VECTOR. The exact same constants are asserted from the other side by
+// `app/src/test/.../SuperpoweredLicenseTest.kt`. `superpoweredBind` above and
+// `SuperpoweredLicense.keystream` are two hand-written implementations of one algorithm; if they ever
+// drift, every release ships a key that reconstructs into garbage and the ENTIRE user base loses the
+// EQ at once, with the app itself unable to tell that anything is wrong. So each side is pinned to
+// this vector: break either one and you get a red build, not a silent dead engine.
+// Deliberately fails the build (check) — a warning would be read too late.
+run {
+    val goldenCertHex = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"
+    val goldenKey = "AuraGoldenVectorKey-0123456789+/=abcdefgh"
+    val goldenBlob = "jtt6qa0FokrPxZizx+797Uuw9+VKqbM6zs3zxiEXCxIE7azZl951bZ8="
+    val goldenDigest = ByteArray(32) { i -> goldenCertHex.substring(i * 2, i * 2 + 2).toInt(16).toByte() }
+    val produced = Base64.getEncoder()
+        .encodeToString(superpoweredBind(goldenKey.toByteArray(Charsets.UTF_8), goldenDigest))
+    check(produced == goldenBlob) {
+        "SUPERPOWERED: superpoweredBind no longer matches the golden vector shared with " +
+            "SuperpoweredLicenseTest. The app would not be able to reconstruct the licence key it ships. " +
+            "Change both sides together or not at all."
+    }
+}
+
+when {
+    superpoweredLicenseKey.isEmpty() -> logger.warn(
+        "SUPERPOWERED: no licence key configured (SUPERPOWERED_LICENSE_KEY in local.properties or " +
+            "as an environment variable / CI secret). Release builds will ship WITHOUT the DSP engine: " +
+            "audio plays untouched and the EQ screen says so. This is expected for forks and clones.",
+    )
+    superpoweredBoundBlob == null -> logger.warn(
+        "SUPERPOWERED: licence key configured but the release signing certificate could not be read " +
+            "(app/keystore/release.keystore + STORE_PASSWORD, or SUPERPOWERED_CERT_SHA256). The key will " +
+            "be embedded UNBOUND — it still works, but a repackaged clone could reuse it.",
+    )
 }
 
 android {
@@ -51,8 +220,8 @@ android {
         // Public version reset to a fresh stable 0.0.1 for the Aura Hi-Res Player relaunch.
         // versionCode stays monotonic (never below the last shipped 673) so the in-app updater and
         // sideload-install-over-existing keep working; only the user-facing versionName resets.
-        versionCode = 861
-        versionName = "0.6.143-beta1"
+        versionCode = 862
+        versionName = "0.6.143"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -108,6 +277,15 @@ android {
             ?: ""
         buildConfigField("String", "QOBUZ_APP_ID", "\"$qobuzAppId\"")
         buildConfigField("String", "QOBUZ_APP_SECRET", "\"$qobuzAppSecret\"")
+
+        // Superpowered licence, DEFAULT (unbound) form — see the block above the android {} block.
+        // This is what DEBUG builds get, and it is deliberate: a debug APK is signed with the Android
+        // debug certificate, so the signature binding could never reconstruct anything there. Attempting
+        // it would leave the owner without an EQ on every development build. `release` overrides these
+        // three fields below with the certificate-bound blob.
+        buildConfigField("String", "SUPERPOWERED_LICENSE", "\"$superpoweredLicenseKey\"")
+        buildConfigField("boolean", "SUPERPOWERED_LICENSE_BOUND", "false")
+        buildConfigField("String", "SUPERPOWERED_LICENSE_CHECK", "\"$superpoweredKeyChecksum\"")
 
 //add nightly build label support
         val isNightly = project.hasProperty("nightly") && project.property("nightly") == "true"
@@ -198,6 +376,18 @@ android {
                 "proguard-rules.pro"
             )
             buildConfigField("String", "ARCHITECTURE", "\"release\"")
+
+            // Superpowered licence, CERTIFICATE-BOUND form. What ships is the key XORed with a keystream
+            // derived from the SHA-256 of the certificate that signs this very build; the app undoes it at
+            // runtime with the certificate hash Android reports for its own package. A repackaged clone is
+            // necessarily signed with a different certificate, so it reconstructs garbage — which the
+            // checksum catches before the engine is ever touched, leaving the clone with no DSP.
+            // When the certificate is unknown at build time, the fields inherited from defaultConfig stand
+            // (unbound key) — never a broken one. A warning is logged at configuration time.
+            superpoweredBoundBlob?.let { blob ->
+                buildConfigField("String", "SUPERPOWERED_LICENSE", "\"$blob\"")
+                buildConfigField("boolean", "SUPERPOWERED_LICENSE_BOUND", "true")
+            }
         }
         debug {
             applicationIdSuffix = ".debug"

@@ -231,7 +231,7 @@ import iad1tya.echo.music.ui.component.LocalMenuState
 import iad1tya.echo.music.ui.component.rememberBottomSheetState
 import iad1tya.echo.music.ui.component.shimmer.ShimmerTheme
 import iad1tya.echo.music.ui.menu.YouTubeSongMenu
-import iad1tya.echo.music.ui.player.BottomSheetPlayer
+import iad1tya.echo.music.ui.newui.BottomSheetPlayerHost
 import iad1tya.echo.music.ui.player.NowPlayingSidePanel
 import iad1tya.echo.music.ui.screens.Screens
 import iad1tya.echo.music.widget.PlaylistWidgetReceiver
@@ -1050,9 +1050,6 @@ class MainActivity : ComponentActivity() {
                 }
 
                 val coroutineScope = rememberCoroutineScope()
-                var sharedSong: SongItem? by remember {
-                    mutableStateOf(null)
-                }
                 val snackbarHostState = remember { SnackbarHostState() }
                 var showSettingDialoge by remember { mutableStateOf(false) }
                 val (offlineMode, onOfflineModeChange) = rememberPreference(OfflineModeKey, defaultValue = false)
@@ -1374,7 +1371,9 @@ class MainActivity : ComponentActivity() {
 
                             if (!showRail && currentRoute != "update" && currentRoute != "listen_together/chat" && currentRoute != "ambient_mode") {
                                 Box {
-                                    BottomSheetPlayer(
+                                    // "Interfaz nueva" beta: falls back to the classic BottomSheetPlayer
+                                    // whenever the flag is OFF or the new player is not built yet.
+                                    BottomSheetPlayerHost(
                                         state = playerBottomSheetState,
                                         navController = navController,
                                         pureBlack = pureBlack
@@ -1467,7 +1466,7 @@ class MainActivity : ComponentActivity() {
                                                 }
                                         } else Modifier
                                     ) {
-                                        BottomSheetPlayer(
+                                        BottomSheetPlayerHost(
                                             state = playerBottomSheetState,
                                             navController = navController,
                                             pureBlack = pureBlack
@@ -1691,31 +1690,9 @@ class MainActivity : ComponentActivity() {
 
 
 
-                    sharedSong?.let { song ->
-                        playerConnection?.let {
-                            Dialog(
-                                onDismissRequest = { sharedSong = null },
-                                properties = DialogProperties(usePlatformDefaultWidth = false),
-                            ) {
-                                Surface(
-                                    modifier = Modifier.padding(24.dp),
-                                    shape = RoundedCornerShape(16.dp),
-                                    color = AlertDialogDefaults.containerColor,
-                                    tonalElevation = AlertDialogDefaults.TonalElevation,
-                                ) {
-                                    Column(
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                    ) {
-                                        YouTubeSongMenu(
-                                            song = song,
-                                            navController = navController,
-                                            onDismiss = { sharedSong = null },
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    // The "shared song" dialog used to live here. `sharedSong` was only ever assigned
+                    // null, so the dialog could never appear. Sharing a YouTube/YTM link into Aura is
+                    // handled live by handleDeepLinkIntent() below, which plays/navigates directly.
 
                     val ringtoneUiState by ringtoneViewModel.uiState.collectAsState()
                     RingtoneTrimmerDialog(

@@ -31,8 +31,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
-import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -44,7 +42,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -67,7 +64,6 @@ import iad1tya.echo.music.constants.DefaultOpenTabKey
 import iad1tya.echo.music.constants.DensityScale
 import iad1tya.echo.music.constants.DensityScaleKey
 import iad1tya.echo.music.constants.DynamicThemeKey
-import iad1tya.echo.music.constants.EnableDynamicIconKey
 import iad1tya.echo.music.constants.EnableHighRefreshRateKey
 import iad1tya.echo.music.constants.EnableLyricsThumbnailPlayPauseKey
 import iad1tya.echo.music.constants.GridItemSize
@@ -118,7 +114,6 @@ import iad1tya.echo.music.ui.theme.PlayerSliderColors
 import iad1tya.echo.music.ui.utils.backToMain
 import iad1tya.echo.music.utils.rememberEnumPreference
 import iad1tya.echo.music.utils.rememberPreference
-import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 import iad1tya.echo.music.constants.LyricsClickKey
 import iad1tya.echo.music.constants.AppleMusicLyricsBlurKey
@@ -135,7 +130,6 @@ fun AppearanceSettings(
     navController: NavController,
     scrollBehavior: TopAppBarScrollBehavior,
     activity: Activity,
-    snackbarHostState: SnackbarHostState,
 ) {
     val (dynamicTheme, onDynamicThemeChange) = rememberPreference(
         DynamicThemeKey,
@@ -155,12 +149,15 @@ fun AppearanceSettings(
     )
 
     val isUsingCustomColor = selectedThemeColorInt != DefaultThemeColor.toArgb()
-    val coroutineScope = rememberCoroutineScope()
 
     val (useNewPlayerDesign, onUseNewPlayerDesignChange) = rememberPreference(
         UseNewPlayerDesignKey,
         defaultValue = true
     )
+    // READ-ONLY. Every row of this screen is reachable with the "Interfaz nueva" flag on (the new Ajustes
+    // index navigates to this very screen), so a row whose scope narrows under the new UI has to say so.
+    // Nothing here writes the flag — reading it cannot make the beta less reversible.
+    val newUiEnabled = iad1tya.echo.music.ui.newui.rememberNewUiEnabled()
     val (showCodecOnPlayer, onShowCodecOnPlayerChange) = rememberPreference(
         iad1tya.echo.music.constants.ShowCodecOnPlayerKey,
         defaultValue = false
@@ -599,12 +596,14 @@ fun AppearanceSettings(
             values = availableMiniPlayerBackgroundStyles,
             valueText = {
                 when (it) {
+                    // GRADIENT and APPLE_MUSIC are filtered OUT of availableMiniPlayerBackgroundStyles
+                    // above, so neither can ever be shown here and neither gets a branch.
                     PlayerBackgroundStyle.DEFAULT -> stringResource(R.string.follow_theme)
-                    PlayerBackgroundStyle.GRADIENT -> stringResource(R.string.gradient)
                     PlayerBackgroundStyle.BLUR -> stringResource(R.string.player_background_blur)
                     PlayerBackgroundStyle.GLOW_ANIMATED -> stringResource(R.string.glow_animated)
                     PlayerBackgroundStyle.LIVE_MESH -> stringResource(R.string.live_mesh)
                     PlayerBackgroundStyle.LIQUID_GLASS -> stringResource(R.string.player_background_liquid_glass)
+                    // Unreachable safety net only (the `when` must stay exhaustive).
                     else -> "Unknown"
                 }
             }
@@ -1117,9 +1116,23 @@ fun AppearanceSettings(
         Material3SettingsGroup(
             title = stringResource(R.string.player),
             items = listOfNotNull(
+                // "Inspirado en Apple Music" (UseNewPlayerDesignKey). KEPT VISIBLE with the new UI on,
+                // because it is not dead there: the "Interfaz nueva" player delegates landscape, wide /
+                // tablet / TV and video to the classic BottomSheetPlayer (AuraPlayer.kt), and this switch
+                // is what picks the shape those use — plus it side-writes PlayerBackgroundStyle. What it
+                // does NOT do is change the new PORTRAIT player, so the row says so instead of leaving
+                // the user to discover it by toggling. Hiding the row would have removed a live control.
                 Material3SettingsItem(
                     icon = painterResource(R.drawable.palette),
-                    title = { Text("Inspirado en Apple Music") },
+                    title = { Text(stringResource(R.string.apple_music_inspired)) },
+                    description = {
+                        Text(
+                            stringResource(
+                                if (newUiEnabled) R.string.apple_music_inspired_desc_new_ui
+                                else R.string.apple_music_inspired_desc
+                            )
+                        )
+                    },
                     trailingContent = {
                         Switch(
                             checked = !useNewPlayerDesign,
@@ -1148,10 +1161,14 @@ fun AppearanceSettings(
                         }
                     }
                 ),
+                // "Ocultar control de volumen" (HidePlayerSliderKey — legacy key name; it has never
+                // hidden the timeline). Now honoured by BOTH players: the classic Apple-Music transport
+                // hides its inline volume row, the new player hides the volume slider at the head of its
+                // merged player menu. Labels come from string resources instead of hardcoded literals.
                 if (!useNewPlayerDesign) Material3SettingsItem(
                     icon = painterResource(R.drawable.linear_scale),
-                    title = { Text("Ocultar control de volumen") },
-                    description = { Text("Oculta el control de volumen en el reproductor estilo Apple Music") },
+                    title = { Text(stringResource(R.string.hide_player_volume)) },
+                    description = { Text(stringResource(R.string.hide_player_volume_desc)) },
                     trailingContent = {
                         Switch(
                             checked = hidePlayerSlider,
@@ -1169,24 +1186,45 @@ fun AppearanceSettings(
                     },
                     onClick = { onHidePlayerSliderChange(!hidePlayerSlider) }
                 ) else null,
+                // "Fondo del reproductor" (PlayerBackgroundStyleKey), SEVEN values. KEPT VISIBLE with the
+                // new UI on, with its scope stated — the same treatment, for the same reason, as
+                // "Inspirado en Apple Music" above.
+                //
+                // Why not HIDDEN: the row is not dead under the new UI. The new player re-draws ONLY the
+                // portrait audio shape; landscape, wide/tablet/TV and video fall straight through to the
+                // classic BottomSheetPlayer (AuraPlayer.kt:169-177), which reads this key and honours all
+                // seven values, and the queue sheet is handed it too (AuraPlayer.kt QueueHost). Hiding the
+                // row would leave a beta user unable to change a background they can still see.
+                //
+                // Why not HONOURED in the new portrait player: three of the seven styles are exactly what
+                // the thermal gate forbids that shape — BLUR is a real `Modifier.blur`, and GLOW_ANIMATED /
+                // LIVE_MESH / LIQUID_GLASS are per-frame animated gradients (Player.kt:1030-1254). The new
+                // player's look is the ambient bloom, resolved once per TRACK through AuraBloomCache and
+                // never per frame; repainting it per style would either break that budget or mean a second,
+                // cheaper re-implementation of backgrounds that already exist — both are ruled out.
                 Material3SettingsItem(
                     icon = painterResource(R.drawable.gradient),
                     title = { Text(stringResource(R.string.player_background_style)) },
                     description = {
-                        Text(
-                            when (playerBackground) {
-                                PlayerBackgroundStyle.DEFAULT -> stringResource(R.string.follow_theme)
-                                PlayerBackgroundStyle.GRADIENT -> stringResource(R.string.gradient)
-                                PlayerBackgroundStyle.BLUR -> stringResource(R.string.player_background_blur)
-                                PlayerBackgroundStyle.GLOW_ANIMATED -> stringResource(R.string.glow_animated)
-                                PlayerBackgroundStyle.APPLE_MUSIC -> stringResource(R.string.apple_music)
-                                PlayerBackgroundStyle.LIVE_MESH -> stringResource(R.string.live_mesh)
-                                PlayerBackgroundStyle.LIQUID_GLASS -> stringResource(R.string.player_background_liquid_glass)
+                        Column {
+                            Text(
+                                when (playerBackground) {
+                                    PlayerBackgroundStyle.DEFAULT -> stringResource(R.string.follow_theme)
+                                    PlayerBackgroundStyle.GRADIENT -> stringResource(R.string.gradient)
+                                    PlayerBackgroundStyle.BLUR -> stringResource(R.string.player_background_blur)
+                                    PlayerBackgroundStyle.GLOW_ANIMATED -> stringResource(R.string.glow_animated)
+                                    PlayerBackgroundStyle.APPLE_MUSIC -> stringResource(R.string.apple_music)
+                                    PlayerBackgroundStyle.LIVE_MESH -> stringResource(R.string.live_mesh)
+                                    PlayerBackgroundStyle.LIQUID_GLASS -> stringResource(R.string.player_background_liquid_glass)
+                                }
+                            )
+                            if (newUiEnabled) {
+                                Text(stringResource(R.string.player_background_style_desc_new_ui))
                             }
-                        )
+                        }
                     },
-                    onClick = { 
-                        showPlayerBackgroundDialog = true 
+                    onClick = {
+                        showPlayerBackgroundDialog = true
                     }
                 ),
                 // Liquid Glass (Beta): entry point to the glass-effect settings. On ineligible
@@ -2020,9 +2058,4 @@ enum class LyricsPosition {
     LEFT,
     CENTER,
     RIGHT,
-}
-
-enum class PlayerTextAlignment {
-    SIDED,
-    CENTER,
 }

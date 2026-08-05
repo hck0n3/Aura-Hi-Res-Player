@@ -288,6 +288,26 @@ object CanvasArtworkPlaybackCache {
     }
 }
 
+/**
+ * What the HOST layout paints behind [Thumbnail]. **The host decides, not this composable.**
+ *
+ * The cover/canvas block used to be hidden by a rule written here — `playerBackground == APPLE_MUSIC &&
+ * !isLandscape` — as if that were a property of the SETTING. It is not: it is a property of the CLASSIC
+ * portrait layout, which under Apple Music style draws the cover full-screen as its own background
+ * (Player.kt:1255-1332), so a square cover card in front of it would be a cover on a cover. Any other
+ * host that does not do that inherited a blank hole.
+ *
+ *  · [CLASSIC] — the thirteen classic shapes. Byte-for-byte the historical behaviour: the cover hides
+ *    itself in portrait under APPLE_MUSIC, and the text colour follows [getTextColor].
+ *  · [OPAQUE_DARK] — a host that paints its own opaque dark ground and NEVER draws the artwork
+ *    full-screen behind the player (the "Interfaz nueva" portrait player, whose ground is the ambient
+ *    bloom over [iad1tya.echo.music.ui.newui.AuraPalette.Ground]). The artwork and the canvas are
+ *    therefore always drawn here, at every one of the seven [PlayerBackgroundStyle] values, and the
+ *    text is light-on-dark — [PlayerBackgroundStyle.DEFAULT] resolves to `onBackground`, which on a
+ *    light theme would be near-black ink on a near-black ground.
+ */
+enum class ThumbnailHost { CLASSIC, OPAQUE_DARK }
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun Thumbnail(
@@ -296,6 +316,8 @@ fun Thumbnail(
     isPlayerExpanded: () -> Boolean = { true },
     isLandscape: Boolean = false,
     isListenTogetherGuest: Boolean = false,
+    /** See [ThumbnailHost]. The default keeps every classic call site unchanged. */
+    host: ThumbnailHost = ThumbnailHost.CLASSIC,
 ) {
     val playerConnection = LocalPlayerConnection.current ?: return
     val context = LocalContext.current
@@ -324,8 +346,18 @@ fun Thumbnail(
     val thumbnailCornerRadius by rememberPreference(ThumbnailCornerRadiusKey, defaultValue = 3f)
     
     
-    val textBackgroundColor = getTextColor(playerBackground)
-    
+    // The host owns BOTH of these; see [ThumbnailHost].
+    val classicTextColor = getTextColor(playerBackground)
+    val textBackgroundColor = when (host) {
+        ThumbnailHost.CLASSIC -> classicTextColor
+        ThumbnailHost.OPAQUE_DARK -> Color.White
+    }
+    // "Does the host already paint the artwork full-screen behind me?" — only the CLASSIC portrait
+    // layout ever does, and only under Apple Music style.
+    val coverDrawnByHost = host == ThumbnailHost.CLASSIC &&
+        playerBackground == PlayerBackgroundStyle.APPLE_MUSIC &&
+        !isLandscape
+
     
     val thumbnailLazyGridState = rememberLazyGridState()
     
@@ -462,18 +494,24 @@ fun Thumbnail(
             }
 
         
-        // With Apple Music style the canvas plays FULL-SCREEN as the background, so the square cover card
-        // is always hidden in portrait (whether or not canvas is on) — the user wants a single full-screen
-        // animation, NOT a full-screen one plus a square cover in front.
+        // When the HOST paints the cover full-screen as the background (classic portrait + Apple Music
+        // style) the square cover card is hidden — the user wants a single full-screen animation, NOT a
+        // full-screen one plus a square cover in front. Every other host draws the artwork here, always;
+        // see [ThumbnailHost] for why this is the host's call and not this composable's.
         AnimatedVisibility(
             // The cover/canvas stays visible here (the spinner overlays it while resolving). The actual video
             // is shown by the immersive/fullscreen branch, which crossfades in over this cover.
-            visible = error == null && !(playerBackground == PlayerBackgroundStyle.APPLE_MUSIC && !isLandscape),
+            visible = error == null && !coverDrawnByHost,
             enter = fadeIn(),
             exit = fadeOut(),
             modifier = Modifier
                 .fillMaxSize()
-                .then(if (!isLandscape) Modifier.statusBarsPadding() else Modifier),
+                // OPAQUE_DARK hosts lay this block out BELOW their own inset-padded header, so a second
+                // status-bar pad would push the artwork down and shrink it for nothing.
+                .then(
+                    if (!isLandscape && host == ThumbnailHost.CLASSIC) Modifier.statusBarsPadding()
+                    else Modifier
+                ),
         ) {
             Column(
                 modifier = Modifier.fillMaxSize(),
@@ -644,6 +682,36 @@ private fun ThumbnailHeader(
 }
 
 
+/**
+ * THE condition under which an animated canvas cover plays. One definition, shared by everything that
+ * draws a canvas AND by anything that *claims* one is playing.
+ *
+ * A label about the canvas must never be able to contradict the canvas: the "CANVAS ▸ EN MOVIMIENTO"
+ * badge of the new player used to gate on its own, differently-defaulted copy of
+ * [CanvasThumbnailAnimationKey] plus a data-saver term this gate has never had, so the badge could
+ * appear with no canvas behind it (and vanish with one playing). Both now call this.
+ *
+ * Terms, and why:
+ *  · [CanvasThumbnailAnimationKey] — the user's switch. Default **false**; it is opt-in.
+ *    `rememberPerfGatedBoolean` additionally forces it off in High-Performance Mode.
+ *  · `rememberDeviceThrottle()` — anti-overheating: the OS reporting MODERATE+ thermal stops the video.
+ *    Always false below API 29 / while cool, so a cool device is byte-identical.
+ *  · [RotatingThumbnailKey] — the rotating cover and the canvas are the same surface; the canvas yields.
+ */
+@Composable
+internal fun rememberCanvasAnimationEnabled(): Boolean {
+    val canvasPref by iad1tya.echo.music.utils.rememberPerfGatedBoolean(
+        CanvasThumbnailAnimationKey,
+        defaultValue = false,
+    )
+    val rotatingThumbnail by iad1tya.echo.music.utils.rememberPerfGatedBoolean(
+        RotatingThumbnailKey,
+        defaultValue = false,
+    )
+    val deviceThrottle = iad1tya.echo.music.utils.rememberDeviceThrottle()
+    return canvasPref && !deviceThrottle && !rotatingThumbnail
+}
+
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun ThumbnailItem(
@@ -684,11 +752,7 @@ private fun ThumbnailItem(
     var skipMultiplier by remember { mutableIntStateOf(1) }
     var lastTapTime by remember { mutableLongStateOf(0L) }
 
-    // Anti-overheating: gate the animated-cover Canvas video off when the OS reports MODERATE+ thermal, exactly
-    // like Performance Mode (deviceThrottle is always false below API 29 / while cool, so a cool device is
-    // byte-identical). The CanvasArtworkPlayer's ExoPlayer already pauses off-screen + releases onDispose.
-    val deviceThrottle = iad1tya.echo.music.utils.rememberDeviceThrottle()
-    val canvasThumbnailAnimation = iad1tya.echo.music.utils.rememberPerfGatedBoolean(CanvasThumbnailAnimationKey, defaultValue = false).value && !deviceThrottle
+    val canvasThumbnailAnimation = rememberCanvasAnimationEnabled()
 
     // High-Performance Mode: skip the Apple-Music dynamic zoom/fade cover transition entirely and keep the
     // solid/instant path (covers stay full-size, full-alpha). Mirrors the perf-mode "no cover crossfade" rule.
@@ -797,7 +861,8 @@ private fun ThumbnailItem(
                 )
             }
             
-            if (canvasThumbnailAnimation && item.mediaId == currentMediaId && !rotatingThumbnail) {
+            // The rotating-cover / thermal / perf-mode terms all live in rememberCanvasAnimationEnabled().
+            if (canvasThumbnailAnimation && item.mediaId == currentMediaId) {
                 var canvasArtwork by remember(item.mediaId) { mutableStateOf<CanvasArtwork?>(null) }
                 var canvasFetchInFlight by remember(item.mediaId) { mutableStateOf(false) }
                 val storefront = remember {

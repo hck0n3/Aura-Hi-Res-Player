@@ -25,17 +25,17 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import iad1tya.echo.music.LocalPlayerAwareWindowInsets
 import iad1tya.echo.music.R
-// Dead DSP/visualizer preference-key imports removed (IA cleanup): AudioEnhanceEnabledKey,
-// AudioNormalizationKey, AuraSignatureToneEnabledKey and SpectrumVisualizerEnabledKey were imported
-// but never rendered here (their toggles/setters are not wired). Only SafeVolumeEnabledKey is used.
+// Dead DSP preference-key imports removed (IA cleanup): AudioEnhanceEnabledKey,
+// AudioNormalizationKey and AuraSignatureToneEnabledKey were imported but never rendered here
+// (their toggles/setters are not wired). Only SafeVolumeEnabledKey is used.
 import iad1tya.echo.music.constants.SafeVolumeEnabledKey
 import iad1tya.echo.music.ui.component.Material3SettingsGroup
 import iad1tya.echo.music.ui.component.Material3SettingsItem
 import iad1tya.echo.music.utils.rememberPreference
 
 /**
- * Dedicated, ordered "Sonido" hub: equalizer, Auto-EQ, all DSP effects/plugins, loudness and the
- * spectrum visualizer in one place — extracted from PlayerSettings (which now keeps only playback).
+ * Dedicated, ordered "Sonido" hub: equalizer, Auto-EQ, all DSP effects/plugins and loudness in one
+ * place — extracted from PlayerSettings (which now keeps only playback).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

@@ -616,14 +616,11 @@ class App : Application(), SingletonImageLoader.Factory, androidx.work.Configura
             p[iad1tya.echo.music.constants.LyricsGlowEffectKey] = true
             p[iad1tya.echo.music.constants.AppleMusicLyricsBlurKey] = true
 
-            // Visuals: spectrum visualizer, artist video + artist background video, and the cover "canvas"
+            // Visuals: artist video + artist background video, and the cover "canvas"
             // animations (player + album) — ON by default on MID/HIGH; OFF by default on LOW-tier devices (E2)
             // so a fresh install on a weak phone is smooth and cool. Seeded ONLY when the key is still unset, so
             // a later seed-version bump never overrides a choice the user has made (and existing installs keep
             // their current values). The user can always toggle them in Settings.
-            if (p[iad1tya.echo.music.constants.SpectrumVisualizerEnabledKey] == null) {
-                p[iad1tya.echo.music.constants.SpectrumVisualizerEnabledKey] = !lowEndDevice
-            }
             if (p[iad1tya.echo.music.constants.CanvasThumbnailAnimationKey] == null) {
                 p[iad1tya.echo.music.constants.CanvasThumbnailAnimationKey] = !lowEndDevice
             }

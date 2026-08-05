@@ -340,6 +340,12 @@
     <string name="releases_for_you">Lanzamientos para ti</string>
     <string name="hide_status_bar_on_fullscreen">Ocultar la barra de estado en pantalla completa</string>
     <string name="hide_status_bar_on_fullscreen_desc">Oculta la barra de estado cuando el modo de letras a pantalla completa está activo</string>
+    <string name="hide_player_volume">Ocultar control de volumen</string>
+    <string name="hide_player_volume_desc">Oculta el control de volumen del reproductor</string>
+    <string name="apple_music_inspired">Inspirado en Apple Music</string>
+    <string name="apple_music_inspired_desc">Usa el diseño de reproductor al estilo Apple Music</string>
+    <string name="apple_music_inspired_desc_new_ui">Con la interfaz nueva activada solo cambia el reproductor apaisado, de tablet/TV y de vídeo</string>
+    <string name="player_background_style_desc_new_ui">Con la interfaz nueva activada solo se aplica al reproductor apaisado, de tablet/TV y de vídeo: el reproductor vertical nuevo mantiene su propio fondo ambiental</string>
     <string name="lyrics_swipe_to_change_song">Desliza para cambiar de canción</string>
     <string name="lyrics_swipe_to_change_song_desc">Desliza a la izquierda o a la derecha en la sección del artista y el nombre de la canción en las letras a pantalla completa para cambiar de canción</string>
     <string name="lyrics_thumbnail_play_pause">Mostrar reproducir/pausar en la miniatura</string>

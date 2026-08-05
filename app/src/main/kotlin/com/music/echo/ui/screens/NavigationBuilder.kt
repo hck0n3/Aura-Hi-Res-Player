@@ -62,9 +62,11 @@ import iad1tya.echo.music.echomusic.updater.UpdateScreen
 import iad1tya.echo.music.utils.rememberEnumPreference
 import iad1tya.echo.music.utils.rememberPreference
 import iad1tya.echo.music.echomusic.changelog.ChangelogScreen
-import iad1tya.echo.music.echomusic.commitscreen.CommitScreen
 import iad1tya.echo.music.ui.screens.equalizer.axion.AxionEqScreen
 import iad1tya.echo.music.ui.screens.ambient.AmbientModeScreen
+import iad1tya.echo.music.ui.newui.HomeScreenHost
+import iad1tya.echo.music.ui.newui.LibraryScreenHost
+import iad1tya.echo.music.ui.newui.SettingsScreenHost
 
 @OptIn(ExperimentalMaterial3Api::class)
 fun NavGraphBuilder.navigationBuilder(
@@ -74,7 +76,9 @@ fun NavGraphBuilder.navigationBuilder(
     snackbarHostState: SnackbarHostState
 ) {
     composable(Screens.Home.route) {
-        HomeScreen(navController = navController, snackbarHostState = snackbarHostState)
+        // "Interfaz nueva" beta: the Host picks the new Inicio when the flag is ON and a new
+        // implementation exists, and falls back to this exact classic screen otherwise.
+        HomeScreenHost(navController = navController, snackbarHostState = snackbarHostState)
     }
 
     composable(Screens.Search.route) {
@@ -94,7 +98,7 @@ fun NavGraphBuilder.navigationBuilder(
     }
 
     composable(Screens.Library.route) {
-        LibraryScreen(navController)
+        LibraryScreenHost(navController)
     }
 
     composable(Screens.ListenTogether.route) {
@@ -330,7 +334,7 @@ fun NavGraphBuilder.navigationBuilder(
     }
 
     composable("settings") {
-        SettingsScreen(navController, scrollBehavior)
+        SettingsScreenHost(navController, scrollBehavior)
     }
 
     composable("settings/update") {
@@ -352,7 +356,7 @@ fun NavGraphBuilder.navigationBuilder(
     }
 
     composable("settings/appearance") {
-        AppearanceSettings(navController, scrollBehavior, activity, snackbarHostState)
+        AppearanceSettings(navController, scrollBehavior, activity)
     }
 
     composable("settings/appearance/theme") {
@@ -429,7 +433,8 @@ fun NavGraphBuilder.navigationBuilder(
         BackupAndRestore(navController, scrollBehavior)
     }
 
-    // IA hygiene (F0): "settings/integrations" (IntegrationScreen) de-registered — empty screen body, no navigate() caller.
+    // IA hygiene: "settings/integrations" (IntegrationScreen) removed — its Column body was empty, so the
+    // screen only ever drew a top bar over nothing. No navigate() caller either.
     // Note: the live sub-route "settings/integrations/listen_together" below is unaffected and stays registered.
 
     composable(
@@ -545,9 +550,9 @@ fun NavGraphBuilder.navigationBuilder(
     composable("settings/changelog") {
         ChangelogScreen(navController,scrollBehavior)
     }
-    composable("settings/commits") {
-        CommitScreen(navController, scrollBehavior)
-    }
+    // IA hygiene: "settings/commits" (CommitScreen) removed — it had no navigate() caller AND it fetched
+    // the commit list of the UPSTREAM repo (github.com/EchoMusicApp/Echo-Music), an Aura branding leak.
+    // The live, Aura-owned equivalent is "settings/changelog" (ChangelogScreen) above.
 
     // 0.6.92 Modo Ambiente — full-screen, landscape, lean-back now-playing view.
     composable("ambient_mode") {

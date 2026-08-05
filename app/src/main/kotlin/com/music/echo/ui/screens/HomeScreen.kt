@@ -203,6 +203,180 @@ sealed class HomeSection(val id: String, val baseWeight: Int) {
     data object MoodAndGenres : HomeSection("mood_and_genres", 5)
 }
 
+/**
+ * Which Home shelves exist, and in which order.
+ *
+ * Pure function of the feed's shape (how many items each source produced) and the four preferences
+ * that reorder or cap the home. Extracted from `HomeScreen`'s `remember` block so the classic Home and
+ * the "Interfaz nueva" Home share ONE copy: both screens must agree on what a user sees and in which
+ * order, and a second copy of these weights would drift the first time one of them is tuned.
+ *
+ * Behaviour is unchanged from the inline version — same guards, same weights, same perf-mode cap.
+ */
+internal fun computeHomeSections(
+    randomizeHomeOrder: Boolean,
+    randomSeed: Long,
+    tasteOnlyHome: Boolean,
+    showSpeedDial: Boolean,
+    perfOn: Boolean,
+    speedDialCount: Int,
+    quickPickCount: Int,
+    dailyMixItemCounts: List<Int>,
+    timeOfDayMixSongCount: Int,
+    aiRecommendedSongCount: Int,
+    keepListeningCount: Int,
+    accountPlaylistCount: Int,
+    forgottenFavoritesCount: Int,
+    communityPlaylistCount: Int,
+    newFromArtistsCount: Int,
+    genreMixSongCount: Int,
+    similarRecommendationCount: Int,
+    homePageSectionCount: Int,
+    hasMoodAndGenres: Boolean,
+    newReleaseAlbumCount: Int,
+): List<HomeSection> {
+    val list = mutableListOf<HomeSection>()
+
+    if (showSpeedDial && speedDialCount > 0) list.add(HomeSection.SpeedDial)
+    if (quickPickCount > 0) list.add(HomeSection.QuickPicks)
+    // "Mix de la mañana/tarde/noche" — light local row, only when there's enough history.
+    if (timeOfDayMixSongCount > 0) list.add(HomeSection.TimeOfDayMix)
+    // "Recomendado para ti (IA)" IS the user's taste (built from their own history) — shown even in
+    // taste-only mode; only exists once the opt-in worker has produced a non-empty playlist.
+    if (aiRecommendedSongCount > 0) list.add(HomeSection.AiRecommended)
+    // "From the community" is generic (not the user's taste) — hidden in taste-only mode.
+    if (!tasteOnlyHome && communityPlaylistCount > 0) list.add(HomeSection.FromTheCommunity)
+    // Up to 3 "Mix diario N" shelves, one per seed.
+    dailyMixItemCounts.take(3).forEachIndexed { i, itemCount ->
+        if (itemCount > 0) list.add(HomeSection.DailyMix(i))
+    }
+    // "Novedades de tus artistas" IS the user's taste (releases from artists they follow/play) — shown
+    // even in taste-only mode (no tasteOnlyHome guard).
+    if (newFromArtistsCount > 0) list.add(HomeSection.NewFromArtists)
+    // "Nuevos lanzamientos": the explore feed's new-release albums (generic-ish but musical news) —
+    // only when non-empty; gated off in perf mode below (heavy carousel).
+    if (newReleaseAlbumCount > 0) list.add(HomeSection.NewReleases)
+    if (keepListeningCount > 0) list.add(HomeSection.KeepListening)
+    if (accountPlaylistCount > 0) list.add(HomeSection.AccountPlaylists)
+    if (forgottenFavoritesCount > 0) list.add(HomeSection.ForgottenFavorites)
+    // "Tu mix de [Género]" IS the user's taste (their own songs from their top genre) — shown even in
+    // taste-only mode (no tasteOnlyHome guard).
+    if (genreMixSongCount > 0) list.add(HomeSection.GenreMix)
+
+    // Cap the "Similar a…" shelves: more than a few near-identical rows just makes a long,
+    // monotonous tail at the bottom of the home.
+    (0 until similarRecommendationCount).take(3).forEach { i ->
+        list.add(HomeSection.SimilarRecommendation(i))
+    }
+
+    // Raw YouTube home feed = the same generic suggestions YouTube shows everyone. In taste-only
+    // mode it stays OUT of the home (the user only wants their own taste here); it's still
+    // available under Search/Explore. The taste-based YouTube recommendations come from
+    // SimilarRecommendation + DailyDiscover (seeded from the user's followed artists, history,
+    // favourites and albums).
+    if (!tasteOnlyHome) {
+        (0 until homePageSectionCount).forEach { i ->
+            list.add(HomeSection.HomePageSection(i))
+        }
+    }
+
+    // Generic genre/mood browse grid — hidden in taste-only mode.
+    if (!tasteOnlyHome && hasMoodAndGenres) list.add(HomeSection.MoodAndGenres)
+
+    val ordered: List<HomeSection> = if (randomizeHomeOrder) {
+        list.sortedByDescending { section ->
+            val sectionRandom = Random(randomSeed + section.id.hashCode())
+
+            val base = when (section) {
+                HomeSection.QuickPicks -> 10000
+                HomeSection.SpeedDial,
+                HomeSection.NewFromArtists,
+                is HomeSection.DailyMix -> 500
+
+                HomeSection.TimeOfDayMix,
+                HomeSection.AiRecommended,
+                HomeSection.KeepListening,
+                HomeSection.AccountPlaylists,
+                HomeSection.ForgottenFavorites,
+                HomeSection.GenreMix,
+                HomeSection.NewReleases,
+                HomeSection.FromTheCommunity -> 300
+
+                else -> 100
+            }
+
+            val modifier = when (section) {
+                HomeSection.QuickPicks -> 0
+                HomeSection.SpeedDial,
+                HomeSection.NewFromArtists -> sectionRandom.nextInt(-200, 400)
+
+                // The up-to-3 "Mix diario N" shelves shuffle as ONE group: a single shared weight
+                // seeded by the group key (per-section ids "daily_mix_N" gave each mix an
+                // independent weight, rendering them out of order / interleaved), tie-broken by
+                // index so 1/2/3 stay contiguous and in order wherever the group lands.
+                is HomeSection.DailyMix ->
+                    Random(randomSeed + "daily_mix".hashCode()).nextInt(-200, 400) - section.index
+
+                HomeSection.TimeOfDayMix,
+                HomeSection.AiRecommended,
+                HomeSection.KeepListening,
+                HomeSection.AccountPlaylists,
+                HomeSection.ForgottenFavorites,
+                HomeSection.GenreMix,
+                HomeSection.NewReleases,
+                HomeSection.FromTheCommunity -> sectionRandom.nextInt(-100, 400)
+
+                else -> sectionRandom.nextInt(-50, 50)
+            }
+            base + modifier
+        }
+    } else {
+        // Logical reading order (the stable default): quick access -> for you -> time-of-day mix
+        // (light row) -> daily mixes -> new from your artists -> new releases -> continue -> your
+        // library -> re-engage -> more like X. The light TimeOfDayMix row sits between the QuickPicks
+        // hero and the "Mix diario" carousels so heavy carousels are never adjacent.
+        val defaultOrder = mapOf<HomeSection, Int>(
+            HomeSection.SpeedDial to 1000,
+            HomeSection.QuickPicks to 900,
+            // Right under QuickPicks: fresh AI discovery near the top, above the local mixes.
+            HomeSection.AiRecommended to 860,
+            HomeSection.TimeOfDayMix to 850,
+            HomeSection.NewFromArtists to 650,
+            HomeSection.NewReleases to 620,
+            HomeSection.KeepListening to 610,
+            HomeSection.AccountPlaylists to 600,
+            HomeSection.ForgottenFavorites to 500,
+            HomeSection.GenreMix to 480,
+            HomeSection.FromTheCommunity to 450,
+            HomeSection.MoodAndGenres to 10
+        )
+
+        list.sortedByDescending { section ->
+            when (section) {
+                is HomeSection.DailyMix -> 700 - section.index
+                is HomeSection.SimilarRecommendation -> 400 - section.index
+                is HomeSection.HomePageSection -> 200 - section.index
+                else -> defaultOrder[section] ?: 0
+            }
+        }
+    }
+
+    // Perf mode (ULTRA): cap the home to a few light shelves so a weak / TV / car GPU doesn't choke
+    // scrolling a long tail of carousels. Keep the taste shelves that have dedicated light LazyRow
+    // paths (QuickPicks + the FIRST daily mix — matching the old DailyDiscover gating) plus the cheap
+    // SpeedDial tiles and the light TimeOfDayMix row; drop the rest (incl. the NewReleases carousel).
+    return if (perfOn) {
+        listOfNotNull(
+            ordered.firstOrNull { it == HomeSection.SpeedDial },
+            ordered.firstOrNull { it == HomeSection.QuickPicks },
+            ordered.firstOrNull { it == HomeSection.TimeOfDayMix },
+            ordered.firstOrNull { it is HomeSection.DailyMix && it.index == 0 },
+        )
+    } else {
+        ordered
+    }
+}
+
 @Composable
 fun CommunityPlaylistCard(
     item: CommunityPlaylistItem,
@@ -879,159 +1053,31 @@ fun HomeScreen(
         homePage?.sections,
         explorePage?.moodAndGenres,
         explorePage?.newReleaseAlbums,
-        perfOn
+        perfOn,
+        showSpeedDial,
     ) {
-        val list = mutableListOf<HomeSection>()
-
-        if (showSpeedDial && speedDialItems.isNotEmpty()) list.add(HomeSection.SpeedDial)
-        if (quickPicks?.isNotEmpty() == true) list.add(HomeSection.QuickPicks)
-        // "Mix de la mañana/tarde/noche" — light local row, only when there's enough history.
-        if (timeOfDayMix?.songs?.isNotEmpty() == true) list.add(HomeSection.TimeOfDayMix)
-        // "Recomendado para ti (IA)" IS the user's taste (built from their own history) — shown even in
-        // taste-only mode; only exists once the opt-in worker has produced a non-empty playlist.
-        if (aiRecommendedSongs?.isNotEmpty() == true) list.add(HomeSection.AiRecommended)
-        // "From the community" is generic (not the user's taste) — hidden in taste-only mode.
-        if (!tasteOnlyHome && communityPlaylists?.isNotEmpty() == true) list.add(HomeSection.FromTheCommunity)
-        // Up to 3 "Mix diario N" shelves, one per seed.
-        dailyMixes?.take(3)?.forEachIndexed { i, mix ->
-            if (mix.items.isNotEmpty()) list.add(HomeSection.DailyMix(i))
-        }
-        // "Novedades de tus artistas" IS the user's taste (releases from artists they follow/play) — shown
-        // even in taste-only mode (no tasteOnlyHome guard).
-        if (newFromArtists?.isNotEmpty() == true) list.add(HomeSection.NewFromArtists)
-        // "Nuevos lanzamientos": the explore feed's new-release albums (generic-ish but musical news) —
-        // only when non-empty; gated off in perf mode below (heavy carousel).
-        if (explorePage?.newReleaseAlbums?.isNotEmpty() == true) list.add(HomeSection.NewReleases)
-        if (keepListening?.isNotEmpty() == true) list.add(HomeSection.KeepListening)
-        if (accountPlaylists?.isNotEmpty() == true) list.add(HomeSection.AccountPlaylists)
-        if (forgottenFavorites?.isNotEmpty() == true) list.add(HomeSection.ForgottenFavorites)
-        // "Tu mix de [Género]" IS the user's taste (their own songs from their top genre) — shown even in
-        // taste-only mode (no tasteOnlyHome guard).
-        if (genreMix?.songs?.isNotEmpty() == true) list.add(HomeSection.GenreMix)
-
-        // Cap the "Similar a…" shelves: more than a few near-identical rows just makes a long,
-        // monotonous tail at the bottom of the home.
-        similarRecommendations?.indices?.take(3)?.forEach { i ->
-            list.add(HomeSection.SimilarRecommendation(i))
-        }
-
-        // Raw YouTube home feed = the same generic suggestions YouTube shows everyone. In taste-only
-        // mode it stays OUT of the home (the user only wants their own taste here); it's still
-        // available under Search/Explore. The taste-based YouTube recommendations come from
-        // SimilarRecommendation + DailyDiscover (seeded from the user's followed artists, history,
-        // favourites and albums).
-        if (!tasteOnlyHome) {
-            homePage?.sections?.indices?.forEach { i ->
-                list.add(HomeSection.HomePageSection(i))
-            }
-        }
-
-        // Generic genre/mood browse grid — hidden in taste-only mode.
-        if (!tasteOnlyHome && explorePage?.moodAndGenres != null) list.add(HomeSection.MoodAndGenres)
-
-        val ordered: List<HomeSection> = if (randomizeHomeOrder) {
-            list.sortedByDescending { section ->
-
-
-
-                val sectionRandom = Random(randomSeed + section.id.hashCode())
-
-                
-                
-                val base = when (section) {
-                    HomeSection.QuickPicks -> 10000
-                    HomeSection.SpeedDial,
-                    HomeSection.NewFromArtists,
-                    is HomeSection.DailyMix -> 500
-
-                    HomeSection.TimeOfDayMix,
-                    HomeSection.AiRecommended,
-                    HomeSection.KeepListening,
-                    HomeSection.AccountPlaylists,
-                    HomeSection.ForgottenFavorites,
-                    HomeSection.GenreMix,
-                    HomeSection.NewReleases,
-                    HomeSection.FromTheCommunity -> 300
-
-                    else -> 100
-                }
-
-                val modifier = when (section) {
-
-
-                    HomeSection.QuickPicks -> 0
-                    HomeSection.SpeedDial,
-                    HomeSection.NewFromArtists -> sectionRandom.nextInt(-200, 400)
-
-                    // The up-to-3 "Mix diario N" shelves shuffle as ONE group: a single shared weight
-                    // seeded by the group key (per-section ids "daily_mix_N" gave each mix an
-                    // independent weight, rendering them out of order / interleaved), tie-broken by
-                    // index so 1/2/3 stay contiguous and in order wherever the group lands.
-                    is HomeSection.DailyMix ->
-                        Random(randomSeed + "daily_mix".hashCode()).nextInt(-200, 400) - section.index
-
-
-
-
-                    HomeSection.TimeOfDayMix,
-                    HomeSection.AiRecommended,
-                    HomeSection.KeepListening,
-                    HomeSection.AccountPlaylists,
-                    HomeSection.ForgottenFavorites,
-                    HomeSection.GenreMix,
-                    HomeSection.NewReleases,
-                    HomeSection.FromTheCommunity -> sectionRandom.nextInt(-100, 400)
-
-
-                    else -> sectionRandom.nextInt(-50, 50)
-                }
-                base + modifier
-            }
-        } else {
-            // Logical reading order (the stable default): quick access -> for you -> time-of-day mix
-            // (light row) -> daily mixes -> new from your artists -> new releases -> continue -> your
-            // library -> re-engage -> more like X. The light TimeOfDayMix row sits between the QuickPicks
-            // hero and the "Mix diario" carousels so heavy carousels are never adjacent.
-            val defaultOrder = mapOf<HomeSection, Int>(
-                HomeSection.SpeedDial to 1000,
-                HomeSection.QuickPicks to 900,
-                // Right under QuickPicks: fresh AI discovery near the top, above the local mixes.
-                HomeSection.AiRecommended to 860,
-                HomeSection.TimeOfDayMix to 850,
-                HomeSection.NewFromArtists to 650,
-                HomeSection.NewReleases to 620,
-                HomeSection.KeepListening to 610,
-                HomeSection.AccountPlaylists to 600,
-                HomeSection.ForgottenFavorites to 500,
-                HomeSection.GenreMix to 480,
-                HomeSection.FromTheCommunity to 450,
-                HomeSection.MoodAndGenres to 10
-            )
-
-            list.sortedByDescending { section ->
-                when(section) {
-                    is HomeSection.DailyMix -> 700 - section.index
-                    is HomeSection.SimilarRecommendation -> 400 - section.index
-                    is HomeSection.HomePageSection -> 200 - section.index
-                    else -> defaultOrder[section] ?: 0
-                }
-            }
-        }
-
-        // Perf mode (ULTRA): cap the home to a few light shelves so a weak / TV / car GPU doesn't choke
-        // scrolling a long tail of carousels. Keep the taste shelves that have dedicated light LazyRow
-        // paths (QuickPicks + the FIRST daily mix — matching the old DailyDiscover gating) plus the cheap
-        // SpeedDial tiles and the light TimeOfDayMix row; drop the rest (incl. the NewReleases carousel).
-        if (perfOn) {
-            listOfNotNull(
-                ordered.firstOrNull { it == HomeSection.SpeedDial },
-                ordered.firstOrNull { it == HomeSection.QuickPicks },
-                ordered.firstOrNull { it == HomeSection.TimeOfDayMix },
-                ordered.firstOrNull { it is HomeSection.DailyMix && it.index == 0 },
-            )
-        } else {
-            ordered
-        }
+        computeHomeSections(
+            randomizeHomeOrder = randomizeHomeOrder,
+            randomSeed = randomSeed,
+            tasteOnlyHome = tasteOnlyHome,
+            showSpeedDial = showSpeedDial,
+            perfOn = perfOn,
+            speedDialCount = speedDialItems.size,
+            quickPickCount = quickPicks?.size ?: 0,
+            dailyMixItemCounts = dailyMixes?.map { it.items.size }.orEmpty(),
+            timeOfDayMixSongCount = timeOfDayMix?.songs?.size ?: 0,
+            aiRecommendedSongCount = aiRecommendedSongs?.size ?: 0,
+            keepListeningCount = keepListening?.size ?: 0,
+            accountPlaylistCount = accountPlaylists?.size ?: 0,
+            forgottenFavoritesCount = forgottenFavorites?.size ?: 0,
+            communityPlaylistCount = communityPlaylists?.size ?: 0,
+            newFromArtistsCount = newFromArtists?.size ?: 0,
+            genreMixSongCount = genreMix?.songs?.size ?: 0,
+            similarRecommendationCount = similarRecommendations?.size ?: 0,
+            homePageSectionCount = homePage?.sections?.size ?: 0,
+            hasMoodAndGenres = explorePage?.moodAndGenres != null,
+            newReleaseAlbumCount = explorePage?.newReleaseAlbums?.size ?: 0,
+        )
     }
 
     LaunchedEffect(quickPicks) {

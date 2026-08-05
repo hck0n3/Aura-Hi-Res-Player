@@ -89,7 +89,6 @@ import iad1tya.echo.music.constants.KeepGenreLaneKey
 import iad1tya.echo.music.constants.AutoSkipNextOnErrorKey
 import iad1tya.echo.music.constants.CrossfadeDurationKey
 import iad1tya.echo.music.constants.CrossfadeEnabledKey
-import iad1tya.echo.music.constants.SpectrumVisualizerEnabledKey
 import iad1tya.echo.music.constants.CrossfadeGaplessKey
 import iad1tya.echo.music.constants.CrossfadeCurveKey
 import iad1tya.echo.music.constants.DisableLoadMoreWhenRepeatAllKey
@@ -156,13 +155,11 @@ import iad1tya.echo.music.eq.audio.AudioEnhanceProcessor
 import iad1tya.echo.music.eq.audio.JrDspAudioProcessor
 import iad1tya.echo.music.eq.audio.CustomEqualizerAudioProcessor
 import iad1tya.echo.music.eq.audio.NormalizationGainAudioProcessor
-import iad1tya.echo.music.eq.audio.SpectrumAudioProcessor
 import iad1tya.echo.music.eq.audio.TruePeakLimiterAudioProcessor
 import iad1tya.echo.music.eq.audio.normalizationMultiplier
 import iad1tya.echo.music.eq.audio.loudnessMakeupDb
 import iad1tya.echo.music.eq.audio.dbToLinear
 import iad1tya.echo.music.eq.audio.effectiveLoudnessDb
-import iad1tya.echo.music.eq.audio.SpectrumBus
 import iad1tya.echo.music.eq.data.EQProfileRepository
 import iad1tya.echo.music.extensions.SilentHandler
 import iad1tya.echo.music.extensions.collect
@@ -643,7 +640,24 @@ class MusicService :
     // (tryMood) or an autoplay chip (selectAutoplayChip) must always win over the finished context.
     @Volatile private var contextSteerActive = false
 
-    private var originalQueueSize: Int = 0
+    /**
+     * How many items of the CURRENT timeline came from the user's own list (the playlist/album/library
+     * selection he started) instead of from the infinite radio: timeline indices `[0, listQueueSize)`
+     * are HIS LIST, `[listQueueSize, mediaItemCount)` were appended by the radio.
+     *
+     * This is the very number [applyShuffleOrder]'s "playlist first" branch has always partitioned on
+     * ([originalQueueSize] below). It is merely PUBLISHED here so the queue UI can show the boundary the
+     * engine already acts on — the distinction existed and had never been surfaced. Nothing reads this
+     * flow to make a playback decision, and [originalQueueSize] keeps its exact previous meaning: it is
+     * now backed by the flow so every existing read/write goes through one storage and the two values
+     * can never drift.
+     */
+    private val _listQueueSize = MutableStateFlow(0)
+    val listQueueSize: kotlinx.coroutines.flow.StateFlow<Int> = _listQueueSize.asStateFlow()
+
+    private var originalQueueSize: Int
+        get() = _listQueueSize.value
+        set(value) { _listQueueSize.value = value }
     // B5 — anti-repeat shuffle memory: media IDs already played in the current shuffle session. While
     // shuffling, not-yet-played songs are ordered ahead of these, so nothing repeats until the whole pool is
     // exhausted (then it auto-resets for a new cycle). Reset whenever shuffle is (re)enabled.
@@ -1973,14 +1987,6 @@ class MusicService :
                 JrDspAudioProcessor.config = cfg
             }
 
-        dataStore.data
-            .map { it[SpectrumVisualizerEnabledKey] ?: false }
-            .distinctUntilChanged()
-            .collectLatest(scope) { enabled ->
-                SpectrumBus.enabled = enabled
-                if (!enabled) SpectrumBus.clear()
-            }
-
         // AUDIO OFFLOAD GATE — reduced to terms backed by LIVE code (0.6.142).
         //
         // Offload hands the ENCODED stream to the DSP hardware: the decoder stops producing PCM on the CPU,
@@ -2282,7 +2288,9 @@ class MusicService :
     }
 
     private fun createExoPlayer(isSecondary: Boolean = false): ExoPlayer {
-        val eqProcessor = CustomEqualizerAudioProcessor()
+        // The Context is what lets the processor resolve the Superpowered licence key, which is bound to
+        // this app's signing certificate (see SuperpoweredLicense). It keeps only applicationContext.
+        val eqProcessor = CustomEqualizerAudioProcessor(this)
         equalizerService.addAudioProcessor(eqProcessor)
 
         val silenceProcessor = iad1tya.echo.music.playback.audio.SilenceDetectorAudioProcessor {

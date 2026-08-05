@@ -27,7 +27,16 @@ object ApkSignatureVerifier {
         }
     }
 
-    private fun installedSignatureHashes(context: Context): Set<String> {
+    /**
+     * SHA-256 (lowercase hex) of every certificate the INSTALLED app is signed with — the app's own
+     * identity, as Android reports it.
+     *
+     * Public because it is also the input to the Superpowered licence binding
+     * ([iad1tya.echo.music.eq.audio.SuperpoweredLicense]): "which certificate signed me?" must have
+     * exactly one implementation in this codebase, so the updater's answer and the licence's answer can
+     * never drift apart. May throw (e.g. [PackageManager.NameNotFoundException]); callers handle it.
+     */
+    fun installedSignatureHashes(context: Context): Set<String> {
         val pm = context.packageManager
         val pkg = context.packageName
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
