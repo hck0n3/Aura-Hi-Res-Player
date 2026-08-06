@@ -1,21 +1,30 @@
 package iad1tya.echo.music.ui.newui
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColor
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.VectorConverter
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.updateTransition
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -28,12 +37,15 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableLongState
+import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -43,9 +55,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
@@ -244,7 +261,19 @@ fun AuraGlobalActions(
 /**
  * The render's bottom bar: flush against the bottom edge, filled with [AuraPalette.Ground], separated
  * from the content by a single `rgba(255,255,255,.08)` hairline, one glyph + label per destination,
- * the active one in teal at full opacity and the rest at `.42`.
+ * the active one in [AuraPalette.Teal] and the rest in [AuraPalette.NavInactive].
+ *
+ * ## It ANIMATES, because this is the animation seen most often per day
+ * Switching tab used to be a one-frame colour swap: no indicator, no scale, no press feedback. It now
+ * runs the same three motions the classic floating toolbar has shipped for months
+ * ([iad1tya.echo.music.ui.component.FloatingNavigationToolbar]), expressed through [AuraMotion] so the
+ * whole redesign speaks one dialect:
+ *  · a [AuraPalette.NavIndicator] pill that SLIDES from the old cell to the new one — width and offset
+ *    on [AuraMotion.standard], measured from the cells themselves via [onGloballyPositioned] so the
+ *    pill can never disagree with the layout;
+ *  · glyph + label tint on [AuraMotion.color];
+ *  · a 1.12× glyph scale on the selected cell and [AuraMotion.PRESS_SCALE] while a finger is down,
+ *    both on [AuraMotion.press] and both applied in a `graphicsLayer` block, i.e. in the DRAW phase.
  *
  * It replaces the M3 `HorizontalFloatingToolbar` pill — the thing the owner called "el reproductor
  * flotante y sus botones flotantes en liquid glass". No glass surface is sampled here and no
@@ -274,34 +303,86 @@ fun AuraNavigationBar(
     onSettingsClick: (() -> Unit)? = null,
     settingsSelected: Boolean = false,
 ) {
+    // The shell is composed by `MainActivity` OUTSIDE any [NewUiGate], so it cannot rely on a gate
+    // having resolved the palette first — on a cold start the bar can compose before any screen does.
+    // Idempotent, so this costs three comparisons once the values have settled.
+    AuraPaletteSync()
+
+    val density = LocalDensity.current
+    // Measured geometry of every cell, keyed by its index in the row (Ajustes, when present, is the
+    // last index). Populated from onGloballyPositioned, so the pill tracks whatever the row actually
+    // laid out — equal weights, an odd trailing pixel, a three-cell row without Listen Together.
+    val cellOffsets = remember { mutableStateMapOf<Int, Dp>() }
+    val cellWidths = remember { mutableStateMapOf<Int, Dp>() }
+
+    val settingsIndex = if (onSettingsClick != null) items.size else -1
+    val selectedIndex = when {
+        settingsSelected && settingsIndex >= 0 -> settingsIndex
+        else -> items.indexOfFirst { isSelected(it) }
+    }
+
+    val targetWidth = cellWidths[selectedIndex] ?: 0.dp
+    val targetOffset = cellOffsets[selectedIndex] ?: 0.dp
+    val pillWidth = remember { Animatable(0.dp, Dp.VectorConverter) }
+    val pillOffset = remember { Animatable(0.dp, Dp.VectorConverter) }
+    LaunchedEffect(targetWidth, targetOffset) {
+        if (pillWidth.value == 0.dp) {
+            // First measurement of this bar: LAND on the selected cell. Animating from the zero the
+            // Animatable starts at would fly the pill in from the left edge every cold start and every
+            // configuration change, which reads as a glitch rather than as a transition.
+            pillWidth.snapTo(targetWidth)
+            pillOffset.snapTo(targetOffset)
+        } else {
+            launch { pillWidth.animateTo(targetWidth, AuraMotion.dp) }
+            pillOffset.animateTo(targetOffset, AuraMotion.dp)
+        }
+    }
+    // Passed as State, never unwrapped here: the values are read inside [AuraNavIndicator], so the
+    // slide recomposes that one Box and never this bar (which would re-run every cell, every
+    // stringResource and every icon lookup, 60×/s, on every tab switch).
+
     Column(
         modifier = modifier
             .fillMaxWidth()
             .background(AuraPalette.Ground),
     ) {
         AuraDivider()
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(AuraNavBarHeight),
         ) {
-            items.forEach { screen ->
-                val selected = isSelected(screen)
-                AuraNavItem(
-                    icon = auraNavIcon(screen),
-                    label = stringResource(screen.titleId),
-                    selected = selected,
-                    onClick = { onItemClick(screen, selected) },
-                )
-            }
-            if (onSettingsClick != null) {
-                AuraNavItem(
-                    icon = AuraIcons.Settings,
-                    label = stringResource(R.string.settings),
-                    selected = settingsSelected,
-                    onClick = onSettingsClick,
-                )
+            AuraNavIndicator(width = pillWidth.asState(), offsetX = pillOffset.asState())
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                items.forEachIndexed { index, screen ->
+                    val selected = isSelected(screen)
+                    AuraNavItem(
+                        icon = auraNavIcon(screen),
+                        label = stringResource(screen.titleId),
+                        selected = selected,
+                        onClick = { onItemClick(screen, selected) },
+                        modifier = Modifier.onGloballyPositioned { coordinates ->
+                            cellWidths[index] = with(density) { coordinates.size.width.toDp() }
+                            cellOffsets[index] = with(density) { coordinates.positionInParent().x.toDp() }
+                        },
+                    )
+                }
+                if (onSettingsClick != null) {
+                    AuraNavItem(
+                        icon = AuraIcons.Settings,
+                        label = stringResource(R.string.settings),
+                        selected = settingsSelected,
+                        onClick = onSettingsClick,
+                        modifier = Modifier.onGloballyPositioned { coordinates ->
+                            cellWidths[settingsIndex] = with(density) { coordinates.size.width.toDp() }
+                            cellOffsets[settingsIndex] =
+                                with(density) { coordinates.positionInParent().x.toDp() }
+                        },
+                    )
+                }
             }
         }
         // The bar's own ground continues under the gesture bar, so content scrolling past the last row
@@ -310,28 +391,96 @@ fun AuraNavigationBar(
     }
 }
 
-/** One cell of [AuraNavigationBar]: `.nv` in the render — a 24 dp glyph over an 8.5 px label. */
+/**
+ * The pill that marks the selected cell. Sized and positioned from the cells' own measured geometry,
+ * so it lands on the cell rather than on an assumption about how the row divided itself.
+ *
+ * Nothing is drawn until the row has reported a width, so no zero-width pill is ever laid out.
+ */
+@Composable
+private fun AuraNavIndicator(width: State<Dp>, offsetX: State<Dp>) {
+    val w = width.value
+    if (w <= 0.dp) return
+    Box(
+        modifier = Modifier
+            .offset(x = offsetX.value)
+            .width(w)
+            .fillMaxHeight()
+            // Inset so the pill reads as a marker behind the cell, not as a second bar.
+            .padding(horizontal = 10.dp, vertical = 8.dp)
+            .background(AuraPalette.NavIndicator, AuraShapes.Highlight),
+    )
+}
+
+/**
+ * One cell of [AuraNavigationBar]: `.nv` in the render — a 24 dp glyph over an 8.5 px label.
+ *
+ * The unselected tint is [AuraPalette.NavInactive] (62 %, ~7:1 on [AuraPalette.Ground]), NOT
+ * [AuraPalette.OnGroundGhost] (48 %, ~4.5:1). The ghost step only just clears the AA floor and it is
+ * meant for tertiary data you may or may not read; on the PRIMARY navigation it made three of the four
+ * cells look disabled — and the bar itself is fully opaque, so this was never a transparency problem
+ * to fix on the bar.
+ */
 @Composable
 private fun RowScope.AuraNavItem(
     icon: ImageVector,
     label: String,
     selected: Boolean,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    val tint = if (selected) AuraPalette.Teal else AuraPalette.OnGroundGhost
+    val transition = updateTransition(targetState = selected, label = "auraNavItem")
+    val tint by transition.animateColor(
+        transitionSpec = { AuraMotion.color() },
+        label = "auraNavTint",
+    ) { isSelected -> if (isSelected) AuraPalette.Teal else AuraPalette.NavInactive }
+    val iconScale by transition.animateFloat(
+        transitionSpec = { AuraMotion.press() },
+        label = "auraNavIconScale",
+    ) { isSelected -> if (isSelected) 1.12f else 1f }
+
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val pressScale by animateFloatAsState(
+        targetValue = if (pressed) AuraMotion.PRESS_SCALE else 1f,
+        animationSpec = AuraMotion.pressFloat,
+        label = "auraNavPressScale",
+    )
+
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
-        modifier = Modifier
+        modifier = modifier
             .weight(1f)
             .fillMaxWidth()
             .sizeIn(minHeight = AuraSpacing.MinTouchTarget)
+            // Read in the layer block, i.e. in the draw phase: a press scales the cell without
+            // recomposing it.
+            .graphicsLayer {
+                scaleX = pressScale
+                scaleY = pressScale
+            }
             .tvFocusable(rememberIsTvOrCar(), AuraShapes.Highlight, scaleFocused = 1f)
             .clip(AuraShapes.Highlight)
-            .clickable(onClickLabel = label, role = Role.Tab, onClick = onClick)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
+                onClickLabel = label,
+                role = Role.Tab,
+                onClick = onClick,
+            )
             .padding(vertical = 8.dp),
     ) {
-        AuraIconGlyph(icon = icon, contentDescription = null, size = 24.dp, tint = tint)
+        AuraIconGlyph(
+            icon = icon,
+            contentDescription = null,
+            size = 24.dp,
+            tint = tint,
+            modifier = Modifier.graphicsLayer {
+                scaleX = iconScale
+                scaleY = iconScale
+            },
+        )
         Spacer(Modifier.height(4.dp))
         Text(
             text = label,
@@ -358,9 +507,21 @@ private fun auraNavIcon(screen: Screens): ImageVector = when (screen) {
 // ── Mini player ───────────────────────────────────────────────────────────────────────────────────
 
 /**
- * The render's mini player (`.mi`): a rounded pill inset from both gutters, filled with
- * [AuraPalette.SurfaceFill] and outlined with [AuraPalette.SurfaceLine] — cover, title, artist,
- * play/pause. Nothing else, exactly as drawn.
+ * The render's mini player (`.mi`): a rounded pill inset from both gutters, outlined with
+ * [AuraPalette.SurfaceLine] — cover, title, artist, transport. Nothing else, exactly as drawn.
+ *
+ * ## It has an OPAQUE ground, and that is not optional
+ * The render's `.mi` is `rgba(255,255,255,.07)` because in a browser it sits on the page's own dark
+ * body. On Android it does not: the sheet's ground slot is deliberately not composed while the sheet
+ * is collapsed (`BottomSheet.kt:67-77`), and collapsed is exactly when this pill is on screen — so
+ * [AuraPalette.SurfaceFill] alone meant 7 % white composited onto whatever the NavHost was drawing,
+ * with a scrolling list showing through the title. "Está tan transparente que no se define nada."
+ *
+ * The pill therefore starts from [AuraPalette.GroundRaised] (opaque) and only then applies the
+ * render's film. On top of that ground, and only from API 31 up, it draws the same cheap "glass" the
+ * classic mini already ships: ONE 128×128 decode of the current cover, blurred once with
+ * `Modifier.blur(30.dp)`, under a 45 % black scrim. Per TRACK, not per frame, and no backdrop is
+ * sampled — see the comment at the call site.
  *
  * It replaces the call to the CLASSIC `MiniPlayer` that `AuraPlayer` made verbatim, which is why
  * Liquid Glass kept appearing inside the new player: the classic mini reads
@@ -468,6 +629,46 @@ fun AuraMiniPlayer(
                 } else Modifier,
             ),
     ) {
+        // ── The pill's ground ─────────────────────────────────────────────────────────────────────
+        // Bottom to top: an OPAQUE fill, then whatever "Fondo del reproductor" says, then the 45 %
+        // scrim. The content Row below is a sibling carrying the same offset and clip, so the two move
+        // together while the finger drags. Without this layer the pill was [AuraPalette.SurfaceFill] —
+        // 7 % white — with nothing but the NavHost behind it: "está tan transparente que no se define
+        // nada".
+        //
+        // The pill is the third surface the seven [PlayerBackgroundStyle] values own (with the player
+        // sheet and the queue sheet). [auraPillRecipe] adapts the sheet's recipe to a 64 dp pill: the
+        // pill's ground has always BEEN the blurred cover, so DEFAULT keeps exactly the layer that
+        // shipped, and the other six change it. Every cost is the one already paid — one 128×128 decode
+        // per track under `Modifier.blur`, guarded by API 31, never a backdrop sample. A live full-width
+        // blur here is exactly what the thermal contract in AuraBloom.kt forbids: this pill is on screen
+        // for the whole of every song.
+        val ground = rememberAuraGround(mediaMetadata?.id, mediaMetadata?.thumbnailUrl)
+        val pillRecipe = remember(ground.recipe) { auraPillRecipe(ground.recipe) }
+        // The 45 % scrim exists to keep light text on artwork. Below API 31 (`Modifier.blur` is a no-op,
+        // so `coverUrl` is null there) and on a local track there IS no artwork on this pill, and drawing
+        // the scrim anyway would only darken the ground for nothing — which is what the shipped pill
+        // already avoided by gating cover and scrim together.
+        val pillHasArtwork = (pillRecipe.cover > 0f && ground.coverUrl != null) ||
+            pillRecipe.wash > 0f || pillRecipe.lobes > 0f
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .offset { IntOffset(offsetX.value.roundToInt(), 0) }
+                .clip(AuraShapes.Card),
+        ) {
+            AuraGroundLayer(
+                ground = ground,
+                recipe = pillRecipe,
+                base = AuraPalette.GroundRaised,
+                // The pill's ink is full-alpha OnGround under its own scrim, not the sheet's 48–55 %
+                // steps, so it keeps the full-strength cover it has always drawn instead of the sheet's
+                // 10 % flat ceiling.
+                coverCeiling = 1f,
+                scrim = if (pillHasArtwork) 0.45f else 0f,
+            )
+        }
+
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(11.dp),

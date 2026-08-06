@@ -2,7 +2,7 @@ package com.music.lrclib
 
 import com.music.lrclib.models.Track
 import com.music.lrclib.models.bestMatchingFor
-import com.music.lrclib.models.bestMatchingForRelaxed
+import com.music.lrclib.models.rankedByArtistConfidence
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.engine.okhttp.OkHttp
@@ -15,6 +15,24 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.serialization.json.Json
 import kotlin.math.abs
+
+/**
+ * The one network call this file makes, behind a function type.
+ *
+ * This is a TEST SEAM, and it exists because the bug this module was fixed for lives HERE and not in
+ * the matcher: which of the five strategies ran, what each one sent, which fields it therefore
+ * constrained server-side, and whether the RAW or the cleaned artist tag reaches the matcher. A test
+ * suite that only calls `List<Track>.bestMatchingFor` directly stays green while every one of those
+ * decisions is reverted. `LrcLibStrategyTest` drives the real ladder through this seam.
+ *
+ * Production always uses [LrcLib.defaultSearch]; nothing substitutes it at runtime.
+ */
+internal typealias LrcLibSearch = suspend (
+    trackName: String?,
+    artistName: String?,
+    albumName: String?,
+    query: String?,
+) -> List<Track>
 
 object LrcLib {
     private val client by lazy {
@@ -60,6 +78,16 @@ object LrcLib {
         return cleaned.trim()
     }
 
+    /**
+     * Reduces a credit list to its PRIMARY artist, because LrcLib's `artist_name=` filter wants a
+     * single artist and matches poorly against a full credit list.
+     *
+     * This is lossy on purpose and everything after the first separator is DISCARDED:
+     * "Bruno Mars, Mark Ronson" -> "Bruno Mars". That makes it correct for building the query and
+     * wrong for judging a result - a local check fed this value can never recognise LrcLib's
+     * "Mark Ronson" credit for the same recording. The raw tag is what goes to the matcher; see
+     * [com.music.lrclib.models.compareArtists].
+     */
     private fun cleanArtist(artist: String): String {
         var cleaned = artist.trim()
         // Get primary artist (first one before any separator)
@@ -86,52 +114,89 @@ object LrcLib {
         }.body<List<Track>>()
     }.getOrDefault(emptyList())
 
-    private suspend fun queryLyrics(
+    /** The real network search. The only [LrcLibSearch] production code ever uses. */
+    internal val defaultSearch: LrcLibSearch = { trackName, artistName, albumName, query ->
+        queryLyricsWithParams(trackName, artistName, albumName, query)
+    }
+
+    /**
+     * A result list plus the two facts that decide how much we are allowed to trust it: which
+     * fields the query that produced it actually filtered SERVER-SIDE.
+     *
+     * `artist_name=` is a real artist filter and `track_name=` is a real title filter. The
+     * free-text `q=` parameter is NEITHER: it is a fuzzy full-text search that happily returns
+     * other artists, and by the same token other songs - a `q=` set counts as unconstrained on both
+     * fields even when the artist and title were part of the query string. Whatever the server did
+     * not constrain is re-judged locally; if it really did match, the local check passes anyway and
+     * nothing is lost.
+     */
+    internal data class LyricsQueryResult(
+        val tracks: List<Track>,
+        val artistConstrained: Boolean,
+        val titleConstrained: Boolean,
+    ) {
+        val isNotEmpty: Boolean get() = tracks.isNotEmpty()
+    }
+
+    internal suspend fun queryLyrics(
         artist: String,
         title: String,
         album: String? = null,
-    ): List<Track> {
+        search: LrcLibSearch = defaultSearch,
+    ): LyricsQueryResult {
         val cleanedTitle = cleanTitle(title)
         val cleanedArtist = cleanArtist(artist)
-        
-        // Strategy 1: Search with cleaned title and artist
-        var results = queryLyricsWithParams(
+
+        suspend fun query(
+            artistConstrained: Boolean,
+            titleConstrained: Boolean,
+            trackName: String? = null,
+            artistName: String? = null,
+            albumName: String? = null,
+            queryText: String? = null,
+        ) = LyricsQueryResult(
+            tracks = search(trackName, artistName, albumName, queryText)
+                .filter { it.syncedLyrics != null || it.plainLyrics != null },
+            artistConstrained = artistConstrained,
+            titleConstrained = titleConstrained,
+        )
+
+        // Strategy 1: cleaned title AND artist -> both fields filtered by LrcLib
+        var results = query(
+            artistConstrained = true,
+            titleConstrained = true,
             trackName = cleanedTitle,
             artistName = cleanedArtist,
-            albumName = album
-        ).filter { it.syncedLyrics != null || it.plainLyrics != null }
-        
-        if (results.isNotEmpty()) return results
-        
-        // Strategy 2: Search with cleaned title only (artist might be different)
-        results = queryLyricsWithParams(
-            trackName = cleanedTitle
-        ).filter { it.syncedLyrics != null || it.plainLyrics != null }
-        
-        if (results.isNotEmpty()) return results
-        
-        // Strategy 3: Use q parameter with combined search
-        results = queryLyricsWithParams(
-            query = "$cleanedArtist $cleanedTitle"
-        ).filter { it.syncedLyrics != null || it.plainLyrics != null }
-        
-        if (results.isNotEmpty()) return results
-        
-        // Strategy 4: Use q parameter with just title
-        results = queryLyricsWithParams(
-            query = cleanedTitle
-        ).filter { it.syncedLyrics != null || it.plainLyrics != null }
-        
-        if (results.isNotEmpty()) return results
-        
-        // Strategy 5: Try original title if different from cleaned
+            albumName = album,
+        )
+        if (results.isNotEmpty) return results
+
+        // Strategy 2: cleaned title only -> title filtered, ANY artist can come back
+        results = query(artistConstrained = false, titleConstrained = true, trackName = cleanedTitle)
+        if (results.isNotEmpty) return results
+
+        // Strategy 3: free text; artist and title are merely hints -> ANY artist AND ANY song
+        results = query(
+            artistConstrained = false,
+            titleConstrained = false,
+            queryText = "$cleanedArtist $cleanedTitle",
+        )
+        if (results.isNotEmpty) return results
+
+        // Strategy 4: free text on the title alone -> ANY artist AND ANY song
+        results = query(artistConstrained = false, titleConstrained = false, queryText = cleanedTitle)
+        if (results.isNotEmpty) return results
+
+        // Strategy 5: original title if different from cleaned -> both fields filtered by LrcLib
         if (cleanedTitle != title.trim()) {
-            results = queryLyricsWithParams(
+            results = query(
+                artistConstrained = true,
+                titleConstrained = true,
                 trackName = title.trim(),
-                artistName = artist.trim()
-            ).filter { it.syncedLyrics != null || it.plainLyrics != null }
+                artistName = artist.trim(),
+            )
         }
-        
+
         return results
     }
 
@@ -140,30 +205,43 @@ object LrcLib {
         artist: String,
         duration: Int,
         album: String? = null,
-    ) = runCatching {
-        val tracks = queryLyrics(artist, title, album)
+    ) = runCatching { resolveLyrics(title, artist, duration, album, defaultSearch) }
+
+    /**
+     * The body of [getLyrics], with the network call injectable. Throws when nothing clears the bar,
+     * which is what [getLyrics] turns into a failed `Result`.
+     */
+    internal suspend fun resolveLyrics(
+        title: String,
+        artist: String,
+        duration: Int,
+        album: String? = null,
+        search: LrcLibSearch = defaultSearch,
+    ): String {
+        val queryResult = queryLyrics(artist, title, album, search)
         val cleanedTitle = cleanTitle(title)
-        val cleanedArtist = cleanArtist(artist)
 
-        val res = when {
-            duration == -1 -> {
-                tracks.bestMatchingFor(duration, cleanedTitle, cleanedArtist)?.let { track ->
-                    track.syncedLyrics ?: track.plainLyrics
-                }?.let(LrcLib::Lyrics)
-            }
-            else -> {
-                // Try with relaxed duration matching (±5 seconds instead of ±2)
-                tracks.bestMatchingForRelaxed(duration)?.let { track ->
-                    track.syncedLyrics ?: track.plainLyrics
-                }?.let(LrcLib::Lyrics)
-            }
-        }
+        // WRONG-SONG LYRICS FIX: the duration branch used to call bestMatchingForRelaxed(duration)
+        // and pick purely on a +/-5s duration window, discarding the names entirely. On a title-only
+        // result set (strategies 2/3/4) that routinely handed back another artist's song. The names
+        // and the provenance of the result set now travel with the call; see Track.bestMatchingFor.
+        //
+        // The artist goes in RAW, not through cleanArtist: cleanArtist keeps only the credit before
+        // the first separator, so passing its output would strip "Mark Ronson" out of
+        // "Bruno Mars, Mark Ronson" before the comparison and reject the correct lyrics. The cleaned
+        // form is for the query only, where LrcLib wants one artist.
+        val res = queryResult.tracks.bestMatchingFor(
+            duration = duration,
+            trackName = cleanedTitle,
+            artistName = artist,
+            albumName = album,
+            artistWasConstrained = queryResult.artistConstrained,
+            titleWasConstrained = queryResult.titleConstrained,
+        )?.let { track ->
+            track.syncedLyrics ?: track.plainLyrics
+        }?.let(LrcLib::Lyrics)
 
-        if (res != null) {
-            return@runCatching res.text
-        } else {
-            throw IllegalStateException("Lyrics unavailable")
-        }
+        return res?.text ?: throw IllegalStateException("Lyrics unavailable")
     }
 
     suspend fun getAllLyrics(
@@ -172,8 +250,19 @@ object LrcLib {
         duration: Int,
         album: String? = null,
         callback: (String) -> Unit,
+    ) = collectLyrics(title, artist, duration, album, defaultSearch, callback)
+
+    /** The body of [getAllLyrics], with the network call injectable. */
+    internal suspend fun collectLyrics(
+        title: String,
+        artist: String,
+        duration: Int,
+        album: String? = null,
+        search: LrcLibSearch = defaultSearch,
+        callback: (String) -> Unit,
     ) {
-        val tracks = queryLyrics(artist, title, album)
+        val queryResult = queryLyrics(artist, title, album, search)
+        val tracks = queryResult.tracks
         val cleanedTitle = cleanTitle(title)
         val cleanedArtist = cleanArtist(artist)
         var count = 0
@@ -194,7 +283,17 @@ object LrcLib {
                 }
             }
             else -> {
-                tracks.sortedBy { abs(it.duration.toInt() - duration) }
+                // This list feeds the user-facing "search lyrics" sheet, where a human reads the
+                // result before it is saved. Wrong-artist hits are pushed to the BOTTOM but are not
+                // removed: this sheet is the escape hatch for the songs the automatic gate in
+                // resolveLyrics() declines, and filtering it too would strand exactly those users.
+                val byDuration = tracks.sortedBy { abs(it.duration.toInt() - duration) }
+                if (queryResult.artistConstrained) {
+                    byDuration
+                } else {
+                    // Raw tag, not cleanedArtist - see the note in resolveLyrics().
+                    byDuration.rankedByArtistConfidence(artist)
+                }
             }
         }
 
@@ -263,7 +362,7 @@ object LrcLib {
         artist: String,
         title: String,
     ) = runCatching {
-        queryLyrics(artist = artist, title = title, album = null)
+        queryLyrics(artist = artist, title = title, album = null).tracks
     }
 
     @JvmInline

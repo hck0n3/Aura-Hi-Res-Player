@@ -163,6 +163,7 @@ import iad1tya.echo.music.ui.menu.YouTubeAlbumMenu
 import iad1tya.echo.music.ui.menu.YouTubeArtistMenu
 import iad1tya.echo.music.ui.menu.YouTubePlaylistMenu
 import iad1tya.echo.music.ui.menu.YouTubeSongMenu
+import iad1tya.echo.music.ui.theme.rememberNewUiForcesDarkTheme
 import iad1tya.echo.music.ui.utils.SnapLayoutInfoProvider
 import iad1tya.echo.music.ui.utils.resize
 import iad1tya.echo.music.utils.isInternetAvailable
@@ -387,7 +388,10 @@ fun CommunityPlaylistCard(
     val database = LocalDatabase.current
     val playerConnection = LocalPlayerConnection.current
     val context = LocalContext.current
-    val isDark = isSystemInDarkTheme()
+    // Card fill picked by dark/light. This site never read DarkModeKey — it asks the SYSTEM only — so it
+    // is left as it was plus the "Interfaz nueva" term: the redesign forces the app dark, and the light
+    // branch here (surfaceVariant at 50% alpha) is a pale card on the redesign's near-black ground.
+    val isDark = rememberNewUiForcesDarkTheme() || isSystemInDarkTheme()
 
     val containerColor = if (isDark) {
         MaterialTheme.colorScheme.surfaceColorAtElevation(1.dp)

@@ -65,6 +65,8 @@
     <string name="search_playlists">Search your playlists</string>
     <string name="podcasts">Podcasts</string>
     <string name="update_signature_mismatch">Could not verify the update signature. Install cancelled for safety.</string>
+    <string name="update_version_mismatch">The downloaded file is not the version of this update. It has been deleted; tap update again to download it.</string>
+    <string name="download_incomplete">The download did not finish. Retrying…</string>
     <string name="filter_community_playlists">Community playlists</string>
     <string name="filter_featured_playlists">Featured playlists</string>
     <string name="filter_bookmarked">Bookmarked</string>
@@ -139,6 +141,7 @@
     <string name="view_artist">View artist</string>
     <string name="view_album">View album</string>
     <string name="refetch">Refetch</string>
+    <string name="restore_previous_lyrics">Restore previous</string>
     <string name="crossfading">Crossfading</string>
     <string name="share">Share</string>
     <string name="more_options">More options</string>
@@ -187,8 +190,8 @@
     <string name="hide_player_volume_desc">Hides the volume control in the player</string>
     <string name="apple_music_inspired">Apple Music inspired</string>
     <string name="apple_music_inspired_desc">Use the Apple Music-style player layout</string>
-    <string name="apple_music_inspired_desc_new_ui">With the new interface on, this only changes the landscape, tablet/TV and video player</string>
-    <string name="player_background_style_desc_new_ui">With the new interface on, this only applies to the landscape, tablet/TV and video player: the new portrait player keeps its own ambient background</string>
+    <string name="apple_music_inspired_desc_new_ui">With the new interface on it changes nothing on screen: it chooses which classic player comes back when you turn the beta off</string>
+    <string name="player_background_style_desc_new_ui">With the new interface on, this repaints the ground of the player, its queue and the mini player. Everything drawn on top — the cover, the title, the controls — keeps the new design. "Default" is the ambient background</string>
 
     <string name="edit_lyrics">Edit lyrics</string>
     <string name="search_lyrics">Search lyrics</string>

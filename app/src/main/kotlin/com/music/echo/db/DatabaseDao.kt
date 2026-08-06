@@ -683,6 +683,50 @@ interface DatabaseDao {
     @Query("SELECT * FROM lyrics WHERE id = :id")
     fun lyrics(id: String?): Flow<LyricsEntity?>
 
+    /**
+     * Records that this row agrees with the current matching rules, so it is never re-verified.
+     * Touches ONE column of ONE row - it must not disturb a translation or a user's own text.
+     */
+    @Query("UPDATE lyrics SET matchRulesVersion = :rulesVersion WHERE id = :id")
+    fun markLyricsMatchVerified(id: String, rulesVersion: Int)
+
+    /**
+     * Replaces lyrics that the fixed matcher disagrees with, PARKING the old text in
+     * `supersededLyrics` instead of destroying it.
+     *
+     * `AND userEdited = 0` is a hard floor, not an optimisation: even if a caller were to hand this
+     * a song the user wrote themselves, SQLite updates zero rows. Anything a human typed is
+     * unreachable from here.
+     *
+     * The translation columns are cleared in the same statement because a translation belongs to the
+     * text it was made from. Leaving it would pin the OLD song's translated lines underneath the new
+     * (correct) lyrics - the same wrong-song bug wearing a different hat.
+     *
+     * `supersededLyrics` is only filled when it is still empty, so it always holds the OLDEST text -
+     * the one that may be the user's. A later rules generation repairing the same row again would
+     * otherwise overwrite the user's original with a machine result from the previous repair.
+     * (SQL evaluates every right-hand side against the pre-update row, so `lyrics` here is the old
+     * text, not `:newLyrics`.)
+     */
+    @Query(
+        "UPDATE lyrics SET lyrics = :newLyrics, provider = :provider, " +
+            "supersededLyrics = CASE WHEN supersededLyrics = '' THEN lyrics ELSE supersededLyrics END, " +
+            "matchRulesVersion = :rulesVersion, translatedLyrics = '', translationLanguage = '', " +
+            "translationMode = '' WHERE id = :id AND userEdited = 0",
+    )
+    fun repairMismatchedLyrics(id: String, newLyrics: String, provider: String, rulesVersion: Int): Int
+
+    /**
+     * Puts back the text a repair displaced and marks the row user-owned, so the automatic passes
+     * leave it alone from then on. This is what makes the repair reversible by the user.
+     */
+    @Query(
+        "UPDATE lyrics SET lyrics = supersededLyrics, supersededLyrics = '', userEdited = 1, " +
+            "translatedLyrics = '', translationLanguage = '', translationMode = '' " +
+            "WHERE id = :id AND supersededLyrics <> ''",
+    )
+    fun restoreSupersededLyrics(id: String): Int
+
     @Transaction
     @SuppressWarnings(RoomWarnings.QUERY_MISMATCH)
     @Query("SELECT *, (SELECT COUNT(1) FROM song_artist_map JOIN song ON song_artist_map.songId = song.id WHERE artistId = artist.id AND song.inLibrary IS NOT NULL) AS songCount FROM artist WHERE songCount > 0 ORDER BY rowId")

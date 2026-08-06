@@ -1149,4 +1149,24 @@
     <string name="ytm_upload_never_completed">Never fully synced yet</string>
     <string name="ytm_upload_requests_last_run">%1$d requests on the last run</string>
     <string name="ytm_upload_only_followed_note">Only artists you actually followed are subscribed on your account — never artists that just happen to have a song in your library.</string>
+    <!-- "Interfaz nueva": full-screen lyrics + downloads containers -->
+    <string name="aura_no_song_playing">No song is playing</string>
+    <string name="aura_lyrics_appearance">Lyrics appearance</string>
+    <string name="aura_downloads_in_progress">Downloads in progress</string>
+    <string name="aura_download_failed">Download failed</string>
+    <string name="aura_auto_playlist_about">%1$s is a collection that keeps itself up to date. It is not edited by hand: songs come and go as your library changes.</string>
+    <!-- "Interfaz nueva" · Buscar -->
+    <string name="search_clear_query">Clear search</string>
+    <string name="search_history_remove">Remove from search history</string>
+    <string name="search_use_suggestion">Edit this search</string>
+    <string name="trending_top_global">Global top</string>
+    <string name="trending_apple_top">Apple Music Top 100</string>
+    <string name="trending_artists">Trending artists</string>
+    <string name="trending_albums">Popular albums</string>
+    <string name="trending_videos">Trending music videos</string>
+    <string name="trending_see_more">See more</string>
+    <string name="trending_source_apple">Data from Apple Music</string>
+    <string name="trending_none">No suggestions available right now.</string>
+    <string name="aura_download_queued">Queued</string>
+    <string name="aura_download_paused">Download paused</string>
 </resources>

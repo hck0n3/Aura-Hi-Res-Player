@@ -1,8 +1,10 @@
 package iad1tya.echo.music.ui.newui
 
+import androidx.compose.animation.animateColor
+import androidx.compose.animation.core.animateDp
+import androidx.compose.animation.core.updateTransition
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -13,6 +15,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.sizeIn
@@ -22,17 +25,26 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.offset
 
 /**
  * Shared row / list / control primitives for the "Interfaz nueva".
@@ -71,17 +83,32 @@ object AuraSpacing {
 }
 
 object AuraShapes {
-    /** Artwork in a list row — render `border-radius:8px`. */
-    val Artwork = RoundedCornerShape(11.dp)
+    /**
+     * Artwork in a list row — render `border-radius:8px`, i.e. 11 dp scaled.
+     *
+     * NOT a constant any more: "Radio de esquina de la miniatura" (Ajustes ▸ Apariencia ▸ Reproductor)
+     * scales both cover radii, and this getter is the single place the redesign reads that. See
+     * [AuraCoverCorners] — the shapes are cut once per settings change, so this hands back an existing
+     * object rather than allocating per row.
+     */
+    val Artwork: RoundedCornerShape get() = AuraPalette.coverCorners.row
 
-    /** Player artwork — render `border-radius:14px`. */
-    val PlayerArtwork = RoundedCornerShape(20.dp)
+    /** Player artwork — render `border-radius:14px`, i.e. 20 dp scaled by the same control. */
+    val PlayerArtwork: RoundedCornerShape get() = AuraPalette.coverCorners.player
 
     /** Cards, the mini-player pill and the "Interfaz nueva" callout — render 11–12px. */
     val Card = RoundedCornerShape(16.dp)
 
+    /**
+     * Corner radius of [Highlight], published because [AuraRow] draws that shape itself (its fill and
+     * border are ANIMATED, so they are painted in the draw phase rather than handed to
+     * `Modifier.background`/`Modifier.border`). One source, so the drawn corner can never drift from
+     * the clipped one.
+     */
+    val HighlightCorner = 14.dp
+
     /** The highlighted "SONANDO" row — render 10px. */
-    val Highlight = RoundedCornerShape(14.dp)
+    val Highlight = RoundedCornerShape(HighlightCorner)
 
     /** Filter chips and switches — fully round. */
     val Pill = CircleShape
@@ -264,6 +291,12 @@ fun AuraTechnicalText(
  *
  * @param onLongClick wired because the inventory records long-press behaviours (copy title/artist,
  *   open the item menu) that no mockup shows. Leave it null only if the classic row truly has none.
+ * @param highlighted the "SONANDO" state. It is NOT a hard cut: fill, border and padding all cross a
+ *   single [updateTransition], because on every track change the queue hands this flag from one row to
+ *   another and an instant 0→11 dp padding jump reflows — and visibly drags — every row below it. The
+ *   animated values are read inside `drawBehind` and inside a `Modifier.layout` block, i.e. in the draw
+ *   and measure phases: a row in transition repaints and re-measures, it does not recompose, so the
+ *   artwork/leading/trailing slots are never re-invoked.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -281,19 +314,55 @@ fun AuraRow(
     trailing: (@Composable () -> Unit)? = null,
 ) {
     val shape = AuraShapes.Highlight
+    val transition = updateTransition(targetState = highlighted, label = "auraRowHighlight")
+    // The "off" ends are the SAME hues at alpha 0, never Color.Transparent: interpolating towards a
+    // transparent black would drag the fill through a grey it never has.
+    val fillColor by transition.animateColor(
+        transitionSpec = { AuraMotion.color() },
+        label = "auraRowFill",
+    ) { on -> if (on) AuraPalette.NowPlayingFill else AuraPalette.NowPlayingFill.copy(alpha = 0f) }
+    val lineColor by transition.animateColor(
+        transitionSpec = { AuraMotion.color() },
+        label = "auraRowLine",
+    ) { on -> if (on) AuraPalette.NowPlayingLine else AuraPalette.NowPlayingLine.copy(alpha = 0f) }
+    val horizontalPadding by transition.animateDp(
+        transitionSpec = { AuraMotion.standard() },
+        label = "auraRowPaddingH",
+    ) { on -> if (on) 11.dp else 0.dp }
+    val verticalPadding by transition.animateDp(
+        transitionSpec = { AuraMotion.standard() },
+        label = "auraRowPaddingV",
+    ) { on -> if (on) 11.dp else 4.dp }
+
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(AuraSpacing.RowInner),
         modifier = modifier
             .fillMaxWidth()
             .clip(shape)
-            .then(
-                if (highlighted) {
-                    Modifier
-                        .background(AuraPalette.NowPlayingFill, shape)
-                        .border(1.dp, AuraPalette.NowPlayingLine, shape)
-                } else Modifier
-            )
+            // Fill + hairline, painted here instead of via background()/border() so the two animated
+            // colours are read in the DRAW phase. Both are skipped outright while fully transparent,
+            // which is the state of every row that is not the current one.
+            .drawBehind {
+                val radius = CornerRadius(AuraShapes.HighlightCorner.toPx())
+                val fill = fillColor
+                if (fill.alpha > 0f) {
+                    drawRoundRect(color = fill, cornerRadius = radius)
+                }
+                val line = lineColor
+                if (line.alpha > 0f) {
+                    val stroke = 1.dp.toPx()
+                    drawRoundRect(
+                        color = line,
+                        topLeft = Offset(stroke / 2f, stroke / 2f),
+                        size = Size(size.width - stroke, size.height - stroke),
+                        cornerRadius = CornerRadius(
+                            (AuraShapes.HighlightCorner.toPx() - stroke / 2f).coerceAtLeast(0f),
+                        ),
+                        style = Stroke(stroke),
+                    )
+                }
+            }
             .then(
                 if (onClick != null || onLongClick != null) {
                     Modifier.combinedClickable(
@@ -304,7 +373,16 @@ fun AuraRow(
                 } else Modifier
             )
             .sizeIn(minHeight = AuraSpacing.MinTouchTarget)
-            .padding(horizontal = if (highlighted) 11.dp else 0.dp, vertical = if (highlighted) 11.dp else 4.dp),
+            // The animated padding, as a measure-phase read. `Modifier.padding(animatedDp)` would read
+            // it in composition and recompose the whole row ~18 frames per track change.
+            .layout { measurable, constraints ->
+                val h = horizontalPadding.roundToPx()
+                val v = verticalPadding.roundToPx()
+                val placeable = measurable.measure(constraints.offset(-2 * h, -2 * v))
+                layout(placeable.width + 2 * h, placeable.height + 2 * v) {
+                    placeable.place(h, v)
+                }
+            },
     ) {
         leading?.invoke()
         artwork?.invoke()
@@ -378,6 +456,12 @@ fun AuraMenuRow(
 /**
  * The render's switch: a 26×15 px pill, teal when on, `rgba(255,255,255,.18)` when off, with an
  * 11 px knob in [AuraPalette.OnAccent] (on) or `#8fa0b8` (off). Scaled ×1.4.
+ *
+ * The knob SLIDES and both colours cross-fade — it used to teleport, because the knob's position was a
+ * `contentAlignment` and the track a bare `if`. This is the most-used control in the new Ajustes, so it
+ * is the one place where a hard cut is felt every session. Position on [AuraMotion.standard], colours
+ * on [AuraMotion.color], all three read inside `offset {}` / `drawBehind {}`: the switch animates
+ * without recomposing.
  */
 @Composable
 fun AuraSwitch(
@@ -391,6 +475,20 @@ fun AuraSwitch(
     val trackHeight = 21.dp
     val knob = 15.dp
     val inset = 3.dp
+
+    val transition = updateTransition(targetState = checked, label = "auraSwitch")
+    val knobX by transition.animateDp(
+        transitionSpec = { AuraMotion.standard() },
+        label = "auraSwitchKnobX",
+    ) { on -> if (on) trackWidth - inset - knob else inset }
+    val trackColor by transition.animateColor(
+        transitionSpec = { AuraMotion.color() },
+        label = "auraSwitchTrack",
+    ) { on -> if (on) AuraPalette.Teal else Color.White.copy(alpha = 0.18f) }
+    val knobColor by transition.animateColor(
+        transitionSpec = { AuraMotion.color() },
+        label = "auraSwitchKnobColor",
+    ) { on -> if (on) AuraPalette.OnAccent else Color(0xFF8FA0B8) }
 
     Box(
         modifier = modifier
@@ -408,21 +506,30 @@ fun AuraSwitch(
                 .width(trackWidth)
                 .height(trackHeight)
                 .clip(AuraShapes.Pill)
-                .background(if (checked) AuraPalette.Teal else Color.White.copy(alpha = 0.18f)),
-            contentAlignment = if (checked) Alignment.CenterEnd else Alignment.CenterStart,
+                // Clipped to the pill by the modifier above, so a plain rect is the whole track.
+                .drawBehind { drawRect(trackColor) },
+            // CenterStart for the vertical centring only; the horizontal position is [knobX].
+            contentAlignment = Alignment.CenterStart,
         ) {
             Spacer(
                 Modifier
-                    .padding(horizontal = inset)
+                    .offset { IntOffset(knobX.roundToPx(), 0) }
                     .size(knob)
                     .clip(CircleShape)
-                    .background(if (checked) AuraPalette.OnAccent else Color(0xFF8FA0B8))
+                    .drawBehind { drawRect(knobColor) }
             )
         }
     }
 }
 
-/** A library filter chip: teal + dark ink when selected, `rgba(255,255,255,.08)` otherwise. */
+/**
+ * A library filter chip: teal + dark ink when selected, `rgba(255,255,255,.08)` otherwise.
+ *
+ * Both ends cross-fade on [AuraMotion.color] instead of snapping. This primitive is also the Cola tab
+ * and the Biblioteca filter, so the three of them move together. The fill is read in `drawBehind`; the
+ * label colour is a `Text` parameter, so a chip does recompose while its ~200 ms colour transition runs
+ * — one `Box` and one `Text`, and only on the chip that was tapped.
+ */
 @Composable
 fun AuraChip(
     text: String,
@@ -430,12 +537,22 @@ fun AuraChip(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val transition = updateTransition(targetState = selected, label = "auraChip")
+    val fillColor by transition.animateColor(
+        transitionSpec = { AuraMotion.color() },
+        label = "auraChipFill",
+    ) { on -> if (on) AuraPalette.Teal else Color.White.copy(alpha = 0.08f) }
+    val inkColor by transition.animateColor(
+        transitionSpec = { AuraMotion.color() },
+        label = "auraChipInk",
+    ) { on -> if (on) AuraPalette.OnAccent else AuraPalette.OnGround }
+
     Box(
         modifier = modifier
             .sizeIn(minHeight = AuraSpacing.MinTouchTarget)
             .padding(vertical = 6.dp)
             .clip(AuraShapes.Pill)
-            .background(if (selected) AuraPalette.Teal else Color.White.copy(alpha = 0.08f))
+            .drawBehind { drawRect(fillColor) }
             .auraClickable(onClick = onClick, role = Role.Tab, contentDescription = text)
             .padding(horizontal = 16.dp, vertical = 7.dp),
         contentAlignment = Alignment.Center,
@@ -443,7 +560,7 @@ fun AuraChip(
         Text(
             text = text,
             style = AuraType.Chip,
-            color = if (selected) AuraPalette.OnAccent else AuraPalette.OnGround,
+            color = inkColor,
             maxLines = 1,
         )
     }
@@ -487,7 +604,10 @@ fun AuraArtwork(
     ratio: Float = 1f,
     content: (@Composable () -> Unit)? = null,
 ) {
-    val brush: Brush = remember(placeholderSeed) { AuraPalette.coverPlaceholder(placeholderSeed) }
+    // Read straight, not `remember`ed on the seed: the variants are pre-built inside [AuraAccent], so
+    // this is a hash + an index and no allocation — and a `remember` keyed only on the seed would have
+    // pinned the placeholder to whatever accent was in force when the row first composed.
+    val brush: Brush = AuraPalette.coverPlaceholder(placeholderSeed)
     Box(
         modifier = modifier
             .width(size)

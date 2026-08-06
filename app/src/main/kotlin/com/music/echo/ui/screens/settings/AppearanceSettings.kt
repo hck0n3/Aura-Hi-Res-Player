@@ -111,6 +111,7 @@ import iad1tya.echo.music.ui.component.SquigglySlider
 import iad1tya.echo.music.ui.component.WavySlider
 import iad1tya.echo.music.ui.theme.DefaultThemeColor
 import iad1tya.echo.music.ui.theme.PlayerSliderColors
+import iad1tya.echo.music.ui.theme.rememberNewUiForcesDarkTheme
 import iad1tya.echo.music.utils.rememberEnumPreference
 import iad1tya.echo.music.utils.rememberPreference
 import kotlin.math.roundToInt
@@ -773,10 +774,14 @@ fun AppearanceSettings(
                 showSliderOptionDialog = false
             }
         ) {
+            // The slider PREVIEW has to be drawn in the colours the app is actually wearing. This site
+            // never read DarkModeKey — it asks the SYSTEM only — so it keeps that, plus the "Interfaz
+            // nueva" term: with the redesign on the app is dark and a light-mode phone previewed the
+            // light slider over a dark dialog.
             val sliderPreviewColors = PlayerSliderColors.getSliderColors(
                 MaterialTheme.colorScheme.primary,
                 PlayerBackgroundStyle.DEFAULT,
-                isSystemInDarkTheme()
+                rememberNewUiForcesDarkTheme() || isSystemInDarkTheme()
             )
 
             Column(
@@ -1080,11 +1085,13 @@ fun AppearanceSettings(
         // Why hidden rather than wired: the ONLY renderer of MiniPlayerBackgroundStyleKey is the
         // classic `NewMiniPlayer` (MiniPlayer.kt), and with the flag on that composable now pins the
         // style to DEFAULT in every orientation — deliberately, because the glass it painted is the
-        // thing the owner objected to twice. In portrait the classic mini is not even reached
-        // (AuraMiniPlayer replaces it), and AuraMiniPlayer draws one fixed surface by design
-        // (AuraPalette.SurfaceFill + SurfaceLine). So under the new UI this row has no consumer at
-        // all — leaving it on screen would be a new placebo, and the owner asked for no
-        // visual-personalisation settings in the new interface.
+        // thing the owner objected to twice. With the flag on the classic mini is never reached at
+        // all — AuraMiniPlayer replaces it in every orientation, since AuraPlayer stopped delegating
+        // landscape/wide/TV. And AuraMiniPlayer does NOT read this key: its pill follows
+        // PlayerBackgroundStyleKey (auraPillRecipe), the same setting as the player ground, so the
+        // mini and the player can never disagree. So under the new UI this row has no consumer at
+        // all — leaving it on screen would be a new placebo. The style the user picks for the player
+        // is what the pill wears.
         //
         // The preference is only HIDDEN, never cleared: turn the beta off and the row and the user's
         // stored choice are both back, unchanged.
@@ -1132,11 +1139,14 @@ fun AppearanceSettings(
             title = stringResource(R.string.player),
             items = listOfNotNull(
                 // "Inspirado en Apple Music" (UseNewPlayerDesignKey). KEPT VISIBLE with the new UI on,
-                // because it is not dead there: the "Interfaz nueva" player delegates landscape, wide /
-                // tablet / TV and video to the classic BottomSheetPlayer (AuraPlayer.kt), and this switch
-                // is what picks the shape those use — plus it side-writes PlayerBackgroundStyle. What it
-                // does NOT do is change the new PORTRAIT player, so the row says so instead of leaving
-                // the user to discover it by toggling. Hiding the row would have removed a live control.
+                // but for a DIFFERENT reason than it used to be: the redesign no longer delegates ANY
+                // shape to the classic player (AuraPlayer.kt now owns portrait, landscape, wide/TV and
+                // fullscreen video), so with the flag on this switch changes nothing on screen. It stays
+                // because it still decides WHICH classic player comes back when the beta is switched off
+                // — NewUiHosts.kt picks classic vs Aura on the flag alone — and because the live
+                // "Ocultar control de volumen" row below is gated on it, so hiding this one would make
+                // that dependency invisible. The description string says exactly this rather than leaving
+                // the user to discover it by toggling.
                 Material3SettingsItem(
                     icon = painterResource(R.drawable.palette),
                     title = { Text(stringResource(R.string.apple_music_inspired)) },
@@ -1151,9 +1161,15 @@ fun AppearanceSettings(
                     trailingContent = {
                         Switch(
                             checked = !useNewPlayerDesign,
+                            // The APPLE_MUSIC side-write is skipped while the new interface is on. It is
+                            // what made this row read as LIVE there: the new player DOES honour the
+                            // background key, so flipping the switch visibly repainted the ground while
+                            // the switch's own effect (which classic player shape to restore) stayed
+                            // invisible — and flipping it back changed nothing at all. A row that half
+                            // works is worse than one that plainly does not: it proves itself to the user.
                             onCheckedChange = { isChecked ->
                                 onUseNewPlayerDesignChange(!isChecked)
-                                if (isChecked) {
+                                if (isChecked && !newUiEnabled) {
                                     onPlayerBackgroundChange(PlayerBackgroundStyle.APPLE_MUSIC)
                                 }
                             },
@@ -1168,10 +1184,11 @@ fun AppearanceSettings(
                             }
                         )
                     },
-                    onClick = { 
+                    onClick = {
                         val newAppleMusicInspired = useNewPlayerDesign
                         onUseNewPlayerDesignChange(!newAppleMusicInspired)
-                        if (newAppleMusicInspired) {
+                        // Same reason as the switch above: no side-write while the new interface is on.
+                        if (newAppleMusicInspired && !newUiEnabled) {
                             onPlayerBackgroundChange(PlayerBackgroundStyle.APPLE_MUSIC)
                         }
                     }
@@ -1201,22 +1218,25 @@ fun AppearanceSettings(
                     },
                     onClick = { onHidePlayerSliderChange(!hidePlayerSlider) }
                 ) else null,
-                // "Fondo del reproductor" (PlayerBackgroundStyleKey), SEVEN values. KEPT VISIBLE with the
-                // new UI on, with its scope stated — the same treatment, for the same reason, as
-                // "Inspirado en Apple Music" above.
+                // "Fondo del reproductor" (PlayerBackgroundStyleKey), SEVEN values. LIVE EVERYWHERE.
                 //
-                // Why not HIDDEN: the row is not dead under the new UI. The new player re-draws ONLY the
-                // portrait audio shape; landscape, wide/tablet/TV and video fall straight through to the
-                // classic BottomSheetPlayer (AuraPlayer.kt:169-177), which reads this key and honours all
-                // seven values, and the queue sheet is handed it too (AuraPlayer.kt QueueHost). Hiding the
-                // row would leave a beta user unable to change a background they can still see.
+                // It used to be live only outside the new portrait player, and this comment used to
+                // explain why. That was wrong and the subtitle said so out loud: APPLE_MUSIC is the value
+                // App.kt:604 SEEDS on every fresh install, so the shipped default of this very control was
+                // one the new player did not honour, and five more did nothing beside it.
                 //
-                // Why not HONOURED in the new portrait player: three of the seven styles are exactly what
-                // the thermal gate forbids that shape — BLUR is a real `Modifier.blur`, and GLOW_ANIMATED /
-                // LIVE_MESH / LIQUID_GLASS are per-frame animated gradients (Player.kt:1030-1254). The new
-                // player's look is the ambient bloom, resolved once per TRACK through AuraBloomCache and
-                // never per frame; repainting it per style would either break that budget or mean a second,
-                // cheaper re-implementation of backgrounds that already exist — both are ruled out.
+                // All seven now paint the GROUND of the new player, its queue sheet and the mini pill
+                // (ui/newui/AuraPlayer.kt, `rememberAuraGround`). Nothing above that layer moves, which is
+                // what keeps the redesign's own contrast: the artwork colours come from the ONE palette
+                // pass the ambient bloom already runs per track, the blurred cover is the same 128×128
+                // decode the mini player has shipped for months under an API-31 guard, and the two moving
+                // styles read their phase inside a draw lambda and stop dead under Performance Mode,
+                // thermal throttling or a LOW hardware tier — the same gate the classic player uses.
+                //
+                // With the new interface on, this key is honoured by the redesign itself: the seven
+                // styles paint the GROUND of the player, its queue sheet and the mini pill
+                // (AuraPlayer.kt, rememberAuraGround), while everything above that layer stays Aura's.
+                // One setting drives every shape in both interfaces.
                 Material3SettingsItem(
                     icon = painterResource(R.drawable.gradient),
                     title = { Text(stringResource(R.string.player_background_style)) },

@@ -391,9 +391,13 @@ internal fun MigrationCollectionRow(
     }
 }
 
-/** Where a collection of this [kind] will land in Aura. Single source of truth for the wording. */
+/**
+ * Where a collection of this [kind] will land in Aura. Single source of truth for the wording —
+ * `internal` rather than `private` so the redesigned migration screen states the same destination
+ * instead of carrying a second mapping that could drift from this one.
+ */
 @androidx.annotation.StringRes
-private fun destinationRes(kind: com.aura.migration.model.CollectionKind): Int = when (kind) {
+internal fun destinationRes(kind: com.aura.migration.model.CollectionKind): Int = when (kind) {
     com.aura.migration.model.CollectionKind.PLAYLIST -> R.string.migrate_dest_playlist
     com.aura.migration.model.CollectionKind.FAVORITE_TRACKS -> R.string.migrate_dest_liked
     com.aura.migration.model.CollectionKind.SAVED_ALBUMS -> R.string.migrate_dest_library

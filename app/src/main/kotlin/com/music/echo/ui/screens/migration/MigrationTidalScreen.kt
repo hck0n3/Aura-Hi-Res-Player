@@ -404,7 +404,9 @@ private fun ErrorCard(text: String, onDismiss: () -> Unit) {
 
 // Opens the Tidal authorize URL in a Chrome Custom Tab (mirrors the license screen's Gumroad checkout —
 // the user stays in-app and the redirect returns cleanly). Falls back to any external browser.
-private fun openAuthUrl(context: Context, url: String) {
+// `internal` so the redesigned Tidal screen opens the SAME Custom Tab with the same fallback rather
+// than owning a second launcher that could diverge on the redirect path.
+internal fun openAuthUrl(context: Context, url: String) {
     val uri = Uri.parse(url)
     runCatching {
         androidx.browser.customtabs.CustomTabsIntent.Builder()
@@ -416,6 +418,6 @@ private fun openAuthUrl(context: Context, url: String) {
     }
 }
 
-private fun openExternal(context: Context, url: String) {
+internal fun openExternal(context: Context, url: String) {
     runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
 }

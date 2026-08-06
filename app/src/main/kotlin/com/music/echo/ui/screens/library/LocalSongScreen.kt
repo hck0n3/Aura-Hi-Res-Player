@@ -82,6 +82,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
@@ -128,11 +129,25 @@ import kotlin.math.roundToInt
     ExperimentalMaterial3Api::class,
     ExperimentalMaterial3ExpressiveApi::class,
 )
+/**
+ * @param isEmbedded this screen is drawn INSIDE another screen's body rather than as its own
+ *   destination. It only zeroes the window insets it would otherwise consume twice and lets the host
+ *   push it below its own header. **Both** library hosts pass `true`, so it must never be used to
+ *   change what is drawn.
+ * @param hideChrome drop this screen's own chrome — the large app bar, its title, its back arrow and
+ *   its opaque container — because the host already draws a header of its own and a second one
+ *   underneath it reads as a screen inside a screen. Default `false`, so every existing caller
+ *   (`NavigationBuilder.kt:125` as a destination, `LibraryScreen.kt:150` as the classic library's
+ *   Local tab) keeps today's chrome exactly as it is. Search and the scan sheet are NOT dropped with
+ *   the bar: they are the only way to filter and to rescan the device, so they move to a bare action
+ *   row in the same place.
+ */
 @Composable
 fun LocalSongScreen(
     navController: NavController,
     onBack: () -> Unit = { navController.navigateUp() },
     isEmbedded: Boolean = false,
+    hideChrome: Boolean = false,
     viewModel: LocalSongsViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
@@ -273,8 +288,15 @@ fun LocalSongScreen(
         modifier = Modifier
             .fillMaxSize()
             .padding(top = topPadding)
-            .nestedScroll(scrollBehavior.nestedScrollConnection),
-        containerColor = MaterialTheme.colorScheme.surface,
+            // With the chrome hidden there is no collapsing bar for the behaviour to drive, so the
+            // connection is not installed at all rather than left listening to scroll it cannot use.
+            // `hideChrome == false` reduces this to `.nestedScroll(scrollBehavior.nestedScrollConnection)`.
+            .then(
+                if (hideChrome) Modifier
+                else Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+            ),
+        // hideChrome == false reduces this to `MaterialTheme.colorScheme.surface`, i.e. today's value.
+        containerColor = if (hideChrome) Color.Transparent else MaterialTheme.colorScheme.surface,
         topBar = {
             AnimatedContent(
                 targetState = isSearchActive,
@@ -331,6 +353,32 @@ fun LocalSongScreen(
                             .padding(top = 8.dp, bottom = 4.dp),
                         windowInsets = if (isEmbedded) WindowInsets(0.dp) else SearchBarDefaults.windowInsets,
                     ) {}
+                } else if (hideChrome) {
+                    // The host already draws a title, a back affordance and a background. What it does
+                    // NOT have is a way into this screen's two actions, and dropping them with the bar
+                    // would make the device scan unreachable — so they stay, as a bare row on no
+                    // background. No title, no back arrow, no container: nothing that reads as a second
+                    // screen. `scrollBehavior` is deliberately not attached here — there is no
+                    // collapsing bar left for it to drive.
+                    Row(
+                        horizontalArrangement = Arrangement.End,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 4.dp),
+                    ) {
+                        IconButton(onClick = { isSearchActive = true }) {
+                            Icon(
+                                painter = painterResource(R.drawable.search),
+                                contentDescription = stringResource(R.string.search),
+                            )
+                        }
+                        IconButton(onClick = { showScanSheet = true }) {
+                            Icon(
+                                painter = painterResource(R.drawable.settings),
+                                contentDescription = stringResource(R.string.settings),
+                            )
+                        }
+                    }
                 } else {
                     LargeTopAppBar(
                         title = {

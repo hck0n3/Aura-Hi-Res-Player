@@ -47,6 +47,7 @@ import androidx.media3.exoplayer.offline.DownloadRequest
 import androidx.media3.exoplayer.offline.DownloadService
 import androidx.navigation.NavController
 import iad1tya.echo.music.LocalDatabase
+import iad1tya.echo.music.navigateAsTab
 import iad1tya.echo.music.LocalDownloadUtil
 import iad1tya.echo.music.LocalListenTogetherManager
 import iad1tya.echo.music.LocalPlayerConnection
@@ -775,7 +776,13 @@ fun AuraPlayerMenu(
                 label = stringResource(R.string.settings),
                 onClick = {
                     playerBottomSheetState.collapseSoft()
-                    navController.navigate("settings")
+                    // navigateAsTab, NOT navigate: under the new shell "settings" KEEPS the bottom bar
+                    // (MainActivity: `newUiShell && currentRoute == "settings"`), so it is a tab in every
+                    // respect. Pushing it plainly leaves it on top of whichever tab was showing, and the
+                    // next tap on that tab saves [tab, settings] as ONE deque keyed by the tab and
+                    // restores it whole — the tab then reopens Ajustes forever. That is exactly the
+                    // "Biblioteca no muestra nada y me manda a Ajustes" report, reachable from here too.
+                    navController.navigateAsTab("settings")
                     onDismiss()
                 },
             )

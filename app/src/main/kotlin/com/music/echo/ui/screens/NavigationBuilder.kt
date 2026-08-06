@@ -8,7 +8,6 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.TopAppBarScrollBehavior
@@ -21,7 +20,6 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.dialog
 import androidx.navigation.navArgument
-import iad1tya.echo.music.constants.DarkModeKey
 import iad1tya.echo.music.constants.PureBlackKey
 import iad1tya.echo.music.ui.screens.artist.ArtistAlbumsScreen
 import iad1tya.echo.music.ui.screens.artist.ArtistItemsScreen
@@ -47,7 +45,6 @@ import iad1tya.echo.music.ui.screens.settings.GlassEffectSettings
 import iad1tya.echo.music.ui.screens.settings.LIQUID_GLASS_ROUTE
 import iad1tya.echo.music.ui.screens.settings.ContentSettings
 import iad1tya.echo.music.ui.screens.settings.UptimeScreen
-import iad1tya.echo.music.ui.screens.settings.DarkMode
 import iad1tya.echo.music.ui.screens.settings.PlayerSettings
 import iad1tya.echo.music.ui.screens.settings.YoutubeDecryptionSettings
 import iad1tya.echo.music.ui.screens.settings.PrivacySettings
@@ -61,13 +58,20 @@ import iad1tya.echo.music.ui.screens.recognition.RecognitionScreen
 import iad1tya.echo.music.ui.screens.recognition.RecognitionHistoryScreen
 import iad1tya.echo.music.ui.screens.settings.UpdateSettings
 import iad1tya.echo.music.echomusic.updater.UpdateScreen
-import iad1tya.echo.music.utils.rememberEnumPreference
+import iad1tya.echo.music.ui.theme.rememberEffectiveDarkTheme
 import iad1tya.echo.music.utils.rememberPreference
 import iad1tya.echo.music.echomusic.changelog.ChangelogScreen
 import iad1tya.echo.music.ui.screens.equalizer.axion.AxionEqScreen
 import iad1tya.echo.music.ui.screens.ambient.AmbientModeScreen
+import iad1tya.echo.music.ui.newui.AutoPlaylistScreenHost
 import iad1tya.echo.music.ui.newui.HomeScreenHost
 import iad1tya.echo.music.ui.newui.LibraryScreenHost
+import iad1tya.echo.music.ui.newui.MigrationAppleScreenHost
+import iad1tya.echo.music.ui.newui.MigrationScreenHost
+import iad1tya.echo.music.ui.newui.MigrationTidalScreenHost
+import iad1tya.echo.music.ui.newui.SearchResultHost
+import iad1tya.echo.music.ui.newui.SearchScreenHost
+import iad1tya.echo.music.ui.newui.StatsScreenHost
 import iad1tya.echo.music.ui.newui.SettingsScreenHost
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -85,15 +89,13 @@ fun NavGraphBuilder.navigationBuilder(
 
     composable(Screens.Search.route) {
         val pureBlackEnabled by rememberPreference(PureBlackKey, defaultValue = false)
-        val darkTheme by rememberEnumPreference(DarkModeKey, defaultValue = DarkMode.AUTO)
-        val isSystemInDarkTheme = isSystemInDarkTheme()
-        val useDarkTheme = remember(darkTheme, isSystemInDarkTheme) {
-            if (darkTheme == DarkMode.AUTO) isSystemInDarkTheme else darkTheme == DarkMode.ON
-        }
+        // The APP's dark/light — see [rememberEffectiveDarkTheme]. AMOLED only paints black over a dark
+        // app, and "Interfaz nueva" forces the app dark. Same term-for-term expression with the flag off.
+        val useDarkTheme = rememberEffectiveDarkTheme()
         val pureBlack = remember(pureBlackEnabled, useDarkTheme) {
             pureBlackEnabled && useDarkTheme
         }
-        SearchScreen(
+        SearchScreenHost(
             navController = navController,
             pureBlack = pureBlack
         )
@@ -134,7 +136,7 @@ fun NavGraphBuilder.navigationBuilder(
     }
 
     composable("stats") {
-        StatsScreen(navController)
+        StatsScreenHost(navController)
     }
 
     composable("mood_and_genres") {
@@ -194,7 +196,12 @@ fun NavGraphBuilder.navigationBuilder(
             fadeOut(tween(200))
         },
     ) {
-        OnlineSearchResult(navController)
+        // Same AMOLED expression as the Buscar tab above: PureBlackKey only paints black over a dark
+        // app, and "Interfaz nueva" forces the app dark. Term-for-term identical with the flag off.
+        val pureBlackEnabled by rememberPreference(PureBlackKey, defaultValue = false)
+        val useDarkTheme = rememberEffectiveDarkTheme()
+        val pureBlack = remember(pureBlackEnabled, useDarkTheme) { pureBlackEnabled && useDarkTheme }
+        SearchResultHost(navController = navController, pureBlack = pureBlack)
     }
 
     composable(
@@ -298,7 +305,7 @@ fun NavGraphBuilder.navigationBuilder(
             },
         ),
     ) {
-        AutoPlaylistScreen(navController, scrollBehavior)
+        AutoPlaylistScreenHost(navController, scrollBehavior)
     }
 
     composable(
@@ -481,15 +488,15 @@ fun NavGraphBuilder.navigationBuilder(
     // Playlist migration (Tidal / Deezer / archivo / Apple → YouTube Music). Entry point lives in the
     // Library "Importar" menu, next to the Spotify/YouTube import options.
     composable("migration") {
-        iad1tya.echo.music.ui.screens.migration.MigrationScreen(navController)
+        MigrationScreenHost(navController)
     }
 
     composable("migration/tidal") {
-        iad1tya.echo.music.ui.screens.migration.MigrationTidalScreen(navController)
+        MigrationTidalScreenHost(navController)
     }
 
     composable("migration/apple") {
-        iad1tya.echo.music.ui.screens.migration.MigrationAppleScreen(navController)
+        MigrationAppleScreenHost(navController)
     }
 
     composable(

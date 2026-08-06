@@ -20,7 +20,11 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -65,16 +69,21 @@ fun UpdateSettings(
     scrollBehavior: TopAppBarScrollBehavior
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var autoUpdateEnabled by remember { mutableStateOf(getAutoUpdateCheckSetting(context)) }
     var updateNotificationsEnabled by remember { mutableStateOf(getUpdateNotificationsSetting(context)) }
     var betaUpdatesEnabled by remember { mutableStateOf(getBetaUpdatesSetting(context)) }
     val isUpdateAvailable = getUpdateAvailableState(context) && autoUpdateEnabled
-    var apkCount by remember { mutableStateOf(getDownloadedApkCount(context)) }
+    var apkCount by remember { mutableStateOf(0) }
     var showInfoDialog by remember { mutableStateOf(false) }
 
+    // Counting now includes the copies in the user's Downloads folder (a MediaStore query), so it is
+    // done off the main thread rather than inline in composition.
     LaunchedEffect(Unit) {
-        autoClearOldApks(context)
-        apkCount = getDownloadedApkCount(context)
+        apkCount = withContext(Dispatchers.IO) {
+            autoClearOldApks(context)
+            getDownloadedApkCount(context)
+        }
     }
 
     if (showInfoDialog) {
@@ -209,12 +218,14 @@ fun UpdateSettings(
                     },
                     onClick = {
                         if (apkCount > 0) {
-                            if (clearDownloadedApks(context)) {
-                                apkCount = 0
-                                Toast.makeText(context, "Eliminado correctamente", Toast.LENGTH_SHORT).show()
-                            } else {
-                                Toast.makeText(context, "No se pudieron eliminar algunos archivos", Toast.LENGTH_SHORT).show()
-                                apkCount = getDownloadedApkCount(context)
+                            scope.launch {
+                                val ok = withContext(Dispatchers.IO) { clearDownloadedApks(context) }
+                                apkCount = withContext(Dispatchers.IO) { getDownloadedApkCount(context) }
+                                Toast.makeText(
+                                    context,
+                                    if (ok) "Eliminado correctamente" else "No se pudieron eliminar algunos archivos",
+                                    Toast.LENGTH_SHORT,
+                                ).show()
                             }
                         }
                     }

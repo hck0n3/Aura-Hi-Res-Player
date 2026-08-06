@@ -1,37 +1,39 @@
-# Aura Hi-Res Player 0.6.146-beta1
+# Aura Hi-Res Player 0.6.147
 
-Beta **privada**. Me dijiste *"parece que al inicio solo le hubieras cambiado el color"*, y tenías razón: rehice seis pantallas de **contenido** y dejé el **armazón** clásico. Esta beta ataca el armazón. Todo lo de 0.6.145 va dentro.
+Tres cosas que rompían la confianza en la app: letras que no eran de la canción, un actualizador que te dejaba en la versión anterior, y un reproductor del que no se podía salir. Ninguna avisaba de nada.
 
 ---
 
-## 🎛️ Cómo se enciende y cómo se apaga
-- **Ajustes ▸ abajo del todo ▸ "Interfaz nueva".** Enciéndela y apágala cuando quieras.
-- **Apagarla no toca nada**: ni tu base de datos, ni tus ajustes, ni la cola, ni la reproducción. Vuelves exactamente a la app que ya conoces.
-- El interruptor está **en las dos interfaces**, así que nunca te quedas atrapado sin poder volver.
+## 🎤 Las letras ya son las de la canción que suena
 
-## 🏛️ El armazón — lo que se ve en todas las pantallas
-- **La barra negra de arriba se fue.** Era un rectángulo opaco que además **tapaba el resplandor** que las pantallas nuevas pintan detrás. Ahora es transparente y el color la atraviesa.
-- **Ya no hay dos cabeceras apiladas**: el inicio dibujaba la global *y* la suya propia, una encima de la otra.
-- **Barra inferior nueva.** Dijiste que los botones de abajo seguían saliendo como antes — y salían, porque **era literalmente el mismo componente**. Su altura alimenta **a la vez** el desplazamiento y los márgenes de las listas; si solo se cambia una de las dos, todas las listas quedan mal espaciadas.
-- **Mini reproductor propio.** Preguntaste por qué te seguía saliendo el flotante de cristal líquido: porque la pantalla nueva llamaba **al mini reproductor clásico tal cual**.
+Usuarios reportaron leer la letra de **otra canción**. Eran **dos causas distintas**, y ninguna daba error.
 
-## 🌌 Inmersiva
-- **64 dp de barra fantasma**: todas las pantallas reservaban hueco para una barra superior que la interfaz nueva ya no dibuja. Un margen muerto arriba, en toda la app. Fuera.
-- **Dos franjas opacas abajo** cortaban el resplandor a media altura. Fuera también.
-- El contenido corre ahora **de borde a borde**, por debajo de las barras del sistema.
+- **La primera es del fundido entre canciones.** Durante el cruce, la letra se fija a propósito a la canción saliente, para que no salte a mitad. Pero esa fijación solo se soltaba cuando terminaban **las dos** rampas del fundido — y no duran lo mismo. Con una canción entrante lenta de resolver, la saliente **se callaba a los 0,6 segundos y la letra aguantaba 5**. Si pausabas en ese momento, el reloj se congelaba y aguantaba **toda la pausa**. Y si saltabas de canción durante el fundido, te quedabas con la letra de una tercera. Ahora se suelta **cuando la canción deja de oírse**, no cuando termina la cuenta.
+- **La segunda es del proveedor de letras.** Cuando no encontraba la canción con título y artista, **reintentaba sin el artista** — y elegía al ganador **solo por duración**. El artista no se comprobaba nunca. Por eso salían letras perfectamente sincronizadas… de otro. Golpeaba sobre todo a música **en español, regional e independiente**.
+- Ahora el artista se compara como **lista de créditos**, partida por comas y "feat.", así que una colaboración con los nombres en distinto orden **ya no se rechaza**. Y cuando el artista no puede avalar —alias, recopilatorios, alfabetos distintos— **el título tiene que ser exacto**.
+- **Y las letras equivocadas que ya estaban guardadas se reparan solas** al mostrarse. Una reparación **nunca borra**: el texto anterior se conserva aparte, y lo que hayas escrito o pegado tú **no se toca jamás**.
 
-## 🖼️ Las portadas ya no salen recortadas
-- Tu ajuste de **"no recortar las portadas"** simplemente **se ignoraba** en la interfaz nueva: se forzaba el recorte en los tres sitios que dibujan carátulas.
-- Las portadas se dibujaban **siempre cuadradas**, incluso las de vídeo de YouTube, que son **16:9**. Meter un 16:9 en un cuadrado tira el **44%** de la imagen. Ahora cada portada conoce su proporción.
+## ⬇️ El actualizador instala la versión nueva
 
-## 📱 Las pantallas que faltaban — de 6 a más de 50
-En vez de rehacerlas una a una, fui a los **componentes compartidos**, que es donde estaba la palanca:
+Si no pulsabas "Borrar actualizaciones descargadas", **siempre instalaba la anterior**. Eran **tres causas**, todas mudas: veías el diálogo de instalación normal, instalabas, y seguías donde estabas.
 
-- **`Items.kt`** — **45 archivos** lo usan: búsqueda, álbum, artista, historial, modo offline, playlists y la biblioteca entera. Todas las filas y rejillas de contenido pasan por aquí.
-- **`Material3SettingsGroup.kt`** — **395 usos repartidos en 26 archivos**, las sub-pantallas de ajustes entre ellos.
-- Y a mano, las que no comparten componente: **reconocimiento de música** (las dos pantallas), **Escuchar Juntos** (las dos), **Acerca de** y **Qobuz**.
-- Cada uno resuelve su estilo **una sola vez por pantalla** y lo reparte hacia abajo — no hay una lectura de ajustes por fila. Con el interruptor apagado, cada rama vuelve **exactamente** a los valores de antes.
+- El sistema de descargas **repite el resultado del trabajo anterior durante días**. Al abrir la pantalla llegaba el "completado" de la actualización pasada, con su archivo — así que el botón ponía **"Instalar"** nada más entrar e instalaba el APK viejo **sin descargar nada**. Lo único que se comprobaba era si el archivo existía. Y la firma pasaba, claro: ese APK viejo **es** un APK legítimo de Aura.
+- El archivo se guardaba **siempre con el mismo nombre**, así que las versiones colisionaban y un reintento podía pegar la cola del archivo nuevo sobre el cuerpo del viejo.
+- Y "¿hay actualización?" se decidía comparando si la versión era **distinta**, no si era **más nueva**. Como las betas se publican como versión previa, **quien iba en una beta recibía la estable anterior como si fuera nueva**.
+- **Ahora la app lee la versión del propio archivo descargado** antes de instalar nada — lo único que un archivo rancio no puede falsear. Si no coincide, lo borra y vuelve a descargar.
+- **Y libera espacio**: cada actualización dejaba un APK de ~100 MB en Descargas **para siempre**. Ahora queda una sola copia.
 
-## ⚠️ Lo que sigue pendiente
-- **Horizontal, TV y coche siguen cayendo al reproductor clásico.** Al girar el móvil, el diseño nuevo desaparece. Es el siguiente trabajo, y es grande: son layouts distintos, no un reestilizado.
-- El resto de pantallas propias: letras, descargas, migración y estadísticas.
+## 🚗 Android Auto
+
+Un usuario reportó que la app **desapareció de Android Auto**. La investigación descartó el manifiesto, las reglas de ofuscación, los límites de la lista y todo el código de Auto — **ninguno cambió**. Lo único que 0.6.147 puede hacer al respecto es quitar de en medio lo que la versión anterior añadió a la memoria del proceso.
+
+- La oferta de "volver a la cola anterior" guardaba **la cola entera** hasta 10 minutos — y podía ser tu biblioteca completa, la cola más larga que la app construye. Ahora guarda solo lo justo para reconstruirla.
+- El servicio **ya responde cuando el sistema pide memoria**, cosa que antes no hacía.
+- **Honestamente: esto es un seguro, no una cura demostrada.** Si el icono te sigue desapareciendo, hace falta saber si **aparece y luego desaparece** o si **nunca aparece** — son dos problemas distintos.
+
+## 🔧 Y cuatro cosas que estaban rotas desde hace tiempo
+
+- **El reproductor se quedaba atrapado a pantalla completa.** Cerrabas la letra y la marca no se borraba: quedaba un reproductor **sin controles y sin cola**, y solo se salía volviendo a abrir la letra.
+- **Las canciones de "reproducción automática" de la cola no se podían tocar.** La fila hacía el gesto de pulsarse y no pasaba nada — toda esa sección era decorativa.
+- **Emitiendo a un altavoz**, tocar una fila de la cola saltaba en el **móvil**, no en el altavoz.
+- **Cuatro puertas de navegación** podían dejar una pestaña abriendo la pantalla equivocada el resto de la sesión.

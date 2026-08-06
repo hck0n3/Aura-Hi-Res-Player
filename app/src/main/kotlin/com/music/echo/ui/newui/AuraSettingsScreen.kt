@@ -49,6 +49,7 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import iad1tya.echo.music.BuildConfig
 import iad1tya.echo.music.LocalPlayerAwareWindowInsets
+import iad1tya.echo.music.navigateAsTab
 import iad1tya.echo.music.R
 import iad1tya.echo.music.constants.NewUiEnabledKey
 import iad1tya.echo.music.license.LicenseLogic
@@ -226,8 +227,15 @@ fun AuraSettingsScreen(
                 title = listenTogetherText,
                 entries = listOf(
                     // The classic row: opens the Listen Together MAIN screen.
+                    // navigateAsTab, NOT navigate: "listen_together" is a TOP-LEVEL destination, and under
+                    // the new shell so is "settings". Pushing one raw on top of the other stacks two
+                    // top-level entries, and the next tab tap pops BOTH as one saved deque keyed by the
+                    // deepest — after which tapping Ajustes restores that deque and lands on Escuchar
+                    // juntos instead, for the rest of the session. That matters more here than anywhere:
+                    // Ajustes is where the "Interfaz nueva" switch lives, so poisoning that cell takes the
+                    // only door back to the classic app with it.
                     AuraSettingsEntry(listenTogetherText) {
-                        navController.navigate(Screens.ListenTogether.route)
+                        navController.navigateAsTab(Screens.ListenTogether.route)
                     },
                     // The gap this beta closes: the SETTINGS screen of Listen Together, which 31 entries
                     // of the search index already point at but which had no index row anywhere.

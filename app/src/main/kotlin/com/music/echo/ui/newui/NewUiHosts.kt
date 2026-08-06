@@ -14,7 +14,14 @@ import iad1tya.echo.music.ui.menu.OldPlayerMenu
 import iad1tya.echo.music.ui.player.BottomSheetPlayer
 import iad1tya.echo.music.ui.player.Queue
 import iad1tya.echo.music.ui.screens.HomeScreen
+import iad1tya.echo.music.ui.screens.StatsScreen
 import iad1tya.echo.music.ui.screens.library.LibraryScreen
+import iad1tya.echo.music.ui.screens.migration.MigrationAppleScreen
+import iad1tya.echo.music.ui.screens.migration.MigrationScreen
+import iad1tya.echo.music.ui.screens.migration.MigrationTidalScreen
+import iad1tya.echo.music.ui.screens.playlist.AutoPlaylistScreen
+import iad1tya.echo.music.ui.screens.search.OnlineSearchResult
+import iad1tya.echo.music.ui.screens.search.SearchScreen
 import iad1tya.echo.music.ui.screens.settings.SettingsScreen
 
 /**
@@ -225,5 +232,101 @@ fun SettingsScreenHost(
     NewUiGate(
         classic = { SettingsScreen(navController, scrollBehavior) },
         new = { AuraSettingsScreen(navController, scrollBehavior) },
+    )
+}
+
+// ── 7. Buscar ─────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * The Buscar TAB (history + suggestions + the input bar), not the results.
+ *
+ * This one was reported by the owner — "cuando toco el boton de inicio y paso al de buscar no me sale
+ * personalizado" — and he was right: it had no host at all, so the tab always rendered classic. It is a
+ * bottom-bar destination, i.e. one of the four most-visited screens in the app.
+ */
+@Composable
+fun SearchScreenHost(
+    navController: NavController,
+    pureBlack: Boolean,
+) {
+    NewUiGate(
+        classic = { SearchScreen(navController = navController, pureBlack = pureBlack) },
+        new = { AuraSearchScreen(navController = navController, pureBlack = pureBlack) },
+    )
+}
+
+/**
+ * The RESULTS screen (`search/{query}`). Separate from the tab above because they are separate classic
+ * screens with separate ViewModels — gating them together would have meant one of the two silently
+ * keeping the other's state.
+ */
+@Composable
+fun SearchResultHost(
+    navController: NavController,
+    pureBlack: Boolean,
+) {
+    NewUiGate(
+        classic = { OnlineSearchResult(navController) },
+        new = { AuraSearchResultScreen(navController = navController, pureBlack = pureBlack) },
+    )
+}
+
+// ── 8. Estadísticas ───────────────────────────────────────────────────────────────────────────────
+
+@Composable
+fun StatsScreenHost(navController: NavController) {
+    NewUiGate(
+        classic = { StatsScreen(navController) },
+        new = { AuraStatsScreen(navController) },
+    )
+}
+
+// ── 9. Migrar lista ───────────────────────────────────────────────────────────────────────────────
+
+/**
+ * The migration wizard and its two per-source screens. Three hosts rather than one because each is a
+ * separately registered route — the source picker can be left without entering a source screen, and
+ * Tidal/Apple are reachable directly from a deep link.
+ */
+@Composable
+fun MigrationScreenHost(navController: NavController) {
+    NewUiGate(
+        classic = { MigrationScreen(navController) },
+        new = { AuraMigrationScreen(navController) },
+    )
+}
+
+@Composable
+fun MigrationTidalScreenHost(navController: NavController) {
+    NewUiGate(
+        classic = { MigrationTidalScreen(navController) },
+        new = { AuraMigrationTidalScreen(navController) },
+    )
+}
+
+@Composable
+fun MigrationAppleScreenHost(navController: NavController) {
+    NewUiGate(
+        classic = { MigrationAppleScreen(navController) },
+        new = { AuraMigrationAppleScreen(navController) },
+    )
+}
+
+// ── 10. Auto-listas (Descargadas, Me gusta, Más escuchadas, En caché, Subidas) ─────────────────────
+
+/**
+ * ONE host covers all six auto-playlists: they are a single classic screen parameterised by the
+ * `{playlist}` route argument, so "Descargados" — the one the owner asked for — comes with the other
+ * five for free. Do not split this into six.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AutoPlaylistScreenHost(
+    navController: NavController,
+    scrollBehavior: TopAppBarScrollBehavior,
+) {
+    NewUiGate(
+        classic = { AutoPlaylistScreen(navController, scrollBehavior) },
+        new = { AuraAutoPlaylistScreen(navController, scrollBehavior) },
     )
 }

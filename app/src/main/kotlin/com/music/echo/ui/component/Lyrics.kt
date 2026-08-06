@@ -27,7 +27,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.animateScrollBy
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -128,7 +127,6 @@ import iad1tya.echo.music.LocalDatabase
 import iad1tya.echo.music.LocalListenTogetherManager
 import iad1tya.echo.music.LocalPlayerConnection
 import iad1tya.echo.music.R
-import iad1tya.echo.music.constants.DarkModeKey
 import iad1tya.echo.music.constants.LyricsAnimationStyle
 import iad1tya.echo.music.constants.LyricsAnimationStyleKey
 import iad1tya.echo.music.constants.LyricsClickKey
@@ -188,7 +186,6 @@ import iad1tya.echo.music.lyrics.LyricsUtils.romanizeKorean
 import iad1tya.echo.music.lyrics.LyricsTranslationHelper
 import iad1tya.echo.music.ui.component.shimmer.ShimmerHost
 import iad1tya.echo.music.ui.component.shimmer.TextPlaceholder
-import iad1tya.echo.music.ui.screens.settings.DarkMode
 import iad1tya.echo.music.ui.screens.settings.LyricsPosition
 import iad1tya.echo.music.ui.utils.fadingEdge
 import iad1tya.echo.music.ui.utils.rememberIsWideLayout
@@ -352,11 +349,10 @@ fun Lyrics(
         defaultValue = PlayerBackgroundStyle.GRADIENT
     )
 
-    val darkTheme by rememberEnumPreference(DarkModeKey, defaultValue = DarkMode.AUTO)
-    val isSystemInDarkTheme = isSystemInDarkTheme()
-    val useDarkTheme = remember(darkTheme, isSystemInDarkTheme) {
-        if (darkTheme == DarkMode.AUTO) isSystemInDarkTheme else darkTheme == DarkMode.ON
-    }
+    // (A `useDarkTheme` was derived here from DarkModeKey and read by NOTHING — a dead preference
+    // subscription on the lyrics screen. Deleted rather than re-pointed at the effective theme: it had
+    // no consumer to disagree with the app scheme in the first place, so removing it changes nothing
+    // that is drawn, with the "Interfaz nueva" flag either way.)
 
     val lines = remember(lyrics, scope) {
         if (lyrics == null || lyrics == LYRICS_NOT_FOUND) {

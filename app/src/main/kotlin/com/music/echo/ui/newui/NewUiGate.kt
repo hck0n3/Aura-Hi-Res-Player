@@ -47,6 +47,14 @@ fun rememberNewUiEnabled(): Boolean {
  *
  * The flag is read UNCONDITIONALLY, before the branch, so the composable call order is stable no
  * matter how `new` changes; do not "optimise" that into a short-circuit.
+ *
+ * ## Why the palette is resolved here
+ * [AuraPaletteSync] turns the user's Apariencia settings (accent swatch / typed hex / intensity /
+ * dynamic accent, AMOLED, cover corner radius) into the values `AuraPalette` hands to ~143 call sites.
+ * It runs BEFORE `new()` so a new screen composes with the resolved values in the same pass instead of
+ * one frame after; it is idempotent, so composing several gates at once costs three comparisons. It is
+ * deliberately inside the `new` branch: with the flag off nothing is resolved, nothing is written, and
+ * every value in `AuraPalette` is the literal that shipped.
  */
 @Composable
 fun NewUiGate(
@@ -54,5 +62,10 @@ fun NewUiGate(
     new: (@Composable () -> Unit)? = null,
 ) {
     val enabled = rememberNewUiEnabled()
-    if (enabled && new != null) new() else classic()
+    if (enabled && new != null) {
+        AuraPaletteSync()
+        new()
+    } else {
+        classic()
+    }
 }

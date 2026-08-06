@@ -68,6 +68,8 @@ import iad1tya.echo.music.constants.ArtistFilterKey
 import iad1tya.echo.music.constants.ArtistSortDescendingKey
 import iad1tya.echo.music.constants.ArtistSortType
 import iad1tya.echo.music.constants.ArtistSortTypeKey
+import iad1tya.echo.music.constants.GridItemSize
+import iad1tya.echo.music.constants.GridItemsSizeKey
 import iad1tya.echo.music.constants.HideExplicitKey
 import iad1tya.echo.music.constants.MixSortDescendingKey
 import iad1tya.echo.music.constants.MixSortType
@@ -447,7 +449,13 @@ fun AuraLibraryHub(
                         onMenuClick = {
                             menuState.show { ArtistMenu(item, coroutineScope, menuState::dismiss) }
                         },
-                        modifier = Modifier.padding(horizontal = AuraSpacing.Gutter),
+                        // Sorting, syncing and bookmarking all reorder / insert into this list while it
+                        // is on screen; without a placement animation each of those is a hard cut. The
+                        // key above is stable, which is the only condition animateItem needs. Its
+                        // defaults are the same spring AuraMotion.standard() is.
+                        modifier = Modifier
+                            .animateItem()
+                            .padding(horizontal = AuraSpacing.Gutter),
                     )
                 }
             }
@@ -474,7 +482,9 @@ fun AuraLibraryHub(
                         onMenuClick = {
                             menuState.show { PlaylistMenu(item, coroutineScope, menuState::dismiss) }
                         },
-                        modifier = Modifier.padding(horizontal = AuraSpacing.Gutter),
+                        modifier = Modifier
+                            .animateItem()
+                            .padding(horizontal = AuraSpacing.Gutter),
                     )
 
                     is Album -> AuraSongRow(
@@ -494,7 +504,9 @@ fun AuraLibraryHub(
                         onMenuClick = {
                             menuState.show { AlbumMenu(item, navController, menuState::dismiss) }
                         },
-                        modifier = Modifier.padding(horizontal = AuraSpacing.Gutter),
+                        modifier = Modifier
+                            .animateItem()
+                            .padding(horizontal = AuraSpacing.Gutter),
                     )
 
                     else -> Unit
@@ -593,6 +605,7 @@ fun AuraLibrarySongsTab(
                         value = searchQuery,
                         onValueChange = { viewModel.searchQuery.value = it },
                         placeholder = stringResource(R.string.search_library),
+                        modifier = Modifier.animateItem(),
                     )
                 }
             }
@@ -628,6 +641,7 @@ fun AuraLibrarySongsTab(
                     }
                     Box(
                         Modifier
+                            .animateItem()
                             .fillMaxWidth()
                             .padding(top = 10.dp),
                         contentAlignment = Alignment.Center,
@@ -684,7 +698,9 @@ fun AuraLibrarySongsTab(
                                 onDismiss = menuState::dismiss,
                             ) }
                     },
-                    modifier = Modifier.padding(horizontal = AuraSpacing.Gutter),
+                    modifier = Modifier
+                        .animateItem()
+                        .padding(horizontal = AuraSpacing.Gutter),
                 )
             }
         }
@@ -798,7 +814,10 @@ fun AuraLibraryAlbumsTab(
 
         if (albums.isEmpty()) {
             item(key = "aura_albums_empty") {
-                AuraEmpty(text = stringResource(R.string.library_album_empty))
+                AuraEmpty(
+                    text = stringResource(R.string.library_album_empty),
+                    modifier = Modifier.animateItem(),
+                )
             }
         }
 
@@ -818,7 +837,9 @@ fun AuraLibraryAlbumsTab(
                 onMenuClick = {
                     menuState.show { AlbumMenu(album, navController, menuState::dismiss) }
                 },
-                modifier = Modifier.padding(horizontal = AuraSpacing.Gutter),
+                modifier = Modifier
+                    .animateItem()
+                    .padding(horizontal = AuraSpacing.Gutter),
             )
         }
     }
@@ -869,6 +890,7 @@ fun AuraLibraryArtistsTab(
                     value = searchQuery,
                     onValueChange = { viewModel.searchQuery.value = it },
                     placeholder = stringResource(R.string.search_library),
+                    modifier = Modifier.animateItem(),
                 )
             }
         }
@@ -898,6 +920,7 @@ fun AuraLibraryArtistsTab(
                     } else {
                         stringResource(R.string.library_artist_empty)
                     },
+                    modifier = Modifier.animateItem(),
                 )
             }
         }
@@ -916,7 +939,9 @@ fun AuraLibraryArtistsTab(
                 onMenuClick = {
                     menuState.show { ArtistMenu(artist, coroutineScope, menuState::dismiss) }
                 },
-                modifier = Modifier.padding(horizontal = AuraSpacing.Gutter),
+                modifier = Modifier
+                    .animateItem()
+                    .padding(horizontal = AuraSpacing.Gutter),
             )
         }
     }
@@ -966,9 +991,18 @@ fun AuraLibraryPlaylistsTab(
         if (ytmSync) withContext(Dispatchers.IO) { viewModel.sync() }
     }
 
+    // "Tamaño de la celda de la cuadrícula" (Grande / Pequeño). This grid used to be a bare `150.dp`
+    // constant, so the setting moved the ~13 classic grids AND the new Novedades tab
+    // (AuraSearchTabs.kt:600) and left the new Biblioteca alone — the user changed one control and saw
+    // half the app follow it. Same key, same enum, and the two sizes are the classic pair:
+    // `GridThumbnailHeight ± 24.dp` = 152 / 104 (LibraryAlbumsScreen.kt:259 and the twelve grids beside
+    // it), rounded to the 150 this grid already drew so "Grande" is unchanged from what shipped.
+    val gridItemSize by rememberEnumPreference(GridItemsSizeKey, GridItemSize.BIG)
+    val gridCellSize = if (gridItemSize == GridItemSize.BIG) 150.dp else 104.dp
+
     LazyVerticalGrid(
         state = rememberLazyGridState(),
-        columns = GridCells.Adaptive(minSize = 150.dp),
+        columns = GridCells.Adaptive(minSize = gridCellSize),
         contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
         horizontalArrangement = Arrangement.spacedBy(11.dp),
         modifier = Modifier
@@ -981,7 +1015,9 @@ fun AuraLibraryPlaylistsTab(
                     value = playlistSearchQuery,
                     onValueChange = { playlistSearchQuery = it },
                     placeholder = stringResource(R.string.search_playlists),
-                    modifier = Modifier.padding(horizontal = 0.dp),
+                    modifier = Modifier
+                        .animateItem()
+                        .padding(horizontal = 0.dp),
                 )
             }
         }
@@ -1062,7 +1098,13 @@ fun AuraLibraryPlaylistsTab(
                 ),
                 thumbnailUrl = playlist.thumbnails.firstOrNull(),
                 seed = playlist.id,
-                width = 150.dp,
+                // The card must be the cell, or "Pequeño" would re-column the grid and keep drawing
+                // 150 dp cards inside 104 dp cells.
+                width = gridCellSize,
+                // Creating, importing, deleting and re-sorting all move cards around this grid while it
+                // is on screen. `animateItem` is available on LazyGridItemScope exactly as it is on the
+                // list scopes, and the `it.id` key above is what makes it work.
+                modifier = Modifier.animateItem(),
                 // Routing copied verbatim from `LibraryPlaylistGridItem`: a saved-but-unfetched YouTube
                 // playlist opens ONLINE, everything else opens local. Getting this wrong sends a synced
                 // playlist to an empty local screen.

@@ -105,7 +105,6 @@ import iad1tya.echo.music.LocalListenTogetherManager
 import iad1tya.echo.music.LocalPlayerConnection
 import iad1tya.echo.music.R
 import iad1tya.echo.music.constants.CropAlbumArtKey
-import iad1tya.echo.music.constants.DarkModeKey
 import iad1tya.echo.music.constants.MiniPlayerBackgroundStyleKey
 import iad1tya.echo.music.constants.MiniPlayerHeight
 import iad1tya.echo.music.constants.PlayerBackgroundStyle
@@ -124,8 +123,9 @@ import iad1tya.echo.music.ui.component.LocalGlassEffectConfig
 import iad1tya.echo.music.ui.component.glassContentColor
 import iad1tya.echo.music.ui.component.isGlassSupported
 import iad1tya.echo.music.ui.component.liquidGlass
-import iad1tya.echo.music.ui.screens.settings.DarkMode
 import iad1tya.echo.music.ui.theme.PlayerColorExtractor
+import iad1tya.echo.music.ui.theme.rememberEffectiveDarkTheme
+import iad1tya.echo.music.ui.theme.rememberNewUiForcesDarkTheme
 import iad1tya.echo.music.utils.rememberEnumPreference
 import iad1tya.echo.music.utils.rememberPreference
 import iad1tya.echo.music.echomusic.AudioDeviceBottomSheet
@@ -208,16 +208,18 @@ private fun NewMiniPlayer(
     
     
     val pureBlack by rememberPreference(PureBlackMiniPlayerKey, defaultValue = false)
-    val isSystemInDarkTheme = isSystemInDarkTheme()
-    val darkTheme by rememberEnumPreference(DarkModeKey, defaultValue = DarkMode.AUTO)
-    val useDarkTheme = remember(darkTheme, isSystemInDarkTheme) {
-        if (darkTheme == DarkMode.AUTO) isSystemInDarkTheme else darkTheme == DarkMode.ON
-    }
+    // The APP's dark/light — see [rememberEffectiveDarkTheme]. Its one consumer is the `pureBlack &&
+    // useDarkTheme` branch of `backgroundColor` below: AMOLED only paints black over a dark app, and
+    // under "Interfaz nueva" the app IS dark. Reduces to the local `when` this replaces with the flag
+    // off.
+    val useDarkTheme = rememberEffectiveDarkTheme()
     
     val miniPlayerBackgroundPref by rememberEnumPreference(MiniPlayerBackgroundStyleKey, defaultValue = PlayerBackgroundStyle.DEFAULT)
-    // "Interfaz nueva": the new UI owns the look, and it draws no glass anywhere. In PORTRAIT this
-    // composable is not even reached (AuraMiniPlayer replaces it), but LANDSCAPE / wide / TV still
-    // delegate to the classic BottomSheetPlayer, whose collapsedContent is this — so without this line
+    // "Interfaz nueva": the new UI owns the look, and it draws no glass anywhere. With the flag on
+    // this composable is no longer reached in ANY orientation (AuraMiniPlayer replaces it, and
+    // AuraPlayer stopped delegating landscape/wide/TV in 0.6.147). The line is KEPT as a belt-and-
+    // braces guard rather than deleted: it costs one enum read, and if a future host ever routes a
+    // shape back through the classic sheet, without it
     // the Liquid-Glass mini the owner complained about twice ("por qué me sigue saliendo el reproductor
     // flotante y sus botones flotantes en liquid glass y eso no es parte de este diseño") came back the
     // moment he rotated the phone, because the one-time high-tier migration (App.kt:818) had written
@@ -633,7 +635,12 @@ private fun LegacyMiniPlayer(
 ) {
     val playerConnection = LocalPlayerConnection.current ?: return
     val pureBlack by rememberPreference(PureBlackMiniPlayerKey, defaultValue = false)
-    
+    // This composable never read DarkModeKey — its AMOLED surface asked the SYSTEM only. Left exactly
+    // as it was, plus the "Interfaz nueva" term: with the redesign on the app is forced dark, so an
+    // AMOLED mini player must be black even on a light-mode phone. Hoisted out of the `background`
+    // argument so the composable call is unconditional.
+    val legacyMiniDarkGround = rememberNewUiForcesDarkTheme() || isSystemInDarkTheme()
+
     val playbackState by playerConnection.playbackState.collectAsState()
     val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
     val canSkipNext by playerConnection.canSkipNext.collectAsState()
@@ -688,7 +695,7 @@ private fun LegacyMiniPlayer(
             .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal))
             .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
             .background(
-                if (pureBlack && isSystemInDarkTheme()) Color.Black
+                if (pureBlack && legacyMiniDarkGround) Color.Black
                 else MaterialTheme.colorScheme.surfaceContainer
             )
             .let { baseModifier ->

@@ -52,7 +52,6 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.interaction.collectIsPressedAsState
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -185,7 +184,6 @@ import iad1tya.echo.music.R
 import iad1tya.echo.music.constants.AudioQuality
 import iad1tya.echo.music.constants.AudioQualityKey
 import iad1tya.echo.music.constants.CropAlbumArtKey
-import iad1tya.echo.music.constants.DarkModeKey
 import iad1tya.echo.music.constants.HidePlayerThumbnailKey
 import iad1tya.echo.music.constants.EnableLyricsThumbnailPlayPauseKey
 import iad1tya.echo.music.constants.PlayerBackgroundStyle
@@ -225,8 +223,8 @@ import iad1tya.echo.music.ui.menu.AddToPlaylistDialog
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import iad1tya.echo.music.ui.component.VolumeSlider
-import iad1tya.echo.music.ui.screens.settings.DarkMode
 import iad1tya.echo.music.ui.theme.PlayerColorExtractor
+import iad1tya.echo.music.ui.theme.rememberEffectiveDarkTheme
 import iad1tya.echo.music.ui.theme.PlayerSliderColors
 import iad1tya.echo.music.ui.utils.rememberIsAppInForeground
 import iad1tya.echo.music.ui.utils.tvFocusable
@@ -351,11 +349,14 @@ fun BottomSheetPlayer(
         defaultValue = PlayerButtonsStyle.DEFAULT
     )
 
-    val isSystemInDarkTheme = isSystemInDarkTheme()
-    val darkTheme by rememberEnumPreference(DarkModeKey, defaultValue = DarkMode.AUTO)
-    val useDarkTheme = remember(darkTheme, isSystemInDarkTheme) {
-        if (darkTheme == DarkMode.AUTO) isSystemInDarkTheme else darkTheme == DarkMode.ON
-    }
+    // The APP's dark/light, not this screen's own reading of the preference — see
+    // [rememberEffectiveDarkTheme]. It drives `shouldUseDarkButtonColors`, the status-bar icon
+    // appearance (`isAppearanceLightStatusBars = !useDarkTheme`) and the cover blur radius.
+    // With "Interfaz nueva" on — which forces the app dark — the old local `when` still said
+    // "light" for a user on Claro: a black DEFAULT play button on the redesign's near-black ground, and
+    // the status bar told to draw its DARK icons over that same dark bar. Reduces to that `when` with
+    // the flag off.
+    val useDarkTheme = rememberEffectiveDarkTheme()
 
     // DATA SAVER: canvas animations stream artwork/video data — forced OFF while the switch is ON
     // (the user's CanvasThumbnailAnimationKey pref stays persisted and returns when it goes OFF).
@@ -466,10 +467,10 @@ fun BottomSheetPlayer(
         PlayerBackgroundStyle.DEFAULT -> MaterialTheme.colorScheme.secondary
         else -> MaterialTheme.colorScheme.onSurface
     }
+    // Second copy of the same derivation, now folded onto the one above: AMOLED paints black only over
+    // a dark app, and under "Interfaz nueva" the app IS dark.
     val useBlackBackground =
-        remember(isSystemInDarkTheme, darkTheme, pureBlack) {
-            val useDarkTheme =
-                if (darkTheme == DarkMode.AUTO) isSystemInDarkTheme else darkTheme == DarkMode.ON
+        remember(useDarkTheme, pureBlack) {
             useDarkTheme && pureBlack
         }
 
@@ -914,6 +915,11 @@ fun BottomSheetPlayer(
     var isFullScreen by rememberSaveable {
         mutableStateOf(false)
     }
+    // Both flags are rememberSaveable, and nothing used to clear this one when the lyrics closed. Leaving
+    // fullscreen set with no lyrics on screen strips the transport and the queue bar off a player that is
+    // still playing — recoverable only by reopening the lyrics and closing them the other way round. The
+    // redesigned player already guards this; the classic one is where most users are.
+    LaunchedEffect(showInlineLyrics) { if (!showInlineLyrics) isFullScreen = false }
 
     // Mirror of the immersive layouts' tap-toggled controls visibility (ptControls / lsControls /
     // lsCanvasControls are LOCAL to their deep layout branches, so root-pinned overlays can't read
@@ -3020,6 +3026,9 @@ fun BottomSheetPlayer(
                             // Match the player's own text treatment (white over blur/gradient) so the queue is
                             // readable in every theme now that the rows are flat/transparent.
                             contentColor = TextBackgroundColor,
+                            castHandler = castHandler,
+                            isCasting = isCasting,
+                            castIsPlaying = castIsPlaying,
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxHeight()
@@ -3531,6 +3540,12 @@ private fun PlayerLikeDislikePill(
 @Composable
 private fun LandscapeQueuePane(
     contentColor: Color,
+    // Cast state is threaded in rather than re-derived: the player already holds it, and a second
+    // `collectAsState` here would give this pane its own view of "are we casting" that can disagree
+    // with the transport's for a frame.
+    castHandler: iad1tya.echo.music.playback.CastConnectionHandler?,
+    isCasting: Boolean,
+    castIsPlaying: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val playerConnection = LocalPlayerConnection.current ?: return
@@ -3567,8 +3582,24 @@ private fun LandscapeQueuePane(
                     isTvOrCar = isTvOrCar,
                     contentColor = contentColor,
                     onClick = {
+                        // CASTING: the local player is not what the user is listening to. Without these
+                        // branches, tapping a row while casting seeked the PHONE — the speaker kept
+                        // playing the old song and the tap looked like it had done nothing.
+                        // `navigateToMediaIfInQueue` returns false when the receiver's own queue does not
+                        // hold that id, and then seeking locally is the correct fallback (that is what
+                        // re-casts the right track).
                         if (isActive) {
-                            playerConnection.togglePlayPause()
+                            if (isCasting) {
+                                if (castIsPlaying) castHandler?.pause() else castHandler?.play()
+                            } else {
+                                playerConnection.togglePlayPause()
+                            }
+                        } else if (isCasting) {
+                            val navigated =
+                                castHandler?.navigateToMediaIfInQueue(window.mediaItem.mediaId) ?: false
+                            if (!navigated) {
+                                playerConnection.player.seekToDefaultPosition(window.firstPeriodIndex)
+                            }
                         } else {
                             playerConnection.player.seekToDefaultPosition(window.firstPeriodIndex)
                             playerConnection.player.playWhenReady = true

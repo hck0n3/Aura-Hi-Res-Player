@@ -78,7 +78,6 @@ import com.music.innertube.models.SongItem
 import com.music.innertube.models.WatchEndpoint
 import iad1tya.echo.music.MainActivity
 import iad1tya.echo.music.R
-import iad1tya.echo.music.constants.AudioEnhanceEnabledKey
 import iad1tya.echo.music.constants.AudioNormalizationKey
 import iad1tya.echo.music.constants.SafeVolumeEnabledKey
 import iad1tya.echo.music.constants.AudioOffload
@@ -152,8 +151,6 @@ import iad1tya.echo.music.db.entities.Song
 import iad1tya.echo.music.di.DownloadCache
 import iad1tya.echo.music.di.PlayerCache
 import iad1tya.echo.music.eq.EqualizerService
-import iad1tya.echo.music.eq.audio.AudioEnhanceProcessor
-import iad1tya.echo.music.eq.audio.JrDspAudioProcessor
 import iad1tya.echo.music.eq.audio.CustomEqualizerAudioProcessor
 import iad1tya.echo.music.eq.audio.NormalizationGainAudioProcessor
 import iad1tya.echo.music.eq.audio.TruePeakLimiterAudioProcessor
@@ -178,6 +175,7 @@ import iad1tya.echo.music.lyrics.LyricsHelper
 import iad1tya.echo.music.models.PersistPlayerState
 import iad1tya.echo.music.models.PersistQueue
 import iad1tya.echo.music.models.toMediaMetadata
+import iad1tya.echo.music.playback.audio.AudioOffloadGate
 import iad1tya.echo.music.playback.audio.SilenceDetectorAudioProcessor
 import iad1tya.echo.music.playback.queues.EmptyQueue
 import iad1tya.echo.music.playback.queues.ListQueue
@@ -374,8 +372,13 @@ class MusicService :
      * Exactly one, never a stack: he asked for "la cola anterior". In-memory only — this is a
      * within-session courtesy, so it deliberately does NOT add a fourth object graph to
      * [saveQueueToDisk]; a process death drops it, like the offer itself.
+     *
+     * IDS, not songs: see [PreviousQueueCursor]. This field is the one thing 0.6.145 added to the STEADY
+     * state of the media process, it can be armed for ten minutes at a time, and in a car it always is
+     * (the snackbar that would clear it is on a screen the user is not looking at) — so what it holds
+     * has to be small enough to be uninteresting to the low-memory killer.
      */
-    private var previousQueueSnapshot: PersistQueue? = null
+    private var previousQueueSnapshot: PreviousQueueCursor? = null
 
     /** `SystemClock.elapsedRealtime()` deadline of the armed offer; 0 when there is none. */
     private var previousQueueExpiresAt = 0L
@@ -406,8 +409,9 @@ class MusicService :
      * instant the old queue stops being reachable.
      *
      * Touches nothing but its own two fields: it reads the timeline and publishes a StateFlow, so it
-     * cannot affect playback whether or not the offer is later accepted. Reuses [toPersistQueue], the
-     * same round-trip the boot restore uses, rather than inventing a second serialization.
+     * cannot affect playback whether or not the offer is later accepted. It reuses [toPersistQueue] for
+     * the queue's IDENTITY (type, continuation data, context) rather than inventing a second mapping, and
+     * [PreviousQueueCursor] for the items — see there for why the items are not kept.
      */
     private fun captureQueueForResumeOffer(newQueue: Queue, isRestore: Boolean) {
         // The switch is honoured HERE, at the capture, not at the prompt or at the action: with it off
@@ -433,34 +437,56 @@ class MusicService :
         // refuse to act on it, so offering the prompt would be a button that does nothing. Never offer it.
         if (listenTogetherManager.isInRoom && !listenTogetherManager.isHost) return
 
-        val items = player.mediaItems.mapNotNull { it.metadata }
-        // mapNotNull can SHRINK the list (an item with no metadata tag), and player.currentMediaItemIndex
-        // indexes the FULL timeline — restoring the shrunken list with that index would resume on a
-        // different song, i.e. exactly the promise this feature makes ("por donde iba") broken silently.
-        // saveQueueToDisk carries the same exposure; here we simply decline to offer rather than offer a
-        // wrong answer.
-        if (items.size != player.mediaItemCount) return
+        // ONE walk of the timeline, keeping the IDS and nothing else. The id list has exactly one entry
+        // per index, so player.currentMediaItemIndex stays a valid index into it BY CONSTRUCTION — the
+        // shrink hazard the old metadata capture had to guard against (mapNotNull could drop an item and
+        // silently shift the cursor onto a different song) cannot arise. A timeline that cannot be read,
+        // or an item with no media id, still declines the offer rather than offering a wrong answer.
+        val cursorIndex = player.currentMediaItemIndex
+        val count = player.mediaItemCount
+        val ids = ArrayList<String>(count)
+        var anchor: iad1tya.echo.music.models.MediaMetadata? = null
+        for (i in 0 until count) {
+            val item = runCatching { player.getMediaItemAt(i) }.getOrNull() ?: return
+            if (item.mediaId.isEmpty()) return
+            ids.add(item.mediaId)
+            // The cursor's own song is the ONE item kept whole — see [PreviousQueueCursor.anchor].
+            if (i == cursorIndex) anchor = item.metadata
+        }
+        if (cursorIndex !in ids.indices) return
 
-        val snapshot = runCatching {
+        // Items deliberately empty: this call is here for the queue's IDENTITY (queueType / queueData /
+        // contextId / title / cursor), which is the part of the mapping worth sharing with the restore
+        // path. The songs themselves are rebuilt from the database on accept.
+        val shell = runCatching {
             currentQueue.toPersistQueue(
                 title = queueTitle,
-                items = items,
-                mediaItemIndex = player.currentMediaItemIndex,
+                items = emptyList(),
+                mediaItemIndex = cursorIndex,
                 position = player.currentPosition,
             )
         }.onFailure {
             Timber.tag(TAG).w(it, "Could not snapshot the outgoing queue for the resume offer")
         }.getOrNull() ?: return
 
-        previousQueueSnapshot = snapshot
+        previousQueueSnapshot = PreviousQueueCursor(
+            title = shell.title,
+            contextId = shell.contextId,
+            queueType = shell.queueType,
+            queueData = shell.queueData,
+            mediaIds = ids,
+            mediaItemIndex = cursorIndex,
+            position = shell.position,
+            anchor = anchor,
+        )
         previousQueueOfferToken++
         val expiresAt = android.os.SystemClock.elapsedRealtime() + PreviousQueueRule.OFFER_TTL_MS
         previousQueueExpiresAt = expiresAt
         _previousQueueOffer.value =
-            PreviousQueueOffer(previousQueueOfferToken, snapshot.title, expiresAt)
+            PreviousQueueOffer(previousQueueOfferToken, shell.title, expiresAt)
 
-        // Actively DROP it when the bound passes: the offer is a within-session courtesy, and a queue's
-        // metadata held for a whole session because nobody ever answered is dead memory. The token is
+        // Actively DROP it when the bound passes: the offer is a within-session courtesy, and an id list
+        // held for a whole session because nobody ever answered is dead memory. The token is
         // re-read inside the job so a NEWER capture (which re-arms this job anyway) can never be retired
         // by an older timer.
         val armedToken = previousQueueOfferToken
@@ -477,9 +503,14 @@ class MusicService :
      * No seek is re-implemented here. [PersistQueue.toQueue] rebuilds a ListQueue carrying `startIndex`
      * and `position`, and [playQueue]'s `player.setMediaItems(items, safeIndex, initialStatus.position)`
      * already lands both — the same path the boot restore relies on.
+     *
+     * The songs are read back from the `song` table first ([rehydrate]), because the snapshot holds ids
+     * rather than songs. That read is the only thing between the tap and the queue, so it happens off the
+     * Main thread and the offer is retired BEFORE it starts: the prompt must not sit there looking
+     * unanswered while a few hundred rows come back.
      */
     fun resumePreviousQueue() {
-        val snapshot = previousQueueSnapshot ?: return
+        val cursor = previousQueueSnapshot ?: return
         // Last line of defence on the bound: the expiry timer is a main-looper delay, which does not tick
         // while the device is in deep sleep, so a tap arriving right after a long doze could otherwise
         // reinstate a queue the user left an hour ago. Drop it instead of playing it.
@@ -498,14 +529,49 @@ class MusicService :
         previousQueueExpiryJob?.cancel()
         previousQueueExpiryJob = null
         _previousQueueOffer.value = null
-        runCatching { playQueue(snapshot.toQueue()) }.onFailure {
-            Timber.tag(TAG).e(it, "Failed to resume the previous queue")
+
+        // Same revival playQueue does at its own entry: the read below has to run for the resume to
+        // happen at all, and launching it on a cancelled scope would be a button that does nothing.
+        if (!scope.isActive) scope = CoroutineScope(Dispatchers.Main) + Job()
+        scope.launch {
+            // Chunked because "LIB:" is thousands of ids and Room binds one SQL variable per id — see
+            // [PreviousQueueRule.ID_LOOKUP_CHUNK]. distinct() because a queue may repeat a song, and the
+            // rebuild looks each id up by key anyway.
+            val byId = runCatching {
+                withContext(Dispatchers.IO) {
+                    val out = HashMap<String, iad1tya.echo.music.models.MediaMetadata>(cursor.mediaIds.size)
+                    cursor.mediaIds.distinct()
+                        .chunked(PreviousQueueRule.ID_LOOKUP_CHUNK)
+                        .forEach { chunk ->
+                            database.getSongsByIds(chunk).forEach { out[it.song.id] = it.toMediaMetadata() }
+                        }
+                    out
+                }
+            }.onFailure {
+                Timber.tag(TAG).e(it, "Could not read back the previous queue's songs")
+            }.getOrDefault(emptyMap())
+
+            // Null only if the cursor cannot be placed at all — play nothing rather than the wrong song.
+            val restored = cursor.rehydrate(byId)
+            if (restored == null) {
+                Timber.tag(TAG).w("Previous queue could not be rebuilt (%d ids)", cursor.mediaIds.size)
+                return@launch
+            }
+            if (restored.items.size != cursor.mediaIds.size) {
+                Timber.tag(TAG).i(
+                    "Previous queue rebuilt with %d of %d items (rows removed since capture)",
+                    restored.items.size, cursor.mediaIds.size,
+                )
+            }
+            runCatching { playQueue(restored.toQueue()) }.onFailure {
+                Timber.tag(TAG).e(it, "Failed to resume the previous queue")
+            }
         }
     }
 
     /**
      * Decline, let it lapse, or turn the setting off. Drops the offer AND the snapshot: once the prompt is
-     * gone there is no door left to open it, so keeping the items would only be dead memory.
+     * gone there is no door left to open it, so keeping the ids would only be dead memory.
      */
     fun dismissPreviousQueueOffer() {
         previousQueueSnapshot = null
@@ -658,6 +724,9 @@ class MusicService :
     // Initialised TRUE to match SafeVolumeEnabledKey's own default: starting false left a window before the
     // collector's first emission where a crossfade or instant-video swap would skip priming entirely.
     @Volatile private var safeVolumeEnabledHint: Boolean = true
+    // The offload request CURRENTLY PUBLISHED to the players (not merely the gate's latest verdict — an
+    // approved enable can be waiting for a track boundary; see publishOffloadDecision). Read by
+    // onPlaybackParametersChanged, which only re-publishes the speed requirement while offload is live.
     @Volatile private var audioOffloadHint: Boolean = false
 
     // P33 — the player-thread callbacks onMediaItemTransition/onPlaybackStatsReady used to call dataStore.get(),
@@ -700,9 +769,31 @@ class MusicService :
     // of the media item alone and cannot change with the profile, so it now survives that invalidation:
     // only [shuffleTasteCache] is cleared. Values are identical either way — this changes cost, not order.
     // Main-thread only (applyShuffleOrder's thread).
+    //
+    // LIFETIME. The split gave [shuffleArtistCache] no invalidation trigger at all — only a 20 000-entry
+    // panic clear — which in a media service that lives for days is effectively permanent. It cannot be
+    // handed the profile trigger the merged cache used: surviving the taste refresh is the entire reason
+    // the split exists, and re-attaching it would give back the ~20-60 ms Main-thread stall it bought.
+    // The honest bound is the QUEUE: both maps only ever serve items on the current timeline, so a new
+    // queue makes every surviving entry dead weight (see the clear in playQueue) — and memory pressure
+    // drops both outright (onTrimMemory). Both are pure memoization: clearing them changes cost, never
+    // the order produced.
     private val shuffleTasteCache = HashMap<String, Double>()
     private val shuffleArtistCache = HashMap<String, String>()
     private var shuffleScoreCacheProfile: Any? = null
+
+    /**
+     * Drop the shuffle memoization caches. Pure cost, never order: every value is re-derived on demand
+     * from the media item and the taste profile, so a cleared cache produces the identical shuffle.
+     * Main-thread only, like the maps themselves.
+     */
+    private fun clearShuffleCaches() {
+        shuffleTasteCache.clear()
+        shuffleArtistCache.clear()
+        // [shuffleScoreCacheProfile] is deliberately left alone: it is the identity of the profile the
+        // taste half was derived from, and an emptied map simply refills against it. It holds no memory
+        // of its own — the instance it names is the one [cachedTaste] is already holding.
+    }
 
     // PER-SONG SILENCE MEMORY (session-scoped, owner: "5s de MÚSICA bajando, silencio omitido — y la que
     // entra arranca en su música"). Learned from the live detector on each song's first play:
@@ -1538,6 +1629,63 @@ class MusicService :
         Timber.tag(TAG).i("Safe Volume turned off -> EQ preamp reset from %.1f dB to 0.0 dB", effective.preamp)
     }
 
+    /**
+     * An offload ENABLE that the gate has approved but that has deliberately not been applied yet.
+     * Main-thread only: its writer (the gate collector) and both of its flush points
+     * (onMediaItemTransition, onIsPlayingChanged) all run there.
+     */
+    private var pendingOffloadEnable = false
+
+    /**
+     * Publishes an [AudioOffloadGate] verdict to the players — ASYMMETRICALLY, on purpose.
+     *
+     * Changing the offload preference is a track re-selection, which makes media3 re-configure the
+     * audio renderer: audible mid-song. That cost is worth paying in exactly one direction.
+     *  - TURNING OFFLOAD OFF is an AUDIO-CORRECTNESS event and must happen NOW. The user has just
+     *    switched the EQ / Safe Volume / crossfade ON, and until this lands their samples still leave
+     *    the app untouched — a control that looks alive and is not. Correctness beats a click.
+     *  - TURNING OFFLOAD ON is only a BATTERY event, and battery is never urgent. Applying it mid-song
+     *    would spend an audible re-init on a saving that is just as available one song later. It would
+     *    also cut short the ~300 ms ramp the native bridge runs when Safe Volume is switched OFF (it
+     *    keeps the chain alive while safeVolumeGainCurrent != 1.0f precisely so the level glides
+     *    instead of stepping) — tearing the sink down mid-glide turns that into the level jump the
+     *    ramp exists to avoid. So it is stashed and flushed at the next natural boundary.
+     *
+     * A later veto always wins: a pending enable is dropped the moment the gate says "blocked".
+     */
+    private fun publishOffloadDecision(allowOffload: Boolean) {
+        if (!allowOffload) {
+            pendingOffloadEnable = false
+            applyOffloadRequest(false)
+            return
+        }
+        if (audioOffloadHint) return
+        if (player.isPlaying) {
+            pendingOffloadEnable = true
+            Timber.tag(TAG).i("Offload allowed but deferred to the next track boundary (mid-song re-init avoided)")
+        } else {
+            applyOffloadRequest(true)
+        }
+    }
+
+    /**
+     * Flush point for a deferred offload ENABLE — called only where a renderer re-init costs nothing
+     * audible (a track boundary, or playback not running). Safe on the crossfade-swap path by
+     * construction: a pending enable can only exist while the gate is open, and the gate is closed
+     * whenever crossfade can run, so no swap is ever in flight here.
+     */
+    private fun flushPendingOffloadEnable() {
+        if (!pendingOffloadEnable) return
+        pendingOffloadEnable = false
+        applyOffloadRequest(true)
+    }
+
+    private fun applyOffloadRequest(enabled: Boolean) {
+        audioOffloadHint = enabled
+        player.setOffloadEnabled(enabled)
+        secondaryPlayer?.setOffloadEnabled(enabled)
+    }
+
     private fun applyEqForCurrentOutput() {
         if (!::eqProfileRepository.isInitialized || !::equalizerService.isInitialized) return
         scope.launch {
@@ -2042,17 +2190,32 @@ class MusicService :
         ) { mediaMetadata, showLyrics ->
             mediaMetadata to showLyrics
         }.collectLatest(scope) { (mediaMetadata, showLyrics) ->
-            if (showLyrics && mediaMetadata != null && database.lyrics(mediaMetadata.id)
-                    .first() == null
-            ) {
-                val lyricsWithProvider = lyricsHelper.getLyrics(mediaMetadata)
-                database.query {
-                    upsert(
-                        LyricsEntity(
-                            id = mediaMetadata.id,
-                            lyrics = lyricsWithProvider.lyrics,
-                            provider = lyricsWithProvider.provider,
-                        ),
+            if (showLyrics && mediaMetadata != null) {
+                val stored = database.lyrics(mediaMetadata.id).first()
+                if (stored == null) {
+                    val lyricsWithProvider = lyricsHelper.getLyrics(mediaMetadata)
+                    database.query {
+                        upsert(
+                            LyricsEntity(
+                                id = mediaMetadata.id,
+                                lyrics = lyricsWithProvider.lyrics,
+                                provider = lyricsWithProvider.provider,
+                            ),
+                        )
+                    }
+                } else {
+                    // WRONG-SONG LYRICS REPAIR. A row that already exists is never re-fetched, so a
+                    // lyric that LrcLib mis-matched by duration alone would stay wrong on this device
+                    // forever - fixing the matcher does nothing for anyone who already hit the bug.
+                    // Re-verify it once, here, at the moment it is about to be displayed. Rows that
+                    // are already verified or that the user wrote themselves return immediately
+                    // without a query or a request; see LyricsMatchRepair for the safety guards.
+                    // Inside collectLatest, so skipping to another song cancels the check.
+                    iad1tya.echo.music.lyrics.LyricsMatchRepair.verifyAndRepair(
+                        database = database,
+                        lyricsHelper = lyricsHelper,
+                        mediaMetadata = mediaMetadata,
+                        stored = stored,
                     )
                 }
             }
@@ -2119,37 +2282,15 @@ class MusicService :
                 }
         }
 
-        dataStore.data
-            .map { it[AudioEnhanceEnabledKey] ?: false }
-            .distinctUntilChanged()
-            .collectLatest(scope) { enabled ->
-                AudioEnhanceProcessor.enabled = enabled
-            }
-
-        dataStore.data
-            .map { prefs ->
-                JrDspAudioProcessor.Config(
-                    signatureEnabled = prefs[iad1tya.echo.music.constants.AuraSignatureToneEnabledKey] ?: true,
-                    loudnessEnabled = prefs[iad1tya.echo.music.constants.JrLoudnessEnabledKey] ?: false,
-                    // Virtual room (HRTF) removed — always off regardless of any old saved preference.
-                    hrtfEnabled = false,
-                    // Bass enhancer removed — always off regardless of any old saved preference.
-                    bassEnhanceEnabled = false,
-                    bassEnhanceAmount = prefs[iad1tya.echo.music.constants.JrBassEnhanceAmountKey] ?: 0.28f,
-                    exciterEnabled = prefs[iad1tya.echo.music.constants.JrExciterEnabledKey] ?: false,
-                    exciterAmount = prefs[iad1tya.echo.music.constants.JrExciterAmountKey] ?: 0.15f,
-                    // Multiband compressor removed — always off regardless of any old saved preference.
-                    mbCompEnabled = false,
-                    stereoWidthEnabled = prefs[iad1tya.echo.music.constants.JrStereoWidthEnabledKey] ?: false,
-                    stereoWidth = prefs[iad1tya.echo.music.constants.JrStereoWidthKey] ?: 1.0f,
-                    dialogueEnabled = prefs[iad1tya.echo.music.constants.JrDialogueEnabledKey] ?: false,
-                    dialogueAmount = prefs[iad1tya.echo.music.constants.JrDialogueAmountKey] ?: 0.35f,
-                )
-            }
-            .distinctUntilChanged()
-            .collectLatest(scope) { cfg ->
-                JrDspAudioProcessor.config = cfg
-            }
+        // NOTE (0.6.145): two collectors used to sit here, feeding AudioEnhanceProcessor.enabled and
+        // JrDspAudioProcessor.config from DataStore. Both target classes are inert stubs — isActive()
+        // returns false and NEITHER is ever inserted into any AudioProcessorChain (see
+        // createRenderersFactory, which builds the chain from silence/eq/norm/limiter only) — so those
+        // writes reached nothing at all, and no screen renders the keys any more (SoundSettings dropped
+        // them). They mattered here because the OLD offload gate vetoed on those same keys, i.e. a dead
+        // stub was holding the gate permanently shut. The gate below no longer consults them, so the
+        // dead wiring is gone with it. The preference keys survive only inside SoundEffectsSnapshot
+        // (backup/restore of raw values), which is unaffected.
 
         // AUDIO OFFLOAD GATE — reduced to terms backed by LIVE code (0.6.142).
         //
@@ -2176,7 +2317,7 @@ class MusicService :
         //     Behaviour untouched; this is still the term the PlayerSettings copy refers to. Read as
         //     "crossfade is actually RUNNING", not "the key is set": High-Performance Mode force-disables
         //     crossfade at every live site (the crossfadeEnabled collector below ANDs !HighPerformanceMode,
-        //     and beginCrossfadeSwap / maybeStartCrossfade / prepareSecondaryPlayer each re-check
+        //     and scheduleCrossfade / onTailSilenceDetected / maybePrepareInstantVideoSwap each re-check
         //     highPerformanceModeHint), so under HPM no second player is ever built and the key alone is a
         //     dead veto — on exactly the weak devices offload helps most. The Listen Together room state,
         //     which also suppresses crossfade, is deliberately NOT read here: it flips mid-session and
@@ -2190,6 +2331,15 @@ class MusicService :
         //     AuraSignatureToneEnabledKey term. Reading the repository makes the veto explicit and, because
         //     these are hot Flows, re-evaluates the moment the user changes or clears the profile mid-session
         //     (the DataStore flows do the same for crossfade and Safe Volume — this gate is never stale).
+        //     That ONE term also covers the EQ PREAMP and the DE-ESSER, and it has to: in
+        //     SuperpoweredBridge.processAudio the preamp (frontGain) and the de-esser both live INSIDE the
+        //     runEq branch, and neither has a toggle of its own — the preamp is a field of the profile, and
+        //     the de-esser is unconditional whenever the EQ is on. A FLAT profile therefore still processes,
+        //     which is why the term is "a profile is applied", not "the profile is audibly non-flat".
+        //   - Silence / tail detection needs NO term: tailDetectEnabled is armed only by scheduleCrossfade,
+        //     downstream of its `if (!crossfadeEnabled ...) return`, and instant skip-silence is hardcoded
+        //     off — so it cannot be running while the crossfade term is false. Anything that ever arms tail
+        //     detection WITHOUT crossfade has to add a term here, or it will measure encoded garbage.
         //
         // INTERACTION WITH THE hiResDsp FLOAT TAKEOVER (createRenderersFactory's ForwardingAudioSink): the two
         // are mutually exclusive BY CONSTRUCTION and cannot both claim the stream. The takeover only arms when
@@ -2206,24 +2356,35 @@ class MusicService :
         // call. That keeps this collector and the onPlaybackParametersChanged re-publish from ever
         // producing two different requests, and it can only make the selector refuse offload, never
         // accept it where this gate said no.
+        //
+        // The predicate itself lives in AudioOffloadGate (playback/audio) instead of in this lambda, for
+        // the same reason CrossfadeMath and CrossfadeLyricsPin were lifted out: a decision that can
+        // silence the EQ has to be unit-testable, and nothing inside MusicService is. This collector is
+        // now only plumbing — flows in, publication out.
         combine(
             dataStore.data.map { it[AudioOffload] ?: false }.distinctUntilChanged(),
             dataStore.data.map { p ->
-                val crossfadeRunning = (p[CrossfadeEnabledKey] ?: false) &&
-                    !(p[iad1tya.echo.music.constants.HighPerformanceModeKey] ?: false)
-                crossfadeRunning || (p[SafeVolumeEnabledKey] ?: true)
+                (p[CrossfadeEnabledKey] ?: false) to
+                    (p[iad1tya.echo.music.constants.HighPerformanceModeKey] ?: false)
             }.distinctUntilChanged(),
+            dataStore.data.map { it[SafeVolumeEnabledKey] ?: true }.distinctUntilChanged(),
             combine(
                 eqProfileRepository.activeProfile,
                 eqProfileRepository.unsavedProfile,
             ) { active, unsaved -> (unsaved ?: active) != null }.distinctUntilChanged(),
-        ) { offloadPref, prefsVeto, eqActive ->
-            if (prefsVeto || eqActive) false else offloadPref
+        ) { offloadPref, (crossfadeKey, perfMode), safeVolume, eqActive ->
+            AudioOffloadGate.allowOffload(
+                AudioOffloadGate.Inputs(
+                    userWantsOffload = offloadPref,
+                    crossfadeEnabled = crossfadeKey,
+                    highPerformanceMode = perfMode,
+                    safeVolumeEnabled = safeVolume,
+                    equalizerActive = eqActive,
+                ),
+            )
         }.distinctUntilChanged()
         .collectLatest(scope) { useOffload ->
-             audioOffloadHint = useOffload
-             player.setOffloadEnabled(useOffload)
-             secondaryPlayer?.setOffloadEnabled(useOffload)
+            publishOffloadDecision(useOffload)
         }
 
         // P33 — keep the memory mirrors for the player-thread hot paths (onMediaItemTransition /
@@ -2964,6 +3125,13 @@ class MusicService :
         // jump snapshots it here so the user can be offered a way back; every other transition (including
         // the boot restore, whose outgoing queue is EmptyQueue with a null context) is a no-op.
         captureQueueForResumeOffer(queue, isRestore)
+
+        // The shuffle memoization caches describe the queue that is being replaced right here: from this
+        // point every entry in them is keyed to a media id that is about to leave the timeline. Dropping
+        // them is what gives [shuffleArtistCache] a bounded lifetime (it has no other invalidation) and
+        // it costs nothing measurable — a brand-new queue's ids miss the cache anyway. Order-neutral by
+        // construction: both values are re-derived, identically, on demand.
+        clearShuffleCaches()
 
         currentQueue = queue
         queueTitle = null
@@ -5012,6 +5180,22 @@ class MusicService :
         reason: Int,
     ) {
         currentPlayingMediaId = mediaItem?.mediaId
+        // A track boundary is the cheap moment to engage audio offload: the renderer re-init the
+        // preference change causes is inaudible here. See publishOffloadDecision.
+        flushPendingOffloadEnable()
+        // LYRICS PIN — manual-skip net. Observation only: nothing here reads or writes fade math, curve,
+        // duration, swap order or volume; the fade keeps running exactly as it did. A skip during a fade
+        // cancels NOTHING (the only crossfadeJob?.cancel() is in onDestroy), so the outgoing-song pin used to
+        // outlive its own track and paint song A's lyrics over song C. The swap itself never reaches this
+        // callback (it publishes the incoming item directly and attaches this listener to the incoming player
+        // afterwards), so a transition arriving with a pin held means the user — or the queue — moved
+        // somewhere the pinned song is not. Null items are left alone on purpose: media3 fires a spurious
+        // null transition around a swap and the pinned song is still audible then.
+        _crossfadeOutgoingMetadata.value?.let { pinnedOutgoing ->
+            if (CrossfadeLyricsPin.shouldReleaseOnTransition(pinnedOutgoing.id, mediaItem?.mediaId)) {
+                _crossfadeOutgoingMetadata.value = null
+            }
+        }
         rememberRecentRadioId(mediaItem?.mediaId ?: player.currentMetadata?.id)
         // A per-track Opus override (refetchCurrentInOpus) only applies to the track it was set for; drop it
         // once a genuinely different (non-null) track becomes current so a later track isn't forced to Opus.
@@ -5472,6 +5656,9 @@ class MusicService :
         if (isPlaying) {
             startPeriodicPersist()
         } else {
+            // Nothing is audible right now, so a deferred offload ENABLE can land for free — and this
+            // is what makes it land at all for a listener who pauses instead of finishing the track.
+            flushPendingOffloadEnable()
             // Stop the periodic wake-ups while paused/idle and save the position once so nothing is lost.
             periodicPersistJob?.cancel()
             periodicPersistJob = null
@@ -8686,6 +8873,47 @@ class MusicService :
         }
     }
 
+    /**
+     * The media process's answer to memory pressure.
+     *
+     * Until now this service had none: `Application.onTrimMemory` trimmed Coil's image cache (same
+     * process — the service declares no `android:process`) and nothing else here gave anything back. A
+     * foreground media service that never responds to pressure is precisely what the low-memory killer
+     * reaps, and when it is reaped Android Auto stops listing the app — no dialog, no crash, nothing the
+     * user can report. This is a cheap, honest signal that the process is willing to shrink.
+     *
+     * Strictly non-playback. It frees ONE class of thing — memoized values that are re-derived on demand
+     * — plus the pending resume offer at the harshest levels. It does not touch the player, the crossfade
+     * state, the silence hints the crossfade times itself from, or anything the audio path reads. A
+     * Service's `onTrimMemory` is delivered on the Main thread, which is the thread that owns both maps.
+     */
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        runCatching {
+            // Matched by VALUE, never by `>=`. The constants are not a pressure scale: TRIM_MEMORY_
+            // UI_HIDDEN (20) sits BETWEEN RUNNING_CRITICAL (15) and BACKGROUND (40) and means nothing
+            // more than "the Activity went away" — which, with the phone in a pocket and the car
+            // driving, is the app's normal state. A `>=` test would fire on it every single time.
+            val pressure = level == android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW ||
+                level == android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL ||
+                level == android.content.ComponentCallbacks2.TRIM_MEMORY_BACKGROUND ||
+                level == android.content.ComponentCallbacks2.TRIM_MEMORY_MODERATE ||
+                level == android.content.ComponentCallbacks2.TRIM_MEMORY_COMPLETE
+            if (!pressure) return
+            clearShuffleCaches()
+            // The offer is a courtesy; under REAL pressure it is not worth a byte. Only at the levels
+            // that mean the process is next in line, because dropping it retires a prompt the user may
+            // be looking at.
+            val severe = level == android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL ||
+                level == android.content.ComponentCallbacks2.TRIM_MEMORY_MODERATE ||
+                level == android.content.ComponentCallbacks2.TRIM_MEMORY_COMPLETE
+            if (severe && previousQueueSnapshot != null) {
+                Timber.tag(TAG).i("Dropping the resume offer under memory pressure (level=%d)", level)
+                dismissPreviousQueueOffer()
+            }
+        }
+    }
+
     override fun onDestroy() {
         isRunning = false
         // The expanded flag lives in the process-wide PlaybackStateManager, which OUTLIVES this
@@ -9847,10 +10075,13 @@ class MusicService :
         }
 
         fadingPlayer = currentPlayer
-        // Observation-only, for the lyrics view: this is the track the user KEEPS HEARING for the length of
-        // the fade even though the incoming one was published above. Recorded here so the lyrics can stay on
-        // it (and on its clock) until cleanupCrossfade commits. Null metadata simply leaves the override off,
-        // i.e. the lyrics behave exactly as they did before. Nothing below this line changes.
+        // Observation-only, for the lyrics view: this is the track the user KEEPS HEARING while the fade
+        // runs even though the incoming one was published above. Recorded here so the lyrics can stay on it
+        // (and on its clock) for exactly as long as it is AUDIBLE — the fade loop below drops the pin as soon
+        // as the gain it writes for this player is inaudible or its silence detector says there is nothing
+        // left, onMediaItemTransition drops it if the user skips away, and cleanupCrossfade is only the last
+        // resort. Null metadata simply leaves the override off, i.e. the lyrics behave exactly as they did
+        // before. Nothing below this line changes.
         _crossfadeOutgoingMetadata.value = currentPlayer.currentMetadata
         // Pin the OUTGOING player to its current normalization (the companion statics still hold its
         // values right now) so when setupLoudnessEnhancer re-writes them for the incoming track, the
@@ -9954,6 +10185,32 @@ class MusicService :
                     val fadeIn = crossfadeGains(curve, inP).first
                     val fadeOut = crossfadeGains(curve, outP).second
 
+                    // LYRICS PIN RELEASE — observation only. Reads the values the audio path has ALREADY
+                    // computed and writes nothing back: no fade math, curve, duration, swap order or volume
+                    // is touched by this block, and deleting it would leave the transition bit-identical.
+                    //
+                    // The pin used to survive until cleanupCrossfade, i.e. until the loop exits on
+                    // `inP >= 1f && outP >= 1f` — which waits for the INCOMING ramp. That is why users see
+                    // the previous song's lyrics over the new one: durOut is capped to the fading track's
+                    // remaining life (as little as 600ms) while durIn is the full configured duration, and
+                    // inElapsed only advances while the incoming player actually renders, so a buffering
+                    // start or a pause freezes it for seconds. The outgoing is long inaudible by then.
+                    //
+                    // So release on AUDIBILITY instead: fadeOut is the gain relative to the outgoing's own
+                    // level (with the default curve 4 it is exactly 0 from 85% of ITS ramp), and the silence
+                    // detector covers the tail-fire case where the outgoing was never audible at all. Both
+                    // can only make the lyrics return to the live song EARLIER than before, never later.
+                    if (CrossfadeLyricsPin.shouldRelease(
+                            pinned = _crossfadeOutgoingMetadata.value != null,
+                            outgoingGone = outDone,
+                            outgoingCurveGain = fadeOut,
+                            outgoingDetectedSilent =
+                                fp?.let { playerSilenceProcessors[it]?.isCurrentlySilent() } == true,
+                        )
+                    ) {
+                        _crossfadeOutgoingMetadata.value = null
+                    }
+
                     try {
                         // Both players smoothly fade without needing to dynamically duck their headroom
                         player.volume = startVolume * fadeIn * xfHeadroom
@@ -10029,7 +10286,10 @@ class MusicService :
         isCrossfading = false
         _isCrossfading.value = false // observation-only mirror for the UI; does not alter the swap
         // The fade committed: the incoming track is now the audible one, so the lyrics view stops following
-        // the outgoing song and returns to the live one. Observation-only, like the mirror above.
+        // the outgoing song and returns to the live one. Observation-only, like the mirror above. LAST RESORT
+        // only — the audibility check inside the fade loop normally released this seconds earlier; this line
+        // still matters for the paths that never tick the loop (cancelled job, an exception on the first
+        // volume write, the pathological-stall bail).
         _crossfadeOutgoingMetadata.value = null
         // Collect the quality-change survivor here rather than at the swap: the fade is over and fadingPlayer is
         // already stopped/cleared/released above, so dropping its URL entry cannot trigger a re-open. Needed
@@ -10315,7 +10575,17 @@ class MusicService :
                                 )
                                 val lyricsResult = lyricsHelper.getLyrics(metadata)
                                 database.query {
-                                    upsert(iad1tya.echo.music.db.entities.LyricsEntity(id = mediaId, lyrics = lyricsResult.lyrics))
+                                    // The provider MUST be recorded. Omitting it let the column fall
+                                    // back to "Unknown", which erased the provenance of every
+                                    // preloaded row and hid real LrcLib results behind an
+                                    // unattributable label.
+                                    upsert(
+                                        iad1tya.echo.music.db.entities.LyricsEntity(
+                                            id = mediaId,
+                                            lyrics = lyricsResult.lyrics,
+                                            provider = lyricsResult.provider,
+                                        ),
+                                    )
                                 }
                                 Timber.tag(TAG).d("Preloaded lyrics for $mediaId")
                             }

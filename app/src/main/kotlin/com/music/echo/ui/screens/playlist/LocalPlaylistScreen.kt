@@ -14,7 +14,6 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -122,7 +121,6 @@ import iad1tya.echo.music.LocalPlayerConnection
 import iad1tya.echo.music.LocalSyncUtils
 import iad1tya.echo.music.R
 import iad1tya.echo.music.constants.AiPlaylistEnabledKey
-import iad1tya.echo.music.constants.DarkModeKey
 import iad1tya.echo.music.constants.InnerTubeCookieKey
 import iad1tya.echo.music.constants.PlaylistEditLockKey
 import iad1tya.echo.music.constants.PlaylistSongSortDescendingKey
@@ -153,7 +151,7 @@ import iad1tya.echo.music.ui.component.ExpandableText
 import iad1tya.echo.music.ui.menu.LocalPlaylistMenu
 import iad1tya.echo.music.ui.menu.SelectionSongMenu
 import iad1tya.echo.music.ui.menu.SongMenu
-import iad1tya.echo.music.ui.screens.settings.DarkMode
+import iad1tya.echo.music.ui.theme.rememberEffectiveDarkTheme
 import iad1tya.echo.music.ui.utils.rememberIsTvOrCar
 import iad1tya.echo.music.ui.utils.tvFocusable
 import iad1tya.echo.music.utils.listItemShape
@@ -1059,13 +1057,13 @@ fun LocalPlaylistHeader(
         }
     }
 
-    val (darkMode, _) = rememberEnumPreference(
-        DarkModeKey,
-        defaultValue = DarkMode.AUTO
-    )
-
     val cropColor = MaterialTheme.colorScheme
-    val darkTheme = darkMode == DarkMode.ON || (darkMode == DarkMode.AUTO && isSystemInDarkTheme())
+    // The APP's dark/light — see [rememberEffectiveDarkTheme]. Its ONE consumer is
+    // `setStatusBarLight(!darkTheme)` below, while the cropper's toolbar and root come from
+    // `cropColor` (the live ColorScheme, already forced dark under "Interfaz nueva"). Derived from
+    // DarkModeKey alone the two disagreed: a dark UCrop toolbar with the status bar told to draw its
+    // DARK icons on top of it. Reduces to that same expression with the flag off.
+    val darkTheme = rememberEffectiveDarkTheme()
 
     val pickLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia()

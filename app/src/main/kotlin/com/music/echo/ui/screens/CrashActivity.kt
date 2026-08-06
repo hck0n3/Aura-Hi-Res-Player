@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import iad1tya.echo.music.R
 import iad1tya.echo.music.ui.theme.echomusicTheme
+import iad1tya.echo.music.ui.theme.rememberNewUiForcesDarkTheme
 import iad1tya.echo.music.utils.CrashHandler
 import java.io.File
 import java.text.SimpleDateFormat
@@ -56,7 +57,15 @@ class CrashActivity : ComponentActivity() {
         val crashLog = intent.getStringExtra(CrashHandler.EXTRA_CRASH_LOG) ?: getString(R.string.crash_no_log)
         
         setContent {
-            val darkTheme = isSystemInDarkTheme()
+            // Its own Activity, its own theme: this screen has never read DarkModeKey, so a user on
+            // "Oscuro" with a light-mode phone has always got a light crash screen. That is left alone.
+            // Only the "Interfaz nueva" term is added — with the redesign on the whole app is forced
+            // dark, so a light crash screen is the same white-against-the-redesign mismatch as the rest
+            // of this fix. Flag off this is exactly `isSystemInDarkTheme()`.
+            //
+            // It costs ONE boolean preference read on the crash path (the same cached-seed read every
+            // screen does); if DataStore itself were unreadable the app could not have started.
+            val darkTheme = rememberNewUiForcesDarkTheme() || isSystemInDarkTheme()
             echomusicTheme(darkTheme = darkTheme) {
                 CrashScreen(
                     crashLog = crashLog,

@@ -100,6 +100,7 @@ import iad1tya.echo.music.ui.theme.MuestreoDarkColorScheme
 import iad1tya.echo.music.ui.theme.MuestreoGradientStops
 import iad1tya.echo.music.ui.theme.ThemePreset
 import iad1tya.echo.music.ui.theme.onColorFor
+import iad1tya.echo.music.ui.theme.rememberNewUiForcesDarkTheme
 import iad1tya.echo.music.ui.theme.withAccent
 import iad1tya.echo.music.ui.utils.rememberIsTvOrCar
 import iad1tya.echo.music.ui.utils.tvFocusable
@@ -186,6 +187,23 @@ fun ThemeScreen(
     navController: NavController,
 ) {
     val (darkMode, onDarkModeChange) = rememberEnumPreference(DarkModeKey, DarkMode.AUTO)
+    // "Interfaz nueva" forces the app dark (MainActivity.kt:672-674), so while it is on the two
+    // light-capable modes below cannot take effect. They are DISABLED rather than hidden: hiding them
+    // would leave a user who is on Claro looking at a row where nothing is selected, or — worse — at
+    // Oscuro/AMOLED as if he had chosen one of them. Dimmed + a line of prose keeps the stored choice
+    // visible AND explains why the app is not obeying it, which is the state the screen has to make
+    // readable on its own. The index in SearchableSettings.kt drops the "Tema del sistema" row while the
+    // flag is on for the same reason: walking here is told the truth by the prose, but a SEARCH HIT is a
+    // promise of a control that cannot be operated.
+    //
+    // Oscuro and AMOLED stay tappable because neither can lie. The app IS dark, so selecting Oscuro
+    // matches what is on screen; and AMOLED now genuinely wins over the redesign's ground, on BOTH
+    // halves of the app. It always did for the ~89 classic screens and every dialog (`surfacesFor` in
+    // ui/theme/Theme.kt puts `pureBlack` ahead of the Aura ground), but the six rebuilt screens paint
+    // `AuraPalette.Ground` directly and used to keep `#060A12` — so dragging the queue up went pure
+    // black and the player behind it stayed blue-black, in one gesture. `AuraPalette.Ground` now reads
+    // PureBlackKey too (`AuraPaletteSync`, ui/newui/AuraPalette.kt), so this card repaints everything.
+    val newUiForcesDark = rememberNewUiForcesDarkTheme()
     val (pureBlack, onPureBlackChangeRaw) = rememberPreference(PureBlackKey, defaultValue = false)
     val (_, onPureBlackMiniPlayerChange) = rememberPreference(
         PureBlackMiniPlayerKey,
@@ -310,6 +328,7 @@ fun ThemeScreen(
                             // be "follow system" at the same time. Without !pureBlack this card lit up
                             // together with AMOLED.
                             isSelected = darkMode == DarkMode.AUTO && !pureBlack,
+                            enabled = !newUiForcesDark,
                             onClick = { onDarkModeChange(DarkMode.AUTO); onPureBlackChange(false) }
                         )
                         ThemeModeCard(
@@ -317,6 +336,7 @@ fun ThemeScreen(
                             title = "Light",
                             icon = Icons.Rounded.LightMode,
                             isSelected = darkMode == DarkMode.OFF && !pureBlack,
+                            enabled = !newUiForcesDark,
                             onClick = { onDarkModeChange(DarkMode.OFF); onPureBlackChange(false) }
                         )
                     }
@@ -337,6 +357,24 @@ fun ThemeScreen(
                             icon = Icons.Rounded.Contrast,
                             isSelected = pureBlack,
                             onClick = { onDarkModeChange(DarkMode.ON); onPureBlackChange(true) }
+                        )
+                    }
+
+                    // Says WHY the first row is dim and that nothing was lost. Without it the row is
+                    // half-live: AMOLED genuinely repaints the app under the new UI, which is exactly
+                    // what made the two inert cards look as if they worked too. The first card is named
+                    // through its own string resource so the prose can never quote a label the card is
+                    // not showing; "Light" is a literal in the card above.
+                    if (newUiForcesDark) {
+                        Text(
+                            text = "La interfaz nueva se dibuja siempre en oscuro: su paleta " +
+                                "todavía no tiene versión clara. Por eso las dos opciones claras " +
+                                "(«${stringResource(R.string.dark_theme_follow_system)}» y «Light») " +
+                                "están desactivadas. Tu preferencia se conserva tal cual y vuelve a " +
+                                "aplicarse en cuanto apagues «Interfaz nueva» en Ajustes.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 4.dp)
                         )
                     }
                 }
@@ -538,7 +576,12 @@ private fun AccentIntensitySection(
     presetActive: Boolean,
     onSelect: (AccentVividness) -> Unit,
 ) {
-    val isSystemDark = isSystemInDarkTheme()
+    // The previews must be generated for the theme the app is WEARING: under "Interfaz nueva" the app
+    // is forced dark, and a light-generated swatch sat on a dark card claiming to be the accent the user
+    // would get. This site never read DarkModeKey, so only the flag term is added — flag off it is
+    // exactly `isSystemInDarkTheme()`, including the pre-existing "Oscuro on a light phone" case, which
+    // is not this change's to alter.
+    val isSystemDark = rememberNewUiForcesDarkTheme() || isSystemInDarkTheme()
     val surface = MaterialTheme.colorScheme.surface
     // ONE scheme generation feeds all three previews.
     val tonalScheme = rememberDynamicColorScheme(
@@ -781,12 +824,23 @@ private fun CustomAccentSection(
     }
 }
 
+/** Material 3's disabled-content opacity, applied to a whole [ThemeModeCard] that cannot be chosen. */
+private const val DISABLED_THEME_MODE_ALPHA = 0.38f
+
 @Composable
 fun ThemeModeCard(
     modifier: Modifier = Modifier,
     title: String,
     icon: ImageVector,
     isSelected: Boolean,
+    /**
+     * False dims the card and makes it untappable — used for the light-capable modes while "Interfaz
+     * nueva" forces the app dark. A disabled card still shows its selection ring, because the stored
+     * preference is untouched and comes back the moment the beta is switched off; the note under the
+     * row says so. It must never write the preference: writing a value that cannot take effect is the
+     * placebo this parameter exists to remove.
+     */
+    enabled: Boolean = true,
     onClick: () -> Unit
 ) {
     val scale by animateFloatAsState(
@@ -827,11 +881,15 @@ fun ThemeModeCard(
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
+                // Disabled reads as disabled at a glance, and the whole card fades together (fill,
+                // border, icon and label) instead of only its text. Set on the layer that is already
+                // there for the scale, so this adds no extra graphics layer.
+                alpha = if (enabled) 1f else DISABLED_THEME_MODE_ALPHA
             }
             .clip(RoundedCornerShape(24.dp))
             .background(backgroundBrush)
             .border(borderWidth, borderColor, RoundedCornerShape(24.dp))
-            .clickable(onClick = onClick)
+            .clickable(enabled = enabled, onClick = onClick)
             .padding(vertical = 24.dp, horizontal = 12.dp),
         contentAlignment = Alignment.Center
     ) {
@@ -863,7 +921,10 @@ fun PaletteItem(
     vividness: AccentVividness = AccentVividness.SOFT,
     isTvOrCar: Boolean = false,
 ) {
-    val isSystemDark = isSystemInDarkTheme()
+    // Same as [AccentIntensitySection]: the swatch previews the accent AS THE APP WILL RENDER IT, and
+    // "Interfaz nueva" forces the app dark. Only the flag term is added; flag off this is exactly
+    // `isSystemInDarkTheme()`.
+    val isSystemDark = rememberNewUiForcesDarkTheme() || isSystemInDarkTheme()
     val surface = MaterialTheme.colorScheme.surface
 
     val colorScheme = rememberDynamicColorScheme(

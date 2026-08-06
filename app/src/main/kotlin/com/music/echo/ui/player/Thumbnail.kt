@@ -3,6 +3,7 @@
 package iad1tya.echo.music.ui.player
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -14,6 +15,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.layout.Arrangement
@@ -56,6 +58,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
@@ -96,6 +99,9 @@ import iad1tya.echo.music.constants.SwipeThumbnailKey
 import iad1tya.echo.music.constants.ThumbnailCornerRadiusKey
 import iad1tya.echo.music.constants.ThumbnailCornerRadius
 import iad1tya.echo.music.listentogether.RoomRole
+// The motion grammar of the redesigned interface. Imported by the ONE host-gated animation below; the
+// classic paths in this file never reach it.
+import iad1tya.echo.music.ui.newui.AuraMotion
 import iad1tya.echo.music.utils.rememberEnumPreference
 import iad1tya.echo.music.constants.CanvasThumbnailAnimationKey
 import iad1tya.echo.music.canvas.TidalCanvasProvider
@@ -129,8 +135,10 @@ data class MediaItemsData(
 )
 
 
+// `internal`, not private, only so ThumbnailDimensionsTest can pin the two clamps (the #50 width cap
+// and the slot-height cap). Nothing outside this file calls it.
 @Stable
-private fun calculateThumbnailDimensions(
+internal fun calculateThumbnailDimensions(
     containerWidth: Dp,
     containerHeight: Dp = containerWidth,
     horizontalPadding: Dp = PlayerHorizontalPadding,
@@ -175,6 +183,21 @@ private fun calculateThumbnailDimensions(
  * scale factor — the complaint was that things get too BIG, so nothing here ever makes the cover larger.
  */
 private val WIDE_MAX_THUMBNAIL_SIZE = 420.dp
+
+/**
+ * Breathing room left around the artwork of an [ThumbnailHost.OPAQUE_DARK] host when its slot is SHORTER
+ * than it is wide, so the elevation below has somewhere to fall. Classic hosts never see it.
+ */
+private val OPAQUE_DARK_COVER_INSET = 8.dp
+
+/** Elevation of the artwork card on an [ThumbnailHost.OPAQUE_DARK] host. */
+private val OPAQUE_DARK_COVER_ELEVATION = 16.dp
+
+/**
+ * Scale the artwork of an [ThumbnailHost.OPAQUE_DARK] host starts from when the track changes, before it
+ * settles back to 1 through [iad1tya.echo.music.ui.newui.AuraMotion.standard]. 3.5 % — a settle, not a pop.
+ */
+private const val OPAQUE_DARK_COVER_SETTLE_FROM = 0.965f
 
 
 @Stable
@@ -519,7 +542,15 @@ fun Thumbnail(
                 verticalArrangement = if (isLandscape) Arrangement.Center else Arrangement.Top
             ) {
                 
-                if (!isLandscape) {
+                // CLASSIC-only. This header is two lines of `titleMedium` plus 16 dp of padding — ~60 dp
+                // taken off the top of the artwork slot. The classic portrait player has that height to
+                // spare; an OPAQUE_DARK host does not (its slot is a `weight(1f)` box between a title
+                // block, a transport row, a quick-access row, an engine bar and the queue bar), so the
+                // square below was being clamped into a rectangle by it. The two facts it states —
+                // "reproduciendo desde …" and the Listen Together banner — are drawn by that host's own
+                // header instead (AuraPlayer.kt), so nothing is lost; only the classic layout keeps them
+                // here, byte-for-byte.
+                if (!isLandscape && host == ThumbnailHost.CLASSIC) {
                     ThumbnailHeader(
                         queueTitle = queueTitle,
                         albumTitle = mediaMetadata?.album?.title,
@@ -537,13 +568,50 @@ fun Thumbnail(
                     }
                 ) {
                     
-                    val dimensions = remember(maxWidth, maxHeight, isLandscape, thumbnailCornerRadius, isWideLayout) {
+                    val dimensions = remember(maxWidth, maxHeight, isLandscape, thumbnailCornerRadius, isWideLayout, host) {
                         calculateThumbnailDimensions(
                             containerWidth = maxWidth,
                             containerHeight = maxHeight,
                             cornerRadius = thumbnailCornerRadius.dp,
                             isLandscape = isLandscape,
-                            maxThumbnailSize = if (isWideLayout) WIDE_MAX_THUMBNAIL_SIZE else Dp.Unspecified
+                            // The slot's OWN HEIGHT is a cap for every host.
+                            //
+                            // The PORTRAIT branch of calculateThumbnailDimensions sizes the square off the
+                            // WIDTH alone and ignores the height it was given (landscape already does
+                            // `minOf(width, height)`). Where the slot is shorter than it is wide,
+                            // `Modifier.size(thumbnailSize)` is coerced by the incoming max-height
+                            // constraint, so the "square" is measured as a wide RECTANGLE: the artwork
+                            // (`ContentScale.Fit` by default) is fitted by height and the leftover
+                            // left/right bars are painted with the backdrop plate, with the user's corner
+                            // radius rounding the rectangle instead of the cover.
+                            //
+                            // That is every OPAQUE_DARK host (the new player spends its height on a title
+                            // block, a transport, a quick row, an engine bar and the queue bar) — but it is
+                            // NOT a new-player-only problem, which is why this is no longer a host
+                            // privilege: the CLASSIC portrait slot is short in split-screen / multi-window
+                            // portrait, on foldable cover screens, and on any phone once Ajustes ▸ Tamaño
+                            // de pantalla / fuente shrinks the dp height (the controls column is fixed dp,
+                            // so the slot loses height faster than the cover loses width) — and classic
+                            // spends ~60 dp of the slot on ThumbnailHeader, so it clamps SOONER than the
+                            // new player would at equal size.
+                            //
+                            // `calculateThumbnailDimensions` only ever coerces DOWN, so wherever the slot
+                            // is tall enough — the normal tall-phone case — the value is byte-for-byte
+                            // what it was and the classic player is untouched. `maxHeight` is Dp.Infinity
+                            // if a caller is ever unbounded, and `coerceAtMost(Dp.Infinity)` is a no-op.
+                            maxThumbnailSize = run {
+                                val slotCap = if (host == ThumbnailHost.OPAQUE_DARK) {
+                                    // That host keeps its breathing room so the elevation has somewhere
+                                    // to fall; classic has no elevation and takes the raw height.
+                                    (maxHeight - OPAQUE_DARK_COVER_INSET * 2).coerceAtLeast(0.dp)
+                                } else {
+                                    maxHeight
+                                }
+                                // #50 unchanged: on a wide screen the 420 dp ceiling still applies — it is
+                                // now simply the SMALLER of the two caps, because a 420 dp square in a
+                                // 300 dp-tall slot letterboxes exactly the same way.
+                                if (isWideLayout) minOf(WIDE_MAX_THUMBNAIL_SIZE, slotCap) else slotCap
+                            }
                         )
                     }
 
@@ -591,7 +659,8 @@ fun Thumbnail(
                                 isListenTogetherGuest = isListenTogetherGuest,
                                 currentMediaId = mediaMetadata?.id,
                                 currentMediaThumbnail = mediaMetadata?.thumbnailUrl,
-                                playerBackground = playerBackground
+                                playerBackground = playerBackground,
+                                host = host
                             )
                         }
                     }
@@ -731,11 +800,14 @@ private fun ThumbnailItem(
     currentMediaId: String? = null,
     currentMediaThumbnail: String? = null,
     playerBackground: PlayerBackgroundStyle = PlayerBackgroundStyle.DEFAULT,
+    /** See [ThumbnailHost]. The default keeps every classic call site unchanged. */
+    host: ThumbnailHost = ThumbnailHost.CLASSIC,
     modifier: Modifier = Modifier,
 ) {
     val rotatingThumbnail by iad1tya.echo.music.utils.rememberPerfGatedBoolean(RotatingThumbnailKey, defaultValue = false)
     val isPlaying by playerConnection.isPlaying.collectAsState()
     val isCurrentItem = item.mediaId == currentMediaId
+    val isOpaqueDark = host == ThumbnailHost.OPAQUE_DARK
     
     val infiniteTransition = rememberInfiniteTransition(label = "ThumbnailRotation")
     val rotation by infiniteTransition.animateFloat(
@@ -757,6 +829,27 @@ private fun ThumbnailItem(
     // High-Performance Mode: skip the Apple-Music dynamic zoom/fade cover transition entirely and keep the
     // solid/instant path (covers stay full-size, full-alpha). Mirrors the perf-mode "no cover crossfade" rule.
     val highPerfMode by rememberPreference(iad1tya.echo.music.constants.HighPerformanceModeKey, false)
+
+    // ── The settle (OPAQUE_DARK only) ─────────────────────────────────────────────────────────────
+    // One spring, once per track change, on ONE element: the cover comes in 3.5 % small and settles. The
+    // value is read inside `graphicsLayer` below, i.e. at DRAW time, so it invalidates a render layer and
+    // never the composition — no per-frame recomposition, no allocation while it runs. The `Animatable` is
+    // remembered for CLASSIC hosts too (composable call order must not depend on the host) but nothing ever
+    // starts it there, so it stays at 1f and the classic layer maths is term-for-term what it was.
+    val coverSettle = remember(item.mediaId) { Animatable(1f) }
+    LaunchedEffect(item.mediaId, isCurrentItem, isOpaqueDark, highPerfMode) {
+        if (!isOpaqueDark || !isCurrentItem || highPerfMode) return@LaunchedEffect
+        coverSettle.snapTo(OPAQUE_DARK_COVER_SETTLE_FROM)
+        coverSettle.animateTo(1f, AuraMotion.standard())
+    }
+
+    // The artwork plate. `surfaceVariant` comes from the APP theme, which on a light theme is a pale grey —
+    // fine behind the classic player, a bright rectangle behind a cover that is floating on a near-black
+    // ground. Same reason `textBackgroundColor` is forced to white for this host.
+    val artworkBackdrop = when (host) {
+        ThumbnailHost.CLASSIC -> MaterialTheme.colorScheme.surfaceVariant
+        ThumbnailHost.OPAQUE_DARK -> Color.White.copy(alpha = 0.06f)
+    }
 
     Box(
         modifier = modifier
@@ -788,6 +881,13 @@ private fun ThumbnailItem(
                         scaleY = targetScale
                         alpha = androidx.compose.ui.util.lerp(1f, 0.3f, fraction)
                     }
+                }
+                // MULTIPLIES the carousel's own distance scale rather than replacing it, so the settle and
+                // the swipe never fight over the same property. Stays at 1f for CLASSIC hosts.
+                if (isOpaqueDark) {
+                    val settle = coverSettle.value
+                    scaleX *= settle
+                    scaleY *= settle
                 }
             }
             .pointerInput(Unit) {
@@ -829,25 +929,49 @@ private fun ThumbnailItem(
             },
         contentAlignment = Alignment.Center
     ) {
+        // One shape for the clip, the elevation and the hairline — three outlines that disagreed would show
+        // as a halo offset from the corner. Identical to the expression that used to be inline in `clip`,
+        // so the "rotating cover" setting still swaps in its clover for both hosts.
+        val coverShape = if (rotatingThumbnail) {
+            MaterialShapes.Clover8Leaf.toShape()
+        } else {
+            RoundedCornerShape(dimensions.cornerRadius)
+        }
         Box(
             modifier = Modifier
                 .size(dimensions.thumbnailSize)
                 .graphicsLayer {
                     rotationZ = rotation
                 }
-                .clip(
-                    if (rotatingThumbnail) {
-                        MaterialShapes.Clover8Leaf.toShape()
-                    } else {
-                        RoundedCornerShape(dimensions.cornerRadius)
-                    }
+                // OPAQUE_DARK only: the cover reads as a CARD lifted off the ground instead of a picture
+                // pasted onto it. TWO parts, because on this ground one of them alone would not carry it:
+                //  · the elevation is a real one and is a BLACK shadow, so it only reads where the ambient
+                //    bloom lifts the ground above [AuraPalette.Ground] (#060A12) — which is most of the
+                //    artwork slot, since the bloom band covers the top ~52 % of the screen, but not all of
+                //    it, and not at all under a pure-black setting;
+                //  · the hairline is what guarantees the edge EVERYWHERE, including over pure black and
+                //    for a cover whose own border is dark. It is the trick dark premium UIs use.
+                // `border` wraps `clip`, so it strokes ON TOP of the clipped artwork.
+                // The CORNER RADIUS is deliberately NOT touched: it is the user's own setting
+                // ("Radio de las esquinas de la portada", presets 0/8/16/24/32/40 → doubled), and
+                // overriding it here would make that control dead in the new player.
+                .then(
+                    if (isOpaqueDark) {
+                        Modifier
+                            .shadow(OPAQUE_DARK_COVER_ELEVATION, coverShape, clip = false)
+                            .border(1.dp, Color.White.copy(alpha = 0.07f), coverShape)
+                    } else Modifier
                 )
+                .clip(coverShape)
                 .graphicsLayer {
                     rotationZ = -rotation
                 }
         ) {
             if (hidePlayerThumbnail) {
-                HiddenThumbnailPlaceholder(textBackgroundColor = textBackgroundColor)
+                HiddenThumbnailPlaceholder(
+                    textBackgroundColor = textBackgroundColor,
+                    backdrop = artworkBackdrop,
+                )
             } else {
                 val artworkUriToUse = if (item.mediaId == currentMediaId && !currentMediaThumbnail.isNullOrBlank()) {
                     currentMediaThumbnail
@@ -857,7 +981,8 @@ private fun ThumbnailItem(
 
                 ThumbnailImage(
                     artworkUri = artworkUriToUse?.resize(1200, 1200),
-                    cropArtwork = cropAlbumArt
+                    cropArtwork = cropAlbumArt,
+                    backdrop = artworkBackdrop
                 )
             }
             
@@ -1017,12 +1142,14 @@ private fun ThumbnailItem(
 @Composable
 private fun HiddenThumbnailPlaceholder(
     textBackgroundColor: Color,
+    /** The plate behind the glyph. The caller resolves it from the host; see [ThumbnailHost]. */
+    backdrop: Color,
     modifier: Modifier = Modifier
 ) {
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.surfaceVariant),
+            .background(backdrop),
         contentAlignment = Alignment.Center
     ) {
         Icon(
@@ -1039,12 +1166,19 @@ private fun HiddenThumbnailPlaceholder(
 private fun ThumbnailImage(
     artworkUri: String?,
     cropArtwork: Boolean,
+    /**
+     * What shows around a cover that is not square (with "Recortar las portadas" off, the default, the
+     * image is `Fit`, so this plate is visible). The caller resolves it from the host — see [ThumbnailHost];
+     * `MaterialTheme.colorScheme.surfaceVariant`, which used to be hard-coded here, is an APP-theme colour
+     * and comes out pale grey behind the always-dark new player.
+     */
+    backdrop: Color,
     modifier: Modifier = Modifier
 ) {
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .background(backdrop)
     ) {
         var currentUrl by remember(artworkUri) {
             // For YouTube VIDEO thumbnails the passed url is sddefault (640×480) — pixelated as a big player

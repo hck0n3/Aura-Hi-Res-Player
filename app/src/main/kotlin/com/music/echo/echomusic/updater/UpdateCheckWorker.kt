@@ -59,7 +59,7 @@ class UpdateCheckWorker(
             val deferred = CompletableDeferred<Pair<Boolean, String>>()
             checkForUpdate(
                 applicationContext,
-                onSuccess = { tag, isAvailable, _, _, _, _, _, _ ->
+                onSuccess = { tag, isAvailable, _, _, _, _, _, _, _ ->
                     deferred.complete(isAvailable to tag)
                 },
                 onError = { deferred.complete(false to "") },

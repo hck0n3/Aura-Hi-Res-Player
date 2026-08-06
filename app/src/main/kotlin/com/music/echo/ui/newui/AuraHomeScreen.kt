@@ -2,10 +2,12 @@ package iad1tya.echo.music.ui.newui
 
 import android.text.format.DateUtils
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,11 +32,14 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.carousel.HorizontalCenteredHeroCarousel
+import androidx.compose.material3.carousel.rememberCarouselState
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -45,7 +50,10 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
@@ -53,6 +61,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
 import androidx.navigation.compose.currentBackStackEntryAsState
+import coil3.compose.AsyncImage
 import com.music.innertube.models.AlbumItem
 import com.music.innertube.models.ArtistItem
 import com.music.innertube.models.PlaylistItem
@@ -63,6 +72,8 @@ import iad1tya.echo.music.LocalDatabase
 import iad1tya.echo.music.LocalPlayerAwareWindowInsets
 import iad1tya.echo.music.LocalPlayerConnection
 import iad1tya.echo.music.R
+import iad1tya.echo.music.constants.GridItemSize
+import iad1tya.echo.music.constants.GridItemsSizeKey
 import iad1tya.echo.music.constants.HighPerformanceModeKey
 import iad1tya.echo.music.constants.HomeRichLayoutKey
 import iad1tya.echo.music.constants.HomeTasteOnlyKey
@@ -93,7 +104,12 @@ import iad1tya.echo.music.ui.screens.HomeSection
 import iad1tya.echo.music.ui.screens.MoodAndGenresButton
 import iad1tya.echo.music.ui.screens.NetworkReload
 import iad1tya.echo.music.ui.screens.computeHomeSections
+import iad1tya.echo.music.ui.utils.rememberIsTvOrCar
+import iad1tya.echo.music.ui.utils.resize
+import iad1tya.echo.music.ui.utils.tvFocusRestorer
+import iad1tya.echo.music.ui.utils.tvFocusable
 import iad1tya.echo.music.utils.isInternetAvailable
+import iad1tya.echo.music.utils.rememberEnumPreference
 import iad1tya.echo.music.utils.rememberPreference
 import iad1tya.echo.music.viewmodels.HomeViewModel
 import java.time.LocalTime
@@ -180,7 +196,17 @@ fun AuraHomeScreen(
     // there: rich keeps the render's editorial widths, compact divides every one of them by 1.25. One
     // scale for every shelf, so no shelf can be left behind at one setting.
     val (homeRichLayout) = rememberPreference(HomeRichLayoutKey, true)
-    val cardScale = if (homeRichLayout) 1f else 1f / 1.25f
+    // ── "Tamaño de la celda de la cuadrícula" (GridItemsSizeKey) ──────────────────────────────────
+    // The classic Home sizes its shelves with `currentGridThumbnailHeight()` (HomeScreen.kt:837), i.e.
+    // 128 dp at Grande and 104 dp at Pequeño, so under the new Home the control silently stopped moving
+    // Inicio while it still moved the ~13 classic grids, the Novedades tab (AuraSearchTabs.kt:600) and
+    // now Biblioteca (AuraLibraryTabs.kt) — one setting, half the app following it. It folds into the
+    // same width scale rather than becoming a second one, so the two controls compose instead of
+    // fighting: `SmallGridThumbnailHeight / GridThumbnailHeight` is exactly the ratio the classic Home
+    // shrinks by.
+    val gridItemSize by rememberEnumPreference(GridItemsSizeKey, GridItemSize.BIG)
+    val cardScale = (if (homeRichLayout) 1f else 1f / 1.25f) *
+        (if (gridItemSize == GridItemSize.BIG) 1f else 104f / 128f)
 
     val pullRefreshState = rememberPullToRefreshState()
     val listState = rememberLazyListState()
@@ -332,10 +358,23 @@ fun AuraHomeScreen(
             LazyColumn(
                 state = listState,
                 contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
-                modifier = Modifier.fillMaxSize(),
+                // TV/car: keep the D-pad's place vertically the same way the classic Home does
+                // (`HomeScreen.kt:1137`). No-op on touch.
+                modifier = Modifier.fillMaxSize().tvFocusRestorer(),
             ) {
+                // ── Why every item carries `animateItem()` ────────────────────────────────────────
+                // The shelves of this screen arrive ASYNCHRONOUSLY (quickPicks, homePage, dailyMixes,
+                // explorePage each land at their own time) and `computeHomeSections` reorders them, so
+                // the list inserts and moves whole blocks while the user is watching. Without a
+                // placement animation each of those is a hard cut, which is most of why the screen felt
+                // cheap on launch. `animateItem()`'s defaults are the same
+                // `spring(dampingRatio = NoBouncy, stiffness = MediumLow)` AuraMotion.standard() is —
+                // plus the IntOffset visibility threshold a placement spec needs — and are what the
+                // classic Home already uses in its 34 call sites, so this decides nothing new.
+                // Every item below has a stable `key`; animateItem does nothing without one.
                 item(key = "aura_home_header") {
                     AuraScreenHeader(
+                        modifier = Modifier.animateItem(),
                         label = auraGreeting(),
                         title = stringResource(R.string.home),
                         // The global top bar is no longer drawn on this route (it was a second, opaque
@@ -351,7 +390,10 @@ fun AuraHomeScreen(
                         LazyRow(
                             contentPadding = PaddingValues(horizontal = AuraSpacing.Gutter),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.padding(top = 10.dp),
+                            modifier = Modifier
+                                .animateItem()
+                                .padding(top = 10.dp)
+                                .tvFocusRestorer(),
                         ) {
                             items(chips, key = { it.title }) { chip ->
                                 AuraChip(
@@ -367,7 +409,7 @@ fun AuraHomeScreen(
                 // Tus podcasts (fijados)
                 if (pinnedPodcasts.isNotEmpty()) {
                     item(key = "aura_home_podcasts") {
-                        Column {
+                        Column(Modifier.animateItem()) {
                             AuraSectionHeader(title = stringResource(R.string.home_your_podcasts))
                             AuraShelf {
                                 items(pinnedPodcasts, key = { it.id }) { show ->
@@ -393,7 +435,7 @@ fun AuraHomeScreen(
                 recentlyPlayed?.takeIf { it.isNotEmpty() }?.let { recentSongs ->
                     item(key = "aura_home_recent") {
                         val recentTitle = stringResource(R.string.home_recently_played)
-                        Column {
+                        Column(Modifier.animateItem()) {
                             AuraSectionHeader(
                                 title = recentTitle,
                                 onPlayAll = { playAllSongs(recentTitle, recentSongs) },
@@ -418,7 +460,7 @@ fun AuraHomeScreen(
                         HomeSection.SpeedDial -> {
                             speedDialItems.takeIf { it.isNotEmpty() }?.let { items ->
                                 item(key = "aura_speed_dial") {
-                                    Column {
+                                    Column(Modifier.animateItem()) {
                                         AuraSectionHeader(title = stringResource(R.string.speed_dial))
                                         AuraShelf {
                                             // "Botón aleatorio de 5 puntos": first cell of the shelf.
@@ -477,28 +519,42 @@ fun AuraHomeScreen(
                             quickPicks?.takeIf { it.isNotEmpty() }?.let { picks ->
                                 item(key = "aura_quick_picks") {
                                     val forYouTitle = stringResource(R.string.home_for_you)
-                                    Column {
+                                    val distinctQuickPicks = remember(picks) { picks.distinctBy { it.id } }
+                                    Column(Modifier.animateItem()) {
                                         AuraSectionHeader(
                                             title = forYouTitle,
                                             accent = AuraPalette.Teal.copy(alpha = 0.75f),
                                             onPlayAll = { playAllSongs(forYouTitle, picks) },
                                         )
-                                        AuraShelf {
-                                            items(picks.distinctBy { it.id }, key = { it.id }) { originalSong ->
-                                                val song by database.song(originalSong.id)
-                                                    .collectAsState(initial = originalSong)
-                                                val current = song ?: originalSong
-                                                AuraSongShelfCard(
-                                                    song = current,
-                                                    // "Para ti" is the hero shelf of the render: the widest card.
-                                                    width = (if (perfOn) 118.dp else 168.dp) * cardScale,
-                                                    isActive = current.id == mediaMetadata?.id,
-                                                    isPlaying = isPlaying,
-                                                    onClick = { playSong(current) },
-                                                    // Perf mode keeps the light path: no long-press menu, as today.
-                                                    onLongClick = if (perfOn) null else ({ songMenu(current) }),
-                                                )
+                                        if (perfOn) {
+                                            // High-performance mode keeps the light path the classic Home also
+                                            // keeps (HomeScreen.kt:1486): a plain shelf, no mask, no snapping,
+                                            // no long-press menu. The masked hero carousel is the heaviest
+                                            // visual on the screen and perf mode exists to skip exactly that.
+                                            AuraShelf {
+                                                items(distinctQuickPicks, key = { it.id }) { originalSong ->
+                                                    val song by database.song(originalSong.id)
+                                                        .collectAsState(initial = originalSong)
+                                                    val current = song ?: originalSong
+                                                    AuraSongShelfCard(
+                                                        song = current,
+                                                        width = 118.dp * cardScale,
+                                                        isActive = current.id == mediaMetadata?.id,
+                                                        isPlaying = isPlaying,
+                                                        onClick = { playSong(current) },
+                                                        onLongClick = null,
+                                                    )
+                                                }
                                             }
+                                        } else {
+                                            AuraQuickPicksCarousel(
+                                                songs = distinctQuickPicks,
+                                                itemSize = 168.dp * cardScale,
+                                                activeId = mediaMetadata?.id,
+                                                isPlaying = isPlaying,
+                                                onClick = playSong,
+                                                onLongClick = songMenu,
+                                            )
                                         }
                                     }
                                 }
@@ -508,12 +564,14 @@ fun AuraHomeScreen(
                         HomeSection.FromTheCommunity -> {
                             communityPlaylists?.takeIf { it.isNotEmpty() }?.let { playlists ->
                                 item(key = "aura_community") {
-                                    Column {
+                                    Column(Modifier.animateItem()) {
                                         AuraSectionHeader(title = stringResource(R.string.from_the_community))
                                         LazyRow(
                                             contentPadding = PaddingValues(horizontal = AuraSpacing.Gutter),
                                             horizontalArrangement = Arrangement.spacedBy(16.dp),
-                                            modifier = Modifier.padding(top = AuraSpacing.SectionGap),
+                                            modifier = Modifier
+                                                .padding(top = AuraSpacing.SectionGap)
+                                                .tvFocusRestorer(),
                                         ) {
                                             items(playlists, key = { it.playlist.id }) { item ->
                                                 CommunityPlaylistCard(
@@ -547,7 +605,7 @@ fun AuraHomeScreen(
                                         R.string.daily_discover_because_you_listen_to,
                                         "${mix.seed.title} • ${mix.seed.artists.joinToString(", ") { it.name }}",
                                     )
-                                    Column {
+                                    Column(Modifier.animateItem()) {
                                         AuraSectionHeader(
                                             title = title,
                                             label = seedLine,
@@ -599,7 +657,7 @@ fun AuraHomeScreen(
                             keepListening?.takeIf { it.isNotEmpty() }?.let { items ->
                                 item(key = "aura_keep_listening") {
                                     val klTitle = stringResource(R.string.keep_listening)
-                                    Column {
+                                    Column(Modifier.animateItem()) {
                                         AuraSectionHeader(
                                             title = klTitle,
                                             onPlayAll = {
@@ -636,7 +694,7 @@ fun AuraHomeScreen(
                         HomeSection.AccountPlaylists -> {
                             accountPlaylists?.takeIf { it.isNotEmpty() }?.let { playlists ->
                                 item(key = "aura_account_playlists") {
-                                    Column {
+                                    Column(Modifier.animateItem()) {
                                         AuraSectionHeader(
                                             title = stringResource(R.string.your_youtube_playlists),
                                             label = accountName,
@@ -663,7 +721,7 @@ fun AuraHomeScreen(
                         HomeSection.NewFromArtists -> {
                             newFromArtists?.takeIf { it.isNotEmpty() }?.let { albums ->
                                 item(key = "aura_new_from_artists") {
-                                    Column {
+                                    Column(Modifier.animateItem()) {
                                         AuraSectionHeader(title = stringResource(R.string.home_new_from_artists))
                                         AuraShelf {
                                             items(albums.distinctBy { it.id }, key = { it.id }) { item ->
@@ -688,7 +746,7 @@ fun AuraHomeScreen(
                         HomeSection.NewReleases -> {
                             explorePage?.newReleaseAlbums?.takeIf { it.isNotEmpty() }?.let { albums ->
                                 item(key = "aura_new_releases") {
-                                    Column {
+                                    Column(Modifier.animateItem()) {
                                         AuraSectionHeader(title = stringResource(R.string.new_release_albums))
                                         AuraShelf {
                                             items(albums.distinctBy { it.id }, key = { it.id }) { item ->
@@ -720,7 +778,7 @@ fun AuraHomeScreen(
                                             else -> R.string.home_mix_night
                                         },
                                     )
-                                    Column {
+                                    Column(Modifier.animateItem()) {
                                         AuraSectionHeader(
                                             title = mixTitle,
                                             onPlayAll = { playAllSongs(mixTitle, mix.songs) },
@@ -746,7 +804,7 @@ fun AuraHomeScreen(
                                 item(key = "aura_ai_recommended") {
                                     val recEntity = aiRecommendedPlaylist?.playlist
                                     val recTitle = recEntity?.name ?: AutoRecoPlaylistWorker.PLAYLIST_NAME
-                                    Column {
+                                    Column(Modifier.animateItem()) {
                                         AuraSectionHeader(
                                             // The render's own "RECOMENDADO PARA TI · IA" rule, in violet.
                                             title = recTitle,
@@ -802,7 +860,7 @@ fun AuraHomeScreen(
                             genreMix?.takeIf { it.songs.isNotEmpty() }?.let { mix ->
                                 item(key = "aura_genre_mix") {
                                     val mixTitle = stringResource(R.string.home_genre_mix, mix.genre)
-                                    Column {
+                                    Column(Modifier.animateItem()) {
                                         AuraSectionHeader(
                                             title = mixTitle,
                                             onPlayAll = { playAllSongs(mixTitle, mix.songs) },
@@ -827,7 +885,7 @@ fun AuraHomeScreen(
                             forgottenFavorites?.takeIf { it.isNotEmpty() }?.let { favorites ->
                                 item(key = "aura_forgotten_favorites") {
                                     val title = stringResource(R.string.forgotten_favorites)
-                                    Column {
+                                    Column(Modifier.animateItem()) {
                                         AuraSectionHeader(
                                             title = title,
                                             onPlayAll = { playAllSongs(title, favorites) },
@@ -880,7 +938,7 @@ fun AuraHomeScreen(
                                         is Artist -> "artist/${t.id}"
                                         is Playlist -> null
                                     }
-                                    Column {
+                                    Column(Modifier.animateItem()) {
                                         AuraSectionHeader(
                                             title = stringResource(R.string.similar_to),
                                             label = recommendation.title.title,
@@ -935,7 +993,7 @@ fun AuraHomeScreen(
                                     val sectionSongs = sectionData.items.filterIsInstance<SongItem>()
                                     val isSongsOnly = sectionData.items.isNotEmpty() &&
                                         sectionData.items.all { it is SongItem }
-                                    Column {
+                                    Column(Modifier.animateItem()) {
                                         AuraSectionHeader(
                                             title = sectionData.title,
                                             label = sectionData.label,
@@ -1025,7 +1083,7 @@ fun AuraHomeScreen(
                         HomeSection.MoodAndGenres -> {
                             explorePage?.moodAndGenres?.let { moodAndGenres ->
                                 item(key = "aura_mood_and_genres") {
-                                    Column {
+                                    Column(Modifier.animateItem()) {
                                         AuraSectionHeader(
                                             title = stringResource(R.string.mood_and_genres),
                                             onClick = { navController.navigate("mood_and_genres") },
@@ -1033,7 +1091,9 @@ fun AuraHomeScreen(
                                         LazyRow(
                                             contentPadding = PaddingValues(horizontal = AuraSpacing.Gutter),
                                             horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                            modifier = Modifier.padding(top = AuraSpacing.SectionGap),
+                                            modifier = Modifier
+                                                .padding(top = AuraSpacing.SectionGap)
+                                                .tvFocusRestorer(),
                                         ) {
                                             items(moodAndGenres, key = { it.title }) {
                                                 MoodAndGenresButton(
@@ -1059,16 +1119,22 @@ fun AuraHomeScreen(
                         AuraTechnicalText(
                             text = "CARGANDO…",
                             color = AuraPalette.OnGroundGhost,
-                            modifier = Modifier.padding(
-                                horizontal = AuraSpacing.Gutter,
-                                vertical = 24.dp,
-                            ),
+                            modifier = Modifier
+                                .animateItem()
+                                .padding(
+                                    horizontal = AuraSpacing.Gutter,
+                                    vertical = 24.dp,
+                                ),
                         )
                     }
                 }
 
                 item(key = "aura_home_bottom_spacer") {
-                    Spacer(Modifier.height(30.dp))
+                    Spacer(
+                        Modifier
+                            .animateItem()
+                            .height(30.dp),
+                    )
                 }
             }
         }
@@ -1133,9 +1199,152 @@ private fun AuraShelf(
     LazyRow(
         contentPadding = PaddingValues(horizontal = AuraSpacing.Gutter),
         horizontalArrangement = Arrangement.spacedBy(11.dp),
-        modifier = modifier.padding(top = AuraSpacing.SectionGap),
+        // TV/car: the classic Home carries this on all 20 of its scrollers (e.g. `HomeScreen.kt:1214`),
+        // so the D-pad returns to the card it left instead of dropping focus when a shelf scrolls
+        // sideways. One call here covers every shelf of this screen. No-op on touch.
+        modifier = modifier.padding(top = AuraSpacing.SectionGap).tvFocusRestorer(),
         content = content,
     )
+}
+
+/**
+ * The bottom-weighted scrim the hero text sits on, so a white title stays legible on a pale cover.
+ * Held at file scope and not built inside the item: a carousel holds several items at once and this
+ * would otherwise be a fresh [Brush] per item per composition, which is exactly the kind of allocation
+ * the standing heat/battery gate exists to stop. The stops are the classic hero's
+ * (`HomeScreen.kt:1596-1602`) unchanged.
+ */
+private val AuraHeroScrim: Brush = Brush.verticalGradient(
+    colors = listOf(Color.Transparent, Color.Transparent, Color.Black.copy(alpha = 0.7f)),
+)
+
+/**
+ * "Para ti" — the masked hero carousel, restored.
+ *
+ * ## Why this is not an [AuraShelf]
+ * The first cut of this screen drew "Para ti" as a flat [AuraShelf] of [AuraSongShelfCard]s. That is a
+ * different COMPONENT, not a smaller one: a plain `LazyRow` has no centring, no snap, and above all no
+ * mask — and the mask is the whole effect. `maskClip`/`maskBorder` are what make the card at the edge
+ * of the viewport squeeze and the centred one open out as you scroll; that deformation is what the
+ * owner means by "el carrusel de antes". So the classic component comes back verbatim
+ * (`HomeScreen.kt:1518-1650`) and only its MEASUREMENTS and COLOURS become the redesign's:
+ * `168.dp * cardScale` square instead of `(maxWidth*0.5f)` × 260.dp, [AuraShapes.Card] instead of
+ * `shapes.extraLarge`, [AuraPalette.SurfaceLine] instead of `outlineVariant`.
+ *
+ * ## The re-key is load-bearing, not decoration
+ * `HorizontalCenteredHeroCarousel` is experimental and lays out BLANK when `pageCount` changes under a
+ * live `CarouselState` — and `quickPicksDisplay` re-emits a re-filtered list two or three times after
+ * first paint, so the count DOES change while the user is looking at it. `key(songs.size)` rebuilds a
+ * fresh `CarouselState` on every size change, which is the only reason the shelf is not intermittently
+ * empty. Do not "simplify" it away; the classic Home carries the same guard for the same reason.
+ *
+ * The text is drawn OVER the image (that is why the item needs no height beyond its own square) on the
+ * same bottom-weighted scrim the classic hero uses, so a white title stays legible on a pale cover.
+ */
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@Composable
+private fun AuraQuickPicksCarousel(
+    songs: List<Song>,
+    itemSize: androidx.compose.ui.unit.Dp,
+    activeId: String?,
+    isPlaying: Boolean,
+    onClick: (Song) -> Unit,
+    onLongClick: (Song) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val database = LocalDatabase.current
+    // Read once for the whole carousel instead of once per item: the value is identical for every item
+    // and this keeps the per-item composable call count down (standing heat gate).
+    val isTvOrCar = rememberIsTvOrCar()
+    key(songs.size) {
+        HorizontalCenteredHeroCarousel(
+            state = rememberCarouselState { songs.size },
+            maxItemWidth = itemSize,
+            itemSpacing = 8.dp,
+            contentPadding = PaddingValues(horizontal = AuraSpacing.Gutter),
+            modifier = modifier
+                .fillMaxWidth()
+                .padding(top = AuraSpacing.SectionGap)
+                .height(itemSize)
+                // TV/car: hand focus back to the hero the D-pad last stood on when it re-enters, so the
+                // ring does not drop to the container root while the carousel scrolls. No-op on touch.
+                .tvFocusRestorer(),
+        ) { index ->
+            // The item count and the list are read from the same composition, but a carousel that is
+            // mid-recomposition can still ask for an index the new list no longer has.
+            val originalSong = songs.getOrNull(index)
+            if (originalSong != null) {
+                val song by database.song(originalSong.id).collectAsState(initial = originalSong)
+                val current = song ?: originalSong
+                val isActive = current.id == activeId
+                val placeholder = remember(current.id) { AuraPalette.coverPlaceholder(current.id) }
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        // TV/car: the ring goes BEFORE maskClip so it draws OUTSIDE the carousel's clip —
+                        // placed after it, the stroke is cut down to a sliver. It observes the
+                        // `.focusable()` below. Same order and reason as the classic hero
+                        // (`HomeScreen.kt:1552-1558`).
+                        .tvFocusable(isTvOrCar, AuraShapes.Card, scaleFocused = 1f)
+                        .maskClip(AuraShapes.Card)
+                        .maskBorder(BorderStroke(1.dp, AuraPalette.SurfaceLine), AuraShapes.Card)
+                        .background(placeholder)
+                        .focusable()
+                        .combinedClickable(
+                            onClick = { onClick(current) },
+                            // What tapping does, spoken by TalkBack. `AuraCoverCard` — the card every
+                            // other Home shelf uses — passes `contentDescription` here, which defaults
+                            // to the title (`AuraContent.kt:355, 368`); the hero now says the same.
+                            onClickLabel = current.song.title,
+                            onLongClick = { onLongClick(current) },
+                        ),
+                ) {
+                    current.song.thumbnailUrl?.let { url ->
+                        AsyncImage(
+                            // Decoded at the size it is drawn at, not at full resolution: a hero that
+                            // decodes 1000×1000 for a 168 dp frame is the classic way to heat a phone.
+                            model = url.resize(512, 512),
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(AuraHeroScrim),
+                    )
+                    if (isActive && isPlaying) {
+                        AuraPlayingBars(
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(10.dp),
+                        )
+                    }
+                    Column(
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .padding(12.dp),
+                    ) {
+                        Text(
+                            text = current.song.title,
+                            style = AuraType.RowTitle,
+                            color = AuraPalette.OnGround,
+                            maxLines = 1,
+                            overflow = AuraDefaultOverflow,
+                        )
+                        Text(
+                            text = current.artists.joinToString { it.name },
+                            style = AuraType.RowSubtitle,
+                            color = AuraPalette.OnGroundMuted,
+                            maxLines = 1,
+                            overflow = AuraDefaultOverflow,
+                        )
+                    }
+                }
+            }
+        }
+    }
 }
 
 /** A local [Song] as a shelf card — the shape every taste row of the render uses. */

@@ -3,6 +3,7 @@ package iad1tya.echo.music.playback
 import iad1tya.echo.music.extensions.toPersistQueue
 import iad1tya.echo.music.extensions.toQueue
 import iad1tya.echo.music.models.MediaMetadata
+import iad1tya.echo.music.models.QueueType
 import iad1tya.echo.music.playback.queues.ListQueue
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -21,8 +22,12 @@ import org.junit.Test
  *     anything the user did, and a queue held in memory for nothing.
  *  3. WHERE it resumes — the PersistQueue round trip has to carry the song index AND the position, or
  *     "volver a donde estaba" silently becomes "empezar la lista otra vez".
+ *  4. WHAT is held meanwhile — the snapshot keeps media IDS and rebuilds the songs from the database on
+ *     accept, so a ten-minute offer over the library queue is a list of strings and not a queue's worth
+ *     of metadata sitting in a foreground media process. The rebuild has to survive rows deleted while
+ *     the offer was pending WITHOUT moving the cursor onto a different song.
  *
- * All three are deliberately free of Android, so they run in the plain JVM unit-test task.
+ * All four are deliberately free of Android, so they run in the plain JVM unit-test task.
  */
 class PreviousQueueOfferTest {
 
@@ -188,8 +193,10 @@ class PreviousQueueOfferTest {
      * "Me fui a mirar otra cosa y vuelvo" is a few minutes, not a session. The exact number is a
      * judgement call, but the ORDER of magnitude is not: seconds would kill the feature (the prompt waits
      * for him to leave the screen he jumped to), and an hour would let an offer armed before the app was
-     * backgrounded surface detached from anything he was doing — with a whole queue's metadata held in
-     * memory meanwhile.
+     * backgrounded surface detached from anything he was doing.
+     *
+     * The bound is NOT the retention argument — in a car the snackbar can never be answered, so the offer
+     * always rides the full ten minutes. What keeps it cheap is PreviousQueueCursor, below.
      */
     @Test
     fun theOfferLivesForMinutesNotForASession() {
@@ -247,7 +254,9 @@ class PreviousQueueOfferTest {
     // ---------------------------------------------------------------------------------------------
 
     /**
-     * The whole capture -> restore loop the feature reuses (the same pair the boot restore uses).
+     * The restore half of the loop, shared with the boot restore: a [PersistQueue] becomes a playable
+     * queue carrying its cursor. `rehydrate` (further down) produces exactly this shape, so what is
+     * pinned here is what the resumed offer is handed.
      *
      * Items are empty on purpose: [MediaMetadata.toMediaItem] builds an android `Bundle` and parses a
      * `Uri`, neither of which exists in a plain JVM test. What is under test here is the CURSOR — index,
@@ -357,5 +366,148 @@ class PreviousQueueOfferTest {
         assertNull(
             PreviousQueueOffer(token = 1L, title = null, expiresAtElapsedRealtime = 0L).title
         )
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // 4. What the pending offer HOLDS, and rebuilding the queue from it
+    //
+    // The snapshot keeps media ids, not songs. The rule admits "LIB:" — the whole library as one queue —
+    // and in a car the snackbar can never be answered, so the worst case is the biggest queue the app can
+    // build, held for the full ten minutes, in the foreground media process. The songs come back from the
+    // `song` table on accept: every context the rule admits ("PL:", "AP:", "LIB:") was BUILT from that
+    // table, so it is the same rows going back where they came from.
+    // ---------------------------------------------------------------------------------------------
+
+    private fun song(id: String) = MediaMetadata(
+        id = id,
+        title = "title-$id",
+        artists = listOf(MediaMetadata.Artist(id = "a-$id", name = "artist-$id")),
+        duration = 200,
+    )
+
+    private fun cursorOf(
+        ids: List<String>,
+        index: Int,
+        position: Long = 96_500L,
+        anchor: MediaMetadata? = ids.getOrNull(index)?.let(::song),
+    ) = PreviousQueueCursor(
+        title = "Salsa de los domingos",
+        contextId = "PL:VLxyz123",
+        queueType = QueueType.LIST,
+        queueData = null,
+        mediaIds = ids,
+        mediaItemIndex = index,
+        position = position,
+        anchor = anchor,
+    )
+
+    /**
+     * THE STRUCTURAL POINT OF THE WHOLE CLASS: a pending offer over a 5 000-song library holds 5 000
+     * SHORT STRINGS and one song, not 5 000 MediaMetadata objects with their titles, artists, albums and
+     * thumbnail URLs. Asserted on the type, because that is the only thing a future edit cannot walk back
+     * by accident.
+     */
+    @Test
+    fun aPendingOfferHoldsIdsAndExactlyOneSong() {
+        val cursor = cursorOf((0 until 5_000).map { "id$it" }, index = 4_321)
+
+        val ids: List<String> = cursor.mediaIds
+        assertEquals(5_000, ids.size)
+        // The only MediaMetadata the snapshot has a field for is the cursor's own song.
+        assertEquals("id4321", cursor.anchor?.id)
+    }
+
+    /** The plain case: every id resolves, so the queue comes back whole, on the same song, same second. */
+    @Test
+    fun rehydrateLandsOnTheSameSongAtTheSameSecond() {
+        val ids = listOf("a", "b", "c", "d", "e")
+        val cursor = cursorOf(ids, index = 3, position = 96_500L)
+        val byId = ids.associateWith(::song)
+
+        val rebuilt = cursor.rehydrate(byId)!!
+        assertEquals(5, rebuilt.items.size)
+        assertEquals("d", rebuilt.items[rebuilt.mediaItemIndex].id)
+        assertEquals(3, rebuilt.mediaItemIndex)
+        assertEquals(96_500L, rebuilt.position)
+        assertEquals("PL:VLxyz123", rebuilt.contextId)
+        assertEquals("Salsa de los domingos", rebuilt.title)
+        // QueueType.LIST is what carries the contextId through `toQueue` (see the round-trip tests
+        // above, which pin that half — it cannot be exercised here because `toMediaItem` needs Android).
+        assertTrue(rebuilt.queueType is QueueType.LIST)
+    }
+
+    /**
+     * A row deleted while the offer was pending shortens the rebuilt list. Replaying the CAPTURED index
+     * against the shorter list would resume on a different song — the exact silent failure this feature
+     * cannot have — so the cursor is recomputed from the survivors ahead of it.
+     */
+    @Test
+    fun aDeletedRowShiftsTheCursorInsteadOfMovingTheSong() {
+        val ids = listOf("a", "b", "c", "d", "e")
+        val cursor = cursorOf(ids, index = 3)
+        // "b" and "c" are gone from the database.
+        val byId = listOf("a", "d", "e").associateWith(::song)
+
+        val rebuilt = cursor.rehydrate(byId)!!
+        assertEquals(3, rebuilt.items.size)
+        assertEquals(1, rebuilt.mediaItemIndex)
+        assertEquals("d", rebuilt.items[rebuilt.mediaItemIndex].id)
+        assertEquals(96_500L, rebuilt.position)
+    }
+
+    /**
+     * A queue can hold the same song twice (a playlist with a duplicate). The walk is by INDEX, not by a
+     * lookup of the cursor's id, so it lands on the occurrence he was actually on.
+     */
+    @Test
+    fun aDuplicatedSongResumesOnTheOccurrenceHeWasOn() {
+        val ids = listOf("a", "b", "a", "c", "a")
+        val cursor = cursorOf(ids, index = 4, anchor = song("a"))
+        val byId = listOf("a", "b", "c").associateWith(::song)
+
+        val rebuilt = cursor.rehydrate(byId)!!
+        assertEquals(5, rebuilt.items.size)
+        assertEquals("the THIRD 'a', not the first", 4, rebuilt.mediaItemIndex)
+    }
+
+    /**
+     * The one item kept whole is the cursor's own song, and this is why: if HIS row is the one that was
+     * deleted, the anchor still lands the offer on the same song at the same second instead of on
+     * nothing. Everything around it degrades; the promise does not.
+     */
+    @Test
+    fun theAnchorSurvivesTheCursorSongBeingDeleted() {
+        val ids = listOf("a", "b", "c")
+        val cursor = cursorOf(ids, index = 1, anchor = song("b"))
+        // Only "a" and "c" are still in the database; "b" — the song he was ON — is gone.
+        val byId = listOf("a", "c").associateWith(::song)
+
+        val rebuilt = cursor.rehydrate(byId)!!
+        assertEquals(3, rebuilt.items.size)
+        assertEquals(1, rebuilt.mediaItemIndex)
+        assertEquals("b", rebuilt.items[1].id)
+        assertEquals(96_500L, rebuilt.position)
+    }
+
+    /**
+     * Nothing resolves and there is no anchor either: play NOTHING rather than the wrong song. (With the
+     * anchor set — which capture always does — this branch is unreachable, which is the point.)
+     */
+    @Test
+    fun anUnplaceableCursorRebuildsNothing() {
+        assertNull(cursorOf(listOf("a", "b"), index = 1, anchor = null).rehydrate(emptyMap()))
+        assertNull(cursorOf(emptyList(), index = 0, anchor = null).rehydrate(emptyMap()))
+        // An out-of-range captured index cannot be placed either, anchor or not.
+        assertNull(cursorOf(listOf("a"), index = 7, anchor = song("a")).rehydrate(mapOf("a" to song("a"))))
+    }
+
+    /**
+     * The id lookup is chunked because Room binds ONE SQL variable per id and Android's SQLite capped
+     * that at 999 for most of its history — and "LIB:" is thousands of ids, i.e. exactly the case an
+     * unchunked query would throw on.
+     */
+    @Test
+    fun theIdLookupStaysUnderSqlitesVariableCap() {
+        assertTrue(PreviousQueueRule.ID_LOOKUP_CHUNK in 1..999)
     }
 }

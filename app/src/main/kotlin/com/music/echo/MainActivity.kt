@@ -149,6 +149,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.navigation.NavBackStackEntry
+import androidx.navigation.NavController
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -654,10 +655,22 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        // ── "Interfaz nueva": the SHELL and the APP THEME both follow the flag ────────────────────
+        // Read here, ABOVE echomusicTheme, and not (as it was) inside the theme's content lambda: by
+        // the time that lambda runs the ColorScheme is already fixed, so the flag could only reach the
+        // layout. That is the whole of "la app son dos temas a la vez" — the six rebuilt screens paint
+        // AuraPalette.Ground themselves while the ~89 classic screens and every dialog kept whatever
+        // scheme the app theme had picked, which for a light-theme user is white.
+        // With the flag OFF every expression below reduces to the one that shipped.
+        val newUiShell = rememberNewUiEnabled()
+
         val darkTheme by rememberEnumPreference(DarkModeKey, defaultValue = DarkMode.AUTO)
         val isSystemInDarkTheme = isSystemInDarkTheme()
-        val useDarkTheme = remember(darkTheme, isSystemInDarkTheme) {
-            if (darkTheme == DarkMode.AUTO) isSystemInDarkTheme else darkTheme == DarkMode.ON
+        // The redesign is DARK-ONLY: its ground is a near-black literal and every step of its palette
+        // is white-at-low-alpha over it, so there is no light variant to fall back to. Forcing dark is
+        // therefore part of turning it on, not a preference being ignored quietly — see the report.
+        val useDarkTheme = remember(darkTheme, isSystemInDarkTheme, newUiShell) {
+            newUiShell || if (darkTheme == DarkMode.AUTO) isSystemInDarkTheme else darkTheme == DarkMode.ON
         }
 
         LaunchedEffect(useDarkTheme) {
@@ -759,6 +772,9 @@ class MainActivity : ComponentActivity() {
             // track change). Passing the stored value also means a fresh pick repaints the surfaces on
             // the same frame it is written, instead of waiting for the LaunchedEffect above to catch up.
             selectedThemeColor = selectedThemeColor,
+            // Puts the classic screens and every dialog on the redesign's own ground instead of a
+            // second, clashing canvas. Accent roles are untouched, so the owner's colour still lands.
+            newUiGround = newUiShell,
         ) {
             BoxWithConstraints(
                 modifier = Modifier
@@ -815,13 +831,9 @@ class MainActivity : ComponentActivity() {
                 }
                 val (useNewMiniPlayerDesign) = rememberPreference(UseNewMiniPlayerDesignKey, defaultValue = true)
 
-                // ── "Interfaz nueva": the SHELL follows the flag too ───────────────────────────────
-                // 0.6.144-beta1 rebuilt six CONTENT screens and left the frame classic, so the app still
-                // wore the old top bar, the old floating-toolbar pill, the classic mini player and two
-                // opaque strips over the gesture area. Read the flag ONCE here and gate every shell
-                // decision below on it. With the flag OFF every branch takes the classic side, so the
-                // shell is byte-identical to today; toggling writes one boolean and touches nothing else.
-                val newUiShell = rememberNewUiEnabled()
+                // NOTE: `newUiShell` is read ABOVE echomusicTheme (it has to drive the ColorScheme, not
+                // just the layout) and is in scope here. Every shell branch below gates on it; with the
+                // flag OFF each one takes the classic side, so the shell is byte-identical to today.
                 val defaultOpenTab = remember {
                     dataStore[DefaultOpenTabKey].toEnum(defaultValue = NavigationTab.HOME)
                 }
@@ -1304,9 +1316,16 @@ class MainActivity : ComponentActivity() {
                             // the user hosts it in the top bar, because it is then filtered OUT of the
                             // bottom navigation and this is its only entry point.
                             showListenTogether = listenTogetherInTopBar,
+                            // Escuchar juntos is a TOP-LEVEL destination (it is one of
+                            // Screens.MainScreens, merely filtered out of the bottom bar while it lives
+                            // up here), so it has to travel on the tab NavOptions for the same reason
+                            // Ajustes does: pushed on top of Biblioteca it poisons the saved back stack
+                            // and every later Biblioteca tap lands on it. This branch only exists while
+                            // the flag is on (`auraTopActions` is null otherwise), so the classic top
+                            // bar's copy of this call is left exactly as it is.
                             onListenTogetherClick = {
-                                navController.navigate(Screens.ListenTogether.route) {
-                                    launchSingleTop = true
+                                if (currentRoute != Screens.ListenTogether.route) {
+                                    navController.navigateAsTab(Screens.ListenTogether.route)
                                 }
                             },
                             showHistory = showHistoryButton,
@@ -1560,13 +1579,8 @@ class MainActivity : ComponentActivity() {
                                             topAppBarScrollBehavior.state.resetHeightOffset()
                                         }
                                     } else {
-                                        navController.navigate(screen.route) {
-                                            popUpTo(navController.graph.startDestinationId) {
-                                                saveState = true
-                                            }
-                                            launchSingleTop = true
-                                            restoreState = true
-                                        }
+                                        // The same options as before, named once — see [navigateAsTab].
+                                        navController.navigateAsTab(screen.route)
                                     }
                                 }
                             }
@@ -1620,12 +1634,23 @@ class MainActivity : ComponentActivity() {
                                                 },
                                                 onItemClick = onNavItemClick,
                                                 bottomInset = bottomInset,
-                                                // The render's fourth cell. `launchSingleTop` so
-                                                // tapping Ajustes while already on Ajustes cannot
-                                                // stack a second copy on the back stack.
+                                                // The render's fourth cell. It is a TAB, so it
+                                                // navigates on exactly the NavOptions the other three
+                                                // use — see [navigateAsTab]. `launchSingleTop` alone
+                                                // was what made Biblioteca unusable: it left Ajustes
+                                                // stacked ON TOP of Biblioteca, and the next Biblioteca
+                                                // tap then popped both with `saveState`, which
+                                                // androidx-navigation stores as ONE deque keyed by the
+                                                // deepest popped destination (library) — so
+                                                // `restoreState` put Ajustes straight back on top.
+                                                // Self-perpetuating, hence "no muestra nada y me manda
+                                                // ajustes".
                                                 onSettingsClick = {
-                                                    navController.navigate("settings") {
-                                                        launchSingleTop = true
+                                                    // Same guard the other cells have: re-navigating to
+                                                    // the tab you are already on would pop and rebuild
+                                                    // the entry, losing the Ajustes scroll position.
+                                                    if (currentRoute != "settings") {
+                                                        navController.navigateAsTab("settings")
                                                     }
                                                 },
                                                 settingsSelected = currentRoute == "settings",
@@ -1757,13 +1782,8 @@ class MainActivity : ComponentActivity() {
                                             topAppBarScrollBehavior.state.resetHeightOffset()
                                         }
                                     } else {
-                                        navController.navigate(screen.route) {
-                                            popUpTo(navController.graph.startDestinationId) {
-                                                saveState = true
-                                            }
-                                            launchSingleTop = true
-                                            restoreState = true
-                                        }
+                                        // The same options as before, named once — see [navigateAsTab].
+                                        navController.navigateAsTab(screen.route)
                                     }
                                 }
                             }
@@ -1976,7 +1996,18 @@ class MainActivity : ComponentActivity() {
                             onDismissRequest = { showSettingDialoge = false },
                             onNavigate = { route ->
                                 showSettingDialoge = false
-                                navController.navigate(route)
+                                // The FOURTH raw door, and the last one. This dialog can hand back a
+                                // TOP-LEVEL route ("settings" is one under the new shell, and so is every
+                                // Screens.MainScreens entry). Pushing one of those on top of whatever tab
+                                // is showing stacks two top-level destinations, and the next tab tap saves
+                                // them as ONE deque keyed by the deepest — after which that tab reopens
+                                // the wrong screen for the rest of the session. Detail routes (album/,
+                                // artist/, settings/xxx ...) must NOT go through navigateAsTab: it pops to
+                                // the start destination, which would throw away the caller's back stack.
+                                val topLevel = route == "settings" ||
+                                    Screens.MainScreens.any { it.route == route }
+                                if (topLevel) navController.navigateAsTab(route)
+                                else navController.navigate(route)
                             },
                             homeViewModel = homeViewModel
                         )
@@ -2284,6 +2315,38 @@ class MainActivity : ComponentActivity() {
 /** Minimum gap between two scroll haptics. Below this a drag fires one tick per motion event,
  *  which the vibrator renders as a continuous buzz (and burns battery). */
 private const val SCROLL_HAPTIC_THROTTLE_MS = 100L
+
+/**
+ * Navigate to a TOP-LEVEL destination — a bottom-bar cell, or anything else that behaves like one.
+ *
+ * This is the standard androidx bottom-navigation contract and it is not optional: `popUpTo` the start
+ * destination is what guarantees two top-level destinations are never on the stack at the same time,
+ * and that guarantee is what makes `saveState`/`restoreState` safe.
+ *
+ * Get it wrong for ONE cell and the whole bar breaks, which is exactly what 0.6.146-beta1 shipped: the
+ * Ajustes cell navigated with `launchSingleTop` only, so Ajustes sat on top of Biblioteca. The next
+ * Biblioteca tap popped both under `saveState`, and androidx-navigation files a multi-entry pop as a
+ * SINGLE saved deque keyed by the DEEPEST popped destination — `library`. `restoreState` on that same
+ * tap then restored the whole deque, Ajustes included, so Biblioteca opened Ajustes. Forever: the
+ * restore re-creates the shape that produces the save.
+ *
+ * Extracted so the four cells cannot drift apart again; it is the exact options block the other three
+ * already used, so nothing about them changes.
+ *
+ * `internal`, not private, ON PURPOSE: the bottom bar is not the only door to a top-level destination.
+ * `AuraPlayerMenu` ("Ir a > Ajustes") and `AuraSettingsScreen` ("Escuchar juntos") both navigate to one
+ * raw today and will poison the same saved deque; they must route through here rather than re-type the
+ * options and get one of the three wrong.
+ */
+internal fun NavController.navigateAsTab(route: String) {
+    navigate(route) {
+        popUpTo(graph.startDestinationId) {
+            saveState = true
+        }
+        launchSingleTop = true
+        restoreState = true
+    }
+}
 
 val LocalDatabase = staticCompositionLocalOf<MusicDatabase> { error("No database provided") }
 val LocalRingtoneViewModel = compositionLocalOf<RingtoneViewModel> { error("No RingtoneViewModel provided") }

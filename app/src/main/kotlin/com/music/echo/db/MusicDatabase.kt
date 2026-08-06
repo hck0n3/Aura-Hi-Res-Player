@@ -116,7 +116,7 @@ class MusicDatabase(
         SortedSongAlbumMap::class,
         PlaylistSongMapPreview::class,
     ],
-    version = 40,
+    version = 41,
     exportSchema = true,
     autoMigrations = [
         AutoMigration(from = 2, to = 3),
@@ -158,6 +158,12 @@ class MusicDatabase(
         // 37 -> 38: additive index on event.timestamp (P39). Handled by MIGRATION_37_38 below.
         // 38 -> 39: additive Enhanced Shuffle tables. Handled by MIGRATION_38_39 below.
         // 39 -> 40: additive artist.followedByUserAt / ytmSyncedAt / unfollowedByUserAt. See MIGRATION_39_40.
+        // 40 -> 41: additive lyrics.userEdited / matchRulesVersion / supersededLyrics, all with SQL
+        // defaults, so Room generates it. Declared HERE on the @Database annotation rather than as a
+        // manual Migration object: auto-migrations travel with the annotation and therefore apply to
+        // BOTH database builders. A hand-written Migration has to be registered in each builder
+        // separately, and forgetting the Hilt one is what crashed every install on 0.6.117.
+        AutoMigration(from = 40, to = 41),
     ],
 )
 @TypeConverters(Converters::class)

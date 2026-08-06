@@ -114,6 +114,8 @@ sealed class EchoUpdateStatus {
         val version: String,
         val changelog: List<ChangelogSection>,
         val size: String,
+        /** Exact asset size in bytes, as GitHub reports it — the authority on "is the file complete". */
+        val sizeBytes: Long,
         val releaseDate: String,
         val description: String?,
         val imageUrl: String?,
@@ -136,6 +138,11 @@ fun UpdateScreen(navController: NavHostController) {
     var downloadedFile by remember { mutableStateOf<File?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
 
+    // The release this screen is currently offering. EVERY piece of download state is keyed on it: a
+    // WorkManager result, a file on disk or a notification belonging to a different release must not
+    // be able to drive this screen. Null until a check says an update exists.
+    val offeredVersion = remember { mutableStateOf<String?>(null) }
+
     val currentVersion = BuildConfig.VERSION_NAME
     val autoUpdateCheckEnabled = getAutoUpdateCheckSetting(context)
 
@@ -143,57 +150,84 @@ fun UpdateScreen(navController: NavHostController) {
         DownloadNotificationManager.initialize(context)
     }
 
-    
+
     // Observe the download WorkInfo with an observer that is explicitly removed when this
     // composable leaves composition. Using observeForever inside a LaunchedEffect would leak
     // the observer (and duplicate it on every screen re-entry), since observeForever is not
     // tied to the composition/coroutine lifecycle. DisposableEffect guarantees cleanup.
-    DisposableEffect(Unit) {
-        val liveData = WorkManager.getInstance(context)
-            .getWorkInfosForUniqueWorkLiveData("update_download")
-        val observer = Observer<List<WorkInfo>> { workInfos ->
-            val workInfo = workInfos?.firstOrNull() ?: return@Observer
+    //
+    // Keyed on the offered version, and filtered by that version's tag. WorkManager REPLAYS the last
+    // result of a unique work name for days, so after any earlier update the first thing this screen
+    // used to receive was the PREVIOUS release's SUCCEEDED run, complete with the path of the APK it
+    // had downloaded back then. That is what turned the action button into "Install" the moment the
+    // screen opened and installed the old build — no download, no error, no way to tell.
+    DisposableEffect(offeredVersion.value) {
+        val version = offeredVersion.value
+        if (version == null) {
+            onDispose { }
+        } else {
+            val wantedTag = UpdateApkFiles.versionTag(version)
+            val liveData = WorkManager.getInstance(context)
+                .getWorkInfosForUniqueWorkLiveData(UpdateDownloadWorker.WORK_NAME)
+            val observer = Observer<List<WorkInfo>> { workInfos ->
+                val workInfo = workInfos?.firstOrNull { it.tags.contains(wantedTag) } ?: return@Observer
 
-            when (workInfo.state) {
-                WorkInfo.State.RUNNING -> {
-                    isDownloading = true
-                    downloadProgress = workInfo.progress.getFloat("progress", 0f)
-                }
-                WorkInfo.State.SUCCEEDED -> {
-                    isDownloading = false
-                    isDownloadComplete = true
-                    val filePath = workInfo.outputData.getString("file_path")
-                    if (filePath != null) {
-                        downloadedFile = File(filePath)
+                when (workInfo.state) {
+                    WorkInfo.State.RUNNING -> {
+                        isDownloading = true
+                        downloadProgress = workInfo.progress.getFloat("progress", 0f)
                     }
-                }
-                WorkInfo.State.FAILED -> {
-                    isDownloading = false
-                    scope.launch {
-                        snackbarHostState.showSnackbar(context.getString(R.string.download_failed))
+                    WorkInfo.State.SUCCEEDED -> {
+                        isDownloading = false
+                        val filePath = workInfo.outputData.getString("file_path")
+                        if (filePath != null) {
+                            downloadedFile = File(filePath)
+                            isDownloadComplete = true
+                        }
                     }
+                    WorkInfo.State.FAILED -> {
+                        isDownloading = false
+                        scope.launch {
+                            snackbarHostState.showSnackbar(context.getString(R.string.download_failed))
+                        }
+                    }
+                    WorkInfo.State.CANCELLED -> {
+                        isDownloading = false
+                        downloadProgress = 0f
+                    }
+                    else -> {}
                 }
-                WorkInfo.State.CANCELLED -> {
-                    isDownloading = false
-                    downloadProgress = 0f
-                }
-                else -> {}
             }
-        }
-        liveData.observeForever(observer)
-        onDispose {
-            liveData.removeObserver(observer)
+            liveData.observeForever(observer)
+            onDispose {
+                liveData.removeObserver(observer)
+            }
         }
     }
 
-    
-    LaunchedEffect(isDownloadComplete, downloadedFile) {
-        if (isDownloadComplete && downloadedFile != null) {
-            if (!downloadedFile!!.exists()) {
-                isDownloadComplete = false
-                downloadedFile = null
-                downloadProgress = 0f
-            }
+    // Second gate, on the file itself: a path is only worth an "Install" button if the archive at the
+    // end of it really is this release. getPackageArchiveInfo reads the version out of the APK, so a
+    // leftover, truncated or tampered file answers for itself and is thrown away instead of installed.
+    LaunchedEffect(isDownloadComplete, downloadedFile, offeredVersion.value) {
+        val file = downloadedFile
+        val version = offeredVersion.value
+        if (!isDownloadComplete || file == null || version == null) return@LaunchedEffect
+        val exists = withContext(Dispatchers.IO) { file.isFile }
+        if (!exists) {
+            isDownloadComplete = false
+            downloadedFile = null
+            downloadProgress = 0f
+            return@LaunchedEffect
+        }
+        val installable = withContext(Dispatchers.IO) {
+            ApkVersionInspector.isInstallable(context, file, version)
+        }
+        if (!installable) {
+            withContext(Dispatchers.IO) { file.delete() }
+            isDownloadComplete = false
+            downloadedFile = null
+            downloadProgress = 0f
+            snackbarHostState.showSnackbar(context.getString(R.string.update_version_mismatch))
         }
     }
 
@@ -204,14 +238,25 @@ fun UpdateScreen(navController: NavHostController) {
             delay(1000L)
             checkForUpdate(
                 context = context,
-                onSuccess = { tag, isAvailable, changelog, size, date, description, imageUrl, apkUrl ->
+                onSuccess = { tag, isAvailable, changelog, size, sizeBytes, date, description, imageUrl, apkUrl ->
                     saveLastCheckedTime(context, LocalDateTime.now().format(DateTimeFormatter.ofPattern("d MMMM yyyy, h:mm a")))
                     saveUpdateAvailableState(context, isAvailable)
+                    // Re-key the download state on whatever release the server is offering NOW. If it
+                    // is not the one the screen was showing, the old download state is meaningless.
+                    val newVersion = tag.takeIf { isAvailable }
+                    if (offeredVersion.value != newVersion) {
+                        offeredVersion.value = newVersion
+                        isDownloading = false
+                        isDownloadComplete = false
+                        downloadedFile = null
+                        downloadProgress = 0f
+                    }
                     status = if (isAvailable) {
                         EchoUpdateStatus.Available(
                             version = tag,
                             changelog = changelog,
                             size = size,
+                            sizeBytes = sizeBytes,
                             releaseDate = date,
                             description = description,
                             imageUrl = imageUrl,
@@ -331,10 +376,25 @@ fun UpdateScreen(navController: NavHostController) {
                                                         return@let
                                                     }
                                                 }
-                                                // Defense-in-depth: refuse to install an update that isn't signed
-                                                // with our certificate (a tampered/MITM'd APK), before handing it
-                                                // to the system installer.
-                                                if (!ApkSignatureVerifier.matchesInstalledSignature(context, file)) {
+                                                // Last gate before the system installer, re-run at the moment of
+                                                // the tap: the archive must declare the version we are offering
+                                                // (a stale or truncated file cannot fake that) AND carry our
+                                                // signing certificate (a tampered/MITM'd APK cannot fake that).
+                                                if (ApkVersionInspector.verdict(context, f, currentStatus.version) ==
+                                                    UpdateApkFiles.ApkVerdict.REJECT
+                                                ) {
+                                                    f.delete()
+                                                    isDownloadComplete = false
+                                                    downloadedFile = null
+                                                    downloadProgress = 0f
+                                                    android.widget.Toast.makeText(
+                                                        context,
+                                                        context.getString(R.string.update_version_mismatch),
+                                                        android.widget.Toast.LENGTH_LONG
+                                                    ).show()
+                                                    return@let
+                                                }
+                                                if (!ApkSignatureVerifier.matchesInstalledSignature(context, f)) {
                                                     android.widget.Toast.makeText(
                                                         context,
                                                         context.getString(R.string.update_signature_mismatch),
@@ -342,7 +402,7 @@ fun UpdateScreen(navController: NavHostController) {
                                                     ).show()
                                                     return@let
                                                 }
-                                                val uri = FileProvider.getUriForFile(context, "${context.packageName}.FileProvider", file)
+                                                val uri = FileProvider.getUriForFile(context, "${context.packageName}.FileProvider", f)
                                                 val installIntent = Intent(Intent.ACTION_VIEW).apply {
                                                     setDataAndType(uri, "application/vnd.android.package-archive")
                                                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
@@ -351,20 +411,56 @@ fun UpdateScreen(navController: NavHostController) {
                                                 ContextCompat.startActivity(context, installIntent, null)
                                             }
                                         } else {
-                                            val urlToDownload = currentStatus.apkUrl ?: "https://github.com/hck0n3/Aura-Hi-Res-Player/releases/download/${currentStatus.version}/echomusic.apk"
-                                            val downloadRequest = OneTimeWorkRequestBuilder<UpdateDownloadWorker>()
-                                                .setInputData(workDataOf("apk_url" to urlToDownload, "version" to currentStatus.version, "file_size" to currentStatus.size))
-                                                .setConstraints(
-                                                    androidx.work.Constraints.Builder()
-                                                        .setRequiredNetworkType(androidx.work.NetworkType.CONNECTED)
-                                                        .build()
-                                                )
-                                                .setBackoffCriteria(androidx.work.BackoffPolicy.LINEAR, 10, java.util.concurrent.TimeUnit.SECONDS)
-                                                .addTag("update_download")
-                                                .build()
-                                            // KEEP so a re-tap resumes the running download instead of restarting it.
-                                            WorkManager.getInstance(context).enqueueUniqueWork("update_download", ExistingWorkPolicy.KEEP, downloadRequest)
+                                            val urlToDownload = currentStatus.apkUrl ?: "https://github.com/hck0n3/Aura-Hi-Res-Player/releases/download/${currentStatus.version}/${UpdateApkFiles.apkFileName(currentStatus.version)}"
                                             isDownloading = true
+                                            scope.launch {
+                                                val workManager = WorkManager.getInstance(context)
+                                                val versionTag = UpdateApkFiles.versionTag(currentStatus.version)
+                                                // A run left ENQUEUED by a failed attempt keeps ITS OWN input
+                                                // data — the previous release's URL. Under a blanket KEEP that
+                                                // stale run swallowed every later tap and then downloaded the
+                                                // old APK. KEEP still applies to a run for THIS version, so a
+                                                // re-tap resumes it instead of restarting.
+                                                val pendingOtherVersion = withContext(Dispatchers.IO) {
+                                                    runCatching {
+                                                        workManager
+                                                            .getWorkInfosForUniqueWork(UpdateDownloadWorker.WORK_NAME)
+                                                            .get()
+                                                            .any { !it.state.isFinished && !it.tags.contains(versionTag) }
+                                                    }.getOrDefault(false)
+                                                }
+                                                val downloadRequest = OneTimeWorkRequestBuilder<UpdateDownloadWorker>()
+                                                    .setInputData(
+                                                        workDataOf(
+                                                            UpdateDownloadWorker.KEY_APK_URL to urlToDownload,
+                                                            UpdateDownloadWorker.KEY_VERSION to currentStatus.version,
+                                                            UpdateDownloadWorker.KEY_FILE_SIZE to currentStatus.size,
+                                                            UpdateDownloadWorker.KEY_FILE_SIZE_BYTES to currentStatus.sizeBytes,
+                                                        )
+                                                    )
+                                                    .setConstraints(
+                                                        androidx.work.Constraints.Builder()
+                                                            .setRequiredNetworkType(androidx.work.NetworkType.CONNECTED)
+                                                            .build()
+                                                    )
+                                                    .setBackoffCriteria(androidx.work.BackoffPolicy.LINEAR, 10, java.util.concurrent.TimeUnit.SECONDS)
+                                                    .addTag(UpdateDownloadWorker.WORK_NAME)
+                                                    .addTag(versionTag)
+                                                    .build()
+                                                val enqueued = runCatching {
+                                                    workManager.enqueueUniqueWork(
+                                                        UpdateDownloadWorker.WORK_NAME,
+                                                        if (pendingOtherVersion) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP,
+                                                        downloadRequest,
+                                                    )
+                                                }.isSuccess
+                                                if (!enqueued) {
+                                                    // Never leave the button stuck on "downloading" for a
+                                                    // download that was never queued.
+                                                    isDownloading = false
+                                                    snackbarHostState.showSnackbar(context.getString(R.string.download_failed))
+                                                }
+                                            }
                                         }
                                     },
                                     modifier = Modifier.weight(1f),
@@ -669,12 +765,12 @@ fun isNewerVersion(latestVersion: String, currentVersion: String): Boolean {
 
 suspend fun checkForUpdate(
     context: Context,
-    onSuccess: (tag: String, isAvailable: Boolean, changelog: List<ChangelogSection>, size: String, date: String, description: String?, imageUrl: String?, apkUrl: String?) -> Unit,
+    onSuccess: (tag: String, isAvailable: Boolean, changelog: List<ChangelogSection>, size: String, sizeBytes: Long, date: String, description: String?, imageUrl: String?, apkUrl: String?) -> Unit,
     onError: () -> Unit,
 ) {
     // Private no-subscription test build: never look for updates (so it can't pull the public/paid APK).
     if (!BuildConfig.REQUIRE_SUBSCRIPTION) {
-        onSuccess(BuildConfig.VERSION_NAME, false, emptyList(), "", "", null, null, null)
+        onSuccess(BuildConfig.VERSION_NAME, false, emptyList(), "", 0L, "", null, null, null)
         return
     }
     withContext(Dispatchers.IO) {
@@ -687,7 +783,12 @@ suspend fun checkForUpdate(
             val targetTagName = targetRelease.getString("tag_name")
             val currentClean = currentVersion.removePrefix("b").removePrefix("v").trim()
             val targetClean = targetTagName.removePrefix("b").removePrefix("v").trim()
-            val shouldShow = currentClean != targetClean
+            // Only a STRICTLY NEWER release is an update. This was `currentClean != targetClean`, which
+            // offered any release that merely differed — and `releases/latest` skips prereleases, so a
+            // user on a -beta build was offered the previous STABLE release as if it were new. Taking
+            // that offer is a downgrade: the same "it installed the older version" symptom, arrived at
+            // from the check rather than from the file on disk.
+            val shouldShow = UpdateApkFiles.isNewerRelease(targetTagName, currentVersion)
 
             if (shouldShow) {
                 val tagWithPrefix = targetRelease.getString("tag_name")
@@ -781,22 +882,24 @@ suspend fun checkForUpdate(
 
                 var apkSizeInMB = ""
                 var apkDownloadUrl = ""
+                var apkSizeBytes = 0L
                 if (chosen != null) {
                     apkSizeInMB = String.format("%.1f", chosen.size / (1024.0 * 1024.0))
                     apkDownloadUrl = chosen.url
+                    apkSizeBytes = chosen.size
                 }
 
                 if (apkDownloadUrl.isNotEmpty()) {
                     withContext(Dispatchers.Main) {
-                        onSuccess(displayTag, true, changelogList, apkSizeInMB, formattedReleaseDate, description, imageUrl, apkDownloadUrl)
+                        onSuccess(displayTag, true, changelogList, apkSizeInMB, apkSizeBytes, formattedReleaseDate, description, imageUrl, apkDownloadUrl)
                     }
                     return@withContext
                 }
             }
 
-            
+
             withContext(Dispatchers.Main) {
-                onSuccess(currentVersion, false, emptyList(), "", "", null, null, null)
+                onSuccess(currentVersion, false, emptyList(), "", 0L, "", null, null, null)
             }
         } catch (e: Exception) {
             Log.e("UpdateCheck", "Error checking for updates: ${e.message}", e)

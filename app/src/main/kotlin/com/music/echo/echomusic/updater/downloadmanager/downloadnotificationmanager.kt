@@ -104,10 +104,27 @@ object DownloadNotificationManager {
         notificationManager.notify(NOTIFICATION_ID, notification)
     }
 
-    
+
     fun cancelNotification() {
         notificationManager.cancel(NOTIFICATION_ID)
     }
+
+    /**
+     * Same, but usable from anywhere (it initialises first). Called when the downloaded APKs are
+     * deleted: a "tap to install" notification whose file no longer exists would only produce a
+     * system installer error.
+     */
+    fun cancelNotification(context: Context) {
+        ensureInitialized(context)
+        runCatching { notificationManager.cancel(NOTIFICATION_ID) }
+    }
+
+    /**
+     * Distinct request code per version. The install PendingIntent points at a version-specific file
+     * Uri, and a request code that varies with it keeps a cached PendingIntent from a previous update
+     * from ever being reused.
+     */
+    private fun installRequestCode(version: String): Int = version.hashCode()
 
     
     @RequiresApi(Build.VERSION_CODES.BAKLAVA)
@@ -203,7 +220,7 @@ object DownloadNotificationManager {
 
         val pendingIntent = PendingIntent.getActivity(
             appContext,
-            0,
+            installRequestCode(version),
             installIntent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
@@ -319,7 +336,7 @@ object DownloadNotificationManager {
 
         val pendingIntent = PendingIntent.getActivity(
             appContext,
-            0,
+            installRequestCode(version),
             installIntent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )

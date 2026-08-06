@@ -1,7 +1,6 @@
 package iad1tya.echo.music.ui.newui
 
 import androidx.compose.animation.core.animate
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -28,6 +27,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.MutableFloatState
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -40,6 +40,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -60,6 +61,7 @@ import iad1tya.echo.music.db.entities.FormatEntity
 import iad1tya.echo.music.ui.utils.resize
 import iad1tya.echo.music.utils.rememberPreference
 import java.util.Locale
+import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -684,26 +686,14 @@ fun AuraSwipeSongBox(
                 },
             ),
     ) {
-        if (offset.floatValue != 0f) {
-            val goingRight = offset.floatValue > 0
-            Box(
-                modifier = Modifier
-                    .matchParentSize()
-                    .clip(AuraShapes.Highlight)
-                    .background(if (goingRight) AuraPalette.NowPlayingFill else AuraPalette.BetaFill),
-                contentAlignment = if (goingRight) Alignment.CenterStart else Alignment.CenterEnd,
-            ) {
-                AuraIconGlyph(
-                    icon = if (goingRight) AuraIcons.Queue else AuraIcons.Plus,
-                    contentDescription = null,
-                    size = 22.dp,
-                    tint = if (goingRight) AuraPalette.Teal else AuraPalette.Violet,
-                    modifier = Modifier
-                        .padding(horizontal = 24.dp)
-                        .alpha(0.9f),
-                )
-            }
-        }
+        // BOTH action backgrounds are composed, always, and the draw phase decides which one is
+        // visible. The previous `if (offset.floatValue != 0f)` read the drag offset in COMPOSITION, so
+        // this whole composable — [content] included — recomposed on every frame of the drag and on
+        // every frame of the return animation. Neither box below carries a gesture modifier, so
+        // neither can consume a pointer: the drag stays on the parent and the content box, drawn last,
+        // sits on top of them.
+        AuraSwipeActionBackground(offset = offset, threshold = threshold, goingRight = true)
+        AuraSwipeActionBackground(offset = offset, threshold = threshold, goingRight = false)
 
         Box(
             modifier = Modifier
@@ -714,12 +704,51 @@ fun AuraSwipeSongBox(
     }
 }
 
+/**
+ * One of the two swipe backgrounds. Its opacity is a function of the live drag offset, evaluated
+ * inside `graphicsLayer` — the draw phase — so it never recomposes and never invalidates layout. A
+ * fully transparent layer is not drawn at all, which is the state of both boxes at rest.
+ */
+@Composable
+private fun BoxScope.AuraSwipeActionBackground(
+    offset: MutableFloatState,
+    threshold: Float,
+    goingRight: Boolean,
+) {
+    Box(
+        modifier = Modifier
+            .matchParentSize()
+            .graphicsLayer {
+                val value = offset.floatValue
+                val matches = if (goingRight) value > 0f else value < 0f
+                alpha = if (matches) (abs(value) / (threshold * 0.5f)).coerceIn(0f, 1f) else 0f
+            }
+            .clip(AuraShapes.Highlight)
+            .background(if (goingRight) AuraPalette.NowPlayingFill else AuraPalette.BetaFill),
+        contentAlignment = if (goingRight) Alignment.CenterStart else Alignment.CenterEnd,
+    ) {
+        AuraIconGlyph(
+            icon = if (goingRight) AuraIcons.Queue else AuraIcons.Plus,
+            contentDescription = null,
+            size = 22.dp,
+            tint = if (goingRight) AuraPalette.Teal else AuraPalette.Violet,
+            modifier = Modifier
+                .padding(horizontal = 24.dp)
+                .alpha(0.9f),
+        )
+    }
+}
+
+/**
+ * Returns the row to rest. A spring from [AuraMotion], not a `tween` — the redesign speaks one motion
+ * dialect and a linear/eased 300 ms return was the only curve left outside it.
+ */
 private fun auraResetSwipe(offset: MutableState<Float>, scope: CoroutineScope) {
     scope.launch {
         animate(
             initialValue = offset.value,
             targetValue = 0f,
-            animationSpec = tween(durationMillis = 300),
+            animationSpec = AuraMotion.float,
         ) { value, _ -> offset.value = value }
     }
 }

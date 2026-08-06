@@ -1257,6 +1257,7 @@ fun Queue(
                                         index = index,
                                         total = automix.size,
                                         isListenTogetherGuest = isListenTogetherGuest,
+                                        isCasting = isCasting,
                                         navController = navController,
                                         playerBottomSheetState = playerBottomSheetState,
                                         modifier = Modifier.animateItem(),
@@ -1543,6 +1544,7 @@ fun Queue(
                                 index = index,
                                 total = automix.size,
                                 isListenTogetherGuest = isListenTogetherGuest,
+                                isCasting = isCasting,
                                 navController = navController,
                                 playerBottomSheetState = playerBottomSheetState,
                                 modifier = Modifier.animateItem(),
@@ -1584,6 +1586,19 @@ private const val QUEUE_TAB_LYRICS = 1
 private const val QUEUE_TAB_RELATED = 2
 
 /**
+ * Index of [mediaId] inside the automix pool AS IT IS RIGHT NOW, or `-1` when the song is no longer
+ * there — the only value that may be handed to `MusicService.playNextAutomix` /
+ * `addToQueueAutomix`, whose `removeAt(position)` is unchecked.
+ *
+ * Extracted (and `internal`) so the rule is pinned by a test: the pool is mutated from outside this
+ * sheet, so the COMPOSITION index of a row can be stale by the time the row is tapped.
+ */
+internal fun automixPoolPosition(
+    poolMediaIds: List<String>,
+    mediaId: String,
+): Int = poolMediaIds.indexOfFirst { it == mediaId }
+
+/**
  * One related/automix song row — the EXACT row the autoplay footer used to inline: play-next and
  * add-to-queue trailing actions (service pool operations, ZERO network) + long-press QueueMenu.
  * Shared by the UP NEXT footer and the RELATED tab so the two can never drift apart.
@@ -1595,6 +1610,7 @@ private fun AutomixSongRow(
     index: Int,
     total: Int,
     isListenTogetherGuest: Boolean,
+    isCasting: Boolean,
     navController: NavController,
     playerBottomSheetState: BottomSheetState,
     modifier: Modifier = Modifier,
@@ -1602,6 +1618,25 @@ private fun AutomixSongRow(
     val playerConnection = LocalPlayerConnection.current ?: return
     val menuState = LocalMenuState.current
     val bottomSheetPageState = LocalBottomSheetPageState.current
+
+    // Where this song sits in the SERVICE pool right now, resolved by identity at CLICK time.
+    //
+    // `index` is the COMPOSITION index and must never reach MusicService.playNextAutomix /
+    // addToQueueAutomix: both do an unchecked `removeAt(position)` on `automixItems`, and that list
+    // is drained from outside this sheet — Player.kt auto-queues `automix[0]` when the queue runs
+    // dry, and the service re-publishes the whole list on every track change. A tap that landed
+    // between the pool shrinking and this row recomposing removed the WRONG song (the tapped one
+    // survived and could be queued twice), and a tap on the last row after a shrink called
+    // `removeAt(size)` → IndexOutOfBoundsException on the main thread, inside a click handler.
+    //
+    // NOT a composable read: only ever invoked from a click handler, so it never subscribes this
+    // row to the pool and the list keeps its current recomposition behaviour.
+    val poolPosition = {
+        automixPoolPosition(
+            playerConnection.service.automixItems.value.map { it.mediaId },
+            item.mediaId,
+        )
+    }
 
     Row(
         horizontalArrangement = Arrangement.Center,
@@ -1613,10 +1648,10 @@ private fun AutomixSongRow(
                 if (!isListenTogetherGuest) {
                     IconButton(
                         onClick = {
-                            playerConnection.service.playNextAutomix(
-                                item,
-                                index,
-                            )
+                            val at = poolPosition()
+                            if (at >= 0) {
+                                playerConnection.service.playNextAutomix(item, at)
+                            }
                         },
                     ) {
                         Icon(
@@ -1626,10 +1661,10 @@ private fun AutomixSongRow(
                     }
                     IconButton(
                         onClick = {
-                            playerConnection.service.addToQueueAutomix(
-                                item,
-                                index,
-                            )
+                            val at = poolPosition()
+                            if (at >= 0) {
+                                playerConnection.service.addToQueueAutomix(item, at)
+                            }
                         },
                     ) {
                         Icon(
@@ -1643,7 +1678,24 @@ private fun AutomixSongRow(
                 modifier
                     .fillMaxWidth()
                     .combinedClickable(
-                        onClick = {},
+                        // Was `{}`. `onLongClick` is non-null, so the modifier was attached and the
+                        // row rippled like something tappable while doing NOTHING: in the classic
+                        // sheet the whole RELATED tab and the UP NEXT autoplay footer were a
+                        // placebo, and the only way in was the two trailing icons or a long press.
+                        // Plays the tapped song exactly like the new UI does: move it out of the
+                        // pool to the front of the queue, then step onto it.
+                        onClick = {
+                            if (!isListenTogetherGuest) {
+                                val at = poolPosition()
+                                if (at >= 0) {
+                                    playerConnection.service.playNextAutomix(item, at)
+                                    playerConnection.player.seekToNext()
+                                    if (!isCasting) {
+                                        playerConnection.player.playWhenReady = true
+                                    }
+                                }
+                            }
+                        },
                         onLongClick = {
                             menuState.show {
                                 QueueMenu(

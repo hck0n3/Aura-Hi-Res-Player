@@ -70,8 +70,8 @@ import iad1tya.echo.music.R
 // the UI flag for three rows, so the filter at the end of this function drops exactly those three while
 // the new UI is on. With the flag OFF the list is returned untouched, in the same order.
 //
-// Both leaks were the same shape and both were reachable ONLY through this index, which is why hiding
-// the visible entry rows did not close them:
+// The leaks are the same shape and each was reachable ONLY through this index, which is why hiding the
+// visible entry rows did not close them:
 //
 //  1. LIQUID GLASS ("settings/appearance/liquidglass"). The entry row in Apariencia is hidden with the
 //     new UI on (AppearanceSettings.kt), but this index still mapped "Liquid Glass" straight to the
@@ -88,12 +88,23 @@ import iad1tya.echo.music.R
 //     here -- so searching "mini" found them, and the tap landed on Apariencia where neither exists.
 //     A search hit that navigates to a screen the text is not on is the same lie as a dead switch.
 //     Filtered by TITLE, because they share "settings/appearance" with ~90 rows that are still live.
+//
+//  3. "TEMA DEL SISTEMA" (dark_theme_follow_system -> "settings/appearance/theme"). The third of the
+//     family, and the GREYED-OUT half of it rather than the absent half: ThemeScreen disables that card
+//     and the "Light" one while the flag is on (`enabled = !newUiForcesDark`), because the redesign is
+//     drawn dark-only. The card is still on screen with a line of prose under it explaining why -- so a
+//     user who WALKS to Apariencia > Tema is told the truth. A user who SEARCHES "tema del sistema"
+//     is not: the hit is a promise of a control, and the control cannot be operated. "Light" needs no
+//     row of its own, it was never indexed. The group heading ("theme_mode", :246) is NOT filtered: the
+//     other two cards under it, Oscuro and AMOLED, are live -- AMOLED in particular now repaints the
+//     redesign's own ground (AuraPalette.kt) -- so that heading still leads somewhere that works.
 @Composable
 fun getAllSearchableSettings(): List<Triple<String, String, String>> {
     // Read unconditionally and before the list, so the composable call order never shifts.
     val newUiEnabled = iad1tya.echo.music.ui.newui.rememberNewUiEnabled()
     val miniPlayerGroupTitle = stringResource(R.string.mini_player)
     val miniPlayerBackgroundTitle = stringResource(R.string.miniplayer_background_style)
+    val followSystemThemeTitle = stringResource(R.string.dark_theme_follow_system)
 
     val all = listOf(
             // --- Cuentas / fork-only screens (hardcoded labels; these screens use literal titles) ---
@@ -500,16 +511,17 @@ fun getAllSearchableSettings(): List<Triple<String, String, String>> {
     // Flag OFF: the exact list above, same content, same order. Nothing below runs.
     if (!newUiEnabled) return all
 
-    // Flag ON: drop the three rows the new UI orphaned (see the ORPHAN RULE above). `filterNot`
+    // Flag ON: drop the four rows the new UI orphaned (see the ORPHAN RULE above). `filterNot`
     // preserves the order of everything it keeps.
     //
-    // The two title matches are ALSO pinned to "settings/appearance": it is only on THAT screen that
-    // the two strings are hidden, so a row carrying the same text under any other destination is not a
-    // ghost and must survive. Matching on title alone would have been a filter wider than the leak.
+    // Every title match is ALSO pinned to its route: it is only on THAT screen that the string is
+    // hidden or dead, so a row carrying the same text under any other destination is not a ghost and
+    // must survive. Matching on title alone would have been a filter wider than the leak.
     return all.filterNot { (title, _, route) ->
         route == LIQUID_GLASS_ROUTE ||
             (route == "settings/appearance" &&
-                (title == miniPlayerGroupTitle || title == miniPlayerBackgroundTitle))
+                (title == miniPlayerGroupTitle || title == miniPlayerBackgroundTitle)) ||
+            (route == THEME_ROUTE && title == followSystemThemeTitle)
     }
 }
 
@@ -518,3 +530,13 @@ fun getAllSearchableSettings(): List<Triple<String, String, String>> {
  * `NavigationBuilder.kt` cannot drift apart on a typo.
  */
 const val LIQUID_GLASS_ROUTE = "settings/appearance/liquidglass"
+
+/**
+ * The Tema destination. Named for the same reason as [LIQUID_GLASS_ROUTE]: the filter above matches it
+ * by value, and a typo there would silently stop filtering instead of failing.
+ *
+ * Unlike Liquid Glass this route is NOT guarded — the screen is more than half live under the flag (the
+ * accent swatches, the intensity cards, the custom hex, the reset button, Oscuro and AMOLED all work),
+ * so only the one dead row is dropped from the index.
+ */
+const val THEME_ROUTE = "settings/appearance/theme"

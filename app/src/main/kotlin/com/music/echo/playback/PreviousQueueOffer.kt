@@ -2,6 +2,11 @@
 
 package iad1tya.echo.music.playback
 
+import iad1tya.echo.music.models.MediaMetadata
+import iad1tya.echo.music.models.PersistQueue
+import iad1tya.echo.music.models.QueueData
+import iad1tya.echo.music.models.QueueType
+
 /**
  * "¿Quieres volver a la cola anterior?"
  *
@@ -37,7 +42,11 @@ object PreviousQueueRule {
      * noise detached from anything he did. In practice the prompt is shown seconds after arming — it waits
      * only for him to leave the screen he jumped to — so this bound never touches the normal flow; it
      * exists so an offer armed before the app was backgrounded cannot surface an hour later, and so the
-     * snapshot (a whole queue's metadata, in memory) is not retained for a session.
+     * snapshot ([PreviousQueueCursor], in memory) is not retained for a session.
+     *
+     * The bound is NOT what keeps the retention small — see [PreviousQueueCursor]. In a car the snackbar
+     * can never be answered (the phone UI is not on screen), so every offer armed before the drive rides
+     * the full ten minutes; whatever the snapshot holds, it holds for the whole ten minutes.
      */
     const val OFFER_TTL_MS = 10L * 60L * 1000L
 
@@ -50,6 +59,16 @@ object PreviousQueueRule {
      * that does nothing — for anyone whose back press landed in the last seconds of the window.
      */
     const val DISPLAY_GRACE_MS = 15_000L
+
+    /**
+     * How many ids go into ONE `WHERE id IN (...)` when [PreviousQueueCursor] is rehydrated.
+     *
+     * Room binds one SQL variable per id and Android's SQLite has capped that at 999 for most of its
+     * history (`SQLITE_MAX_VARIABLE_NUMBER`; only recent versions raise it). "LIB:" is the whole library
+     * as one queue, i.e. thousands of ids, so an unchunked query would throw on exactly the case this
+     * design exists for. 500 leaves room under the old cap with no per-chunk cost worth measuring.
+     */
+    const val ID_LOOKUP_CHUNK = 500
 
     /**
      * True when leaving [previousContextId] for [newContextId] is the detour worth offering a way back
@@ -118,3 +137,71 @@ data class PreviousQueueOffer(
     val title: String?,
     val expiresAtElapsedRealtime: Long,
 )
+
+/**
+ * The outgoing queue reduced to what it takes to REBUILD it: its media ids, its cursor and its identity.
+ *
+ * It deliberately does NOT hold the queue's [MediaMetadata] objects, and that is the whole point of this
+ * class. The offer lives up to [PreviousQueueRule.OFFER_TTL_MS] inside a long-lived foreground media
+ * process, and [PreviousQueueRule.isDetour] admits "LIB:" — the whole library played as one list, the
+ * biggest queue the app can build — so keeping every item's title, artists, album, thumbnail URL and
+ * library timestamps made the worst case a multi-megabyte retention in the one process the OS reaps
+ * first under pressure. A media id is one short string; the metadata behind it is an object graph.
+ *
+ * The songs come back from the `song` table on accept ([rehydrate]). That is sound for every context the
+ * rule admits: "PL:" (a local playlist), "AP:" (liked / downloaded / the library tabs) and "LIB:" (the
+ * library tab) are ALL built out of `song` rows in the first place — the queue was read from the very
+ * table it is read back from.
+ *
+ * [anchor] is the ONE item kept whole: the song the cursor is on. Every other id can, in principle, fail
+ * to resolve (its row deleted while the offer was pending); the cursor's may not, because landing on the
+ * same song at the same second is the entire promise of the feature. Keeping it costs one object.
+ */
+data class PreviousQueueCursor(
+    val title: String?,
+    val contextId: String?,
+    val queueType: QueueType,
+    val queueData: QueueData?,
+    /** Every media id on the outgoing timeline, in timeline order, one per index — never a subset. */
+    val mediaIds: List<String>,
+    val mediaItemIndex: Int,
+    val position: Long,
+    val anchor: MediaMetadata?,
+)
+
+/**
+ * Rebuild the captured queue from [byId] (`song` rows looked up by media id), as the [PersistQueue] the
+ * restore path already knows how to turn into a playable queue.
+ *
+ * The CURSOR is recomputed, not carried: [PreviousQueueCursor.mediaItemIndex] indexes the ids as they
+ * were captured, and a row deleted while the offer was pending shortens the rebuilt list — replaying the
+ * old index against the shorter list would resume on a DIFFERENT song, which is precisely the silent
+ * failure this feature must not have. Counting the survivors ahead of the cursor is exact, and it stays
+ * exact when the same song appears twice in the queue (a playlist with a duplicate), which is why the
+ * walk is by index rather than a lookup of the cursor's id.
+ *
+ * Returns null when the cursor itself cannot be placed — nothing is played rather than the wrong thing.
+ * With [PreviousQueueCursor.anchor] set (it always is at capture) that can only happen if the captured
+ * index was out of range, i.e. never.
+ */
+fun PreviousQueueCursor.rehydrate(byId: Map<String, MediaMetadata>): PersistQueue? {
+    if (mediaIds.isEmpty()) return null
+    val items = ArrayList<MediaMetadata>(mediaIds.size)
+    var cursor = -1
+    for (i in mediaIds.indices) {
+        val onCursor = i == mediaItemIndex
+        val item = byId[mediaIds[i]] ?: (if (onCursor) anchor else null) ?: continue
+        if (onCursor) cursor = items.size
+        items.add(item)
+    }
+    if (cursor < 0) return null
+    return PersistQueue(
+        title = title,
+        items = items,
+        mediaItemIndex = cursor,
+        position = position,
+        queueType = queueType,
+        queueData = queueData,
+        contextId = contextId,
+    )
+}

@@ -22,6 +22,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -129,9 +130,12 @@ import iad1tya.echo.music.ui.menu.QueueMenu
 import iad1tya.echo.music.ui.menu.SelectionMediaMetadataMenu
 import iad1tya.echo.music.ui.player.InlineLyricsView
 import iad1tya.echo.music.ui.screens.CommentSheet
+import iad1tya.echo.music.playback.CastConnectionHandler
+import iad1tya.echo.music.playback.PlayerConnection
 import iad1tya.echo.music.ui.utils.ShowMediaInfo
 import iad1tya.echo.music.ui.utils.tvFocusRestorer
 import iad1tya.echo.music.ui.utils.tvFocusable
+import iad1tya.echo.music.ui.utils.tvFocusableItem
 import iad1tya.echo.music.utils.makeTimeString
 import iad1tya.echo.music.utils.rememberPreference
 import kotlinx.coroutines.Job
@@ -188,10 +192,16 @@ fun AuraQueue(
     textBackgroundColor: Color,
     textButtonColor: Color,
     iconButtonColor: Color,
-    pureBlack: Boolean,
+    // Kept for the drop-in signature, and deliberately not read: "Negro puro (AMOLED)" now moves
+    // [AuraPalette.Ground] itself, so this sheet goes black with every other new surface instead of
+    // branching to its own flat black while the player behind it kept `#060A12`.
+    @Suppress("UNUSED_PARAMETER") pureBlack: Boolean,
     showInlineLyrics: Boolean,
     modifier: Modifier = Modifier,
-    @Suppress("UNUSED_PARAMETER") playerBackground: PlayerBackgroundStyle = PlayerBackgroundStyle.DEFAULT,
+    // "Fondo del reproductor", resolved by the player and handed down. It used to carry
+    // `@Suppress("UNUSED_PARAMETER")` — the queue accepted the style and ignored it. It now paints this
+    // sheet's ground; see the [rememberAuraGround] call below.
+    playerBackground: PlayerBackgroundStyle = PlayerBackgroundStyle.DEFAULT,
     onToggleLyrics: () -> Unit = {},
 ) {
     val context = LocalContext.current
@@ -336,6 +346,24 @@ fun AuraQueue(
         }
     }
 
+    // ── The queue's GROUND ────────────────────────────────────────────────────────────────────────
+    // "Fondo del reproductor" owns it, exactly as it owns the player sheet's: the queue IS part of the
+    // player surface, so the two must not disagree. [playerBackground] is the style the player resolved
+    // and hands down — it used to arrive here and be ignored, which is what the `@Suppress(
+    // "UNUSED_PARAMETER")` on that parameter was admitting. [rememberAuraGround] turns it into the same
+    // layered recipe the player draws, dimmed to the .45 the render specifies for Cola.
+    //
+    // `pureBlack` is deliberately NOT a term any more. It used to branch this surface to a flat black
+    // while the player kept its blue-black ground — which is exactly the reported bug: dragging the queue
+    // up went pure black, dragging it down brought `#060A12` back, in one gesture. AMOLED now moves
+    // [AuraPalette.Ground] itself (AuraPalette.kt), so this sheet, the player and every other new screen
+    // go black together.
+    val ground = rememberAuraGround(
+        mediaId = mediaMetadata?.id,
+        thumbnailUrl = mediaMetadata?.thumbnailUrl,
+        styleOverride = playerBackground,
+    )
+
     BottomSheet(
         state = state,
         modifier = modifier,
@@ -358,12 +386,6 @@ fun AuraQueue(
                 onToggleLyrics = onToggleLyrics,
                 showCommentButton = showCommentButton,
                 onComments = { showCommentSheet = true },
-                shuffleModeEnabled = shuffleModeEnabled,
-                onToggleShuffle = {
-                    playerConnection.player.shuffleModeEnabled = !playerConnection.player.shuffleModeEnabled
-                },
-                repeatMode = repeatMode,
-                onToggleRepeat = { playerConnection.player.toggleRepeatMode() },
                 onMore = openPlayerMenu,
                 isListenTogetherGuest = isListenTogetherGuest,
                 contentColor = textBackgroundColor,
@@ -528,572 +550,271 @@ fun AuraQueue(
             }
         }
 
-        // Pure black is a real user setting: honour it by dropping the ground AND the bloom, instead of
-        // painting black over a bloom that was computed for nothing.
-        val bloom = rememberAuraBloom(mediaMetadata?.id)
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .then(
-                    if (pureBlack) Modifier.background(Color.Black)
-                    // Render: the Cola screen dims its bloom to .45.
-                    else Modifier.auraScreenBackground(colors = bloom, intensity = 0.45f)
-                ),
-        ) {
+        // ── The queue's GROUND ────────────────────────────────────────────────────────────────
+        // Drawn INSIDE the sheet's content, not in its `background` slot: BottomSheet's background is
+        // a fixed full-screen layer, so a ground put there would fade in over the whole window — the
+        // player's transport included — while the queue was still sliding up. The content box is the
+        // one that carries the sheet's translation, so the ground travels with the sheet, exactly as
+        // the ground this replaces did.
+        Box(modifier = Modifier.fillMaxSize()) {
+            AuraGroundLayer(ground, intensity = 0.45f)
             Column(
-                modifier = Modifier
-                    // Swallow taps on the header so they never reach the sheet drag/collapse handler.
-                    .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { }
-                    .windowInsetsPadding(
-                        WindowInsets.systemBars.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
-                    ),
+                modifier = Modifier.fillMaxSize(),
             ) {
-                // ── Sheet header: "En cola" + aleatorio / repetir / bloquear / más ────────────────
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
+                Column(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = AuraSpacing.Gutter, end = 6.dp, top = 6.dp),
+                        // Swallow taps on the header so they never reach the sheet drag/collapse handler.
+                        .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { }
+                        .windowInsetsPadding(
+                            WindowInsets.systemBars.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
+                        ),
                 ) {
-                    Text(
-                        text = "En cola",
-                        style = AuraType.SheetTitle,
-                        color = AuraPalette.OnGround,
-                        maxLines = 1,
-                        overflow = AuraDefaultOverflow,
-                        modifier = Modifier.weight(1f),
-                    )
-                    AuraIconButton(
-                        icon = AuraIcons.Shuffle,
-                        contentDescription = stringResource(R.string.shuffle),
-                        onClick = { playerConnection.player.shuffleModeEnabled = !shuffleModeEnabled },
-                        enabled = !isListenTogetherGuest,
-                        size = 22.dp,
-                        tint = if (shuffleModeEnabled) AuraPalette.Teal else AuraPalette.OnGroundDisabled,
-                    )
-                    // 3-state, like the classic control. The render has no "repeat one" glyph, so that
-                    // third state borrows the app's own `repeat_one` drawable rather than being invisible.
-                    if (repeatMode == Player.REPEAT_MODE_ONE) {
-                        AuraPainterIconButton(
-                            painterId = R.drawable.repeat_one,
-                            contentDescription = stringResource(R.string.repeat),
-                            onClick = { playerConnection.player.toggleRepeatMode() },
-                            enabled = !isListenTogetherGuest,
-                            size = 22.dp,
-                            tint = AuraPalette.Teal,
-                        )
-                    } else {
-                        AuraIconButton(
-                            icon = AuraIcons.Repeat,
-                            contentDescription = stringResource(R.string.repeat),
-                            onClick = { playerConnection.player.toggleRepeatMode() },
-                            enabled = !isListenTogetherGuest,
-                            size = 22.dp,
-                            tint = if (repeatMode == Player.REPEAT_MODE_ALL) AuraPalette.Teal
-                            else AuraPalette.OnGroundDisabled,
-                        )
-                    }
-                    val lockDescription = if (locked) stringResource(R.string.unlock_queue)
-                    else stringResource(R.string.lock_queue)
-                    AuraPainterIconButton(
-                        painterId = if (locked) R.drawable.lock else R.drawable.lock_open,
-                        contentDescription = lockDescription,
-                        onClick = { locked = !locked },
-                        size = 20.dp,
-                        tint = if (locked) AuraPalette.Teal else AuraPalette.OnGroundMuted,
-                    )
-                    AuraIconButton(
-                        icon = AuraIcons.More,
-                        contentDescription = stringResource(R.string.more_options),
-                        onClick = openPlayerMenu,
-                        size = 22.dp,
-                        tint = AuraPalette.OnGround,
-                    )
-                }
-
-                // ── SONANDO ───────────────────────────────────────────────────────────────────────
-                Column(modifier = Modifier.padding(horizontal = AuraSpacing.Gutter, vertical = 6.dp)) {
-                    AuraSectionLabel("SONANDO")
-                    Spacer(Modifier.height(AuraSpacing.SectionGap))
-                    AuraRow(
-                        title = mediaMetadata?.title.orEmpty(),
-                        subtitle = mediaMetadata?.artists?.joinToString { it.name }.orEmpty(),
-                        highlighted = true,
-                        artwork = { AuraCover(url = mediaMetadata?.thumbnailUrl, seed = mediaMetadata?.id, size = 44.dp) },
-                        trailing = {
-                            val liked = currentSong?.song?.liked == true
-                            AuraPlayingBars(visible = isPlaying)
-                            AuraIconButton(
-                                icon = if (liked) AuraIcons.HeartFilled else AuraIcons.Heart,
-                                contentDescription = if (liked) stringResource(R.string.action_remove_like)
-                                else stringResource(R.string.action_like),
-                                onClick = playerConnection::toggleLike,
-                                size = 20.dp,
-                                tint = if (liked) AuraPalette.Teal else AuraPalette.OnGroundMuted,
-                            )
-                        },
-                    )
-                }
-
-                // ── Tabs: SIGUIENTE / LETRA / RELACIONADOS ────────────────────────────────────────
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState())
-                        .padding(horizontal = AuraSpacing.Gutter),
-                ) {
-                    val isTvOrCarTabs = iad1tya.echo.music.ui.utils.rememberIsTvOrCar()
-                    listOf(
-                        R.string.queue_tab_next,
-                        R.string.queue_tab_lyrics,
-                        R.string.queue_tab_related,
-                    ).forEachIndexed { index, titleRes ->
-                        AuraChip(
-                            text = stringResource(titleRes),
-                            selected = selectedTab == index,
-                            onClick = { selectedTab = index },
-                            modifier = Modifier.tvFocusable(isTvOrCarTabs, AuraShapes.Pill),
-                        )
-                    }
-                }
-
-                LaunchedEffect(selectedTab) {
-                    if (selectedTab != AURA_QUEUE_TAB_NEXT) onExitSelectionMode()
-                }
-
-                // ── Selection bar (SIGUIENTE only) ────────────────────────────────────────────────
-                if (selectedTab == AURA_QUEUE_TAB_NEXT) {
-                    AnimatedVisibility(
-                        visible = inSelectMode,
-                        enter = fadeIn() + expandVertically(),
-                        exit = fadeOut() + shrinkVertically(),
+                    // ── Sheet header: "En cola" + aleatorio / repetir / bloquear / más ────────────────
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = AuraSpacing.Gutter, end = 6.dp, top = 6.dp),
                     ) {
-                        val selectedSongs = remember(selection.toList(), mutableQueueWindows.toList()) {
-                            mutableQueueWindows.filter { it.mediaItem.mediaId in selection }
-                                .mapNotNull { it.mediaItem.metadata }
-                        }
-                        val selectedItems = remember(selection.toList(), mutableQueueWindows.toList()) {
-                            mutableQueueWindows.filter { it.mediaItem.mediaId in selection }
-                        }
-                        val count = selection.size
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(start = 6.dp, end = 6.dp, top = 4.dp),
-                        ) {
+                        Text(
+                            text = "En cola",
+                            style = AuraType.SheetTitle,
+                            color = AuraPalette.OnGround,
+                            maxLines = 1,
+                            overflow = AuraDefaultOverflow,
+                            modifier = Modifier.weight(1f),
+                        )
+                        AuraIconButton(
+                            icon = AuraIcons.Shuffle,
+                            contentDescription = stringResource(R.string.shuffle),
+                            onClick = { playerConnection.player.shuffleModeEnabled = !shuffleModeEnabled },
+                            enabled = !isListenTogetherGuest,
+                            size = 22.dp,
+                            tint = if (shuffleModeEnabled) AuraPalette.Teal else AuraPalette.OnGroundDisabled,
+                        )
+                        // 3-state, like the classic control. The render has no "repeat one" glyph, so that
+                        // third state borrows the app's own `repeat_one` drawable rather than being invisible.
+                        if (repeatMode == Player.REPEAT_MODE_ONE) {
                             AuraPainterIconButton(
-                                painterId = R.drawable.close,
-                                contentDescription = "Salir de la selección",
-                                onClick = onExitSelectionMode,
-                                size = 20.dp,
-                            )
-                            Text(
-                                text = pluralStringResource(R.plurals.n_selected, count, count),
-                                style = AuraType.RowTitle,
-                                color = AuraPalette.OnGround,
-                                maxLines = 1,
-                                overflow = AuraDefaultOverflow,
-                                modifier = Modifier.weight(1f),
-                            )
-                            Checkbox(
-                                checked = count == mutableQueueWindows.size && count > 0,
-                                onCheckedChange = {
-                                    if (count == mutableQueueWindows.size) {
-                                        selection.clear()
-                                    } else {
-                                        selection.clear()
-                                        mutableQueueWindows.forEach { selection.add(it.mediaItem.mediaId) }
-                                    }
-                                },
-                                colors = CheckboxDefaults.colors(
-                                    checkedColor = AuraPalette.Teal,
-                                    checkmarkColor = AuraPalette.OnAccent,
-                                    uncheckedColor = AuraPalette.OnGroundDisabled,
-                                ),
-                            )
-                            AuraIconButton(
-                                icon = AuraIcons.More,
-                                contentDescription = stringResource(R.string.more_options),
-                                enabled = count > 0,
-                                onClick = {
-                                    menuState.show {
-                                        SelectionMediaMetadataMenu(
-                                            songSelection = selectedSongs,
-                                            onDismiss = menuState::dismiss,
-                                            clearAction = onExitSelectionMode,
-                                            currentItems = selectedItems,
-                                        )
-                                    }
-                                },
+                                painterId = R.drawable.repeat_one,
+                                contentDescription = stringResource(R.string.repeat),
+                                onClick = { playerConnection.player.toggleRepeatMode() },
+                                enabled = !isListenTogetherGuest,
                                 size = 22.dp,
+                                tint = AuraPalette.Teal,
                             )
+                        } else {
+                            AuraIconButton(
+                                icon = AuraIcons.Repeat,
+                                contentDescription = stringResource(R.string.repeat),
+                                onClick = { playerConnection.player.toggleRepeatMode() },
+                                enabled = !isListenTogetherGuest,
+                                size = 22.dp,
+                                tint = if (repeatMode == Player.REPEAT_MODE_ALL) AuraPalette.Teal
+                                else AuraPalette.OnGroundDisabled,
+                            )
+                        }
+                        val lockDescription = if (locked) stringResource(R.string.unlock_queue)
+                        else stringResource(R.string.lock_queue)
+                        AuraPainterIconButton(
+                            painterId = if (locked) R.drawable.lock else R.drawable.lock_open,
+                            contentDescription = lockDescription,
+                            onClick = { locked = !locked },
+                            size = 20.dp,
+                            tint = if (locked) AuraPalette.Teal else AuraPalette.OnGroundMuted,
+                        )
+                        AuraIconButton(
+                            icon = AuraIcons.More,
+                            contentDescription = stringResource(R.string.more_options),
+                            onClick = openPlayerMenu,
+                            size = 22.dp,
+                            tint = AuraPalette.OnGround,
+                        )
+                    }
+
+                    // ── SONANDO ───────────────────────────────────────────────────────────────────────
+                    Column(modifier = Modifier.padding(horizontal = AuraSpacing.Gutter, vertical = 6.dp)) {
+                        AuraSectionLabel("SONANDO")
+                        Spacer(Modifier.height(AuraSpacing.SectionGap))
+                        AuraRow(
+                            title = mediaMetadata?.title.orEmpty(),
+                            subtitle = mediaMetadata?.artists?.joinToString { it.name }.orEmpty(),
+                            highlighted = true,
+                            artwork = { AuraCover(url = mediaMetadata?.thumbnailUrl, seed = mediaMetadata?.id, size = 44.dp) },
+                            trailing = {
+                                val liked = currentSong?.song?.liked == true
+                                AuraPlayingBars(visible = isPlaying)
+                                AuraIconButton(
+                                    icon = if (liked) AuraIcons.HeartFilled else AuraIcons.Heart,
+                                    contentDescription = if (liked) stringResource(R.string.action_remove_like)
+                                    else stringResource(R.string.action_like),
+                                    onClick = playerConnection::toggleLike,
+                                    size = 20.dp,
+                                    tint = if (liked) AuraPalette.Teal else AuraPalette.OnGroundMuted,
+                                )
+                            },
+                        )
+                    }
+
+                    // ── Tabs: SIGUIENTE / LETRA / RELACIONADOS ────────────────────────────────────────
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
+                            .padding(horizontal = AuraSpacing.Gutter),
+                    ) {
+                        val isTvOrCarTabs = iad1tya.echo.music.ui.utils.rememberIsTvOrCar()
+                        listOf(
+                            R.string.queue_tab_next,
+                            R.string.queue_tab_lyrics,
+                            R.string.queue_tab_related,
+                        ).forEachIndexed { index, titleRes ->
+                            AuraChip(
+                                text = stringResource(titleRes),
+                                selected = selectedTab == index,
+                                onClick = { selectedTab = index },
+                                modifier = Modifier.tvFocusable(isTvOrCarTabs, AuraShapes.Pill),
+                            )
+                        }
+                    }
+
+                    LaunchedEffect(selectedTab) {
+                        if (selectedTab != AURA_QUEUE_TAB_NEXT) onExitSelectionMode()
+                    }
+
+                    // ── Selection bar (SIGUIENTE only) ────────────────────────────────────────────────
+                    if (selectedTab == AURA_QUEUE_TAB_NEXT) {
+                        AnimatedVisibility(
+                            visible = inSelectMode,
+                            enter = fadeIn() + expandVertically(),
+                            exit = fadeOut() + shrinkVertically(),
+                        ) {
+                            val selectedSongs = remember(selection.toList(), mutableQueueWindows.toList()) {
+                                mutableQueueWindows.filter { it.mediaItem.mediaId in selection }
+                                    .mapNotNull { it.mediaItem.metadata }
+                            }
+                            val selectedItems = remember(selection.toList(), mutableQueueWindows.toList()) {
+                                mutableQueueWindows.filter { it.mediaItem.mediaId in selection }
+                            }
+                            val count = selection.size
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(start = 6.dp, end = 6.dp, top = 4.dp),
+                            ) {
+                                AuraPainterIconButton(
+                                    painterId = R.drawable.close,
+                                    contentDescription = "Salir de la selección",
+                                    onClick = onExitSelectionMode,
+                                    size = 20.dp,
+                                )
+                                Text(
+                                    text = pluralStringResource(R.plurals.n_selected, count, count),
+                                    style = AuraType.RowTitle,
+                                    color = AuraPalette.OnGround,
+                                    maxLines = 1,
+                                    overflow = AuraDefaultOverflow,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                Checkbox(
+                                    checked = count == mutableQueueWindows.size && count > 0,
+                                    onCheckedChange = {
+                                        if (count == mutableQueueWindows.size) {
+                                            selection.clear()
+                                        } else {
+                                            selection.clear()
+                                            mutableQueueWindows.forEach { selection.add(it.mediaItem.mediaId) }
+                                        }
+                                    },
+                                    colors = CheckboxDefaults.colors(
+                                        checkedColor = AuraPalette.Teal,
+                                        checkmarkColor = AuraPalette.OnAccent,
+                                        uncheckedColor = AuraPalette.OnGroundDisabled,
+                                    ),
+                                )
+                                AuraIconButton(
+                                    icon = AuraIcons.More,
+                                    contentDescription = stringResource(R.string.more_options),
+                                    enabled = count > 0,
+                                    onClick = {
+                                        menuState.show {
+                                            SelectionMediaMetadataMenu(
+                                                songSelection = selectedSongs,
+                                                onDismiss = menuState::dismiss,
+                                                clearAction = onExitSelectionMode,
+                                                currentItems = selectedItems,
+                                            )
+                                        }
+                                    },
+                                    size = 22.dp,
+                                )
+                            }
                         }
                     }
                 }
-            }
 
-            Box(modifier = Modifier.weight(1f)) {
-                when (selectedTab) {
-                    // LETRA — the same InlineLyricsView the player embeds, with the same
-                    // positionProvider contract: null falls through to the component's LIVE position,
-                    // never the 500 ms ticker; a value is only supplied while casting.
-                    AURA_QUEUE_TAB_LYRICS -> {
-                        val castPosition by castHandler?.castPosition?.collectAsState()
-                            ?: remember { mutableLongStateOf(0L) }
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .nestedScroll(state.preUpPostDownNestedScrollConnection)
-                                .windowInsetsPadding(
-                                    WindowInsets.systemBars
-                                        .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom),
-                                ),
-                        ) {
-                            InlineLyricsView(
-                                mediaMetadata = mediaMetadata,
-                                showLyrics = true,
-                                positionProvider = { if (isCasting) castPosition else null },
-                            )
-                        }
-                    }
-
-                    // RELACIONADOS — the pool autoplay already fetched (service flow, zero new network).
-                    AURA_QUEUE_TAB_RELATED -> {
-                        if (automix.isEmpty()) {
+                Box(modifier = Modifier.weight(1f)) {
+                    when (selectedTab) {
+                        // LETRA — the same InlineLyricsView the player embeds, with the same
+                        // positionProvider contract: null falls through to the component's LIVE position,
+                        // never the 500 ms ticker; a value is only supplied while casting.
+                        AURA_QUEUE_TAB_LYRICS -> {
+                            val castPosition by castHandler?.castPosition?.collectAsState()
+                                ?: remember { mutableLongStateOf(0L) }
                             Box(
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .nestedScroll(state.preUpPostDownNestedScrollConnection),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text(
-                                    text = stringResource(R.string.queue_related_empty),
-                                    style = AuraType.RowSubtitle,
-                                    color = AuraPalette.OnGroundMuted,
-                                    textAlign = TextAlign.Center,
-                                    modifier = Modifier.padding(horizontal = 32.dp),
-                                )
-                            }
-                        } else {
-                            LazyColumn(
-                                contentPadding = WindowInsets.systemBars
-                                    .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)
-                                    .add(WindowInsets(top = 8.dp, bottom = ListItemHeight + 8.dp))
-                                    .asPaddingValues(),
-                                verticalArrangement = Arrangement.spacedBy(AuraSpacing.RowGap),
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(horizontal = AuraSpacing.Gutter)
                                     .nestedScroll(state.preUpPostDownNestedScrollConnection)
-                                    .tvFocusRestorer(),
+                                    .windowInsetsPadding(
+                                        WindowInsets.systemBars
+                                            .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom),
+                                    ),
                             ) {
-                                itemsIndexed(items = automix, key = { _, it -> it.mediaId }) { index, item ->
-                                    AuraAutomixRow(
-                                        item = item,
-                                        index = index,
-                                        isListenTogetherGuest = isListenTogetherGuest,
-                                        navController = navController,
-                                        playerBottomSheetState = playerBottomSheetState,
-                                    )
-                                }
+                                InlineLyricsView(
+                                    mediaMetadata = mediaMetadata,
+                                    showLyrics = true,
+                                    positionProvider = { if (isCasting) castPosition else null },
+                                )
                             }
                         }
-                    }
 
-                    // SIGUIENTE — the queue itself, grouped into "de tu lista" and "radio infinita".
-                    else -> Box(modifier = Modifier.fillMaxSize()) {
-                        LazyColumn(
-                            state = lazyListState,
-                            contentPadding = WindowInsets.systemBars
-                                .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)
-                                .add(WindowInsets(top = 4.dp, bottom = ListItemHeight + 8.dp))
-                                .asPaddingValues(),
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(horizontal = AuraSpacing.Gutter)
-                                .nestedScroll(state.preUpPostDownNestedScrollConnection)
-                                .tvFocusRestorer(),
-                        ) {
-                            // Leading items — keep AURA_QUEUE_LEADING_ITEMS in sync with this count.
-                            item(key = "aura_queue_select_spacer") {
-                                Spacer(
-                                    Modifier
-                                        .animateContentSize()
-                                        .height(if (inSelectMode) 8.dp else 0.dp),
-                                )
-                            }
-                            item(key = "aura_queue_list_header") {
-                                AuraQueueListHeader(
-                                    songCount = queueWindows.size,
-                                    totalDurationMs = queueLength * 1000L,
-                                    radioEnabled = !isListenTogetherGuest,
-                                    onStartRadio = {
-                                        Toast.makeText(
-                                            context,
-                                            context.getString(R.string.starting_radio),
-                                            Toast.LENGTH_SHORT,
-                                        ).show()
-                                        playerConnection.startRadioSeamlessly()
-                                    },
-                                )
-                            }
-
-                            itemsIndexed(
-                                items = entries,
-                                key = { _, entry ->
-                                    when (entry) {
-                                        is AuraQueueEntry.Label -> "aura_queue_label_${entry.id}"
-                                        is AuraQueueEntry.Song -> auraSongKey(entry.window)
-                                    }
-                                },
-                            ) { _, entry ->
-                                when (entry) {
-                                    is AuraQueueEntry.Label -> Column {
-                                        Spacer(Modifier.height(AuraSpacing.SectionTop))
-                                        AuraSectionLabel(
-                                            text = entry.text,
-                                            color = if (entry.radio) AuraPalette.Violet.copy(alpha = 0.85f)
-                                            else AuraPalette.OnGroundFaint,
-                                        )
-                                        Spacer(Modifier.height(AuraSpacing.SectionGap))
-                                    }
-
-                                    is AuraQueueEntry.Song -> {
-                                        val window = entry.window
-                                        val index = entry.queueIndex
-                                        ReorderableItem(state = reorderableState, key = auraSongKey(window)) {
-                                            val currentItem by rememberUpdatedState(window)
-                                            val isActive = window.uid == currentPlayingUid
-                                            val dismissBoxState = rememberSwipeToDismissBoxState(
-                                                positionalThreshold = { totalDistance -> totalDistance },
-                                            )
-
-                                            // Swipe-to-remove + Undo — the exact classic effect, so the
-                                            // restore lands the song back at its original position.
-                                            var processedDismiss by remember { mutableStateOf(false) }
-                                            LaunchedEffect(dismissBoxState.currentValue) {
-                                                val dv = dismissBoxState.currentValue
-                                                if (!processedDismiss && !isListenTogetherGuest && (
-                                                        dv == SwipeToDismissBoxValue.StartToEnd ||
-                                                            dv == SwipeToDismissBoxValue.EndToStart
-                                                        )
-                                                ) {
-                                                    processedDismiss = true
-                                                    playerConnection.player.removeMediaItem(currentItem.firstPeriodIndex)
-                                                    dismissJob?.cancel()
-                                                    dismissJob = coroutineScope.launch {
-                                                        val snackbarResult = snackbarHostState.showSnackbar(
-                                                            message = context.getString(
-                                                                R.string.removed_song_from_playlist,
-                                                                currentItem.mediaItem.metadata?.title,
-                                                            ),
-                                                            actionLabel = context.getString(R.string.undo),
-                                                            duration = SnackbarDuration.Short,
-                                                        )
-                                                        if (snackbarResult == SnackbarResult.ActionPerformed) {
-                                                            playerConnection.player.addMediaItem(currentItem.mediaItem)
-                                                            playerConnection.player.moveMediaItem(
-                                                                mutableQueueWindows.size,
-                                                                currentItem.firstPeriodIndex,
-                                                            )
-                                                        }
-                                                    }
-                                                }
-                                                if (dv == SwipeToDismissBoxValue.Settled) processedDismiss = false
-                                            }
-
-                                            val onCheckedChange: (Boolean) -> Unit = {
-                                                if (it) selection.add(window.mediaItem.mediaId)
-                                                else selection.remove(window.mediaItem.mediaId)
-                                            }
-
-                                            val dragHandle: (@Composable () -> Unit)? =
-                                                if (!locked && !isListenTogetherGuest && !inSelectMode) {
-                                                    {
-                                                        Box(
-                                                            contentAlignment = Alignment.Center,
-                                                            modifier = Modifier
-                                                                .sizeIn(
-                                                                    minWidth = AuraSpacing.MinTouchTarget,
-                                                                    minHeight = AuraSpacing.MinTouchTarget,
-                                                                )
-                                                                .clip(CircleShape)
-                                                                .draggableHandle(),
-                                                        ) {
-                                                            AuraIconGlyph(
-                                                                icon = AuraIcons.DragHandle,
-                                                                contentDescription = "Reordenar",
-                                                                size = 21.dp,
-                                                                tint = AuraPalette.OnGroundDisabled,
-                                                            )
-                                                        }
-                                                    }
-                                                } else null
-
-                                            val row: @Composable () -> Unit = {
-                                                AuraRow(
-                                                    title = window.mediaItem.metadata!!.title,
-                                                    subtitle = window.mediaItem.metadata!!.artists
-                                                        .joinToString { it.name },
-                                                    highlighted = isActive,
-                                                    dimmed = entry.radio && !isActive,
-                                                    leading = dragHandle,
-                                                    artwork = {
-                                                        AuraCover(
-                                                            url = window.mediaItem.metadata!!.thumbnailUrl,
-                                                            seed = window.mediaItem.mediaId,
-                                                            size = 40.dp,
-                                                        )
-                                                    },
-                                                    trailing = {
-                                                        if (inSelectMode) {
-                                                            Checkbox(
-                                                                checked = window.mediaItem.mediaId in selection,
-                                                                onCheckedChange = onCheckedChange,
-                                                                colors = CheckboxDefaults.colors(
-                                                                    checkedColor = AuraPalette.Teal,
-                                                                    checkmarkColor = AuraPalette.OnAccent,
-                                                                    uncheckedColor = AuraPalette.OnGroundDisabled,
-                                                                ),
-                                                            )
-                                                        } else {
-                                                            if (isActive) AuraPlayingBars(visible = isPlaying)
-                                                            if (!isListenTogetherGuest) {
-                                                                AuraIconButton(
-                                                                    icon = AuraIcons.More,
-                                                                    contentDescription = stringResource(R.string.more_options),
-                                                                    size = 20.dp,
-                                                                    tint = AuraPalette.OnGroundMuted,
-                                                                    onClick = {
-                                                                        menuState.show {
-                                                                            QueueMenu(
-                                                                                mediaMetadata = window.mediaItem.metadata!!,
-                                                                                navController = navController,
-                                                                                playerBottomSheetState = playerBottomSheetState,
-                                                                                onShowDetailsDialog = {
-                                                                                    window.mediaItem.mediaId.let {
-                                                                                        bottomSheetPageState.show {
-                                                                                            ShowMediaInfo(it)
-                                                                                        }
-                                                                                    }
-                                                                                },
-                                                                                onDismiss = menuState::dismiss,
-                                                                            )
-                                                                        }
-                                                                    },
-                                                                )
-                                                            }
-                                                        }
-                                                    },
-                                                    onClick = {
-                                                        if (inSelectMode) {
-                                                            onCheckedChange(window.mediaItem.mediaId !in selection)
-                                                        } else if (!isListenTogetherGuest) {
-                                                            if (index == currentWindowIndex) {
-                                                                if (isCasting) {
-                                                                    if (castIsPlaying) castHandler?.pause()
-                                                                    else castHandler?.play()
-                                                                } else {
-                                                                    playerConnection.togglePlayPause()
-                                                                }
-                                                            } else {
-                                                                if (isCasting) {
-                                                                    val navigated = castHandler
-                                                                        ?.navigateToMediaIfInQueue(window.mediaItem.mediaId)
-                                                                        ?: false
-                                                                    if (!navigated) {
-                                                                        playerConnection.player
-                                                                            .seekToDefaultPosition(window.firstPeriodIndex)
-                                                                    }
-                                                                } else {
-                                                                    playerConnection.player
-                                                                        .seekToDefaultPosition(window.firstPeriodIndex)
-                                                                    playerConnection.player.playWhenReady = true
-                                                                }
-                                                            }
-                                                        }
-                                                    },
-                                                    onLongClick = {
-                                                        if (!inSelectMode) {
-                                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                            inSelectMode = true
-                                                            onCheckedChange(true)
-                                                        }
-                                                    },
-                                                )
-                                            }
-
-                                            if (locked) {
-                                                row()
-                                            } else {
-                                                SwipeToDismissBox(
-                                                    state = dismissBoxState,
-                                                    backgroundContent = {},
-                                                ) { row() }
-                                            }
-                                        }
-                                    }
+                        // RELACIONADOS — the pool autoplay already fetched (service flow, zero new network).
+                        AURA_QUEUE_TAB_RELATED -> {
+                            if (automix.isEmpty()) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .nestedScroll(state.preUpPostDownNestedScrollConnection),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Text(
+                                        text = stringResource(R.string.queue_related_empty),
+                                        style = AuraType.RowSubtitle,
+                                        color = AuraPalette.OnGroundMuted,
+                                        textAlign = TextAlign.Center,
+                                        modifier = Modifier.padding(horizontal = 32.dp),
+                                    )
                                 }
-                            }
-
-                            // ── Autoplay footer: header + toggle + steering chips + preview rows ──
-                            if (!isListenTogetherGuest || automix.isNotEmpty()) {
-                                item(key = "aura_autoplay_header") {
-                                    Column {
-                                        Spacer(Modifier.height(AuraSpacing.SectionTop))
-                                        AuraDivider()
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(top = 6.dp),
-                                        ) {
-                                            Text(
-                                                text = stringResource(R.string.autoplay_title),
-                                                style = AuraType.RowTitle,
-                                                color = AuraPalette.OnGround,
-                                                maxLines = 1,
-                                                overflow = AuraDefaultOverflow,
-                                                modifier = Modifier.weight(1f),
-                                            )
-                                            if (!isListenTogetherGuest) {
-                                                // The SAME preference as Ajustes → "Cargar más canciones
-                                                // automáticamente" (AutoLoadMoreKey); both stay in sync.
-                                                AuraSwitch(
-                                                    checked = autoLoadMore,
-                                                    onCheckedChange = onAutoLoadMoreChange,
-                                                    contentDescription = stringResource(R.string.autoplay_title),
-                                                    modifier = Modifier.tvFocusable(
-                                                        iad1tya.echo.music.ui.utils.rememberIsTvOrCar(),
-                                                        CircleShape,
-                                                    ),
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-
-                                if (!isListenTogetherGuest && autoLoadMore && autoplayChips.isNotEmpty()) {
-                                    item(key = "aura_autoplay_chips") {
-                                        ChipsRow(
-                                            chips = autoplayChips.map { it to it.label },
-                                            currentValue = autoplaySelectedChip,
-                                            onValueUpdate = { chip ->
-                                                if (chip != null) playerConnection.selectAutoplayChip(chip)
-                                            },
-                                        )
-                                    }
-                                }
-
-                                itemsIndexed(items = automix, key = { _, it -> "aura_automix_${it.mediaId}" }) { index, item ->
-                                    Column {
-                                        Spacer(Modifier.height(AuraSpacing.RowGap))
+                            } else {
+                                LazyColumn(
+                                    contentPadding = WindowInsets.systemBars
+                                        .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)
+                                        .add(WindowInsets(top = 8.dp, bottom = ListItemHeight + 8.dp))
+                                        .asPaddingValues(),
+                                    verticalArrangement = Arrangement.spacedBy(AuraSpacing.RowGap),
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(horizontal = AuraSpacing.Gutter)
+                                        .nestedScroll(state.preUpPostDownNestedScrollConnection)
+                                        .tvFocusRestorer(),
+                                ) {
+                                    itemsIndexed(items = automix, key = { _, it -> it.mediaId }) { _, item ->
                                         AuraAutomixRow(
                                             item = item,
-                                            index = index,
                                             isListenTogetherGuest = isListenTogetherGuest,
+                                            isCasting = isCasting,
                                             navController = navController,
                                             playerBottomSheetState = playerBottomSheetState,
                                         )
@@ -1101,45 +822,335 @@ fun AuraQueue(
                                 }
                             }
                         }
+
+                        // SIGUIENTE — the queue itself, grouped into "de tu lista" and "radio infinita".
+                        else -> Box(modifier = Modifier.fillMaxSize()) {
+                            LazyColumn(
+                                state = lazyListState,
+                                contentPadding = WindowInsets.systemBars
+                                    .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)
+                                    .add(WindowInsets(top = 4.dp, bottom = ListItemHeight + 8.dp))
+                                    .asPaddingValues(),
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(horizontal = AuraSpacing.Gutter)
+                                    .nestedScroll(state.preUpPostDownNestedScrollConnection)
+                                    .tvFocusRestorer(),
+                            ) {
+                                // Leading items — keep AURA_QUEUE_LEADING_ITEMS in sync with this count.
+                                item(key = "aura_queue_select_spacer") {
+                                    Spacer(
+                                        Modifier
+                                            .animateContentSize()
+                                            .height(if (inSelectMode) 8.dp else 0.dp),
+                                    )
+                                }
+                                item(key = "aura_queue_list_header") {
+                                    AuraQueueListHeader(
+                                        songCount = queueWindows.size,
+                                        totalDurationMs = queueLength * 1000L,
+                                        radioEnabled = !isListenTogetherGuest,
+                                        onStartRadio = {
+                                            Toast.makeText(
+                                                context,
+                                                context.getString(R.string.starting_radio),
+                                                Toast.LENGTH_SHORT,
+                                            ).show()
+                                            playerConnection.startRadioSeamlessly()
+                                        },
+                                    )
+                                }
+
+                                itemsIndexed(
+                                    items = entries,
+                                    key = { _, entry ->
+                                        when (entry) {
+                                            is AuraQueueEntry.Label -> "aura_queue_label_${entry.id}"
+                                            is AuraQueueEntry.Song -> auraSongKey(entry.window)
+                                        }
+                                    },
+                                ) { _, entry ->
+                                    when (entry) {
+                                        is AuraQueueEntry.Label -> Column {
+                                            Spacer(Modifier.height(AuraSpacing.SectionTop))
+                                            AuraSectionLabel(
+                                                text = entry.text,
+                                                color = if (entry.radio) AuraPalette.Violet.copy(alpha = 0.85f)
+                                                else AuraPalette.OnGroundFaint,
+                                            )
+                                            Spacer(Modifier.height(AuraSpacing.SectionGap))
+                                        }
+
+                                        is AuraQueueEntry.Song -> {
+                                            val window = entry.window
+                                            val index = entry.queueIndex
+                                            ReorderableItem(state = reorderableState, key = auraSongKey(window)) {
+                                                val currentItem by rememberUpdatedState(window)
+                                                val isActive = window.uid == currentPlayingUid
+                                                val dismissBoxState = rememberSwipeToDismissBoxState(
+                                                    positionalThreshold = { totalDistance -> totalDistance },
+                                                )
+
+                                                // Swipe-to-remove + Undo — the exact classic effect, so the
+                                                // restore lands the song back at its original position.
+                                                var processedDismiss by remember { mutableStateOf(false) }
+                                                LaunchedEffect(dismissBoxState.currentValue) {
+                                                    val dv = dismissBoxState.currentValue
+                                                    if (!processedDismiss && !isListenTogetherGuest && (
+                                                            dv == SwipeToDismissBoxValue.StartToEnd ||
+                                                                dv == SwipeToDismissBoxValue.EndToStart
+                                                            )
+                                                    ) {
+                                                        processedDismiss = true
+                                                        playerConnection.player.removeMediaItem(currentItem.firstPeriodIndex)
+                                                        dismissJob?.cancel()
+                                                        dismissJob = coroutineScope.launch {
+                                                            val snackbarResult = snackbarHostState.showSnackbar(
+                                                                message = context.getString(
+                                                                    R.string.removed_song_from_playlist,
+                                                                    currentItem.mediaItem.metadata?.title,
+                                                                ),
+                                                                actionLabel = context.getString(R.string.undo),
+                                                                duration = SnackbarDuration.Short,
+                                                            )
+                                                            if (snackbarResult == SnackbarResult.ActionPerformed) {
+                                                                playerConnection.player.addMediaItem(currentItem.mediaItem)
+                                                                playerConnection.player.moveMediaItem(
+                                                                    mutableQueueWindows.size,
+                                                                    currentItem.firstPeriodIndex,
+                                                                )
+                                                            }
+                                                        }
+                                                    }
+                                                    if (dv == SwipeToDismissBoxValue.Settled) processedDismiss = false
+                                                }
+
+                                                val onCheckedChange: (Boolean) -> Unit = {
+                                                    if (it) selection.add(window.mediaItem.mediaId)
+                                                    else selection.remove(window.mediaItem.mediaId)
+                                                }
+
+                                                val dragHandle: (@Composable () -> Unit)? =
+                                                    if (!locked && !isListenTogetherGuest && !inSelectMode) {
+                                                        {
+                                                            Box(
+                                                                contentAlignment = Alignment.Center,
+                                                                modifier = Modifier
+                                                                    .sizeIn(
+                                                                        minWidth = AuraSpacing.MinTouchTarget,
+                                                                        minHeight = AuraSpacing.MinTouchTarget,
+                                                                    )
+                                                                    .clip(CircleShape)
+                                                                    .draggableHandle(),
+                                                            ) {
+                                                                AuraIconGlyph(
+                                                                    icon = AuraIcons.DragHandle,
+                                                                    contentDescription = "Reordenar",
+                                                                    size = 21.dp,
+                                                                    tint = AuraPalette.OnGroundDisabled,
+                                                                )
+                                                            }
+                                                        }
+                                                    } else null
+
+                                                val row: @Composable () -> Unit = {
+                                                    AuraRow(
+                                                        title = window.mediaItem.metadata!!.title,
+                                                        subtitle = window.mediaItem.metadata!!.artists
+                                                            .joinToString { it.name },
+                                                        highlighted = isActive,
+                                                        dimmed = entry.radio && !isActive,
+                                                        leading = dragHandle,
+                                                        artwork = {
+                                                            AuraCover(
+                                                                url = window.mediaItem.metadata!!.thumbnailUrl,
+                                                                seed = window.mediaItem.mediaId,
+                                                                size = 40.dp,
+                                                            )
+                                                        },
+                                                        trailing = {
+                                                            if (inSelectMode) {
+                                                                Checkbox(
+                                                                    checked = window.mediaItem.mediaId in selection,
+                                                                    onCheckedChange = onCheckedChange,
+                                                                    colors = CheckboxDefaults.colors(
+                                                                        checkedColor = AuraPalette.Teal,
+                                                                        checkmarkColor = AuraPalette.OnAccent,
+                                                                        uncheckedColor = AuraPalette.OnGroundDisabled,
+                                                                    ),
+                                                                )
+                                                            } else {
+                                                                if (isActive) AuraPlayingBars(visible = isPlaying)
+                                                                if (!isListenTogetherGuest) {
+                                                                    AuraIconButton(
+                                                                        icon = AuraIcons.More,
+                                                                        contentDescription = stringResource(R.string.more_options),
+                                                                        size = 20.dp,
+                                                                        tint = AuraPalette.OnGroundMuted,
+                                                                        onClick = {
+                                                                            menuState.show {
+                                                                                QueueMenu(
+                                                                                    mediaMetadata = window.mediaItem.metadata!!,
+                                                                                    navController = navController,
+                                                                                    playerBottomSheetState = playerBottomSheetState,
+                                                                                    onShowDetailsDialog = {
+                                                                                        window.mediaItem.mediaId.let {
+                                                                                            bottomSheetPageState.show {
+                                                                                                ShowMediaInfo(it)
+                                                                                            }
+                                                                                        }
+                                                                                    },
+                                                                                    onDismiss = menuState::dismiss,
+                                                                                )
+                                                                            }
+                                                                        },
+                                                                    )
+                                                                }
+                                                            }
+                                                        },
+                                                        onClick = {
+                                                            if (inSelectMode) {
+                                                                onCheckedChange(window.mediaItem.mediaId !in selection)
+                                                            } else if (!isListenTogetherGuest) {
+                                                                // ONE implementation, shared with the wide
+                                                                // player's live queue column — see
+                                                                // [auraJumpToQueueWindow].
+                                                                auraJumpToQueueWindow(
+                                                                    playerConnection = playerConnection,
+                                                                    castHandler = castHandler,
+                                                                    isCasting = isCasting,
+                                                                    castIsPlaying = castIsPlaying,
+                                                                    isCurrent = index == currentWindowIndex,
+                                                                    window = window,
+                                                                )
+                                                            }
+                                                        },
+                                                        onLongClick = {
+                                                            if (!inSelectMode) {
+                                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                                inSelectMode = true
+                                                                onCheckedChange(true)
+                                                            }
+                                                        },
+                                                    )
+                                                }
+
+                                                if (locked) {
+                                                    row()
+                                                } else {
+                                                    SwipeToDismissBox(
+                                                        state = dismissBoxState,
+                                                        backgroundContent = {},
+                                                    ) { row() }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // ── Autoplay footer: header + toggle + steering chips + preview rows ──
+                                if (!isListenTogetherGuest || automix.isNotEmpty()) {
+                                    item(key = "aura_autoplay_header") {
+                                        Column {
+                                            Spacer(Modifier.height(AuraSpacing.SectionTop))
+                                            AuraDivider()
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(top = 6.dp),
+                                            ) {
+                                                Text(
+                                                    text = stringResource(R.string.autoplay_title),
+                                                    style = AuraType.RowTitle,
+                                                    color = AuraPalette.OnGround,
+                                                    maxLines = 1,
+                                                    overflow = AuraDefaultOverflow,
+                                                    modifier = Modifier.weight(1f),
+                                                )
+                                                if (!isListenTogetherGuest) {
+                                                    // The SAME preference as Ajustes → "Cargar más canciones
+                                                    // automáticamente" (AutoLoadMoreKey); both stay in sync.
+                                                    AuraSwitch(
+                                                        checked = autoLoadMore,
+                                                        onCheckedChange = onAutoLoadMoreChange,
+                                                        contentDescription = stringResource(R.string.autoplay_title),
+                                                        modifier = Modifier.tvFocusable(
+                                                            iad1tya.echo.music.ui.utils.rememberIsTvOrCar(),
+                                                            CircleShape,
+                                                        ),
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    if (!isListenTogetherGuest && autoLoadMore && autoplayChips.isNotEmpty()) {
+                                        item(key = "aura_autoplay_chips") {
+                                            ChipsRow(
+                                                chips = autoplayChips.map { it to it.label },
+                                                currentValue = autoplaySelectedChip,
+                                                onValueUpdate = { chip ->
+                                                    if (chip != null) playerConnection.selectAutoplayChip(chip)
+                                                },
+                                            )
+                                        }
+                                    }
+
+                                    itemsIndexed(items = automix, key = { _, it -> "aura_automix_${it.mediaId}" }) { _, item ->
+                                        Column {
+                                            Spacer(Modifier.height(AuraSpacing.RowGap))
+                                            AuraAutomixRow(
+                                                item = item,
+                                                isListenTogetherGuest = isListenTogetherGuest,
+                                                isCasting = isCasting,
+                                                navController = navController,
+                                                playerBottomSheetState = playerBottomSheetState,
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
+
+                    SnackbarHost(
+                        hostState = snackbarHostState,
+                        modifier = Modifier
+                            .padding(
+                                bottom = ListItemHeight +
+                                    WindowInsets.systemBars.asPaddingValues().calculateBottomPadding(),
+                            )
+                            .align(Alignment.BottomCenter),
+                    )
                 }
 
-                SnackbarHost(
-                    hostState = snackbarHostState,
-                    modifier = Modifier
-                        .padding(
-                            bottom = ListItemHeight +
-                                WindowInsets.systemBars.asPaddingValues().calculateBottomPadding(),
+                // ── Footer: "DESLIZA PARA QUITAR" + the lyrics toggle, exactly as the render ──────────
+                Column {
+                    AuraDivider()
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .windowInsetsPadding(
+                                WindowInsets.systemBars
+                                    .only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal),
+                            )
+                            .padding(start = AuraSpacing.Gutter, end = 6.dp),
+                    ) {
+                        AuraTechnicalText(
+                            text = if (locked) "COLA BLOQUEADA" else "DESLIZA PARA QUITAR",
+                            color = AuraPalette.OnGroundGhost,
+                            modifier = Modifier.weight(1f),
                         )
-                        .align(Alignment.BottomCenter),
-                )
-            }
-
-            // ── Footer: "DESLIZA PARA QUITAR" + the lyrics toggle, exactly as the render ──────────
-            Column {
-                AuraDivider()
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .windowInsetsPadding(
-                            WindowInsets.systemBars
-                                .only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal),
+                        AuraIconButton(
+                            icon = AuraIcons.Lyrics,
+                            contentDescription = stringResource(R.string.queue_tab_lyrics),
+                            onClick = onToggleLyrics,
+                            size = 20.dp,
+                            tint = if (showInlineLyrics) AuraPalette.Teal else AuraPalette.OnGroundMuted,
                         )
-                        .padding(start = AuraSpacing.Gutter, end = 6.dp),
-                ) {
-                    AuraTechnicalText(
-                        text = if (locked) "COLA BLOQUEADA" else "DESLIZA PARA QUITAR",
-                        color = AuraPalette.OnGroundGhost,
-                        modifier = Modifier.weight(1f),
-                    )
-                    AuraIconButton(
-                        icon = AuraIcons.Lyrics,
-                        contentDescription = stringResource(R.string.queue_tab_lyrics),
-                        onClick = onToggleLyrics,
-                        size = 20.dp,
-                        tint = if (showInlineLyrics) AuraPalette.Teal else AuraPalette.OnGroundMuted,
-                    )
+                    }
                 }
             }
         }
@@ -1177,10 +1188,6 @@ private fun AuraQueueBar(
     onToggleLyrics: () -> Unit,
     showCommentButton: Boolean,
     onComments: () -> Unit,
-    shuffleModeEnabled: Boolean,
-    onToggleShuffle: () -> Unit,
-    repeatMode: Int,
-    onToggleRepeat: () -> Unit,
     onMore: () -> Unit,
     isListenTogetherGuest: Boolean,
     contentColor: Color,
@@ -1269,36 +1276,12 @@ private fun AuraQueueBar(
             }
         }
 
-        AuraBarButton(
-            contentDescription = stringResource(R.string.shuffle),
-            active = shuffleModeEnabled,
-            enabled = !isListenTogetherGuest,
-            onClick = onToggleShuffle,
-            contentColor = contentColor,
-            activeContainerColor = activeContainerColor,
-            activeContentColor = activeContentColor,
-        ) { tint -> AuraIconGlyph(AuraIcons.Shuffle, null, size = 21.dp, tint = tint) }
-
-        AuraBarButton(
-            contentDescription = stringResource(R.string.repeat),
-            active = repeatMode != Player.REPEAT_MODE_OFF,
-            enabled = !isListenTogetherGuest,
-            onClick = onToggleRepeat,
-            contentColor = contentColor,
-            activeContainerColor = activeContainerColor,
-            activeContentColor = activeContentColor,
-        ) { tint ->
-            if (repeatMode == Player.REPEAT_MODE_ONE) {
-                Icon(
-                    painter = painterResource(R.drawable.repeat_one),
-                    contentDescription = null,
-                    tint = tint,
-                    modifier = Modifier.size(21.dp),
-                )
-            } else {
-                AuraIconGlyph(AuraIcons.Repeat, null, size = 21.dp, tint = tint)
-            }
-        }
+        // ALEATORIO / REPETIR DELIBERATELY ABSENT. This bar is the COLLAPSED content of the queue sheet,
+        // i.e. it is on screen at the same time as the player's own transport row, which owns both controls
+        // (AuraPlayer.kt: shuffle left of «anterior», repeat right of «siguiente», including the "1" marker
+        // for «repetir una»). Drawing them here too put two identical toggles for the same two player flags
+        // ~60 dp apart — "no quiero botones repetidos". When the sheet is EXPANDED the transport is covered,
+        // and the expanded header above the list carries shuffle/repeat/lock/more for exactly that reason.
 
         Spacer(Modifier.weight(1f))
 
@@ -1413,13 +1396,34 @@ private fun AuraQueueListHeader(
     }
 }
 
-/** A related/automix row: play-next and add-to-queue (service pool ops, zero network) + long-press menu. */
+/**
+ * A related/automix row: play-next and add-to-queue (service pool ops, zero network) + long-press menu.
+ *
+ * **Tapping the row PLAYS the song.** It used to pass a literal empty lambda while [AuraRow] still attached
+ * `combinedClickable` (it does whenever `onLongClick` is non-null), so the row rippled, felt tappable and
+ * did nothing — the classic list has the same dead tap (`Queue.kt:1641`), and it is a placebo either way.
+ *
+ * It cannot be a `seekToDefaultPosition`: an automix item is NOT in the player timeline at all — it lives in
+ * `MusicService.automixItems`, a pool the service tops up (MusicService.kt:748) and only drains through
+ * [iad1tya.echo.music.playback.MusicService.playNextAutomix] / `addToQueueAutomix`. So the tap does what the
+ * "reproducir a continuación" button next to it does — remove from the pool, insert at
+ * `currentMediaItemIndex + 1`, shuffle-order aware — and then steps onto it. `seekToNext()` is what makes
+ * that land on the tapped song under shuffle too, because `playNext` rewrote the shuffle order so the
+ * inserted block IS next.
+ *
+ * Both pool operations take a POSITION and `removeAt` it. This row deliberately does NOT hold on to the
+ * position it was composed with: the pool is a live `StateFlow` that something else can drain between
+ * composition and the tap — both players run an effect that consumes `automix[0]` as soon as the queue runs
+ * out of next song (AuraPlayer.kt, `Player.kt:550`) — so a captured index can point at a different song, or
+ * past the end of a shrunken list, which `removeAt` answers with an exception. The position is resolved by
+ * identity at CLICK time instead, and a row whose song has already left the pool does nothing.
+ */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun AuraAutomixRow(
     item: MediaItem,
-    index: Int,
     isListenTogetherGuest: Boolean,
+    isCasting: Boolean,
     navController: NavController,
     playerBottomSheetState: BottomSheetState,
     modifier: Modifier = Modifier,
@@ -1428,6 +1432,10 @@ private fun AuraAutomixRow(
     val menuState = LocalMenuState.current
     val bottomSheetPageState = LocalBottomSheetPageState.current
     val metadata = item.metadata ?: return
+
+    // Not a composable read: it is only ever called from a click handler, on the live pool.
+    fun poolPosition(): Int =
+        playerConnection.service.automixItems.value.indexOfFirst { it.mediaId == item.mediaId }
 
     AuraRow(
         title = metadata.title,
@@ -1440,20 +1448,36 @@ private fun AuraAutomixRow(
                 AuraPainterIconButton(
                     painterId = R.drawable.playlist_play,
                     contentDescription = "Reproducir a continuación",
-                    onClick = { playerConnection.service.playNextAutomix(item, index) },
+                    onClick = {
+                        val at = poolPosition()
+                        if (at >= 0) playerConnection.service.playNextAutomix(item, at)
+                    },
                     size = 20.dp,
                     tint = AuraPalette.OnGroundMuted,
                 )
                 AuraIconButton(
                     icon = AuraIcons.Queue,
                     contentDescription = "Añadir a la cola",
-                    onClick = { playerConnection.service.addToQueueAutomix(item, index) },
+                    onClick = {
+                        val at = poolPosition()
+                        if (at >= 0) playerConnection.service.addToQueueAutomix(item, at)
+                    },
                     size = 20.dp,
                     tint = AuraPalette.OnGroundMuted,
                 )
             }
         },
-        onClick = {},
+        // Same guest rule the queue rows use (`else if (!isListenTogetherGuest)`, :993): a guest does not
+        // steer the room's queue. `playWhenReady` mirrors the queue row too — and is skipped while casting,
+        // where playback belongs to the other device and `playNext` itself already declines to start it.
+        onClick = {
+            val at = if (isListenTogetherGuest) -1 else poolPosition()
+            if (at >= 0) {
+                playerConnection.service.playNextAutomix(item, at)
+                playerConnection.player.seekToNext()
+                if (!isCasting) playerConnection.player.playWhenReady = true
+            }
+        },
         onLongClick = {
             menuState.show {
                 QueueMenu(
@@ -1627,4 +1651,181 @@ private fun buildAuraQueueEntries(
         )
     }
     return entries
+}
+
+// ── La cola del reproductor ancho ─────────────────────────────────────────────────────────────────
+
+/**
+ * "Tocar una fila de la cola": jump to that song, or play/pause when it is already the current one.
+ *
+ * ONE implementation, called by the queue sheet's rows above AND by [AuraWideQueuePane], the wide
+ * player's live queue column. The classic wide player keeps its own copy of this
+ * (`LandscapeQueuePane`'s onClick, `ui/player/Player.kt:3575`) and that copy does **not** know about
+ * Cast — tapping a row there while casting seeks the local player. Sharing one function inside the new
+ * UI means the wide column and the sheet cannot drift, and the column inherits the Cast branch.
+ *
+ * Not `@Composable`: it takes already-resolved state so it can be called from any click lambda.
+ */
+private fun auraJumpToQueueWindow(
+    playerConnection: PlayerConnection,
+    castHandler: CastConnectionHandler?,
+    isCasting: Boolean,
+    castIsPlaying: Boolean,
+    isCurrent: Boolean,
+    window: Timeline.Window,
+) {
+    if (isCurrent) {
+        if (isCasting) {
+            if (castIsPlaying) castHandler?.pause() else castHandler?.play()
+        } else {
+            playerConnection.togglePlayPause()
+        }
+        return
+    }
+    if (isCasting) {
+        val navigated = castHandler?.navigateToMediaIfInQueue(window.mediaItem.mediaId) ?: false
+        if (!navigated) {
+            playerConnection.player.seekToDefaultPosition(window.firstPeriodIndex)
+        }
+    } else {
+        playerConnection.player.seekToDefaultPosition(window.firstPeriodIndex)
+        playerConnection.player.playWhenReady = true
+    }
+}
+
+/**
+ * The **live queue column** of the wide player — §2.10's «Fila de la cola → salta a esa canción», in the
+ * redesign's language.
+ *
+ * ## Why a column and not the portrait sheet turned sideways
+ * The classic wide player does not squeeze its bottom sheet into the landscape; it puts the queue on the
+ * LEFT as a permanently visible list and the now-playing pane on the right (`Player.kt:3025`). That is
+ * the interaction model this reproduces: no gesture to learn, the next songs always readable, one tap to
+ * jump. The queue SHEET still exists underneath in the wide shape exactly as it does in the classic one
+ * (its collapsed bar is what carries salida de audio / temporizador / letra / ⋮), so everything the sheet
+ * owns — reordenar, deslizar para quitar, selección múltiple, las pestañas LETRA y RELACIONADOS — is
+ * still one tap away. This column is the *glanceable* half, not a replacement.
+ *
+ * ## What it reuses
+ * [buildAuraQueueEntries] (so "A CONTINUACIÓN · DE TU LISTA" / "DESPUÉS · RADIO INFINITA" appear here
+ * too — the classic wide queue has no such split), [AuraRow], [AuraCover], [AuraPlayingBars] and
+ * [auraJumpToQueueWindow]. Nothing here is a second copy of anything.
+ *
+ * ## TV / coche
+ * `tvFocusRestorer().focusGroup()` on the list — the same pair the classic `LandscapeQueuePane` uses —
+ * so the D-pad enters and leaves the column cleanly and the ring survives scrolling a row out of
+ * composition. Every row carries [tvFocusableItem], so the ring lights the whole row.
+ *
+ * A row has **no ⋮** on purpose, matching the classic wide queue: one focus stop per song keeps D-pad
+ * traversal down a long queue predictable, and the per-song menu lives in the sheet.
+ *
+ * ## Thermal / battery
+ * A `LazyColumn` (only visible rows composed), the same static "sonando" bars as the sheet, one
+ * `animateScrollToItem` per track change. No ticker, no per-frame work.
+ */
+@Composable
+internal fun AuraWideQueuePane(modifier: Modifier = Modifier) {
+    val playerConnection = LocalPlayerConnection.current ?: return
+    val isTvOrCar = iad1tya.echo.music.ui.utils.rememberIsTvOrCar()
+
+    val queueWindows by playerConnection.queueWindows.collectAsState()
+    val currentWindowIndex by playerConnection.currentWindowIndex.collectAsState()
+    val listQueueSize by playerConnection.listQueueSize.collectAsState()
+    val isPlaying by playerConnection.isEffectivelyPlaying.collectAsState()
+
+    val listenTogetherManager = LocalListenTogetherManager.current
+    val listenTogetherRoleState = listenTogetherManager?.role?.collectAsState(initial = RoomRole.NONE)
+    val isListenTogetherGuest = listenTogetherRoleState?.value == RoomRole.GUEST
+
+    val castHandler = remember(playerConnection) {
+        runCatching { playerConnection.service.castConnectionHandler }.getOrNull()
+    }
+    val isCasting by castHandler?.isCasting?.collectAsState() ?: remember { mutableStateOf(false) }
+    val castIsPlaying by castHandler?.castIsPlaying?.collectAsState() ?: remember { mutableStateOf(false) }
+
+    val entries = remember(queueWindows, listQueueSize, currentWindowIndex) {
+        buildAuraQueueEntries(
+            windows = queueWindows,
+            listQueueSize = listQueueSize,
+            currentIndex = currentWindowIndex,
+        )
+    }
+
+    val lazyState = rememberLazyListState()
+    // Follow the track, exactly as the classic wide queue does (Player.kt:3548). Keyed on the CURRENT
+    // INDEX and the queue length, so it runs once per track change and never while scrolling.
+    LaunchedEffect(currentWindowIndex, entries.size) {
+        val target = entries.indexOfFirst { it is AuraQueueEntry.Song && it.isCurrent }
+        if (target >= 0) runCatching { lazyState.animateScrollToItem(target) }
+    }
+
+    LazyColumn(
+        state = lazyState,
+        modifier = modifier.tvFocusRestorer().focusGroup(),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 8.dp),
+    ) {
+        itemsIndexed(
+            items = entries,
+            key = { _, entry ->
+                when (entry) {
+                    is AuraQueueEntry.Label -> "aura_wide_label_${entry.id}"
+                    is AuraQueueEntry.Song -> "aura_wide_${auraSongKey(entry.window)}"
+                }
+            },
+        ) { _, entry ->
+            when (entry) {
+                is AuraQueueEntry.Label -> Column {
+                    Spacer(Modifier.height(AuraSpacing.SectionTop))
+                    AuraSectionLabel(
+                        text = entry.text,
+                        color = if (entry.radio) AuraPalette.Violet.copy(alpha = 0.85f)
+                        else AuraPalette.OnGroundFaint,
+                    )
+                    Spacer(Modifier.height(AuraSpacing.SectionGap))
+                }
+
+                is AuraQueueEntry.Song -> {
+                    val window = entry.window
+                    val meta = window.mediaItem.metadata
+                    if (meta != null) {
+                        AuraRow(
+                            modifier = Modifier.tvFocusableItem(isTvOrCar, AuraShapes.Highlight),
+                            title = meta.title,
+                            subtitle = meta.artists.joinToString { it.name },
+                            highlighted = entry.isCurrent,
+                            dimmed = entry.radio && !entry.isCurrent,
+                            artwork = {
+                                AuraCover(
+                                    url = meta.thumbnailUrl,
+                                    seed = window.mediaItem.mediaId,
+                                    size = 44.dp,
+                                )
+                            },
+                            trailing = {
+                                if (entry.isCurrent) {
+                                    AuraPlayingBars(visible = isPlaying)
+                                } else {
+                                    AuraTechnicalText(text = makeTimeString(meta.duration * 1000L))
+                                }
+                            },
+                            onClick = {
+                                // A Listen Together GUEST does not steer the room's playback — the same
+                                // guard the sheet's rows carry.
+                                if (!isListenTogetherGuest) {
+                                    auraJumpToQueueWindow(
+                                        playerConnection = playerConnection,
+                                        castHandler = castHandler,
+                                        isCasting = isCasting,
+                                        castIsPlaying = castIsPlaying,
+                                        isCurrent = entry.isCurrent,
+                                        window = window,
+                                    )
+                                }
+                            },
+                        )
+                    }
+                }
+            }
+        }
+    }
 }

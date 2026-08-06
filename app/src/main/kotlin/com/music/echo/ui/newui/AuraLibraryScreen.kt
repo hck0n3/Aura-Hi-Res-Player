@@ -23,7 +23,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -209,12 +211,33 @@ fun AuraLibraryScreen(navController: NavController) {
                         LibraryFilter.SONGS -> AuraLibrarySongsTab(navController, searchOpen)
                         LibraryFilter.ALBUMS -> AuraLibraryAlbumsTab(navController)
                         LibraryFilter.ARTISTS -> AuraLibraryArtistsTab(navController, searchOpen)
-                        // Local keeps its classic screen: its scan sheet is a whole surface of its own.
-                        LibraryFilter.LOCAL -> LocalSongScreen(
-                            navController,
-                            { filterType = LibraryFilter.LIBRARY },
-                            isEmbedded = true,
-                        )
+                        // ── Local: the classic screen, but as a BODY and not as a second screen ──────
+                        // Its scan sheet (permissions, excluded folders, a minimum-duration slider) is
+                        // a whole surface of its own and is not one of the six screens in this beta, so
+                        // the screen itself is still reused verbatim. What is NOT reused is its chrome:
+                        // it used to draw its own LargeTopAppBar with a "Local" title, a back arrow and
+                        // a gear directly under this screen's header — two headers, one on top of the
+                        // other, which is what the beta verdict shows. `hideChrome` drops exactly that
+                        // (search and the scan gear survive as a bare action row, see LocalSongScreen).
+                        //
+                        // The colour scheme is the second half of the same problem. The redesign paints
+                        // its own dark ground and does NOT install a Material theme, so a user on the
+                        // light theme got a classic screen rendering its text and surfaces in LIGHT
+                        // colours on top of that dark ground — the "pantalla blanca" of the report. The
+                        // embedded screen is therefore given a dark scheme anchored on the Aura palette
+                        // for as long as it is embedded; nothing outside this branch sees it.
+                        LibraryFilter.LOCAL -> MaterialTheme(
+                            colorScheme = AuraEmbeddedScheme,
+                            typography = MaterialTheme.typography,
+                            shapes = MaterialTheme.shapes,
+                        ) {
+                            LocalSongScreen(
+                                navController,
+                                { filterType = LibraryFilter.LIBRARY },
+                                isEmbedded = true,
+                                hideChrome = true,
+                            )
+                        }
                     }
                 }
             }
@@ -388,6 +411,38 @@ fun AuraLibraryScreen(navController: NavController) {
         )
     }
 }
+
+/**
+ * The Material scheme a CLASSIC screen is rendered with while it is embedded in a redesigned one.
+ *
+ * The redesign draws with [AuraPalette] directly and never installs a Material theme, so a reused
+ * classic surface keeps whatever scheme the app is on — light, for most users. Inside the Aura ground
+ * that means dark text and pale containers over near-black: unreadable, and the reason the Local tab
+ * looked like a separate white screen. Mapping the Material roles the reused screens actually read
+ * onto the Aura palette makes them blend instead. Backgrounds are [AuraPalette.Ground] rather than
+ * transparent on purpose: the sheets and menus these screens open must stay opaque.
+ */
+private val AuraEmbeddedScheme = darkColorScheme(
+    primary = AuraPalette.Teal,
+    onPrimary = AuraPalette.OnAccent,
+    secondary = AuraPalette.Blue,
+    onSecondary = AuraPalette.OnAccent,
+    tertiary = AuraPalette.Violet,
+    onTertiary = AuraPalette.OnGround,
+    background = AuraPalette.Ground,
+    onBackground = AuraPalette.OnGround,
+    surface = AuraPalette.Ground,
+    onSurface = AuraPalette.OnGround,
+    surfaceVariant = AuraPalette.GroundRaised,
+    onSurfaceVariant = AuraPalette.OnGroundMuted,
+    surfaceContainerLowest = AuraPalette.Ground,
+    surfaceContainerLow = AuraPalette.GroundRaised,
+    surfaceContainer = AuraPalette.GroundRaised,
+    surfaceContainerHigh = AuraPalette.GroundRaised,
+    surfaceContainerHighest = AuraPalette.GroundRaised,
+    outline = AuraPalette.OnGroundDisabled,
+    outlineVariant = AuraPalette.SurfaceLine,
+)
 
 /** The five filter chips, in the classic order. */
 private fun auraLibraryChips(): List<Pair<LibraryFilter, Int>> = listOf(

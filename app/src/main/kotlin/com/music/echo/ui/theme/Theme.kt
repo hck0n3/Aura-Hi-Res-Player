@@ -14,6 +14,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.SaverScope
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
@@ -22,6 +23,7 @@ import com.materialkolor.PaletteStyle
 import com.materialkolor.dynamiccolor.ColorSpec
 import com.materialkolor.rememberDynamicColorScheme
 import com.materialkolor.score.Score
+import iad1tya.echo.music.ui.newui.AuraPalette
 
 /**
  * The stored accent that means "the user has not picked one".
@@ -47,6 +49,12 @@ fun echomusicTheme(
      * caller that has no accent preference to hand, such as the crash screen.
      */
     selectedThemeColor: Color? = null,
+    /**
+     * "Interfaz nueva" is on, so the WHOLE app must stand on the redesign's ground — see
+     * [ColorScheme.auraGround]. Default false, which makes every existing caller (and the flag-off path)
+     * take the exact `when` the theme has always taken.
+     */
+    newUiGround: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val context = LocalContext.current
@@ -92,20 +100,18 @@ fun echomusicTheme(
 
     val colorScheme = remember(
         baseColorScheme, presetScheme, pureBlack, darkTheme, accentSeed, surfaceSeed, vividness,
+        newUiGround,
     ) {
         // Surfaces FIRST: withAccent measures its legibility clamp against the final surface, so the
         // AMOLED/deep-teal/soft-light substitutions have to be in place before it runs.
-        val surfaced = when {
-            // AMOLED must stay TRULY black, so it takes no surface tint at all. Its containers still
-            // come from the seed-derived base scheme, so the accent is not absent here either.
-            darkTheme && pureBlack -> baseColorScheme.pureBlack(true)
-            // A preset brings its OWN surfaces (the icon's ground is the whole point), so the generic
-            // deep-teal / soft-light substitutions must not overwrite them. AMOLED still wins above:
-            // it is a separate, explicit user toggle.
-            baseColorScheme === presetScheme -> baseColorScheme
-            darkTheme -> baseColorScheme.deepTeal(surfaceSeed)
-            else -> baseColorScheme.softLight(surfaceSeed)
-        }
+        val surfaced = surfacesFor(
+            base = baseColorScheme,
+            presetScheme = presetScheme,
+            darkTheme = darkTheme,
+            pureBlack = pureBlack,
+            newUiGround = newUiGround,
+            surfaceSeed = surfaceSeed,
+        )
         if (accentSeed == null) surfaced else surfaced.withAccent(accentSeed, vividness)
     }
 
@@ -116,6 +122,96 @@ fun echomusicTheme(
         content = content
     )
 }
+
+/**
+ * Which surface substitution the scheme gets. Lifted out of [echomusicTheme] verbatim so it can be
+ * unit-tested — a `when` inside a composable is a `when` nobody can pin.
+ *
+ * With [newUiGround] false (every caller before "Interfaz nueva", and the whole flag-off path) the new
+ * branch is dead and the chain reduces term for term to the one that shipped.
+ */
+internal fun surfacesFor(
+    base: ColorScheme,
+    presetScheme: ColorScheme?,
+    darkTheme: Boolean,
+    pureBlack: Boolean,
+    newUiGround: Boolean,
+    surfaceSeed: Color?,
+): ColorScheme = when {
+    // AMOLED must stay TRULY black, so it takes no surface tint at all. Its containers still
+    // come from the seed-derived base scheme, so the accent is not absent here either. It wins over
+    // the Aura ground too: it is an explicit, separate user toggle, and #060A12 vs #000000 is six
+    // levels of red — invisible next to the new screens' own ground.
+    darkTheme && pureBlack -> base.pureBlack(true)
+    // "Interfaz nueva" wins over a preset because the redesign's screens paint [AuraPalette.Ground]
+    // unconditionally; a preset's ground (Muestreo's #080D18) would put a second canvas next to it.
+    // The preset still supplies the ACCENT roles, because it is the base scheme here.
+    // `darkTheme` is belt and braces: the caller already forces dark whenever the flag is on.
+    newUiGround && darkTheme -> base.auraGround()
+    // A preset brings its OWN surfaces (the icon's ground is the whole point), so the generic
+    // deep-teal / soft-light substitutions must not overwrite them. AMOLED still wins above:
+    // it is a separate, explicit user toggle.
+    base === presetScheme -> base
+    darkTheme -> base.deepTeal(surfaceSeed)
+    else -> base.softLight(surfaceSeed)
+}
+
+// ── "Interfaz nueva": the ground the whole app has to stand on ────────────────────────────────────
+//
+// The redesign paints its own ground unconditionally (`auraScreenBackground` -> `drawRect(
+// AuraPalette.Ground)`) and reaches for `AuraPalette.*` ~300 times across 25 files while reading
+// `MaterialTheme.colorScheme` in four places. So with the flag on, the rebuilt screens were #060A12
+// and the ~89 classic screens plus EVERY dialog were whatever the app theme said — white, for anyone
+// on the light theme. That was never a half-finished conversion: the two halves were reading two
+// different palettes, which is why one screen could show both (AuraLibraryScreen embeds
+// LocalSongScreen, whose Scaffold takes `colorScheme.surface` straight).
+//
+// These literals are the RENDER'S OWN ladder: the ground, its raised twin, and the three white-alpha
+// steps the render fills its cards, hairlines and empty tracks with, composited down to solids. So a
+// classic M3 card and a new-UI card end up literally the same colour instead of merely both dark.
+// They are read from [AuraPalette] rather than re-typed, so the palette stays the single source of
+// truth and the two grounds cannot drift apart again.
+//
+// Computed once at class-init (top-level vals): a theme has to be free at runtime.
+
+private val AuraSurfaceRaised = AuraPalette.GroundRaised
+private val AuraSurfaceCard = AuraPalette.SurfaceFill.compositeOver(AuraPalette.Ground)
+private val AuraSurfaceCardHigh = AuraPalette.SurfaceLine.compositeOver(AuraPalette.Ground)
+private val AuraSurfaceCardHighest = AuraPalette.TrackEmpty.compositeOver(AuraPalette.Ground)
+
+/**
+ * Secondary text. The render says `opacity:.55`, but an M3 role must be OPAQUE — a translucent
+ * `onSurfaceVariant` composites against whatever happens to be behind it, which on a raised container
+ * is not the ground. So the render's step is flattened onto the ground here, once.
+ */
+private val AuraOnGroundVariant = AuraPalette.OnGround.copy(alpha = 0.70f)
+    .compositeOver(AuraPalette.Ground)
+
+/**
+ * Puts the app ColorScheme on the redesign's canvas: [AuraPalette.Ground] and its ladder for the
+ * surfaces, [AuraPalette.OnGround] for the ink.
+ *
+ * The ACCENT roles (primary/secondary/tertiary and their containers) are deliberately untouched — the
+ * owner's accent pick, the Dynamic theme and the theme-reset button all keep working on the ~89 classic
+ * screens exactly as they do today. Only the canvas moves.
+ *
+ * Only meaningful on a DARK base scheme; [surfacesFor] guards that, and the redesign forces dark.
+ */
+fun ColorScheme.auraGround(): ColorScheme = copy(
+    background = AuraPalette.Ground,
+    surface = AuraPalette.Ground,
+    surfaceDim = AuraPalette.Ground,
+    surfaceContainerLowest = AuraPalette.Ground,
+    surfaceContainerLow = AuraSurfaceRaised,
+    surfaceContainer = AuraSurfaceCard,
+    surfaceContainerHigh = AuraSurfaceCardHigh,
+    surfaceContainerHighest = AuraSurfaceCardHighest,
+    surfaceBright = AuraSurfaceCardHighest,
+    surfaceVariant = AuraSurfaceCardHigh,
+    onBackground = AuraPalette.OnGround,
+    onSurface = AuraPalette.OnGround,
+    onSurfaceVariant = AuraOnGroundVariant,
+)
 
 fun Bitmap.extractThemeColor(): Color {
     val colorsToPopulation = Palette.from(this)

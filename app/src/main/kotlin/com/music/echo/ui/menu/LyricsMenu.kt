@@ -127,6 +127,13 @@ fun LyricsMenu(
                             id = mediaMetadataProvider().id,
                             lyrics = it,
                             provider = lyricsProvider()?.provider ?: "Manual",
+                            // This text is the user's. `provider` cannot express that: editing a
+                            // fetched lyric keeps the fetching provider's name, so a hand-corrected
+                            // row used to be indistinguishable from an auto-fetched one and only a
+                            // lyric written from scratch got the "Manual" label. This flag is what
+                            // makes the automatic wrong-song repair skip the row - and it is
+                            // enforced again in SQL, so nothing can overwrite what a human wrote.
+                            userEdited = true,
                         ),
                     )
                 }
@@ -272,6 +279,10 @@ fun LyricsMenu(
                                         id = searchMediaMetadata.id,
                                         lyrics = result.lyrics,
                                         provider = result.providerName,
+                                        // Deliberately attached by the user from the search sheet:
+                                        // they read this result and chose it over the others. The
+                                        // automatic repair must never second-guess that pick.
+                                        userEdited = true,
                                     ),
                                 )
                             }
@@ -388,7 +399,7 @@ fun LyricsMenu(
     ) {
         item {
             NewActionGrid(
-                actions = listOf(
+                actions = listOfNotNull(
                     NewAction(
                         icon = {
                             Icon(
@@ -431,7 +442,28 @@ fun LyricsMenu(
                         onClick = {
                             showSearchDialog = true
                         }
-                    )
+                    ),
+                    // Only present when the automatic wrong-song repair actually replaced something
+                    // on this song. It is the user's way back to the exact text that was there
+                    // before - which is why the repair parks the old text instead of deleting it.
+                    // Restoring also marks the row as the user's, so it is never auto-replaced again.
+                    lyricsProvider()?.takeIf { it.supersededLyrics.isNotBlank() }?.let { entity ->
+                        NewAction(
+                            icon = {
+                                Icon(
+                                    painter = painterResource(R.drawable.restore),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(28.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            },
+                            text = stringResource(R.string.restore_previous_lyrics),
+                            onClick = {
+                                onDismiss()
+                                database.query { restoreSupersededLyrics(entity.id) }
+                            }
+                        )
+                    }
                 ),
                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 16.dp)
             )

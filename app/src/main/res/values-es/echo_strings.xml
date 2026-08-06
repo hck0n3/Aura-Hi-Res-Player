@@ -1042,4 +1042,24 @@
     <string name="ytm_upload_never_completed">Aún no se ha sincronizado por completo</string>
     <string name="ytm_upload_requests_last_run">%1$d peticiones en la última tanda</string>
     <string name="ytm_upload_only_followed_note">Solo se suscriben en tu cuenta los artistas que tú seguiste — nunca los que simplemente tienen una canción en tu biblioteca.</string>
+    <!-- "Interfaz nueva": contenedores de la letra a pantalla completa y de las descargas -->
+    <string name="aura_no_song_playing">No hay ninguna canción sonando</string>
+    <string name="aura_lyrics_appearance">Aspecto de la letra</string>
+    <string name="aura_downloads_in_progress">Descargas en curso</string>
+    <string name="aura_download_failed">La descarga falló</string>
+    <string name="aura_auto_playlist_about">%1$s es una colección que se mantiene sola. No se edita a mano: las canciones entran y salen según cambia tu biblioteca.</string>
+    <!-- "Interfaz nueva" · Buscar -->
+    <string name="search_clear_query">Borrar la búsqueda</string>
+    <string name="search_history_remove">Quitar del historial</string>
+    <string name="search_use_suggestion">Editar esta búsqueda</string>
+    <string name="trending_top_global">Top global</string>
+    <string name="trending_apple_top">Apple Music Top 100</string>
+    <string name="trending_artists">Artistas en tendencia</string>
+    <string name="trending_albums">Álbumes populares</string>
+    <string name="trending_videos">Vídeos musicales en tendencia</string>
+    <string name="trending_see_more">Ver más</string>
+    <string name="trending_source_apple">Datos de Apple Music</string>
+    <string name="trending_none">No hay sugerencias ahora mismo.</string>
+    <string name="aura_download_queued">En cola</string>
+    <string name="aura_download_paused">Descarga pausada</string>
 </resources>

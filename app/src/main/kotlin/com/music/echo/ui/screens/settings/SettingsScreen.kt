@@ -43,6 +43,7 @@ import androidx.core.net.toUri
 import androidx.navigation.NavController
 import iad1tya.echo.music.BuildConfig
 import iad1tya.echo.music.LocalPlayerAwareWindowInsets
+import iad1tya.echo.music.navigateAsTab
 import iad1tya.echo.music.constants.NewUiEnabledKey
 import iad1tya.echo.music.ui.newui.NEW_UI_SWITCH_VISIBLE
 import iad1tya.echo.music.utils.rememberPreference
@@ -245,7 +246,15 @@ fun SettingsScreen(
                     Material3SettingsItem(
                         icon = painterResource(R.drawable.group),
                         title = { Text(listenTogetherText) },
-                        onClick = { navController.navigate(Screens.ListenTogether.route) }
+                        // `Screens.ListenTogether` is a TOP-LEVEL destination (Screens.MainScreens) and,
+                        // with "Escuchar juntos en la barra superior" off, an actual bottom-bar cell.
+                        // Reaching it with a bare `navigate()` stacked it on top of Ajustes, which was
+                        // itself on top of a tab; the next tab tap popped all of them under `saveState`
+                        // and androidx-navigation files a multi-entry pop as ONE saved deque keyed by the
+                        // DEEPEST popped destination, so `restoreState` put Escuchar juntos back under
+                        // that tab — forever, because the restore re-creates the shape that produces the
+                        // save. Same options block the bottom bar uses; see [navigateAsTab].
+                        onClick = { navController.navigateAsTab(Screens.ListenTogether.route) }
                     )
                 )
             }
