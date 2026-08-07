@@ -74,7 +74,9 @@ import coil3.compose.AsyncImage
 import iad1tya.echo.music.LocalPlayerConnection
 import iad1tya.echo.music.R
 import iad1tya.echo.music.constants.CropAlbumArtKey
+import iad1tya.echo.music.constants.MiniPlayerBackgroundStyleKey
 import iad1tya.echo.music.constants.MiniPlayerHeight
+import iad1tya.echo.music.constants.PlayerBackgroundStyle
 import iad1tya.echo.music.constants.SwipeSensitivityKey
 import iad1tya.echo.music.constants.SwipeThumbnailKey
 import iad1tya.echo.music.extensions.togglePlayPause
@@ -82,6 +84,7 @@ import iad1tya.echo.music.ui.player.PlayerVideoSurface
 import iad1tya.echo.music.ui.screens.Screens
 import iad1tya.echo.music.ui.utils.rememberIsTvOrCar
 import iad1tya.echo.music.ui.utils.tvFocusable
+import iad1tya.echo.music.utils.rememberEnumPreference
 import iad1tya.echo.music.utils.rememberPreference
 import kotlin.math.exp
 import kotlin.math.roundToInt
@@ -523,10 +526,16 @@ private fun auraNavIcon(screen: Screens): ImageVector = when (screen) {
  * `Modifier.blur(30.dp)`, under a 45 % black scrim. Per TRACK, not per frame, and no backdrop is
  * sampled — see the comment at the call site.
  *
- * It replaces the call to the CLASSIC `MiniPlayer` that `AuraPlayer` made verbatim, which is why
- * Liquid Glass kept appearing inside the new player: the classic mini reads
- * `MiniPlayerBackgroundStyleKey`, and a one-time migration had set that key to `LIQUID_GLASS` on
- * high-tier devices.
+ * It replaces the call to the CLASSIC `MiniPlayer` that `AuraPlayer` made verbatim. That classic mini
+ * is where the unrequested Liquid Glass came from — it reads `MiniPlayerBackgroundStyleKey`, a one-time
+ * migration had written `LIQUID_GLASS` into that key on high-tier devices, and its `LIQUID_GLASS` branch
+ * draws the real backdrop-sampling shader (`MiniPlayer.kt:1219`).
+ *
+ * This pill reads the SAME key — the control belongs to the user and hiding it was itself a loss — but
+ * it can never draw that shader: its `LIQUID_GLASS` is a still, frosted cover under the render's film
+ * (`auraGroundRecipe`), one decode per track, no backdrop sample. The value the migration wrote is
+ * undone once in `App.kt`, so honouring the key does not resurrect what the owner rejected. See the
+ * comment at the ground call site below.
  *
  * ## What is preserved from the classic mini, and how
  *  · **Video.** When the player is in video mode and this mini owns the surface, the artwork slot
@@ -630,20 +639,52 @@ fun AuraMiniPlayer(
             ),
     ) {
         // ── The pill's ground ─────────────────────────────────────────────────────────────────────
-        // Bottom to top: an OPAQUE fill, then whatever "Fondo del reproductor" says, then the 45 %
-        // scrim. The content Row below is a sibling carrying the same offset and clip, so the two move
-        // together while the finger drags. Without this layer the pill was [AuraPalette.SurfaceFill] —
-        // 7 % white — with nothing but the NavHost behind it: "está tan transparente que no se define
-        // nada".
+        // Bottom to top: an OPAQUE fill, then whatever "Mini reproductor" → "Estilo de fondo" says (its
+        // OWN setting, not the player's — see below), then the 45 % scrim, which is drawn only when that
+        // choice put artwork there. The content Row below is a sibling carrying the same offset and clip,
+        // so the two move together while the finger drags. Without the OPAQUE fill the pill was
+        // [AuraPalette.SurfaceFill] — 7 % white — with nothing but the NavHost behind it: "está tan
+        // transparente que no se define nada". That fill is drawn under EVERY style, including the one
+        // that adds nothing over it, so no choice here can bring the transparency back.
         //
         // The pill is the third surface the seven [PlayerBackgroundStyle] values own (with the player
-        // sheet and the queue sheet). [auraPillRecipe] adapts the sheet's recipe to a 64 dp pill: the
-        // pill's ground has always BEEN the blurred cover, so DEFAULT keeps exactly the layer that
-        // shipped, and the other six change it. Every cost is the one already paid — one 128×128 decode
-        // per track under `Modifier.blur`, guarded by API 31, never a backdrop sample. A live full-width
-        // blur here is exactly what the thermal contract in AuraBloom.kt forbids: this pill is on screen
-        // for the whole of every song.
-        val ground = rememberAuraGround(mediaMetadata?.id, mediaMetadata?.thumbnailUrl)
+        // sheet and the queue sheet). [auraPillRecipe] adapts the sheet's recipe to a 64 dp pill, and it
+        // holds each name to what it promises: DEFAULT ("Seguir el tema") is the opaque ground above and
+        // nothing else — the flat `.mi` the render draws — while "Desenfoque", mesh and glass each bring
+        // their own blurred cover on top of it. The pill DID ship with a blurred cover under every style,
+        // which is what made those two names the same pill 4 dp of blur apart; the cover is now something
+        // you ask for. No cost is added — where a cover is drawn it is the one 128×128 decode per track
+        // under `Modifier.blur` already paid for, guarded by API 31, never a backdrop sample — and DEFAULT
+        // now asks for no decode at all. A live full-width blur here is exactly what the thermal contract
+        // in AuraBloom.kt forbids: this pill is on screen for the whole of every song.
+        //
+        // ── Which KEY the pill follows, and why it is its own ─────────────────────────────────────
+        // [MiniPlayerBackgroundStyleKey], the same key the classic mini reads (MiniPlayer.kt:217) with
+        // the same default. It briefly followed the PLAYER's key instead, and that reasoning ("the mini
+        // and the player can never disagree") cost the user a control the classic app has always had —
+        // "en ajustes no se ven las mismas funciones que antes de personalización". Two surfaces, two
+        // keys, exactly as classic; the ability to make them agree is a choice the user still has, by
+        // picking the same value twice.
+        //
+        // DEFAULT is the value App.kt seeds on every fresh install, so someone who never touches this
+        // control gets the pill's own opaque ground rather than inheriting the player's heavier
+        // Apple-Music blur and wash. It is also the most legible of the five: the ink measures 14.8:1
+        // (title) and 5.4:1 (artist) there, against 2.7:1 / 1.8:1 on a white sleeve once a cover is drawn.
+        //
+        // The stored value is NOT taken on trust: the 0.6.127 high-tier order wrote LIQUID_GLASS into
+        // this key unrequested, so honouring it naively would restore the very look the owner rejected
+        // twice. That value is undone once, by a fresh key, in App.kt (`applyMiniPlayerGlassUndoV1`) —
+        // NOT here, because a renderer that silently overrides a stored preference is how the row above
+        // it becomes a placebo in the first place.
+        val miniStyle by rememberEnumPreference(
+            key = MiniPlayerBackgroundStyleKey,
+            defaultValue = PlayerBackgroundStyle.DEFAULT,
+        )
+        val ground = rememberAuraGround(
+            mediaMetadata?.id,
+            mediaMetadata?.thumbnailUrl,
+            styleOverride = miniStyle,
+        )
         val pillRecipe = remember(ground.recipe) { auraPillRecipe(ground.recipe) }
         // The 45 % scrim exists to keep light text on artwork. Below API 31 (`Modifier.blur` is a no-op,
         // so `coverUrl` is null there) and on a local track there IS no artwork on this pill, and drawing

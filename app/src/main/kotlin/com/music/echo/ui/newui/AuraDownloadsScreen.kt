@@ -1,49 +1,23 @@
 package iad1tya.echo.music.ui.newui
 
 import android.widget.Toast
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.WindowInsetsSides
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.ime
-import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.systemBars
-import androidx.compose.foundation.layout.union
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.CheckboxDefaults
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarScrollBehavior
-import androidx.compose.material3.minimumInteractiveComponentSize
-import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults.Indicator
-import androidx.compose.material3.pulltorefresh.pullToRefresh
-import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
@@ -51,27 +25,13 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.listSaver
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.toMutableStateList
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -82,34 +42,22 @@ import androidx.navigation.NavController
 import com.music.innertube.utils.parseCookieString
 import iad1tya.echo.music.LocalDatabase
 import iad1tya.echo.music.LocalDownloadUtil
-import iad1tya.echo.music.LocalPlayerAwareWindowInsets
-import iad1tya.echo.music.LocalPlayerConnection
 import iad1tya.echo.music.R
+import iad1tya.echo.music.LocalPlayerConnection
 import iad1tya.echo.music.constants.InnerTubeCookieKey
 import iad1tya.echo.music.constants.SongSortDescendingKey
 import iad1tya.echo.music.constants.SongSortType
 import iad1tya.echo.music.constants.SongSortTypeKey
 import iad1tya.echo.music.constants.YtmSyncKey
-import iad1tya.echo.music.db.entities.Song
 import iad1tya.echo.music.extensions.toMediaItem
 import iad1tya.echo.music.extensions.tryOrNull
 import iad1tya.echo.music.playback.ExoDownloadService
-import iad1tya.echo.music.playback.queues.ListQueue
 import iad1tya.echo.music.ui.component.DefaultDialog
-import iad1tya.echo.music.ui.component.DraggableScrollbar
-import iad1tya.echo.music.ui.component.EnhancedShuffleChip
 import iad1tya.echo.music.ui.component.LocalMenuState
-import iad1tya.echo.music.ui.component.rememberPlayedShuffleSet
-import iad1tya.echo.music.ui.component.rememberShuffleMemoryPrompt
 import iad1tya.echo.music.ui.menu.AutoPlaylistMenu
-import iad1tya.echo.music.ui.menu.SelectionSongMenu
 import iad1tya.echo.music.ui.menu.SongMenu
 import iad1tya.echo.music.ui.screens.playlist.PlaylistType
 import iad1tya.echo.music.ui.utils.formatFileSize
-import iad1tya.echo.music.ui.utils.rememberIsTvOrCar
-import iad1tya.echo.music.ui.utils.rememberIsWideLayout
-import iad1tya.echo.music.ui.utils.tvFocusable
-import iad1tya.echo.music.utils.makeTimeString
 import iad1tya.echo.music.utils.rememberEnumPreference
 import iad1tya.echo.music.utils.rememberPreference
 import iad1tya.echo.music.viewmodels.AutoPlaylistViewModel
@@ -118,6 +66,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
+import androidx.compose.ui.platform.LocalContext
 
 /**
  * # Descargado / auto-listas — "Interfaz nueva"
@@ -126,7 +75,11 @@ import kotlinx.coroutines.withContext
  * four screens to the user — **Descargado**, Canciones que me gustan, Subidas, Exportado — and the
  * downloads screen the order asks for is its `downloaded` mode. Rebuilding only that mode would have
  * meant a host that branches on a route argument; rebuilding the screen keeps one host, one call site
- * and the other three modes are covered for free (they were going to need it anyway).
+ * and the other three modes are covered for free.
+ *
+ * The shape itself lives in [AuraSongCollectionScaffold], shared with "En caché" and "Mi Top N" — the
+ * three auto-collections used to be one redesigned screen and two classic ones, i.e. two dialects
+ * inside one feature.
  *
  * ## Presentation only
  * The list, the sort keys, the search filter, the queue, the "Aleatorio mejorado" memory and every
@@ -135,13 +88,13 @@ import kotlinx.coroutines.withContext
  *    which songs are in the list, in which order, with the same explicit/video filters.
  *  · `contextId = "AP:<playlist>"` — the SAME no-repeat bucket, so toggling "Interfaz nueva" does not
  *    hand the user a second shuffle memory and make songs repeat.
- *  · [SongMenu] / [SelectionSongMenu] / [AutoPlaylistMenu] — the classic sheets, which is where
- *    per-song *Descargar / Descargando (cancela) / Eliminar descarga* and every bulk action live.
+ *  · [SongMenu] / [AutoPlaylistMenu] — the classic sheets, which is where per-song *Descargar /
+ *    Descargando (cancela) / Eliminar descarga* and every bulk action live.
  *
  * ## What the classic screen could NOT show, and this one does
  * `database.downloadedSongs(...)` only lists songs whose download has **completed**, so on the classic
  * "Descargado" screen a download in flight is invisible: no progress, nothing to cancel, no sign a
- * failure happened. The three additions below all read REAL state and are gated to
+ * failure happened. The two additions below both read REAL state and are gated to
  * [PlaylistType.DOWNLOAD]:
  *  · **Descargas en curso** — the live `DownloadUtil.downloads` map, one row per queued / downloading /
  *    failed / paused item, with the real percentage (see [rememberAuraDownloadProgress]), a cancel
@@ -150,8 +103,6 @@ import kotlinx.coroutines.withContext
  *  · **Almacenamiento** — `downloadCache.cacheSpace`, the exact number Ajustes ▸ Almacenamiento
  *    prints, formatted with the same [formatFileSize]. Tapping it opens that screen, where the
  *    "vaciar descargas" action already lives.
- *  · The per-row download tick, which the classic screen omits here (everything listed is downloaded)
- *    and which stays omitted for the same reason.
  *
  * @param scrollBehavior accepted for signature parity with the classic screen; this shape draws its own
  *   header instead of a `TopAppBar`, so there is no collapsing bar to drive with it.
@@ -166,14 +117,8 @@ fun AuraAutoPlaylistScreen(
 ) {
     val context = LocalContext.current
     val menuState = LocalMenuState.current
-    val haptic = LocalHapticFeedback.current
-    val focusManager = LocalFocusManager.current
     val playerConnection = LocalPlayerConnection.current ?: return
     val downloadUtil = LocalDownloadUtil.current
-    val isTvOrCar = rememberIsTvOrCar()
-
-    val isPlaying by playerConnection.isEffectivelyPlaying.collectAsState()
-    val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
 
     // Same title mapping as the classic screen (AutoPlaylistScreen.kt:139-145).
     val playlist = when (viewModel.playlist) {
@@ -194,40 +139,9 @@ fun AuraAutoPlaylistScreen(
 
     val songs by viewModel.likedSongs.collectAsState(null)
 
-    var isSearching by rememberSaveable { mutableStateOf(false) }
-    var query by rememberSaveable { mutableStateOf("") }
-    val focusRequester = remember { FocusRequester() }
-    LaunchedEffect(isSearching) {
-        if (isSearching) focusRequester.requestFocus()
-    }
-
     val (ytmSync) = rememberPreference(YtmSyncKey, true)
     val (innerTubeCookie) = rememberPreference(InnerTubeCookieKey, "")
     val isLoggedIn = remember(innerTubeCookie) { "SAPISID" in parseCookieString(innerTubeCookie) }
-
-    val likeLength = remember(songs) { songs?.sumOf { it.song.duration } ?: 0 }
-    val shufflePlayedSet = rememberPlayedShuffleSet(contextId)
-
-    var inSelectMode by rememberSaveable { mutableStateOf(false) }
-    val selection = rememberSaveable(
-        saver = listSaver<MutableList<String>, String>(
-            save = { it.toList() },
-            restore = { it.toMutableStateList() },
-        ),
-    ) { mutableStateListOf<String>() }
-    val onExitSelectionMode = {
-        inSelectMode = false
-        selection.clear()
-    }
-
-    if (isSearching) {
-        BackHandler {
-            isSearching = false
-            query = ""
-        }
-    } else if (inSelectMode) {
-        BackHandler(onBack = onExitSelectionMode)
-    }
 
     val (sortType, onSortTypeChange) = rememberEnumPreference(SongSortTypeKey, SongSortType.CREATE_DATE)
     val (sortDescending, onSortDescendingChange) = rememberPreference(SongSortDescendingKey, true)
@@ -288,23 +202,7 @@ fun AuraAutoPlaylistScreen(
         )
     }
 
-    val filteredSongs = remember(songs, query) {
-        if (query.isEmpty()) songs ?: emptyList()
-        else songs?.filter { song ->
-            song.song.title.contains(query, true) ||
-                song.artists.any { it.name.contains(query, true) }
-        } ?: emptyList()
-    }
-
-    LaunchedEffect(filteredSongs) {
-        selection.toList().forEach { songId ->
-            if (filteredSongs.none { it.id == songId }) selection.remove(songId)
-        }
-    }
-
-    val listState = rememberLazyListState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
-    val pullRefreshState = rememberPullToRefreshState()
     val canRefresh = playlistType == PlaylistType.LIKE || playlistType == PlaylistType.UPLOADED
 
     LaunchedEffect(Unit) {
@@ -320,69 +218,98 @@ fun AuraAutoPlaylistScreen(
     val activeDownloads = rememberAuraActiveDownloads(enabled = isDownloadsScreen)
     val downloadProgress by rememberAuraDownloadProgress(enabled = isDownloadsScreen)
 
-    val bloom = rememberAuraBloom(mediaMetadata?.id)
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .auraScreenBackground(bloom, intensity = 0.40f)
-            .then(
-                if (canRefresh) {
-                    Modifier.pullToRefresh(
-                        state = pullRefreshState,
-                        isRefreshing = isRefreshing,
-                        onRefresh = viewModel::refresh,
-                    )
-                } else Modifier,
-            ),
-    ) {
-        LazyColumn(
-            state = listState,
-            contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
-            modifier = Modifier.fillMaxSize(),
-        ) {
-            if (songs == null) {
-                // Still loading: nothing is drawn, exactly as the classic screen does.
-                return@LazyColumn
-            }
-
-            if (songs!!.isEmpty() && activeDownloads.isEmpty()) {
-                item(key = "aura_ap_empty") {
-                    AuraEmpty(
-                        text = stringResource(R.string.playlist_is_empty),
-                        modifier = Modifier.animateItem(),
-                    )
-                }
-            }
-
-            if (songs!!.isNotEmpty() && !isSearching) {
-                item(key = "aura_ap_header") {
-                    AuraAutoPlaylistHeader(
-                        name = playlist,
-                        songs = songs!!,
-                        likeLength = likeLength,
-                        contextId = contextId,
-                        downloadState = downloadState,
-                        onShowRemoveDownloadDialog = { showRemoveDownloadDialog = true },
-                        // Only Liked / Uploaded can sync, and only when signed in — the classic gate.
-                        onSync = if (isLoggedIn &&
-                            (playlistType == PlaylistType.LIKE || playlistType == PlaylistType.UPLOADED)
-                        ) {
-                            {
-                                if (playlistType == PlaylistType.LIKE) viewModel.syncLikedSongs()
-                                else viewModel.syncUploadedSongs()
-                                Toast.makeText(
+    val currentSongs = songs
+    AuraSongCollectionScaffold(
+        title = playlist,
+        songs = currentSongs,
+        contextId = contextId,
+        aboutTitleRes = R.string.about_album,
+        aboutText = stringResource(R.string.aura_auto_playlist_about, playlist),
+        onBack = { navController.navigateUp() },
+        onHeaderMenu = {
+            menuState.show {
+                AutoPlaylistMenu(
+                    downloadState = downloadState,
+                    // Only Liked / Uploaded can sync, and only when signed in — the classic gate.
+                    onSync = if (isLoggedIn &&
+                        (playlistType == PlaylistType.LIKE || playlistType == PlaylistType.UPLOADED)
+                    ) {
+                        {
+                            if (playlistType == PlaylistType.LIKE) viewModel.syncLikedSongs()
+                            else viewModel.syncUploadedSongs()
+                            Toast.makeText(
+                                context,
+                                "Sincronizando con YouTube Music…",
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                        }
+                    } else null,
+                    onQueue = {
+                        playerConnection.addToQueue(currentSongs.orEmpty().map { it.toMediaItem() })
+                    },
+                    onDownload = {
+                        when (downloadState) {
+                            Download.STATE_COMPLETED -> showRemoveDownloadDialog = true
+                            Download.STATE_DOWNLOADING -> currentSongs.orEmpty().forEach { song ->
+                                DownloadService.sendRemoveDownload(
                                     context,
-                                    "Sincronizando con YouTube Music…",
-                                    Toast.LENGTH_SHORT,
-                                ).show()
+                                    ExoDownloadService::class.java,
+                                    song.song.id,
+                                    false,
+                                )
                             }
-                        } else null,
-                        modifier = Modifier.animateItem(),
-                    )
-                }
-            }
 
+                            else -> currentSongs.orEmpty().forEach { song ->
+                                val request = DownloadRequest
+                                    .Builder(song.song.id, song.song.id.toUri())
+                                    .setCustomCacheKey(song.song.id)
+                                    .setData(song.song.title.toByteArray())
+                                    .build()
+                                DownloadService.sendAddDownload(
+                                    context,
+                                    ExoDownloadService::class.java,
+                                    request,
+                                    false,
+                                )
+                            }
+                        }
+                    },
+                    onDismiss = menuState::dismiss,
+                )
+            }
+        },
+        onSongMenu = { song ->
+            menuState.show {
+                SongMenu(
+                    originalSong = song,
+                    navController = navController,
+                    onDismiss = menuState::dismiss,
+                )
+            }
+        },
+        // On "Descargado" every row IS a download, so the tick would be noise — the same rule the new
+        // Biblioteca applies to its Descargado sub-filter.
+        showDownloadTick = !isDownloadsScreen,
+        canRefresh = canRefresh,
+        isRefreshing = isRefreshing,
+        onRefresh = viewModel::refresh,
+        sortItem = { filtered ->
+            AuraInlineSortControl(
+                sortType = sortType,
+                sortDescending = sortDescending,
+                options = listOf(
+                    SongSortType.CREATE_DATE to R.string.sort_by_create_date,
+                    SongSortType.NAME to R.string.sort_by_name,
+                    SongSortType.ARTIST to R.string.sort_by_artist,
+                    SongSortType.PLAY_TIME to R.string.sort_by_play_time,
+                ),
+                onSortTypeChange = onSortTypeChange,
+                onSortDescendingChange = onSortDescendingChange,
+                trailing = { AuraSongCountLabel(filtered.size) },
+            )
+        },
+        extraItemsPresent = activeDownloads.isNotEmpty(),
+        extraItems = { isSearching ->
             // ── Almacenamiento (solo "Descargado") ────────────────────────────────────────────────
             if (isDownloadsScreen && !isSearching) {
                 item(key = "aura_ap_storage") {
@@ -441,591 +368,8 @@ fun AuraAutoPlaylistScreen(
                     )
                 }
             }
-
-            if (songs!!.isNotEmpty()) {
-                if (isSearching) {
-                    item(key = "aura_ap_search") {
-                        AuraInlineSearchField(
-                            value = query,
-                            onValueChange = { query = it },
-                            placeholder = stringResource(R.string.search),
-                            focusRequester = focusRequester,
-                            onSearch = { focusManager.clearFocus() },
-                            modifier = Modifier.animateItem(),
-                        )
-                    }
-                }
-
-                item(key = "aura_ap_sort") {
-                    AuraInlineSortControl(
-                        sortType = sortType,
-                        sortDescending = sortDescending,
-                        options = listOf(
-                            SongSortType.CREATE_DATE to R.string.sort_by_create_date,
-                            SongSortType.NAME to R.string.sort_by_name,
-                            SongSortType.ARTIST to R.string.sort_by_artist,
-                            SongSortType.PLAY_TIME to R.string.sort_by_play_time,
-                        ),
-                        onSortTypeChange = onSortTypeChange,
-                        onSortDescendingChange = onSortDescendingChange,
-                        trailing = {
-                            AuraTechnicalText(
-                                text = pluralStringResource(
-                                    R.plurals.n_song,
-                                    filteredSongs.size,
-                                    filteredSongs.size,
-                                ).uppercase(Locale.ROOT),
-                                color = AuraPalette.OnGroundGhost,
-                                modifier = Modifier.padding(end = 12.dp),
-                            )
-                        },
-                    )
-                }
-            }
-
-            itemsIndexed(
-                items = filteredSongs,
-                key = { _, song -> song.id },
-            ) { _, song ->
-                val selected = song.id in selection
-                val onCheckedChange: (Boolean) -> Unit = { checked ->
-                    if (checked) selection.add(song.id) else selection.remove(song.id)
-                }
-                val dimmed = song.id in shufflePlayedSet && song.id != mediaMetadata?.id
-
-                AuraRow(
-                    title = song.song.title,
-                    subtitle = song.artists.joinToString { it.name },
-                    highlighted = song.id == mediaMetadata?.id,
-                    dimmed = dimmed,
-                    contentDescription = song.song.title,
-                    onClick = {
-                        when {
-                            inSelectMode -> onCheckedChange(!selected)
-                            song.song.id == mediaMetadata?.id -> playerConnection.togglePlayPause()
-                            else -> playerConnection.playQueue(
-                                ListQueue(
-                                    title = playlist,
-                                    items = songs!!.map { it.toMediaItem() },
-                                    startIndex = songs!!.indexOfFirst { it.id == song.id },
-                                    contextId = contextId,
-                                ),
-                            )
-                        }
-                    },
-                    onLongClick = {
-                        if (!inSelectMode) {
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            inSelectMode = true
-                            onCheckedChange(true)
-                        }
-                    },
-                    artwork = {
-                        AuraCover(
-                            thumbnailUrl = song.song.thumbnailUrl,
-                            size = 50.dp,
-                            seed = song.id,
-                        ) {
-                            if (song.id == mediaMetadata?.id && isPlaying) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .background(AuraPalette.Ground.copy(alpha = 0.55f)),
-                                    contentAlignment = Alignment.Center,
-                                ) { AuraPlayingBars() }
-                            }
-                        }
-                    },
-                    trailing = {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(7.dp),
-                        ) {
-                            if (dimmed) {
-                                AuraIconGlyph(
-                                    icon = AuraIcons.Check,
-                                    contentDescription = "Ya reproducida en aleatorio",
-                                    size = 16.dp,
-                                    tint = AuraPalette.Teal,
-                                )
-                            }
-                            if (song.song.explicit) {
-                                AuraTechnicalText(
-                                    text = "E",
-                                    color = AuraPalette.OnGroundDisabled,
-                                    style = AuraType.QualityBadge,
-                                )
-                            }
-                            if (song.song.liked) {
-                                AuraIconGlyph(
-                                    icon = AuraIcons.HeartFilled,
-                                    contentDescription = null,
-                                    size = 15.dp,
-                                    tint = AuraPalette.Teal,
-                                )
-                            }
-                            // On "Descargado" every row IS a download, so the tick would be noise —
-                            // the same rule the new Biblioteca applies to its Descargado sub-filter.
-                            if (!isDownloadsScreen) {
-                                AuraDownloadTick(songId = song.id)
-                            }
-                            AuraQualityBadge(format = song.format)
-                            if (inSelectMode) {
-                                Checkbox(
-                                    checked = selected,
-                                    onCheckedChange = onCheckedChange,
-                                    colors = CheckboxDefaults.colors(
-                                        checkedColor = AuraPalette.Teal,
-                                        uncheckedColor = AuraPalette.OnGroundDisabled,
-                                        checkmarkColor = AuraPalette.OnAccent,
-                                    ),
-                                )
-                            } else {
-                                AuraIconButton(
-                                    icon = AuraIcons.More,
-                                    contentDescription = song.song.title,
-                                    onClick = {
-                                        menuState.show {
-                                            SongMenu(
-                                                originalSong = song,
-                                                navController = navController,
-                                                onDismiss = menuState::dismiss,
-                                            )
-                                        }
-                                    },
-                                    size = 18.dp,
-                                    tint = AuraPalette.OnGroundDisabled,
-                                )
-                            }
-                        }
-                    },
-                    modifier = Modifier
-                        .animateItem()
-                        .padding(horizontal = AuraSpacing.Gutter)
-                        .tvFocusable(isTvOrCar, AuraShapes.Highlight, scaleFocused = 1f),
-                )
-            }
-
-            item(key = "aura_ap_tail") { Spacer(Modifier.height(50.dp)) }
-        }
-
-        DraggableScrollbar(
-            modifier = Modifier
-                .padding(
-                    LocalPlayerAwareWindowInsets.current.union(WindowInsets.ime).asPaddingValues(),
-                )
-                .align(Alignment.CenterEnd),
-            scrollState = listState,
-            headerItems = 2,
-        )
-
-        if (canRefresh) {
-            Indicator(
-                isRefreshing = isRefreshing,
-                state = pullRefreshState,
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(LocalPlayerAwareWindowInsets.current.asPaddingValues()),
-            )
-        }
-
-        // ── Barra superior ────────────────────────────────────────────────────────────────────────
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Top))
-                .background(AuraPalette.Ground.copy(alpha = 0.82f))
-                .padding(horizontal = 6.dp, vertical = 4.dp),
-        ) {
-            AuraIconButton(
-                icon = if (inSelectMode) AuraIcons.Plus else AuraIcons.ChevronRight,
-                // Spanish content descriptions, written here as the rest of the new UI does — the
-                // classic bar leaves both of these icons with `contentDescription = null`.
-                contentDescription = if (inSelectMode) "Cancelar la selección" else "Volver",
-                onClick = {
-                    when {
-                        isSearching -> {
-                            isSearching = false
-                            query = ""
-                            focusManager.clearFocus()
-                        }
-
-                        inSelectMode -> onExitSelectionMode()
-                        else -> navController.navigateUp()
-                    }
-                },
-                size = 22.dp,
-                // A "+" turned 45° is the render's close glyph; the back arrow is a chevron mirrored.
-                modifier = Modifier.graphicsLayer {
-                    rotationZ = if (inSelectMode) 45f else 180f
-                },
-            )
-            Text(
-                text = if (inSelectMode) {
-                    pluralStringResource(R.plurals.n_song, selection.size, selection.size)
-                } else {
-                    playlist
-                },
-                style = AuraType.SheetTitle,
-                color = AuraPalette.OnGround,
-                maxLines = 1,
-                overflow = AuraDefaultOverflow,
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(horizontal = 6.dp),
-            )
-            if (inSelectMode) {
-                Checkbox(
-                    checked = selection.size == filteredSongs.size && selection.isNotEmpty(),
-                    onCheckedChange = {
-                        if (selection.size == filteredSongs.size) {
-                            selection.clear()
-                        } else {
-                            selection.clear()
-                            selection.addAll(filteredSongs.map { it.id })
-                        }
-                    },
-                    colors = CheckboxDefaults.colors(
-                        checkedColor = AuraPalette.Teal,
-                        uncheckedColor = AuraPalette.OnGroundDisabled,
-                        checkmarkColor = AuraPalette.OnAccent,
-                    ),
-                )
-                AuraIconButton(
-                    icon = AuraIcons.More,
-                    contentDescription = "Acciones de la selección",
-                    enabled = selection.isNotEmpty(),
-                    onClick = {
-                        menuState.show {
-                            SelectionSongMenu(
-                                songSelection = filteredSongs.filter { it.id in selection },
-                                onDismiss = menuState::dismiss,
-                                clearAction = onExitSelectionMode,
-                            )
-                        }
-                    },
-                    size = 20.dp,
-                )
-            } else if (!isSearching) {
-                AuraIconButton(
-                    icon = AuraIcons.Search,
-                    contentDescription = stringResource(R.string.search),
-                    onClick = { isSearching = true },
-                    size = 20.dp,
-                )
-            }
-        }
-    }
-}
-
-// ── Cabecera de la colección ──────────────────────────────────────────────────────────────────────
-
-/**
- * Cover, title, Aleatorio / Reproducir / ⋯, the count line, the "Aleatorio mejorado" pill and the
- * "Acerca de" block — the classic header's contents, in the new language.
- *
- * The shuffle button is the SAME [rememberShuffleMemoryPrompt] + unplayed-first ordering the classic
- * header uses; re-deriving it would have given this screen a shuffle that behaves differently from the
- * identical button one tab away.
- */
-@Composable
-private fun AuraAutoPlaylistHeader(
-    name: String,
-    songs: List<Song>,
-    likeLength: Int,
-    contextId: String,
-    downloadState: Int,
-    onShowRemoveDownloadDialog: () -> Unit,
-    onSync: (() -> Unit)?,
-    modifier: Modifier = Modifier,
-) {
-    val playerConnection = LocalPlayerConnection.current ?: return
-    val context = LocalContext.current
-    val menuState = LocalMenuState.current
-    val isTvOrCar = rememberIsTvOrCar()
-    val isWideLayout = rememberIsWideLayout()
-
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(bottom = 8.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Spacer(Modifier.height(56.dp))
-
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 48.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            AuraCover(
-                thumbnailUrl = songs.firstOrNull()?.song?.thumbnailUrl,
-                // Wide screens cap the cover, exactly as the classic header does.
-                size = if (isWideLayout) 320.dp else 260.dp,
-                seed = contextId,
-                shape = AuraShapes.PlayerArtwork,
-                decodeTo = 512,
-            )
-        }
-
-        Spacer(Modifier.height(26.dp))
-
-        Text(
-            text = name,
-            style = AuraType.ScreenTitle,
-            color = AuraPalette.OnGround,
-            maxLines = 2,
-            overflow = AuraDefaultOverflow,
-            modifier = Modifier.padding(horizontal = 32.dp),
-        )
-
-        Spacer(Modifier.height(6.dp))
-
-        Text(
-            text = buildString {
-                append(pluralStringResource(R.plurals.n_song, songs.size, songs.size))
-                if (likeLength > 0) {
-                    append(" • ")
-                    append(makeTimeString(likeLength * 1000L))
-                }
-            },
-            style = AuraType.RowSubtitle,
-            color = AuraPalette.OnGroundMuted,
-            maxLines = 1,
-            overflow = AuraDefaultOverflow,
-        )
-
-        // "Aleatorio mejorado · X/Y reproducidas" — feature-gated inside the shared chip.
-        run {
-            val playedSet = rememberPlayedShuffleSet(contextId)
-            val playedCount = remember(playedSet, songs) { songs.count { it.song.id in playedSet } }
-            EnhancedShuffleChip(
-                playedCount = playedCount,
-                total = songs.size,
-                modifier = Modifier.padding(top = 10.dp),
-            )
-        }
-
-        Spacer(Modifier.height(18.dp))
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = AuraSpacing.Gutter),
-            horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            val playedForStart = rememberPlayedShuffleSet(contextId)
-            val onShuffleClick = rememberShuffleMemoryPrompt(
-                contextId = contextId,
-                playedCount = songs.count { it.id in playedForStart },
-                totalCount = songs.size,
-            ) { resetMemory ->
-                val ordered = if (resetMemory) {
-                    songs.shuffled()
-                } else {
-                    val (unheard, heard) = songs.partition { it.id !in playedForStart }
-                    unheard.shuffled() + heard.shuffled()
-                }
-                playerConnection.playQueue(
-                    ListQueue(
-                        title = name,
-                        items = ordered.map { it.toMediaItem() },
-                        contextId = contextId,
-                        startShuffled = true,
-                    ),
-                )
-            }
-
-            AuraHeaderButton(
-                icon = AuraIcons.Shuffle,
-                label = stringResource(R.string.shuffle),
-                onClick = onShuffleClick,
-                accent = false,
-                modifier = Modifier.weight(1f).tvFocusable(isTvOrCar, scaleFocused = 1f),
-            )
-            AuraHeaderButton(
-                icon = AuraIcons.Play,
-                label = stringResource(R.string.play),
-                onClick = {
-                    playerConnection.playQueue(
-                        ListQueue(
-                            title = name,
-                            items = songs.map { it.toMediaItem() },
-                            contextId = contextId,
-                        ),
-                    )
-                },
-                accent = true,
-                modifier = Modifier.weight(1f).tvFocusable(isTvOrCar, scaleFocused = 1f),
-            )
-            Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .clip(CircleShape)
-                    .background(AuraPalette.SurfaceFill)
-                    .border(1.dp, AuraPalette.SurfaceLine, CircleShape)
-                    .tvFocusable(isTvOrCar, scaleFocused = 1f)
-                    .auraClickableInternal(
-                        onClick = {
-                            menuState.show {
-                                AutoPlaylistMenu(
-                                    downloadState = downloadState,
-                                    onSync = onSync,
-                                    onQueue = {
-                                        playerConnection.addToQueue(songs.map { it.toMediaItem() })
-                                    },
-                                    onDownload = {
-                                        when (downloadState) {
-                                            Download.STATE_COMPLETED -> onShowRemoveDownloadDialog()
-                                            Download.STATE_DOWNLOADING -> songs.forEach { song ->
-                                                DownloadService.sendRemoveDownload(
-                                                    context,
-                                                    ExoDownloadService::class.java,
-                                                    song.song.id,
-                                                    false,
-                                                )
-                                            }
-
-                                            else -> songs.forEach { song ->
-                                                val request = DownloadRequest
-                                                    .Builder(song.song.id, song.song.id.toUri())
-                                                    .setCustomCacheKey(song.song.id)
-                                                    .setData(song.song.title.toByteArray())
-                                                    .build()
-                                                DownloadService.sendAddDownload(
-                                                    context,
-                                                    ExoDownloadService::class.java,
-                                                    request,
-                                                    false,
-                                                )
-                                            }
-                                        }
-                                    },
-                                    onDismiss = menuState::dismiss,
-                                )
-                            }
-                        },
-                        contentDescription = "Más opciones de la colección",
-                    ),
-                contentAlignment = Alignment.Center,
-            ) {
-                AuraIconGlyph(
-                    icon = AuraIcons.More,
-                    contentDescription = null,
-                    size = 20.dp,
-                    tint = AuraPalette.OnGround,
-                )
-            }
-        }
-
-        Spacer(Modifier.height(18.dp))
-
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = AuraSpacing.Gutter),
-        ) {
-            AuraSectionLabel(text = stringResource(R.string.about_album).uppercase(Locale.ROOT))
-            Spacer(Modifier.height(6.dp))
-            AuraExpandableText(
-                text = stringResource(R.string.aura_auto_playlist_about, name),
-                collapsedMaxLines = 3,
-            )
-        }
-    }
-}
-
-/**
- * The classic header's "Acerca de" text with its Mostrar más / Mostrar menos toggle, in the new UI's
- * own colours.
- *
- * `ui/component/ExpandableText` is not reused here for one reason: it paints itself with
- * `MaterialTheme.colorScheme.onSurfaceVariant`, and this screen draws its own near-black ground
- * WITHOUT installing a Material theme — so on a user running the beta in the light theme that classic
- * text would be dark ink on a dark ground. Same `R.string.show_more` / `R.string.show_less` labels,
- * same collapse behaviour, legible in both themes.
- */
-@Composable
-private fun AuraExpandableText(
-    text: String,
-    modifier: Modifier = Modifier,
-    collapsedMaxLines: Int = 3,
-) {
-    var expanded by rememberSaveable { mutableStateOf(false) }
-    var hasOverflow by rememberSaveable { mutableStateOf(false) }
-
-    Column(modifier) {
-        Text(
-            text = text,
-            style = AuraType.RowSubtitle,
-            color = AuraPalette.OnGroundMuted,
-            maxLines = if (expanded) Int.MAX_VALUE else collapsedMaxLines,
-            overflow = AuraDefaultOverflow,
-            onTextLayout = { result -> if (!expanded) hasOverflow = result.hasVisualOverflow },
-        )
-        if (hasOverflow || expanded) {
-            Text(
-                text = stringResource(if (expanded) R.string.show_less else R.string.show_more),
-                style = AuraType.Chip,
-                color = AuraPalette.Teal,
-                maxLines = 1,
-                modifier = Modifier
-                    .padding(top = 4.dp)
-                    .clip(AuraShapes.Pill)
-                    .auraClickableInternal(
-                        onClick = { expanded = !expanded },
-                        contentDescription = null,
-                    )
-                    .padding(vertical = 8.dp, horizontal = 4.dp),
-            )
-        }
-    }
-}
-
-/** Aleatorio / Reproducir. [accent] draws the gradient (the one full-colour element per screen). */
-@Composable
-private fun AuraHeaderButton(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    label: String,
-    onClick: () -> Unit,
-    accent: Boolean,
-    modifier: Modifier = Modifier,
-) {
-    Row(
-        horizontalArrangement = Arrangement.Center,
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = modifier
-            .height(48.dp)
-            .clip(AuraShapes.Pill)
-            .then(
-                if (accent) {
-                    Modifier.background(AuraPalette.PlayButtonGradient)
-                } else {
-                    Modifier
-                        .background(AuraPalette.SurfaceFill)
-                        .border(1.dp, AuraPalette.SurfaceLine, AuraShapes.Pill)
-                },
-            )
-            .auraClickableInternal(onClick = onClick, contentDescription = label),
-    ) {
-        AuraIconGlyph(
-            icon = icon,
-            contentDescription = null,
-            size = 19.dp,
-            tint = if (accent) AuraPalette.OnAccent else AuraPalette.OnGround,
-        )
-        Spacer(Modifier.width(8.dp))
-        Text(
-            text = label,
-            style = AuraType.Chip,
-            color = if (accent) AuraPalette.OnAccent else AuraPalette.OnGround,
-            maxLines = 1,
-            overflow = AuraDefaultOverflow,
-        )
-    }
+        },
+    )
 }
 
 // ── Descargas ─────────────────────────────────────────────────────────────────────────────────────
@@ -1033,8 +377,8 @@ private fun AuraHeaderButton(
 /**
  * "Canciones descargadas · <tamaño real>". The number is `downloadCache.cacheSpace`, i.e. the exact
  * value Ajustes ▸ Almacenamiento prints, through the same [formatFileSize]; tapping opens that screen,
- * which already owns "vaciar descargas". Read off the main thread and only every 2 s — the cache walk
- * is disk work and this card is decoration, not a meter.
+ * which already owns "vaciar descargas". Read off the main thread and only while a transfer is in
+ * flight — the cache walk is disk work and this card is decoration, not a meter.
  */
 @Composable
 private fun AuraDownloadStorageCard(
@@ -1060,7 +404,7 @@ private fun AuraDownloadStorageCard(
     }
 
     Row(
-        verticalAlignment = Alignment.CenterVertically,
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         modifier = modifier
             .fillMaxWidth()
@@ -1153,7 +497,7 @@ private fun AuraActiveDownloadRow(
             },
             trailing = {
                 Row(
-                    verticalAlignment = Alignment.CenterVertically,
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     // `percentDownloaded` is C.PERCENTAGE_UNSET (-1) until the transfer knows the
@@ -1272,147 +616,4 @@ private fun rememberAuraDownloadProgress(enabled: Boolean): State<Map<String, Fl
         }
     }
     return progress
-}
-
-// ── Furniture ─────────────────────────────────────────────────────────────────────────────────────
-
-/** The in-list search field. Same filter the classic screen applies (title OR any artist name). */
-@Composable
-private fun AuraInlineSearchField(
-    value: String,
-    onValueChange: (String) -> Unit,
-    placeholder: String,
-    focusRequester: FocusRequester,
-    onSearch: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = AuraSpacing.Gutter, vertical = 10.dp)
-            .clip(AuraShapes.Card)
-            .background(AuraPalette.SurfaceFill)
-            .border(1.dp, AuraPalette.SurfaceLine, AuraShapes.Card)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
-    ) {
-        AuraIconGlyph(
-            icon = AuraIcons.Search,
-            contentDescription = null,
-            size = 16.dp,
-            tint = AuraPalette.OnGroundFaint,
-        )
-        Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
-            if (value.isEmpty()) {
-                Text(
-                    text = placeholder,
-                    style = AuraType.RowSubtitle,
-                    color = AuraPalette.OnGroundGhost,
-                    maxLines = 1,
-                    overflow = AuraDefaultOverflow,
-                )
-            }
-            BasicTextField(
-                value = value,
-                onValueChange = onValueChange,
-                singleLine = true,
-                textStyle = AuraType.RowSubtitle.copy(color = AuraPalette.OnGround),
-                cursorBrush = SolidColor(AuraPalette.Teal),
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .focusRequester(focusRequester),
-            )
-        }
-        if (value.isNotEmpty()) {
-            AuraIconButton(
-                icon = AuraIcons.Plus,
-                contentDescription = "Borrar la búsqueda",
-                onClick = {
-                    onValueChange("")
-                    onSearch()
-                },
-                size = 16.dp,
-                tint = AuraPalette.OnGroundFaint,
-                modifier = Modifier.graphicsLayer { rotationZ = 45f },
-            )
-        }
-    }
-}
-
-/**
- * The sort control: the criterion opens a menu, the arrow flips ascending/descending — the same two
- * controls `SortHeader` gives the classic screen, writing the same two preference keys.
- */
-@Composable
-private fun <T : Enum<T>> AuraInlineSortControl(
-    sortType: T,
-    sortDescending: Boolean,
-    options: List<Pair<T, Int>>,
-    onSortTypeChange: (T) -> Unit,
-    onSortDescendingChange: (Boolean) -> Unit,
-    modifier: Modifier = Modifier,
-    trailing: (@Composable () -> Unit)? = null,
-) {
-    var expanded by remember { mutableStateOf(false) }
-    val currentLabelRes = options.firstOrNull { it.first == sortType }?.second
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(start = AuraSpacing.Gutter, end = 6.dp, top = 12.dp),
-    ) {
-        Box {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                modifier = Modifier
-                    .minimumInteractiveComponentSize()
-                    .clip(AuraShapes.Pill)
-                    .background(AuraPalette.SurfaceFill)
-                    .auraClickableInternal(
-                        onClick = { expanded = true },
-                        contentDescription = "Cambiar el criterio de orden",
-                    )
-                    .padding(horizontal = 14.dp, vertical = 9.dp),
-            ) {
-                Text(
-                    text = currentLabelRes?.let { stringResource(it) } ?: sortType.name,
-                    style = AuraType.Chip,
-                    color = AuraPalette.OnGround,
-                    maxLines = 1,
-                    overflow = AuraDefaultOverflow,
-                )
-                AuraIconGlyph(
-                    icon = AuraIcons.ChevronDown,
-                    contentDescription = null,
-                    size = 14.dp,
-                    tint = AuraPalette.OnGroundFaint,
-                )
-            }
-            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                options.forEach { (option, labelRes) ->
-                    DropdownMenuItem(
-                        text = { Text(stringResource(labelRes)) },
-                        onClick = {
-                            onSortTypeChange(option)
-                            expanded = false
-                        },
-                    )
-                }
-            }
-        }
-        AuraIconButton(
-            icon = AuraIcons.ChevronDown,
-            contentDescription = "Invertir el orden",
-            onClick = { onSortDescendingChange(!sortDescending) },
-            size = 16.dp,
-            tint = AuraPalette.OnGroundFaint,
-            modifier = Modifier.graphicsLayer { rotationZ = if (sortDescending) 0f else 180f },
-        )
-        Box(Modifier.weight(1f))
-        trailing?.invoke()
-    }
 }

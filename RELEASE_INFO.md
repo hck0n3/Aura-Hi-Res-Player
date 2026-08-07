@@ -1,46 +1,55 @@
-# Aura Hi-Res Player 0.6.148-beta1
+# Aura Hi-Res Player 0.6.149-beta1
 
-Beta **privada**. Esta es la que responde a los once fallos que reportaste con capturas, más la personalización que pediste. Todo lo de 0.6.147 va dentro.
+Beta **privada**. El cierre que reportaste al tocar Buscar, seis pantallas más con el diseño nuevo, los cuatro botones que pediste, y la personalización que te había quitado sin darme cuenta.
 
 ---
 
-## 🎛️ Cómo se enciende y cómo se apaga
-- **Ajustes ▸ abajo del todo ▸ "Interfaz nueva".** Apagarla no toca tu base de datos, tus ajustes, la cola ni la reproducción.
-- El interruptor está en las dos interfaces, así que nunca te quedas atrapado.
+## 💥 El cierre al tocar Buscar
 
-## 🔴 La Biblioteca ya no te manda a Ajustes
-Reportaste que la pestaña Biblioteca no mostraba nada y abría Ajustes. **No era la ruta**: era la pila de navegación. La celda de Ajustes era la única que se apilaba encima de la pestaña en la que estabas, y al volver, el sistema guardaba las dos juntas como si fueran la pila de Biblioteca — y la restauraba entera. **Se reenvenenaba sola** y quedaba rota el resto de la sesión.
-- Encontramos y cerramos **cuatro puertas** con esa misma forma. Una de ellas envenenaba **Ajustes**, que es donde vive el interruptor para volver a la interfaz clásica.
+Se cerraba la app al abrir Buscar. **No era intermitente: le pasaba a cualquiera.**
 
-## 🎨 Todo salía blanco — arreglado en la raíz
-Casi todas las pantallas y **todos los diálogos** salían en blanco chillón. No era que faltaran pantallas por convertir: la interfaz nueva **se pintaba su propia paleta oscura** y nunca le decía nada al tema de la app. Se veía dentro de **una sola pantalla**: la biblioteca pintaba su cabecera oscura y, debajo, la pantalla Local en blanco.
-- Ahora la interfaz nueva **manda sobre el tema**, así que las ~89 pantallas clásicas y todos los diálogos dejan de chirriar de golpe.
-- **Consecuencia que debes saber: con la interfaz nueva la app es solo oscura.**
+Cada fila de "Explorar" se identificaba con el título de la sección más el identificador de su primera entrada. Pero **todas las categorías de "Estados de ánimo y momentos" comparten el mismo identificador** — solo cambian los parámetros. Así que desde la segunda fila el identificador se repetía y el sistema lanzaba el error al dibujar.
 
-## 🖌️ Tus 46 colores ya llegan a la interfaz nueva
-Era tu queja original **volviendo por la puerta de atrás**: el color repintaba las pantallas clásicas pero las nuevas seguían con un turquesa fijo, puesto 143 veces. Ahora el acento que elijas conduce toda la paleta nueva — y también el hex a mano, la intensidad y el acento dinámico.
-- **Con contraste garantizado**: cada tono se comprueba a 4,5:1 por separado, con una prueba que recorre **los 46 colores** sobre el fondo normal y sobre negro puro. Ninguno puede dejar texto ilegible.
+Ahora las claves van **por posición**: no pueden repetirse devuelva lo que devuelva el servidor.
 
-## 🖼️ Los 7 estilos de fondo del reproductor funcionan
-Seis de los siete no hacían nada en vertical — incluido **el que viene puesto de fábrica**. La regla es una sola: **el fondo del reproductor es tuyo; lo que va encima es de Aura.** El estilo pinta el suelo del reproductor, su cola y el mini reproductor; la portada, el título y los controles no los toca.
-- **AMOLED** ya alcanza las 14 superficies nuevas: antes arrastrabas la cola hacia arriba y era negro puro, hacia abajo y volvía el azul.
-- El **radio de esquina** y el **tamaño de celda** también se honran ahora.
+## 📱 Seis pantallas más con el diseño nuevo
 
-## 📱 Horizontal, tablet, TV y coche
-Al girar el móvil desaparecía el diseño nuevo. Ya no: hay forma ancha propia, con foco de mando a distancia en cada control.
-- **Rotar ya no destruye la pantalla entera.** Antes se desechaba todo el árbol y se montaba el clásico.
-- Y se recuperaron **dos gestos que se habían perdido también en vertical**: deslizar hacia arriba para la cola, y el gesto sobre la portada con la letra a pantalla completa.
+**Álbum**, **artista**, **lista de reproducción** (online y local), **en caché** y **más escuchadas**. De 10 a **16 de 69 rutas**.
 
-## 🔎 Las pantallas que faltaban, y esta vez alcanzables
-**Buscar** (con historial, sugerencias, pestañas y búsqueda por voz), **Estadísticas**, **Migrar lista** (con Tidal y Apple), **Descargados** y las otras cinco auto-listas, y **Letras**.
-- Buscar nunca se había rehecho, y no te lo dije en su momento. Ahora está.
+- **Álbum y artista van primero por un motivo**: el reproductor nuevo te lleva a ellas. Tocabas el título o el artista y aterrizabas en una pantalla vieja. Ese salto ya no está.
+- Las cuatro pantallas de listas comparten ahora **un solo molde**, así que "en caché" y "más escuchadas" dejan de ser las raras del grupo.
+- **Tu Canvas está intacto** — la portada animada, su ajuste, y que se apague con el modo ahorro de datos. Verificado línea a línea, no de palabra.
+- Y el **Aleatorio Mejorado comparte la misma memoria** entre las dos interfaces: no hay dos listas de "ya sonadas" que se desincronicen.
 
-## 🌫️ Cristal y movimiento
-- El **mini reproductor** ya se lee: tenía un 7% de blanco sobre lo que hubiera detrás. Ahora arranca de un fondo opaco y lleva la portada desenfocada encima, **una vez por canción** — no un desenfoque en vivo, que sería calor y batería sin descanso.
-- La **barra inferior** ya se anima: píldora que se desliza, tinte y escala de icono. Y sus etiquetas se leen: estaban al 42% de opacidad, por debajo del mínimo legible.
-- Interruptores, chips y filas ya no saltan en seco.
+## 🎛️ Los cuatro botones que pediste
 
-## ⚠️ Lo que sé que sigue imperfecto
-- **"Liquid Glass" como estilo de fondo promete más de lo que da**: dibuja un esmerilado real, pero no muestrea el fondo en vivo — eso es justo lo que rompe la regla de calor.
-- **En Android 8 a 11 no existe el desenfoque del sistema**, así que cuatro estilos pierden la portada.
-- **Nada está probado en un dispositivo.** Los contrastes están calculados y fijados con pruebas; el veredicto de vista es tuyo.
+**No me gusta**, **Añadir a playlist**, **Ecualizador** y **Compartir**, en el reproductor a pantalla completa.
+
+Van en **dos filas de cuatro**, y la razón es una medida: siete botones a 48dp con separación son 420dp, y tu pantalla tiene 360. Comprimirlos dejaría los objetivos táctiles pegados justo encima del transporte — una fábrica de toques equivocados. Siguen estando también en el menú.
+
+## ▶️ La cola ya no miente
+
+Decía "Siguiente en la cola" y debajo aparecía **la canción que estabas oyendo**. Ahora la actual va bajo su propio rótulo **"REPRODUCIENDO"** y **"Siguiente" empieza en la siguiente de verdad** — respetando el aleatorio, el repetir-una y el final de la cola.
+
+## 🎨 La personalización que te había quitado
+
+Tenías razón: había ocultado controles. **Ocultar también es perder.**
+
+- **"Estilo de fondo del minirreproductor" vuelve, y funciona.** El mini nuevo lee su propia preferencia.
+- **Y "Desenfoque" ya hace algo distinto de "Predeterminado".** Antes eran 30 y 34 puntos de desenfoque sobre la misma imagen: imperceptible. Ahora **Predeterminado es el fondo liso del tema** (y ni siquiera decodifica una imagen) y **Desenfoque es la portada difuminada**.
+- **Liquid Glass ya no desaparece**: la fila está visible, atenuada, y **con una explicación que se puede leer** — pasó de 3,2:1 a 5,7:1 de contraste. El efecto real muestrea la pantalla entera en cada fotograma, y eso es exactamente lo que la regla de calor prohíbe en superficies que están visibles mientras suena música.
+
+## 🔍 Y lo que reportaste de la interfaz
+
+- El **botón ⋮ repetido** de la barra de la cola: fuera. Era el duplicado de verdad.
+- La **lupa superpuesta** sobre las pestañas de Biblioteca: movida a cada pestaña, **sin perder la búsqueda**.
+- Los botones de **IA, crear playlist e importar**: ya se leen.
+- Una fila del menú decía **"Transmitir"** con icono de emisión cuando en realidad abre los **dispositivos de audio**.
+- **34 textos** movidos del código a los recursos, en los dos idiomas.
+
+## ⚠️ Lo que sigue pendiente, dicho claro
+
+- **53 de las 69 rutas** conservan su disposición clásica. Se ven oscuras y coherentes, pero con la estructura de antes.
+- **Las cuatro sub-pantallas de artista** siguen clásicas — y ahí vive el **único control de ordenación** de toda la zona de artista.
+- **La interfaz nueva sigue siendo solo oscura.** Ya sé lo que cuesta el tema claro: **5 valores y 9 opacidades**, no una reescritura. Dilo y lo hago.
+- **Los cortes de audio en Android Auto que reportaste no están arreglados.** Seis hipótesis fueron investigadas y **las seis quedaron refutadas** — incluidas mis dos favoritas. Nada de este lote toca la cadena de audio; lo verifiqué barriendo el código entero. Necesito el registro de un trayecto para seguir.

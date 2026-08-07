@@ -3,6 +3,7 @@ package iad1tya.echo.music.ui.newui
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
 import android.content.res.Configuration
 import android.os.Build
 import android.widget.Toast
@@ -30,6 +31,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -147,6 +150,7 @@ import iad1tya.echo.music.ui.component.LocalBottomSheetPageState
 import iad1tya.echo.music.ui.component.LocalMenuState
 import iad1tya.echo.music.ui.component.PlayerProgressSlider
 import iad1tya.echo.music.ui.component.rememberBottomSheetState
+import iad1tya.echo.music.ui.menu.AddToPlaylistDialog
 import iad1tya.echo.music.ui.player.CanvasArtworkPlaybackCache
 import iad1tya.echo.music.ui.player.rememberCanvasAnimationEnabled
 import iad1tya.echo.music.ui.player.InlineLyricsView
@@ -168,6 +172,7 @@ import iad1tya.echo.music.ui.utils.rememberIsWideLayout
 import iad1tya.echo.music.ui.utils.tvFocusable
 import iad1tya.echo.music.utils.DeviceCapabilities
 import iad1tya.echo.music.utils.DeviceTier
+import iad1tya.echo.music.utils.ShareLinks
 import iad1tya.echo.music.utils.isLocalMediaId
 import iad1tya.echo.music.utils.makeTimeString
 import iad1tya.echo.music.utils.rememberDeviceThrottle
@@ -319,7 +324,7 @@ fun AuraPlayer(
     )
 }
 
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
 @Composable
 private fun AuraPlayerShape(
     state: BottomSheetState,
@@ -344,6 +349,10 @@ private fun AuraPlayerShape(
     val canSkipPrevious by playerConnection.canSkipPrevious.collectAsState()
     val canSkipNext by playerConnection.canSkipNext.collectAsState()
     val isMuted by playerConnection.isMuted.collectAsState()
+    // "No me gusta" is now a button ON the player, not only a row inside the merged menu. Same flow the
+    // menu reads (AuraPlayerMenu.kt:146) and the same flow the classic like/dislike pill reads
+    // (Player.kt:2006) — one source of truth, so the surfaced button and the menu row can never disagree.
+    val disliked by playerConnection.currentSongDisliked.collectAsState()
     val automix by playerConnection.service.automixItems.collectAsState()
     val currentFormatEntity by database.format(mediaMetadata?.id).collectAsState(initial = null)
     val download by LocalDownloadUtil.current.getDownload(mediaMetadata?.id ?: "")
@@ -652,6 +661,29 @@ private fun AuraPlayerShape(
         )
     }
 
+    // ── "Añadir a playlist" ───────────────────────────────────────────────────────────────────────
+    // The SAME dialog the merged menu opens (AuraPlayerMenu.kt:174) with the SAME `onGetSong` body,
+    // including the `withTransaction` — the song row must be committed before the dialog inserts the
+    // ON DELETE CASCADE map row, or the map insert fails for a song that is not in the library yet.
+    //
+    // Declared in the BODY, next to the sleep-timer dialog, and never inside `controlsContent`: that
+    // block is invoked from three different arrangements, so a `rememberSaveable` living inside it would
+    // be destroyed and recreated by a rotation and the open dialog would vanish mid-gesture.
+    var showChoosePlaylistDialog by rememberSaveable { mutableStateOf(false) }
+    AddToPlaylistDialog(
+        isVisible = showChoosePlaylistDialog,
+        onGetSong = {
+            val meta = mediaMetadata
+            if (meta == null) {
+                emptyList()
+            } else {
+                database.withTransaction { insert(meta) }
+                listOf(meta.id)
+            }
+        },
+        onDismiss = { showChoosePlaylistDialog = false },
+    )
+
     // ── The audio-output picker ───────────────────────────────────────────────────────────────────
     // NOT opened from here any more. It has exactly ONE owner in this shape: the queue bar
     // ([AuraQueueBar], AuraQueue.kt), which is on screen at the bottom of the player the whole time the
@@ -792,6 +824,11 @@ private fun AuraPlayerShape(
                         modifier = Modifier.tvFocusable(isTvOrCar, CircleShape),
                     )
                 }
+                // THE player menu's door while the player is expanded — there is no second one any more.
+                // The collapsed queue bar used to draw a ⋮ wired to the SAME [PlayerMenuHost] with the same
+                // arguments, on screen at the same time as this one in every arrangement; it is gone
+                // (AuraQueue.kt). While the inline lyrics are open this button is the LETRA menu instead,
+                // and in that state the player menu's door is the queue sheet's own header ⋮.
                 AuraIconButton(
                     icon = AuraIcons.More,
                     contentDescription = if (showInlineLyrics) "Menú de la letra" else "Más opciones",
@@ -1221,6 +1258,33 @@ private fun AuraPlayerShape(
                 // same `queueSheetState.expandSoft()`. Those three now live ONLY in the queue bar. What is
                 // left here is what nothing else on this screen owns: like, descarga, and the video toggle
                 // this shape had lost entirely.
+                //
+                // ── FOUR MORE, BY OWNER REQUEST — "no me gusta", "añadir a playlist", "ecualizador",
+                // "compartir" ─────────────────────────────────────────────────────────────────────────
+                // All four already existed inside the merged menu ([AuraPlayerMenu]) and they STAY there:
+                // this is a shortcut, not a move, so nobody used to the menu loses anything. Every one of
+                // them calls the SAME action the menu row calls — `toggleDislikeCurrentSong`, the same
+                // [AddToPlaylistDialog], the same `settings/equalizer` route with the same `collapseSoft`
+                // and `launchSingleTop`, the same ACTION_SEND over the same [ShareLinks.song]. There is no
+                // second implementation of anything below.
+                //
+                // WHY A [FlowRow] AND NOT ONE SCROLLING ROW. Seven 48 dp targets with 14 dp gaps measure
+                // 420 dp — a 360 dp phone cannot draw them, and 320 dp phones and split-screen windows are
+                // worse. A single horizontally-scrolling row "fits" by HIDING three of the seven behind an
+                // edge with no affordance, which is the opposite of what was asked ("visible en el
+                // reproductor"). Squeezing seven into 360 dp means ~51 dp each, i.e. touching neighbours,
+                // right above the transport people actually aim for.
+                //
+                // So: two rows of four, wrapped rather than hard-coded. `maxItemsInEachRow = 4` splits the
+                // list exactly where its MEANING splits — fila 1 «qué opinas y qué guardas» (me gusta, no
+                // me gusta, añadir, descargar), fila 2 «qué haces con ella» (compartir, ecualizador, vídeo)
+                // — and because it is a flow and not two literal Rows, a window too narrow even for four
+                // wraps again instead of clipping. Nothing is ever hidden at any width.
+                //
+                // Measured: fila 1 is 4 × 48 + 3 × 12 = 228 dp, centred, so 66 dp of clear margin each side
+                // at 360 dp and 46 dp at 320 dp; fila 2 is 168 dp (three buttons) or 108 dp (two, when the
+                // track has no video). The cost is one extra 48 dp band, which in portrait comes out of the
+                // artwork's `weight(1f)` and in the wide arrangement out of a column that already scrolls.
                 Spacer(Modifier.height(if (dense) 2.dp else 6.dp))
                 val liked = currentSong?.song?.liked == true
                 // Same predicate and the same perf gate as the classic chip (Player.kt:1944) — a song is
@@ -1231,34 +1295,59 @@ private fun AuraPlayerShape(
                     (!highPerfMode || isTvOrCar) &&
                         (meta.isVideoSong || !meta.podcastVideoUrl.isNullOrEmpty())
                     )
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(14.dp, Alignment.CenterHorizontally),
-                    verticalAlignment = Alignment.CenterVertically,
+                // A local file has NO shareable link: [ShareLinks.song] builds
+                // `music.youtube.com/watch?v=<id>`, and for a local track that id is a `content://` /
+                // `file://` URI, so the "link" it would send resolves to nothing. The button is disabled
+                // rather than hidden — a control that appears and disappears per track is harder to learn
+                // than one that greys out, and `AuraIconButton` already dims a disabled glyph to 35 %.
+                val shareableLink = !meta.id.isLocalMediaId()
+                val quickAccessGlyph = if (dense) 20.dp else 22.dp
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
+                    verticalArrangement = Arrangement.spacedBy(0.dp),
+                    maxItemsInEachRow = 4,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     AuraIconButton(
                         icon = if (liked) AuraIcons.HeartFilled else AuraIcons.Heart,
                         contentDescription = stringResource(R.string.action_like),
                         onClick = playerConnection::toggleLike,
-                        size = if (dense) 20.dp else 22.dp,
+                        size = quickAccessGlyph,
                         tint = if (liked) transportAccent else AuraPalette.OnGround.copy(alpha = 0.7f),
                         modifier = Modifier.tvFocusable(isTvOrCar, CircleShape),
                     )
-                    if (hasVideo) {
-                        AuraIconButton(
-                            icon = AuraIcons.Video,
-                            // Names the DESTINATION, exactly like the classic affordance (whose glyph is
-                            // literally `music_note` while video is on): with video on, tapping goes back
-                            // to "Música". VIDEO IS A DEDICATED ExoPlayer in this app — this only flips
-                            // `videoMode`, it never touches the main player.
-                            contentDescription = if (videoMode) stringResource(R.string.music) else "Vídeo",
-                            onClick = { playerConnection.toggleVideoMode() },
-                            size = if (dense) 20.dp else 22.dp,
-                            tint = if (videoMode) transportAccent
-                            else AuraPalette.OnGround.copy(alpha = 0.7f),
-                            modifier = Modifier.tvFocusable(isTvOrCar, CircleShape),
-                        )
-                    }
+                    // "No me gusta" — the SAME call the menu row makes, and the same live flow behind it.
+                    //
+                    // ACTIVE STATE: [AuraIcons] pairs `Heart` with a filled `HeartFilled`, but `ThumbDown`
+                    // has no filled twin. Rather than introduce a second dislike silhouette — the classic
+                    // pill swaps to Material's `Icons.Filled.ThumbDown`, which is a different drawing
+                    // weight from this icon set — the "filled" state is the accent-filled disc this UI
+                    // already uses for an active control ([AuraBarButton], AuraQueue.kt), plus the accent
+                    // tint every other stateful button in this row uses. One glyph, two unmistakable
+                    // states, and the glyph stays identical to the menu row this shortcuts.
+                    AuraIconButton(
+                        icon = AuraIcons.ThumbDown,
+                        contentDescription = stringResource(R.string.action_dislike),
+                        onClick = { playerConnection.toggleDislikeCurrentSong() },
+                        size = quickAccessGlyph,
+                        tint = if (disliked) transportAccent else AuraPalette.OnGround.copy(alpha = 0.7f),
+                        modifier = Modifier
+                            .tvFocusable(isTvOrCar, CircleShape)
+                            .then(
+                                if (disliked) Modifier.background(
+                                    transportAccent.copy(alpha = 0.16f),
+                                    CircleShape,
+                                ) else Modifier,
+                            ),
+                    )
+                    AuraIconButton(
+                        icon = AuraIcons.PlaylistAdd,
+                        contentDescription = stringResource(R.string.add_to_playlist),
+                        onClick = { showChoosePlaylistDialog = true },
+                        size = quickAccessGlyph,
+                        tint = AuraPalette.OnGround.copy(alpha = 0.7f),
+                        modifier = Modifier.tvFocusable(isTvOrCar, CircleShape),
+                    )
                     Box(contentAlignment = Alignment.Center) {
                         AuraIconButton(
                             icon = if (download?.state == Download.STATE_COMPLETED) AuraIcons.Check
@@ -1284,7 +1373,7 @@ private fun AuraPlayerShape(
                                     }
                                 }
                             },
-                            size = if (dense) 20.dp else 22.dp,
+                            size = quickAccessGlyph,
                             tint = if (download?.state == Download.STATE_COMPLETED) transportAccent
                             else AuraPalette.OnGround.copy(alpha = 0.7f),
                             modifier = Modifier.tvFocusable(isTvOrCar, CircleShape),
@@ -1293,11 +1382,61 @@ private fun AuraPlayerShape(
                             download?.state == Download.STATE_DOWNLOADING
                         ) {
                             CircularProgressIndicator(
-                                modifier = Modifier.size(if (dense) 20.dp else 22.dp),
+                                modifier = Modifier.size(quickAccessGlyph),
                                 strokeWidth = 2.dp,
                                 color = AuraPalette.Teal,
                             )
                         }
+                    }
+
+                    // ── Segunda fila: qué haces con la canción ────────────────────────────────────
+                    AuraIconButton(
+                        icon = AuraIcons.Share,
+                        contentDescription = stringResource(R.string.share),
+                        enabled = shareableLink,
+                        onClick = {
+                            val intent = Intent().apply {
+                                action = Intent.ACTION_SEND
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_TEXT, ShareLinks.song(meta.id))
+                            }
+                            context.startActivity(Intent.createChooser(intent, null))
+                        },
+                        size = quickAccessGlyph,
+                        tint = AuraPalette.OnGround.copy(alpha = 0.7f),
+                        modifier = Modifier.tvFocusable(isTvOrCar, CircleShape),
+                    )
+                    // Exactly where the menu routes (AuraPlayerMenu.kt:731): collapse the player sheet
+                    // FIRST — the equalizer is a full screen and pushing it under an expanded player leaves
+                    // the sheet covering it — then `settings/equalizer` with `launchSingleTop`, so tapping
+                    // twice does not stack two copies on the back stack.
+                    AuraIconButton(
+                        icon = AuraIcons.Equalizer,
+                        contentDescription = stringResource(R.string.equalizer),
+                        onClick = {
+                            state.collapseSoft()
+                            navController.navigate("settings/equalizer") { launchSingleTop = true }
+                        },
+                        size = quickAccessGlyph,
+                        tint = AuraPalette.OnGround.copy(alpha = 0.7f),
+                        modifier = Modifier.tvFocusable(isTvOrCar, CircleShape),
+                    )
+                    if (hasVideo) {
+                        AuraIconButton(
+                            icon = AuraIcons.Video,
+                            // Names the DESTINATION, exactly like the classic affordance (whose glyph is
+                            // literally `music_note` while video is on): with video on, tapping goes back
+                            // to "Música". VIDEO IS A DEDICATED ExoPlayer in this app — this only flips
+                            // `videoMode`, it never touches the main player.
+                            contentDescription = stringResource(
+                                if (videoMode) R.string.music else R.string.video,
+                            ),
+                            onClick = { playerConnection.toggleVideoMode() },
+                            size = quickAccessGlyph,
+                            tint = if (videoMode) transportAccent
+                            else AuraPalette.OnGround.copy(alpha = 0.7f),
+                            modifier = Modifier.tvFocusable(isTvOrCar, CircleShape),
+                        )
                     }
                 }
             }
@@ -1823,9 +1962,14 @@ internal class AuraGround internal constructor(
  * Resolves the ground for the current track. Call ONCE per surface; it already contains
  * [rememberAuraBloom], so a caller must not resolve the bloom a second time.
  *
- * @param styleOverride the style a PARENT surface already resolved. The queue sheet passes what the
- *   player handed it, so the two halves of the player surface can never read the preference at two
- *   different instants and disagree. Null re-reads the preference, which is what the player itself does.
+ * @param styleOverride the style the CALLER has already decided on, for two different reasons. The queue
+ *   sheet passes what the player handed it, so the two halves of the player surface can never read the
+ *   preference at two different instants and disagree. The mini pill passes its OWN key
+ *   ([iad1tya.echo.music.constants.MiniPlayerBackgroundStyleKey], AuraShell.kt) — a separate control from
+ *   the player's, exactly as in the classic app — so for the pill this is not "the same value, resolved
+ *   once" but "a different value entirely". Null re-reads [PlayerBackgroundStyleKey], which is what the
+ *   player itself does. Everything downstream (the local-media pin, the API-31 cover gate, the thermal
+ *   gate) applies identically whichever way the style arrived.
  */
 @Composable
 internal fun rememberAuraGround(
@@ -1916,10 +2060,11 @@ internal fun auraGroundRecipe(
         )
         else AuraGroundRecipe(lobes = 0.26f, drift = motion, bloom = 0.5f)
 
-    // Frosted, NOT backdrop-sampled. The glass engine has no renderer left under this flag (its
-    // Apariencia entry is hidden for that reason) and a live full-screen sample is the one thing the
-    // thermal contract rules out outright — so this is the same still, blurred cover under the render's
-    // own white film and top hairline. It is a real, distinct ground; it is not the Liquid Glass shader.
+    // Frosted, NOT backdrop-sampled. The glass engine has no renderer under this flag (its Apariencia
+    // row is SHOWN but disabled, saying so — AppearanceSettings.kt:1315) and a live full-screen sample is
+    // the one thing the thermal contract rules out outright — so this is the same still, blurred cover
+    // under the render's own white film and top hairline. It is a real, distinct ground; it is not the
+    // Liquid Glass shader.
     PlayerBackgroundStyle.LIQUID_GLASS ->
         if (hasCover) AuraGroundRecipe(cover = 0.55f, coverBlur = 52.dp, film = 0.45f)
         else AuraGroundRecipe(wash = 0.18f, film = 0.45f)
@@ -1928,25 +2073,32 @@ internal fun auraGroundRecipe(
 /**
  * The mini pill's version of a recipe.
  *
- * The pill is a different surface with a different history: **its ground has always BEEN the blurred
- * cover** (`AuraMiniPlayer`, shipped), under the render's `.mi` film and its own 45 % scrim. So DEFAULT
- * must keep exactly that rather than swapping in the bloom — three soft lobes inside a 64 dp pill is a
- * flat wash, not an ambient bloom, and the pill would only get darker for no reason. Every style that
- * brings no ground of its own therefore inherits the pill's cover; the ones that do (a wash, drifting
- * lobes) replace it, and the ones that modify a cover (Apple Music, mesh, glass) keep their own
- * blur/saturation/rotation on top of it.
+ * The pill is a different surface: 64 dp tall, always on screen, and its ink is full-alpha
+ * [AuraPalette.OnGround] over its own 45 % scrim rather than the sheet's 48–55 % steps. Two rules
+ * follow from that shape, and one from the names:
  *
- * One consequence, stated rather than hidden: on the PILL, "Desenfoque" and "Predeterminado" are the
- * same ground, because the pill's shipped ground already is a blurred cover. They differ on the sheet.
+ *  · **The bloom is dropped.** Three soft lobes inside a 64 dp pill is a flat wash, not an ambient
+ *    bloom; it would only darken the pill for no visible gain.
+ *  · **A cover is drawn at full strength or not at all.** The sheet's per-style cover alphas exist to
+ *    stay under the sheet's 10 % flat ceiling ([AURA_COVER_ALPHA]); the pill passes `coverCeiling = 1f`
+ *    and leans on its scrim instead, so a fractional alpha here would only mean "a fainter cover".
+ *  · **Each name gets to mean what it says.** "Predeterminado / Seguir el tema" is the theme's own
+ *    opaque ground ([AuraPalette.GroundRaised], which follows the AMOLED switch) — it brings NO artwork
+ *    layer, which is exactly the flat `.mi` the render draws. "Desenfoque" is the blurred cover. Those
+ *    two used to be the same pill 4 dp of blur apart, i.e. the second one did nothing; a style that
+ *    brings no ground of its own no longer inherits a cover to make up the difference.
+ *
+ * Legibility of the ground this leaves under "Predeterminado", measured with `contrastRatio` and pinned
+ * in `AuraAppearanceTest`: title 14.8:1 and artist 5.4:1 on the brand ground, 15.9:1 and 5.5:1 on
+ * AMOLED. That is strictly better than the cover ground it replaces, which bottoms out at 2.7:1 / 1.8:1
+ * under a white sleeve — the reason the cover is now something you ask for rather than the default.
+ *
+ * Cost: unchanged where a cover is drawn (the same one 128×128 decode per track), and one decode
+ * CHEAPER under "Predeterminado", which no longer asks for a cover at all.
  */
 internal fun auraPillRecipe(recipe: AuraGroundRecipe): AuraGroundRecipe = recipe.copy(
     bloom = 0f,
-    cover = when {
-        recipe.cover > 0f -> 1f
-        recipe.wash > 0f || recipe.lobes > 0f -> 0f
-        else -> 1f
-    },
-    coverBlur = if (recipe.cover > 0f) recipe.coverBlur else 30.dp,
+    cover = if (recipe.cover > 0f) 1f else 0f,
 )
 
 /**

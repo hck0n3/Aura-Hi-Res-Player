@@ -10,6 +10,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.dp
 import iad1tya.echo.music.constants.AppThemePresetKey
@@ -184,7 +185,48 @@ object AuraPalette {
     /** Card / chip fill: `rgba(255,255,255,.07)`. */
     val SurfaceFill = Color.White.copy(alpha = 0.07f)
 
-    /** Card / chip hairline: `rgba(255,255,255,.10)`. */
+    /**
+     * [SurfaceFill] for a control that FLOATS over other content instead of sitting on the ground.
+     *
+     * ## Why this exists
+     * The render's `rgba(255,255,255,.07)` is 7 % white over the page body, and in the render nothing
+     * is ever stacked under it. On Android two situations break that assumption and both have now been
+     * reported by the owner as the same symptom — "está tan transparente que no se define nada":
+     *  · the mini-player pill, because `BottomSheet` does not compose its ground slot while collapsed,
+     *    so the 7 % landed straight on the NavHost (fixed in `AuraMiniPlayer` with an opaque base);
+     *  · Biblioteca's three floating actions, which DO have `auraScreenBackground` under them but are
+     *    drawn ABOVE the scrolling list, so what is actually behind the glass is a grid of album
+     *    covers. 7 % white over a bright cover is not a surface at all: the cover reads through the
+     *    label.
+     *
+     * ## Why it is opaque and not a blur
+     * The owner asked for the buttons to be "borrosos" so their content can be read. A live backdrop
+     * blur is precisely what the thermal contract forbids (it samples and blurs the frame under the
+     * control on every frame, for as long as the control is on screen). Compositing the render's own
+     * film onto an opaque base costs nothing, and it is *more* legible than a blur, not less: the
+     * label lands at ~14.8:1 over this plate (`#EAF2FF` on `#191E28`) — a blurred bright cover would
+     * still leave a light backdrop under light text.
+     *
+     * The base is [GroundRaised] rather than [Ground] so a floating control reads one step ABOVE the
+     * screen it floats over instead of punching a hole in it, which is the same base
+     * `AuraMiniPlayer` already stands on.
+     *
+     * Wherever a `SurfaceFill` control DOES have the ground directly behind it (every card, chip, sort
+     * pill and search field inside a list) keep using [SurfaceFill]: on the ground the two are within
+     * one step of each other and the film is the render's.
+     *
+     * A `Color` is an inline value class, so this getter allocates nothing on the heap.
+     */
+    val FloatingFill: Color get() = SurfaceFill.compositeOver(GroundRaised)
+
+    /**
+     * Card / chip hairline: `rgba(255,255,255,.10)`.
+     *
+     * It stays the hairline of a [FloatingFill] control too, and it does not get weaker there: on the
+     * ground the render's own pairing separates fill from edge by only 1.08:1, whereas 10 % white over
+     * the opaque plate is 1.36:1 — a *more* defined edge than the one the render draws, so there is no
+     * second "floating" line value to keep in step with this one.
+     */
     val SurfaceLine = Color.White.copy(alpha = 0.10f)
 
     /** Section separators (nav bar top, engine status bar top): `rgba(255,255,255,.08….09)`. */

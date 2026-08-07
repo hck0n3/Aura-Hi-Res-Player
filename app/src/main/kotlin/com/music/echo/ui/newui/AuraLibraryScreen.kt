@@ -93,6 +93,10 @@ fun AuraLibraryScreen(navController: NavController) {
     var showCreatePlaylistDialog by rememberSaveable { mutableStateOf(false) }
     var showAiPlaylistDialog by rememberSaveable { mutableStateOf(false) }
     var searchOpen by rememberSaveable { mutableStateOf(false) }
+    // Hoisted here, not per tab, so the open/closed state still survives a tab switch exactly as it
+    // did when the toggle lived in the header. `remember` keeps it one instance instead of a new
+    // lambda per recomposition of the tab host.
+    val toggleSearch = remember { { searchOpen = !searchOpen } }
     val (aiPlaylistEnabled) = rememberPreference(AiPlaylistEnabledKey, true)
     val context = LocalContext.current
 
@@ -164,39 +168,28 @@ fun AuraLibraryScreen(navController: NavController) {
                 title = stringResource(R.string.filter_library),
                 trailing = { AuraTopActions() },
             )
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
+            // The chip row owns the FULL width. It used to share a Row with a search glyph pinned at
+            // the right, and that glyph is the owner's "lupa que se ve superpuesta a los chips": the
+            // LazyRow clips at its own right edge, which sat flush against the glyph, so a chip
+            // scrolling past was cut in half directly under it. It also made the strip change width
+            // between tabs, because only three of the five offer search. The glyph now travels with
+            // the tab that owns it — see the sort row in AuraLibraryTabs.kt — and nothing is pinned
+            // over the chips.
+            LazyRow(
+                contentPadding = PaddingValues(horizontal = AuraSpacing.Gutter),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = 10.dp),
             ) {
-                LazyRow(
-                    contentPadding = PaddingValues(horizontal = AuraSpacing.Gutter),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.weight(1f),
-                ) {
-                    items(auraLibraryChips(), key = { it.first.name }) { (chip, labelRes) ->
-                        AuraChip(
-                            text = stringResource(labelRes),
-                            selected = filterType == chip,
-                            // Tapping the chip that is already active returns to the hub — as today.
-                            onClick = {
-                                filterType = if (filterType == chip) LibraryFilter.LIBRARY else chip
-                            },
-                        )
-                    }
-                }
-                // The render's search glyph. Only the tabs that own a search field (Canciones,
-                // Artistas, Listas) offer it; the hub, Álbumes and Local have none, so it is absent
-                // there rather than drawn dead.
-                if (auraTabHasSearch(filterType)) {
-                    AuraIconButton(
-                        icon = AuraIcons.Search,
-                        contentDescription = stringResource(R.string.search_library),
-                        onClick = { searchOpen = !searchOpen },
-                        size = 20.dp,
-                        tint = if (searchOpen) AuraPalette.Teal else AuraPalette.OnGroundFaint,
-                        modifier = Modifier.padding(end = 6.dp),
+                items(auraLibraryChips(), key = { it.first.name }) { (chip, labelRes) ->
+                    AuraChip(
+                        text = stringResource(labelRes),
+                        selected = filterType == chip,
+                        // Tapping the chip that is already active returns to the hub — as today.
+                        onClick = {
+                            filterType = if (filterType == chip) LibraryFilter.LIBRARY else chip
+                        },
                     )
                 }
             }
@@ -207,10 +200,16 @@ fun AuraLibraryScreen(navController: NavController) {
                 Box(Modifier.fillMaxSize()) {
                     when (filterType) {
                         LibraryFilter.LIBRARY -> AuraLibraryHub(navController)
-                        LibraryFilter.PLAYLISTS -> AuraLibraryPlaylistsTab(navController, searchOpen)
-                        LibraryFilter.SONGS -> AuraLibrarySongsTab(navController, searchOpen)
+                        LibraryFilter.PLAYLISTS ->
+                            AuraLibraryPlaylistsTab(navController, searchOpen, toggleSearch)
+
+                        LibraryFilter.SONGS ->
+                            AuraLibrarySongsTab(navController, searchOpen, toggleSearch)
+
                         LibraryFilter.ALBUMS -> AuraLibraryAlbumsTab(navController)
-                        LibraryFilter.ARTISTS -> AuraLibraryArtistsTab(navController, searchOpen)
+                        LibraryFilter.ARTISTS ->
+                            AuraLibraryArtistsTab(navController, searchOpen, toggleSearch)
+
                         // ── Local: the classic screen, but as a BODY and not as a second screen ──────
                         // Its scan sheet (permissions, excluded folders, a minimum-duration slider) is
                         // a whole surface of its own and is not one of the six screens in this beta, so
@@ -453,15 +452,23 @@ private fun auraLibraryChips(): List<Pair<LibraryFilter, Int>> = listOf(
     LibraryFilter.LOCAL to R.string.filter_local,
 )
 
-/** Which tabs actually own a search field today. Álbumes and the hub do not — see the inventory. */
-private fun auraTabHasSearch(filter: LibraryFilter): Boolean = when (filter) {
-    LibraryFilter.SONGS, LibraryFilter.ARTISTS, LibraryFilter.PLAYLISTS -> true
-    else -> false
-}
-
 /**
- * A floating action in the new language: a `SurfaceFill` pill with a hairline and a teal glyph.
+ * A floating action in the new language: a `FloatingFill` pill with a hairline and a teal glyph.
  * [label] `null` draws the small round variant (the AI button); otherwise it is an extended pill.
+ *
+ * ## Why the fill is [AuraPalette.FloatingFill] and not [AuraPalette.SurfaceFill]
+ * These three — "generar playlist con IA", "crear playlist", "importar listas de reproducción" — are
+ * the only controls on this screen drawn ABOVE the scrolling list rather than inside it. The screen
+ * root does paint an opaque ground (`auraScreenBackground`), so unlike the collapsed mini player these
+ * were never compositing onto the NavHost; but the ground is not what is behind THEM. The playlist
+ * grid is, and its cells are album covers. The render's 7 % white film over a bright cover is not a
+ * surface: the artwork reads straight through the label, which is the owner's "muy transparentes".
+ *
+ * [AuraPalette.FloatingFill] is the same film pre-composited onto an opaque base, so it looks like the
+ * render wherever the ground IS behind it and stays a surface wherever the ground is not. The owner
+ * asked for a blur; he is getting an opaque plate instead, because a live backdrop blur is what the
+ * thermal contract forbids and because the plate is the more legible of the two — the label lands at
+ * ~14.8:1 on it, where a blurred bright cover would still be a light backdrop under light text.
  */
 @Composable
 private fun AuraFab(
@@ -474,7 +481,7 @@ private fun AuraFab(
     val base = modifier
         .height(52.dp)
         .clip(AuraShapes.Pill)
-        .background(AuraPalette.SurfaceFill)
+        .background(AuraPalette.FloatingFill)
         .border(1.dp, AuraPalette.SurfaceLine, AuraShapes.Pill)
         .auraClickableInternal(onClick = onClick, contentDescription = contentDescription)
 

@@ -215,6 +215,103 @@ class AuraAppearanceTest {
         }
     }
 
+    // --------------------------------------------- 3b. the mini player's OWN background control
+
+    /**
+     * The five values `AppearanceSettings` offers for "Estilo de fondo del minirreproductor"
+     * (`availableMiniPlayerBackgroundStyles` = every style except GRADIENT and APPLE_MUSIC).
+     *
+     * The row was hidden under the new UI because the key had no renderer; `AuraMiniPlayer` now reads
+     * it. These tests are what stops "restored" from meaning "visible again but still inert".
+     */
+    private val miniPlayerOfferedStyles = PlayerBackgroundStyle.entries.filter {
+        it != PlayerBackgroundStyle.GRADIENT && it != PlayerBackgroundStyle.APPLE_MUSIC
+    }
+
+    @Test
+    fun `Predeterminado is the theme's own ground on the pill, and Desenfoque is the cover`() {
+        // The blocker this replaces: both values resolved to a full-strength blurred cover 4 dp of blur
+        // apart on a 128x128 decode inside a 64 dp pill, i.e. "Desenfoque" did nothing. Each name now
+        // means what it says, and THIS is the assertion that would have caught it.
+        val default = auraPillRecipe(
+            auraGroundRecipe(PlayerBackgroundStyle.DEFAULT, hasCover = true, motion = true),
+        )
+        // "Seguir el tema": no artwork layer at all. The pill is [AuraPalette.GroundRaised] (which the
+        // AMOLED switch moves) plus the content Row's own SurfaceFill — the flat `.mi` the render draws.
+        assertEquals(AuraGroundRecipe(), default)
+
+        val blur = auraPillRecipe(
+            auraGroundRecipe(PlayerBackgroundStyle.BLUR, hasCover = true, motion = true),
+        )
+        // "Desenfoque": the blurred cover, at the full strength the pill's own scrim is sized for.
+        assertEquals(1f, blur.cover, 0f)
+        assertNotEquals(default, blur)
+    }
+
+    @Test
+    fun `the pill's ink clears AA on the ground Predeterminado draws, on both themes`() {
+        // The ground under the pill's text when no artwork layer is drawn: the opaque raised ground with
+        // the content Row's SurfaceFill over it (AuraShell.kt). No cover means `pillHasArtwork` is false,
+        // so the 45 % scrim is not drawn either — this really is the whole stack.
+        fun assertLegible(where: String) {
+            val ground = AuraPalette.SurfaceFill.compositeOver(AuraPalette.GroundRaised)
+            val title = contrastRatio(AuraPalette.OnGround, ground)
+            assertTrue("the pill's title reads only $title:1 on $where", title >= TEXT_AA)
+            // The artist line is the 55 % step, so it is the one that decides this.
+            val artist = contrastRatio(AuraPalette.OnGroundMuted.compositeOver(ground), ground)
+            assertTrue("the pill's artist line reads only $artist:1 on $where", artist >= TEXT_AA)
+        }
+        assertLegible("the brand ground")
+        AuraPalette.apply(AuraAccent.Brand, pureBlack = true, coverCorners = AuraCoverCorners.Render)
+        assertLegible("AMOLED")
+    }
+
+    @Test
+    fun `no mini-player style draws the same layers as Predeterminado on the pill`() {
+        val default = auraPillRecipe(
+            auraGroundRecipe(PlayerBackgroundStyle.DEFAULT, hasCover = true, motion = true),
+        )
+        // A style counts as restored only if it changes the LAYERS. `coverBlur` is deliberately NOT in
+        // this disjunction: a different blur radius on the same layer is exactly the 4 dp placebo.
+        miniPlayerOfferedStyles.filter { it != PlayerBackgroundStyle.DEFAULT }.forEach { style ->
+            val pill = auraPillRecipe(auraGroundRecipe(style, hasCover = true, motion = true))
+            assertTrue(
+                "$style draws the same layers as Predeterminado on the pill — it would be a placebo",
+                pill.cover != default.cover ||
+                    pill.lobes != default.lobes ||
+                    pill.film != default.film ||
+                    pill.wash != default.wash ||
+                    pill.coverSaturation != default.coverSaturation ||
+                    pill.coverScale != default.coverScale ||
+                    pill.spin != default.spin,
+            )
+        }
+    }
+
+    @Test
+    fun `LIQUID_GLASS on the pill is a frosted cover, never a live backdrop sample`() {
+        // The claim the restored settings row makes out loud, in both languages. A backdrop sample
+        // would have to be a per-frame effect; this recipe is a still cover plus a cached film, and it
+        // still resolves to something when there is no cover to blur (API < 31, or a local track).
+        val withCover = auraPillRecipe(
+            auraGroundRecipe(PlayerBackgroundStyle.LIQUID_GLASS, hasCover = true, motion = true),
+        )
+        assertTrue("the frosted film is missing", withCover.film > 0f)
+        assertTrue("nothing is being frosted", withCover.cover > 0f)
+        assertTrue("a still ground must not drift", !withCover.drift && !withCover.spin)
+
+        val withoutCover = auraPillRecipe(
+            auraGroundRecipe(PlayerBackgroundStyle.LIQUID_GLASS, hasCover = false, motion = true),
+        )
+        assertEquals("asks for a cover it cannot have", 0f, withoutCover.cover, 0f)
+        assertTrue("degrades to an empty pill", withoutCover.film > 0f || withoutCover.wash > 0f)
+        // Motion is denied on a throttled device; this style never had any to lose.
+        val throttled = auraPillRecipe(
+            auraGroundRecipe(PlayerBackgroundStyle.LIQUID_GLASS, hasCover = true, motion = false),
+        )
+        assertEquals(withCover, throttled)
+    }
+
     // ------------------------------------------------------------------ 4. reversibility
 
     @Test

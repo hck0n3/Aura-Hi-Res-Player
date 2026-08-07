@@ -13,19 +13,28 @@ import iad1tya.echo.music.ui.component.BottomSheetState
 import iad1tya.echo.music.ui.menu.OldPlayerMenu
 import iad1tya.echo.music.ui.player.BottomSheetPlayer
 import iad1tya.echo.music.ui.player.Queue
+import iad1tya.echo.music.ui.screens.AlbumScreen
 import iad1tya.echo.music.ui.screens.HomeScreen
 import iad1tya.echo.music.ui.screens.StatsScreen
+import iad1tya.echo.music.ui.screens.artist.ArtistScreen
 import iad1tya.echo.music.ui.screens.library.LibraryScreen
 import iad1tya.echo.music.ui.screens.migration.MigrationAppleScreen
 import iad1tya.echo.music.ui.screens.migration.MigrationScreen
 import iad1tya.echo.music.ui.screens.migration.MigrationTidalScreen
 import iad1tya.echo.music.ui.screens.playlist.AutoPlaylistScreen
+import iad1tya.echo.music.ui.screens.playlist.CachePlaylistScreen
+import iad1tya.echo.music.ui.screens.playlist.LocalPlaylistScreen
+import iad1tya.echo.music.ui.screens.playlist.OnlinePlaylistScreen
+import iad1tya.echo.music.ui.screens.playlist.TopPlaylistScreen
 import iad1tya.echo.music.ui.screens.search.OnlineSearchResult
 import iad1tya.echo.music.ui.screens.search.SearchScreen
 import iad1tya.echo.music.ui.screens.settings.SettingsScreen
 
 /**
- * # The six gated surfaces of the "Interfaz nueva" beta
+ * # The gated surfaces of the "Interfaz nueva" beta
+ *
+ * Sixteen routes plus the three non-route surfaces (player, player menu, queue) as of this file's
+ * section 12. Count the `NewUiGate` calls below rather than trusting this sentence.
  *
  * **This is the only file a screen agent edits to plug a new screen in.** Every call site in the app
  * (NavigationBuilder, MainActivity, the new player) points at a `*Host` below; each host asks
@@ -328,5 +337,101 @@ fun AutoPlaylistScreenHost(
     NewUiGate(
         classic = { AutoPlaylistScreen(navController, scrollBehavior) },
         new = { AuraAutoPlaylistScreen(navController, scrollBehavior) },
+    )
+}
+
+// ── 11. Álbum y Artista ───────────────────────────────────────────────────────────────────────────
+
+/**
+ * The two destinations the NEW player itself opens: the track title goes to `album/{albumId}` and the
+ * artist line to `artist/{artistId}`. Until these hosts existed, tapping either from the redesigned
+ * player dropped the user onto a classic-layout screen — the most visible seam in the beta.
+ *
+ * `scrollBehavior` is forwarded to both branches because both take it. The new screens accept it and
+ * draw no Material `TopAppBar`, so nothing consumes it — which is parity, not a drop: `AlbumScreen`
+ * and `ArtistScreen` take the same parameter and never hand it to their top bar either.
+ *
+ * The `viewModel` parameter stays DEFAULTED on both sides. Hoisting it into the host and passing it
+ * down would keep the other skin's instance alive; leaving it defaulted lets `hiltViewModel()` resolve
+ * against the same `NavBackStackEntry` the classic screen would have used.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AlbumScreenHost(
+    navController: NavController,
+    scrollBehavior: TopAppBarScrollBehavior,
+) {
+    NewUiGate(
+        classic = { AlbumScreen(navController, scrollBehavior) },
+        new = { AuraAlbumScreen(navController, scrollBehavior) },
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ArtistScreenHost(
+    navController: NavController,
+    scrollBehavior: TopAppBarScrollBehavior,
+) {
+    NewUiGate(
+        classic = { ArtistScreen(navController, scrollBehavior) },
+        new = { AuraArtistScreen(navController, scrollBehavior) },
+    )
+}
+
+// ── 12. Listas (en caché, más escuchadas, propias, de YouTube) ─────────────────────────────────────
+
+/**
+ * The four remaining playlist destinations. They are four separate hosts, not one, because they are
+ * four separate classic screens with four separate ViewModels — unlike the six auto-playlists above,
+ * which really are one parameterised screen.
+ *
+ * Same `viewModel`-stays-defaulted rule as section 11.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun CachePlaylistScreenHost(
+    navController: NavController,
+    scrollBehavior: TopAppBarScrollBehavior,
+) {
+    NewUiGate(
+        classic = { CachePlaylistScreen(navController, scrollBehavior) },
+        new = { AuraCachePlaylistScreen(navController, scrollBehavior) },
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun TopPlaylistScreenHost(
+    navController: NavController,
+    scrollBehavior: TopAppBarScrollBehavior,
+) {
+    NewUiGate(
+        classic = { TopPlaylistScreen(navController, scrollBehavior) },
+        new = { AuraTopPlaylistScreen(navController, scrollBehavior) },
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun LocalPlaylistScreenHost(
+    navController: NavController,
+    scrollBehavior: TopAppBarScrollBehavior,
+) {
+    NewUiGate(
+        classic = { LocalPlaylistScreen(navController, scrollBehavior) },
+        new = { AuraLocalPlaylistScreen(navController, scrollBehavior) },
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun OnlinePlaylistScreenHost(
+    navController: NavController,
+    scrollBehavior: TopAppBarScrollBehavior,
+) {
+    NewUiGate(
+        classic = { OnlinePlaylistScreen(navController, scrollBehavior) },
+        new = { AuraOnlinePlaylistScreen(navController, scrollBehavior) },
     )
 }

@@ -658,10 +658,19 @@ fun AuraPlayerMenu(
             }
         }
 
+        // The audio-output picker. It was labelled "Transmitir" behind a CAST glyph, which is a different
+        // feature: [AudioDeviceBottomSheet] enumerates the local AudioManager outputs (altavoz, jack,
+        // Bluetooth) and never touches a Cast route. Real casting is the pinned [CastButton] in the player
+        // — and in a FOSS build there is no casting at all, so that label promised a feature the build does
+        // not ship. Same string the rest of the app uses for this sheet, and a speaker glyph to match the
+        // queue bar's own button.
+        //
+        // Kept rather than removed even though the queue bar draws the same picker: the bar is the queue
+        // sheet's COLLAPSED content, so while that sheet is expanded this menu entry is the only door.
         item {
             AuraMenuRow(
-                icon = AuraIcons.Cast,
-                label = "Transmitir",
+                icon = AuraIcons.Volume,
+                label = stringResource(R.string.audio_devices),
                 onClick = { showAudioDeviceSheet = true },
             )
         }

@@ -400,20 +400,29 @@ private fun Material3SettingsItemRow(
 
             item.description?.let { desc ->
                 Spacer(modifier = Modifier.height(2.dp))
+                // A disabled row dims its description to the inventory's 38 % alpha along with its
+                // title. On a row whose description IS the reason the row is disabled, that alpha is
+                // the failure and not the finish: `#EAF2FF` at 38 % over the redesign's ground
+                // (`#060A12`) composites to #5D626C — 3.24:1, and 3.13:1 on AMOLED's black — under the
+                // 4.5:1 that body text needs. The user gets a greyed row and cannot read WHY.
+                // `keepDescriptionLegible` keeps just that one slot at the ENABLED ink (`inkMuted`,
+                // 5.67:1 on both grounds) while the title, the icon and the chevron stay at 38 %, so
+                // the row still reads as not-tappable and its explanation reads at all.
+                val dimDescription = !item.enabled && !item.keepDescriptionLegible
                 // `RowSubtitle` rather than the index's 13 sp `CalloutSubtitle`: it is 14 sp, the same
                 // size as the `bodyMedium` it replaces, so the long explanatory descriptions on these
                 // screens keep their line count instead of reflowing.
                 ProvideTextStyle(
                     if (skin.enabled)
                         AuraType.RowSubtitle.copy(
-                            color = if (!item.enabled)
+                            color = if (dimDescription)
                                 skin.ink.copy(alpha = 0.38f)
                             else
                                 skin.inkMuted
                         )
                     else
                         MaterialTheme.typography.bodyMedium.copy(
-                            color = if (!item.enabled)
+                            color = if (dimDescription)
                                 MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
                             else
                                 MaterialTheme.colorScheme.onSurfaceVariant
@@ -457,5 +466,14 @@ data class Material3SettingsItem(
     val tintIcon: Boolean = true,
     val iconShape: Shape? = null,
     val enabled: Boolean = true,
+    /**
+     * Exempts the [description] from the dimming a disabled row applies to everything else.
+     *
+     * For the one shape of row whose description is not a subtitle but the EXPLANATION of why the row
+     * cannot be used: at 38 % that sentence is the least readable thing on screen, which defeats the
+     * point of showing the row instead of hiding it. `false` by default, so every other disabled row
+     * in the app keeps the inventory's behaviour exactly.
+     */
+    val keepDescriptionLegible: Boolean = false,
     val onClick: (() -> Unit)? = null
 )

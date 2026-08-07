@@ -22,6 +22,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Text
@@ -172,16 +173,24 @@ fun AuraExploreTab(
         contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
         modifier = Modifier.fillMaxSize(),
     ) {
-        sections?.forEach { section ->
-            item(key = "aura_explore_header_${section.title}") {
+        // KEYS BY POSITION, NOT BY CONTENT. The previous key was
+        // "aura_explore_row_<section title>_<first entry's browseId>", and it CRASHED the app the moment
+        // the user opened Buscar: every entry under "Estados de ánimo y momentos" carries the SAME
+        // browseId (FEmusic_moods_and_genres_category) and differs only in `params`, so from the second
+        // chunk on the key repeated and Compose threw IllegalArgumentException ("Key ... was already
+        // used") during draw. Two sections sharing a title would have done the same to the headers.
+        // Section index + row index cannot collide whatever the server returns, and they are stable
+        // across recomposition (this list never reorders), which is what `animateItem` needs.
+        sections?.forEachIndexed { sectionIndex, section ->
+            item(key = "aura_explore_header_$sectionIndex") {
                 AuraSectionHeader(title = section.title, modifier = Modifier.animateItem())
             }
 
             val rows = section.items.chunked(2)
-            items(
+            itemsIndexed(
                 items = rows,
-                key = { row -> "aura_explore_row_${section.title}_${row.first().endpoint.browseId}" },
-            ) { row ->
+                key = { rowIndex, _ -> "aura_explore_row_${sectionIndex}_$rowIndex" },
+            ) { _, row ->
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     modifier = Modifier

@@ -191,7 +191,9 @@
     <string name="apple_music_inspired">Apple Music inspired</string>
     <string name="apple_music_inspired_desc">Use the Apple Music-style player layout</string>
     <string name="apple_music_inspired_desc_new_ui">With the new interface on it changes nothing on screen: it chooses which classic player comes back when you turn the beta off</string>
-    <string name="player_background_style_desc_new_ui">With the new interface on, this repaints the ground of the player, its queue and the mini player. Everything drawn on top — the cover, the title, the controls — keeps the new design. "Default" is the ambient background</string>
+    <string name="player_background_style_desc_new_ui">With the new interface on, this repaints the ground of the player and its queue. Everything drawn on top — the cover, the title, the controls — keeps the new design. "Default" is the ambient background. The mini player has its own style, in the Mini-player group</string>
+    <string name="miniplayer_background_style_desc_new_ui">With the new interface on, this repaints the ground of the mini-player pill, separately from the player. "Liquid Glass" here is a frosted still cover, not the live glass of the classic interface</string>
+    <string name="liquid_glass_classic_only_desc">Applies to the classic interface: it samples the screen behind it on every frame, so the new interface does not use it. For a frosted look there, choose "Liquid Glass" under Player background</string>
 
     <string name="edit_lyrics">Edit lyrics</string>
     <string name="search_lyrics">Search lyrics</string>

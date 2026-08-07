@@ -73,21 +73,27 @@ import iad1tya.echo.music.R
 // The leaks are the same shape and each was reachable ONLY through this index, which is why hiding the
 // visible entry rows did not close them:
 //
-//  1. LIQUID GLASS ("settings/appearance/liquidglass"). The entry row in Apariencia is hidden with the
-//     new UI on (AppearanceSettings.kt), but this index still mapped "Liquid Glass" straight to the
-//     ROUTE -- so typing "glass" into Ajustes landed the user on ~11 live-looking, wholly inert
+//  1. LIQUID GLASS ("settings/appearance/liquidglass"). This index mapped "Liquid Glass" straight to
+//     the ROUTE -- so typing "glass" into Ajustes landed the user on ~11 live-looking, wholly inert
 //     controls. The glass system has exactly two render sites in the app (FloatingNavigationToolbar,
-//     composed only on the !newUiShell branch, and MiniPlayer.kt, whose style is pinned to DEFAULT
-//     under the flag), so nothing on that screen can do anything. Filtered BY ROUTE, not by title, so a
-//     future row pointing at the same orphaned destination dies with it. The route itself is also
-//     guarded (NavigationBuilder.kt) -- an index entry is not a door lock.
+//     composed only on the !newUiShell branch, and MiniPlayer.kt, replaced by AuraMiniPlayer under the
+//     flag), so nothing on that screen can do anything, and the destination itself bounces
+//     (NavigationBuilder.kt). Still filtered BY ROUTE, so a future row pointing at the same guarded
+//     destination dies with it.
+//     0.6.148 UPDATE -- the filter alone was half an answer. The Apariencia entry row is no longer
+//     hidden: it is on screen, DISABLED, carrying a line that says the shader configures the classic
+//     interface and that the frosted look is picked in "Fondo del reproductor". So the TEXT is visible
+//     on settings/appearance again, and a search for it must lead there rather than nowhere -- the row
+//     below re-adds it under the flag, pointed at the screen where it can actually be read. Under the
+//     flag the two rows are never both present, so the DUPLICATE RULE is not touched.
 //
 //  2. THE MINI-PLAYER BACKGROUND ROW and its group heading ("Mini reproductor" /
-//     "Estilo de fondo del minirreproductor"). AppearanceSettings.kt hides that whole group under the
-//     flag because MiniPlayerBackgroundStyleKey has no renderer left, but both strings stayed indexed
-//     here -- so searching "mini" found them, and the tap landed on Apariencia where neither exists.
-//     A search hit that navigates to a screen the text is not on is the same lie as a dead switch.
-//     Filtered by TITLE, because they share "settings/appearance" with ~90 rows that are still live.
+//     "Estilo de fondo del minirreproductor"). These were filtered because AppearanceSettings.kt hid
+//     that whole group under the flag, MiniPlayerBackgroundStyleKey having had no renderer left.
+//     NO LONGER FILTERED (0.6.148): the key has a renderer again -- `AuraMiniPlayer` reads it and
+//     paints the pill's ground from it (ui/newui/AuraShell.kt) -- so the group is on screen in both
+//     interfaces and both strings are once more a promise the destination keeps. Hiding a control was
+//     never the same as removing a lie; it was just a quieter loss.
 //
 //  3. "TEMA DEL SISTEMA" (dark_theme_follow_system -> "settings/appearance/theme"). The third of the
 //     family, and the GREYED-OUT half of it rather than the absent half: ThemeScreen disables that card
@@ -102,8 +108,7 @@ import iad1tya.echo.music.R
 fun getAllSearchableSettings(): List<Triple<String, String, String>> {
     // Read unconditionally and before the list, so the composable call order never shifts.
     val newUiEnabled = iad1tya.echo.music.ui.newui.rememberNewUiEnabled()
-    val miniPlayerGroupTitle = stringResource(R.string.mini_player)
-    val miniPlayerBackgroundTitle = stringResource(R.string.miniplayer_background_style)
+    val liquidGlassTitle = stringResource(R.string.liquid_glass)
     val followSystemThemeTitle = stringResource(R.string.dark_theme_follow_system)
 
     val all = listOf(
@@ -511,18 +516,19 @@ fun getAllSearchableSettings(): List<Triple<String, String, String>> {
     // Flag OFF: the exact list above, same content, same order. Nothing below runs.
     if (!newUiEnabled) return all
 
-    // Flag ON: drop the four rows the new UI orphaned (see the ORPHAN RULE above). `filterNot`
-    // preserves the order of everything it keeps.
+    // Flag ON: drop the two rows the new UI still orphans, then RE-POINT Liquid Glass at the screen
+    // where its text is now readable. `filterNot` preserves the order of everything it keeps, and the
+    // replacement row is appended rather than spliced, so no surviving row moves.
     //
-    // Every title match is ALSO pinned to its route: it is only on THAT screen that the string is
-    // hidden or dead, so a row carrying the same text under any other destination is not a ghost and
-    // must survive. Matching on title alone would have been a filter wider than the leak.
+    // The theme match is ALSO pinned to its route: it is only on THAT screen that the string is dead,
+    // so a row carrying the same text under any other destination is not a ghost and must survive.
+    // Matching on title alone would have been a filter wider than the leak.
+    //
+    // The mini-player filter is GONE: its rows are live again on settings/appearance (see rule 2).
     return all.filterNot { (title, _, route) ->
         route == LIQUID_GLASS_ROUTE ||
-            (route == "settings/appearance" &&
-                (title == miniPlayerGroupTitle || title == miniPlayerBackgroundTitle)) ||
             (route == THEME_ROUTE && title == followSystemThemeTitle)
-    }
+    } + Triple(liquidGlassTitle, "Apariencia", "settings/appearance")
 }
 
 /**

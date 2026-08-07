@@ -155,6 +155,24 @@ val Defaults0127AppliedKey = booleanPreferencesKey("defaults_0_6_127_applied")
 // the user's later choices win forever after.
 val LiquidGlassHighTierV1AppliedKey = booleanPreferencesKey("liquid_glass_high_tier_v1_applied")
 
+// 0.6.148 — UNDO the mini-player half of the order above, once, with a FRESH key (a set flag or a
+// versionCode bump alone never re-runs a one-time migration).
+//
+// [LiquidGlassHighTierV1AppliedKey] wrote LIQUID_GLASS into [MiniPlayerBackgroundStyleKey] on every
+// HIGH-tier eligible device without being asked, and the owner objected to the result TWICE ("por qué
+// me sigue saliendo el reproductor flotante y sus botones flotantes en liquid glass"). The redesign's
+// mini pill now HONOURS that key (ui/newui/AuraShell.kt), so leaving the written value in place would
+// hand him back, on the first launch after the update, the exact look he complained about — this time
+// through a control he never touched.
+//
+// Scope is deliberately the narrowest that fixes it: it rewrites the value ONLY when it still reads
+// LIQUID_GLASS, it touches no other key (the global glass switch is the glass door's own business),
+// and it runs after every other seed so it also catches the launch where the 0.6.127 order writes that
+// value for the first time. The cost of being wrong is one tap: the control that sets it is restored
+// to Ajustes ▸ Apariencia in the same release, so anyone who genuinely wants the frosted pill picks it
+// again and that choice wins forever after.
+val MiniPlayerGlassUndoV1AppliedKey = booleanPreferencesKey("miniplayer_glass_undo_v1_applied")
+
 // Owner order (0.6.130): default curve → 4 "Ascenso" — he heard Respiro profundo's BY-DESIGN center
 // valley as an unwanted gap; what he describes (both songs together, one down while the other rises,
 // no space) IS the Ascenso shape. FORCED once; duration stays 5s; user choices win afterwards.

@@ -1048,6 +1048,9 @@
     <string name="aura_downloads_in_progress">Descargas en curso</string>
     <string name="aura_download_failed">La descarga falló</string>
     <string name="aura_auto_playlist_about">%1$s es una colección que se mantiene sola. No se edita a mano: las canciones entran y salen según cambia tu biblioteca.</string>
+    <string name="aura_local_playlist_about">%1$s es una lista tuya: tú decides qué entra, en qué orden y con qué portada.</string>
+    <string name="aura_lock_playlist">Bloquear la lista</string>
+    <string name="aura_unlock_playlist">Desbloquear la lista</string>
     <!-- "Interfaz nueva" · Buscar -->
     <string name="search_clear_query">Borrar la búsqueda</string>
     <string name="search_history_remove">Quitar del historial</string>
@@ -1062,4 +1065,28 @@
     <string name="trending_none">No hay sugerencias ahora mismo.</string>
     <string name="aura_download_queued">En cola</string>
     <string name="aura_download_paused">Descarga pausada</string>
+    <!-- "Interfaz nueva" · Cola. Texto exactamente como estaba en el código: no se retoca. -->
+    <string name="aura_queue_title">En cola</string>
+    <string name="aura_queue_section_playing">SONANDO</string>
+    <string name="aura_queue_footer_locked">COLA BLOQUEADA</string>
+    <string name="aura_queue_footer_swipe_to_remove">DESLIZA PARA QUITAR</string>
+    <string name="aura_queue_label_now_playing">REPRODUCIENDO</string>
+    <string name="aura_queue_label_played">YA SONÓ</string>
+    <string name="aura_queue_label_list_next">A CONTINUACIÓN · DE TU LISTA</string>
+    <string name="aura_queue_label_radio_next">A CONTINUACIÓN · RADIO INFINITA</string>
+    <string name="aura_queue_label_radio_later">DESPUÉS · RADIO INFINITA</string>
+    <string name="aura_queue_label_repeat_one">SE REPITE ESTA CANCIÓN</string>
+    <string name="aura_queue_label_wrap">A CONTINUACIÓN · VUELVE AL PRINCIPIO</string>
+    <string name="aura_queue_label_end">FIN DE LA COLA</string>
+    <string name="cd_exit_selection">Salir de la selección</string>
+    <string name="cd_reorder">Reordenar</string>
+    <string name="cd_open_queue">Abrir la cola</string>
+    <string name="cd_audio_output">Salida de audio</string>
+    <string name="video">Vídeo</string>
+    <string name="cd_selection_actions">Acciones de la selección</string>
+    <string name="cd_shuffle_already_played">Ya reproducida en aleatorio</string>
+    <string name="cd_collection_more_options">Más opciones de la colección</string>
+    <string name="cd_playlist_more_options">Más opciones de la lista</string>
+    <string name="cd_change_sort_order">Cambiar el criterio de orden</string>
+    <string name="cd_reverse_sort_order">Invertir el orden</string>
 </resources>

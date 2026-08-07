@@ -392,6 +392,7 @@ class App : Application(), SingletonImageLoader.Factory, androidx.work.Configura
             settings[iad1tya.echo.music.constants.CrossfadeDefault9AppliedKey] != true ||
             settings[iad1tya.echo.music.constants.Defaults0127AppliedKey] != true ||
             settings[iad1tya.echo.music.constants.LiquidGlassHighTierV1AppliedKey] != true ||
+            settings[iad1tya.echo.music.constants.MiniPlayerGlassUndoV1AppliedKey] != true ||
             settings[iad1tya.echo.music.constants.Defaults0130CurveAppliedKey] != true ||
             settings[iad1tya.echo.music.constants.Defaults0132GaplessOffAppliedKey] != true ||
             settings[iad1tya.echo.music.constants.LyricsBlurDefaultOnV1AppliedKey] != true ||
@@ -413,6 +414,11 @@ class App : Application(), SingletonImageLoader.Factory, androidx.work.Configura
                     applyPlaybackDefaults(p, settings)
                     applyLyricsBlurDefaultOnV1(p, settings)
                     applyAddToPlaylistLastUpdatedDefaultV1(p, settings)
+                    // LAST, and reading `p` rather than `settings`, on purpose: applyPlaybackDefaults
+                    // above is what writes LIQUID_GLASS into the mini-player key, so on the launch
+                    // where BOTH run, the pre-edit snapshot still says DEFAULT and an undo reading
+                    // `settings` would miss exactly the case it exists for.
+                    applyMiniPlayerGlassUndoV1(p, settings)
                 }
             }.onFailure { reportException(it) }
         }
@@ -1124,6 +1130,52 @@ class App : Application(), SingletonImageLoader.Factory, androidx.work.Configura
         p[iad1tya.echo.music.constants.MiniPlayerBackgroundStyleKey] =
             iad1tya.echo.music.constants.PlayerBackgroundStyle.DEFAULT.name
         p[iad1tya.echo.music.constants.MiniPlayerDefaultBgAppliedKey] = true
+    }
+
+    /**
+     * 0.6.148 — undo the mini-player half of the 0.6.127 high-tier Liquid Glass order, once.
+     *
+     * The redesign's mini pill used to ignore [iad1tya.echo.music.constants.MiniPlayerBackgroundStyleKey]
+     * entirely (it followed the PLAYER background), which is why nobody noticed that the 0.6.127 order
+     * had written LIQUID_GLASS into it, unasked, on every HIGH-tier eligible device. Now that the pill
+     * honours the key — that is the whole point of restoring the control — that stored value would
+     * reappear on screen on the first launch after this update, and it is precisely the look the owner
+     * complained about twice.
+     *
+     * Narrow by construction: it fires ONLY on the exact value the migration wrote, writes ONLY the
+     * mini-player key, and leaves the global glass switch alone. Anyone who wants the frosted pill can
+     * pick it again in Ajustes ▸ Apariencia ▸ Mini reproductor — a control this same release brings
+     * back — and that later choice is never touched again.
+     *
+     * Reads [p], not [settings]: see the call site.
+     */
+    private fun applyMiniPlayerGlassUndoV1(
+        p: androidx.datastore.preferences.core.MutablePreferences,
+        settings: androidx.datastore.preferences.core.Preferences,
+    ) {
+        if (settings[iad1tya.echo.music.constants.MiniPlayerGlassUndoV1AppliedKey] == true) return
+        // BETA BUILDS ONLY. This undo exists for ONE reason: the owner objected twice to liquid glass
+        // appearing on the mini player without him asking for it, and the redesign's pill now reads
+        // MiniPlayerBackgroundStyleKey, so a stored LIQUID_GLASS would hand it straight back.
+        //
+        // It cannot tell the two populations apart, and that is why it must not run on stable. The stored
+        // value has TWO possible authors: the 0.6.127 high-tier write (unrequested — the case this undoes)
+        // and the user picking it BY HAND in Ajustes ▸ Apariencia ▸ Mini reproductor, a control classic
+        // users have always had. On a stable build the redesign's pill is never composed, so nothing is
+        // handed back — the only effect the undo could have there is changing the appearance of a classic
+        // user's mini player for no reason he asked for. That is the exact complaint this is answering;
+        // inflicting it on someone else is not a fix.
+        //
+        // The flag is still stamped on every build, so a stable user who later installs a beta does not
+        // get the undo applied retroactively to a choice he made deliberately.
+        if (iad1tya.echo.music.ui.newui.NEW_UI_SWITCH_VISIBLE &&
+            p[iad1tya.echo.music.constants.MiniPlayerBackgroundStyleKey] ==
+            iad1tya.echo.music.constants.PlayerBackgroundStyle.LIQUID_GLASS.name
+        ) {
+            p[iad1tya.echo.music.constants.MiniPlayerBackgroundStyleKey] =
+                iad1tya.echo.music.constants.PlayerBackgroundStyle.DEFAULT.name
+        }
+        p[iad1tya.echo.music.constants.MiniPlayerGlassUndoV1AppliedKey] = true
     }
 
     private fun applyCanvasDefaultOn(

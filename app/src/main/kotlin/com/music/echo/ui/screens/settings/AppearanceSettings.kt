@@ -317,7 +317,15 @@ fun AppearanceSettings(
     val glassEligible = remember { isGlassEligible(activity) }
     val availableBackgroundStyles = PlayerBackgroundStyle.entries.filter {
         (it != PlayerBackgroundStyle.BLUR || Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) &&
-            (it != PlayerBackgroundStyle.LIQUID_GLASS || glassEligible)
+            // [isGlassEligible] gates the SHADER, and under the new interface this value is not the
+            // shader: `auraGroundRecipe` draws LIQUID_GLASS as a still, blurred cover under a white
+            // film, with a colour-wash fallback when there is no cover to blur (a local track, or
+            // API < 31 where `Modifier.blur` is a no-op). Nothing in it samples a backdrop, nothing in
+            // it moves, so none of the eligibility gates apply — and keeping them would have gone on
+            // withholding a working style from LOW-tier, TV/car and Performance-Mode users for a cost
+            // this shape does not pay. With the flag OFF the term vanishes and the list is the classic
+            // one, value for value.
+            (it != PlayerBackgroundStyle.LIQUID_GLASS || glassEligible || newUiEnabled)
     }
 
     val availableMiniPlayerBackgroundStyles = availableBackgroundStyles.filter { 
@@ -1079,33 +1087,33 @@ fun AppearanceSettings(
             }
         )
 
-        // "Mini reproductor" → "Estilo de fondo". HIDDEN with the new UI on, and this group holds
-        // nothing else, so the whole group goes with it.
+        // "Mini reproductor" → "Estilo de fondo". LIVE IN BOTH INTERFACES.
         //
-        // Why hidden rather than wired: the ONLY renderer of MiniPlayerBackgroundStyleKey is the
-        // classic `NewMiniPlayer` (MiniPlayer.kt), and with the flag on that composable now pins the
-        // style to DEFAULT in every orientation — deliberately, because the glass it painted is the
-        // thing the owner objected to twice. With the flag on the classic mini is never reached at
-        // all — AuraMiniPlayer replaces it in every orientation, since AuraPlayer stopped delegating
-        // landscape/wide/TV. And AuraMiniPlayer does NOT read this key: its pill follows
-        // PlayerBackgroundStyleKey (auraPillRecipe), the same setting as the player ground, so the
-        // mini and the player can never disagree. So under the new UI this row has no consumer at
-        // all — leaving it on screen would be a new placebo. The style the user picks for the player
-        // is what the pill wears.
+        // It used to be hidden with the new UI on, and the comment here defended that: the only
+        // renderer of MiniPlayerBackgroundStyleKey was the classic `NewMiniPlayer`, which the redesign
+        // never composes, so the row had no consumer. The premise was true and the conclusion was
+        // wrong — "en ajustes no se ven las mismas funciones que antes de personalización, NO QUIERO
+        // PERDER NADA". Hiding a control is losing it. The fix is a renderer, not a hidden row.
         //
-        // The preference is only HIDDEN, never cleared: turn the beta off and the row and the user's
-        // stored choice are both back, unchanged.
-        if (!newUiEnabled) {
-            Spacer(modifier = Modifier.height(27.dp))
+        // `AuraMiniPlayer` (ui/newui/AuraShell.kt) now reads this key, exactly as the classic mini
+        // does and with the same default, and paints the pill's ground from it through the same
+        // `auraGroundRecipe` the player and queue use. The pill and the player sheet are therefore two
+        // separately dressable surfaces again, as they are in the classic app — and a user who wants
+        // them to match sets both to the same value, which is a choice rather than a constraint.
+        //
+        // What it can NOT do, said once here and once on screen: this key's LIQUID_GLASS is a frosted,
+        // still cover in the new interface, not the backdrop-sampling shader the classic mini draws.
+        Spacer(modifier = Modifier.height(27.dp))
 
-            Material3SettingsGroup(
-                title = stringResource(id = R.string.mini_player),
-                items = buildList {
-                    add(
-                        Material3SettingsItem(
-                            icon = painterResource(R.drawable.palette),
-                            title = { Text(stringResource(R.string.miniplayer_background_style)) },
-                            description = {
+        Material3SettingsGroup(
+            title = stringResource(id = R.string.mini_player),
+            items = buildList {
+                add(
+                    Material3SettingsItem(
+                        icon = painterResource(R.drawable.palette),
+                        title = { Text(stringResource(R.string.miniplayer_background_style)) },
+                        description = {
+                            Column {
                                 Text(
                                     when (miniPlayerBackground) {
                                         PlayerBackgroundStyle.DEFAULT -> stringResource(R.string.follow_theme)
@@ -1117,13 +1125,16 @@ fun AppearanceSettings(
                                         else -> stringResource(R.string.follow_theme)
                                     }
                                 )
-                            },
-                            onClick = { showMiniPlayerBackgroundDialog = true }
-                        )
+                                if (newUiEnabled) {
+                                    Text(stringResource(R.string.miniplayer_background_style_desc_new_ui))
+                                }
+                            }
+                        },
+                        onClick = { showMiniPlayerBackgroundDialog = true }
                     )
-                }
-            )
-        }
+                )
+            }
+        )
 
         Spacer(modifier = Modifier.height(27.dp))
 
@@ -1225,8 +1236,11 @@ fun AppearanceSettings(
                 // App.kt:604 SEEDS on every fresh install, so the shipped default of this very control was
                 // one the new player did not honour, and five more did nothing beside it.
                 //
-                // All seven now paint the GROUND of the new player, its queue sheet and the mini pill
-                // (ui/newui/AuraPlayer.kt, `rememberAuraGround`). Nothing above that layer moves, which is
+                // All seven now paint the GROUND of the new player and its queue sheet
+                // (ui/newui/AuraPlayer.kt, `rememberAuraGround`). NOT the mini pill: that follows
+                // MiniPlayerBackgroundStyleKey, its own control, restored in the group above — this key
+                // briefly drove both surfaces and that is precisely how the separate setting went
+                // missing. Nothing above the ground layer moves, which is
                 // what keeps the redesign's own contrast: the artwork colours come from the ONE palette
                 // pass the ambient bloom already runs per track, the blurred cover is the same 128×128
                 // decode the mini player has shipped for months under an API-31 guard, and the two moving
@@ -1267,29 +1281,72 @@ fun AppearanceSettings(
                 // disabled with an "unavailable on this device" subtitle instead of hidden,
                 // so users know why the option is missing.
                 //
-                // HIDDEN ENTIRELY with the new UI on. The glass system has exactly TWO renderers in
-                // the whole app: the classic mini player (now pinned to DEFAULT under the new UI —
-                // MiniPlayer.kt) and FloatingNavigationToolbar (replaced by AuraNavigationBar —
-                // MainActivity.kt). With the flag on neither can draw glass, in any orientation, so
-                // every control behind this door is inert — and a door into a screen of dead switches
-                // is a worse placebo than a single dead switch. Nothing is written or cleared: turn
-                // the beta off and the entry, the screen and every stored value are back untouched.
-                if (!newUiEnabled) {
-                    Material3SettingsItem(
-                        icon = painterResource(R.drawable.palette),
-                        title = { Text(stringResource(R.string.liquid_glass)) },
-                        description = {
-                            Text(
-                                stringResource(
-                                    if (glassEligible) R.string.liquid_glass_settings_desc
-                                    else R.string.liquid_glass_unavailable
-                                )
+                // VISIBLE IN BOTH INTERFACES. It used to be hidden with the new UI on, and that was
+                // the third thing the owner noticed missing. It is back, but honestly: with the new
+                // interface on the row is SHOWN DISABLED with a line saying what it configures and
+                // where the frosted look lives instead. That is the pattern this screen's own Tema
+                // sibling already uses (ThemeScreen greys the Claro/Sistema cards and explains why),
+                // and it is the difference between "the user learns the truth by walking there" and
+                // "the user finds a gap and assumes we broke it".
+                //
+                // Why disabled rather than live — the measurement, not a preference:
+                //  · The glass system has exactly TWO render sites in the app. `FloatingNavigationToolbar`
+                //    is composed only on the `!newUiShell` branch (MainActivity.kt) — the new shell draws
+                //    `AuraNavigationBar`, and landscape uses the rail, so there is no orientation that
+                //    brings it back. The classic `NewMiniPlayer` is replaced by `AuraMiniPlayer` in every
+                //    orientation. The full-screen player was NEVER a render site in either interface:
+                //    nothing calls `isEnabledFor(GlassComponent.PLAYER)` (GlassEffect.kt:75-79).
+                //  · Both of those sites are surfaces that are on screen for the WHOLE of every song, and
+                //    `Modifier.liquidGlass` is not a still image: it forces the entire NavHost to be
+                //    re-recorded into an offscreen layer (`Modifier.layerBackdrop`, MainActivity.kt) and
+                //    then runs a RenderEffect chain — saturation, blur, lens refraction with chromatic
+                //    aberration — over that sample on every frame that draws. That is a live full-screen
+                //    backdrop sample during playback, which is exactly and only what the redesign's
+                //    thermal contract rules out (AuraBloom.kt, rule 2). Re-pointing it at Aura's pills
+                //    would not make it cheaper; it is the same shader on the same always-on surfaces.
+                //
+                // So the SHADER is classic-only for a structural reason, and the row says so. The LOOK
+                // is not lost: "Fondo del reproductor" → "Liquid Glass" paints a real frosted ground
+                // (still blurred cover + film + hairline, one decode per track, API-31 guarded) on the
+                // player, the queue and — now that the mini-player row above is live again — the pill.
+                //
+                // Nothing is written or cleared in either interface: turn the beta off and the row, the
+                // screen and every stored value are back exactly as they were.
+                Material3SettingsItem(
+                    icon = painterResource(R.drawable.palette),
+                    title = { Text(stringResource(R.string.liquid_glass)) },
+                    description = {
+                        Text(
+                            stringResource(
+                                when {
+                                    // Ineligibility wins, in BOTH interfaces. Ordering this the other
+                                    // way told an API-30 / LOW-tier / TV user that the shader "applies
+                                    // to the classic interface" — an invitation to go and turn the beta
+                                    // off for something that would not work there either.
+                                    !glassEligible -> R.string.liquid_glass_unavailable
+                                    newUiEnabled -> R.string.liquid_glass_classic_only_desc
+                                    else -> R.string.liquid_glass_settings_desc
+                                }
                             )
-                        },
-                        enabled = glassEligible,
-                        onClick = { if (glassEligible) navController.navigate("settings/appearance/liquidglass") }
-                    )
-                } else null,
+                        )
+                    },
+                    enabled = glassEligible && !newUiEnabled,
+                    // The row is disabled, and the sentence above is the whole reason it is shown
+                    // disabled rather than hidden — so it is the one thing that must NOT inherit the
+                    // 38 % alpha a disabled row dims its content to (3.24:1 on the redesign's ground,
+                    // where body text needs 4.5:1). Undimmed it composites to 5.67:1; the title, the
+                    // icon and the chevron stay dimmed, so the row still reads as not-tappable.
+                    //
+                    // Gated on the flag, not passed as a constant `true`: with "Interfaz nueva" OFF
+                    // this is `false` and the ineligible-device row keeps exactly the classic
+                    // appearance it has today.
+                    keepDescriptionLegible = newUiEnabled,
+                    onClick = {
+                        if (glassEligible && !newUiEnabled) {
+                            navController.navigate(LIQUID_GLASS_ROUTE)
+                        }
+                    }
+                ),
                 Material3SettingsItem(
                     icon = painterResource(R.drawable.hide_image),
                     title = { Text(stringResource(R.string.hide_player_thumbnail)) },

@@ -130,6 +130,15 @@ import kotlinx.coroutines.withContext
 /**
  * The sort control: the current criterion opens a menu, the arrow flips ascending/descending.
  * The menu itself is a plain `DropdownMenu` — popups are not one of the six screens.
+ *
+ * ## It also hosts the search toggle now
+ * The magnifying glass used to be pinned at the right of the Biblioteca chip strip, level with the
+ * chips and clipping them — the owner's *"arruina mi diseño y se ve feo eso allí"*. It is not deleted,
+ * because on Listas de reproducción it is the ONLY way to reach that tab's own name filter: it moves
+ * here, next to the two controls it belongs with, inside the tab's own scrolling content. Pass
+ * [onToggleSearch] together with [searchLabel] (Spanish, from the same string resource the field's
+ * placeholder uses) on the three tabs that own a search field; leave both null on the ones that do not
+ * — Álbumes and the hub — so nothing dead is drawn.
  */
 @Composable
 private fun <T : Enum<T>> AuraSortControl(
@@ -139,6 +148,9 @@ private fun <T : Enum<T>> AuraSortControl(
     onSortTypeChange: (T) -> Unit,
     onSortDescendingChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
+    searchLabel: String? = null,
+    searchOpen: Boolean = false,
+    onToggleSearch: (() -> Unit)? = null,
     trailing: (@Composable () -> Unit)? = null,
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -203,6 +215,21 @@ private fun <T : Enum<T>> AuraSortControl(
             tint = AuraPalette.OnGroundFaint,
             modifier = Modifier.graphicsLayer { rotationZ = if (sortDescending) 0f else 180f },
         )
+        // Grouped with the two controls it belongs with, and BEFORE the weighted spacer, so the 48 dp
+        // touch target this costs is taken out of the trailing count — the only shrinkable thing in the
+        // row and the one whose loss costs least, since it repeats what the list itself shows. The
+        // criterion and the direction stay whole at every width. At the default sort ("Fecha añadida")
+        // there is slack for the whole count on a 393 dp phone; on the longest label ("Tiempo de
+        // reproducción") the count ellipsises, which it already did before this glyph arrived.
+        if (onToggleSearch != null && searchLabel != null) {
+            AuraIconButton(
+                icon = AuraIcons.Search,
+                contentDescription = searchLabel,
+                onClick = onToggleSearch,
+                size = 16.dp,
+                tint = if (searchOpen) AuraPalette.Teal else AuraPalette.OnGroundFaint,
+            )
+        }
         Box(Modifier.weight(1f))
         trailing?.invoke()
     }
@@ -526,6 +553,7 @@ fun AuraLibraryHub(
 fun AuraLibrarySongsTab(
     navController: NavController,
     searchOpen: Boolean,
+    onToggleSearch: () -> Unit,
     viewModel: LibrarySongsViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
@@ -599,17 +627,6 @@ fun AuraLibrarySongsTab(
                 )
             }
 
-            if (searchOpen) {
-                item(key = "aura_songs_search") {
-                    AuraSearchField(
-                        value = searchQuery,
-                        onValueChange = { viewModel.searchQuery.value = it },
-                        placeholder = stringResource(R.string.search_library),
-                        modifier = Modifier.animateItem(),
-                    )
-                }
-            }
-
             item(key = "aura_songs_sort") {
                 AuraSortControl(
                     sortType = sortType,
@@ -622,6 +639,9 @@ fun AuraLibrarySongsTab(
                     ),
                     onSortTypeChange = onSortTypeChange,
                     onSortDescendingChange = onSortDescendingChange,
+                    searchLabel = stringResource(R.string.search_library),
+                    searchOpen = searchOpen,
+                    onToggleSearch = onToggleSearch,
                     trailing = {
                         AuraCount(
                             pluralStringResource(
@@ -632,6 +652,19 @@ fun AuraLibrarySongsTab(
                         )
                     },
                 )
+            }
+
+            // Below the control row that opens it, not above: the toggle lives in the sort row now, and
+            // inserting the field over its own button would push the button down under the finger.
+            if (searchOpen) {
+                item(key = "aura_songs_search") {
+                    AuraSearchField(
+                        value = searchQuery,
+                        onValueChange = { viewModel.searchQuery.value = it },
+                        placeholder = stringResource(R.string.search_library),
+                        modifier = Modifier.animateItem(),
+                    )
+                }
             }
 
             if (libraryContextId != null) {
@@ -851,6 +884,7 @@ fun AuraLibraryAlbumsTab(
 fun AuraLibraryArtistsTab(
     navController: NavController,
     searchOpen: Boolean,
+    onToggleSearch: () -> Unit,
     viewModel: LibraryArtistsViewModel = hiltViewModel(),
 ) {
     val menuState = LocalMenuState.current
@@ -884,16 +918,6 @@ fun AuraLibraryArtistsTab(
                 onSelect = { filter = it },
             )
         }
-        if (searchOpen) {
-            item(key = "aura_artists_search") {
-                AuraSearchField(
-                    value = searchQuery,
-                    onValueChange = { viewModel.searchQuery.value = it },
-                    placeholder = stringResource(R.string.search_library),
-                    modifier = Modifier.animateItem(),
-                )
-            }
-        }
         item(key = "aura_artists_sort") {
             AuraSortControl(
                 sortType = sortType,
@@ -906,10 +930,24 @@ fun AuraLibraryArtistsTab(
                 ),
                 onSortTypeChange = onSortTypeChange,
                 onSortDescendingChange = onSortDescendingChange,
+                searchLabel = stringResource(R.string.search_library),
+                searchOpen = searchOpen,
+                onToggleSearch = onToggleSearch,
                 trailing = {
                     AuraCount(pluralStringResource(R.plurals.n_artist, artists.size, artists.size))
                 },
             )
+        }
+        // Below the control row that opens it — see the songs tab.
+        if (searchOpen) {
+            item(key = "aura_artists_search") {
+                AuraSearchField(
+                    value = searchQuery,
+                    onValueChange = { viewModel.searchQuery.value = it },
+                    placeholder = stringResource(R.string.search_library),
+                    modifier = Modifier.animateItem(),
+                )
+            }
         }
 
         if (artists.isEmpty()) {
@@ -953,6 +991,7 @@ fun AuraLibraryArtistsTab(
 fun AuraLibraryPlaylistsTab(
     navController: NavController,
     searchOpen: Boolean,
+    onToggleSearch: () -> Unit,
     viewModel: LibraryPlaylistsViewModel = hiltViewModel(),
 ) {
     val menuState = LocalMenuState.current
@@ -1009,18 +1048,6 @@ fun AuraLibraryPlaylistsTab(
             .fillMaxSize()
             .padding(horizontal = AuraSpacing.Gutter),
     ) {
-        if (searchOpen) {
-            item(key = "aura_playlists_search", span = { GridItemSpan(maxLineSpan) }) {
-                AuraSearchField(
-                    value = playlistSearchQuery,
-                    onValueChange = { playlistSearchQuery = it },
-                    placeholder = stringResource(R.string.search_playlists),
-                    modifier = Modifier
-                        .animateItem()
-                        .padding(horizontal = 0.dp),
-                )
-            }
-        }
         item(key = "aura_playlists_sort", span = { GridItemSpan(maxLineSpan) }) {
             AuraSortControl(
                 sortType = sortType,
@@ -1034,6 +1061,11 @@ fun AuraLibraryPlaylistsTab(
                 onSortTypeChange = onSortTypeChange,
                 onSortDescendingChange = onSortDescendingChange,
                 modifier = Modifier.padding(start = 0.dp),
+                // The glass that used to sit at the top right of the chip strip. This is the ONLY door
+                // to this tab's name filter, so it moves rather than disappears.
+                searchLabel = stringResource(R.string.search_playlists),
+                searchOpen = searchOpen,
+                onToggleSearch = onToggleSearch,
                 trailing = {
                     AuraCount(
                         pluralStringResource(
@@ -1044,6 +1076,19 @@ fun AuraLibraryPlaylistsTab(
                     )
                 },
             )
+        }
+        // Below the control row that opens it — see the songs tab.
+        if (searchOpen) {
+            item(key = "aura_playlists_search", span = { GridItemSpan(maxLineSpan) }) {
+                AuraSearchField(
+                    value = playlistSearchQuery,
+                    onValueChange = { playlistSearchQuery = it },
+                    placeholder = stringResource(R.string.search_playlists),
+                    modifier = Modifier
+                        .animateItem()
+                        .padding(horizontal = 0.dp),
+                )
+            }
         }
         item(key = "aura_playlists_auto", span = { GridItemSpan(maxLineSpan) }) {
             FlowRow(

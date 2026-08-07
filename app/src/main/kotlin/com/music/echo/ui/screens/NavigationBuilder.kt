@@ -23,17 +23,11 @@ import androidx.navigation.navArgument
 import iad1tya.echo.music.constants.PureBlackKey
 import iad1tya.echo.music.ui.screens.artist.ArtistAlbumsScreen
 import iad1tya.echo.music.ui.screens.artist.ArtistItemsScreen
-import iad1tya.echo.music.ui.screens.artist.ArtistScreen
 import iad1tya.echo.music.ui.screens.artist.ArtistSongsScreen
 import iad1tya.echo.music.ui.screens.library.FavoriteAlbumsScreen
 import iad1tya.echo.music.ui.screens.library.ReleaseRadarScreen
 import iad1tya.echo.music.ui.screens.library.LibraryScreen
 import iad1tya.echo.music.ui.screens.library.LocalSongScreen
-import iad1tya.echo.music.ui.screens.playlist.AutoPlaylistScreen
-import iad1tya.echo.music.ui.screens.playlist.CachePlaylistScreen
-import iad1tya.echo.music.ui.screens.playlist.LocalPlaylistScreen
-import iad1tya.echo.music.ui.screens.playlist.OnlinePlaylistScreen
-import iad1tya.echo.music.ui.screens.playlist.TopPlaylistScreen
 import iad1tya.echo.music.ui.screens.search.OnlineSearchResult
 import iad1tya.echo.music.ui.screens.search.SearchScreen
 import iad1tya.echo.music.ui.screens.settings.AboutScreen
@@ -63,16 +57,22 @@ import iad1tya.echo.music.utils.rememberPreference
 import iad1tya.echo.music.echomusic.changelog.ChangelogScreen
 import iad1tya.echo.music.ui.screens.equalizer.axion.AxionEqScreen
 import iad1tya.echo.music.ui.screens.ambient.AmbientModeScreen
+import iad1tya.echo.music.ui.newui.AlbumScreenHost
+import iad1tya.echo.music.ui.newui.ArtistScreenHost
 import iad1tya.echo.music.ui.newui.AutoPlaylistScreenHost
+import iad1tya.echo.music.ui.newui.CachePlaylistScreenHost
 import iad1tya.echo.music.ui.newui.HomeScreenHost
 import iad1tya.echo.music.ui.newui.LibraryScreenHost
+import iad1tya.echo.music.ui.newui.LocalPlaylistScreenHost
 import iad1tya.echo.music.ui.newui.MigrationAppleScreenHost
 import iad1tya.echo.music.ui.newui.MigrationScreenHost
 import iad1tya.echo.music.ui.newui.MigrationTidalScreenHost
+import iad1tya.echo.music.ui.newui.OnlinePlaylistScreenHost
 import iad1tya.echo.music.ui.newui.SearchResultHost
 import iad1tya.echo.music.ui.newui.SearchScreenHost
 import iad1tya.echo.music.ui.newui.StatsScreenHost
 import iad1tya.echo.music.ui.newui.SettingsScreenHost
+import iad1tya.echo.music.ui.newui.TopPlaylistScreenHost
 
 @OptIn(ExperimentalMaterial3Api::class)
 fun NavGraphBuilder.navigationBuilder(
@@ -212,7 +212,10 @@ fun NavGraphBuilder.navigationBuilder(
             },
         ),
     ) {
-        AlbumScreen(navController, scrollBehavior)
+        // Reached from the NEW player's title, from Inicio, Biblioteca, Buscar and from every artist
+        // and playlist screen. The Host picks the redesign when the flag is on; with the flag off this
+        // is the same AlbumScreen(navController, scrollBehavior) call as before.
+        AlbumScreenHost(navController, scrollBehavior)
     }
 
     composable(
@@ -223,7 +226,8 @@ fun NavGraphBuilder.navigationBuilder(
             },
         ),
     ) {
-        ArtistScreen(navController, scrollBehavior)
+        // Reached from the NEW player's artist line, and from the player menu's "Ir a > Artista".
+        ArtistScreenHost(navController, scrollBehavior)
     }
 
     composable(
@@ -283,7 +287,7 @@ fun NavGraphBuilder.navigationBuilder(
             },
         ),
     ) {
-        OnlinePlaylistScreen(navController, scrollBehavior)
+        OnlinePlaylistScreenHost(navController, scrollBehavior)
     }
 
     composable(
@@ -294,7 +298,7 @@ fun NavGraphBuilder.navigationBuilder(
             },
         ),
     ) {
-        LocalPlaylistScreen(navController, scrollBehavior)
+        LocalPlaylistScreenHost(navController, scrollBehavior)
     }
 
     composable(
@@ -316,7 +320,7 @@ fun NavGraphBuilder.navigationBuilder(
             },
         ),
     ) {
-        CachePlaylistScreen(navController, scrollBehavior)
+        CachePlaylistScreenHost(navController, scrollBehavior)
     }
 
     composable(
@@ -327,7 +331,7 @@ fun NavGraphBuilder.navigationBuilder(
             },
         ),
     ) {
-        TopPlaylistScreen(navController, scrollBehavior)
+        TopPlaylistScreenHost(navController, scrollBehavior)
     }
 
     composable(

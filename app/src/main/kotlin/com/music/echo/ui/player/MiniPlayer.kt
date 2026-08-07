@@ -228,8 +228,14 @@ private fun NewMiniPlayer(
     // Forcing DEFAULT here is the single point that neutralises it: `useGlassMiniPlayer`,
     // `isDynamicBackground`, MiniPlayerColorExtractor and the background renderer all derive from this
     // value, and LiquidGlassMiniPlayerEnabledKey only ever matters while the style IS LIQUID_GLASS.
-    // That is also what lets the two Ajustes rows be hidden under the new UI without lying: they are
-    // now uniformly inert with the flag on, not "inert until you rotate".
+    //
+    // What this does NOT do any more is silence the Ajustes rows. "Mini reproductor" → "Estilo de fondo"
+    // is live in BOTH interfaces (AppearanceSettings.kt:1108): with the flag on, AuraMiniPlayer reads the
+    // same key and paints the pill from it. So this line no longer decides whether the preference has an
+    // effect — it decides only that THIS composable, which the new UI never reaches, would not draw glass
+    // if some future host routed a shape back through it. The "Liquid Glass (Beta)" row is likewise not
+    // hidden under the flag: it is shown disabled, with a description that says the shader is
+    // classic-only (AppearanceSettings.kt:1315).
     //
     // GATED: with the flag OFF this is `false` and the stored preference is read exactly as today. The
     // preference itself is never written here, so turning the beta off restores the user's choice.

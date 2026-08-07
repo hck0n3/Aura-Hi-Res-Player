@@ -12,6 +12,7 @@ import android.os.Handler
 import android.os.Looper
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.expandVertically
@@ -386,7 +387,6 @@ fun AuraQueue(
                 onToggleLyrics = onToggleLyrics,
                 showCommentButton = showCommentButton,
                 onComments = { showCommentSheet = true },
-                onMore = openPlayerMenu,
                 isListenTogetherGuest = isListenTogetherGuest,
                 contentColor = textBackgroundColor,
                 activeContainerColor = textButtonColor,
@@ -527,12 +527,26 @@ fun AuraQueue(
             }
         }
 
-        // The grouped row plan: computed once per (queue, boundary, current song), never per frame.
-        val entries = remember(mutableQueueWindows.toList(), listQueueSize, currentWindowIndex) {
+        // Does the queue continue by itself once the last song ends? Only then may the plan stay silent
+        // about the end of the list — see [buildAuraQueueEntries]. Same two facts the autoplay block at
+        // the bottom of this very list is built from, read once here.
+        val hasAutoplayContinuation = autoLoadMore && automix.isNotEmpty()
+
+        // The grouped row plan: computed once per (queue, boundary, current song, repeat mode, autoplay),
+        // never per frame.
+        val entries = remember(
+            mutableQueueWindows.toList(),
+            listQueueSize,
+            currentWindowIndex,
+            repeatMode,
+            hasAutoplayContinuation,
+        ) {
             buildAuraQueueEntries(
                 windows = mutableQueueWindows.toList(),
                 listQueueSize = listQueueSize,
                 currentIndex = currentWindowIndex,
+                repeatMode = repeatMode,
+                hasAutoplayContinuation = hasAutoplayContinuation,
             )
         }
 
@@ -540,10 +554,19 @@ fun AuraQueue(
         // (stable) list instance so it fires once per open; ours has to key on `entries`, which changes
         // on every track advance and every reorder, so the one-shot is explicit. Without it the list
         // would yank itself back to the current song while the user was scrolling or dragging.
+        //
+        // The target is the **REPRODUCIENDO heading**, not the row: landing on the row would scroll its
+        // own heading off the top edge, and the whole point of the split is that the user can see which
+        // block each row belongs to. The row target survives as a fallback for the case with no current
+        // song (`currentWindowIndex == -1`), where no heading is emitted.
         var didInitialScroll by remember { mutableStateOf(false) }
         LaunchedEffect(entries) {
             if (didInitialScroll) return@LaunchedEffect
-            val target = entries.indexOfFirst { it is AuraQueueEntry.Song && it.isCurrent }
+            val headingIndex = entries.indexOfFirst {
+                it is AuraQueueEntry.Label && it.id == AURA_QUEUE_LABEL_CURRENT
+            }
+            val target = if (headingIndex >= 0) headingIndex
+            else entries.indexOfFirst { it is AuraQueueEntry.Song && it.isCurrent }
             if (target >= 0) {
                 lazyListState.scrollToItem(target + AURA_QUEUE_LEADING_ITEMS)
                 didInitialScroll = true
@@ -577,7 +600,7 @@ fun AuraQueue(
                             .padding(start = AuraSpacing.Gutter, end = 6.dp, top = 6.dp),
                     ) {
                         Text(
-                            text = "En cola",
+                            text = stringResource(R.string.aura_queue_title),
                             style = AuraType.SheetTitle,
                             color = AuraPalette.OnGround,
                             maxLines = 1,
@@ -634,7 +657,7 @@ fun AuraQueue(
 
                     // ── SONANDO ───────────────────────────────────────────────────────────────────────
                     Column(modifier = Modifier.padding(horizontal = AuraSpacing.Gutter, vertical = 6.dp)) {
-                        AuraSectionLabel("SONANDO")
+                        AuraSectionLabel(stringResource(R.string.aura_queue_section_playing))
                         Spacer(Modifier.height(AuraSpacing.SectionGap))
                         AuraRow(
                             title = mediaMetadata?.title.orEmpty(),
@@ -706,7 +729,7 @@ fun AuraQueue(
                             ) {
                                 AuraPainterIconButton(
                                     painterId = R.drawable.close,
-                                    contentDescription = "Salir de la selección",
+                                    contentDescription = stringResource(R.string.cd_exit_selection),
                                     onClick = onExitSelectionMode,
                                     size = 20.dp,
                                 )
@@ -874,7 +897,7 @@ fun AuraQueue(
                                         is AuraQueueEntry.Label -> Column {
                                             Spacer(Modifier.height(AuraSpacing.SectionTop))
                                             AuraSectionLabel(
-                                                text = entry.text,
+                                                text = stringResource(entry.textRes),
                                                 color = if (entry.radio) AuraPalette.Violet.copy(alpha = 0.85f)
                                                 else AuraPalette.OnGroundFaint,
                                             )
@@ -945,7 +968,7 @@ fun AuraQueue(
                                                             ) {
                                                                 AuraIconGlyph(
                                                                     icon = AuraIcons.DragHandle,
-                                                                    contentDescription = "Reordenar",
+                                                                    contentDescription = stringResource(R.string.cd_reorder),
                                                                     size = 21.dp,
                                                                     tint = AuraPalette.OnGroundDisabled,
                                                                 )
@@ -1139,7 +1162,10 @@ fun AuraQueue(
                             .padding(start = AuraSpacing.Gutter, end = 6.dp),
                     ) {
                         AuraTechnicalText(
-                            text = if (locked) "COLA BLOQUEADA" else "DESLIZA PARA QUITAR",
+                            text = stringResource(
+                                if (locked) R.string.aura_queue_footer_locked
+                                else R.string.aura_queue_footer_swipe_to_remove
+                            ),
                             color = AuraPalette.OnGroundGhost,
                             modifier = Modifier.weight(1f),
                         )
@@ -1167,10 +1193,14 @@ fun AuraQueue(
 // ── Collapsed bar ─────────────────────────────────────────────────────────────────────────────────
 
 /**
- * The bar under the player transport. It carries the **union** of the two classic bars (§4.1 the new
- * design, §4.2 the old one) so nothing depends on `UseNewPlayerDesignKey` any more — most importantly
- * the audio-output picker, which today only exists in the old design and is the app's only way to
- * choose an output device.
+ * The bar under the player transport. It carries the union of the two classic bars (§4.1 the new
+ * design, §4.2 the old one) MINUS whatever the player already draws a few dp above it — most importantly
+ * the audio-output picker, which today only exists in the old design and is the app's only way to choose
+ * an output device, and which nothing else on this surface owns.
+ *
+ * Three things are deliberately NOT here because the player itself owns them while this bar is visible:
+ * aleatorio and repetir (the transport row) and ⋮ más (the player header). See the comments at their
+ * former sites in the body below.
  *
  * Colours come from the player (not from [AuraPalette]): this bar is drawn ON TOP of whatever
  * background the player renders — a bright cover, a blur, a mesh — so it must use the same
@@ -1188,14 +1218,17 @@ private fun AuraQueueBar(
     onToggleLyrics: () -> Unit,
     showCommentButton: Boolean,
     onComments: () -> Unit,
-    onMore: () -> Unit,
     isListenTogetherGuest: Boolean,
     contentColor: Color,
     activeContainerColor: Color,
     activeContentColor: Color,
 ) {
     Row(
-        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        // Centred, not left-packed with a trailing ⋮: the bar is now four or five buttons of the same
+        // rank, and it sits directly under the player's own centred transport and centred quick-access
+        // row. Left-packing them and hanging one button off the right edge is what the removed ⋮ was
+        // holding the layout in.
+        horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
@@ -1205,7 +1238,7 @@ private fun AuraQueueBar(
             ),
     ) {
         AuraBarButton(
-            contentDescription = "Abrir la cola",
+            contentDescription = stringResource(R.string.cd_open_queue),
             active = false,
             onClick = onOpenQueue,
             contentColor = contentColor,
@@ -1216,7 +1249,7 @@ private fun AuraQueueBar(
         // ⚠️ The app's ONLY audio-output picker. It used to be reachable only with the old player
         // design; here it is unconditional.
         AuraBarButton(
-            contentDescription = "Salida de audio",
+            contentDescription = stringResource(R.string.cd_audio_output),
             active = false,
             onClick = onAudioOutput,
             contentColor = contentColor,
@@ -1260,7 +1293,7 @@ private fun AuraQueueBar(
 
         if (showCommentButton) {
             AuraBarButton(
-                contentDescription = "Comentarios",
+                contentDescription = stringResource(R.string.comments),
                 active = false,
                 onClick = onComments,
                 contentColor = contentColor,
@@ -1281,18 +1314,17 @@ private fun AuraQueueBar(
         // (AuraPlayer.kt: shuffle left of «anterior», repeat right of «siguiente», including the "1" marker
         // for «repetir una»). Drawing them here too put two identical toggles for the same two player flags
         // ~60 dp apart — "no quiero botones repetidos". When the sheet is EXPANDED the transport is covered,
-        // and the expanded header above the list carries shuffle/repeat/lock/more for exactly that reason.
-
-        Spacer(Modifier.weight(1f))
-
-        AuraBarButton(
-            contentDescription = stringResource(R.string.more_options),
-            active = true,
-            onClick = onMore,
-            contentColor = contentColor,
-            activeContainerColor = activeContainerColor,
-            activeContentColor = activeContentColor,
-        ) { tint -> AuraIconGlyph(AuraIcons.More, null, size = 21.dp, tint = tint) }
+        // and the expanded header above the list carries shuffle/repeat/lock for exactly that reason.
+        //
+        // ⋮ «MÁS» DELIBERATELY ABSENT TOO — the pair the first de-duplication pass missed. This bar drew a
+        // ⋮ wired to `openPlayerMenu`, and the player's own header (AuraPlayer.kt, top-right of the sheet)
+        // draws a ⋮ that opens [PlayerMenuHost] with the SAME arguments. Both are on screen together the
+        // whole time the player is expanded, in portrait AND in the wide arrangement, so the user had two
+        // identical glyphs opening one identical menu. The player menu now has exactly one door per state:
+        //  · player expanded, letra cerrada → the header ⋮ (AuraPlayer.kt);
+        //  · queue sheet expanded (this bar is not composed) → the sheet header's own ⋮ above the list,
+        //    which is also the door while the inline lyrics have taken over the player header's ⋮.
+        // Neither of those two is ever on screen at the same time as the other.
     }
 }
 
@@ -1330,8 +1362,18 @@ private fun AuraBarButton(
 // ── Pieces ────────────────────────────────────────────────────────────────────────────────────────
 
 /**
- * "Continuar reproduciendo / Siguiente en la cola", the song count, the total duration and the Radio
- * action — §4.5's list header and its Radio button in one line.
+ * The list's summary line — how much queue there is — and the Radio action. §4.5's header, minus the
+ * claim it could not keep.
+ *
+ * It used to read *"Continuar reproduciendo"* over *"Siguiente en la cola"*, and it sits directly above
+ * the first row of the list, which for a user on the first track of a queue is the song that is PLAYING.
+ * That pair is what produced *«me sale que la siguiente es la misma que estoy reproduciendo»*. The two
+ * lines are gone, not renamed: «cuál es la siguiente» is now answered where it belongs, by the
+ * **A CONTINUACIÓN** heading that [buildAuraQueueEntries] starts at the real next song.
+ *
+ * What is left is two facts and one action, all of them about the whole queue and none of them about the
+ * row underneath: the song count, the total duration and «Iniciar radio». Nothing is lost — the count and
+ * the duration were already here, in the right-hand column this now replaces.
  */
 @Composable
 private fun AuraQueueListHeader(
@@ -1346,23 +1388,19 @@ private fun AuraQueueListHeader(
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = stringResource(R.string.continue_playing),
+                text = pluralStringResource(R.plurals.n_song, songCount, songCount),
                 style = AuraType.RowTitle,
                 color = AuraPalette.OnGround,
                 maxLines = 1,
                 overflow = AuraDefaultOverflow,
             )
             Text(
-                text = stringResource(R.string.next_in_queue),
+                text = makeTimeString(totalDurationMs),
                 style = AuraType.RowSubtitle,
                 color = AuraPalette.OnGroundMuted,
                 maxLines = 1,
                 overflow = AuraDefaultOverflow,
             )
-        }
-        Column(horizontalAlignment = Alignment.End) {
-            AuraTechnicalText(text = pluralStringResource(R.plurals.n_song, songCount, songCount))
-            AuraTechnicalText(text = makeTimeString(totalDurationMs))
         }
         Spacer(Modifier.width(8.dp))
         Row(
@@ -1447,7 +1485,7 @@ private fun AuraAutomixRow(
             if (!isListenTogetherGuest) {
                 AuraPainterIconButton(
                     painterId = R.drawable.playlist_play,
-                    contentDescription = "Reproducir a continuación",
+                    contentDescription = stringResource(R.string.play_next),
                     onClick = {
                         val at = poolPosition()
                         if (at >= 0) playerConnection.service.playNextAutomix(item, at)
@@ -1457,7 +1495,7 @@ private fun AuraAutomixRow(
                 )
                 AuraIconButton(
                     icon = AuraIcons.Queue,
-                    contentDescription = "Añadir a la cola",
+                    contentDescription = stringResource(R.string.add_to_queue),
                     onClick = {
                         val at = poolPosition()
                         if (at >= 0) playerConnection.service.addToQueueAutomix(item, at)
@@ -1589,7 +1627,13 @@ private const val AURA_QUEUE_LEADING_ITEMS = 2
 private fun auraSongKey(window: Timeline.Window): String = "aura_queue_song_${window.uid.hashCode()}"
 
 private sealed interface AuraQueueEntry {
-    data class Label(val id: String, val text: String, val radio: Boolean) : AuraQueueEntry
+    /**
+     * [id] is a stable LIST KEY, not text: it is what `"aura_queue_label_$id"` and
+     * `"aura_wide_label_$id"` are built from, so two labels must never share one and it must never be
+     * localised. The words the user reads are [textRes], resolved at draw time — [buildAuraQueueEntries]
+     * is a pure function with no Compose scope, so it cannot resolve them itself.
+     */
+    data class Label(val id: String, @StringRes val textRes: Int, val radio: Boolean) : AuraQueueEntry
     data class Song(
         val queueIndex: Int,
         val window: Timeline.Window,
@@ -1598,25 +1642,61 @@ private sealed interface AuraQueueEntry {
     ) : AuraQueueEntry
 }
 
+/** Id of the heading that sits directly above the current song. Also the scroll-to-current target. */
+private const val AURA_QUEUE_LABEL_CURRENT = "current"
+
 /**
- * Turns the play-ordered queue into the render's three blocks.
+ * Turns the play-ordered queue into the render's blocks.
  *
- * `queueWindows` is in PLAY order (shuffle-aware) while `listQueueSize` is a TIMELINE boundary, so the
- * per-row test is `window.firstPeriodIndex < listQueueSize` — correct under shuffle too. A
- * `listQueueSize` of 0 means the engine has no list context for this queue (a directly started radio,
- * a mix, or a queue adopted from Android Auto): everything is then one block and no radio label is
- * drawn, because claiming a boundary we do not have would be a placebo.
+ * ## «La siguiente es la misma que estoy reproduciendo»
+ * The reported bug. The list used to emit NO heading for the current song — the comment here said it
+ * "lives in the pinned SONANDO header" — while [AuraQueueListHeader], two dp above the first row, read
+ * *"Continuar reproduciendo / Siguiente en la cola"*. When the user is on the first track of a queue,
+ * `currentIndex` is 0, so the first row under that promise **is** the song that is playing. The header
+ * was a promise about a row it did not describe.
  *
- * Pure function, no Compose state — it is called inside a `remember` keyed on its three inputs, so the
- * plan is rebuilt when the queue changes and never while scrolling.
+ * The fix is structural, not a relabel: the current song now gets its own **REPRODUCIENDO** heading, and
+ * the up-next headings ("A CONTINUACIÓN · DE TU LISTA" / "· RADIO INFINITA") therefore start at the song
+ * that really is next. Nothing is removed from the list — the current song keeps its row, so it can still
+ * be dragged, swiped away, selected and long-pressed, and the select-all count still compares against the
+ * whole queue.
+ *
+ * ## What "next" means
+ * `windows` is in PLAY order, not list order: it is built by walking `getNextWindowIndex` /
+ * `getPreviousWindowIndex` with the player's own `shuffleModeEnabled` (`PlayerExt.kt:33`), so with
+ * ALEATORIO on, `windows[currentIndex + 1]` is the song the player will really play next. There is no
+ * separate shuffle path here, and there must not be one.
+ *
+ * `listQueueSize` is a TIMELINE boundary, so the per-row radio test is
+ * `window.firstPeriodIndex >= listQueueSize` — correct under shuffle too. A `listQueueSize` of 0 means the
+ * engine has no list context for this queue (a directly started radio, a mix, or a queue adopted from
+ * Android Auto): everything is then one block and no radio label is drawn, because claiming a boundary we
+ * do not have would be a placebo.
+ *
+ * ## El final de la cola
+ * [repeatMode] and [hasAutoplayContinuation] are read so the end of the list states what the engine will
+ * actually do instead of just stopping:
+ *  · **Repetir una** — auto-advance replays THIS song, so a note says so directly under it. The up-next
+ *    block still appears when there are songs after it, because «siguiente» still skips to them.
+ *  · **Repetir todo** on the last song — the player wraps to `windows[0]`. That is stated as a heading
+ *    and NOT as a row: the row for `windows[0]` already exists further up under "YA SONÓ", and a second
+ *    row for the same window would be a duplicate lazy-list key, i.e. a crash.
+ *  · **Nothing after, no repeat, no autoplay** — "FIN DE LA COLA". When autoplay WILL continue the queue
+ *    the label is omitted, because the autoplay block below the list already shows the real songs and
+ *    announcing an end that is not one would be the same class of lie this function just fixed.
+ *
+ * Pure function, no Compose state — called inside a `remember` keyed on its inputs, so the plan is
+ * rebuilt when the queue changes and never while scrolling.
  */
 private fun buildAuraQueueEntries(
     windows: List<Timeline.Window>,
     listQueueSize: Int,
     currentIndex: Int,
+    repeatMode: Int,
+    hasAutoplayContinuation: Boolean,
 ): List<AuraQueueEntry> {
     if (windows.isEmpty()) return emptyList()
-    val entries = ArrayList<AuraQueueEntry>(windows.size + 3)
+    val entries = ArrayList<AuraQueueEntry>(windows.size + 5)
     var emittedPlayed = false
     var emittedUpcoming = false
     var emittedRadio = false
@@ -1625,22 +1705,28 @@ private fun buildAuraQueueEntries(
         val isCurrent = index == currentIndex
         val radio = listQueueSize > 0 && window.firstPeriodIndex >= listQueueSize
         when {
-            isCurrent -> Unit // the current song lives in the pinned "SONANDO" header, no label here
+            // Emitted at most once: `index == currentIndex` is true for exactly one index.
+            isCurrent -> entries += AuraQueueEntry.Label(
+                id = AURA_QUEUE_LABEL_CURRENT,
+                textRes = R.string.aura_queue_label_now_playing,
+                radio = false,
+            )
             index < currentIndex -> if (!emittedPlayed) {
                 emittedPlayed = true
-                entries += AuraQueueEntry.Label("played", "YA SONÓ", radio = false)
+                entries += AuraQueueEntry.Label("played", R.string.aura_queue_label_played, radio = false)
             }
             radio -> if (!emittedRadio) {
                 emittedRadio = true
                 entries += AuraQueueEntry.Label(
                     id = "radio",
-                    text = if (emittedUpcoming) "DESPUÉS · RADIO INFINITA" else "A CONTINUACIÓN · RADIO INFINITA",
+                    textRes = if (emittedUpcoming) R.string.aura_queue_label_radio_later
+                    else R.string.aura_queue_label_radio_next,
                     radio = true,
                 )
             }
             else -> if (!emittedUpcoming) {
                 emittedUpcoming = true
-                entries += AuraQueueEntry.Label("list", "A CONTINUACIÓN · DE TU LISTA", radio = false)
+                entries += AuraQueueEntry.Label("list", R.string.aura_queue_label_list_next, radio = false)
             }
         }
         entries += AuraQueueEntry.Song(
@@ -1649,6 +1735,25 @@ private fun buildAuraQueueEntries(
             radio = radio,
             isCurrent = isCurrent,
         )
+        if (isCurrent && repeatMode == Player.REPEAT_MODE_ONE) {
+            entries += AuraQueueEntry.Label("repeat_one", R.string.aura_queue_label_repeat_one, radio = false)
+        }
+    }
+
+    // The tail only makes a claim when the current song really is the last one in play order.
+    if (currentIndex in windows.indices && currentIndex == windows.lastIndex) {
+        when {
+            repeatMode == Player.REPEAT_MODE_ONE -> Unit // already stated under the row itself
+            repeatMode == Player.REPEAT_MODE_ALL && windows.size > 1 ->
+                entries += AuraQueueEntry.Label("wrap", R.string.aura_queue_label_wrap, radio = false)
+            // «Repetir todo» over a queue of ONE song behaves exactly like «repetir una»: it loops that
+            // song. Saying "vuelve al principio" would point at a row that is this same row, and saying
+            // "fin de la cola" would be flatly false — the player is not going to stop.
+            repeatMode == Player.REPEAT_MODE_ALL ->
+                entries += AuraQueueEntry.Label("repeat_all_single", R.string.aura_queue_label_repeat_one, radio = false)
+            !hasAutoplayContinuation ->
+                entries += AuraQueueEntry.Label("end", R.string.aura_queue_label_end, radio = false)
+        }
     }
     return entries
 }
@@ -1702,7 +1807,7 @@ private fun auraJumpToQueueWindow(
  * LEFT as a permanently visible list and the now-playing pane on the right (`Player.kt:3025`). That is
  * the interaction model this reproduces: no gesture to learn, the next songs always readable, one tap to
  * jump. The queue SHEET still exists underneath in the wide shape exactly as it does in the classic one
- * (its collapsed bar is what carries salida de audio / temporizador / letra / ⋮), so everything the sheet
+ * (its collapsed bar is what carries cola / salida de audio / temporizador / letra), so everything the sheet
  * owns — reordenar, deslizar para quitar, selección múltiple, las pestañas LETRA y RELACIONADOS — is
  * still one tap away. This column is the *glanceable* half, not a replacement.
  *
@@ -1732,6 +1837,11 @@ internal fun AuraWideQueuePane(modifier: Modifier = Modifier) {
     val currentWindowIndex by playerConnection.currentWindowIndex.collectAsState()
     val listQueueSize by playerConnection.listQueueSize.collectAsState()
     val isPlaying by playerConnection.isEffectivelyPlaying.collectAsState()
+    // Same two terms the sheet feeds [buildAuraQueueEntries]: this column draws the SAME plan, so it must
+    // answer «¿y después?» with the same facts instead of trailing off at the last row.
+    val repeatMode by playerConnection.repeatMode.collectAsState()
+    val automix by playerConnection.service.automixItems.collectAsState()
+    val (autoLoadMore) = rememberPreference(AutoLoadMoreKey, defaultValue = true)
 
     val listenTogetherManager = LocalListenTogetherManager.current
     val listenTogetherRoleState = listenTogetherManager?.role?.collectAsState(initial = RoomRole.NONE)
@@ -1743,19 +1853,35 @@ internal fun AuraWideQueuePane(modifier: Modifier = Modifier) {
     val isCasting by castHandler?.isCasting?.collectAsState() ?: remember { mutableStateOf(false) }
     val castIsPlaying by castHandler?.castIsPlaying?.collectAsState() ?: remember { mutableStateOf(false) }
 
-    val entries = remember(queueWindows, listQueueSize, currentWindowIndex) {
+    val hasAutoplayContinuation = autoLoadMore && automix.isNotEmpty()
+    val entries = remember(
+        queueWindows,
+        listQueueSize,
+        currentWindowIndex,
+        repeatMode,
+        hasAutoplayContinuation,
+    ) {
         buildAuraQueueEntries(
             windows = queueWindows,
             listQueueSize = listQueueSize,
             currentIndex = currentWindowIndex,
+            repeatMode = repeatMode,
+            hasAutoplayContinuation = hasAutoplayContinuation,
         )
     }
 
     val lazyState = rememberLazyListState()
     // Follow the track, exactly as the classic wide queue does (Player.kt:3548). Keyed on the CURRENT
     // INDEX and the queue length, so it runs once per track change and never while scrolling.
+    //
+    // Targets the REPRODUCIENDO heading rather than the row, for the same reason the sheet does: scrolling
+    // the row to the top edge would push its own heading out of view.
     LaunchedEffect(currentWindowIndex, entries.size) {
-        val target = entries.indexOfFirst { it is AuraQueueEntry.Song && it.isCurrent }
+        val headingIndex = entries.indexOfFirst {
+            it is AuraQueueEntry.Label && it.id == AURA_QUEUE_LABEL_CURRENT
+        }
+        val target = if (headingIndex >= 0) headingIndex
+        else entries.indexOfFirst { it is AuraQueueEntry.Song && it.isCurrent }
         if (target >= 0) runCatching { lazyState.animateScrollToItem(target) }
     }
 
@@ -1777,7 +1903,7 @@ internal fun AuraWideQueuePane(modifier: Modifier = Modifier) {
                 is AuraQueueEntry.Label -> Column {
                     Spacer(Modifier.height(AuraSpacing.SectionTop))
                     AuraSectionLabel(
-                        text = entry.text,
+                        text = stringResource(entry.textRes),
                         color = if (entry.radio) AuraPalette.Violet.copy(alpha = 0.85f)
                         else AuraPalette.OnGroundFaint,
                     )

@@ -1892,9 +1892,20 @@ class MainActivity : ComponentActivity() {
                                     // is on — with all three toggles off nothing samples the backdrop, so
                                     // don't pay for a full-screen layer re-record. The default-OFF path
                                     // adds no layer work.
+                                    //
+                                    // `!newUiShell` (0.6.148): with the new shell neither sampler is
+                                    // composed — the nav bar is AuraNavigationBar, not
+                                    // FloatingNavigationToolbar, and AuraMiniPlayer replaces the classic
+                                    // mini in every orientation — yet `anyComponentEnabled` only reads the
+                                    // two per-surface PREFERENCES, which both default to true. So every
+                                    // HIGH-tier device that the 0.6.127 order switched glass ON for was
+                                    // re-recording the whole NavHost into an offscreen layer, on every
+                                    // frame that invalidated, feeding a sampler that does not exist. Pure
+                                    // heat. With the flag OFF the term disappears and the condition is the
+                                    // one that shipped.
                                     modifier = Modifier
                                         .then(
-                                            if (glassEffectConfig.globalEnabled && glassEffectConfig.anyComponentEnabled) {
+                                            if (!newUiShell && glassEffectConfig.globalEnabled && glassEffectConfig.anyComponentEnabled) {
                                                 Modifier.layerBackdrop(appBackdrop)
                                             } else {
                                                 Modifier

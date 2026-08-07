@@ -1155,6 +1155,9 @@
     <string name="aura_downloads_in_progress">Downloads in progress</string>
     <string name="aura_download_failed">Download failed</string>
     <string name="aura_auto_playlist_about">%1$s is a collection that keeps itself up to date. It is not edited by hand: songs come and go as your library changes.</string>
+    <string name="aura_local_playlist_about">%1$s is your own playlist: you choose what goes in, in what order, and which cover it wears.</string>
+    <string name="aura_lock_playlist">Lock playlist</string>
+    <string name="aura_unlock_playlist">Unlock playlist</string>
     <!-- "Interfaz nueva" · Buscar -->
     <string name="search_clear_query">Clear search</string>
     <string name="search_history_remove">Remove from search history</string>
@@ -1169,4 +1172,30 @@
     <string name="trending_none">No suggestions available right now.</string>
     <string name="aura_download_queued">Queued</string>
     <string name="aura_download_paused">Download paused</string>
+    <!-- "Interfaz nueva" · Cola. The section labels are UPPERCASE in the source: `AuraSectionLabel`
+         and `AuraTechnicalText` draw the string as written, with no `.uppercase()` anywhere, so the
+         case belongs to the resource. -->
+    <string name="aura_queue_title">Queue</string>
+    <string name="aura_queue_section_playing">PLAYING</string>
+    <string name="aura_queue_footer_locked">QUEUE LOCKED</string>
+    <string name="aura_queue_footer_swipe_to_remove">SWIPE TO REMOVE</string>
+    <string name="aura_queue_label_now_playing">NOW PLAYING</string>
+    <string name="aura_queue_label_played">ALREADY PLAYED</string>
+    <string name="aura_queue_label_list_next">UP NEXT · FROM YOUR LIST</string>
+    <string name="aura_queue_label_radio_next">UP NEXT · INFINITE RADIO</string>
+    <string name="aura_queue_label_radio_later">LATER · INFINITE RADIO</string>
+    <string name="aura_queue_label_repeat_one">THIS SONG REPEATS</string>
+    <string name="aura_queue_label_wrap">UP NEXT · BACK TO THE START</string>
+    <string name="aura_queue_label_end">END OF QUEUE</string>
+    <string name="cd_exit_selection">Exit selection</string>
+    <string name="cd_reorder">Reorder</string>
+    <string name="cd_open_queue">Open queue</string>
+    <string name="cd_audio_output">Audio output</string>
+    <string name="video">Video</string>
+    <string name="cd_selection_actions">Selection actions</string>
+    <string name="cd_shuffle_already_played">Already played in this shuffle</string>
+    <string name="cd_collection_more_options">More collection options</string>
+    <string name="cd_playlist_more_options">More playlist options</string>
+    <string name="cd_change_sort_order">Change sort order</string>
+    <string name="cd_reverse_sort_order">Reverse the order</string>
 </resources>
