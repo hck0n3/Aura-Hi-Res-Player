@@ -71,7 +71,25 @@ jobs:
         LASTFM_API_KEY: ${{ secrets.LASTFM_API_KEY }}
         LASTFM_SECRET: ${{ secrets.LASTFM_SECRET }}
       run: |
-        ./gradlew assembleUniversalGmsDebug
+        set -euo pipefail
+        # Do NOT assemble the full APK here. A full universalGmsDebug package leaves the
+        # runner with almost no free RAM/disk; the Java CodeQL query eval then gets OOM-killed
+        # mid-analysis (build green, "Perform CodeQL Analysis" red — seen on this PR).
+        # Compile is enough for extraction:
+        #  - java-kotlin: Kotlin/Java compile
+        #  - c-cpp: also needs the NDK/CMake externalNativeBuild
+        if [ "${{ matrix.language }}" = "c-cpp" ]; then
+          ./gradlew \
+            :app:externalNativeBuildUniversalGmsDebug \
+            :app:compileUniversalGmsDebugKotlin \
+            :app:compileUniversalGmsDebugJavaWithJavac \
+            --console=plain
+        else
+          ./gradlew \
+            :app:compileUniversalGmsDebugKotlin \
+            :app:compileUniversalGmsDebugJavaWithJavac \
+            --console=plain
+        fi
 
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v4
