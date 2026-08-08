@@ -59,6 +59,15 @@ enum class FactoryPreset(val displayName: String, val description: String, val g
 
     REFERENCE_NEUTRAL("Reference Neutral", "Monitoreo de estudio plano. Mínima coloración, máxima fidelidad a la mezcla original.", floatArrayOf(0.5f, 0f, -0.5f, 0f, 0f, 0f, 0f, 0.5f, 0.5f, 1.0f)),
 
+    // Certified-style listening curves (approximate published targets on a 10-band graphic EQ).
+    DIFFUSE_FIELD("Diffuse Field", "Curva DF clásica (B&K): graves contenidos, presencia y aire naturales.", floatArrayOf(1.0f, 0.5f, 0f, -0.5f, -1.0f, 0f, 1.0f, 2.0f, 2.5f, 2.0f)),
+
+    FREE_FIELD("Free Field", "Respuesta en campo libre: leve refuerzo de agudos para monitores abiertos.", floatArrayOf(0.5f, 0f, -0.5f, -0.5f, 0f, 0.5f, 1.0f, 1.5f, 2.0f, 2.5f)),
+
+    HARMAN_IE("Harman IE", "Variante Harman para IEM: sub-grave presente, medios limpios, agudos controlados.", floatArrayOf(5.0f, 3.5f, 1.0f, -0.5f, -1.0f, 0f, 1.0f, 2.0f, 1.5f, 0.5f)),
+
+    OLIVE_WELTI("Olive-Welti", "Preferencia de escucha Olive–Welti: grave cálido sin enmascarar la voz.", floatArrayOf(4.0f, 3.0f, 1.5f, 0f, -0.5f, 0f, 1.0f, 1.5f, 1.0f, 0.5f)),
+
     ANALOG_TAPE("Analog Tape", "Calidez de cinta magnética: graves redondos y agudos suavizados, sin fatiga.", floatArrayOf(2.0f, 2.5f, 1.5f, 0.5f, 0f, -0.5f, -0.5f, -1.0f, -1.5f, -2.0f)),
 
     VINYL("Vinyl", "El cuerpo cálido y orgánico del vinilo, con agudos dulces y medios presentes.", floatArrayOf(1.5f, 2.0f, 1.0f, 0f, -0.5f, 0f, 0.5f, 0f, -1.0f, -1.5f)),

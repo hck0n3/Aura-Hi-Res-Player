@@ -27,6 +27,9 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyGridScope
+import androidx.compose.foundation.lazy.grid.LazyHorizontalGrid
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -67,6 +70,7 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.media3.exoplayer.offline.Download
@@ -329,6 +333,7 @@ fun AuraAlbumScreen(
                             title = song.song.title,
                             subtitle = song.artists.joinToString { it.name }.takeIf { it.isNotBlank() },
                             highlighted = song.id == mediaMetadata?.id,
+                            dimmed = song.song.totalPlayTime > 0L && song.id != mediaMetadata?.id,
                             contentDescription = song.song.title,
                             onClick = {
                                 when {
@@ -375,6 +380,14 @@ fun AuraAlbumScreen(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(7.dp),
                                 ) {
+                                    if (song.song.totalPlayTime > 0L && song.id != mediaMetadata?.id) {
+                                        AuraIconGlyph(
+                                            icon = AuraIcons.Check,
+                                            contentDescription = "Ya reproducida",
+                                            size = 16.dp,
+                                            tint = AuraPalette.Teal,
+                                        )
+                                    }
                                     if (song.song.explicit) {
                                         AuraTechnicalText(
                                             text = "E",
@@ -451,12 +464,9 @@ fun AuraAlbumScreen(
                                 items = versions,
                                 key = { position, _ -> "aura_album_version_$position" },
                             ) { _, item ->
-                                AuraCoverCard(
-                                    title = item.title,
-                                    subtitle = auraSearchYtSubtitle(item),
-                                    thumbnailUrl = item.thumbnail,
-                                    seed = item.id,
-                                    width = 128.dp,
+                                AuraTypedYtCoverCard(
+                                    item = item,
+                                    cardScale = 1f,
                                     isActive = mediaMetadata?.album?.id == item.id,
                                     isPlaying = isPlaying,
                                     onClick = { navController.navigate("album/${item.id}") },
@@ -493,12 +503,9 @@ fun AuraAlbumScreen(
                                 items = releases,
                                 key = { position, _ -> "aura_album_release_$position" },
                             ) { _, item ->
-                                AuraCoverCard(
-                                    title = item.title,
-                                    subtitle = auraSearchYtSubtitle(item),
-                                    thumbnailUrl = item.thumbnail,
-                                    seed = item.id,
-                                    width = 128.dp,
+                                AuraTypedYtCoverCard(
+                                    item = item,
+                                    cardScale = 1f,
                                     isActive = mediaMetadata?.album?.id == item.id,
                                     isPlaying = isPlaying,
                                     onClick = { navController.navigate("album/${item.id}") },
@@ -982,6 +989,9 @@ private fun AuraAlbumHeader(
  * which is what the classic `TopAppBar` does on Álbum.
  *
  * The plate behind it only appears once there is content under it, so the hero opens edge to edge.
+ *
+ * [pinTitleOnScroll]: playlists keep search in the scrolling header (owner preference). Passing
+ * false leaves only the floating back control — no sticky black title plate on scroll.
  */
 @Composable
 internal fun AuraDetailTopBar(
@@ -993,6 +1003,9 @@ internal fun AuraDetailTopBar(
     selectionCount: Int = 0,
     selectionActions: (@Composable () -> Unit)? = null,
     actions: (@Composable () -> Unit)? = null,
+    // Search / other modes that need a solid plate before the hero has scrolled away.
+    forceOpaque: Boolean = false,
+    pinTitleOnScroll: Boolean = true,
 ) {
     // A threshold cross, not a per-pixel read: this recomposes twice per scroll, not per frame.
     val scrolled by remember {
@@ -1000,8 +1013,9 @@ internal fun AuraDetailTopBar(
             listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 220
         }
     }
+    val showChrome = inSelectMode || forceOpaque || (pinTitleOnScroll && scrolled)
     val plate by animateColorAsState(
-        targetValue = if (scrolled || inSelectMode) {
+        targetValue = if (showChrome) {
             AuraPalette.Ground.copy(alpha = 0.88f)
         } else {
             Color.Transparent
@@ -1034,7 +1048,9 @@ internal fun AuraDetailTopBar(
                 .padding(horizontal = 4.dp)
                 // The title belongs to the hero until the hero is gone; fading it in the draw phase
                 // keeps the whole bar out of the scroll's recomposition path.
-                .graphicsLayer { alpha = if (inSelectMode || scrolled) 1f else 0f },
+                .graphicsLayer {
+                    alpha = if (showChrome) 1f else 0f
+                },
         )
         if (inSelectMode) selectionActions?.invoke() else actions?.invoke()
     }
@@ -1048,13 +1064,41 @@ internal fun AuraDetailShelf(
 ) {
     LazyRow(
         contentPadding = PaddingValues(horizontal = AuraSpacing.Gutter),
-        horizontalArrangement = Arrangement.spacedBy(11.dp),
+        horizontalArrangement = Arrangement.spacedBy(AuraSpacing.ShelfItemGap),
         modifier = modifier
             .padding(top = AuraSpacing.SectionGap)
             .tvFocusRestorer(),
         content = content,
     )
 }
+
+/**
+ * YouTube Music / Apple Music hybrid: **two rows** that scroll sideways so many albums / EPs /
+ * videos never bury the page in a tall basic grid. [rowHeight] is one card stack (cover + title).
+ */
+@Composable
+internal fun AuraDoubleRowShelf(
+    rowHeight: Dp,
+    modifier: Modifier = Modifier,
+    content: LazyGridScope.() -> Unit,
+) {
+    val gap = AuraSpacing.ShelfItemGap
+    LazyHorizontalGrid(
+        rows = GridCells.Fixed(2),
+        contentPadding = PaddingValues(horizontal = AuraSpacing.Gutter),
+        horizontalArrangement = Arrangement.spacedBy(AuraSpacing.ShelfItemGap),
+        verticalArrangement = Arrangement.spacedBy(gap),
+        modifier = modifier
+            .padding(top = AuraSpacing.SectionGap)
+            .height(rowHeight * 2 + gap)
+            .tvFocusRestorer(),
+        content = content,
+    )
+}
+
+/** Stack height for [AuraTypedYtCoverCard] / [AuraCoverCard] (cover + 2-line title + subtitle). */
+internal fun auraShelfCardStackHeight(cardWidth: Dp, ratio: Float = 1f): Dp =
+    cardWidth / ratio + 58.dp
 
 /** Reproducir / Pausar. [accent] draws the gradient — the one full-colour element on a screen. */
 @Composable

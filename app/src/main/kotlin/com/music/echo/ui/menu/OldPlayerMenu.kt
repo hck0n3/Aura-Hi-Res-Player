@@ -85,7 +85,6 @@ fun OldPlayerMenu(
     navController: NavController,
     playerBottomSheetState: BottomSheetState,
     onShowDetailsDialog: () -> Unit,
-    onSleepTimer: () -> Unit = {},
     onDismiss: () -> Unit,
 ) {
     mediaMetadata ?: return

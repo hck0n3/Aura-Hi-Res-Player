@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -31,7 +32,6 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -83,6 +83,7 @@ import iad1tya.echo.music.db.MusicDatabase
 import iad1tya.echo.music.db.entities.SearchHistory
 import iad1tya.echo.music.playback.PlayerConnection
 import iad1tya.echo.music.playback.queues.YouTubeQueue
+import iad1tya.echo.music.ui.component.DefaultDialog
 import iad1tya.echo.music.utils.rememberEnumPreference
 import iad1tya.echo.music.utils.rememberPreference
 import java.net.URLEncoder
@@ -174,11 +175,16 @@ fun AuraSearchScreen(
         )
     }
 
-    val voice = rememberAuraVoiceSearch { spoken ->
-        query = TextFieldValue(spoken, TextRange(spoken.length))
-        searchActive = true
-        onSearch(spoken)
-    }
+    val voice = rememberAuraVoiceSearch(
+        onPartial = { spoken ->
+            query = TextFieldValue(spoken, TextRange(spoken.length))
+        },
+        onResult = { spoken ->
+            query = TextFieldValue(spoken, TextRange(spoken.length))
+            searchActive = true
+            onSearch(spoken)
+        },
+    )
 
     // Closing the panel with Atrás instead of leaving the tab — the classic bar's back arrow does the
     // same thing, this only adds the system gesture to it.
@@ -483,15 +489,17 @@ internal fun AuraSearchInputBar(
 // ── Voice search ──────────────────────────────────────────────────────────────────────────────────
 
 /**
- * Voice search, with the SAME two paths the classic bar has:
- *  1. the system `RecognizerIntent` pop-up, and
- *  2. a direct, no-UI `SpeechRecognizer` with our own "escuchando" dialog for devices that have no
- *     pop-up Activity (Android TV), which needs RECORD_AUDIO and asks for it on demand.
+ * Voice search: prefer in-process [SpeechRecognizer] + Aura listening UI (partial results fill the
+ * search field live). [RecognizerIntent] is last resort when SpeechRecognizer is unavailable.
+ * RECORD_AUDIO is requested on demand for the direct path.
  *
  * The dialog is emitted from here so both the Buscar bar and the results bar get it from one place.
  */
 @Composable
-internal fun rememberAuraVoiceSearch(onResult: (String) -> Unit): () -> Unit {
+internal fun rememberAuraVoiceSearch(
+    onPartial: ((String) -> Unit)? = null,
+    onResult: (String) -> Unit,
+): () -> Unit {
     val context = LocalContext.current
 
     val intentLauncher = rememberLauncherForActivityResult(
@@ -505,6 +513,7 @@ internal fun rememberAuraVoiceSearch(onResult: (String) -> Unit): () -> Unit {
     }
 
     var listening by remember { mutableStateOf(false) }
+    var liveText by remember { mutableStateOf("") }
     val recognizer = remember {
         if (SpeechRecognizer.isRecognitionAvailable(context)) {
             SpeechRecognizer.createSpeechRecognizer(context)
@@ -528,12 +537,15 @@ internal fun rememberAuraVoiceSearch(onResult: (String) -> Unit): () -> Unit {
 
                 override fun onError(error: Int) {
                     listening = false
+                    liveText = ""
+                    if (error == SpeechRecognizer.ERROR_CLIENT) return
                     Toast.makeText(context, R.string.voice_search_unavailable, Toast.LENGTH_SHORT)
                         .show()
                 }
 
                 override fun onResults(results: android.os.Bundle) {
                     listening = false
+                    liveText = ""
                     val spoken = results
                         .getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                         ?.firstOrNull()
@@ -541,9 +553,20 @@ internal fun rememberAuraVoiceSearch(onResult: (String) -> Unit): () -> Unit {
                     if (!spoken.isNullOrEmpty()) onResult(spoken)
                 }
 
-                override fun onPartialResults(partialResults: android.os.Bundle?) = Unit
+                override fun onPartialResults(partialResults: android.os.Bundle?) {
+                    val spoken = partialResults
+                        ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                        ?.firstOrNull()
+                        ?.trim()
+                        .orEmpty()
+                    if (spoken.isEmpty()) return
+                    liveText = spoken
+                    onPartial?.invoke(spoken)
+                }
+
                 override fun onEvent(eventType: Int, params: android.os.Bundle?) = Unit
             })
+            liveText = ""
             listening = true
             speech.startListening(
                 Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
@@ -552,6 +575,7 @@ internal fun rememberAuraVoiceSearch(onResult: (String) -> Unit): () -> Unit {
                         RecognizerIntent.LANGUAGE_MODEL_FREE_FORM,
                     )
                     putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
+                    putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
                 },
             )
         }
@@ -567,22 +591,24 @@ internal fun rememberAuraVoiceSearch(onResult: (String) -> Unit): () -> Unit {
         }
     }
 
+    val requestDirect = {
+        if (androidx.core.content.ContextCompat.checkSelfPermission(
+                context,
+                android.Manifest.permission.RECORD_AUDIO,
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            startDirect()
+        } else {
+            permissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+        }
+    }
+
     if (listening) {
-        AlertDialog(
-            onDismissRequest = {
+        DefaultDialog(
+            onDismiss = {
                 listening = false
+                liveText = ""
                 recognizer?.cancel()
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    listening = false
-                    recognizer?.cancel()
-                }) {
-                    Text(
-                        text = stringResource(android.R.string.cancel),
-                        color = AuraPalette.Teal,
-                    )
-                }
             },
             title = {
                 Text(
@@ -591,52 +617,65 @@ internal fun rememberAuraVoiceSearch(onResult: (String) -> Unit): () -> Unit {
                     color = AuraPalette.OnGround,
                 )
             },
-            text = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    CircularProgressIndicator(
-                        color = AuraPalette.Teal,
-                        trackColor = AuraPalette.TrackEmpty,
-                        strokeWidth = 2.dp,
-                        modifier = Modifier.width(22.dp),
-                    )
-                    Spacer(Modifier.width(16.dp))
+            buttons = {
+                TextButton(onClick = {
+                    listening = false
+                    liveText = ""
+                    recognizer?.cancel()
+                }) {
+                    Text(text = stringResource(android.R.string.cancel))
+                }
+            },
+            horizontalAlignment = Alignment.Start,
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                CircularProgressIndicator(
+                    color = AuraPalette.Teal,
+                    trackColor = AuraPalette.TrackEmpty,
+                    strokeWidth = 2.dp,
+                    modifier = Modifier.width(22.dp),
+                )
+                Spacer(Modifier.width(16.dp))
+                Column {
                     Text(
-                        text = stringResource(R.string.voice_search),
+                        text = stringResource(R.string.listening),
                         style = AuraType.RowSubtitle,
                         color = AuraPalette.OnGroundMuted,
                     )
+                    if (liveText.isNotEmpty()) {
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = liveText,
+                            style = AuraType.RowTitle,
+                            color = AuraPalette.OnGround,
+                        )
+                    }
                 }
-            },
-            containerColor = AuraPalette.GroundRaised,
-            shape = AuraShapes.Card,
-        )
+            }
+        }
     }
 
     return {
-        try {
-            intentLauncher.launch(
-                Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                    putExtra(
-                        RecognizerIntent.EXTRA_LANGUAGE_MODEL,
-                        RecognizerIntent.LANGUAGE_MODEL_FREE_FORM,
-                    )
-                    putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
-                    putExtra(
-                        RecognizerIntent.EXTRA_PROMPT,
-                        context.getString(R.string.voice_search),
-                    )
-                },
-            )
-        } catch (e: ActivityNotFoundException) {
-            // No system voice pop-up (common on Android TV) — fall back to the direct recognizer.
-            if (androidx.core.content.ContextCompat.checkSelfPermission(
-                    context,
-                    android.Manifest.permission.RECORD_AUDIO,
-                ) == android.content.pm.PackageManager.PERMISSION_GRANTED
-            ) {
-                startDirect()
-            } else {
-                permissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+        if (recognizer != null) {
+            requestDirect()
+        } else {
+            try {
+                intentLauncher.launch(
+                    Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                        putExtra(
+                            RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                            RecognizerIntent.LANGUAGE_MODEL_FREE_FORM,
+                        )
+                        putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
+                        putExtra(
+                            RecognizerIntent.EXTRA_PROMPT,
+                            context.getString(R.string.voice_search),
+                        )
+                    },
+                )
+            } catch (_: ActivityNotFoundException) {
+                Toast.makeText(context, R.string.voice_search_unavailable, Toast.LENGTH_SHORT)
+                    .show()
             }
         }
     }

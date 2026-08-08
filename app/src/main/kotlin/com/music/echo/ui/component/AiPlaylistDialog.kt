@@ -3,14 +3,12 @@ package iad1tya.echo.music.ui.component
 import android.content.Context
 import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -97,71 +95,24 @@ fun AiPlaylistDialog(
     }
 
     val busy = state is AiPlaylistUiState.Generating || state is AiPlaylistUiState.Resolving
+    val close = {
+        if (!busy) {
+            viewModel.reset()
+            onDismiss()
+        }
+    }
 
-    AlertDialog(
-        onDismissRequest = { if (!busy) { viewModel.reset(); onDismiss() } },
+    DefaultDialog(
+        onDismiss = close,
         icon = { Icon(painterResource(R.drawable.auto_awesome), contentDescription = null) },
         title = { Text(stringResource(R.string.ai_playlist_title)) },
-        text = {
-            Column {
-                OutlinedTextField(
-                    value = prompt,
-                    onValueChange = { prompt = it },
-                    label = { Text(stringResource(R.string.ai_playlist_prompt_hint)) },
-                    enabled = !busy,
-                    minLines = 2,
-                    maxLines = 4,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Spacer(Modifier.height(16.dp))
-                Text(
-                    text = stringResource(R.string.ai_playlist_count_label),
-                    style = MaterialTheme.typography.labelLarge,
-                )
-                Spacer(Modifier.height(8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf(10, 20, 30, 50).forEach { option ->
-                        FilterChip(
-                            selected = count == option,
-                            onClick = { count = option },
-                            enabled = !busy,
-                            label = { Text(option.toString()) },
-                        )
-                    }
-                }
-
-                when (val current = state) {
-                    AiPlaylistUiState.Generating ->
-                        BusyRow(stringResource(R.string.ai_playlist_generating))
-
-                    is AiPlaylistUiState.Resolving ->
-                        BusyRow(
-                            stringResource(
-                                R.string.ai_playlist_resolving,
-                                current.done,
-                                current.total,
-                            ),
-                        )
-
-                    is AiPlaylistUiState.Error -> {
-                        Spacer(Modifier.height(16.dp))
-                        Text(
-                            text = errorMessage(context, current.cause),
-                            color = MaterialTheme.colorScheme.error,
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                        if (showsSettingsAction(current.cause)) {
-                            TextButton(onClick = onOpenAiSettings) {
-                                Text(stringResource(R.string.ai_playlist_open_ai_settings))
-                            }
-                        }
-                    }
-
-                    else -> {}
-                }
+        buttons = {
+            TextButton(
+                onClick = close,
+                enabled = !busy,
+            ) {
+                Text(stringResource(android.R.string.cancel))
             }
-        },
-        confirmButton = {
             TextButton(
                 onClick = {
                     viewModel.generate(prompt.trim(), count, provider, apiKey, baseUrl, model)
@@ -171,15 +122,63 @@ fun AiPlaylistDialog(
                 Text(stringResource(R.string.ai_playlist_generate))
             }
         },
-        dismissButton = {
-            TextButton(
-                onClick = { if (!busy) { viewModel.reset(); onDismiss() } },
-                enabled = !busy,
-            ) {
-                Text(stringResource(android.R.string.cancel))
+    ) {
+        OutlinedTextField(
+            value = prompt,
+            onValueChange = { prompt = it },
+            label = { Text(stringResource(R.string.ai_playlist_prompt_hint)) },
+            enabled = !busy,
+            minLines = 2,
+            maxLines = 4,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(16.dp))
+        Text(
+            text = stringResource(R.string.ai_playlist_count_label),
+            style = MaterialTheme.typography.labelLarge,
+        )
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf(10, 20, 30, 50).forEach { option ->
+                FilterChip(
+                    selected = count == option,
+                    onClick = { count = option },
+                    enabled = !busy,
+                    label = { Text(option.toString()) },
+                )
             }
-        },
-    )
+        }
+
+        when (val current = state) {
+            AiPlaylistUiState.Generating ->
+                BusyRow(stringResource(R.string.ai_playlist_generating))
+
+            is AiPlaylistUiState.Resolving ->
+                BusyRow(
+                    stringResource(
+                        R.string.ai_playlist_resolving,
+                        current.done,
+                        current.total,
+                    ),
+                )
+
+            is AiPlaylistUiState.Error -> {
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    text = errorMessage(context, current.cause),
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                if (showsSettingsAction(current.cause)) {
+                    TextButton(onClick = onOpenAiSettings) {
+                        Text(stringResource(R.string.ai_playlist_open_ai_settings))
+                    }
+                }
+            }
+
+            else -> {}
+        }
+    }
 }
 
 @Composable

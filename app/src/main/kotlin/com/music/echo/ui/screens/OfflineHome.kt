@@ -20,14 +20,17 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
@@ -35,6 +38,7 @@ import iad1tya.echo.music.LocalDatabase
 import iad1tya.echo.music.LocalPlayerAwareWindowInsets
 import iad1tya.echo.music.LocalPlayerConnection
 import iad1tya.echo.music.R
+import iad1tya.echo.music.constants.OfflineModeKey
 import iad1tya.echo.music.constants.SongSortType
 import iad1tya.echo.music.extensions.toMediaItem
 import iad1tya.echo.music.playback.queues.ListQueue
@@ -42,12 +46,11 @@ import iad1tya.echo.music.ui.component.EmptyPlaceholder
 import iad1tya.echo.music.ui.component.LocalMenuState
 import iad1tya.echo.music.ui.component.SongListItem
 import iad1tya.echo.music.ui.menu.SongMenu
+import iad1tya.echo.music.utils.rememberPreference
 
 /**
- * Offline home body: shown instead of the network feed when the manual "Modo sin conexión" preference
- * (OfflineModeKey) is ON. Lists ONLY the user's downloaded songs (reusing the existing
- * database.downloadedSongs DAO + SongListItem) so everything works with no internet. Reversible from
- * Settings → Contenido.
+ * Offline body: shown instead of network feeds when [OfflineModeKey] is ON. Lists ONLY fully
+ * downloaded songs. Disable toggle lives ON THIS SCREEN (owner request) — not only in Settings.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -59,6 +62,7 @@ fun DownloadedOnlyView(
     val menuState = LocalMenuState.current
     val haptic = LocalHapticFeedback.current
     val playerConnection = LocalPlayerConnection.current ?: return
+    var offlineMode by rememberPreference(OfflineModeKey, false)
 
     val isPlaying by playerConnection.isEffectivelyPlaying.collectAsState()
     val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
@@ -67,20 +71,24 @@ fun DownloadedOnlyView(
         .downloadedSongs(SongSortType.CREATE_DATE, descending = true)
         .collectAsState(initial = emptyList())
 
+    val downloadsTitle = stringResource(R.string.downloaded_songs)
+
     LazyColumn(
         state = rememberLazyListState(),
         contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
         modifier = modifier.fillMaxSize(),
     ) {
         item(key = "offline_banner") {
-            OfflineBanner()
+            OfflineBanner(
+                onDisable = { offlineMode = false },
+            )
         }
 
         if (downloadedSongs.isEmpty()) {
             item(key = "offline_empty") {
                 EmptyPlaceholder(
                     icon = R.drawable.download,
-                    text = "Aún no tienes canciones descargadas. Descárgalas mientras tengas internet para escucharlas sin conexión.",
+                    text = stringResource(R.string.offline_empty_downloads),
                 )
             }
         } else {
@@ -117,7 +125,7 @@ fun DownloadedOnlyView(
                             } else {
                                 playerConnection.playQueue(
                                     ListQueue(
-                                        title = "Descargas",
+                                        title = downloadsTitle,
                                         items = downloadedSongs.map { it.toMediaItem() },
                                         startIndex = downloadedSongs.indexOfFirst { it.id == song.id },
                                     )
@@ -142,7 +150,9 @@ fun DownloadedOnlyView(
 }
 
 @Composable
-private fun OfflineBanner() {
+private fun OfflineBanner(
+    onDisable: () -> Unit,
+) {
     Surface(
         color = MaterialTheme.colorScheme.secondaryContainer,
         shape = RoundedCornerShape(12.dp),
@@ -153,7 +163,7 @@ private fun OfflineBanner() {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
         ) {
             Icon(
                 painter = painterResource(R.drawable.offline),
@@ -163,17 +173,20 @@ private fun OfflineBanner() {
             )
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Modo sin conexión",
+                    text = stringResource(R.string.offline_mode),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSecondaryContainer,
                 )
-                Spacer(Modifier.size(2.dp))
+                Spacer(modifier = Modifier.size(2.dp))
                 Text(
-                    text = "Solo descargas. Desactívalo en Ajustes cuando vuelvas a tener internet.",
+                    text = stringResource(R.string.offline_banner_hint),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSecondaryContainer,
                 )
+            }
+            TextButton(onClick = onDisable) {
+                Text(stringResource(R.string.offline_disable))
             }
         }
     }

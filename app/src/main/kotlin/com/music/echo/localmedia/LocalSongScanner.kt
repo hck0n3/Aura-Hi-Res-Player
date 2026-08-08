@@ -36,12 +36,21 @@ import javax.inject.Inject
 data class LocalSongScanConfig(
     val minimumDurationSeconds: Int = 0,
     val excludedFolders: Set<String> = emptySet(),
+    /**
+     * When non-empty, ONLY these folders (and their subfolders) are imported. Empty means the whole
+     * device (minus [excludedFolders]). This is what the owner means by "escanea solo la carpeta
+     * que yo elijo" — the old UI saved picks as excludes, which did the opposite.
+     */
+    val includedFolders: Set<String> = emptySet(),
 ) {
     val sanitizedMinimumDurationSeconds: Int
         get() = minimumDurationSeconds.coerceAtLeast(0)
 
     val sanitizedExcludedFolders: Set<String>
         get() = deduplicateFolderEntries(excludedFolders)
+
+    val sanitizedIncludedFolders: Set<String>
+        get() = deduplicateFolderEntries(includedFolders)
 
     companion object {
         private val DuplicateSlashRegex = Regex("/+")
@@ -242,6 +251,9 @@ constructor(
         val sanitizedExcludedFolders = scanConfig.sanitizedExcludedFolders
             .map { it.lowercase(Locale.ROOT) }
             .toSet()
+        val sanitizedIncludedFolders = scanConfig.sanitizedIncludedFolders
+            .map { it.lowercase(Locale.ROOT) }
+            .toSet()
         val projection = buildList {
             add(MediaStore.Audio.Media._ID)
             add(MediaStore.Audio.Media.TITLE)
@@ -308,6 +320,10 @@ constructor(
                     relativePath = cursor.getStringOrNull(relativePathIndex),
                     absolutePath = cursor.getStringOrNull(dataPathIndex),
                 )
+                // Include list wins: if the user picked folders, nothing outside them is imported.
+                if (!shouldIncludeFolder(normalizedFolderPath, sanitizedIncludedFolders)) {
+                    continue
+                }
                 if (shouldExcludeFolder(normalizedFolderPath, sanitizedExcludedFolders)) {
                     continue
                 }
@@ -353,10 +369,6 @@ constructor(
                         ?.let { LocalDateTime.ofInstant(Instant.ofEpochSecond(it), ZoneId.systemDefault()) },
                     sizeBytes = cursor.getLong(sizeIndex).coerceAtLeast(0L),
                     mimeType = mimeType,
-                    // Wrap the song's OWN media URI in the private localaudioart: scheme so LocalAudioArtFetcher
-                    // (and only it) pulls the embedded cover. The old content://…/audio/albumart/{albumId} scheme
-                    // is unreliable on Android 10+ (null/blank art) and only per-album; the per-song embedded
-                    // picture is stable across versions and shows songs with distinct covers correctly.
                     thumbnailUrl = iad1tya.echo.music.utils.coil.LocalAudioArtFetcher.uriFor(contentUri.toString()),
                 )
             }
@@ -450,17 +462,37 @@ constructor(
             ?.replace('\\', '/')
             ?.substringBeforeLast('/', missingDelimiterValue = "")
             .orEmpty()
-        val normalizedAbsoluteFolder = LocalSongScanConfig.normalizeFolderEntry(absoluteFolder)
+        // Strip common Android volume prefixes so SAF picks (Music/Foo) match absolute DATA paths.
+        val withoutVolume = absoluteFolder
+            .replace(Regex("(?i)^/storage/emulated/\\d+/"), "")
+            .replace(Regex("(?i)^/sdcard/"), "")
+            .replace(Regex("(?i)^/mnt/sdcard/"), "")
+            .replace(Regex("(?i)^/storage/[^/]+/"), "")
+        val normalizedAbsoluteFolder = LocalSongScanConfig.normalizeFolderEntry(withoutVolume)
         return normalizedAbsoluteFolder.takeIf(String::isNotEmpty)?.lowercase(Locale.ROOT)
     }
 
     private fun shouldExcludeFolder(folderPath: String?, excludedFolders: Set<String>): Boolean {
         if (folderPath.isNullOrEmpty() || excludedFolders.isEmpty()) return false
-        return excludedFolders.any { excludedFolder ->
-            folderPath == excludedFolder ||
-                folderPath.startsWith("$excludedFolder/") ||
-                folderPath.endsWith("/$excludedFolder") ||
-                folderPath.contains("/$excludedFolder/")
+        return folderMatchesAny(folderPath, excludedFolders)
+    }
+
+    /**
+     * Empty include list = whole device. Non-empty = only matching folders/subfolders.
+     * Unknown path while filtering → skip (never import "mystery" tracks outside the allowlist).
+     */
+    private fun shouldIncludeFolder(folderPath: String?, includedFolders: Set<String>): Boolean {
+        if (includedFolders.isEmpty()) return true
+        if (folderPath.isNullOrEmpty()) return false
+        return folderMatchesAny(folderPath, includedFolders)
+    }
+
+    private fun folderMatchesAny(folderPath: String, folders: Set<String>): Boolean {
+        return folders.any { folder ->
+            folderPath == folder ||
+                folderPath.startsWith("$folder/") ||
+                folderPath.endsWith("/$folder") ||
+                folderPath.contains("/$folder/")
         }
     }
 

@@ -72,6 +72,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -103,7 +104,7 @@ import iad1tya.echo.music.LocalPlayerConnection
 import iad1tya.echo.music.R
 import iad1tya.echo.music.constants.CONTENT_TYPE_HEADER
 import iad1tya.echo.music.constants.CONTENT_TYPE_SONG
-import iad1tya.echo.music.constants.LocalSongsExcludedFoldersKey
+import iad1tya.echo.music.constants.LocalSongsIncludedFoldersKey
 import iad1tya.echo.music.constants.LocalSongsMinDurationSecondsKey
 import iad1tya.echo.music.constants.LocalSongsSortDescendingKey
 import iad1tya.echo.music.constants.LocalSongsSortTypeKey
@@ -116,6 +117,11 @@ import iad1tya.echo.music.ui.component.LocalMenuState
 import iad1tya.echo.music.ui.component.SongListItem
 import iad1tya.echo.music.ui.component.SortHeader
 import iad1tya.echo.music.ui.menu.SongMenu
+import iad1tya.echo.music.ui.newui.AuraShapes
+import iad1tya.echo.music.ui.newui.LocalAuraFloatingChrome
+import iad1tya.echo.music.ui.newui.auraFloatingContainerColor
+import iad1tya.echo.music.ui.newui.auraFloatingScrimColor
+import iad1tya.echo.music.ui.newui.rememberAuraPanelSkin
 import iad1tya.echo.music.utils.rememberPreference
 import iad1tya.echo.music.viewmodels.LocalSongsScanState
 import iad1tya.echo.music.viewmodels.LocalSongsViewModel
@@ -170,15 +176,15 @@ fun LocalSongScreen(
         LocalSongsMinDurationSecondsKey,
         0,
     )
-    val (excludedFolders, onExcludedFoldersChange) = rememberPreference(
-        LocalSongsExcludedFoldersKey,
+    val (includedFolders, onIncludedFoldersChange) = rememberPreference(
+        LocalSongsIncludedFoldersKey,
         emptySet<String>(),
     )
     val sortType = remember(sortTypeName) { LocalSongSortType.valueOf(sortTypeName) }
-    val scanConfig = remember(minimumDurationSeconds, excludedFolders) {
+    val scanConfig = remember(minimumDurationSeconds, includedFolders) {
         LocalSongScanConfig(
             minimumDurationSeconds = minimumDurationSeconds,
-            excludedFolders = excludedFolders,
+            includedFolders = includedFolders,
         )
     }
 
@@ -202,12 +208,12 @@ fun LocalSongScreen(
         hasStoragePermission = granted
     }
 
-    val excludedFolderPickerLauncher = rememberLauncherForActivityResult(
+    val includedFolderPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree(),
     ) { uri ->
-        val normalizedFolder = uri?.toExcludedFolderEntry() ?: return@rememberLauncherForActivityResult
-        onExcludedFoldersChange(
-            LocalSongScanConfig.deduplicateFolderEntries(excludedFolders + normalizedFolder),
+        val normalizedFolder = uri?.toScanFolderEntry() ?: return@rememberLauncherForActivityResult
+        onIncludedFoldersChange(
+            LocalSongScanConfig.deduplicateFolderEntries(includedFolders + normalizedFolder),
         )
     }
 
@@ -263,9 +269,9 @@ fun LocalSongScreen(
             scanState = scanState,
             minimumDurationSeconds = minimumDurationSeconds,
             onMinimumDurationSecondsChange = onMinimumDurationSecondsChange,
-            excludedFolders = excludedFolders,
-            onExcludedFoldersChange = onExcludedFoldersChange,
-            onAddExcludedFolder = { excludedFolderPickerLauncher.launch(null) },
+            includedFolders = includedFolders,
+            onIncludedFoldersChange = onIncludedFoldersChange,
+            onAddIncludedFolder = { includedFolderPickerLauncher.launch(null) },
             sheetState = scanSheetState,
             onDismiss = { showScanSheet = false },
             onPrimaryAction = {
@@ -452,7 +458,10 @@ fun LocalSongScreen(
                     key = "empty",
                     contentType = CONTENT_TYPE_HEADER,
                 ) {
-                    LocalSongEmptyState(query = query)
+                    LocalSongEmptyState(
+                        query = query,
+                        onScanClick = { showScanSheet = true },
+                    )
                 }
             } else {
                 item(
@@ -604,6 +613,7 @@ private fun LocalSongControlsCard(
 @Composable
 private fun LocalSongEmptyState(
     query: String,
+    onScanClick: (() -> Unit)? = null,
 ) {
     Surface(
         shape = RoundedCornerShape(28.dp),
@@ -641,6 +651,11 @@ private fun LocalSongEmptyState(
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            if (query.isBlank() && onScanClick != null) {
+                Button(onClick = onScanClick) {
+                    Text(stringResource(R.string.local_songs_empty_scan_action))
+                }
+            }
         }
     }
 }
@@ -652,9 +667,9 @@ private fun LocalSongScanSheet(
     scanState: LocalSongsScanState,
     minimumDurationSeconds: Int,
     onMinimumDurationSecondsChange: (Int) -> Unit,
-    excludedFolders: Set<String>,
-    onExcludedFoldersChange: (Set<String>) -> Unit,
-    onAddExcludedFolder: () -> Unit,
+    includedFolders: Set<String>,
+    onIncludedFoldersChange: (Set<String>) -> Unit,
+    onAddIncludedFolder: () -> Unit,
     sheetState: SheetState,
     onDismiss: () -> Unit,
     onPrimaryAction: () -> Unit,
@@ -662,8 +677,8 @@ private fun LocalSongScanSheet(
     val lastSummary = scanState.lastSummary
     val hasError = scanState.errorMessage != null
     val hasSummary = lastSummary != null
-    val sanitizedExcludedFolders = remember(excludedFolders) {
-        LocalSongScanConfig.deduplicateFolderEntries(excludedFolders)
+    val sanitizedIncludedFolders = remember(includedFolders) {
+        LocalSongScanConfig.deduplicateFolderEntries(includedFolders)
             .toList()
             .sortedWith(String.CASE_INSENSITIVE_ORDER)
     }
@@ -719,13 +734,19 @@ private fun LocalSongScanSheet(
         label = "contentAlpha",
     )
 
+    val skin = rememberAuraPanelSkin()
+    val premium = skin.enabled && skin.darkGround
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-        shape = RoundedCornerShape(topStart = 36.dp, topEnd = 36.dp),
-        tonalElevation = 2.dp,
+        containerColor = if (premium) auraFloatingContainerColor()
+        else MaterialTheme.colorScheme.surfaceContainerLow,
+        shape = if (premium) AuraShapes.Sheet else RoundedCornerShape(topStart = 36.dp, topEnd = 36.dp),
+        scrimColor = if (premium) auraFloatingScrimColor() else Color.Black.copy(alpha = 0.32f),
+        tonalElevation = 0.dp,
     ) {
+        CompositionLocalProvider(LocalAuraFloatingChrome provides premium) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier
@@ -933,11 +954,11 @@ private fun LocalSongScanSheet(
                         actionLabel = stringResource(R.string.local_songs_scan_folders_add),
                         onActionClick = {
                             if (!scanState.isScanning) {
-                                onAddExcludedFolder()
+                                onAddIncludedFolder()
                             }
                         },
                     ) {
-                        if (sanitizedExcludedFolders.isEmpty()) {
+                        if (sanitizedIncludedFolders.isEmpty()) {
                             Text(
                                 text = stringResource(R.string.local_songs_scan_folders_empty),
                                 style = MaterialTheme.typography.bodyMedium,
@@ -949,13 +970,13 @@ private fun LocalSongScanSheet(
                                 verticalArrangement = Arrangement.spacedBy(8.dp),
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
-                                sanitizedExcludedFolders.forEach { folderPath ->
+                                sanitizedIncludedFolders.forEach { folderPath ->
                                     LocalSongFolderChip(
                                         folderPath = folderPath,
                                         enabled = !scanState.isScanning,
                                         onRemove = {
-                                            onExcludedFoldersChange(
-                                                excludedFolders.filterNot {
+                                            onIncludedFoldersChange(
+                                                includedFolders.filterNot {
                                                     LocalSongScanConfig.normalizeFolderEntry(it)
                                                         .equals(folderPath, ignoreCase = true)
                                                 }.toSet(),
@@ -1065,6 +1086,7 @@ private fun LocalSongScanSheet(
                     }
                 }
             }
+        }
         }
     }
 }
@@ -1257,7 +1279,7 @@ private fun ScanSheetInfoRow(
     }
 }
 
-private fun Uri.toExcludedFolderEntry(): String? {
+private fun Uri.toScanFolderEntry(): String? {
     if (!DocumentsContract.isTreeUri(this)) return null
     val treeDocumentId = runCatching { DocumentsContract.getTreeDocumentId(this) }
         .getOrNull()

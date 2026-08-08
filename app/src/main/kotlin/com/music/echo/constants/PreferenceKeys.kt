@@ -29,10 +29,12 @@ val HomeTasteOnlyKey = booleanPreferencesKey("homeTasteOnly")
 // Richer/editorial home layout (bigger artwork cards in the taste rows). On by default; the user
 // can turn it off from Appearance settings to return to the compact card look.
 val HomeRichLayoutKey = booleanPreferencesKey("homeRichLayout")
-// Manual "Modo sin conexión": persistent user preference. When ON, the app shows ONLY downloaded
-// content (home = downloaded songs, search = local DB) and never hits the network for feeds. Offered
-// via a "Continuar offline" CTA on the home when there's genuinely no connectivity + no cached content,
-// and reversible any time from Settings → Contenido. Default OFF (normal online experience).
+// Manual "Modo sin conexión": persistent user preference. When ON:
+//  · UI shows ONLY fully downloaded / local playable content (home + library = downloads),
+//  · search stays local and must not surface stream-only library rows as "playable",
+//  · MusicService refuses network stream resolve (downloadCache full hits only — no playerCache URL refresh,
+//    no YouTube playerResponse, no radio/automix seed).
+// Toggle lives on the offline banner itself AND Settings → Contenido / top cloud icon. Default OFF.
 val OfflineModeKey = booleanPreferencesKey("offline_mode")
 // Optional genres the user picked during onboarding (CSV), a soft taste signal.
 val OnboardingGenresKey = stringPreferencesKey("onboardingGenres")
@@ -172,6 +174,11 @@ val LiquidGlassHighTierV1AppliedKey = booleanPreferencesKey("liquid_glass_high_t
 // to Ajustes ▸ Apariencia in the same release, so anyone who genuinely wants the frosted pill picks it
 // again and that choice wins forever after.
 val MiniPlayerGlassUndoV1AppliedKey = booleanPreferencesKey("miniplayer_glass_undo_v1_applied")
+
+// Owner order: mini-player default style = Desenfoque (BLUR) on API 31+, once. Runs after the DEFAULT
+// seed / glass-undo migrations so upgrades that still sit on DEFAULT or the forced LIQUID_GLASS land
+// on BLUR without clobbering a deliberate user pick of GRADIENT / GLOW / APPLE_MUSIC / LIVE_MESH.
+val MiniPlayerBlurDefaultV1AppliedKey = booleanPreferencesKey("miniplayer_blur_default_v1_applied")
 
 // Owner order (0.6.130): default curve → 4 "Ascenso" — he heard Respiro profundo's BY-DESIGN center
 // valley as an unwanted gap; what he describes (both songs together, one down while the other rises,
@@ -475,6 +482,8 @@ val MixSortDescendingKey = booleanPreferencesKey("mixSortDescending")
 
 val LocalSongsMinDurationSecondsKey = intPreferencesKey("local_songs_min_duration_seconds")
 val LocalSongsExcludedFoldersKey = stringSetPreferencesKey("local_songs_excluded_folders")
+/** When non-empty, the local scanner imports ONLY tracks under these folders (MediaStore relative paths). */
+val LocalSongsIncludedFoldersKey = stringSetPreferencesKey("local_songs_included_folders")
 val LocalSongsSortTypeKey = stringPreferencesKey("local_songs_sort_type")
 val LocalSongsSortDescendingKey = booleanPreferencesKey("local_songs_sort_descending")
 
@@ -506,7 +515,9 @@ val ShowExportedPlaylistKey = booleanPreferencesKey("show_exported_playlist")
 val ShowTopPlaylistKey = booleanPreferencesKey("show_top_playlist")
 val ShowCachedPlaylistKey = booleanPreferencesKey("show_cached_playlist")
 val ShowUploadedPlaylistKey = booleanPreferencesKey("show_uploaded_playlist")
-val ShowSpeedDialKey = booleanPreferencesKey("showSpeedDial")
+// Pinned playlists on Home (was "showSpeedDial" / marcación rápida). New key so old OFF default
+// does not hide playlists the user just pinned.
+val ShowSpeedDialKey = booleanPreferencesKey("showPinnedPlaylistsOnHome")
 val ShowCommentButtonKey = booleanPreferencesKey("show_comment_button")
 
 enum class LibraryViewType {
@@ -808,6 +819,11 @@ val LastOpenedVersionCodeKey = intPreferencesKey("lastOpenedVersionCode")
 // One-time: whether the proactive background-reliability prompt (battery exemption + autostart) was already
 // offered on an aggressive OEM (MIUI/HyperOS/ColorOS/etc.), so we don't nag. See BackgroundReliability.
 val BatteryReliabilityPromptShownKey = booleanPreferencesKey("batteryReliabilityPromptShown")
+
+// Epoch ms of the newest OEM playback-kill (ScreenOffCPU / OneKeyClean / …) we already surfaced in the
+// reliability dialog. Re-prompt when ExitReasonReporter finds a NEWER kill — exemption alone does not
+// stop HyperOS ScreenOffCPUCheckKill.
+val BatteryReliabilityOemKillPromptTsKey = longPreferencesKey("batteryReliabilityOemKillPromptTs")
 
 val LanguageCodeToName =
     mapOf(
@@ -1120,5 +1136,7 @@ val UseOwnQobuzHiResKey = booleanPreferencesKey("use_own_qobuz_hires")
 //    If a screen has no new implementation yet it renders the classic one, flag or not.
 //  · TOGGLING IS INERT. Flipping this key must not touch the database, playback, the queue, or any other
 //    preference. Turning it OFF returns the app to byte-identical classic behaviour.
-// NEVER seed this key from an App.kt defaults migration — it is a beta opt-in, not a forced default.
+// Launch default is ON (fresh installs / unset key). Existing explicit `false` is never overwritten.
 val NewUiEnabledKey = booleanPreferencesKey("new_ui_enabled")
+val MiniPlayerGlowDefaultV1AppliedKey = booleanPreferencesKey("miniplayer_glow_default_v1_applied")
+val NewUiLaunchDefaultV1AppliedKey = booleanPreferencesKey("new_ui_launch_default_v1_applied")

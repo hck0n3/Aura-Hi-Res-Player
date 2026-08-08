@@ -56,6 +56,9 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import iad1tya.echo.music.R
+import iad1tya.echo.music.ui.newui.AuraPalette
+import iad1tya.echo.music.ui.newui.AuraShapes
+import iad1tya.echo.music.ui.newui.rememberAuraPanelSkin
 import iad1tya.echo.music.ui.screens.OptionStats
 import iad1tya.echo.music.ui.utils.rememberIsTvOrCar
 import iad1tya.echo.music.ui.utils.tvFocusable
@@ -69,6 +72,14 @@ fun <E> ChipsRow(
     containerColor: Color = MaterialTheme.colorScheme.surfaceContainer,
 ) {
     val isTvOrCar = rememberIsTvOrCar()
+    val skin = rememberAuraPanelSkin()
+    val chipContainer = if (skin.enabled && skin.darkGround &&
+        containerColor == MaterialTheme.colorScheme.surfaceContainer
+    ) {
+        AuraPalette.SurfaceFill
+    } else {
+        containerColor
+    }
     Row(
         modifier =
         modifier
@@ -96,7 +107,7 @@ fun <E> ChipsRow(
                 label = { Text(label) },
                 selected = isSelected,
                 colors = FilterChipDefaults.filterChipColors(
-                    containerColor = containerColor,
+                    containerColor = chipContainer,
                 ),
                 onClick = { onValueUpdate(value) },
                 leadingIcon = if (isSelected) {
@@ -141,6 +152,13 @@ fun <Int> ChoiceChipsRow(
 ) {
     val isTvOrCar = rememberIsTvOrCar()
     var menuExpanded by remember { mutableStateOf(false) }
+    val skin = rememberAuraPanelSkin()
+    val premium = skin.enabled && skin.darkGround
+    val chipContainer = if (premium && containerColor == MaterialTheme.colorScheme.surfaceContainer) {
+        AuraPalette.SurfaceFill
+    } else {
+        containerColor
+    }
 
     var expandIconDegree by remember { mutableFloatStateOf(0f) }
     val rotationAnimation by animateFloatAsState(
@@ -195,7 +213,7 @@ fun <Int> ChoiceChipsRow(
                     shape = RoundedCornerShape(16.dp),
                     border = null,
                     colors = FilterChipDefaults.filterChipColors(
-                        containerColor = containerColor,
+                        containerColor = chipContainer,
                         selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
                         labelColor = MaterialTheme.colorScheme.onSurface,
                         selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
@@ -208,6 +226,9 @@ fun <Int> ChoiceChipsRow(
                         menuExpanded = false
                         expandIconDegree += 180
                     },
+                    shape = if (premium) AuraShapes.Card else MaterialTheme.shapes.extraSmall,
+                    containerColor = if (premium) AuraPalette.FrostFill
+                    else MaterialTheme.colorScheme.surfaceContainer,
                 ) {
                     options.forEach { option ->
                         DropdownMenuItem(
@@ -247,7 +268,7 @@ fun <Int> ChoiceChipsRow(
                     label = { Text(label) },
                     selected = isSelected,
                     colors = FilterChipDefaults.filterChipColors(
-                        containerColor = containerColor,
+                        containerColor = chipContainer,
                     ),
                     onClick = { onValueUpdate(value) },
                     leadingIcon = if (isSelected) {

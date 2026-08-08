@@ -28,6 +28,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -42,11 +43,13 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import iad1tya.echo.music.LocalPlayerAwareWindowInsets
+import iad1tya.echo.music.LocalPlayerConnection
 import iad1tya.echo.music.R
 import iad1tya.echo.music.constants.AiPlaylistEnabledKey
 import iad1tya.echo.music.constants.ChipSortTypeKey
@@ -55,9 +58,11 @@ import iad1tya.echo.music.constants.LibraryFilter
 import iad1tya.echo.music.constants.MiniPlayerBottomSpacing
 import iad1tya.echo.music.constants.MiniPlayerHeight
 import iad1tya.echo.music.constants.NavigationBarHeight
+import iad1tya.echo.music.constants.OfflineModeKey
 import iad1tya.echo.music.ui.component.AiPlaylistDialog
 import iad1tya.echo.music.ui.component.CreatePlaylistDialog
 import iad1tya.echo.music.ui.component.TextFieldDialog
+import iad1tya.echo.music.ui.screens.DownloadedOnlyView
 import iad1tya.echo.music.ui.screens.library.LocalSongScreen
 import iad1tya.echo.music.utils.rememberEnumPreference
 import iad1tya.echo.music.utils.rememberPreference
@@ -85,6 +90,12 @@ import iad1tya.echo.music.utils.rememberPreference
  */
 @Composable
 fun AuraLibraryScreen(navController: NavController) {
+    val offlineMode by rememberPreference(OfflineModeKey, false)
+    if (offlineMode) {
+        DownloadedOnlyView(navController = navController)
+        return
+    }
+
     var filterType by rememberEnumPreference(ChipSortTypeKey, LibraryFilter.LIBRARY)
 
     var showImportMenu by remember { mutableStateOf(false) }
@@ -104,8 +115,11 @@ fun AuraLibraryScreen(navController: NavController) {
         filterType = LibraryFilter.LIBRARY
     }
 
-    // Biblioteca has no now-playing context of its own; the render dims its bloom to .40.
-    val bloom = rememberAuraBloom(null)
+    // Follow the now-playing cover so Biblioteca picks up album-art colour like Home/Player.
+    val playerConnection = LocalPlayerConnection.current
+    val mediaMetadata by playerConnection?.mediaMetadata?.collectAsState()
+        ?: remember { mutableStateOf(null) }
+    val bloom = rememberAuraBloom(mediaMetadata?.id)
 
     val isPlaylists = filterType == LibraryFilter.LIBRARY || filterType == LibraryFilter.PLAYLISTS
 
@@ -159,14 +173,28 @@ fun AuraLibraryScreen(navController: NavController) {
                 .fillMaxSize()
                 .windowInsetsPadding(topInsetOnly),
         ) {
-            // The render's own "Biblioteca" title. It used to be omitted because MainActivity's opaque
-            // TopAppBar drew it, and two titles would have been worse than a Material one — but that bar
-            // is exactly the "barra negra fea" of the beta verdict and is no longer drawn on this route
-            // (MainActivity gates it on `auraOwnsHeader`). So the title comes home to the content, where
-            // the render puts it, and the global actions the bar carried ride in its trailing slot.
-            AuraScreenHeader(
-                title = stringResource(R.string.filter_library),
-                trailing = { AuraTopActions() },
+            // Title on its own row so "Biblioteca" is never crushed by AuraTopActions (owner:
+            // "Bibliot…"). Actions keep the trailing corner on a denser row above.
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.End,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = AuraSpacing.Gutter, end = AuraSpacing.Gutter, top = 8.dp),
+            ) {
+                AuraTopActions()
+            }
+            Text(
+                text = stringResource(R.string.filter_library),
+                style = AuraType.ScreenTitle,
+                color = AuraPalette.OnGround,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(
+                    start = AuraSpacing.Gutter,
+                    end = AuraSpacing.Gutter,
+                    top = 4.dp,
+                ),
             )
             // The chip row owns the FULL width. It used to share a Row with a search glyph pinned at
             // the right, and that glyph is the owner's "lupa que se ve superpuesta a los chips": the
@@ -283,23 +311,40 @@ fun AuraLibraryScreen(navController: NavController) {
                         DropdownMenu(
                             expanded = showImportMenu,
                             onDismissRequest = { showImportMenu = false },
+                            shape = AuraShapes.Card,
+                            containerColor = AuraPalette.FrostFill,
                         ) {
                             DropdownMenuItem(
-                                text = { Text(stringResource(R.string.import_from_spotify)) },
+                                text = {
+                                    Text(
+                                        stringResource(R.string.import_from_spotify),
+                                        color = AuraPalette.OnGround,
+                                    )
+                                },
                                 onClick = {
                                     showImportMenu = false
                                     showSpotifyImportDialog = true
                                 },
                             )
                             DropdownMenuItem(
-                                text = { Text(stringResource(R.string.import_from_youtube)) },
+                                text = {
+                                    Text(
+                                        stringResource(R.string.import_from_youtube),
+                                        color = AuraPalette.OnGround,
+                                    )
+                                },
                                 onClick = {
                                     showImportMenu = false
                                     showYoutubeImportDialog = true
                                 },
                             )
                             DropdownMenuItem(
-                                text = { Text(stringResource(R.string.migrate_playlist)) },
+                                text = {
+                                    Text(
+                                        stringResource(R.string.migrate_playlist),
+                                        color = AuraPalette.OnGround,
+                                    )
+                                },
                                 onClick = {
                                     showImportMenu = false
                                     navController.navigate("migration")

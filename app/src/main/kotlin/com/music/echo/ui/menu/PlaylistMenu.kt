@@ -4,12 +4,18 @@ package iad1tya.echo.music.ui.menu
 
 import iad1tya.echo.music.utils.ShareLinks
 
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.res.Configuration
 import android.widget.Toast
+import iad1tya.echo.music.utils.dataStore
 import iad1tya.echo.music.utils.rememberPreference
 import iad1tya.echo.music.utils.reportException
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
@@ -19,10 +25,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -55,16 +65,20 @@ import iad1tya.echo.music.LocalListenTogetherManager
 import iad1tya.echo.music.LocalPlayerConnection
 import iad1tya.echo.music.LocalSyncUtils
 import iad1tya.echo.music.R
+import iad1tya.echo.music.constants.EnableExportAsMp3Key
+import iad1tya.echo.music.constants.ExportingSongIdsKey
 import iad1tya.echo.music.constants.InnerTubeCookieKey
 import iad1tya.echo.music.db.entities.Playlist
 import iad1tya.echo.music.db.entities.SpeedDialItem
 import iad1tya.echo.music.db.entities.PlaylistSong
 import iad1tya.echo.music.db.entities.Song
 import iad1tya.echo.music.extensions.toMediaItem
+import iad1tya.echo.music.playback.AudioExportService
 import iad1tya.echo.music.playback.ExoDownloadService
 import iad1tya.echo.music.playback.queues.ListQueue
 import iad1tya.echo.music.playback.queues.YouTubeQueue
 import iad1tya.echo.music.ui.component.DefaultDialog
+import iad1tya.echo.music.ui.component.ListDialog
 import iad1tya.echo.music.ui.component.rememberPlayedShuffleSet
 import iad1tya.echo.music.ui.component.rememberShuffleMemoryPrompt
 import iad1tya.echo.music.ui.component.Material3MenuGroup
@@ -75,10 +89,14 @@ import iad1tya.echo.music.ui.component.PlaylistListItem
 import iad1tya.echo.music.ui.component.TextFieldDialog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.time.LocalDateTime
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlaylistMenu(
     playlist: Playlist,
@@ -98,6 +116,7 @@ fun PlaylistMenu(
     // Same cookie gate the rest of the app uses to know if the user is signed into YouTube Music.
     val (innerTubeCookie) = rememberPreference(InnerTubeCookieKey, "")
     val isLoggedIn = remember(innerTubeCookie) { "SAPISID" in parseCookieString(innerTubeCookie) }
+    val (enableExportAsMp3) = rememberPreference(key = EnableExportAsMp3Key, defaultValue = false)
     // Enhanced-shuffle context for this menu's Shuffle action (must match the screens' PL:/AP: scheme).
     val menuShuffleContextId = if (autoPlaylist == true || downloadPlaylist == true) {
         "AP:" + playlist.playlist.id
@@ -207,6 +226,178 @@ fun PlaylistMenu(
             }
         }
         onDismiss()
+    }
+
+    // MP3 export: choice → optional selection → folder picker → serial AudioExportService.start
+    // (service stopSelf() after each song; concurrent starts would cancel in-flight work).
+    var showMp3ChoiceDialog by remember { mutableStateOf(false) }
+    var showMp3SelectDialog by remember { mutableStateOf(false) }
+    var selectedMp3Ids by remember { mutableStateOf(emptySet<String>()) }
+    var pendingMp3Songs by remember { mutableStateOf<List<Song>>(emptyList()) }
+
+    val startSerialMp3Export: (List<Song>, String) -> Unit = { toExport, directoryUri ->
+        coroutineScope.launch(Dispatchers.IO) {
+            for (song in toExport) {
+                withContext(Dispatchers.Main) {
+                    AudioExportService.start(
+                        context = context,
+                        songId = song.id,
+                        songTitle = song.song.title,
+                        songArtist = song.artists.joinToString(", ") { it.name },
+                        songAlbum = song.song.albumName ?: "",
+                        artworkUrl = song.song.thumbnailUrl ?: "",
+                        targetDirectoryUri = directoryUri,
+                    )
+                }
+                val exporting = context.dataStore.data.map { prefs ->
+                    prefs[ExportingSongIdsKey].orEmpty().split(",").any { it == song.id }
+                }
+                withTimeoutOrNull(15_000) { exporting.first { it } }
+                exporting.first { !it }
+            }
+        }
+    }
+
+    val mp3FolderLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        if (uri != null && pendingMp3Songs.isNotEmpty()) {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                )
+            }
+            val toExport = pendingMp3Songs
+            pendingMp3Songs = emptyList()
+            onDismiss()
+            startSerialMp3Export(toExport, uri.toString())
+        } else {
+            pendingMp3Songs = emptyList()
+        }
+    }
+
+    val openMp3FolderPicker: (List<Song>) -> Unit = { list ->
+        if (list.isEmpty()) {
+            Toast.makeText(context, "No hay canciones para exportar", Toast.LENGTH_SHORT).show()
+        } else {
+            pendingMp3Songs = list
+            try {
+                mp3FolderLauncher.launch(null)
+            } catch (_: ActivityNotFoundException) {
+                pendingMp3Songs = emptyList()
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.export_directory_picker_unavailable),
+                    Toast.LENGTH_LONG,
+                ).show()
+            }
+        }
+    }
+
+    if (showMp3ChoiceDialog) {
+        DefaultDialog(
+            onDismiss = { showMp3ChoiceDialog = false },
+            title = { Text(text = "Exportar a MP3") },
+            content = {
+                Text(
+                    text = "¿Exportar todas las canciones de la playlist o seleccionar cuáles?",
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.padding(horizontal = 18.dp),
+                )
+            },
+            buttons = {
+                TextButton(onClick = { showMp3ChoiceDialog = false }) {
+                    Text(text = stringResource(android.R.string.cancel))
+                }
+                TextButton(
+                    onClick = {
+                        showMp3ChoiceDialog = false
+                        selectedMp3Ids = songs.map { it.id }.toSet()
+                        showMp3SelectDialog = true
+                    },
+                ) {
+                    Text(text = "Seleccionar")
+                }
+                TextButton(
+                    onClick = {
+                        showMp3ChoiceDialog = false
+                        openMp3FolderPicker(songs)
+                    },
+                ) {
+                    Text(text = "Todas")
+                }
+            },
+        )
+    }
+
+    if (showMp3SelectDialog) {
+        ListDialog(
+            onDismiss = { showMp3SelectDialog = false },
+        ) {
+            item {
+                ListItem(
+                    headlineContent = { Text(text = "Seleccionar todas") },
+                    trailingContent = {
+                        Checkbox(
+                            checked = songs.isNotEmpty() && selectedMp3Ids.size == songs.size,
+                            onCheckedChange = { checked ->
+                                selectedMp3Ids =
+                                    if (checked) songs.map { it.id }.toSet() else emptySet()
+                            },
+                        )
+                    },
+                    modifier = Modifier.clickable {
+                        selectedMp3Ids =
+                            if (selectedMp3Ids.size == songs.size) emptySet()
+                            else songs.map { it.id }.toSet()
+                    },
+                )
+            }
+            items(songs, key = { it.id }) { song ->
+                val checked = song.id in selectedMp3Ids
+                ListItem(
+                    headlineContent = { Text(text = song.song.title) },
+                    supportingContent = {
+                        Text(text = song.artists.joinToString { it.name })
+                    },
+                    trailingContent = {
+                        Checkbox(
+                            checked = checked,
+                            onCheckedChange = { on ->
+                                selectedMp3Ids =
+                                    if (on) selectedMp3Ids + song.id else selectedMp3Ids - song.id
+                            },
+                        )
+                    },
+                    modifier = Modifier.clickable {
+                        selectedMp3Ids =
+                            if (checked) selectedMp3Ids - song.id else selectedMp3Ids + song.id
+                    },
+                )
+            }
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                ) {
+                    TextButton(onClick = { showMp3SelectDialog = false }) {
+                        Text(text = stringResource(android.R.string.cancel))
+                    }
+                    Spacer(modifier = Modifier.weight(1f))
+                    TextButton(
+                        enabled = selectedMp3Ids.isNotEmpty(),
+                        onClick = {
+                            showMp3SelectDialog = false
+                            openMp3FolderPicker(songs.filter { it.id in selectedMp3Ids })
+                        },
+                    ) {
+                        Text(text = "Continuar")
+                    }
+                }
+            }
+        }
     }
 
     LaunchedEffect(songs) {
@@ -553,6 +744,32 @@ fun PlaylistMenu(
                             }
                         )
                     )
+                    if (enableExportAsMp3) {
+                        add(
+                            Material3MenuItemData(
+                                title = { Text(text = "Exportar a MP3") },
+                                description = { Text(text = "Todas o seleccionar canciones") },
+                                icon = {
+                                    Icon(
+                                        painter = painterResource(R.drawable.file_export),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                },
+                                onClick = {
+                                    if (songs.isEmpty()) {
+                                        Toast.makeText(
+                                            context,
+                                            "No hay canciones para exportar",
+                                            Toast.LENGTH_SHORT,
+                                        ).show()
+                                    } else {
+                                        showMp3ChoiceDialog = true
+                                    }
+                                }
+                            )
+                        )
+                    }
                     if (!isGuest) {
                         playlist.playlist.browseId?.let { browseId ->
                             add(
@@ -715,7 +932,7 @@ fun PlaylistMenu(
                                                 title = playlist.playlist.name,
                                                 subtitle = null,
                                                 thumbnailUrl = playlist.thumbnails.firstOrNull(),
-                                                type = "PLAYLIST"
+                                                type = "LOCAL_PLAYLIST"
                                             )
                                         )
                                     }

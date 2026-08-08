@@ -3,10 +3,12 @@ package iad1tya.echo.music.ui.newui
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -15,10 +17,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.flowOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
@@ -102,10 +107,14 @@ fun AuraOnlineSearchSuggestions(
 
     val lazyListState = rememberLazyListState()
 
+    // Hide the keyboard on a manual scroll (so the user can see more results), but NOT when the
+    // offset shifts because new suggestions streamed in and reflowed the list — `isScrollInProgress`
+    // is true only for a real touch-driven drag/fling, never for a content-driven relayout, so this
+    // is what stopped the keyboard from disappearing mid-type as debounced results arrived.
     LaunchedEffect(Unit) {
         snapshotFlow { lazyListState.firstVisibleItemScrollOffset }
             .drop(1)
-            .collect { keyboardController?.hide() }
+            .collect { if (lazyListState.isScrollInProgress) keyboardController?.hide() }
     }
 
     // The view model owns the debounce; the panel only hands it the current text.
@@ -143,8 +152,13 @@ fun AuraOnlineSearchSuggestions(
 
     LazyColumn(
         state = lazyListState,
-        contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
-        modifier = modifier.fillMaxSize(),
+        contentPadding = LocalPlayerAwareWindowInsets.current
+            .only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal)
+            .asPaddingValues(),
+        // Never steal focus from the search field while suggestions recompose mid-type.
+        modifier = modifier
+            .fillMaxSize()
+            .focusProperties { canFocus = false },
     ) {
         if (viewState.history.isNotEmpty()) {
             item(key = "aura_history_header") {
@@ -311,7 +325,7 @@ private fun AuraQueryRow(
     )
 }
 
-/** A YouTube search result as an Aura row: cover, title, subtitle, long-press and ⋯ menus. */
+/** A YouTube search result as an Aura row: typed thumb (circle / 16:9 / release), title, subtitle. */
 @Composable
 internal fun AuraYtItemRow(
     item: YTItem,
@@ -322,6 +336,14 @@ internal fun AuraYtItemRow(
     onMenuClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val database = LocalDatabase.current
+    val songFlow = remember(item.id) {
+        if (item is SongItem) database.song(item.id) else flowOf(null)
+    }
+    val dbSong by songFlow.collectAsState(initial = null)
+    val alreadyPlayed = item is SongItem && (dbSong?.song?.totalPlayTime ?: 0L) > 0L
+    val visual = auraTypeVisual(item)
+
     AuraSongRow(
         title = item.title,
         subtitle = auraSearchYtSubtitle(item),
@@ -330,6 +352,13 @@ internal fun AuraYtItemRow(
         isActive = isActive,
         isPlaying = isPlaying,
         explicit = item.explicit,
+        playedInShuffle = alreadyPlayed,
+        artworkShape = visual.shape,
+        artworkRatio = visual.ratio,
+        artworkSize = visual.rowWidth,
+        typeChip = visual.label.takeIf {
+            visual.kind != AuraContentKind.Song && visual.kind != AuraContentKind.Album
+        },
         onClick = onClick,
         onLongClick = onLongClick,
         onMenuClick = onMenuClick,
@@ -338,22 +367,43 @@ internal fun AuraYtItemRow(
     )
 }
 
-/** The subtitle the classic `YouTubeListItem` builds for each result type. */
+/** Owner-facing type label: canción / vídeo / álbum / EP / Single / playlist / artista. */
+internal fun auraYtTypeLabel(item: YTItem): String = auraTypeLabel(auraContentKind(item))
+
+internal fun auraLooksLikeEp(item: AlbumItem): Boolean {
+    val t = item.title.trim()
+    val d = item.description.orEmpty()
+    return t.contains(Regex("""(?i)(^|[^\w])EP([^\w]|$)""")) ||
+        t.endsWith(" - EP", ignoreCase = true) ||
+        d.contains(Regex("""(?i)\bEP\b"""))
+}
+
+/** The subtitle the classic `YouTubeListItem` builds for each result type, plus a type prefix. */
 @Composable
-internal fun auraSearchYtSubtitle(item: YTItem): String? = when (item) {
-    is SongItem -> item.artists.joinToString { it.name }.takeIf { it.isNotBlank() }
+internal fun auraSearchYtSubtitle(item: YTItem): String? {
+    val type = auraYtTypeLabel(item)
+    val detail = when (item) {
+        is SongItem -> item.artists.joinToString { it.name }.takeIf { it.isNotBlank() }
 
-    is AlbumItem -> listOfNotNull(
-        item.artists?.joinToString { it.name }?.takeIf { it.isNotBlank() },
-        item.year?.toString(),
-    ).joinToString(" · ").takeIf { it.isNotBlank() }
+        is AlbumItem -> listOfNotNull(
+            item.artists?.joinToString { it.name }?.takeIf { it.isNotBlank() },
+            item.year?.toString(),
+        ).joinToString(" · ").takeIf { it.isNotBlank() }
 
-    is ArtistItem -> stringResource(R.string.artist).trim()
+        is ArtistItem -> null
 
-    is PlaylistItem -> listOfNotNull(
-        item.author?.name,
-        item.songCountText,
-    ).joinToString(" · ").takeIf { it.isNotBlank() }
+        is PlaylistItem -> listOfNotNull(
+            item.author?.name,
+            item.songCountText,
+        ).joinToString(" · ").takeIf { it.isNotBlank() }
+
+        else -> null
+    }
+    return when {
+        type.isBlank() -> detail
+        detail.isNullOrBlank() -> type
+        else -> "$type · $detail"
+    }
 }
 
 // ── 2. Biblioteca: resultados locales ──────────────────────────────────────────────────────────────
@@ -386,18 +436,24 @@ fun AuraLocalSearchResults(
 
     val lazyListState = rememberLazyListState()
 
+    // See AuraOnlineSearchSuggestions above for why this is gated on isScrollInProgress: without it,
+    // a content-driven reflow (local results arriving as the user types) could hide the keyboard too.
     LaunchedEffect(Unit) {
         snapshotFlow { lazyListState.firstVisibleItemScrollOffset }
             .drop(1)
-            .collect { keyboardController?.hide() }
+            .collect { if (lazyListState.isScrollInProgress) keyboardController?.hide() }
     }
 
     LaunchedEffect(query) { viewModel.query.value = query }
 
     LazyColumn(
         state = lazyListState,
-        contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
-        modifier = modifier.fillMaxSize(),
+        contentPadding = LocalPlayerAwareWindowInsets.current
+            .only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal)
+            .asPaddingValues(),
+        modifier = modifier
+            .fillMaxSize()
+            .focusProperties { canFocus = false },
     ) {
         item(key = "aura_local_filters") {
             Row(
@@ -494,13 +550,18 @@ fun AuraLocalSearchResults(
                             .padding(horizontal = AuraSpacing.Gutter),
                     )
 
-                    is Album -> AuraSongRow(
+                    is Album -> {
+                        val visual = auraTypeVisual(AuraContentKind.Album)
+                        AuraSongRow(
                         title = item.album.title,
-                        subtitle = item.artists.joinToString { it.name },
+                        subtitle = "${visual.label} · ${item.artists.joinToString { it.name }}",
                         thumbnailUrl = item.album.thumbnailUrl,
                         seed = item.id,
                         isActive = item.id == mediaMetadata?.album?.id,
                         isPlaying = isPlaying,
+                        artworkShape = visual.shape,
+                        artworkSize = visual.rowWidth,
+                        typeChip = visual.label,
                         onClick = {
                             onDismiss()
                             navController.navigate("album/${item.id}")
@@ -509,8 +570,11 @@ fun AuraLocalSearchResults(
                             .animateItem()
                             .padding(horizontal = AuraSpacing.Gutter),
                     )
+                    }
 
-                    is Artist -> AuraSongRow(
+                    is Artist -> {
+                        val visual = auraTypeVisual(AuraContentKind.Artist)
+                        AuraSongRow(
                         title = item.artist.name,
                         subtitle = pluralStringResource(
                             R.plurals.n_song,
@@ -519,6 +583,9 @@ fun AuraLocalSearchResults(
                         ),
                         thumbnailUrl = item.artist.thumbnailUrl,
                         seed = item.id,
+                        artworkShape = visual.shape,
+                        artworkSize = visual.rowWidth,
+                        typeChip = visual.label,
                         onClick = {
                             onDismiss()
                             navController.navigate("artist/${item.id}")
@@ -527,16 +594,22 @@ fun AuraLocalSearchResults(
                             .animateItem()
                             .padding(horizontal = AuraSpacing.Gutter),
                     )
+                    }
 
-                    is Playlist -> AuraSongRow(
+                    is Playlist -> {
+                        val visual = auraTypeVisual(AuraContentKind.Playlist)
+                        AuraSongRow(
                         title = item.playlist.name,
-                        subtitle = pluralStringResource(
+                        subtitle = "${visual.label} · " + pluralStringResource(
                             R.plurals.n_song,
                             item.songCount,
                             item.songCount,
                         ),
                         thumbnailUrl = item.thumbnails.firstOrNull(),
                         seed = item.id,
+                        artworkShape = visual.shape,
+                        artworkSize = visual.rowWidth,
+                        typeChip = visual.label,
                         onClick = {
                             onDismiss()
                             navController.navigate("local_playlist/${item.id}")
@@ -545,6 +618,7 @@ fun AuraLocalSearchResults(
                             .animateItem()
                             .padding(horizontal = AuraSpacing.Gutter),
                     )
+                    }
 
                     else -> Unit
                 }

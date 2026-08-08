@@ -85,6 +85,7 @@ import coil3.SingletonImageLoader
 import coil3.compose.AsyncImage
 import coil3.request.CachePolicy
 import coil3.request.ImageRequest
+import coil3.request.crossfade
 import iad1tya.echo.music.LocalListenTogetherManager
 import iad1tya.echo.music.LocalPlayerConnection
 import iad1tya.echo.music.R
@@ -413,14 +414,20 @@ fun Thumbnail(
     
     val currentItem by remember { derivedStateOf { thumbnailLazyGridState.firstVisibleItemIndex } }
     val itemScrollOffset by remember { derivedStateOf { thumbnailLazyGridState.firstVisibleItemScrollOffset } }
+    // Swipe/snap already slid the cover in; skip OPAQUE_DARK settle so it doesn't snap-shrink vs distance scale.
+    // Also skip animateScrollToItem after a swipe — re-animating the grid onto the same index caused the
+    // post-swipe cover flicker the owner reported.
+    var suppressCoverSettle by remember { mutableStateOf(false) }
 
     
     LaunchedEffect(itemScrollOffset) {
         if (!thumbnailLazyGridState.isScrollInProgress || !swipeThumbnail || itemScrollOffset != 0 || currentMediaIndex < 0) return@LaunchedEffect
 
         if (currentItem > currentMediaIndex && canSkipNext) {
-            playerConnection.player.seekToNext()
+            suppressCoverSettle = true
+            playerConnection.seekToNextOrStartRadio()
         } else if (currentItem < currentMediaIndex && canSkipPrevious) {
+            suppressCoverSettle = true
             playerConnection.player.seekToPreviousMediaItem()
         }
     }
@@ -430,9 +437,15 @@ fun Thumbnail(
         val index = maxOf(0, currentMediaIndex)
         if (index >= 0 && index < mediaItems.size) {
             try {
-                thumbnailLazyGridState.animateScrollToItem(index)
+                if (suppressCoverSettle) {
+                    thumbnailLazyGridState.scrollToItem(index)
+                    suppressCoverSettle = false
+                } else {
+                    thumbnailLazyGridState.animateScrollToItem(index)
+                }
             } catch (e: Exception) {
                 thumbnailLazyGridState.scrollToItem(index)
+                suppressCoverSettle = false
             }
         }
     }
@@ -660,7 +673,9 @@ fun Thumbnail(
                                 currentMediaId = mediaMetadata?.id,
                                 currentMediaThumbnail = mediaMetadata?.thumbnailUrl,
                                 playerBackground = playerBackground,
-                                host = host
+                                host = host,
+                                suppressCoverSettle = suppressCoverSettle,
+                                onCoverSettleSuppressed = { suppressCoverSettle = false },
                             )
                         }
                     }
@@ -802,6 +817,8 @@ private fun ThumbnailItem(
     playerBackground: PlayerBackgroundStyle = PlayerBackgroundStyle.DEFAULT,
     /** See [ThumbnailHost]. The default keeps every classic call site unchanged. */
     host: ThumbnailHost = ThumbnailHost.CLASSIC,
+    suppressCoverSettle: Boolean = false,
+    onCoverSettleSuppressed: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val rotatingThumbnail by iad1tya.echo.music.utils.rememberPerfGatedBoolean(RotatingThumbnailKey, defaultValue = false)
@@ -837,10 +854,10 @@ private fun ThumbnailItem(
     // remembered for CLASSIC hosts too (composable call order must not depend on the host) but nothing ever
     // starts it there, so it stays at 1f and the classic layer maths is term-for-term what it was.
     val coverSettle = remember(item.mediaId) { Animatable(1f) }
-    LaunchedEffect(item.mediaId, isCurrentItem, isOpaqueDark, highPerfMode) {
-        if (!isOpaqueDark || !isCurrentItem || highPerfMode) return@LaunchedEffect
-        coverSettle.snapTo(OPAQUE_DARK_COVER_SETTLE_FROM)
-        coverSettle.animateTo(1f, AuraMotion.standard())
+    // Settle snap (0.965→1) on every track change stacked with Coil decode and read as cover flicker.
+    // Keep the Animatable for call-order stability; do not animate it.
+    LaunchedEffect(item.mediaId, isCurrentItem, isOpaqueDark, highPerfMode, suppressCoverSettle) {
+        if (suppressCoverSettle) onCoverSettleSuppressed()
     }
 
     // The artwork plate. `surfaceVariant` comes from the APP theme, which on a light theme is a pale grey —
@@ -1180,53 +1197,68 @@ private fun ThumbnailImage(
             .fillMaxSize()
             .background(backdrop)
     ) {
-        var currentUrl by remember(artworkUri) {
+        fun upgradeYoutube(raw: String): String {
             // For YouTube VIDEO thumbnails the passed url is sddefault (640×480) — pixelated as a big player
             // cover. Start from maxresdefault (1280×720, sharp, no letterbox) and fall back to sddefault on
             // 404 (onError). Non-ytimg covers (googleusercontent, already hi-res) are left untouched.
-            mutableStateOf(
-                artworkUri?.let {
-                    // Any YouTube thumbnail host (i.ytimg.com, i9.ytimg.com, img.youtube.com) and either
-                    // .jpg or .webp → upgrade the size token to maxresdefault (keep the extension).
-                    if (it.contains("ytimg.com") || it.contains("img.youtube.com")) {
-                        it.replace(
-                            Regex("(default|mqdefault|hqdefault|sddefault|maxresdefault)\\.(jpg|webp)"),
-                            "maxresdefault.$2",
-                        )
-                    } else it
-                }
+            return if (raw.contains("ytimg.com") || raw.contains("img.youtube.com")) {
+                raw.replace(
+                    Regex("(default|mqdefault|hqdefault|sddefault|maxresdefault)\\.(jpg|webp)"),
+                    "maxresdefault.$2",
+                )
+            } else raw
+        }
+
+        var paintedUrl by remember { mutableStateOf(artworkUri?.let(::upgradeYoutube)) }
+        var loadUrl by remember { mutableStateOf(artworkUri?.let(::upgradeYoutube)) }
+        LaunchedEffect(artworkUri) {
+            loadUrl = artworkUri?.let(::upgradeYoutube)
+            if (artworkUri == null) paintedUrl = null
+        }
+
+        paintedUrl?.let { url ->
+            AsyncImage(
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(url)
+                    .size(coil3.size.Size.ORIGINAL)
+                    .crossfade(false)
+                    .memoryCachePolicy(CachePolicy.ENABLED)
+                    .diskCachePolicy(CachePolicy.ENABLED)
+                    .networkCachePolicy(CachePolicy.ENABLED)
+                    .build(),
+                contentDescription = null,
+                contentScale = if (cropArtwork) ContentScale.Crop else ContentScale.Fit,
+                modifier = Modifier.fillMaxSize(),
             )
         }
-        AsyncImage(
-            model = ImageRequest.Builder(LocalContext.current)
-                .data(currentUrl)
-                // Load the cover at its FULL native resolution (e.g. maxresdefault 1280×720) instead of
-                // letting Coil downscale to the view bounds, so the big player cover stays as sharp as the
-                // source allows.
-                .size(coil3.size.Size.ORIGINAL)
-                .memoryCachePolicy(CachePolicy.ENABLED)
-                .diskCachePolicy(CachePolicy.ENABLED)
-                .networkCachePolicy(CachePolicy.ENABLED)
-                .build(),
-            contentDescription = null,
-            contentScale = if (cropArtwork) ContentScale.Crop else ContentScale.Fit,
-            error = painterResource(R.drawable.ic_launcher_nobg),
-            fallback = painterResource(R.drawable.ic_launcher_nobg),
-            onError = {
-                // Fallback chain when a higher-res thumbnail 404s: maxres → sd → hq (each still better than a
-                // blank cover). Most music videos DO have maxresdefault (1280×720); this only kicks in for the
-                // few that don't.
-                val url = currentUrl
-                if (url != null) {
-                    currentUrl = when {
-                        url.contains("maxresdefault") -> url.replace("maxresdefault", "sddefault")
-                        url.contains("sddefault") -> url.replace("sddefault", "hqdefault")
-                        else -> url
+        if (loadUrl != null && loadUrl != paintedUrl) {
+            AsyncImage(
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(loadUrl)
+                    .size(coil3.size.Size.ORIGINAL)
+                    .crossfade(false)
+                    .memoryCachePolicy(CachePolicy.ENABLED)
+                    .diskCachePolicy(CachePolicy.ENABLED)
+                    .networkCachePolicy(CachePolicy.ENABLED)
+                    .build(),
+                contentDescription = null,
+                contentScale = if (cropArtwork) ContentScale.Crop else ContentScale.Fit,
+                error = painterResource(R.drawable.ic_launcher_nobg),
+                fallback = painterResource(R.drawable.ic_launcher_nobg),
+                onSuccess = { paintedUrl = loadUrl },
+                onError = {
+                    val url = loadUrl
+                    if (url != null) {
+                        loadUrl = when {
+                            url.contains("maxresdefault") -> url.replace("maxresdefault", "sddefault")
+                            url.contains("sddefault") -> url.replace("sddefault", "hqdefault")
+                            else -> url
+                        }
                     }
-                }
-            },
-            modifier = Modifier.fillMaxSize()
-        )
+                },
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
     }
 }
 

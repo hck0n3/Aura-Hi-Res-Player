@@ -193,10 +193,17 @@ private fun <T : Enum<T>> AuraSortControl(
                     tint = AuraPalette.OnGroundFaint,
                 )
             }
-            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            DropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false },
+                shape = AuraShapes.Card,
+                containerColor = AuraPalette.FrostFill,
+            ) {
                 options.forEach { (option, labelRes) ->
                     DropdownMenuItem(
-                        text = { Text(stringResource(labelRes)) },
+                        text = {
+                            Text(stringResource(labelRes), color = AuraPalette.OnGround)
+                        },
                         onClick = {
                             onSortTypeChange(option)
                             expanded = false
@@ -238,8 +245,10 @@ private fun <T : Enum<T>> AuraSortControl(
 /** A count line: "%d canciones", "%d álbumes"… kept as the same plural resource. */
 @Composable
 private fun AuraCount(text: String, modifier: Modifier = Modifier) {
+    // Do NOT uppercase the whole phrase — "53 LISTAS DE REPRODUCCIÓN" was crushing the sort row into
+    // "53 LIST…" on phones. Sentence case keeps the number readable.
     AuraTechnicalText(
-        text = text.uppercase(Locale.ROOT),
+        text = text,
         modifier = modifier.padding(end = 12.dp),
         color = AuraPalette.OnGroundGhost,
     )
@@ -461,11 +470,15 @@ fun AuraLibraryHub(
                     AuraSectionHeader(title = stringResource(R.string.filter_artists))
                 }
                 items(artistItems, key = { "artist_${it.id}" }) { item ->
+                    val visual = auraTypeVisual(AuraContentKind.Artist)
                     AuraSongRow(
                         title = item.artist.name,
                         subtitle = pluralStringResource(R.plurals.n_song, item.songCount, item.songCount),
                         thumbnailUrl = item.artist.thumbnailUrl,
                         seed = item.id,
+                        artworkShape = visual.shape,
+                        artworkSize = visual.rowWidth,
+                        typeChip = visual.label,
                         onClick = { navController.navigate("artist/${item.id}") },
                         onLongClick = {
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -492,15 +505,20 @@ fun AuraLibraryHub(
             }
             items(nonArtistItems, key = { it.id }) { item ->
                 when (item) {
-                    is Playlist -> AuraSongRow(
+                    is Playlist -> {
+                        val visual = auraTypeVisual(AuraContentKind.Playlist)
+                        AuraSongRow(
                         title = item.playlist.name,
-                        subtitle = pluralStringResource(
+                        subtitle = "${visual.label} · " + pluralStringResource(
                             R.plurals.n_song,
                             item.songCount,
                             item.songCount,
                         ),
                         thumbnailUrl = item.thumbnails.firstOrNull(),
                         seed = item.id,
+                        artworkShape = visual.shape,
+                        artworkSize = visual.rowWidth,
+                        typeChip = visual.label,
                         onClick = { navController.navigate("local_playlist/${item.id}") },
                         onLongClick = {
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -513,14 +531,20 @@ fun AuraLibraryHub(
                             .animateItem()
                             .padding(horizontal = AuraSpacing.Gutter),
                     )
+                    }
 
-                    is Album -> AuraSongRow(
+                    is Album -> {
+                        val visual = auraTypeVisual(AuraContentKind.Album)
+                        AuraSongRow(
                         title = item.album.title,
-                        subtitle = item.artists.joinToString { it.name },
+                        subtitle = "${visual.label} · ${item.artists.joinToString { it.name }}",
                         thumbnailUrl = item.album.thumbnailUrl,
                         seed = item.id,
                         isActive = item.id == mediaMetadata?.album?.id,
                         isPlaying = isPlaying,
+                        artworkShape = visual.shape,
+                        artworkSize = visual.rowWidth,
+                        typeChip = visual.label,
                         onClick = { navController.navigate("album/${item.id}") },
                         onLongClick = {
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -535,6 +559,7 @@ fun AuraLibraryHub(
                             .animateItem()
                             .padding(horizontal = AuraSpacing.Gutter),
                     )
+                    }
 
                     else -> Unit
                 }
@@ -964,11 +989,15 @@ fun AuraLibraryArtistsTab(
         }
 
         items(artists, key = { it.id }) { artist ->
+            val visual = auraTypeVisual(AuraContentKind.Artist)
             AuraSongRow(
                 title = artist.artist.name,
                 subtitle = pluralStringResource(R.plurals.n_song, artist.songCount, artist.songCount),
                 thumbnailUrl = artist.artist.thumbnailUrl,
                 seed = artist.id,
+                artworkShape = visual.shape,
+                artworkSize = visual.rowWidth,
+                typeChip = visual.label,
                 onClick = { navController.navigate("artist/${artist.id}") },
                 onLongClick = {
                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)

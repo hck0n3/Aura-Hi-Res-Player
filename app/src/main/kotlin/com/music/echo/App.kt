@@ -393,6 +393,9 @@ class App : Application(), SingletonImageLoader.Factory, androidx.work.Configura
             settings[iad1tya.echo.music.constants.Defaults0127AppliedKey] != true ||
             settings[iad1tya.echo.music.constants.LiquidGlassHighTierV1AppliedKey] != true ||
             settings[iad1tya.echo.music.constants.MiniPlayerGlassUndoV1AppliedKey] != true ||
+            settings[iad1tya.echo.music.constants.MiniPlayerBlurDefaultV1AppliedKey] != true ||
+            settings[iad1tya.echo.music.constants.MiniPlayerGlowDefaultV1AppliedKey] != true ||
+            settings[iad1tya.echo.music.constants.NewUiLaunchDefaultV1AppliedKey] != true ||
             settings[iad1tya.echo.music.constants.Defaults0130CurveAppliedKey] != true ||
             settings[iad1tya.echo.music.constants.Defaults0132GaplessOffAppliedKey] != true ||
             settings[iad1tya.echo.music.constants.LyricsBlurDefaultOnV1AppliedKey] != true ||
@@ -419,6 +422,12 @@ class App : Application(), SingletonImageLoader.Factory, androidx.work.Configura
                     // where BOTH run, the pre-edit snapshot still says DEFAULT and an undo reading
                     // `settings` would miss exactly the case it exists for.
                     applyMiniPlayerGlassUndoV1(p, settings)
+                    // AFTER glass undo: historical Desenfoque (BLUR) default…
+                    applyMiniPlayerBlurDefaultV1(p, settings)
+                    // …then launch default Brillo animado (GLOW_ANIMATED) for unset/BLUR/DEFAULT.
+                    applyMiniPlayerGlowDefaultV1(p, settings)
+                    // Fresh / unset "Interfaz nueva" → ON for this launch (never overwrite explicit false).
+                    applyNewUiLaunchDefaultV1(p, settings)
                 }
             }.onFailure { reportException(it) }
         }
@@ -609,10 +618,13 @@ class App : Application(), SingletonImageLoader.Factory, androidx.work.Configura
             // works from first launch.
             p[iad1tya.echo.music.constants.PlayerBackgroundStyleKey] =
                 iad1tya.echo.music.constants.PlayerBackgroundStyle.APPLE_MUSIC.name
-            // Mini-player stays DEFAULT (clean theme bar): a dynamic mini background forces white text,
-            // which is illegible in light mode. DEFAULT keeps the readable gray (onSurface) text.
+            // Mini-player: Brillo animado (GLOW_ANIMATED) — launch default.
             p[iad1tya.echo.music.constants.MiniPlayerBackgroundStyleKey] =
-                iad1tya.echo.music.constants.PlayerBackgroundStyle.DEFAULT.name
+                iad1tya.echo.music.constants.PlayerBackgroundStyle.GLOW_ANIMATED.name
+            // Interfaz nueva ON for fresh installs.
+            if (p[iad1tya.echo.music.constants.NewUiEnabledKey] == null) {
+                p[iad1tya.echo.music.constants.NewUiEnabledKey] = true
+            }
             p[iad1tya.echo.music.constants.UseNewPlayerDesignKey] = false
             p[iad1tya.echo.music.constants.HidePlayerSliderKey] = true
 
@@ -821,8 +833,8 @@ class App : Application(), SingletonImageLoader.Factory, androidx.work.Configura
             }.getOrDefault(false)
             if (glassHigh) {
                 p[iad1tya.echo.music.constants.LiquidGlassGlobalEnabledKey] = true
-                p[iad1tya.echo.music.constants.MiniPlayerBackgroundStyleKey] =
-                    iad1tya.echo.music.constants.PlayerBackgroundStyle.LIQUID_GLASS.name
+                // Do NOT write MiniPlayerBackgroundStyleKey here — owner default is Desenfoque (BLUR),
+                // and forcing LIQUID_GLASS onto the mini was the complaint MiniPlayerGlassUndoV1 undoes.
             }
             p[iad1tya.echo.music.constants.LiquidGlassHighTierV1AppliedKey] = true
         }
@@ -885,6 +897,16 @@ class App : Application(), SingletonImageLoader.Factory, androidx.work.Configura
             }
         }.onFailure { reportException(it) }
         val seeded = runCatching {
+            // Never clobber an EQ the user already tuned. If echo_eq_prefs or the profile repo already
+            // has content, only stamp the one-shot flag so later updates stay hands-off.
+            val eqPrefs = applicationContext.getSharedPreferences("echo_eq_prefs", Context.MODE_PRIVATE)
+            val eqRepo = eqProfileRepository.get()
+            val hasExistingPrefs = eqPrefs.contains("enabled") || eqPrefs.contains("preampDb") ||
+                eqPrefs.all.keys.any { it.startsWith("band") }
+            val hasExistingProfiles = runCatching { eqRepo.getAllProfiles().isNotEmpty() }.getOrDefault(false)
+            if (hasExistingPrefs || hasExistingProfiles) {
+                return@runCatching true
+            }
             val gains = iad1tya.echo.music.eq.data.FactoryPreset.AUDIOPHILE.gains
             val bands = iad1tya.echo.music.ui.screens.equalizer.axion.buildEqBands(gains, IntArray(gains.size))
             val profile = iad1tya.echo.music.eq.data.SavedEQProfile(
@@ -898,18 +920,17 @@ class App : Application(), SingletonImageLoader.Factory, androidx.work.Configura
                 isActive = true,
             )
             // DSP source of truth: MusicService collects combine(activeProfile, unsavedProfile){ unsaved ?: active }.
-            val eqRepo = eqProfileRepository.get()
             eqRepo.saveProfile(profile)
             eqRepo.setUnsavedProfile(profile)
             eqRepo.setActiveProfile(profile.id)
             // EQ-screen UI mirror so the enabled toggle / sliders / preamp reflect the seeded Audiophile tuning.
-            val eqPrefs = applicationContext.getSharedPreferences("echo_eq_prefs", Context.MODE_PRIVATE)
             val ed = eqPrefs.edit()
             ed.putBoolean("enabled", true)
             ed.putFloat("preampDb", 0.0f)
             gains.forEachIndexed { i, g -> ed.putFloat("band24_$i", g) }
             ed.apply()
-        }.onFailure { reportException(it) }.isSuccess
+            true
+        }.onFailure { reportException(it) }.getOrDefault(false)
         // Only mark the one-time migration done when the seed actually succeeded, so a transient failure
         // (IO error / disk full / serialization) retries on the next launch instead of being silently
         // marked complete and leaving the EQ partially seeded forever.
@@ -1176,6 +1197,67 @@ class App : Application(), SingletonImageLoader.Factory, androidx.work.Configura
                 iad1tya.echo.music.constants.PlayerBackgroundStyle.DEFAULT.name
         }
         p[iad1tya.echo.music.constants.MiniPlayerGlassUndoV1AppliedKey] = true
+    }
+
+    /**
+     * Owner order: mini-player default = Desenfoque (BLUR) on API 31+.
+     *
+     * Only rewrites DEFAULT (and the LIQUID_GLASS value the high-tier order used to force) so a
+     * deliberate pick of another dynamic style is never clobbered. Below API 31 blur is a no-op —
+     * leave DEFAULT there. Flag stamped on every build so the migration never re-fires.
+     */
+    private fun applyMiniPlayerBlurDefaultV1(
+        p: androidx.datastore.preferences.core.MutablePreferences,
+        settings: androidx.datastore.preferences.core.Preferences,
+    ) {
+        if (settings[iad1tya.echo.music.constants.MiniPlayerBlurDefaultV1AppliedKey] == true) return
+        if (android.os.Build.VERSION.SDK_INT >= 31) {
+            val current = p[iad1tya.echo.music.constants.MiniPlayerBackgroundStyleKey]
+            if (current == null ||
+                current == iad1tya.echo.music.constants.PlayerBackgroundStyle.DEFAULT.name ||
+                current == iad1tya.echo.music.constants.PlayerBackgroundStyle.LIQUID_GLASS.name
+            ) {
+                p[iad1tya.echo.music.constants.MiniPlayerBackgroundStyleKey] =
+                    iad1tya.echo.music.constants.PlayerBackgroundStyle.BLUR.name
+            }
+        }
+        p[iad1tya.echo.music.constants.MiniPlayerBlurDefaultV1AppliedKey] = true
+    }
+
+    /**
+     * Launch order: mini-player default = Brillo animado ([PlayerBackgroundStyle.GLOW_ANIMATED]).
+     * Rewrites only unset / DEFAULT / BLUR (the previous factory default) so a deliberate pick of
+     * another style is never clobbered.
+     */
+    private fun applyMiniPlayerGlowDefaultV1(
+        p: androidx.datastore.preferences.core.MutablePreferences,
+        settings: androidx.datastore.preferences.core.Preferences,
+    ) {
+        if (settings[iad1tya.echo.music.constants.MiniPlayerGlowDefaultV1AppliedKey] == true) return
+        val current = p[iad1tya.echo.music.constants.MiniPlayerBackgroundStyleKey]
+        if (current == null ||
+            current == iad1tya.echo.music.constants.PlayerBackgroundStyle.DEFAULT.name ||
+            current == iad1tya.echo.music.constants.PlayerBackgroundStyle.BLUR.name
+        ) {
+            p[iad1tya.echo.music.constants.MiniPlayerBackgroundStyleKey] =
+                iad1tya.echo.music.constants.PlayerBackgroundStyle.GLOW_ANIMATED.name
+        }
+        p[iad1tya.echo.music.constants.MiniPlayerGlowDefaultV1AppliedKey] = true
+    }
+
+    /**
+     * Launch order: Interfaz nueva ON when the key was never written. Explicit `false` is preserved
+     * so users who already switched off keep classic.
+     */
+    private fun applyNewUiLaunchDefaultV1(
+        p: androidx.datastore.preferences.core.MutablePreferences,
+        settings: androidx.datastore.preferences.core.Preferences,
+    ) {
+        if (settings[iad1tya.echo.music.constants.NewUiLaunchDefaultV1AppliedKey] == true) return
+        if (p[iad1tya.echo.music.constants.NewUiEnabledKey] == null) {
+            p[iad1tya.echo.music.constants.NewUiEnabledKey] = true
+        }
+        p[iad1tya.echo.music.constants.NewUiLaunchDefaultV1AppliedKey] = true
     }
 
     private fun applyCanvasDefaultOn(

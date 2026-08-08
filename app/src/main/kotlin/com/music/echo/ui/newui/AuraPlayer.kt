@@ -3,7 +3,6 @@ package iad1tya.echo.music.ui.newui
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
-import android.content.Intent
 import android.content.res.Configuration
 import android.os.Build
 import android.widget.Toast
@@ -32,7 +31,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -172,7 +170,6 @@ import iad1tya.echo.music.ui.utils.rememberIsWideLayout
 import iad1tya.echo.music.ui.utils.tvFocusable
 import iad1tya.echo.music.utils.DeviceCapabilities
 import iad1tya.echo.music.utils.DeviceTier
-import iad1tya.echo.music.utils.ShareLinks
 import iad1tya.echo.music.utils.isLocalMediaId
 import iad1tya.echo.music.utils.makeTimeString
 import iad1tya.echo.music.utils.rememberDeviceThrottle
@@ -617,49 +614,6 @@ private fun AuraPlayerShape(
         if (showVideoSurface && showInlineLyrics) showInlineLyrics = false
     }
 
-    // ── Sleep timer (the merged menu's "Temporizador" opens this) ──────────────────────────────────
-    var showSleepTimerDialog by remember { mutableStateOf(false) }
-    var sleepTimerValue by remember { mutableFloatStateOf(30f) }
-    if (showSleepTimerDialog) {
-        AlertDialog(
-            properties = DialogProperties(usePlatformDefaultWidth = false),
-            onDismissRequest = { showSleepTimerDialog = false },
-            title = { Text(stringResource(R.string.sleep_timer)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    showSleepTimerDialog = false
-                    playerConnection.service.sleepTimer.start(sleepTimerValue.roundToInt())
-                }) { Text(stringResource(android.R.string.ok)) }
-            },
-            dismissButton = {
-                TextButton(onClick = { showSleepTimerDialog = false }) {
-                    Text(stringResource(android.R.string.cancel))
-                }
-            },
-            text = {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = pluralStringResource(
-                            R.plurals.minute,
-                            sleepTimerValue.roundToInt(),
-                            sleepTimerValue.roundToInt(),
-                        ),
-                        style = MaterialTheme.typography.bodyLarge,
-                    )
-                    Slider(
-                        value = sleepTimerValue,
-                        onValueChange = { sleepTimerValue = it },
-                        valueRange = 5f..120f,
-                        steps = (120 - 5) / 5 - 1,
-                    )
-                    OutlinedIconButton(onClick = {
-                        showSleepTimerDialog = false
-                        playerConnection.service.sleepTimer.start(-1)
-                    }) { Text(stringResource(R.string.end_of_song)) }
-                }
-            },
-        )
-    }
 
     // ── "Añadir a playlist" ───────────────────────────────────────────────────────────────────────
     // The SAME dialog the merged menu opens (AuraPlayerMenu.kt:174) with the SAME `onGetSong` body,
@@ -711,11 +665,20 @@ private fun AuraPlayerShape(
     // the queue alone — which is what made dragging the queue up and down flip between two grounds in
     // one gesture.
     val ground = rememberAuraGround(mediaMetadata?.id, mediaMetadata?.thumbnailUrl)
+    val audioSessionId = playerConnection.player.audioSessionId
+    val rhythmLevel by rememberAuraRhythmLevel(
+        audioSessionId = audioSessionId,
+        enabled = state.isExpanded && !highPerfMode && !isCasting,
+        playing = effectiveIsPlaying,
+    )
+    // Rhythm boosts bloom/lobes/wash only — never buttons, cover chrome, or transport (owner:
+    // animated ground by song rhythm across the player).
+    val rhythmIntensity = 1f + (0.28f * rhythmLevel)
 
     BottomSheet(
         state = state,
         modifier = modifier,
-        background = { AuraGroundLayer(ground) },
+        background = { AuraGroundLayer(ground, intensity = rhythmIntensity) },
         // DESTRUCTIVE GESTURE, PRESERVED VERBATIM: dragging the sheet below the dismiss threshold stops
         // playback and wipes the queue + automix. Identical to the classic player (Player.kt:1550).
         onDismiss = {
@@ -823,52 +786,31 @@ private fun AuraPlayerShape(
                         tint = if (isFullScreen) AuraPalette.Teal else AuraPalette.OnGround.copy(alpha = 0.6f),
                         modifier = Modifier.tvFocusable(isTvOrCar, CircleShape),
                     )
-                }
-                // THE player menu's door while the player is expanded — there is no second one any more.
-                // The collapsed queue bar used to draw a ⋮ wired to the SAME [PlayerMenuHost] with the same
-                // arguments, on screen at the same time as this one in every arrangement; it is gone
-                // (AuraQueue.kt). While the inline lyrics are open this button is the LETRA menu instead,
-                // and in that state the player menu's door is the queue sheet's own header ⋮.
-                AuraIconButton(
-                    icon = AuraIcons.More,
-                    contentDescription = if (showInlineLyrics) "Menú de la letra" else "Más opciones",
-                    onClick = {
-                        val meta = mediaMetadata
-                        if (showInlineLyrics) {
-                            if (meta != null) {
-                                menuState.show {
-                                    iad1tya.echo.music.ui.menu.LyricsMenu(
-                                        lyricsProvider = { currentLyrics },
-                                        songProvider = { currentSong?.song },
-                                        mediaMetadataProvider = { meta },
-                                        onDismiss = menuState::dismiss,
-                                        onShowOffsetDialog = {
-                                            bottomSheetPageState.show {
-                                                ShowOffsetDialog(songProvider = { currentSong?.song })
-                                            }
-                                        },
-                                    )
-                                }
-                            }
-                        } else {
+                    // Lyrics menu stays in the header; the player menu's door is the bottom-bar Más.
+                    AuraIconButton(
+                        icon = AuraIcons.More,
+                        contentDescription = "Menú de la letra",
+                        onClick = {
+                            val meta = mediaMetadata ?: return@AuraIconButton
                             menuState.show {
-                                PlayerMenuHost(
-                                    mediaMetadata = meta,
-                                    navController = navController,
-                                    playerBottomSheetState = state,
-                                    onShowDetailsDialog = {
-                                        meta?.id?.let { id -> bottomSheetPageState.show { ShowMediaInfo(id) } }
-                                    },
+                                iad1tya.echo.music.ui.menu.LyricsMenu(
+                                    lyricsProvider = { currentLyrics },
+                                    songProvider = { currentSong?.song },
+                                    mediaMetadataProvider = { meta },
                                     onDismiss = menuState::dismiss,
-                                    onSleepTimer = { showSleepTimerDialog = true },
+                                    onShowOffsetDialog = {
+                                        bottomSheetPageState.show {
+                                            ShowOffsetDialog(songProvider = { currentSong?.song })
+                                        }
+                                    },
                                 )
                             }
-                        }
-                    },
-                    size = 22.dp,
-                    tint = AuraPalette.OnGround.copy(alpha = 0.6f),
-                    modifier = Modifier.tvFocusable(isTvOrCar, CircleShape),
-                )
+                        },
+                        size = 22.dp,
+                        tint = AuraPalette.OnGround.copy(alpha = 0.6f),
+                        modifier = Modifier.tvFocusable(isTvOrCar, CircleShape),
+                    )
+                }
             }
         }
 
@@ -974,20 +916,7 @@ private fun AuraPlayerShape(
                         // style values at once instead of special-casing one.
                         host = ThumbnailHost.OPAQUE_DARK,
                     )
-                    // Both terms: the gate says a canvas MAY play, the cache says one really landed for
-                    // this track. Either going false (thermal throttle, the switch, a track with no
-                    // canvas) takes the badge with it.
-                    if (canvasEnabled && canvasAvailable) {
-                        AuraTechnicalText(
-                            text = "CANVAS ▸ EN MOVIMIENTO",
-                            color = AuraPalette.OnGround.copy(alpha = 0.75f),
-                            modifier = Modifier
-                                .padding(AuraSpacing.Gutter)
-                                .clip(AuraShapes.Highlight)
-                                .background(AuraPalette.Ground.copy(alpha = 0.6f))
-                                .padding(horizontal = 8.dp, vertical = 4.dp),
-                        )
-                    }
+                    // Canvas animates in Thumbnail; no on-screen "CANVAS EN MOVIMIENTO" badge (owner).
                 }
             }
         }
@@ -1256,56 +1185,23 @@ private fun AuraPlayerShape(
                 // expanded — speaker → the same [AudioDeviceBottomSheet], letra → the same
                 // `showInlineLyrics` toggle (it is literally passed down as `onToggleLyrics`), cola → the
                 // same `queueSheetState.expandSoft()`. Those three now live ONLY in the queue bar. What is
-                // left here is what nothing else on this screen owns: like, descarga, and the video toggle
-                // this shape had lost entirely.
+                // left here is what nothing else on this screen owns: like, descarga.
                 //
-                // ── FOUR MORE, BY OWNER REQUEST — "no me gusta", "añadir a playlist", "ecualizador",
-                // "compartir" ─────────────────────────────────────────────────────────────────────────
-                // All four already existed inside the merged menu ([AuraPlayerMenu]) and they STAY there:
-                // this is a shortcut, not a move, so nobody used to the menu loses anything. Every one of
-                // them calls the SAME action the menu row calls — `toggleDislikeCurrentSong`, the same
-                // [AddToPlaylistDialog], the same `settings/equalizer` route with the same `collapseSoft`
-                // and `launchSingleTop`, the same ACTION_SEND over the same [ShareLinks.song]. There is no
-                // second implementation of anything below.
+                // ── ONE ROW OF FOUR, BY OWNER REQUEST ("no me gusta", "añadir a playlist") ────────────
+                // Compartir / Ecualizador / Vídeo used to share this row (two rows of four); the owner
+                // asked for exactly one row up here and moved those three down into [AuraQueueBar]'s own
+                // bottom row instead — see that file for their (unchanged) actions: the same
+                // `toggleDislikeCurrentSong`, the same `settings/equalizer` route, the same ACTION_SEND
+                // over [ShareLinks.song]. Nothing below duplicates logic that now lives there.
                 //
-                // WHY A [FlowRow] AND NOT ONE SCROLLING ROW. Seven 48 dp targets with 14 dp gaps measure
-                // 420 dp — a 360 dp phone cannot draw them, and 320 dp phones and split-screen windows are
-                // worse. A single horizontally-scrolling row "fits" by HIDING three of the seven behind an
-                // edge with no affordance, which is the opposite of what was asked ("visible en el
-                // reproductor"). Squeezing seven into 360 dp means ~51 dp each, i.e. touching neighbours,
-                // right above the transport people actually aim for.
-                //
-                // So: two rows of four, wrapped rather than hard-coded. `maxItemsInEachRow = 4` splits the
-                // list exactly where its MEANING splits — fila 1 «qué opinas y qué guardas» (me gusta, no
-                // me gusta, añadir, descargar), fila 2 «qué haces con ella» (compartir, ecualizador, vídeo)
-                // — and because it is a flow and not two literal Rows, a window too narrow even for four
-                // wraps again instead of clipping. Nothing is ever hidden at any width.
-                //
-                // Measured: fila 1 is 4 × 48 + 3 × 12 = 228 dp, centred, so 66 dp of clear margin each side
-                // at 360 dp and 46 dp at 320 dp; fila 2 is 168 dp (three buttons) or 108 dp (two, when the
-                // track has no video). The cost is one extra 48 dp band, which in portrait comes out of the
-                // artwork's `weight(1f)` and in the wide arrangement out of a column that already scrolls.
+                // Measured: 4 × 48 + 3 × 12 = 228 dp, centred, so 66 dp of clear margin each side at
+                // 360 dp and 46 dp at 320 dp — comfortably clears every phone width without wrapping.
                 Spacer(Modifier.height(if (dense) 2.dp else 6.dp))
                 val liked = currentSong?.song?.liked == true
-                // Same predicate and the same perf gate as the classic chip (Player.kt:1944) — a song is
-                // "video" if it IS one or if it is a podcast with a video URL, and High-Performance Mode
-                // hides the affordance on phones but never on TV/car. `|| videoMode` so that turning perf
-                // mode on WHILE a video plays can never strand the user inside video mode.
-                val hasVideo = videoMode || (
-                    (!highPerfMode || isTvOrCar) &&
-                        (meta.isVideoSong || !meta.podcastVideoUrl.isNullOrEmpty())
-                    )
-                // A local file has NO shareable link: [ShareLinks.song] builds
-                // `music.youtube.com/watch?v=<id>`, and for a local track that id is a `content://` /
-                // `file://` URI, so the "link" it would send resolves to nothing. The button is disabled
-                // rather than hidden — a control that appears and disappears per track is harder to learn
-                // than one that greys out, and `AuraIconButton` already dims a disabled glyph to 35 %.
-                val shareableLink = !meta.id.isLocalMediaId()
                 val quickAccessGlyph = if (dense) 20.dp else 22.dp
-                FlowRow(
+                val isLocalTrack = meta.id.isLocalMediaId() || currentSong?.song?.isLocal == true
+                Row(
                     horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
-                    verticalArrangement = Arrangement.spacedBy(0.dp),
-                    maxItemsInEachRow = 4,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     AuraIconButton(
@@ -1348,6 +1244,8 @@ private fun AuraPlayerShape(
                         tint = AuraPalette.OnGround.copy(alpha = 0.7f),
                         modifier = Modifier.tvFocusable(isTvOrCar, CircleShape),
                     )
+                    // Local files are already on-device — hide download and keep the other three centred.
+                    if (!isLocalTrack) {
                     Box(contentAlignment = Alignment.Center) {
                         AuraIconButton(
                             icon = if (download?.state == Download.STATE_COMPLETED) AuraIcons.Check
@@ -1388,55 +1286,6 @@ private fun AuraPlayerShape(
                             )
                         }
                     }
-
-                    // ── Segunda fila: qué haces con la canción ────────────────────────────────────
-                    AuraIconButton(
-                        icon = AuraIcons.Share,
-                        contentDescription = stringResource(R.string.share),
-                        enabled = shareableLink,
-                        onClick = {
-                            val intent = Intent().apply {
-                                action = Intent.ACTION_SEND
-                                type = "text/plain"
-                                putExtra(Intent.EXTRA_TEXT, ShareLinks.song(meta.id))
-                            }
-                            context.startActivity(Intent.createChooser(intent, null))
-                        },
-                        size = quickAccessGlyph,
-                        tint = AuraPalette.OnGround.copy(alpha = 0.7f),
-                        modifier = Modifier.tvFocusable(isTvOrCar, CircleShape),
-                    )
-                    // Exactly where the menu routes (AuraPlayerMenu.kt:731): collapse the player sheet
-                    // FIRST — the equalizer is a full screen and pushing it under an expanded player leaves
-                    // the sheet covering it — then `settings/equalizer` with `launchSingleTop`, so tapping
-                    // twice does not stack two copies on the back stack.
-                    AuraIconButton(
-                        icon = AuraIcons.Equalizer,
-                        contentDescription = stringResource(R.string.equalizer),
-                        onClick = {
-                            state.collapseSoft()
-                            navController.navigate("settings/equalizer") { launchSingleTop = true }
-                        },
-                        size = quickAccessGlyph,
-                        tint = AuraPalette.OnGround.copy(alpha = 0.7f),
-                        modifier = Modifier.tvFocusable(isTvOrCar, CircleShape),
-                    )
-                    if (hasVideo) {
-                        AuraIconButton(
-                            icon = AuraIcons.Video,
-                            // Names the DESTINATION, exactly like the classic affordance (whose glyph is
-                            // literally `music_note` while video is on): with video on, tapping goes back
-                            // to "Música". VIDEO IS A DEDICATED ExoPlayer in this app — this only flips
-                            // `videoMode`, it never touches the main player.
-                            contentDescription = stringResource(
-                                if (videoMode) R.string.music else R.string.video,
-                            ),
-                            onClick = { playerConnection.toggleVideoMode() },
-                            size = quickAccessGlyph,
-                            tint = if (videoMode) transportAccent
-                            else AuraPalette.OnGround.copy(alpha = 0.7f),
-                            modifier = Modifier.tvFocusable(isTvOrCar, CircleShape),
-                        )
                     }
                 }
             }
@@ -1625,7 +1474,7 @@ private fun AuraPlayerShape(
             }
         }
 
-        // CAST: pinned top-right in every layout, exactly as the classic player pins it. FOSS = no-op.
+        // CAST: pinned top-right in every layout (owner: always here; Más moved to the bottom bar).
         // `immersiveControlsVisible` mirrors the classic gate (Player.kt:3387): while the fullscreen
         // video has hidden its transport, a cast button floating alone over the picture is the one thing
         // that stops it being a clean view.
@@ -1636,7 +1485,8 @@ private fun AuraPlayerShape(
                     .windowInsetsPadding(
                         WindowInsets.systemBars.only(WindowInsetsSides.Top + WindowInsetsSides.End)
                     )
-                    .padding(horizontal = 52.dp, vertical = 20.dp)
+                    // Closer to the edge now that the header ⋮ is gone while lyrics are closed.
+                    .padding(horizontal = if (showInlineLyrics) 52.dp else 16.dp, vertical = 20.dp)
                     .size(22.dp),
                 tintColor = AuraPalette.OnGround,
             )
@@ -1662,6 +1512,19 @@ private fun AuraPlayerShape(
                 // being handed the parameter's DEFAULT while the player drew something else.
                 playerBackground = ground.style,
                 onToggleLyrics = { showInlineLyrics = !showInlineLyrics },
+                onMore = {
+                    menuState.show {
+                        PlayerMenuHost(
+                            mediaMetadata = mediaMetadata,
+                            navController = navController,
+                            playerBottomSheetState = state,
+                            onShowDetailsDialog = {
+                                mediaMetadata?.id?.let { id -> bottomSheetPageState.show { ShowMediaInfo(id) } }
+                            },
+                            onDismiss = menuState::dismiss,
+                        )
+                    }
+                },
             )
         }
     }

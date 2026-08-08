@@ -28,6 +28,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -117,7 +119,7 @@ import kotlinx.coroutines.withContext
  * than anywhere else: the ViewModel resolves a locally-created artist row ("LA########") to its real
  * YouTube channel by name, caches the page in memory and on disk, and appends the "Aparece en" and
  * "Videos oficiales" sections asynchronously. None of that is re-implemented — this screen only draws
- * `artistPage`, `libraryArtist`, `librarySongs`, `allLibrarySongs`, `libraryAlbums`, `artistVideoUrl`
+ * `artistPage`, `libraryArtist`, `allLibrarySongs`, `libraryAlbums`, `artistVideoUrl`
  * and `hasFailed`.
  *
  * The local/online decision is the classic `showLocal` rule verbatim: a REAL local artist, or a
@@ -171,7 +173,6 @@ fun AuraArtistScreen(
 
     val artistPage = viewModel.artistPage
     val libraryArtist by viewModel.libraryArtist.collectAsState()
-    val librarySongs by viewModel.librarySongs.collectAsState()
     val allLibrarySongs by viewModel.allLibrarySongs.collectAsState()
     val libraryAlbums by viewModel.libraryAlbums.collectAsState()
     val artistVideoUrl by viewModel.artistVideoUrl.collectAsState()
@@ -518,12 +519,14 @@ fun AuraArtistScreen(
                 }
 
                 if (showLocal) {
+                    // Full local catalogue for play/queue; the shelf preview is only for what we DRAW.
                     val filteredLibrarySongs = if (hideExplicit) {
-                        librarySongs.filter { !it.song.explicit }
+                        allLibrarySongs.filter { !it.song.explicit }
                     } else {
-                        librarySongs
+                        allLibrarySongs
                     }
-                    if (filteredLibrarySongs.isNotEmpty()) {
+                    val librarySongsPreview = filteredLibrarySongs.take(8)
+                    if (librarySongsPreview.isNotEmpty()) {
                         item(key = "aura_artist_local_songs_label") {
                             AuraSectionHeader(
                                 title = stringResource(R.string.songs),
@@ -534,9 +537,9 @@ fun AuraArtistScreen(
                             )
                         }
                         itemsIndexed(
-                            items = filteredLibrarySongs,
+                            items = librarySongsPreview,
                             key = { position, _ -> "aura_artist_local_song_$position" },
-                        ) { index, song ->
+                        ) { _, song ->
                             AuraSongRow(
                                 title = song.song.title,
                                 subtitle = song.artists.joinToString { it.name }
@@ -550,6 +553,7 @@ fun AuraArtistScreen(
                                 inLibrary = song.song.inLibrary != null,
                                 downloadId = song.id,
                                 format = song.format,
+                                playedInShuffle = song.song.totalPlayTime > 0L,
                                 onClick = {
                                     if (song.id == mediaMetadata?.id) {
                                         playerConnection.togglePlayPause()
@@ -559,7 +563,9 @@ fun AuraArtistScreen(
                                                 title = libraryArtist?.artist?.name
                                                     ?: context.getString(R.string.unknown_artist),
                                                 items = filteredLibrarySongs.map { it.toMediaItem() },
-                                                startIndex = index,
+                                                startIndex = filteredLibrarySongs
+                                                    .indexOfFirst { it.id == song.id }
+                                                    .coerceAtLeast(0),
                                             ),
                                         )
                                     }
@@ -608,18 +614,23 @@ fun AuraArtistScreen(
                             )
                         }
                         item(key = "aura_artist_local_albums_row") {
-                            AuraDetailShelf(modifier = Modifier.animateItem()) {
-                                itemsIndexed(
-                                    items = filteredLibraryAlbums,
-                                    key = { position, _ -> "aura_artist_local_album_$position" },
-                                ) { _, album ->
+                            val albumW = AuraAlbumShelfWidth
+                            AuraDoubleRowShelf(
+                                rowHeight = auraShelfCardStackHeight(albumW),
+                                modifier = Modifier.animateItem(),
+                            ) {
+                                items(
+                                    count = filteredLibraryAlbums.size,
+                                    key = { position -> "aura_artist_local_album_$position" },
+                                ) { position ->
+                                    val album = filteredLibraryAlbums[position]
                                     AuraCoverCard(
                                         title = album.album.title,
                                         subtitle = album.artists.joinToString { it.name }
                                             .takeIf { it.isNotBlank() },
                                         thumbnailUrl = album.album.thumbnailUrl,
                                         seed = album.id,
-                                        width = 128.dp,
+                                        width = albumW,
                                         isActive = mediaMetadata?.album?.id == album.id,
                                         isPlaying = isPlaying,
                                         onClick = { navController.navigate("album/${album.id}") },
@@ -634,7 +645,6 @@ fun AuraArtistScreen(
                                             }
                                         },
                                         modifier = Modifier
-                                            .animateItem()
                                             .tvFocusable(
                                                 isTvOrCar,
                                                 AuraShapes.Highlight,
@@ -646,6 +656,91 @@ fun AuraArtistScreen(
                         }
                     }
                 } else {
+                    // "Tu biblioteca" — owner request: this used to be reachable only by fully
+                    // switching the screen to the local view (`showLocal`, whose toggle FAB has been
+                    // dead since it shipped, `visible = false`), so a normal YouTube artist page never
+                    // showed the songs the user already has. Now it always shows here, ABOVE the
+                    // online sections, when there is anything to show.
+                    // Play uses the FULL local catalogue (`allLibrarySongs`), never the 3-row DB
+                    // preview — otherwise tapping song 1 of 10 stopped after the three drawn rows.
+                    val filteredLibrarySongs = if (hideExplicit) {
+                        allLibrarySongs.filter { !it.song.explicit }
+                    } else {
+                        allLibrarySongs
+                    }
+                    val filteredLibraryPreview = filteredLibrarySongs.take(8)
+                    if (filteredLibraryPreview.isNotEmpty()) {
+                        item(key = "aura_artist_library_preview_label") {
+                            AuraSectionHeader(
+                                title = stringResource(R.string.your_library),
+                                onClick = {
+                                    navController.navigate("artist/${viewModel.artistId}/songs")
+                                },
+                                modifier = Modifier.animateItem(),
+                            )
+                        }
+                        itemsIndexed(
+                            items = filteredLibraryPreview,
+                            key = { position, _ -> "aura_artist_library_preview_$position" },
+                        ) { _, song ->
+                            AuraSongRow(
+                                title = song.song.title,
+                                subtitle = song.artists.joinToString { it.name }
+                                    .takeIf { it.isNotBlank() },
+                                thumbnailUrl = song.song.thumbnailUrl,
+                                seed = song.id,
+                                isActive = song.id == mediaMetadata?.id,
+                                isPlaying = isPlaying,
+                                liked = song.song.liked,
+                                explicit = song.song.explicit,
+                                inLibrary = song.song.inLibrary != null,
+                                downloadId = song.id,
+                                format = song.format,
+                                playedInShuffle = song.song.totalPlayTime > 0L,
+                                onClick = {
+                                    if (song.id == mediaMetadata?.id) {
+                                        playerConnection.togglePlayPause()
+                                    } else {
+                                        playerConnection.playQueue(
+                                            ListQueue(
+                                                title = libraryArtist?.artist?.name
+                                                    ?: context.getString(R.string.unknown_artist),
+                                                items = filteredLibrarySongs.map { it.toMediaItem() },
+                                                startIndex = filteredLibrarySongs
+                                                    .indexOfFirst { it.id == song.id }
+                                                    .coerceAtLeast(0),
+                                            ),
+                                        )
+                                    }
+                                },
+                                onLongClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    menuState.show {
+                                        SongMenu(
+                                            originalSong = song,
+                                            navController = navController,
+                                            onDismiss = menuState::dismiss,
+                                        )
+                                    }
+                                },
+                                onMenuClick = {
+                                    menuState.show {
+                                        SongMenu(
+                                            originalSong = song,
+                                            navController = navController,
+                                            onDismiss = menuState::dismiss,
+                                        )
+                                    }
+                                },
+                                menuContentDescription = song.song.title,
+                                modifier = Modifier
+                                    .animateItem()
+                                    .padding(horizontal = AuraSpacing.Gutter)
+                                    .tvFocusable(isTvOrCar, AuraShapes.Highlight, scaleFocused = 1f),
+                            )
+                        }
+                    }
+
                     artistPage?.sections?.forEachIndexed { sectionIndex, section ->
                         val sectionItems = section.items.distinctBy { it.id }
                         if (sectionItems.isEmpty()) return@forEachIndexed
@@ -673,13 +768,11 @@ fun AuraArtistScreen(
                             )
                         }
 
-                        // The list layout ONLY when every item is a song with an album (e.g. "Canciones
-                        // populares"). A mixed section ("Aparece en" = albums + collab singles) falls
-                        // through to the shelf, which handles every item type; casting them all to
-                        // SongItem here is what used to crash.
+                        // Tracks → vertical list (Apple/YTM). Videos / albums / EPs / playlists →
+                        // typed cover shelves. Never dump plain songs into a postage-stamp grid.
                         if (
                             sectionItems.all { it is SongItem } &&
-                            (sectionItems.firstOrNull() as? SongItem)?.album != null
+                            sectionItems.none { (it as SongItem).isVideoSong }
                         ) {
                             itemsIndexed(
                                 items = sectionItems,
@@ -727,32 +820,101 @@ fun AuraArtistScreen(
                             }
                         } else {
                             item(key = "aura_artist_section_${sectionIndex}_shelf") {
-                                AuraDetailShelf(modifier = Modifier.animateItem()) {
-                                    itemsIndexed(
-                                        items = sectionItems,
-                                        key = { position, _ ->
+                                val videoHeavy = sectionItems.any { it is SongItem && it.isVideoSong }
+                                if (videoHeavy) {
+                                    // YTM-style: one row of large full-bleed 16:9 cards (not a cramped 2×N stamp grid).
+                                    AuraDetailShelf(modifier = Modifier.animateItem()) {
+                                        items(
+                                            count = sectionItems.size,
+                                            key = { position ->
+                                                "aura_artist_section_${sectionIndex}_card_$position"
+                                            },
+                                        ) { position ->
+                                            val item = sectionItems[position]
+                                            AuraTypedYtCoverCard(
+                                                item = item,
+                                                cardScale = 1.2f,
+                                                isActive = when (item) {
+                                                    is SongItem -> mediaMetadata?.id == item.id
+                                                    is AlbumItem -> mediaMetadata?.album?.id == item.id
+                                                    else -> false
+                                                },
+                                                isPlaying = isPlaying,
+                                                onClick = {
+                                                    if (item is SongItem && sectionItems.all { it is SongItem }) {
+                                                        if (item.id == mediaMetadata?.id) {
+                                                            playerConnection.togglePlayPause()
+                                                        } else {
+                                                            val sectionSongs = sectionItems.filterIsInstance<SongItem>()
+                                                            playerConnection.playQueue(
+                                                                ListQueue(
+                                                                    title = section.title,
+                                                                    items = sectionSongs.map { it.toMediaItem() },
+                                                                    startIndex = sectionSongs
+                                                                        .indexOfFirst { it.id == item.id }
+                                                                        .coerceAtLeast(0),
+                                                                ),
+                                                            )
+                                                        }
+                                                    } else {
+                                                        onYtItemClick(item)
+                                                    }
+                                                },
+                                                onLongClick = {
+                                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                    openYtMenu(item)
+                                                },
+                                                modifier = Modifier.tvFocusable(
+                                                    isTvOrCar,
+                                                    AuraShapes.Highlight,
+                                                    scaleFocused = 1f,
+                                                ),
+                                            )
+                                        }
+                                    }
+                                } else {
+                                val cardW = AuraAlbumShelfWidth
+                                // Albums / EPs / Singles / playlists: two sideways rows (Apple + YTM).
+                                AuraDoubleRowShelf(
+                                    rowHeight = auraShelfCardStackHeight(cardW),
+                                    modifier = Modifier.animateItem(),
+                                ) {
+                                    items(
+                                        count = sectionItems.size,
+                                        key = { position ->
                                             "aura_artist_section_${sectionIndex}_card_$position"
                                         },
-                                    ) { _, item ->
-                                        AuraCoverCard(
-                                            title = item.title,
-                                            subtitle = auraSearchYtSubtitle(item),
-                                            thumbnailUrl = item.thumbnail,
-                                            seed = item.id,
-                                            width = 128.dp,
-                                            // Artists are round everywhere in this app, classic and new.
-                                            shape = if (item is ArtistItem) {
-                                                CircleShape
-                                            } else {
-                                                AuraShapes.Artwork
-                                            },
+                                    ) { position ->
+                                        val item = sectionItems[position]
+                                        AuraTypedYtCoverCard(
+                                            item = item,
+                                            cardScale = 1.05f,
                                             isActive = when (item) {
                                                 is SongItem -> mediaMetadata?.id == item.id
                                                 is AlbumItem -> mediaMetadata?.album?.id == item.id
                                                 else -> false
                                             },
                                             isPlaying = isPlaying,
-                                            onClick = { onYtItemClick(item) },
+                                            onClick = {
+                                                if (item is SongItem && sectionItems.all { it is SongItem }) {
+                                                    if (item.id == mediaMetadata?.id) {
+                                                        playerConnection.togglePlayPause()
+                                                    } else {
+                                                        val sectionSongs = sectionItems.filterIsInstance<SongItem>()
+                                                        playerConnection.playQueue(
+                                                            ListQueue(
+                                                                title = section.title,
+                                                                items = sectionSongs.map { it.toMediaItem() },
+                                                                startIndex = sectionSongs
+                                                                    .indexOfFirst { it.id == item.id }
+                                                                    .coerceAtLeast(0),
+                                                            ),
+                                                        )
+                                                    }
+                                                } else {
+                                                    onYtItemClick(item)
+                                                }
+                                            },
                                             onLongClick = {
                                                 haptic.performHapticFeedback(
                                                     HapticFeedbackType.LongPress,
@@ -760,7 +922,6 @@ fun AuraArtistScreen(
                                                 openYtMenu(item)
                                             },
                                             modifier = Modifier
-                                                .animateItem()
                                                 .tvFocusable(
                                                     isTvOrCar,
                                                     AuraShapes.Highlight,
@@ -768,6 +929,7 @@ fun AuraArtistScreen(
                                                 ),
                                         )
                                     }
+                                }
                                 }
                             }
                         }

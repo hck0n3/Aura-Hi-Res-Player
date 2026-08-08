@@ -678,7 +678,7 @@ fun AuraMiniPlayer(
         // it becomes a placebo in the first place.
         val miniStyle by rememberEnumPreference(
             key = MiniPlayerBackgroundStyleKey,
-            defaultValue = PlayerBackgroundStyle.DEFAULT,
+            defaultValue = PlayerBackgroundStyle.GLOW_ANIMATED,
         )
         val ground = rememberAuraGround(
             mediaMetadata?.id,
@@ -752,11 +752,11 @@ fun AuraMiniPlayer(
                         playerConnection = playerConnection,
                         modifier = Modifier.fillMaxSize().clip(AuraShapes.Artwork),
                     )
-                } else if (mediaMetadata?.thumbnailUrl != null) {
-                    AsyncImage(
-                        model = mediaMetadata?.thumbnailUrl,
-                        contentDescription = null,
+                } else {
+                    AuraStableCoverImage(
+                        url = mediaMetadata?.thumbnailUrl,
                         contentScale = if (cropAlbumArt) ContentScale.Crop else ContentScale.Fit,
+                        decodeTo = 128,
                         modifier = Modifier.fillMaxSize(),
                     )
                 }

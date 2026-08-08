@@ -767,7 +767,15 @@ fun ArtistScreen(
 
 
                 if (showLocal) {
-                    if (librarySongs.isNotEmpty()) {
+                    // Draw a short preview; queue the FULL local catalogue (allLibrarySongs), never the
+                    // 3-item DB preview — same bug the New UI had ("10 songs, play first, nothing after").
+                    val filteredAllLibrarySongs = if (hideExplicit) {
+                        allLibrarySongs.filter { !it.song.explicit }
+                    } else {
+                        allLibrarySongs
+                    }
+                    val filteredLibrarySongs = filteredAllLibrarySongs.take(8)
+                    if (filteredLibrarySongs.isNotEmpty()) {
                         item(key = "local_songs_title") {
                             NavigationTitle(
                                 title = stringResource(R.string.songs),
@@ -778,11 +786,6 @@ fun ArtistScreen(
                             )
                         }
 
-                        val filteredLibrarySongs = if (hideExplicit) {
-                            librarySongs.filter { !it.song.explicit }
-                        } else {
-                            librarySongs
-                        }
                         itemsIndexed(
                             items = filteredLibrarySongs,
                             key = { index, item -> "local_song_${item.id}_$index" }
@@ -821,8 +824,10 @@ fun ArtistScreen(
                                                 playerConnection.playQueue(
                                                     ListQueue(
                                                         title = libraryArtist?.artist?.name ?: "Unknown Artist",
-                                                        items = librarySongs.map { it.toMediaItem() },
-                                                        startIndex = index
+                                                        items = filteredAllLibrarySongs.map { it.toMediaItem() },
+                                                        startIndex = filteredAllLibrarySongs
+                                                            .indexOfFirst { it.id == song.id }
+                                                            .coerceAtLeast(0),
                                                     )
                                                 )
                                             }
@@ -1015,8 +1020,32 @@ fun ArtistScreen(
                                             modifier = Modifier
                                                 .combinedClickable(
                                                     onClick = {
-                                                        when (item) {
-                                                            is SongItem ->
+                                                        // Same rule as the list-row branch above: a section made
+                                                        // ENTIRELY of songs queues the whole thing (like an album)
+                                                        // instead of a single-song radio, even when it fell to this
+                                                        // grid because its first item happened to have no `.album`
+                                                        // (e.g. some "top songs" entries) — that gap is exactly what
+                                                        // made "toco una y no sigue con las demás" reproducible.
+                                                        val sectionSongs = section.items.distinctBy { it.id }
+                                                        when {
+                                                            item is SongItem && sectionSongs.all { it is SongItem } -> {
+                                                                if (item.id == mediaMetadata?.id) {
+                                                                    playerConnection.togglePlayPause()
+                                                                } else {
+                                                                    val songs = sectionSongs.filterIsInstance<SongItem>()
+                                                                    playerConnection.playQueue(
+                                                                        ListQueue(
+                                                                            title = section.title,
+                                                                            items = songs.map { it.toMediaItem() },
+                                                                            startIndex = songs
+                                                                                .indexOfFirst { it.id == item.id }
+                                                                                .coerceAtLeast(0),
+                                                                        ),
+                                                                    )
+                                                                }
+                                                            }
+
+                                                            item is SongItem ->
                                                                 playerConnection.playQueue(
                                                                     YouTubeQueue(
                                                                         WatchEndpoint(videoId = item.id),
@@ -1024,9 +1053,9 @@ fun ArtistScreen(
                                                                     ),
                                                                 )
 
-                                                            is AlbumItem -> navController.navigate("album/${item.id}")
-                                                            is ArtistItem -> navController.navigate("artist/${item.id}")
-                                                            is PlaylistItem -> navController.navigate("online_playlist/${item.id}")
+                                                            item is AlbumItem -> navController.navigate("album/${item.id}")
+                                                            item is ArtistItem -> navController.navigate("artist/${item.id}")
+                                                            item is PlaylistItem -> navController.navigate("online_playlist/${item.id}")
                                                         }
                                                     },
                                                     onLongClick = {

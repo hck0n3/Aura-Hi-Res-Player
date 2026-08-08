@@ -22,6 +22,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import iad1tya.echo.music.constants.SuggestionRegionSlugToName
+import iad1tya.echo.music.ui.newui.LocalAuraFloatingChrome
+import iad1tya.echo.music.ui.newui.auraFloatingContainerColor
+import iad1tya.echo.music.ui.newui.auraFloatingScrimColor
+import iad1tya.echo.music.ui.newui.rememberAuraPanelSkin
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -42,11 +46,18 @@ fun SuggestionRegionSheet(
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val bottomSheetState = rememberModalBottomSheetState()
+    val skin = rememberAuraPanelSkin()
+    val premium = skin.enabled && skin.darkGround
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        sheetState = bottomSheetState
+        sheetState = bottomSheetState,
+        containerColor = if (premium) auraFloatingContainerColor()
+        else MaterialTheme.colorScheme.surface,
+        scrimColor = if (premium) auraFloatingScrimColor() else BottomSheetDefaults.ScrimColor,
+        tonalElevation = 0.dp,
     ) {
+        CompositionLocalProvider(LocalAuraFloatingChrome provides premium) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
                 text = "Choose Suggestions Region",
@@ -149,6 +160,7 @@ fun SuggestionRegionSheet(
                     Spacer(modifier = Modifier.height(24.dp))
                 }
             }
+        }
         }
     }
     

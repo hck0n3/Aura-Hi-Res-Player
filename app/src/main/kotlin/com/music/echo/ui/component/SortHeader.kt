@@ -41,6 +41,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import iad1tya.echo.music.R
 import iad1tya.echo.music.constants.PlaylistSongSortType
+import iad1tya.echo.music.ui.newui.AuraPalette
+import iad1tya.echo.music.ui.newui.AuraShapes
+import iad1tya.echo.music.ui.newui.rememberAuraPanelSkin
 import iad1tya.echo.music.ui.utils.rememberIsTvOrCar
 import iad1tya.echo.music.ui.utils.tvFocusable
 
@@ -57,6 +60,8 @@ inline fun <reified T : Enum<T>> SortHeader(
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
     val isTvOrCar = rememberIsTvOrCar()
+    val skin = rememberAuraPanelSkin()
+    val premium = skin.enabled && skin.darkGround
 
     val displayDescending = showDescending == true && sortType != PlaylistSongSortType.CUSTOM
 
@@ -155,6 +160,8 @@ inline fun <reified T : Enum<T>> SortHeader(
         expanded = menuExpanded,
         onDismissRequest = { menuExpanded = false },
         modifier = Modifier.widthIn(min = 172.dp),
+        shape = if (premium) AuraShapes.Card else MaterialTheme.shapes.extraSmall,
+        containerColor = if (premium) AuraPalette.FrostFill else MaterialTheme.colorScheme.surfaceContainer,
     ) {
         enumValues<T>().forEach { type ->
             DropdownMenuItem(

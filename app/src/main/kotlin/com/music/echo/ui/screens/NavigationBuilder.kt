@@ -22,7 +22,6 @@ import androidx.navigation.compose.dialog
 import androidx.navigation.navArgument
 import iad1tya.echo.music.constants.PureBlackKey
 import iad1tya.echo.music.ui.screens.artist.ArtistAlbumsScreen
-import iad1tya.echo.music.ui.screens.artist.ArtistItemsScreen
 import iad1tya.echo.music.ui.screens.artist.ArtistSongsScreen
 import iad1tya.echo.music.ui.screens.library.FavoriteAlbumsScreen
 import iad1tya.echo.music.ui.screens.library.ReleaseRadarScreen
@@ -128,7 +127,7 @@ fun NavGraphBuilder.navigationBuilder(
     }
 
     composable("favorite_albums") {
-        FavoriteAlbumsScreen(navController)
+        iad1tya.echo.music.ui.newui.FavoriteAlbumsScreenHost(navController)
     }
 
     composable("release_radar") {
@@ -268,7 +267,7 @@ fun NavGraphBuilder.navigationBuilder(
             },
         ),
     ) {
-        ArtistItemsScreen(navController, scrollBehavior)
+        iad1tya.echo.music.ui.newui.ArtistItemsScreenHost(navController, scrollBehavior)
     }
 
     // NOT "artist/section_buffer": that collides with the "artist/{artistId}" pattern above, and
@@ -276,7 +275,7 @@ fun NavGraphBuilder.navigationBuilder(
     // order — so "see all" on a section with no moreEndpoint could open ArtistScreen with
     // artistId = "section_buffer" instead of this grid. A route with no slash cannot collide.
     composable("artist_section_buffer") {
-        iad1tya.echo.music.ui.screens.artist.ArtistAlbumsGridScreen(navController, scrollBehavior)
+        iad1tya.echo.music.ui.newui.ArtistSectionGridScreenHost(navController, scrollBehavior)
     }
 
     composable(

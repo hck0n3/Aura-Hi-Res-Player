@@ -26,6 +26,10 @@
     <string name="offline_mode">Offline mode</string>
     <string name="offline_mode_on">Offline mode enabled</string>
     <string name="offline_mode_off">Offline mode disabled</string>
+    <string name="offline_disable">Go online</string>
+    <string name="offline_banner_hint">Downloads only. Playback will not use the network.</string>
+    <string name="offline_empty_downloads">No downloads yet. Download songs while online to play them here.</string>
+    <string name="error_offline_not_downloaded">Offline mode: this track is not fully downloaded.</string>
     <string name="mood_and_genres">Mood and Genres</string>
     <string name="account">Account</string>
     <string name="quick_picks">Quick picks</string>

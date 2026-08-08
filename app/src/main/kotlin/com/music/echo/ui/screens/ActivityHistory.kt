@@ -38,7 +38,11 @@ import iad1tya.echo.music.R
 import iad1tya.echo.music.ui.newui.AuraPalette
 import iad1tya.echo.music.ui.newui.AuraShapes
 import iad1tya.echo.music.ui.newui.AuraType
+import iad1tya.echo.music.ui.newui.LocalAuraFloatingChrome
+import iad1tya.echo.music.ui.newui.auraFloatingContainerColor
+import iad1tya.echo.music.ui.newui.auraFloatingScrimColor
 import iad1tya.echo.music.ui.newui.rememberAuraPanelSkin
+import androidx.compose.runtime.CompositionLocalProvider
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -64,10 +68,13 @@ fun ActivityHistoryBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         dragHandle = { BottomSheetDefaults.DragHandle() },
-        containerColor = if (auraDark) AuraPalette.GroundRaised
+        containerColor = if (auraDark) auraFloatingContainerColor()
         else MaterialTheme.colorScheme.surfaceContainerLow,
-        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+        scrimColor = if (auraDark) auraFloatingScrimColor() else BottomSheetDefaults.ScrimColor,
+        shape = if (auraDark) AuraShapes.Sheet else RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+        tonalElevation = 0.dp,
     ) {
+        CompositionLocalProvider(LocalAuraFloatingChrome provides auraDark) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -430,10 +437,9 @@ fun ActivityHistoryBottomSheet(
                 }
             }
         }
+        }
     }
 }
-
-/** Converts milliseconds to a human-readable "Xh Ym" string */
 private fun formatDuration(ms: Long): String {
     if (ms <= 0L) return "0m"
     val totalMinutes = ms / 60_000

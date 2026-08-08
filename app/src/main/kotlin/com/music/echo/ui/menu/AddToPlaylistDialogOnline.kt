@@ -58,6 +58,9 @@ import iad1tya.echo.music.ui.component.ListDialog
 import iad1tya.echo.music.ui.component.ListItem
 import iad1tya.echo.music.ui.component.PlaylistListItem
 import iad1tya.echo.music.ui.component.SortHeader
+import iad1tya.echo.music.ui.newui.AuraPalette
+import iad1tya.echo.music.ui.newui.auraFloatingTextFieldColors
+import iad1tya.echo.music.ui.newui.rememberAuraPanelSkin
 import iad1tya.echo.music.utils.rememberEnumPreference
 import iad1tya.echo.music.utils.rememberPreference
 import iad1tya.echo.music.utils.reportException
@@ -124,6 +127,8 @@ fun AddToPlaylistDialogOnline(
     }
 
     if (isVisible) {
+        val skin = rememberAuraPanelSkin()
+        val premium = skin.enabled && skin.darkGround
         val totalItemsCount = 1 + filteredPlaylists.size
         ListDialog(
             onDismiss = onDismiss
@@ -135,7 +140,9 @@ fun AddToPlaylistDialogOnline(
                         Image(
                             painter = painterResource(id = R.drawable.playlist_add),
                             contentDescription = null,
-                            colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onBackground),
+                            colorFilter = ColorFilter.tint(
+                                if (premium) AuraPalette.OnGround else MaterialTheme.colorScheme.onBackground,
+                            ),
                             modifier = Modifier.size(ListThumbnailSize)
                         )
                     },
@@ -155,14 +162,15 @@ fun AddToPlaylistDialogOnline(
                             Text(
                                 text = stringResource(R.string.search),
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                color = if (premium) AuraPalette.OnGroundMuted
+                                else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                             ) 
                         },
                         leadingIcon = {
                             Icon(
                                 painter = painterResource(R.drawable.search),
                                 contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary
+                                tint = if (premium) AuraPalette.Teal else MaterialTheme.colorScheme.primary
                             )
                         },
                         trailingIcon = {
@@ -171,14 +179,16 @@ fun AddToPlaylistDialogOnline(
                                     Icon(
                                         painter = painterResource(R.drawable.close),
                                         contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                        tint = if (premium) AuraPalette.OnGroundMuted
+                                        else MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
                             }
                         },
                         singleLine = true,
                         shape = RoundedCornerShape(24.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
+                        colors = if (premium) auraFloatingTextFieldColors()
+                        else OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = MaterialTheme.colorScheme.primary,
                             unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
                             focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,

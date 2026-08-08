@@ -87,6 +87,7 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.ToggleButton
@@ -98,6 +99,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.graphics.Color
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -290,11 +292,38 @@ fun AudioDeviceBottomSheet(onDismiss: () -> Unit, modifier: Modifier = Modifier)
         }
     }
 
+    val skin = iad1tya.echo.music.ui.newui.rememberAuraPanelSkin()
+    val premiumSheet = skin.enabled && skin.darkGround
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = bottomSheetState,
-        modifier = modifier
+        modifier = modifier,
+        shape = if (premiumSheet) iad1tya.echo.music.ui.newui.AuraShapes.Sheet
+            else BottomSheetDefaults.ExpandedShape,
+        containerColor = if (premiumSheet) iad1tya.echo.music.ui.newui.AuraPalette.FrostFill
+            else MaterialTheme.colorScheme.surface,
+        contentColor = if (premiumSheet) iad1tya.echo.music.ui.newui.AuraPalette.OnGround
+            else MaterialTheme.colorScheme.onSurface,
+        scrimColor = if (premiumSheet) iad1tya.echo.music.ui.newui.auraFloatingScrimColor()
+            else BottomSheetDefaults.ScrimColor,
+        tonalElevation = 0.dp,
+        dragHandle = {
+            Box(
+                Modifier
+                    .padding(top = 12.dp, bottom = 8.dp)
+                    .size(width = 36.dp, height = 4.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(
+                        if (premiumSheet) iad1tya.echo.music.ui.newui.AuraPalette.OnGround.copy(alpha = 0.28f)
+                        else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                    ),
+            )
+        },
     ) {
+        androidx.compose.runtime.CompositionLocalProvider(
+            iad1tya.echo.music.ui.newui.LocalAuraFloatingChrome provides premiumSheet,
+        ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -604,6 +633,7 @@ fun AudioDeviceBottomSheet(onDismiss: () -> Unit, modifier: Modifier = Modifier)
                 }
             }
         }
+        }
     }
 }
 
@@ -628,13 +658,20 @@ fun VolumeControlRow(
         currentValue = volume
     }
 
+    val volumeSkin = iad1tya.echo.music.ui.newui.rememberAuraPanelSkin()
+    val volumeTrack = if (volumeSkin.enabled && volumeSkin.darkGround) {
+        iad1tya.echo.music.ui.newui.AuraPalette.SurfaceFill
+    } else {
+        MaterialTheme.colorScheme.surfaceContainerHigh
+    }
+
     Surface(
         modifier = modifier
             .fillMaxWidth()
             .height(72.dp),
         shape = CircleShape,
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        tonalElevation = 1.dp
+        color = volumeTrack,
+        tonalElevation = 0.dp
     ) {
         Box(contentAlignment = Alignment.CenterStart) {
             
@@ -1053,9 +1090,20 @@ private fun AudioDeviceRow(
     modifier: Modifier = Modifier
 ) {
     val isActiveDevice = device.isActive
-    
-    val containerColor = if (isActiveDevice) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
-    val onContainer = if (isActiveDevice) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+    val skin = iad1tya.echo.music.ui.newui.rememberAuraPanelSkin()
+    val premium = skin.enabled && skin.darkGround
+
+    val containerColor = when {
+        premium && isActiveDevice -> iad1tya.echo.music.ui.newui.AuraPalette.Teal.copy(alpha = 0.18f)
+        premium -> iad1tya.echo.music.ui.newui.AuraPalette.SurfaceFill
+        isActiveDevice -> MaterialTheme.colorScheme.primaryContainer
+        else -> MaterialTheme.colorScheme.surfaceVariant
+    }
+    val onContainer = when {
+        premium -> iad1tya.echo.music.ui.newui.AuraPalette.OnGround
+        isActiveDevice -> MaterialTheme.colorScheme.onPrimaryContainer
+        else -> MaterialTheme.colorScheme.onSurface
+    }
 
     val scallopShape = RoundedStarShape(sides = 8, curve = 0.10, rotation = 0f)
 

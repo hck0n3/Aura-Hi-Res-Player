@@ -18,7 +18,9 @@ import androidx.compose.ui.graphics.Color
  * third one. Do not add a curve here without a call site that needs something these cannot express.
  *
  * No `tween` anywhere: a spring settles on its own and costs nothing once it has, which is what
- * keeps this side of the standing heat/battery gate.
+ * keeps this side of the standing heat/battery gate. Springs are also display-refresh-rate native —
+ * they advance in real time via the choreographer, so a 60 / 90 / 120 Hz panel all look equally
+ * continuous without a hand-tuned duration table.
  */
 object AuraMotion {
     /** Position, size, padding, offset — anything that moves or resizes. */

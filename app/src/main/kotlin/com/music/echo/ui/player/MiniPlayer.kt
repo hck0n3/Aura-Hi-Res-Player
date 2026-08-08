@@ -214,7 +214,7 @@ private fun NewMiniPlayer(
     // off.
     val useDarkTheme = rememberEffectiveDarkTheme()
     
-    val miniPlayerBackgroundPref by rememberEnumPreference(MiniPlayerBackgroundStyleKey, defaultValue = PlayerBackgroundStyle.DEFAULT)
+    val miniPlayerBackgroundPref by rememberEnumPreference(MiniPlayerBackgroundStyleKey, defaultValue = PlayerBackgroundStyle.GLOW_ANIMATED)
     // "Interfaz nueva": the new UI owns the look, and it draws no glass anywhere. With the flag on
     // this composable is no longer reached in ANY orientation (AuraMiniPlayer replaces it, and
     // AuraPlayer stopped delegating landscape/wide/TV in 0.6.147). The line is KEPT as a belt-and-

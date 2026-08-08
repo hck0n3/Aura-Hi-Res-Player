@@ -790,98 +790,6 @@ fun BottomSheetPlayer(
     val download by LocalDownloadUtil.current.getDownload(mediaMetadata?.id ?: "")
         .collectAsState(initial = null)
 
-    val sleepTimerEnabled =
-        remember(
-            playerConnection.service.sleepTimer.triggerTime,
-            playerConnection.service.sleepTimer.pauseWhenSongEnd
-        ) {
-            playerConnection.service.sleepTimer.isActive
-        }
-
-    var sleepTimerTimeLeft by remember {
-        mutableLongStateOf(0L)
-    }
-
-    LaunchedEffect(sleepTimerEnabled) {
-        if (sleepTimerEnabled) {
-            while (isActive) {
-                sleepTimerTimeLeft =
-                    if (playerConnection.service.sleepTimer.pauseWhenSongEnd) {
-                        playerConnection.player.duration - playerConnection.player.currentPosition
-                    } else {
-                        playerConnection.service.sleepTimer.triggerTime - System.currentTimeMillis()
-                    }
-                delay(1000L)
-            }
-        }
-    }
-
-    var showSleepTimerDialog by remember {
-        mutableStateOf(false)
-    }
-
-    var sleepTimerValue by remember {
-        mutableFloatStateOf(30f)
-    }
-    if (showSleepTimerDialog) {
-        AlertDialog(
-            properties = DialogProperties(usePlatformDefaultWidth = false),
-            onDismissRequest = { showSleepTimerDialog = false },
-            icon = {
-                Icon(
-                    painter = painterResource(R.drawable.bedtime),
-                    contentDescription = null
-                )
-            },
-            title = { Text(stringResource(R.string.sleep_timer)) },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showSleepTimerDialog = false
-                        playerConnection.service.sleepTimer.start(sleepTimerValue.roundToInt())
-                    },
-                ) {
-                    Text(stringResource(android.R.string.ok))
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = { showSleepTimerDialog = false },
-                ) {
-                    Text(stringResource(android.R.string.cancel))
-                }
-            },
-            text = {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = pluralStringResource(
-                            R.plurals.minute,
-                            sleepTimerValue.roundToInt(),
-                            sleepTimerValue.roundToInt()
-                        ),
-                        style = MaterialTheme.typography.bodyLarge,
-                    )
-
-                    Slider(
-                        value = sleepTimerValue,
-                        onValueChange = { sleepTimerValue = it },
-                        valueRange = 5f..120f,
-                        steps = (120 - 5) / 5 - 1,
-                    )
-
-                    OutlinedIconButton(
-                        onClick = {
-                            showSleepTimerDialog = false
-                            playerConnection.service.sleepTimer.start(-1)
-                        },
-                    ) {
-                        Text(stringResource(R.string.end_of_song))
-                    }
-                }
-            },
-        )
-    }
-
     var showChoosePlaylistDialog by rememberSaveable {
         mutableStateOf(false)
     }
@@ -1662,7 +1570,7 @@ fun BottomSheetPlayer(
                                         modifier = Modifier.size(24.dp)
                                     )
                                 }
-                            } else {
+                            } else if (!isLocalMedia) {
                                 FilledIconButton(
                                     onClick = {
                                         mediaMetadata?.let { meta ->
@@ -2028,6 +1936,7 @@ fun BottomSheetPlayer(
                     }) {
                         Icon(painterResource(R.drawable.share), null, tint = textButtonColor, modifier = Modifier.size(20.dp))
                     }
+                    if (!isLocalMedia) {
                     PlayerActionChip(
                         label = "Descargar",
                         tint = textButtonColor,
@@ -2054,6 +1963,7 @@ fun BottomSheetPlayer(
                             Download.STATE_QUEUED, Download.STATE_DOWNLOADING -> CircularWavyProgressIndicator(modifier = Modifier.size(18.dp))
                             else -> Icon(painterResource(R.drawable.download), null, tint = textButtonColor, modifier = Modifier.size(20.dp))
                         }
+                    }
                     }
                     PlayerActionChip(
                         label = "Mix",
@@ -2084,7 +1994,6 @@ fun BottomSheetPlayer(
                                     navController = navController,
                                     playerBottomSheetState = state,
                                     onShowDetailsDialog = { mediaMetadata.id.let { bottomSheetPageState.show { ShowMediaInfo(it) } } },
-                                    onSleepTimer = { showSleepTimerDialog = true },
                                     onDismiss = menuState::dismiss,
                                 )
                             }
@@ -2204,57 +2113,6 @@ fun BottomSheetPlayer(
                             }
                         }
                     }
-                    if (!useNewPlayerDesign && sleepTimerEnabled) {
-                        Box(
-                            contentAlignment = Alignment.Center,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(TextBackgroundColor.copy(alpha = 0.08f))
-                                .border(
-                                    width = 0.5.dp,
-                                    color = TextBackgroundColor.copy(alpha = 0.12f),
-                                    shape = RoundedCornerShape(4.dp)
-                                )
-                                .clickable {
-                                    showSleepTimerDialog = true
-                                }
-                                .padding(horizontal = 6.dp, vertical = 2.dp)
-                        ) {
-                            AnimatedContent(
-                                targetState = sleepTimerEnabled,
-                                transitionSpec = {
-                                    fadeIn(animationSpec = tween(300)) togetherWith
-                                            fadeOut(animationSpec = tween(300))
-                                },
-                                label = "QualityTimerSwitcher"
-                            ) { isTimerActive ->
-                                if (isTimerActive) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                    ) {
-                                        Icon(
-                                            painter = painterResource(R.drawable.sleep_timer),
-                                            contentDescription = null,
-                                            tint = TextBackgroundColor.copy(alpha = 0.8f),
-                                            modifier = Modifier.size(12.dp)
-                                        )
-                                        Text(
-                                            text = makeTimeString(sleepTimerTimeLeft.coerceAtLeast(0)),
-                                            style = MaterialTheme.typography.labelSmall.copy(
-                                                fontSize = 10.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                letterSpacing = 1.5.sp
-                                            ),
-                                            color = TextBackgroundColor.copy(alpha = 0.8f),
-                                            maxLines = 1,
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-
                     if (showCodecOnPlayer) {
                         val formatText = remember(currentAudioFormat, currentFormatEntity) {
                             val localAudioFormat = currentAudioFormat

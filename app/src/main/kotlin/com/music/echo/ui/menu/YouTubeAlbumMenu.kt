@@ -437,29 +437,6 @@ fun YouTubeAlbumMenu(
                             showChoosePlaylistDialog = true
                         }
                     ),
-                    Material3MenuItemData(
-                        title = { 
-                            Text(
-                                text = if (isPinned) stringResource(R.string.unpin_from_speed_dial) else stringResource(R.string.pin_to_speed_dial) 
-                            ) 
-                        },
-                        icon = {
-                            Icon(
-                                painter = painterResource(if (isPinned) R.drawable.remove else R.drawable.add),
-                                contentDescription = null,
-                            )
-                        },
-                        onClick = {
-                            coroutineScope.launch(Dispatchers.IO) {
-                                if (isPinned) {
-                                    database.speedDialDao.delete(albumItem.id)
-                                } else {
-                                    database.speedDialDao.insert(SpeedDialItem.fromYTItem(albumItem))
-                                }
-                            }
-                            onDismiss()
-                        }
-                    )
                 )
             )
         }

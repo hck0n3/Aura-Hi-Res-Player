@@ -97,7 +97,8 @@ fun UpdateSettings(
             .padding(horizontal = 16.dp),
     ) {
         Material3SettingsGroup(
-            title = stringResource(R.string.app_updates_title),
+            // Title omitted: TopAppBar already shows the same string. With New UI insets wrong, the
+            // duplicate group title was painting under the bar as garbled white (owner screenshot).
             items = listOf(
                 Material3SettingsItem(
                     icon = painterResource(R.drawable.update),

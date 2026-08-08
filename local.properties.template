@@ -1,6 +1,10 @@
 ## This file must *NOT* be checked into Version Control Systems,
 # as it contains information specific to your local configuration.
 #
+# Windows quick setup (new PC / formatted disk):
+#   .\scripts\backup-dev-secrets.ps1   (before formatting)
+#   .\scripts\setup-dev-environment.ps1 (after cloning on the new machine)
+#
 # Location of the Android SDK. For example:
 # sdk.dir=/Users/username/Library/Android/sdk
 # OR
@@ -22,6 +26,13 @@ sdk.dir=YOUR_ANDROID_SDK_PATH
 # In CI, supply the same value as the repository secret SUPERPOWERED_LICENSE_KEY.
 # ---------------------------------------------------------------------------------------------
 # SUPERPOWERED_LICENSE_KEY=your-superpowered-key
+
+# Release signing (required for local release builds and Superpowered certificate binding).
+# Use the same values as GitHub secrets RELEASE_STORE_PASSWORD / RELEASE_KEY_ALIAS / RELEASE_KEY_PASSWORD.
+# Quick setup: .\scripts\setup-local-signing.ps1
+# STORE_PASSWORD=your_keystore_password
+# KEY_ALIAS=your_key_alias
+# KEY_PASSWORD=your_key_password
 
 # Optional override for the release signing certificate the licence key is bound to (SHA-256 of the
 # DER certificate, 64 hex chars). Normally NOT needed: the build reads it straight out of

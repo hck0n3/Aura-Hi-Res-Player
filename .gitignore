@@ -259,3 +259,9 @@ graph.html
 .brand-mockup/
 Aura-Hi-Res-Player-NOSUB*.zip
 *.apk
+
+# Eclipse / Buildship metadata (Java extension; must not be committed)
+.project
+.classpath
+.settings/
+.factorypath

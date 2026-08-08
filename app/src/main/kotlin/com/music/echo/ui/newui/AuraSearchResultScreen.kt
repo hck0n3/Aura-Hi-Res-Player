@@ -26,6 +26,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
@@ -47,6 +48,8 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
@@ -162,10 +165,15 @@ fun AuraSearchResultScreen(
         )
     }
 
-    val voice = rememberAuraVoiceSearch { spoken ->
-        query = TextFieldValue(spoken, TextRange(spoken.length))
-        onSearch(spoken)
-    }
+    val voice = rememberAuraVoiceSearch(
+        onPartial = { spoken ->
+            query = TextFieldValue(spoken, TextRange(spoken.length))
+        },
+        onResult = { spoken ->
+            query = TextFieldValue(spoken, TextRange(spoken.length))
+            onSearch(spoken)
+        },
+    )
 
     val lazyListState = rememberLazyListState()
     val searchFilter by viewModel.filter.collectAsState()
@@ -231,6 +239,25 @@ fun AuraSearchResultScreen(
         }
     }
 
+    // Same fix as AuraSearchScreen's `bodyInsets`: the bar above already clears the status bar via
+    // `.windowInsetsPadding(...Top)` on the Column below, so anything composed BENEATH it (the results
+    // list, and the suggestions overlay while the field is focused) must not reserve Top a second
+    // time — that double reservation was the visible dead band under the bar/filters.
+    val currentInsets = LocalPlayerAwareWindowInsets.current
+    val bodyInsets = remember(currentInsets) {
+        object : WindowInsets {
+            override fun getLeft(density: Density, layoutDirection: LayoutDirection) =
+                currentInsets.getLeft(density, layoutDirection)
+
+            override fun getTop(density: Density) = 0
+
+            override fun getRight(density: Density, layoutDirection: LayoutDirection) =
+                currentInsets.getRight(density, layoutDirection)
+
+            override fun getBottom(density: Density) = currentInsets.getBottom(density)
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -279,7 +306,13 @@ fun AuraSearchResultScreen(
 
                 LazyColumn(
                     state = lazyListState,
-                    contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
+                    // Top dropped on purpose: the status bar is already cleared by this screen's own
+                    // `.windowInsetsPadding(...Top)` above, and the search bar + filter row sit above
+                    // this list too. Padding the FULL inset here (Top included) stacked a second gap
+                    // on top of both, leaving a visible dead band between the filters and the results.
+                    contentPadding = LocalPlayerAwareWindowInsets.current
+                        .only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal)
+                        .asPaddingValues(),
                     modifier = Modifier.fillMaxSize(),
                 ) {
                     if (searchFilter == null) {
@@ -426,20 +459,25 @@ fun AuraSearchResultScreen(
             }
 
             // The suggestions panel covers the results while the field has focus, exactly as today.
+            // Wrapped in the same Top-stripped insets as the results list above: without this, the
+            // panel's own internal list reserved the status-bar height a second time, opening a gap
+            // between the bar/filters and the first suggestion the moment the user started typing.
             if (isSearchFocused) {
-                AuraOnlineSearchSuggestions(
-                    query = query.text,
-                    onQueryChange = { query = it },
-                    navController = navController,
-                    onSearch = onSearch,
-                    onDismiss = {
-                        isSearchFocused = false
-                        focusManager.clearFocus()
-                    },
-                    modifier = Modifier.background(
-                        if (pureBlack) Color.Black else AuraPalette.Ground,
-                    ),
-                )
+                CompositionLocalProvider(LocalPlayerAwareWindowInsets provides bodyInsets) {
+                    AuraOnlineSearchSuggestions(
+                        query = query.text,
+                        onQueryChange = { query = it },
+                        navController = navController,
+                        onSearch = onSearch,
+                        onDismiss = {
+                            isSearchFocused = false
+                            focusManager.clearFocus()
+                        },
+                        modifier = Modifier.background(
+                            if (pureBlack) Color.Black else AuraPalette.Ground,
+                        ),
+                    )
+                }
             }
         }
     }

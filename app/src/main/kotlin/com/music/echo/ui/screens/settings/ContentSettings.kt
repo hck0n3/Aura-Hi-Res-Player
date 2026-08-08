@@ -154,7 +154,7 @@ fun ContentSettings(
     val (lengthTop, onLengthTopChange) = rememberPreference(key = TopSize, defaultValue = "50")
     val (quickPicks, onQuickPicksChange) = rememberEnumPreference(key = QuickPicksKey, defaultValue = QuickPicks.QUICK_PICKS)
     // OFF by default (owner's call). Keep in sync with HomeScreen's default for the same key.
-    val (showSpeedDial, onShowSpeedDialChange) = rememberPreference(key = ShowSpeedDialKey, defaultValue = false)
+    val (showSpeedDial, onShowSpeedDialChange) = rememberPreference(key = ShowSpeedDialKey, defaultValue = true)
     val (randomizeHomeOrder, onRandomizeHomeOrderChange) = rememberPreference(
         RandomizeHomeOrderKey,
         defaultValue = false
@@ -1229,7 +1229,7 @@ fun ContentSettings(
                 Material3SettingsItem(
                     icon = painterResource(R.drawable.offline),
                     title = { Text("Modo sin conexión") },
-                    description = { Text("Muestra solo el contenido descargado. Actívalo cuando no tengas internet; desactívalo para volver a modo online.") },
+                    description = { Text("Solo canciones descargadas. La reproducción no usa internet. Puedes desactivarlo desde el banner de la pantalla offline o aquí.") },
                     trailingContent = {
                         Switch(
                             checked = offlineMode,
@@ -1250,7 +1250,7 @@ fun ContentSettings(
                 Material3SettingsItem(
                     icon = painterResource(R.drawable.battery_charging),
                     title = { Text("Evitar que el sistema cierre la app") },
-                    description = { Text("Quita la app de la optimización de batería para que la música no se corte en segundo plano y aparezca siempre en Android Auto (recomendado en Xiaomi/HyperOS).") },
+                    description = { Text("Quita la app de la optimización de batería para que la música no se corte con la pantalla apagada ni en segundo plano (todas las marcas; especialmente Xiaomi, Samsung, Oppo, Vivo…).") },
                     onClick = {
                         iad1tya.echo.music.utils.BackgroundReliability.requestIgnoreBatteryOptimizations(context)
                     }
@@ -1284,8 +1284,8 @@ fun ContentSettings(
                 ),
                 Material3SettingsItem(
                     icon = painterResource(R.drawable.grid_view),
-                    title = { Text("Marcación rápida") },
-                    description = { Text("Mostrar la marcación rápida en la pantalla de inicio") },
+                    title = { Text(stringResource(R.string.show_speed_dial)) },
+                    description = { Text(stringResource(R.string.show_speed_dial_desc)) },
                     trailingContent = {
                         Switch(
                             checked = showSpeedDial,

@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -50,8 +49,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -131,6 +130,7 @@ fun AuraOnlinePlaylistScreen(
     val haptic = LocalHapticFeedback.current
     val focusManager = LocalFocusManager.current
     val playerConnection = LocalPlayerConnection.current ?: return
+    val database = LocalDatabase.current
     val downloadUtil = LocalDownloadUtil.current
     val coroutineScope = rememberCoroutineScope()
     val isTvOrCar = rememberIsTvOrCar()
@@ -294,6 +294,7 @@ fun AuraOnlinePlaylistScreen(
                             downloadState = downloadState,
                             coroutineScope = coroutineScope,
                             continuation = viewModel.continuation,
+                            onSearch = { isSearching = true },
                             modifier = Modifier.animateItem(),
                         )
                     }
@@ -324,12 +325,14 @@ fun AuraOnlinePlaylistScreen(
                     }
                     val isActive = mediaMetadata?.id == songItem.id
                     val blocked = hideExplicit && songItem.explicit
+                    val dbSong by database.song(songItem.id).collectAsState(initial = null)
+                    val alreadyPlayed = (dbSong?.song?.totalPlayTime ?: 0L) > 0L && !isActive
 
                     AuraRow(
                         title = songItem.title,
                         subtitle = songItem.artists.joinToString { it.name },
                         highlighted = isActive,
-                        dimmed = blocked,
+                        dimmed = blocked || alreadyPlayed,
                         contentDescription = songItem.title,
                         onClick = if (blocked) null else {
                             {
@@ -358,10 +361,14 @@ fun AuraOnlinePlaylistScreen(
                             }
                         },
                         artwork = {
+                            val videoThumb = songItem.isVideoSong
                             AuraCover(
                                 thumbnailUrl = songItem.thumbnail,
-                                size = 50.dp,
+                                size = if (videoThumb) 88.dp else 50.dp,
                                 seed = songItem.id,
+                                ratio = if (videoThumb) 16f / 9f else 1f,
+                                shape = if (videoThumb) AuraShapes.Card else AuraShapes.Artwork,
+                                fillBleed = videoThumb,
                             ) {
                                 if (isActive && isPlaying) {
                                     Box(
@@ -370,14 +377,38 @@ fun AuraOnlinePlaylistScreen(
                                             .background(AuraPalette.Ground.copy(alpha = 0.55f)),
                                         contentAlignment = Alignment.Center,
                                     ) { AuraPlayingBars() }
+                                } else if (videoThumb && !isActive) {
+                                    Box(
+                                        modifier = Modifier
+                                            .align(Alignment.TopStart)
+                                            .padding(4.dp)
+                                            .clip(AuraShapes.Pill)
+                                            .background(AuraPalette.Ground.copy(alpha = 0.72f))
+                                            .padding(horizontal = 5.dp, vertical = 2.dp),
+                                    ) {
+                                        Text(
+                                            text = auraTypeLabel(AuraContentKind.Video),
+                                            style = AuraType.QualityBadge,
+                                            color = AuraPalette.Teal,
+                                            maxLines = 1,
+                                        )
+                                    }
                                 }
                             }
                         },
-                        trailing = {
+                            trailing = {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(7.dp),
                             ) {
+                                if (alreadyPlayed) {
+                                    AuraIconGlyph(
+                                        icon = AuraIcons.Check,
+                                        contentDescription = "Ya reproducida",
+                                        size = 16.dp,
+                                        tint = AuraPalette.Teal,
+                                    )
+                                }
                                 if (songItem.explicit) {
                                     AuraTechnicalText(
                                         text = "E",
@@ -468,17 +499,9 @@ fun AuraOnlinePlaylistScreen(
                                 items = relatedItems,
                                 key = { position, _ -> "aura_op_rel_$position" },
                             ) { _, item ->
-                                AuraCoverCard(
-                                    title = item.title,
-                                    subtitle = when (item) {
-                                        is SongItem -> item.artists.joinToString { it.name }
-                                        is AlbumItem -> item.artists?.joinToString { it.name }
-                                        is PlaylistItem -> item.author?.name
-                                        is ArtistItem -> stringResource(R.string.artists)
-                                    },
-                                    thumbnailUrl = item.thumbnail,
-                                    seed = item.id,
-                                    width = 140.dp,
+                                AuraTypedYtCoverCard(
+                                    item = item,
+                                    cardScale = 1f,
                                     onClick = {
                                         when (item) {
                                             is PlaylistItem ->
@@ -534,52 +557,28 @@ fun AuraOnlinePlaylistScreen(
             }
         }
 
-        // ── Barra superior ────────────────────────────────────────────────────────────────────────
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Top))
-                .background(AuraPalette.Ground.copy(alpha = 0.82f))
-                .padding(horizontal = 6.dp, vertical = 4.dp),
-        ) {
-            AuraIconButton(
-                icon = if (inSelectMode) AuraIcons.Plus else AuraIcons.ChevronRight,
-                contentDescription = stringResource(
-                    if (inSelectMode) R.string.cd_exit_selection else R.string.cd_back,
-                ),
-                onClick = {
-                    when {
-                        isSearching -> {
-                            isSearching = false
-                            query = ""
-                            focusManager.clearFocus()
-                        }
-
-                        inSelectMode -> onExitSelectionMode()
-                        else -> navController.navigateUp()
+        // Sticky chrome: back only. Title/search stay in the scrolling header (owner: no black
+        // sticky bar with playlist name + search).
+        AuraDetailTopBar(
+            listState = lazyListState,
+            title = currentPlaylist?.title.orEmpty(),
+            onBack = {
+                when {
+                    isSearching -> {
+                        isSearching = false
+                        query = ""
+                        focusManager.clearFocus()
                     }
-                },
-                size = 22.dp,
-                modifier = Modifier.graphicsLayer {
-                    rotationZ = if (inSelectMode) 45f else 180f
-                },
-            )
-            Text(
-                text = if (inSelectMode) {
-                    pluralStringResource(R.plurals.n_song, selection.size, selection.size)
-                } else {
-                    currentPlaylist?.title.orEmpty()
-                },
-                style = AuraType.SheetTitle,
-                color = AuraPalette.OnGround,
-                maxLines = 1,
-                overflow = AuraDefaultOverflow,
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(horizontal = 6.dp),
-            )
-            if (inSelectMode) {
+
+                    inSelectMode -> onExitSelectionMode()
+                    else -> navController.navigateUp()
+                }
+            },
+            inSelectMode = inSelectMode,
+            selectionCount = selection.size,
+            forceOpaque = false,
+            pinTitleOnScroll = false,
+            selectionActions = {
                 Checkbox(
                     checked = selection.size == filteredSongs.size && selection.isNotEmpty(),
                     onCheckedChange = {
@@ -613,15 +612,8 @@ fun AuraOnlinePlaylistScreen(
                     },
                     size = 20.dp,
                 )
-            } else if (!isSearching) {
-                AuraIconButton(
-                    icon = AuraIcons.Search,
-                    contentDescription = stringResource(R.string.search),
-                    onClick = { isSearching = true },
-                    size = 20.dp,
-                )
-            }
-        }
+            },
+        )
 
         SnackbarHost(
             hostState = snackbarHostState,
@@ -640,6 +632,7 @@ private fun AuraOnlinePlaylistHeader(
     downloadState: Int,
     coroutineScope: CoroutineScope,
     continuation: String?,
+    onSearch: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -654,6 +647,9 @@ private fun AuraOnlinePlaylistHeader(
     val saved = dbPlaylist?.playlist?.bookmarkedAt != null
     val playingThisPlaylist = isPlaying && mediaMetadata?.album?.id == playlist.id
     val hasExplicitContent = remember(songs) { songs.any { it.explicit } }
+    val videoPlaylist = remember(songs) {
+        songs.isNotEmpty() && songs.count { it.isVideoSong } * 2 >= songs.size
+    }
     val totalDuration = remember(songs) { songs.sumOf { it.duration ?: 0 } }
 
     Column(
@@ -733,6 +729,7 @@ private fun AuraOnlinePlaylistHeader(
             horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            // Hybrid (Apple + YTM): primary actions keep their name; search/more stay icon-only.
             AuraHeaderButton(
                 icon = AuraIcons.Shuffle,
                 label = stringResource(R.string.shuffle_label),
@@ -776,26 +773,11 @@ private fun AuraOnlinePlaylistHeader(
                 enabled = songs.isNotEmpty(),
                 modifier = Modifier.weight(1f).tvFocusable(isTvOrCar, scaleFocused = 1f),
             )
-            AuraHeaderCircleButton(
-                icon = AuraIcons.More,
-                contentDescription = stringResource(R.string.more_options),
-                onClick = {
-                    menuState.show {
-                        YouTubePlaylistMenu(
-                            playlist = playlist,
-                            songs = songs,
-                            coroutineScope = coroutineScope,
-                            onDismiss = menuState::dismiss,
-                        )
-                    }
-                },
-                modifier = Modifier.tvFocusable(isTvOrCar, scaleFocused = 1f),
-            )
         }
 
         Spacer(Modifier.height(12.dp))
 
-        // Guardar · Descargar · Compartir — the classic connected button group.
+        // Guardar · Descargar · Compartir · Buscar · Más — secondary row.
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -803,9 +785,9 @@ private fun AuraOnlinePlaylistHeader(
             horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            AuraHeaderButton(
+            AuraHeaderCircleButton(
                 icon = if (saved) AuraIcons.HeartFilled else AuraIcons.Heart,
-                label = stringResource(if (saved) R.string.saved else R.string.save),
+                contentDescription = stringResource(if (saved) R.string.saved else R.string.save),
                 onClick = {
                     coroutineScope.launch(Dispatchers.IO) {
                         if (dbPlaylist != null) {
@@ -858,15 +840,15 @@ private fun AuraOnlinePlaylistHeader(
                 // Saving a playlist that has no songs yet would store an empty one; un-saving an already
                 // saved playlist stays available because it touches no song rows.
                 enabled = songs.isNotEmpty() || dbPlaylist != null,
-                modifier = Modifier.weight(1f).tvFocusable(isTvOrCar, scaleFocused = 1f),
+                modifier = Modifier.tvFocusable(isTvOrCar, scaleFocused = 1f),
             )
-            AuraHeaderButton(
+            AuraHeaderCircleButton(
                 icon = if (downloadState == Download.STATE_COMPLETED) AuraIcons.Check
                 else AuraIcons.Download,
-                label = when (downloadState) {
-                    Download.STATE_COMPLETED -> stringResource(R.string.saved)
-                    Download.STATE_DOWNLOADING -> stringResource(R.string.saving)
-                    else -> stringResource(R.string.save_album)
+                contentDescription = when (downloadState) {
+                    Download.STATE_COMPLETED -> stringResource(R.string.remove_download)
+                    Download.STATE_DOWNLOADING -> stringResource(R.string.downloading)
+                    else -> stringResource(R.string.action_download)
                 },
                 onClick = {
                     when (downloadState) {
@@ -898,7 +880,7 @@ private fun AuraOnlinePlaylistHeader(
                 // Both branches iterate `songs`, so a tap before they arrive did nothing at all while
                 // looking enabled.
                 enabled = songs.isNotEmpty(),
-                modifier = Modifier.weight(1f).tvFocusable(isTvOrCar, scaleFocused = 1f),
+                modifier = Modifier.tvFocusable(isTvOrCar, scaleFocused = 1f),
             )
             AuraHeaderCircleButton(
                 icon = AuraIcons.Share,
@@ -910,6 +892,27 @@ private fun AuraOnlinePlaylistHeader(
                         putExtra(Intent.EXTRA_TEXT, playlist.shareLink)
                     }
                     context.startActivity(Intent.createChooser(intent, null))
+                },
+                modifier = Modifier.tvFocusable(isTvOrCar, scaleFocused = 1f),
+            )
+            AuraHeaderCircleButton(
+                icon = AuraIcons.Search,
+                contentDescription = stringResource(R.string.search),
+                onClick = onSearch,
+                modifier = Modifier.tvFocusable(isTvOrCar, scaleFocused = 1f),
+            )
+            AuraHeaderCircleButton(
+                icon = AuraIcons.More,
+                contentDescription = stringResource(R.string.more_options),
+                onClick = {
+                    menuState.show {
+                        YouTubePlaylistMenu(
+                            playlist = playlist,
+                            songs = songs,
+                            coroutineScope = coroutineScope,
+                            onDismiss = menuState::dismiss,
+                        )
+                    }
                 },
                 modifier = Modifier.tvFocusable(isTvOrCar, scaleFocused = 1f),
             )

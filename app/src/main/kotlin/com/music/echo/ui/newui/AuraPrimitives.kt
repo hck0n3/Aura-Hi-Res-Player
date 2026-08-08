@@ -72,11 +72,14 @@ object AuraSpacing {
     /** Gap between a row's artwork and its text — render 9px. */
     val RowInner = 13.dp
 
-    /** Space above a section label — render 13px. */
-    val SectionTop = 18.dp
+    /** Space above a section label — Apple-like breathing room before a shelf. */
+    val SectionTop = 24.dp
 
-    /** Space between a section label and its first row — render 8px. */
-    val SectionGap = 11.dp
+    /** Space between a section label and its first row. */
+    val SectionGap = 14.dp
+
+    /** Horizontal gap between shelf cards (Apple/YTM). */
+    val ShelfItemGap = 14.dp
 
     /** Minimum touch target. Non-negotiable. */
     val MinTouchTarget = 48.dp
@@ -98,6 +101,9 @@ object AuraShapes {
 
     /** Cards, the mini-player pill and the "Interfaz nueva" callout — render 11–12px. */
     val Card = RoundedCornerShape(16.dp)
+
+    /** Modal sheets / menus that rise from the bottom — top corners only. */
+    val Sheet = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
 
     /**
      * Corner radius of [Highlight], published because [AuraRow] draws that shape itself (its fill and

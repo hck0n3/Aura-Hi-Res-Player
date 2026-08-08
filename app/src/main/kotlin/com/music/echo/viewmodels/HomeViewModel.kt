@@ -255,74 +255,45 @@ class HomeViewModel @Inject constructor(
     val allLocalItems = MutableStateFlow<List<LocalItem>>(emptyList())
     val allYtItems = MutableStateFlow<List<YTItem>>(emptyList())
 
+    /**
+     * Playlists the user pinned to Home ("Fijar playlist al inicio").
+     *
+     * Previously this shelf was a song "speed dial" that DROPPED pinned playlists
+     * (`as? SongItem`) and back-filled from Keep Listening / Quick Picks — so pinning a
+     * playlist never appeared. The Home slot now shows exactly the playlists the user pinned,
+     * in pin order, matching the playlist widget which already reads the same table.
+     */
     val speedDialItems: StateFlow<List<YTItem>> =
-        combine(
-            database.speedDialDao.getAll(),
-            keepListening,
-            quickPicks
-        ) { pinned, keepListening, quick ->
-            // Speed Dial must contain ONLY songs — drop any pinned album/artist/playlist entries.
-            val pinnedItems = pinned.mapNotNull { it.toYTItem() as? SongItem }
-            val filled = pinnedItems.toMutableList()
-            val targetSize = 27
-
-            if (filled.size < targetSize) {
-                
-                keepListening?.let { k ->
-                    val needed = targetSize - filled.size
-                    val available = k.filter { item ->
-                        filled.none { p -> p.id == item.id }
-                    }.mapNotNull { item ->
-                        when (item) {
-                            // Songs-only: albums/artists are intentionally dropped (else -> null).
-                            is Song -> SongItem(
-                                id = item.id,
-                                title = item.title,
-                                artists = item.artists.map { Artist(name = it.name, id = it.id) },
-                                thumbnail = item.thumbnailUrl ?: "",
-                                explicit = false
-                            )
-                            else -> null
-                        }
-                    }
-                    filled.addAll(available.take(needed))
-                }
-            }
-
-            if (filled.size < targetSize) {
-                
-                quick?.let { q ->
-                    val needed = targetSize - filled.size
-                    val available = q.filter { song ->
-                        filled.none { p -> p.id == song.id }
-                    }.map { song ->
-                        SongItem(
-                            id = song.id,
-                            title = song.title,
-                            artists = song.artists.map { Artist(name = it.name, id = it.id) },
-                            thumbnail = song.thumbnailUrl ?: "",
-                            explicit = false
+        database.speedDialDao.getAll()
+            .map { pinned ->
+                pinned
+                    .asSequence()
+                    .filter { it.type == "PLAYLIST" || it.type == "LOCAL_PLAYLIST" }
+                    .sortedBy { it.createDate }
+                    .map { item ->
+                        PlaylistItem(
+                            id = item.id,
+                            title = item.title,
+                            author = item.subtitle?.let { Artist(name = it, id = null) },
+                            songCountText = null,
+                            thumbnail = item.thumbnailUrl,
+                            playEndpoint = null,
+                            shuffleEndpoint = null,
+                            radioEndpoint = null,
                         )
                     }
-                    filled.addAll(available.take(needed))
-                }
+                    .toList()
             }
-
-            // Safety net: nothing non-song can ever reach the Speed Dial shelf.
-            filled.filterIsInstance<SongItem>().take(targetSize)
-        }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+            .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     // ---- Cross-section dedup (top of the home) -------------------------------------------------
-    // SpeedDial back-fills its tiles FROM keepListening + quickPicks, so without this the very same
-    // covers appeared 3 times in the first screenful. The RAW flows (quickPicks / keepListening) are
-    // left untouched — SpeedDial's backfill and getRandomItem still see everything; only what the
-    // Home DISPLAYS is filtered, cheaply, with id Sets.
+    // When the pinned-playlists shelf is visible, avoid repeating the same covers in Quick Picks /
+    // Keep Listening. Ids are playlist browse/local ids — song shelves rarely collide, but the
+    // filter is cheap and keeps the contract if a future pin type shares an id space.
 
     private val showSpeedDialFlow = context.dataStore.data
-        // OFF by default, matching HomeScreen and ContentSettings. This one is the load-bearing copy:
-        // it gates whether the speed-dial data is QUERIED at all, so leaving it true would keep doing the
-        // work for a section the UI no longer draws.
-        .map { it[ShowSpeedDialKey] ?: false }
+        // ON by default: pinning a playlist must surface it on Home without a hidden settings toggle.
+        .map { it[ShowSpeedDialKey] ?: true }
         .distinctUntilChanged()
 
     /** Ids on SpeedDial's first pager page (~the tiles actually visible without swiping). Empty when
@@ -447,6 +418,8 @@ class HomeViewModel @Inject constructor(
 
     fun togglePin(item: YTItem) {
         viewModelScope.launch(Dispatchers.IO) {
+            // Home pins are playlists only — songs/albums/artists are ignored.
+            if (item !is PlaylistItem) return@launch
             val speedDialItem = SpeedDialItem.fromYTItem(item)
             val isPinned = database.speedDialDao.isPinned(speedDialItem.id).first()
             if (isPinned) {

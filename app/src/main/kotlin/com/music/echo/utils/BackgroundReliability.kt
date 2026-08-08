@@ -30,6 +30,8 @@ object BackgroundReliability {
     private val AGGRESSIVE_OEMS = listOf(
         "xiaomi", "redmi", "poco", "huawei", "honor", "oppo", "realme", "oneplus",
         "vivo", "iqoo", "meizu", "samsung", "asus", "lenovo", "tecno", "infinix", "itel",
+        "motorola", "moto", "nokia", "nothing", "tcl", "sharp", "sony", "lge", "lg",
+        "zte", "nubia", "blackview", "doogee", "cubot",
     )
 
     fun isIgnoringBatteryOptimizations(context: Context): Boolean {

@@ -138,6 +138,9 @@ import iad1tya.echo.music.ui.utils.tvFocusRestorer
 import iad1tya.echo.music.ui.utils.tvFocusable
 import iad1tya.echo.music.ui.utils.tvFocusableItem
 import iad1tya.echo.music.utils.makeTimeString
+import iad1tya.echo.music.constants.HighPerformanceModeKey
+import iad1tya.echo.music.utils.ShareLinks
+import iad1tya.echo.music.utils.isLocalMediaId
 import iad1tya.echo.music.utils.rememberPreference
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -204,6 +207,8 @@ fun AuraQueue(
     // sheet's ground; see the [rememberAuraGround] call below.
     playerBackground: PlayerBackgroundStyle = PlayerBackgroundStyle.DEFAULT,
     onToggleLyrics: () -> Unit = {},
+    /** Opens the full player menu (Más / Ajustes). Lives on the collapsed bar next to Letras. */
+    onMore: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
@@ -268,6 +273,21 @@ fun AuraQueue(
     val currentSong by playerConnection.currentSong.collectAsState(initial = null)
     val shuffleModeEnabled by playerConnection.shuffleModeEnabled.collectAsState()
 
+    // Compartir / Ecualizador / Vídeo — relocated here from the player's own quick-access row (owner
+    // request: keep only the four "qué opinas y qué guardas" buttons up there; these three join the
+    // bar's "qué haces con ella" set). Same predicates, same actions as AuraPlayer.kt used before the
+    // move — no second implementation, this is a relocation, not a rebuild.
+    val videoMode by playerConnection.videoMode.collectAsState()
+    val highPerfMode by rememberPreference(HighPerformanceModeKey, false)
+    val isTvOrCarBar = iad1tya.echo.music.ui.utils.rememberIsTvOrCar()
+    val hasVideo = mediaMetadata?.let { meta ->
+        videoMode || (
+            (!highPerfMode || isTvOrCarBar) &&
+                (meta.isVideoSong || !meta.podcastVideoUrl.isNullOrEmpty())
+            )
+    } ?: false
+    val shareableLink = mediaMetadata?.let { !it.id.isLocalMediaId() } ?: false
+
     val castHandler = remember(playerConnection) {
         try {
             playerConnection.service.castConnectionHandler
@@ -306,29 +326,7 @@ fun AuraQueue(
     val snackbarHostState = remember { SnackbarHostState() }
     var dismissJob: Job? by remember { mutableStateOf(null) }
 
-    var showSleepTimerDialog by remember { mutableStateOf(false) }
-    var sleepTimerValue by remember { mutableFloatStateOf(30f) }
-    val sleepTimerEnabled = remember(
-        playerConnection.service.sleepTimer.triggerTime,
-        playerConnection.service.sleepTimer.pauseWhenSongEnd,
-    ) {
-        playerConnection.service.sleepTimer.isActive
-    }
-    var sleepTimerTimeLeft by remember { mutableLongStateOf(0L) }
     var showCommentSheet by rememberSaveable { mutableStateOf(false) }
-
-    LaunchedEffect(sleepTimerEnabled) {
-        if (sleepTimerEnabled) {
-            while (isActive) {
-                sleepTimerTimeLeft = if (playerConnection.service.sleepTimer.pauseWhenSongEnd) {
-                    playerConnection.player.duration - playerConnection.player.currentPosition
-                } else {
-                    playerConnection.service.sleepTimer.triggerTime - System.currentTimeMillis()
-                }
-                delay(1000L)
-            }
-        }
-    }
 
     val openPlayerMenu: () -> Unit = {
         menuState.show {
@@ -342,7 +340,6 @@ fun AuraQueue(
                     }
                 },
                 onDismiss = menuState::dismiss,
-                onSleepTimer = { showSleepTimerDialog = true },
             )
         }
     }
@@ -374,20 +371,32 @@ fun AuraQueue(
                 onOpenQueue = { state.expandSoft() },
                 isBluetoothConnected = isBluetoothConnected,
                 onAudioOutput = { showAudioDeviceBottomSheet = true },
-                sleepTimerEnabled = sleepTimerEnabled,
-                sleepTimerTimeLeft = sleepTimerTimeLeft,
-                onSleepTimer = {
-                    if (sleepTimerEnabled) {
-                        playerConnection.service.sleepTimer.clear()
-                    } else {
-                        showSleepTimerDialog = true
-                    }
-                },
                 showInlineLyrics = showInlineLyrics,
                 onToggleLyrics = onToggleLyrics,
                 showCommentButton = showCommentButton,
                 onComments = { showCommentSheet = true },
-                isListenTogetherGuest = isListenTogetherGuest,
+                shareEnabled = shareableLink,
+                onShare = {
+                    mediaMetadata?.let { meta ->
+                        val intent = Intent().apply {
+                            action = Intent.ACTION_SEND
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_TEXT, ShareLinks.song(meta.id))
+                        }
+                        context.startActivity(Intent.createChooser(intent, null))
+                    }
+                },
+                onEqualizer = {
+                    // Collapse the PLAYER (not this queue sheet — AuraQueueBar is already the queue's
+                    // collapsed content): same as the button did in AuraPlayer.kt before the move,
+                    // matching AuraPlayerMenu.kt's own equalizer row.
+                    playerBottomSheetState.collapseSoft()
+                    navController.navigate("settings/equalizer") { launchSingleTop = true }
+                },
+                showVideoButton = hasVideo,
+                videoModeActive = videoMode,
+                onToggleVideo = { playerConnection.toggleVideoMode() },
+                onMore = onMore,
                 contentColor = textBackgroundColor,
                 activeContainerColor = textButtonColor,
                 activeContentColor = iconButtonColor,
@@ -395,62 +404,6 @@ fun AuraQueue(
 
             if (showAudioDeviceBottomSheet) {
                 AudioDeviceBottomSheet(onDismiss = { showAudioDeviceBottomSheet = false })
-            }
-
-            if (showSleepTimerDialog) {
-                // §4.3 verbatim: the same ActionPromptDialog, the same 5..120 slider in steps of 5, the
-                // same "Al finalizar la canción" escape hatch and the same reset-to-30.
-                ActionPromptDialog(
-                    titleBar = {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.Center,
-                        ) {
-                            Text(
-                                text = stringResource(R.string.sleep_timer),
-                                overflow = AuraDefaultOverflow,
-                                maxLines = 1,
-                                style = MaterialTheme.typography.headlineSmall,
-                            )
-                        }
-                    },
-                    onDismiss = { showSleepTimerDialog = false },
-                    onConfirm = {
-                        showSleepTimerDialog = false
-                        playerConnection.service.sleepTimer.start(sleepTimerValue.roundToInt())
-                    },
-                    onCancel = { showSleepTimerDialog = false },
-                    onReset = { sleepTimerValue = 30f },
-                    content = {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(
-                                text = pluralStringResource(
-                                    R.plurals.minute,
-                                    sleepTimerValue.roundToInt(),
-                                    sleepTimerValue.roundToInt(),
-                                ),
-                                style = MaterialTheme.typography.bodyLarge,
-                            )
-                            Spacer(Modifier.height(16.dp))
-                            Slider(
-                                value = sleepTimerValue,
-                                onValueChange = { sleepTimerValue = it },
-                                valueRange = 5f..120f,
-                                steps = (120 - 5) / 5 - 1,
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-                            Spacer(Modifier.height(8.dp))
-                            OutlinedButton(
-                                onClick = {
-                                    showSleepTimerDialog = false
-                                    playerConnection.service.sleepTimer.start(-1)
-                                },
-                            ) {
-                                Text(stringResource(R.string.end_of_song))
-                            }
-                        }
-                    },
-                )
             }
         },
     ) {
@@ -547,26 +500,21 @@ fun AuraQueue(
                 currentIndex = currentWindowIndex,
                 repeatMode = repeatMode,
                 hasAutoplayContinuation = hasAutoplayContinuation,
+                // SONANDO header already shows the current song — never repeat it as REPRODUCIENDO.
+                omitPinnedCurrent = true,
             )
         }
 
-        // Land on the current song when the sheet opens — and ONLY then. The classic effect keys on the
-        // (stable) list instance so it fires once per open; ours has to key on `entries`, which changes
-        // on every track advance and every reorder, so the one-shot is explicit. Without it the list
-        // would yank itself back to the current song while the user was scrolling or dragging.
-        //
-        // The target is the **REPRODUCIENDO heading**, not the row: landing on the row would scroll its
-        // own heading off the top edge, and the whole point of the split is that the user can see which
-        // block each row belongs to. The row target survives as a fallback for the case with no current
-        // song (`currentWindowIndex == -1`), where no heading is emitted.
+        // Land on the first upcoming block when the sheet opens — and ONLY then. The classic effect keys
+        // on the (stable) list instance so it fires once per open; ours has to key on `entries`, which
+        // changes on every track advance and every reorder, so the one-shot is explicit.
         var didInitialScroll by remember { mutableStateOf(false) }
         LaunchedEffect(entries) {
             if (didInitialScroll) return@LaunchedEffect
-            val headingIndex = entries.indexOfFirst {
-                it is AuraQueueEntry.Label && it.id == AURA_QUEUE_LABEL_CURRENT
-            }
-            val target = if (headingIndex >= 0) headingIndex
-            else entries.indexOfFirst { it is AuraQueueEntry.Song && it.isCurrent }
+            val target = entries.indexOfFirst {
+                it is AuraQueueEntry.Label && it.id != "played" && it.id != "repeat_one"
+            }.takeIf { it >= 0 }
+                ?: entries.indexOfFirst { it is AuraQueueEntry.Song }
             if (target >= 0) {
                 lazyListState.scrollToItem(target + AURA_QUEUE_LEADING_ITEMS)
                 didInitialScroll = true
@@ -666,7 +614,8 @@ fun AuraQueue(
                             artwork = { AuraCover(url = mediaMetadata?.thumbnailUrl, seed = mediaMetadata?.id, size = 44.dp) },
                             trailing = {
                                 val liked = currentSong?.song?.liked == true
-                                AuraPlayingBars(visible = isPlaying)
+                                // Always mark the SONANDO row; animate while audible, play glyph while buffering.
+                                AuraPlayingBars(isPlaying = isPlaying)
                                 AuraIconButton(
                                     icon = if (liked) AuraIcons.HeartFilled else AuraIcons.Heart,
                                     contentDescription = if (liked) stringResource(R.string.action_remove_like)
@@ -1003,7 +952,7 @@ fun AuraQueue(
                                                                     ),
                                                                 )
                                                             } else {
-                                                                if (isActive) AuraPlayingBars(visible = isPlaying)
+                                                                if (isActive) AuraPlayingBars(isPlaying = isPlaying)
                                                                 if (!isListenTogetherGuest) {
                                                                     AuraIconButton(
                                                                         icon = AuraIcons.More,
@@ -1211,14 +1160,17 @@ private fun AuraQueueBar(
     onOpenQueue: () -> Unit,
     isBluetoothConnected: Boolean,
     onAudioOutput: () -> Unit,
-    sleepTimerEnabled: Boolean,
-    sleepTimerTimeLeft: Long,
-    onSleepTimer: () -> Unit,
     showInlineLyrics: Boolean,
     onToggleLyrics: () -> Unit,
     showCommentButton: Boolean,
     onComments: () -> Unit,
-    isListenTogetherGuest: Boolean,
+    shareEnabled: Boolean,
+    onShare: () -> Unit,
+    onEqualizer: () -> Unit,
+    showVideoButton: Boolean,
+    videoModeActive: Boolean,
+    onToggleVideo: () -> Unit,
+    onMore: () -> Unit,
     contentColor: Color,
     activeContainerColor: Color,
     activeContentColor: Color,
@@ -1267,22 +1219,6 @@ private fun AuraQueueBar(
         }
 
         AuraBarButton(
-            contentDescription = stringResource(R.string.sleep_timer),
-            active = sleepTimerEnabled,
-            enabled = !isListenTogetherGuest,
-            onClick = onSleepTimer,
-            contentColor = contentColor,
-            activeContainerColor = activeContainerColor,
-            activeContentColor = activeContentColor,
-        ) { tint ->
-            if (sleepTimerEnabled) {
-                AuraTechnicalText(text = makeTimeString(sleepTimerTimeLeft), color = tint)
-            } else {
-                AuraIconGlyph(AuraIcons.Timer, null, size = 21.dp, tint = tint)
-            }
-        }
-
-        AuraBarButton(
             contentDescription = stringResource(R.string.queue_tab_lyrics),
             active = showInlineLyrics,
             onClick = onToggleLyrics,
@@ -1309,22 +1245,52 @@ private fun AuraQueueBar(
             }
         }
 
-        // ALEATORIO / REPETIR DELIBERATELY ABSENT. This bar is the COLLAPSED content of the queue sheet,
-        // i.e. it is on screen at the same time as the player's own transport row, which owns both controls
-        // (AuraPlayer.kt: shuffle left of «anterior», repeat right of «siguiente», including the "1" marker
-        // for «repetir una»). Drawing them here too put two identical toggles for the same two player flags
-        // ~60 dp apart — "no quiero botones repetidos". When the sheet is EXPANDED the transport is covered,
-        // and the expanded header above the list carries shuffle/repeat/lock for exactly that reason.
+        // Compartir / Ecualizador / Vídeo — relocated from the player's quick-access row (owner
+        // request: "que los botones... solo sea una fila de cuatro y los otros me los pases en la
+        // última fila de abajo"). Same actions AuraPlayer.kt called before the move.
+        AuraBarButton(
+            contentDescription = stringResource(R.string.share),
+            active = false,
+            enabled = shareEnabled,
+            onClick = onShare,
+            contentColor = contentColor,
+            activeContainerColor = activeContainerColor,
+            activeContentColor = activeContentColor,
+        ) { tint -> AuraIconGlyph(AuraIcons.Share, null, size = 21.dp, tint = tint) }
+
+        AuraBarButton(
+            contentDescription = stringResource(R.string.equalizer),
+            active = false,
+            onClick = onEqualizer,
+            contentColor = contentColor,
+            activeContainerColor = activeContainerColor,
+            activeContentColor = activeContentColor,
+        ) { tint -> AuraIconGlyph(AuraIcons.Equalizer, null, size = 21.dp, tint = tint) }
+
+        if (showVideoButton) {
+            AuraBarButton(
+                contentDescription = stringResource(if (videoModeActive) R.string.music else R.string.video),
+                active = videoModeActive,
+                onClick = onToggleVideo,
+                contentColor = contentColor,
+                activeContainerColor = activeContainerColor,
+                activeContentColor = activeContentColor,
+            ) { tint -> AuraIconGlyph(AuraIcons.Video, null, size = 21.dp, tint = tint) }
+        }
+
+        // ALEATORIO / REPETIR stay on the transport row only (no duplicates here).
         //
-        // ⋮ «MÁS» DELIBERATELY ABSENT TOO — the pair the first de-duplication pass missed. This bar drew a
-        // ⋮ wired to `openPlayerMenu`, and the player's own header (AuraPlayer.kt, top-right of the sheet)
-        // draws a ⋮ that opens [PlayerMenuHost] with the SAME arguments. Both are on screen together the
-        // whole time the player is expanded, in portrait AND in the wide arrangement, so the user had two
-        // identical glyphs opening one identical menu. The player menu now has exactly one door per state:
-        //  · player expanded, letra cerrada → the header ⋮ (AuraPlayer.kt);
-        //  · queue sheet expanded (this bar is not composed) → the sheet header's own ⋮ above the list,
-        //    which is also the door while the inline lyrics have taken over the player header's ⋮.
-        // Neither of those two is ever on screen at the same time as the other.
+        // MÁS / AJUSTES — owner request: full player-menu door lives HERE (same row as Letras), not as a
+        // lone ⋮ in the top header while lyrics are closed. Header ⋮ remains only for the lyrics menu
+        // while inline lyrics are open. Queue sheet expanded still has its own header ⋮.
+        AuraBarButton(
+            contentDescription = stringResource(R.string.more_options),
+            active = false,
+            onClick = onMore,
+            contentColor = contentColor,
+            activeContainerColor = activeContainerColor,
+            activeContentColor = activeContentColor,
+        ) { tint -> AuraIconGlyph(AuraIcons.More, null, size = 21.dp, tint = tint) }
     }
 }
 
@@ -1543,38 +1509,12 @@ private fun AuraAutomixRow(
 private fun AuraCover(url: String?, seed: String?, size: Dp) {
     val cropAlbumArt by rememberPreference(CropAlbumArtKey, false)
     AuraArtwork(size = size, placeholderSeed = seed) {
-        if (url != null) {
-            AsyncImage(
-                model = url,
-                contentDescription = null,
-                contentScale = if (cropAlbumArt) ContentScale.Crop else ContentScale.Fit,
-                modifier = Modifier.fillMaxSize(),
-            )
-        }
-    }
-}
-
-/**
- * The three teal bars of the render's "SONANDO" row. **Static on purpose** — an animated equaliser
- * would repaint every frame for the whole time the sheet is open, which is exactly the kind of
- * per-frame cost the thermal gate forbids. Height ratios are the render's: 60 % / 100 % / 45 %.
- */
-@Composable
-private fun AuraPlayingBars(visible: Boolean) {
-    if (!visible) return
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(3.dp),
-        verticalAlignment = Alignment.Bottom,
-        modifier = Modifier.height(17.dp),
-    ) {
-        listOf(0.60f, 1f, 0.45f).forEach { fraction ->
-            Box(
-                Modifier
-                    .width(3.dp)
-                    .fillMaxHeight(fraction)
-                    .background(AuraPalette.Teal),
-            )
-        }
+        AuraStableCoverImage(
+            url = url,
+            contentScale = if (cropAlbumArt) ContentScale.Crop else ContentScale.Fit,
+            decodeTo = 128,
+            modifier = Modifier.fillMaxSize(),
+        )
     }
 }
 
@@ -1694,6 +1634,11 @@ private fun buildAuraQueueEntries(
     currentIndex: Int,
     repeatMode: Int,
     hasAutoplayContinuation: Boolean,
+    /**
+     * When true (queue sheet with pinned SONANDO header), the current song is NOT emitted again under
+     * a REPRODUCIENDO label — that duplication is what the owner rejected. Wide queue keeps the row.
+     */
+    omitPinnedCurrent: Boolean = false,
 ): List<AuraQueueEntry> {
     if (windows.isEmpty()) return emptyList()
     val entries = ArrayList<AuraQueueEntry>(windows.size + 5)
@@ -1705,38 +1650,83 @@ private fun buildAuraQueueEntries(
         val isCurrent = index == currentIndex
         val radio = listQueueSize > 0 && window.firstPeriodIndex >= listQueueSize
         when {
-            // Emitted at most once: `index == currentIndex` is true for exactly one index.
-            isCurrent -> entries += AuraQueueEntry.Label(
-                id = AURA_QUEUE_LABEL_CURRENT,
-                textRes = R.string.aura_queue_label_now_playing,
-                radio = false,
-            )
+            isCurrent && omitPinnedCurrent -> {
+                // Current lives only in the SONANDO header. Still announce repeat-one under the list
+                // so the engine's loop is not silent.
+                if (repeatMode == Player.REPEAT_MODE_ONE) {
+                    entries += AuraQueueEntry.Label(
+                        "repeat_one",
+                        R.string.aura_queue_label_repeat_one,
+                        radio = false,
+                    )
+                }
+            }
+            isCurrent -> {
+                entries += AuraQueueEntry.Label(
+                    id = AURA_QUEUE_LABEL_CURRENT,
+                    textRes = R.string.aura_queue_label_now_playing,
+                    radio = false,
+                )
+                entries += AuraQueueEntry.Song(
+                    queueIndex = index,
+                    window = window,
+                    radio = radio,
+                    isCurrent = true,
+                )
+                if (repeatMode == Player.REPEAT_MODE_ONE) {
+                    entries += AuraQueueEntry.Label(
+                        "repeat_one",
+                        R.string.aura_queue_label_repeat_one,
+                        radio = false,
+                    )
+                }
+            }
             index < currentIndex -> if (!emittedPlayed) {
                 emittedPlayed = true
                 entries += AuraQueueEntry.Label("played", R.string.aura_queue_label_played, radio = false)
-            }
-            radio -> if (!emittedRadio) {
-                emittedRadio = true
-                entries += AuraQueueEntry.Label(
-                    id = "radio",
-                    textRes = if (emittedUpcoming) R.string.aura_queue_label_radio_later
-                    else R.string.aura_queue_label_radio_next,
-                    radio = true,
+                entries += AuraQueueEntry.Song(
+                    queueIndex = index,
+                    window = window,
+                    radio = radio,
+                    isCurrent = false,
+                )
+            } else {
+                entries += AuraQueueEntry.Song(
+                    queueIndex = index,
+                    window = window,
+                    radio = radio,
+                    isCurrent = false,
                 )
             }
-            else -> if (!emittedUpcoming) {
-                emittedUpcoming = true
-                entries += AuraQueueEntry.Label("list", R.string.aura_queue_label_list_next, radio = false)
+            radio -> {
+                if (!emittedRadio) {
+                    emittedRadio = true
+                    entries += AuraQueueEntry.Label(
+                        id = "radio",
+                        textRes = if (emittedUpcoming) R.string.aura_queue_label_radio_later
+                        else R.string.aura_queue_label_radio_next,
+                        radio = true,
+                    )
+                }
+                entries += AuraQueueEntry.Song(
+                    queueIndex = index,
+                    window = window,
+                    radio = radio,
+                    isCurrent = false,
+                )
             }
-        }
-        entries += AuraQueueEntry.Song(
-            queueIndex = index,
-            window = window,
-            radio = radio,
-            isCurrent = isCurrent,
-        )
-        if (isCurrent && repeatMode == Player.REPEAT_MODE_ONE) {
-            entries += AuraQueueEntry.Label("repeat_one", R.string.aura_queue_label_repeat_one, radio = false)
+            else -> {
+                if (!emittedUpcoming) {
+                    emittedUpcoming = true
+                    entries += AuraQueueEntry.Label("list", R.string.aura_queue_label_list_next, radio = false)
+                }
+                entries += AuraQueueEntry.Song(
+                    queueIndex = index,
+                    window = window,
+                    radio = radio,
+                    isCurrent = false,
+                )
+            }
         }
     }
 
@@ -1929,7 +1919,7 @@ internal fun AuraWideQueuePane(modifier: Modifier = Modifier) {
                             },
                             trailing = {
                                 if (entry.isCurrent) {
-                                    AuraPlayingBars(visible = isPlaying)
+                                    AuraPlayingBars(isPlaying = isPlaying)
                                 } else {
                                     AuraTechnicalText(text = makeTimeString(meta.duration * 1000L))
                                 }

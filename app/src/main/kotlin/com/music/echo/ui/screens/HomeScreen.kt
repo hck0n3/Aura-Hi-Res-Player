@@ -158,6 +158,7 @@ import iad1tya.echo.music.ui.component.YouTubeGridItem
 import iad1tya.echo.music.ui.component.YouTubeListItem
 import iad1tya.echo.music.ui.menu.AlbumMenu
 import iad1tya.echo.music.ui.menu.ArtistMenu
+import iad1tya.echo.music.ui.menu.PlaylistMenu
 import iad1tya.echo.music.ui.menu.SongMenu
 import iad1tya.echo.music.ui.menu.YouTubeAlbumMenu
 import iad1tya.echo.music.ui.menu.YouTubeArtistMenu
@@ -169,6 +170,7 @@ import iad1tya.echo.music.ui.utils.resize
 import iad1tya.echo.music.utils.isInternetAvailable
 import iad1tya.echo.music.utils.listItemShape
 import iad1tya.echo.music.utils.rememberEnumPreference
+import iad1tya.echo.music.constants.AiRecommendedPlaylistKey
 import iad1tya.echo.music.utils.rememberPreference
 import iad1tya.echo.music.viewmodels.CommunityPlaylistItem
 import iad1tya.echo.music.viewmodels.HomeViewModel
@@ -817,9 +819,10 @@ fun HomeScreen(
     val (randomizeHomeOrder) = rememberPreference(RandomizeHomeOrderKey, false)
     // OFF by default (owner's call). Must match ContentSettings' default exactly: two different defaults
     // for one key make the toggle disagree with what Home actually renders until the user touches it.
-    val (showSpeedDial) = rememberPreference(ShowSpeedDialKey, false)
+    val (showSpeedDial) = rememberPreference(ShowSpeedDialKey, true)
     val (tasteOnlyHome) = rememberPreference(HomeTasteOnlyKey, true)
     val (homeRichLayout) = rememberPreference(HomeRichLayoutKey, true)
+    val (aiRecsEnabled) = rememberPreference(AiRecommendedPlaylistKey, false)
     // Editorial look: bigger artwork cards in the taste rows. Null = compact (default component size).
     val richCardHeight: androidx.compose.ui.unit.Dp? = if (homeRichLayout) GridThumbnailHeight * 1.25f else null
 
@@ -1047,6 +1050,7 @@ fun HomeScreen(
         dailyMixes,
         timeOfDayMix,
         aiRecommendedSongs,
+        aiRecsEnabled,
         keepListening,
         accountPlaylists,
         forgottenFavorites,
@@ -1070,7 +1074,7 @@ fun HomeScreen(
             quickPickCount = quickPicks?.size ?: 0,
             dailyMixItemCounts = dailyMixes?.map { it.items.size }.orEmpty(),
             timeOfDayMixSongCount = timeOfDayMix?.songs?.size ?: 0,
-            aiRecommendedSongCount = aiRecommendedSongs?.size ?: 0,
+            aiRecommendedSongCount = if (aiRecsEnabled) aiRecommendedSongs?.size ?: 0 else 0,
             keepListeningCount = keepListening?.size ?: 0,
             accountPlaylistCount = accountPlaylists?.size ?: 0,
             forgottenFavoritesCount = forgottenFavorites?.size ?: 0,
@@ -1335,42 +1339,7 @@ fun HomeScreen(
                                                         for (col in 0 until columns) {
                                                             val itemIndex = row * columns + col
 
-                                                            val isRandomizeSlot = (page == 0 && itemIndex == itemsPerPage - 1)
-
-                                                            if (isRandomizeSlot) {
-                                                                Box(
-                                                                    modifier = Modifier
-                                                                        .width(itemWidth)
-                                                                        .height(itemWidth)
-                                                                        .padding(4.dp)
-                                                                ) {
-                                                                    RandomizeGridItem(
-                                                                        isLoading = isRandomizing,
-                                                                        onClick = {
-                                                                            if (isRandomizing) {
-                                                                                randomizeJob?.cancel()
-                                                                            } else {
-                                                                                randomizeJob = scope.launch {
-                                                                                    val randomItem = viewModel.getRandomItem()
-                                                                                    if (randomItem != null) {
-                                                                                        when (randomItem) {
-                                                                                            is SongItem -> playerConnection.playQueue(
-                                                                                                YouTubeQueue(
-                                                                                                    randomItem.endpoint ?: WatchEndpoint(videoId = randomItem.id),
-                                                                                                    randomItem.toMediaMetadata()
-                                                                                                )
-                                                                                            )
-                                                                                            is AlbumItem -> navController.navigate("album/${randomItem.id}")
-                                                                                            is ArtistItem -> navController.navigate("artist/${randomItem.id}")
-                                                                                            is PlaylistItem -> navController.navigate("online_playlist/${randomItem.id}") 
-                                                                                        }
-                                                                                    }
-                                                                                }
-                                                                            }
-                                                                        }
-                                                                    )
-                                                                }
-                                                            } else if (itemIndex < pageItems.size) {
+                                                            if (itemIndex < pageItems.size) {
                                                                 val item = pageItems[itemIndex]
                                                                 val isPinned by database.speedDialDao.isPinned(item.id).collectAsState(initial = false)
 
@@ -1398,8 +1367,17 @@ fun HomeScreen(
                                                                                         )
                                                                                         is AlbumItem -> navController.navigate("album/${item.id}")
                                                                                         is ArtistItem -> navController.navigate("artist/${item.id}")
-
-                                                                                        is PlaylistItem -> navController.navigate("online_playlist/${item.id}") 
+                                                                                        is PlaylistItem -> scope.launch {
+                                                                                            val local = withContext(Dispatchers.IO) {
+                                                                                                database.playlist(item.id).first()
+                                                                                                    ?: database.playlistByBrowseId(item.id).first()
+                                                                                            }
+                                                                                            if (local != null) {
+                                                                                                navController.navigate("local_playlist/${local.id}")
+                                                                                            } else {
+                                                                                                navController.navigate("online_playlist/${item.id}")
+                                                                                            }
+                                                                                        }
                                                                                     }
                                                                                 },
                                                                                 onLongClick = {
@@ -1420,11 +1398,24 @@ fun HomeScreen(
                                                                                                 artist = item,
                                                                                                 onDismiss = menuState::dismiss
                                                                                             )
-                                                                                            is PlaylistItem -> YouTubePlaylistMenu(
-                                                                                                playlist = item,
-                                                                                                coroutineScope = scope,
-                                                                                                onDismiss = menuState::dismiss
-                                                                                            )
+                                                                                            is PlaylistItem -> {
+                                                                                                val local by database.playlist(item.id).collectAsState(initial = null)
+                                                                                                val byBrowse by database.playlistByBrowseId(item.id).collectAsState(initial = null)
+                                                                                                val saved = local ?: byBrowse
+                                                                                                if (saved != null) {
+                                                                                                    PlaylistMenu(
+                                                                                                        playlist = saved,
+                                                                                                        coroutineScope = scope,
+                                                                                                        onDismiss = menuState::dismiss,
+                                                                                                    )
+                                                                                                } else {
+                                                                                                    YouTubePlaylistMenu(
+                                                                                                        playlist = item,
+                                                                                                        coroutineScope = scope,
+                                                                                                        onDismiss = menuState::dismiss
+                                                                                                    )
+                                                                                                }
+                                                                                            }
                                                                                         }
                                                                                     }
                                                                                 }
@@ -2050,6 +2041,7 @@ fun HomeScreen(
                             }
                         }
                         HomeSection.AiRecommended -> {
+                            if (!aiRecsEnabled) return@forEach
                             // "Recomendado para ti (IA)": the ONE persistent AI playlist rebuilt daily by
                             // the opt-in AutoRecoPlaylistWorker. Light local row (same pattern as GenreMix);
                             // the header shows when it was last refreshed (from the entity's REAL

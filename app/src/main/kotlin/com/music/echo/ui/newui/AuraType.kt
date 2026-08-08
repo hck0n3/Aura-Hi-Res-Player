@@ -99,6 +99,27 @@ object AuraType {
     )
 
     /**
+     * Content section title (Apple Music / YTM hybrid): large readable sans, not mono caps.
+     * Used by [AuraSectionHeader] for exploration shelves.
+     */
+    val ContentSection = TextStyle(
+        fontFamily = AppFontFamily,
+        fontWeight = FontWeight.Bold,
+        fontSize = 22.sp,
+        lineHeight = 26.sp,
+        letterSpacing = (-0.4).sp,
+    )
+
+    /** Title under a shelf cover — slightly tighter than [RowTitle] for dense cards. */
+    val CoverTitle = TextStyle(
+        fontFamily = AppFontFamily,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 15.sp,
+        lineHeight = 18.sp,
+        letterSpacing = (-0.2).sp,
+    )
+
+    /**
      * Tracked uppercase section label. Render `.lb` mono 8px / ls .16em / opacity .5 —
      * "SONANDO", "A CONTINUACIÓN · DE TU LISTA", "BUENAS NOCHES", "RECOMENDADO PARA TI · IA".
      * Callers pass the string ALREADY uppercase (Spanish accents survive; do not `.uppercase()` a

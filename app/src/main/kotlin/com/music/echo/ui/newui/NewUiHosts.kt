@@ -115,7 +115,6 @@ fun PlayerMenuHost(
     playerBottomSheetState: BottomSheetState,
     onShowDetailsDialog: () -> Unit,
     onDismiss: () -> Unit,
-    onSleepTimer: () -> Unit = {},
 ) {
     NewUiGate(
         classic = {
@@ -124,7 +123,6 @@ fun PlayerMenuHost(
                 navController = navController,
                 playerBottomSheetState = playerBottomSheetState,
                 onShowDetailsDialog = onShowDetailsDialog,
-                onSleepTimer = onSleepTimer,
                 onDismiss = onDismiss,
             )
         },
@@ -135,7 +133,6 @@ fun PlayerMenuHost(
                 playerBottomSheetState = playerBottomSheetState,
                 onShowDetailsDialog = onShowDetailsDialog,
                 onDismiss = onDismiss,
-                onSleepTimer = onSleepTimer,
             )
         },
     )
@@ -162,6 +159,7 @@ fun QueueHost(
     modifier: Modifier = Modifier,
     playerBackground: PlayerBackgroundStyle = PlayerBackgroundStyle.DEFAULT,
     onToggleLyrics: () -> Unit = {},
+    onMore: () -> Unit = {},
 ) {
     NewUiGate(
         classic = {
@@ -196,6 +194,7 @@ fun QueueHost(
                 showInlineLyrics = showInlineLyrics,
                 playerBackground = playerBackground,
                 onToggleLyrics = onToggleLyrics,
+                onMore = onMore,
             )
         },
     )
@@ -433,5 +432,49 @@ fun OnlinePlaylistScreenHost(
     NewUiGate(
         classic = { OnlinePlaylistScreen(navController, scrollBehavior) },
         new = { AuraOnlinePlaylistScreen(navController, scrollBehavior) },
+    )
+}
+
+@Composable
+fun FavoriteAlbumsScreenHost(navController: NavController) {
+    NewUiGate(
+        classic = {
+            iad1tya.echo.music.ui.screens.library.FavoriteAlbumsScreen(navController)
+        },
+        new = { AuraFavoriteAlbumsScreen(navController) },
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ArtistSectionGridScreenHost(
+    navController: NavController,
+    scrollBehavior: TopAppBarScrollBehavior,
+) {
+    NewUiGate(
+        classic = {
+            iad1tya.echo.music.ui.screens.artist.ArtistAlbumsGridScreen(
+                navController,
+                scrollBehavior,
+            )
+        },
+        new = { AuraArtistSectionGridScreen(navController) },
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ArtistItemsScreenHost(
+    navController: NavController,
+    scrollBehavior: TopAppBarScrollBehavior,
+) {
+    NewUiGate(
+        classic = {
+            iad1tya.echo.music.ui.screens.artist.ArtistItemsScreen(
+                navController,
+                scrollBehavior,
+            )
+        },
+        new = { AuraArtistItemsScreen(navController) },
     )
 }

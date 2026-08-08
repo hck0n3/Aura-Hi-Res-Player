@@ -168,7 +168,7 @@ class ContextProfileTest {
         val rockPool = listOf(track("Queen"), track("Queen", "Two"), track("Queen", "Three"))
         val rock = ContextProfile.build(rockPool, mapOf("queen" to "Rock"))!!
         assertNull(rock.languageHint)
-        assertEquals(6.0, ContextProfile.steerTerm(rock, listOf("Bad Bunny"), "urbano latino"), 1e-9)
+        assertEquals(7.0, ContextProfile.steerTerm(rock, listOf("Bad Bunny"), "urbano latino"), 1e-9)
     }
 
     @Test

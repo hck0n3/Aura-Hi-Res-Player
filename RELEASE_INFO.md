@@ -1,55 +1,72 @@
-# Aura Hi-Res Player 0.6.149-beta1
+# Aura Hi-Res Player 0.6.150
 
-Beta **privada**. El cierre que reportaste al tocar Buscar, seis pantallas más con el diseño nuevo, los cuatro botones que pediste, y la personalización que te había quitado sin darme cuenta.
+La interfaz nueva Aura llega a todos: activada de fábrica, reversible en un toque. Incluye el trabajo de las betas 0.6.148 y 0.6.149, más Inicio tipado (vídeos 16:9), playlists fijadas, cristal en diálogos, y mitigaciones reales contra cortes en Android Auto.
 
 ---
 
-## 💥 El cierre al tocar Buscar
+## 🎛️ Interfaz nueva — ON, y siempre con salida
 
-Se cerraba la app al abrir Buscar. **No era intermitente: le pasaba a cualquiera.**
+- **Viene activada** en instalaciones nuevas y en actualizaciones donde nunca la tocaste.
+- Si la apagaste a mano, **se respeta**: no te la volvemos a encender.
+- **Ajustes ▸ abajo ▸ «Interfaz nueva»** (también en Ajustes de la interfaz nueva). Apágala y vuelves a la clásica al instante.
+- El interruptor **está en las dos interfaces**, así que nunca te quedas atrapado.
+- Apagarla **no toca** tu biblioteca, ajustes, cola ni reproducción.
+- **Con la interfaz nueva la app es solo oscura.**
 
-Cada fila de "Explorar" se identificaba con el título de la sección más el identificador de su primera entrada. Pero **todas las categorías de "Estados de ánimo y momentos" comparten el mismo identificador** — solo cambian los parámetros. Así que desde la segunda fila el identificador se repetía y el sistema lanzaba el error al dibujar.
+## 🏠 Inicio, listas y vídeos
 
-Ahora las claves van **por posición**: no pueden repetirse devuelva lo que devuelva el servidor.
+- **Fijar playlist al inicio** sustituye la antigua marcación rápida: tus listas ancladas aparecen en Inicio.
+- Carruseles y resultados distinguen **canción / álbum / EP / playlist / vídeo 16:9 / artista** — no un solo tamaño genérico.
+- Estantes mezclados (p. ej. Similares) se **agrupan por tipo** para evitar huecos enormes entre tarjetas.
+- Listas de vídeo: badge claro y miniaturas 16:9.
+- Se ve **cuáles canciones ya se reprodujeron** (marca de estado).
+- «Recomendado para ti (IA)» solo aparece si lo tienes **activado** en Ajustes.
 
-## 📱 Seis pantallas más con el diseño nuevo
+## ▶️ Reproductor y menús
 
-**Álbum**, **artista**, **lista de reproducción** (online y local), **en caché** y **más escuchadas**. De 10 a **16 de 69 rutas**.
+- Fila inferior del reproductor: **Más / Ajustes** abre el menú completo (no solo los tres puntos de arriba).
+- **Cast** sigue arriba a la derecha.
+- Mini-reproductor por defecto: **Brillo animado**.
+- Temporizador de apagado: **eliminado** (botón y motor).
+- Diálogos, hojas y menús ⋮ con placa **cristal esmerilado** (se ve lo de atrás).
+- Cola: la canción actual solo en **SONANDO** (sin duplicarla debajo).
+- Indicador de reproducción: barras animadas; glifo play mientras bufferiza.
 
-- **Álbum y artista van primero por un motivo**: el reproductor nuevo te lleva a ellas. Tocabas el título o el artista y aterrizabas en una pantalla vieja. Ese salto ya no está.
-- Las cuatro pantallas de listas comparten ahora **un solo molde**, así que "en caché" y "más escuchadas" dejan de ser las raras del grupo.
-- **Tu Canvas está intacto** — la portada animada, su ajuste, y que se apague con el modo ahorro de datos. Verificado línea a línea, no de palabra.
-- Y el **Aleatorio Mejorado comparte la misma memoria** entre las dos interfaces: no hay dos listas de "ya sonadas" que se desincronicen.
+## 👨‍🎨 Artista, álbum y playlists
 
-## 🎛️ Los cuatro botones que pediste
+- En la página de artista de YouTube: sección **Tu biblioteca** visible.
+- Tocar una canción de biblioteca o top encola el resto de esa lista.
+- Grids de álbumes favoritos / «ver todos» con piel Aura.
+- En playlists largas: **Buscar** y **Más** en la fila inferior; Play/Aleatorio arriba.
 
-**No me gusta**, **Añadir a playlist**, **Ecualizador** y **Compartir**, en el reproductor a pantalla completa.
+## 🚗 Android Auto y reproducción en segundo plano
 
-Van en **dos filas de cuatro**, y la razón es una medida: siete botones a 48dp con separación son 420dp, y tu pantalla tiene 360. Comprimirlos dejaría los objetivos táctiles pegados justo encima del transporte — una fábrica de toques equivocados. Siguen estando también en el menú.
+- Con **Android Auto conectado** o **Ahorro de batería del sistema ON**, el fundido (crossfade) se desactiva solo: evita silencios de ~4 s al cambiar de canción.
+- Bajo ahorro de batería se sigue precargando la **URL** de la siguiente canción (sin extras pesados).
+- Keep-alive no se suelta en pausas cortas de Auto/Bluetooth.
+- Si el Ahorro de batería está encendido al reproducir, el aviso te lo dice claro: **apágalo mientras escuchas en el coche**.
+- Exención de batería + inicio automático siguen siendo necesarios en Xiaomi/HyperOS.
+- **No prometemos cero cortes** en todos los móviles: HyperOS puede matar el proceso; esto ataca las causas que ya vimos en registros reales.
 
-## ▶️ La cola ya no miente
+## 💥 Fallos graves ya cerrados (desde 0.6.148 / 0.6.149)
 
-Decía "Siguiente en la cola" y debajo aparecía **la canción que estabas oyendo**. Ahora la actual va bajo su propio rótulo **"REPRODUCIENDO"** y **"Siguiente" empieza en la siguiente de verdad** — respetando el aleatorio, el repetir-una y el final de la cola.
+- La app **se cerraba al entrar en Buscar** (claves duplicadas en «Estados de ánimo»).
+- La pestaña Biblioteca **no mostraba nada y abría Ajustes** (pila de navegación envenenada); también se cerraron puertas gemelas, incluida una que rompía Ajustes — justo donde vive el interruptor para volver atrás.
+- Pantallas y diálogos en **blanco chillón** con la interfaz nueva: ahora manda su paleta oscura al tema de la app.
+- Tus **colores de acento** llegan a la interfaz nueva (antes un turquesa fijo).
+- Estilos de fondo del reproductor / mini / AMOLED / radio de esquina / tamaño de celda honrados en el diseño nuevo.
+- **Desenfoque** ya es distinto de Predeterminado; Liquid Glass no desaparece de la lista.
 
-## 🎨 La personalización que te había quitado
+## 📱 Pantallas Aura y detalle
 
-Tenías razón: había ocultado controles. **Ocultar también es perder.**
+- Rehechas o ampliadas: Inicio, Biblioteca, Buscar, Estadísticas, álbum, artista, listas (online/local), auto-listas, letras, Ajustes, reproductor, cola y menú.
+- Forma ancha (horizontal / tablet / TV / coche) propia; rotar ya no destruye la pantalla.
+- Inicio de sesión YTM: WebView **dentro** de la app; al terminar no reinicia el proceso.
+- Música local: filtro de carpetas = **incluir** las elegidas (vacío = todo el dispositivo).
 
-- **"Estilo de fondo del minirreproductor" vuelve, y funciona.** El mini nuevo lee su propia preferencia.
-- **Y "Desenfoque" ya hace algo distinto de "Predeterminado".** Antes eran 30 y 34 puntos de desenfoque sobre la misma imagen: imperceptible. Ahora **Predeterminado es el fondo liso del tema** (y ni siquiera decodifica una imagen) y **Desenfoque es la portada difuminada**.
-- **Liquid Glass ya no desaparece**: la fila está visible, atenuada, y **con una explicación que se puede leer** — pasó de 3,2:1 a 5,7:1 de contraste. El efecto real muestrea la pantalla entera en cada fotograma, y eso es exactamente lo que la regla de calor prohíbe en superficies que están visibles mientras suena música.
+## ⚠️ Lo que conviene saber
 
-## 🔍 Y lo que reportaste de la interfaz
-
-- El **botón ⋮ repetido** de la barra de la cola: fuera. Era el duplicado de verdad.
-- La **lupa superpuesta** sobre las pestañas de Biblioteca: movida a cada pestaña, **sin perder la búsqueda**.
-- Los botones de **IA, crear playlist e importar**: ya se leen.
-- Una fila del menú decía **"Transmitir"** con icono de emisión cuando en realidad abre los **dispositivos de audio**.
-- **34 textos** movidos del código a los recursos, en los dos idiomas.
-
-## ⚠️ Lo que sigue pendiente, dicho claro
-
-- **53 de las 69 rutas** conservan su disposición clásica. Se ven oscuras y coherentes, pero con la estructura de antes.
-- **Las cuatro sub-pantallas de artista** siguen clásicas — y ahí vive el **único control de ordenación** de toda la zona de artista.
-- **La interfaz nueva sigue siendo solo oscura.** Ya sé lo que cuesta el tema claro: **5 valores y 9 opacidades**, no una reescritura. Dilo y lo hago.
-- **Los cortes de audio en Android Auto que reportaste no están arreglados.** Seis hipótesis fueron investigadas y **las seis quedaron refutadas** — incluidas mis dos favoritas. Nada de este lote toca la cadena de audio; lo verifiqué barriendo el código entero. Necesito el registro de un trayecto para seguir.
+- Algunas rutas secundarias siguen con disposición clásica (oscuras y coherentes).
+- La interfaz nueva es **solo oscura**.
+- En Android 8–11 el desenfoque del sistema no existe: algunos estilos de fondo pierden la portada.
+- En el coche: apaga el **Ahorro de batería del sistema**, deja Aura sin restricciones e iníciola automática; bloquea Aura en recientes.

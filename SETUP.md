@@ -2,6 +2,39 @@
 
 This document provides instructions for setting up the Aura Hi-Res Player project for development.
 
+## Windows — new PC or formatted disk (fast path)
+
+**Before formatting**, back up secrets outside the repo:
+
+```powershell
+.\scripts\backup-dev-secrets.ps1
+```
+
+Copy `%USERPROFILE%\AuraHiResDevBackup` to USB or cloud.
+
+**On the new machine** (after cloning the repo):
+
+```powershell
+.\scripts\setup-dev-environment.ps1
+```
+
+That single script restores the backup (if present), configures the Android SDK path, writes
+`local.properties`, loads signing from `app/keystore/CREDENTIALS.txt`, installs Cursor extensions,
+fixes the Java/Buildship IDE error, and runs the signing verification.
+
+Then in Cursor once: `Java: Clean Java Language Server Workspace` → Reload Window.
+
+**Before publishing to all users:**
+
+```powershell
+.\scripts\pre-publish-check.ps1 -Build
+```
+
+Push a stable tag `vX.Y.Z` (no `-beta`). GitHub Actions builds and publishes; secrets live in GitHub,
+not on disk.
+
+---
+
 ## Prerequisites
 
 - Android Studio (latest version recommended)

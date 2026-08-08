@@ -10,6 +10,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -23,6 +24,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.grid.items as lazyGridItems
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -93,6 +95,7 @@ import iad1tya.echo.music.reco.AutoRecoPlaylistWorker
 import iad1tya.echo.music.ui.component.LocalMenuState
 import iad1tya.echo.music.ui.menu.AlbumMenu
 import iad1tya.echo.music.ui.menu.ArtistMenu
+import iad1tya.echo.music.ui.menu.PlaylistMenu
 import iad1tya.echo.music.ui.menu.SongMenu
 import iad1tya.echo.music.ui.menu.YouTubeAlbumMenu
 import iad1tya.echo.music.ui.menu.YouTubeArtistMenu
@@ -109,13 +112,17 @@ import iad1tya.echo.music.ui.utils.resize
 import iad1tya.echo.music.ui.utils.tvFocusRestorer
 import iad1tya.echo.music.ui.utils.tvFocusable
 import iad1tya.echo.music.utils.isInternetAvailable
+import iad1tya.echo.music.constants.AiRecommendedPlaylistKey
 import iad1tya.echo.music.utils.rememberEnumPreference
 import iad1tya.echo.music.utils.rememberPreference
 import iad1tya.echo.music.viewmodels.HomeViewModel
 import java.time.LocalTime
 import java.time.ZoneId
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * # Inicio — "Interfaz nueva"
@@ -180,12 +187,11 @@ fun AuraHomeScreen(
 
     val isLoading by viewModel.isLoading.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
-    val isRandomizing by viewModel.isRandomizing.collectAsState()
 
     val perfOn by rememberPreference(HighPerformanceModeKey, false)
     var offlineMode by rememberPreference(OfflineModeKey, false)
     val (randomizeHomeOrder) = rememberPreference(RandomizeHomeOrderKey, false)
-    val (showSpeedDial) = rememberPreference(ShowSpeedDialKey, false)
+    val (showSpeedDial) = rememberPreference(ShowSpeedDialKey, true)
     val (tasteOnlyHome) = rememberPreference(HomeTasteOnlyKey, true)
     // ── "Inicio enriquecido" (HomeRichLayoutKey) ──────────────────────────────────────────────────
     // The SAME preference, with the SAME meaning, that the classic Home reads to size its editorial
@@ -210,7 +216,6 @@ fun AuraHomeScreen(
 
     val pullRefreshState = rememberPullToRefreshState()
     val listState = rememberLazyListState()
-    var randomizeJob by remember { mutableStateOf<Job?>(null) }
     var randomSeed by rememberSaveable { mutableLongStateOf(System.currentTimeMillis()) }
 
     // The ambient bloom is resolved ONCE PER TRACK (AuraBloomCache), never per frame — thermal gate.
@@ -260,9 +265,10 @@ fun AuraHomeScreen(
         }
     }
 
+    val (aiRecsEnabled) = rememberPreference(AiRecommendedPlaylistKey, false)
     val homeSections = remember(
         randomizeHomeOrder, randomSeed, tasteOnlyHome, speedDialItems, quickPicks, dailyMixes,
-        timeOfDayMix, aiRecommendedSongs, keepListening, accountPlaylists, forgottenFavorites,
+        timeOfDayMix, aiRecommendedSongs, aiRecsEnabled, keepListening, accountPlaylists, forgottenFavorites,
         communityPlaylists, newFromArtists, genreMix, similarRecommendations, homePage?.sections,
         explorePage?.moodAndGenres, explorePage?.newReleaseAlbums, perfOn, showSpeedDial,
     ) {
@@ -276,7 +282,8 @@ fun AuraHomeScreen(
             quickPickCount = quickPicks?.size ?: 0,
             dailyMixItemCounts = dailyMixes?.map { it.items.size }.orEmpty(),
             timeOfDayMixSongCount = timeOfDayMix?.songs?.size ?: 0,
-            aiRecommendedSongCount = aiRecommendedSongs?.size ?: 0,
+            // Settings toggle must win: a leftover AI playlist in the DB must not keep the shelf alive.
+            aiRecommendedSongCount = if (aiRecsEnabled) aiRecommendedSongs?.size ?: 0 else 0,
             keepListeningCount = keepListening?.size ?: 0,
             accountPlaylistCount = accountPlaylists?.size ?: 0,
             forgottenFavoritesCount = forgottenFavorites?.size ?: 0,
@@ -310,7 +317,20 @@ fun AuraHomeScreen(
 
             is AlbumItem -> navController.navigate("album/${item.id}")
             is ArtistItem -> navController.navigate("artist/${item.id}")
-            is PlaylistItem -> navController.navigate("online_playlist/${item.id}")
+            is PlaylistItem -> {
+                // Pinned Home playlists may be local (UUID) or YouTube browse ids.
+                scope.launch {
+                    val local = withContext(Dispatchers.IO) {
+                        database.playlist(item.id).first()
+                            ?: database.playlistByBrowseId(item.id).first()
+                    }
+                    if (local != null) {
+                        navController.navigate("local_playlist/${local.id}")
+                    } else {
+                        navController.navigate("online_playlist/${item.id}")
+                    }
+                }
+            }
         }
     }
     val ytItemMenu: (YTItem) -> Unit = { item ->
@@ -320,7 +340,20 @@ fun AuraHomeScreen(
                 is SongItem -> YouTubeSongMenu(song = item, navController = navController, onDismiss = menuState::dismiss)
                 is AlbumItem -> YouTubeAlbumMenu(albumItem = item, navController = navController, onDismiss = menuState::dismiss)
                 is ArtistItem -> YouTubeArtistMenu(artist = item, onDismiss = menuState::dismiss)
-                is PlaylistItem -> YouTubePlaylistMenu(playlist = item, coroutineScope = scope, onDismiss = menuState::dismiss)
+                is PlaylistItem -> {
+                    val local by database.playlist(item.id).collectAsState(initial = null)
+                    val byBrowse by database.playlistByBrowseId(item.id).collectAsState(initial = null)
+                    val saved = local ?: byBrowse
+                    if (saved != null) {
+                        PlaylistMenu(
+                            playlist = saved,
+                            coroutineScope = scope,
+                            onDismiss = menuState::dismiss,
+                        )
+                    } else {
+                        YouTubePlaylistMenu(playlist = item, coroutineScope = scope, onDismiss = menuState::dismiss)
+                    }
+                }
             }
         }
     }
@@ -413,11 +446,14 @@ fun AuraHomeScreen(
                             AuraSectionHeader(title = stringResource(R.string.home_your_podcasts))
                             AuraShelf {
                                 items(pinnedPodcasts, key = { it.id }) { show ->
+                                    val visual = auraTypeVisual(AuraContentKind.Podcast)
                                     AuraCoverCard(
                                         title = show.title,
                                         thumbnailUrl = show.artworkUrl,
                                         seed = show.id,
-                                        width = 118.dp * cardScale,
+                                        width = visual.shelfWidth * cardScale,
+                                        ratio = visual.ratio,
+                                        shape = visual.shape,
                                         onClick = {
                                             navController.navigate(
                                                 "podcasts?feedUrl=" +
@@ -444,6 +480,7 @@ fun AuraHomeScreen(
                                 items(recentSongs.distinctBy { it.id }, key = { it.id }) { song ->
                                     AuraSongShelfCard(
                                         song = song,
+                                        cardScale = cardScale,
                                         isActive = song.id == mediaMetadata?.id,
                                         isPlaying = isPlaying,
                                         onClick = { playSong(song) },
@@ -462,51 +499,20 @@ fun AuraHomeScreen(
                                 item(key = "aura_speed_dial") {
                                     Column(Modifier.animateItem()) {
                                         AuraSectionHeader(title = stringResource(R.string.speed_dial))
-                                        AuraShelf {
-                                            // "Botón aleatorio de 5 puntos": first cell of the shelf.
-                                            // Tapping it WHILE LOADING cancels, as today.
-                                            item(key = "aura_speed_dial_random") {
-                                                AuraRandomizeTile(
-                                                    isLoading = isRandomizing,
-                                                    onClick = {
-                                                        if (isRandomizing) {
-                                                            randomizeJob?.cancel()
-                                                        } else {
-                                                            randomizeJob = scope.launch {
-                                                                viewModel.getRandomItem()?.let(openYtItem)
-                                                            }
-                                                        }
-                                                    },
-                                                )
-                                            }
-                                            items(items, key = { it.id }) { item ->
-                                                val isPinned by database.speedDialDao
-                                                    .isPinned(item.id)
-                                                    .collectAsState(initial = false)
-                                                AuraCoverCard(
-                                                    title = item.title,
-                                                    subtitle = auraYtSubtitle(item),
-                                                    thumbnailUrl = item.thumbnail,
-                                                    seed = item.id,
-                                                    width = 118.dp * cardScale,
+                                        // Playlists the user pinned to Home — no song backfill, no random tile.
+                                        val pinW = auraTypeVisual(AuraContentKind.Playlist).shelfWidth * cardScale
+                                        AuraDoubleRowShelf(
+                                            rowHeight = auraShelfCardStackHeight(pinW),
+                                        ) {
+                                            lazyGridItems(items, key = { it.id }) { item ->
+                                                AuraTypedYtCoverCard(
+                                                    item = item,
+                                                    cardScale = cardScale,
                                                     isActive = item.id == mediaMetadata?.id ||
                                                         item.id == mediaMetadata?.album?.id,
                                                     isPlaying = isPlaying,
                                                     onClick = { openYtItem(item) },
                                                     onLongClick = { ytItemMenu(item) },
-                                                    badge = {
-                                                        if (isPinned) {
-                                                            AuraIconGlyph(
-                                                                icon = AuraIcons.Check,
-                                                                contentDescription = null,
-                                                                size = 14.dp,
-                                                                tint = AuraPalette.Teal,
-                                                                modifier = Modifier
-                                                                    .align(Alignment.TopStart)
-                                                                    .padding(7.dp),
-                                                            )
-                                                        }
-                                                    },
                                                 )
                                             }
                                         }
@@ -538,7 +544,7 @@ fun AuraHomeScreen(
                                                     val current = song ?: originalSong
                                                     AuraSongShelfCard(
                                                         song = current,
-                                                        width = 118.dp * cardScale,
+                                                        cardScale = cardScale,
                                                         isActive = current.id == mediaMetadata?.id,
                                                         isPlaying = isPlaying,
                                                         onClick = { playSong(current) },
@@ -547,9 +553,12 @@ fun AuraHomeScreen(
                                                 }
                                             }
                                         } else {
+                                            // Stronger hero: ~classic editorial presence (was 168 dp).
+                                            // Still square — Para ti is taste songs; video shelves below
+                                            // own the 16:9 language.
                                             AuraQuickPicksCarousel(
                                                 songs = distinctQuickPicks,
-                                                itemSize = 168.dp * cardScale,
+                                                itemSize = 208.dp * cardScale,
                                                 activeId = mediaMetadata?.id,
                                                 isPlaying = isPlaying,
                                                 onClick = playSong,
@@ -622,29 +631,28 @@ fun AuraHomeScreen(
                                         )
                                         AuraShelf {
                                             items(mix.items, key = { it.recommendation.id }) { entry ->
-                                                val ytSong = entry.recommendation as? SongItem
-                                                AuraCoverCard(
-                                                    title = entry.recommendation.title,
-                                                    subtitle = auraYtSubtitle(entry.recommendation),
-                                                    thumbnailUrl = entry.recommendation.thumbnail,
-                                                    seed = entry.recommendation.id,
-                                                    width = (if (perfOn) 118.dp else 168.dp) * cardScale,
-                                                    isActive = entry.recommendation.id == mediaMetadata?.id,
+                                                val yt = entry.recommendation
+                                                AuraTypedYtCoverCard(
+                                                    item = yt,
+                                                    cardScale = cardScale,
+                                                    isActive = yt.id == mediaMetadata?.id ||
+                                                        yt.id == mediaMetadata?.album?.id,
                                                     isPlaying = isPlaying,
                                                     onClick = {
-                                                        val mm = ytSong?.toMediaMetadata()
-                                                        if (mm != null) {
-                                                            playerConnection.playQueue(
-                                                                YouTubeQueue(
-                                                                    ytSong.endpoint
-                                                                        ?: WatchEndpoint(videoId = ytSong.id),
-                                                                    mm,
-                                                                ),
-                                                            )
+                                                        when (yt) {
+                                                            is SongItem -> {
+                                                                playerConnection.playQueue(
+                                                                    YouTubeQueue(
+                                                                        yt.endpoint
+                                                                            ?: WatchEndpoint(videoId = yt.id),
+                                                                        yt.toMediaMetadata(),
+                                                                    ),
+                                                                )
+                                                            }
+                                                            else -> openYtItem(yt)
                                                         }
                                                     },
-                                                    onLongClick = if (perfOn || ytSong == null) null
-                                                    else ({ ytItemMenu(ytSong) }),
+                                                    onLongClick = if (perfOn) null else ({ ytItemMenu(yt) }),
                                                 )
                                             }
                                         }
@@ -664,26 +672,76 @@ fun AuraHomeScreen(
                                                 playAllSongs(klTitle, items.filterIsInstance<Song>())
                                             },
                                         )
-                                        AuraShelf {
-                                            items(items, key = { it.id }) { item ->
-                                                AuraCoverCard(
-                                                    title = auraLocalTitle(item),
-                                                    subtitle = auraLocalSubtitle(item),
-                                                    thumbnailUrl = auraLocalThumbnail(item),
-                                                    seed = item.id,
-                                                    width = 118.dp * cardScale,
-                                                    shape = if (item is Artist) CircleShape else AuraShapes.Artwork,
-                                                    isActive = item.id == mediaMetadata?.id,
-                                                    isPlaying = isPlaying,
-                                                    onClick = {
-                                                        when (item) {
-                                                            is Song -> playSong(item)
-                                                            is Album -> navController.navigate("album/${item.id}")
-                                                            is Artist -> navController.navigate("artist/${item.id}")
-                                                            else -> Unit
-                                                        }
-                                                    },
-                                                )
+                                        val klGroups = remember(items) {
+                                            items.groupedByAuraKind { auraContentKind(it) }
+                                        }
+                                        val showKlLabels = klGroups.size > 1
+                                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                            klGroups.forEach { (kind, group) ->
+                                                if (showKlLabels) {
+                                                    AuraSectionLabel(
+                                                        text = auraTypeLabel(kind).uppercase(),
+                                                        modifier = Modifier.padding(
+                                                            start = AuraSpacing.Gutter,
+                                                            end = AuraSpacing.Gutter,
+                                                            top = 10.dp,
+                                                        ),
+                                                    )
+                                                }
+                                                AuraShelf {
+                                                    items(group, key = { it.id }) { item ->
+                                                        val visual = auraTypeVisual(item)
+                                                        AuraCoverCard(
+                                                            title = auraLocalTitle(item),
+                                                            subtitle = auraLocalSubtitle(item),
+                                                            thumbnailUrl = auraLocalThumbnail(item),
+                                                            seed = item.id,
+                                                            width = visual.shelfWidth * cardScale,
+                                                            ratio = visual.ratio,
+                                                            shape = visual.shape,
+                                                            isActive = item.id == mediaMetadata?.id,
+                                                            isPlaying = isPlaying,
+                                                            onClick = {
+                                                                when (item) {
+                                                                    is Song -> playSong(item)
+                                                                    is Album -> navController.navigate("album/${item.id}")
+                                                                    is Artist -> navController.navigate("artist/${item.id}")
+                                                                    else -> Unit
+                                                                }
+                                                            },
+                                                            badge = if (visual.kind == AuraContentKind.Video) {
+                                                                {
+                                                                    Box(
+                                                                        modifier = Modifier
+                                                                            .align(Alignment.TopStart)
+                                                                            .padding(8.dp)
+                                                                            .clip(AuraShapes.Pill)
+                                                                            .background(AuraPalette.Ground.copy(alpha = 0.72f))
+                                                                            .padding(horizontal = 7.dp, vertical = 4.dp),
+                                                                    ) {
+                                                                        Row(
+                                                                            verticalAlignment = Alignment.CenterVertically,
+                                                                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                                                        ) {
+                                                                            AuraIconGlyph(
+                                                                                icon = visual.icon,
+                                                                                contentDescription = visual.label,
+                                                                                size = 11.dp,
+                                                                                tint = AuraPalette.Teal,
+                                                                            )
+                                                                            Text(
+                                                                                text = visual.label,
+                                                                                style = AuraType.QualityBadge,
+                                                                                color = AuraPalette.Teal,
+                                                                                maxLines = 1,
+                                                                            )
+                                                                        }
+                                                                    }
+                                                                }
+                                                            } else null,
+                                                        )
+                                                    }
+                                                }
                                             }
                                         }
                                     }
@@ -700,14 +758,13 @@ fun AuraHomeScreen(
                                             label = accountName,
                                             onClick = { navController.navigate("account") },
                                         )
-                                        AuraShelf {
-                                            items(playlists.distinctBy { it.id }, key = { it.id }) { item ->
-                                                AuraCoverCard(
-                                                    title = item.title,
-                                                    subtitle = auraYtSubtitle(item),
-                                                    thumbnailUrl = item.thumbnail,
-                                                    seed = item.id,
-                                                    width = 140.dp * cardScale,
+                                        AuraDoubleRowShelf(
+                                            rowHeight = auraShelfCardStackHeight(136.dp * cardScale),
+                                        ) {
+                                            lazyGridItems(playlists.distinctBy { it.id }, key = { it.id }) { item ->
+                                                AuraTypedYtCoverCard(
+                                                    item = item,
+                                                    cardScale = cardScale,
                                                     onClick = { openYtItem(item) },
                                                     onLongClick = { ytItemMenu(item) },
                                                 )
@@ -723,14 +780,13 @@ fun AuraHomeScreen(
                                 item(key = "aura_new_from_artists") {
                                     Column(Modifier.animateItem()) {
                                         AuraSectionHeader(title = stringResource(R.string.home_new_from_artists))
-                                        AuraShelf {
-                                            items(albums.distinctBy { it.id }, key = { it.id }) { item ->
-                                                AuraCoverCard(
-                                                    title = item.title,
-                                                    subtitle = auraYtSubtitle(item),
-                                                    thumbnailUrl = item.thumbnail,
-                                                    seed = item.id,
-                                                    width = 140.dp * cardScale,
+                                        AuraDoubleRowShelf(
+                                            rowHeight = auraShelfCardStackHeight(136.dp * cardScale),
+                                        ) {
+                                            lazyGridItems(albums.distinctBy { it.id }, key = { it.id }) { item ->
+                                                AuraTypedYtCoverCard(
+                                                    item = item,
+                                                    cardScale = cardScale,
                                                     isActive = item.id == mediaMetadata?.album?.id,
                                                     isPlaying = isPlaying,
                                                     onClick = { openYtItem(item) },
@@ -748,14 +804,13 @@ fun AuraHomeScreen(
                                 item(key = "aura_new_releases") {
                                     Column(Modifier.animateItem()) {
                                         AuraSectionHeader(title = stringResource(R.string.new_release_albums))
-                                        AuraShelf {
-                                            items(albums.distinctBy { it.id }, key = { it.id }) { item ->
-                                                AuraCoverCard(
-                                                    title = item.title,
-                                                    subtitle = auraYtSubtitle(item),
-                                                    thumbnailUrl = item.thumbnail,
-                                                    seed = item.id,
-                                                    width = 140.dp * cardScale,
+                                        AuraDoubleRowShelf(
+                                            rowHeight = auraShelfCardStackHeight(136.dp * cardScale),
+                                        ) {
+                                            lazyGridItems(albums.distinctBy { it.id }, key = { it.id }) { item ->
+                                                AuraTypedYtCoverCard(
+                                                    item = item,
+                                                    cardScale = cardScale,
                                                     isActive = item.id == mediaMetadata?.album?.id,
                                                     isPlaying = isPlaying,
                                                     onClick = { openYtItem(item) },
@@ -787,6 +842,7 @@ fun AuraHomeScreen(
                                             items(mix.songs.distinctBy { it.id }, key = { it.id }) { song ->
                                                 AuraSongShelfCard(
                                                     song = song,
+                                                    cardScale = cardScale,
                                                     isActive = song.id == mediaMetadata?.id,
                                                     isPlaying = isPlaying,
                                                     onClick = { playSong(song) },
@@ -800,6 +856,7 @@ fun AuraHomeScreen(
                         }
 
                         HomeSection.AiRecommended -> {
+                            if (!aiRecsEnabled) return@forEach
                             aiRecommendedSongs?.takeIf { it.isNotEmpty() }?.let { recommended ->
                                 item(key = "aura_ai_recommended") {
                                     val recEntity = aiRecommendedPlaylist?.playlist
@@ -869,6 +926,7 @@ fun AuraHomeScreen(
                                             items(mix.songs.distinctBy { it.id }, key = { it.id }) { song ->
                                                 AuraSongShelfCard(
                                                     song = song,
+                                                    cardScale = cardScale,
                                                     isActive = song.id == mediaMetadata?.id,
                                                     isPlaying = isPlaying,
                                                     onClick = { playSong(song) },
@@ -966,22 +1024,15 @@ fun AuraHomeScreen(
                                                 )
                                             },
                                         )
-                                        AuraShelf {
-                                            items(recommendation.items, key = { it.id }) { item ->
-                                                AuraCoverCard(
-                                                    title = item.title,
-                                                    subtitle = auraYtSubtitle(item),
-                                                    thumbnailUrl = item.thumbnail,
-                                                    seed = item.id,
-                                                    width = 140.dp * cardScale,
-                                                    isActive = item.id == mediaMetadata?.id ||
-                                                        item.id == mediaMetadata?.album?.id,
-                                                    isPlaying = isPlaying,
-                                                    onClick = { openYtItem(item) },
-                                                    onLongClick = { ytItemMenu(item) },
-                                                )
-                                            }
-                                        }
+                                        AuraGroupedYtItemShelves(
+                                            items = recommendation.items,
+                                            cardScale = cardScale,
+                                            isPlaying = isPlaying,
+                                            activeId = mediaMetadata?.id,
+                                            activeAlbumId = mediaMetadata?.album?.id,
+                                            onClick = openYtItem,
+                                            onLongClick = ytItemMenu,
+                                        )
                                     }
                                 }
                             }
@@ -993,6 +1044,8 @@ fun AuraHomeScreen(
                                     val sectionSongs = sectionData.items.filterIsInstance<SongItem>()
                                     val isSongsOnly = sectionData.items.isNotEmpty() &&
                                         sectionData.items.all { it is SongItem }
+                                    // Video tracks need the 16:9 typed shelf — not the compact song rows.
+                                    val preferVideoShelf = sectionSongs.any { it.isVideoSong }
                                     Column(Modifier.animateItem()) {
                                         AuraSectionHeader(
                                             title = sectionData.title,
@@ -1026,7 +1079,7 @@ fun AuraHomeScreen(
                                                 }
                                             } else null,
                                         )
-                                        if (isSongsOnly) {
+                                        if (isSongsOnly && !preferVideoShelf) {
                                             Column(
                                                 verticalArrangement = Arrangement.spacedBy(2.dp),
                                                 modifier = Modifier.padding(
@@ -1058,22 +1111,17 @@ fun AuraHomeScreen(
                                                 }
                                             }
                                         } else {
-                                            AuraShelf {
-                                                items(sectionData.items, key = { it.id }) { item ->
-                                                    AuraCoverCard(
-                                                        title = item.title,
-                                                        subtitle = auraYtSubtitle(item),
-                                                        thumbnailUrl = item.thumbnail,
-                                                        seed = item.id,
-                                                        width = 140.dp * cardScale,
-                                                        isActive = item.id == mediaMetadata?.id ||
-                                                            item.id == mediaMetadata?.album?.id,
-                                                        isPlaying = isPlaying,
-                                                        onClick = { openYtItem(item) },
-                                                        onLongClick = { ytItemMenu(item) },
-                                                    )
-                                                }
-                                            }
+                                            // Mixed artists / videos / albums / songs: group by kind so
+                                            // 16:9 and squares never share one grid (owner: desorden + huecos).
+                                            AuraGroupedYtItemShelves(
+                                                items = sectionData.items,
+                                                cardScale = cardScale,
+                                                isPlaying = isPlaying,
+                                                activeId = mediaMetadata?.id,
+                                                activeAlbumId = mediaMetadata?.album?.id,
+                                                onClick = openYtItem,
+                                                onLongClick = ytItemMenu,
+                                            )
                                         }
                                     }
                                 }
@@ -1190,6 +1238,95 @@ fun AuraHomeScreen(
 
 // ── Home-local pieces ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Mixed YT shelves (Similar / Home sections): group by kind so videos, songs, albums and artists
+ * never share one DoubleRow grid — mixed cell heights left huge empty gaps between cards.
+ */
+@Composable
+private fun AuraGroupedYtItemShelves(
+    items: List<YTItem>,
+    cardScale: Float,
+    isPlaying: Boolean,
+    activeId: String?,
+    activeAlbumId: String?,
+    onClick: (YTItem) -> Unit,
+    onLongClick: (YTItem) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val groups = remember(items) { items.groupedByAuraKind { auraContentKind(it) } }
+    val showGroupLabels = groups.size > 1
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        groups.forEach { (kind, group) ->
+            if (group.isEmpty()) return@forEach
+            if (showGroupLabels) {
+                AuraSectionLabel(
+                    text = auraTypeLabel(kind).uppercase(),
+                    modifier = Modifier.padding(
+                        start = AuraSpacing.Gutter,
+                        end = AuraSpacing.Gutter,
+                        top = 10.dp,
+                    ),
+                )
+            }
+            val visual = auraTypeVisual(kind)
+            val scale = if (kind == AuraContentKind.Video) cardScale * 1.12f else cardScale
+            when (kind) {
+                AuraContentKind.Album, AuraContentKind.Ep, AuraContentKind.Single,
+                AuraContentKind.Playlist, AuraContentKind.Artist, AuraContentKind.Podcast,
+                -> {
+                    if (group.size >= 4) {
+                        val w = visual.shelfWidth * scale
+                        AuraDoubleRowShelf(
+                            rowHeight = auraShelfCardStackHeight(w, visual.ratio),
+                        ) {
+                            lazyGridItems(group, key = { it.id }) { item ->
+                                AuraTypedYtCoverCard(
+                                    item = item,
+                                    cardScale = scale,
+                                    isActive = item.id == activeId || item.id == activeAlbumId,
+                                    isPlaying = isPlaying,
+                                    onClick = { onClick(item) },
+                                    onLongClick = { onLongClick(item) },
+                                )
+                            }
+                        }
+                    } else {
+                        AuraShelf {
+                            items(group, key = { it.id }) { item ->
+                                AuraTypedYtCoverCard(
+                                    item = item,
+                                    cardScale = scale,
+                                    isActive = item.id == activeId || item.id == activeAlbumId,
+                                    isPlaying = isPlaying,
+                                    onClick = { onClick(item) },
+                                    onLongClick = { onLongClick(item) },
+                                )
+                            }
+                        }
+                    }
+                }
+                else -> {
+                    AuraShelf {
+                        items(group, key = { it.id }) { item ->
+                            AuraTypedYtCoverCard(
+                                item = item,
+                                cardScale = scale,
+                                isActive = item.id == activeId || item.id == activeAlbumId,
+                                isPlaying = isPlaying,
+                                onClick = { onClick(item) },
+                                onLongClick = { onLongClick(item) },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 /** The render's horizontal shelf: gutter-aligned, 8 px gaps, sitting under a section rule. */
 @Composable
 private fun AuraShelf(
@@ -1198,7 +1335,7 @@ private fun AuraShelf(
 ) {
     LazyRow(
         contentPadding = PaddingValues(horizontal = AuraSpacing.Gutter),
-        horizontalArrangement = Arrangement.spacedBy(11.dp),
+        horizontalArrangement = Arrangement.spacedBy(AuraSpacing.ShelfItemGap),
         // TV/car: the classic Home carries this on all 20 of its scrollers (e.g. `HomeScreen.kt:1214`),
         // so the D-pad returns to the card it left instead of dropping focus when a shelf scrolls
         // sideways. One call here covers every shelf of this screen. No-op on touch.
@@ -1240,6 +1377,10 @@ private val AuraHeroScrim: Brush = Brush.verticalGradient(
  *
  * The text is drawn OVER the image (that is why the item needs no height beyond its own square) on the
  * same bottom-weighted scrim the classic hero uses, so a white title stays legible on a pale cover.
+ *
+ * Size: the call site passes a larger editorial width (~208 dp × cardScale) than the first Aura cut
+ * (168 dp) so "Para ti" reads as a hero, not another shelf of postage stamps. Do not shrink it back
+ * without an owner ask — that was the "Inicio no se siente premium" complaint.
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -1301,9 +1442,9 @@ private fun AuraQuickPicksCarousel(
                 ) {
                     current.song.thumbnailUrl?.let { url ->
                         AsyncImage(
-                            // Decoded at the size it is drawn at, not at full resolution: a hero that
-                            // decodes 1000×1000 for a 168 dp frame is the classic way to heat a phone.
-                            model = url.resize(512, 512),
+                            // Decode for the larger hero frame (~208 dp); 640 keeps edges sharp without
+                            // the full-res heat of a 1280 source on every carousel item.
+                            model = url.resize(640, 640),
                             contentDescription = null,
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.fillMaxSize(),
@@ -1347,7 +1488,7 @@ private fun AuraQuickPicksCarousel(
     }
 }
 
-/** A local [Song] as a shelf card — the shape every taste row of the render uses. */
+/** A local [Song] as a shelf card — videos use 16:9 (same language as artist shelves). */
 @Composable
 private fun AuraSongShelfCard(
     song: Song,
@@ -1355,20 +1496,53 @@ private fun AuraSongShelfCard(
     isPlaying: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    width: androidx.compose.ui.unit.Dp = 118.dp,
+    cardScale: Float = 1f,
     onLongClick: (() -> Unit)? = null,
 ) {
+    val visual = auraTypeVisual(song)
     AuraCoverCard(
         title = song.song.title,
         subtitle = song.artists.joinToString { it.name },
         thumbnailUrl = song.song.thumbnailUrl,
         seed = song.id,
-        width = width,
+        width = visual.shelfWidth * cardScale,
+        ratio = visual.ratio,
+        shape = visual.shape,
         isActive = isActive,
         isPlaying = isPlaying,
         onClick = onClick,
         onLongClick = onLongClick,
         modifier = modifier,
+        badge = if (visual.kind == AuraContentKind.Video) {
+            {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(8.dp)
+                        .clip(AuraShapes.Pill)
+                        .background(AuraPalette.Ground.copy(alpha = 0.72f))
+                        .padding(horizontal = 7.dp, vertical = 4.dp),
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        AuraIconGlyph(
+                            icon = visual.icon,
+                            contentDescription = visual.label,
+                            size = 11.dp,
+                            tint = AuraPalette.Teal,
+                        )
+                        Text(
+                            text = visual.label,
+                            style = AuraType.QualityBadge,
+                            color = AuraPalette.Teal,
+                            maxLines = 1,
+                        )
+                    }
+                }
+            }
+        } else null,
     )
 }
 
@@ -1420,12 +1594,88 @@ private fun auraGreeting(): String = remember(LocalTime.now().hour) {
     }
 }
 
-private fun auraYtSubtitle(item: YTItem): String? = when (item) {
-    is SongItem -> item.artists.joinToString { it.name }
-    is AlbumItem -> item.artists?.joinToString { it.name }
-    is PlaylistItem -> item.author?.name
-    is ArtistItem -> null
-    else -> null
+@Composable
+internal fun AuraTypedYtCoverCard(
+    item: YTItem,
+    cardScale: Float,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    isActive: Boolean = false,
+    isPlaying: Boolean = false,
+    onLongClick: (() -> Unit)? = null,
+    badge: (@Composable BoxScope.() -> Unit)? = null,
+) {
+    // Premium identity from [auraTypeVisual]: Apple release sizes + YTM 16:9 videos / soft playlists.
+    val visual = auraTypeVisual(item)
+    val width = visual.shelfWidth * cardScale
+    AuraCoverCard(
+        title = item.title,
+        subtitle = auraYtSubtitle(item),
+        thumbnailUrl = item.thumbnail,
+        seed = item.id,
+        width = width,
+        ratio = visual.ratio,
+        shape = visual.shape,
+        isActive = isActive,
+        isPlaying = isPlaying,
+        onClick = onClick,
+        onLongClick = onLongClick,
+        modifier = modifier,
+        badge = {
+            badge?.invoke(this)
+            // Hybrid badge: videos/EP/Single show a YTM text pill; albums/playlists/artists
+            // stay icon-only so Apple-scale art is not covered in chrome.
+            Box(
+                modifier = Modifier
+                    .align(
+                        if (visual.kind == AuraContentKind.Video) Alignment.TopStart
+                        else Alignment.BottomStart,
+                    )
+                    .padding(8.dp)
+                    .clip(AuraShapes.Pill)
+                    .background(AuraPalette.Ground.copy(alpha = 0.72f))
+                    .padding(
+                        horizontal = if (visual.badgeShowsLabel) 7.dp else 6.dp,
+                        vertical = if (visual.badgeShowsLabel) 4.dp else 6.dp,
+                    ),
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    AuraIconGlyph(
+                        icon = visual.icon,
+                        contentDescription = visual.label,
+                        size = 11.dp,
+                        tint = if (visual.kind == AuraContentKind.Video) AuraPalette.Teal
+                        else AuraPalette.OnGround,
+                    )
+                    if (visual.badgeShowsLabel) {
+                        Text(
+                            text = visual.label,
+                            style = AuraType.QualityBadge,
+                            color = if (visual.kind == AuraContentKind.Video) AuraPalette.Teal
+                            else AuraPalette.OnGround,
+                            maxLines = 1,
+                        )
+                    }
+                }
+            }
+        },
+    )
+}
+
+private fun auraYtSubtitle(item: YTItem): String? {
+    // Apple-style under-title: artist / year only — type lives on the badge, not repeated here.
+    return when (item) {
+        is SongItem -> item.artists.joinToString { it.name }.takeIf { it.isNotBlank() }
+        is AlbumItem -> listOfNotNull(
+            item.artists?.joinToString { it.name }?.takeIf { it.isNotBlank() },
+            item.year?.toString(),
+        ).joinToString(" · ").takeIf { it.isNotBlank() }
+        is PlaylistItem -> item.author?.name
+        is ArtistItem -> null
+    }
 }
 
 private fun auraLocalTitle(item: LocalItem): String = when (item) {

@@ -198,6 +198,7 @@ import iad1tya.echo.music.constants.StopMusicOnTaskClearKey
 import iad1tya.echo.music.constants.UseNewMiniPlayerDesignKey
 import iad1tya.echo.music.db.MusicDatabase
 import iad1tya.echo.music.db.entities.SearchHistory
+import iad1tya.echo.music.extensions.metadata
 import iad1tya.echo.music.extensions.toEnum
 import iad1tya.echo.music.migration.TidalAuthCallbackBus
 import iad1tya.echo.music.models.toMediaMetadata
@@ -913,6 +914,7 @@ class MainActivity : ComponentActivity() {
                     (
                         currentRoute == Screens.Home.route ||
                             currentRoute == Screens.Library.route ||
+                            currentRoute == Screens.Search.route ||
                             currentRoute == "settings"
                         )
 
@@ -1015,6 +1017,9 @@ class MainActivity : ComponentActivity() {
                     showRail,
                     shellNavBarHeight,
                     auraOwnsHeader,
+                    currentRoute,
+                    topLevelScreens,
+                    newUiShell,
                 ) {
                     var bottom = bottomInset
                     if (shouldShowNavigationBar && !showRail) {
@@ -1033,7 +1038,20 @@ class MainActivity : ComponentActivity() {
                         // the list scrolls behind it.
                         .add(
                             WindowInsets(
-                                top = if (auraOwnsHeader) 0.dp else AppBarHeight,
+                                // Only reserve classic TopAppBar height when that bar is actually drawn.
+                                // Search / online playlists / albums were keeping 64 dp of dead black
+                                // above their own Aura chrome (same class of bug as Settings before).
+                                // Nested Ajustes screens (`settings/update`, `settings/player`, …) still
+                                // draw a Material TopAppBar as a sibling overlay — without this reserve
+                                // their first group title paints UNDER the bar (owner screenshot:
+                                // garbled white under "Aura Hi-Res Update").
+                                top = when {
+                                    auraOwnsHeader || currentRoute == "settings" -> 0.dp
+                                    newUiShell &&
+                                        currentRoute?.startsWith("settings/") == true -> AppBarHeight
+                                    currentRoute !in topLevelScreens -> 0.dp
+                                    else -> AppBarHeight
+                                },
                                 bottom = bottom,
                             )
                         )
@@ -1107,11 +1125,21 @@ class MainActivity : ComponentActivity() {
                             ) {
                                 playerBottomSheetState.collapseSoft()
                             }
+                            // Video full-player expand waits for videoMode (LaunchedEffect below).
+                            // Expanding on isVideoSong alone raced the audio→video swap (play→stop→resume).
                         }
                     }
                     player.addListener(listener)
                     onDispose {
                         player.removeListener(listener)
+                    }
+                }
+
+                // Expand when video mode flips on (after URL is ready / swap commits).
+                val videoModeOn = playerConnection?.videoMode?.collectAsState()?.value == true
+                LaunchedEffect(videoModeOn) {
+                    if (videoModeOn) {
+                        playerBottomSheetState.expandSoft()
                     }
                 }
 
@@ -1224,7 +1252,10 @@ class MainActivity : ComponentActivity() {
 
                 val (batteryReliabilityPromptShown, setBatteryReliabilityPromptShown) =
                     rememberPreference(iad1tya.echo.music.constants.BatteryReliabilityPromptShownKey, false)
+                val (oemKillPromptTs, setOemKillPromptTs) =
+                    rememberPreference(iad1tya.echo.music.constants.BatteryReliabilityOemKillPromptTsKey, 0L)
                 var showBatteryReliabilityDialog by remember { mutableStateOf(false) }
+                var batteryReliabilityOemEvidence by remember { mutableStateOf(false) }
                 // Whether a welcome/changelog dialog is due THIS launch (first run or a version bump). Used to
                 // defer the battery prompt to a later launch so it never stacks on welcome/onboarding — more
                 // robust than reading the instantaneous dialog flag (which a fast dismiss could race).
@@ -1236,18 +1267,58 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
+                var powerSaveSessionNagShown by remember { mutableStateOf(false) }
+
                 LaunchedEffect(Unit) {
-                    // Proactively offer the battery-exemption + autostart prompt on aggressive OEMs (MIUI/etc.)
-                    // ONCE, since those skins kill the backgrounded media service → background playback stops and
-                    // the app "aparece y desaparece" in Android Auto. Never stack it on the welcome/onboarding
-                    // flow — if a welcome shows this launch, the prompt surfaces on a later one instead.
+                    // Offer battery-exemption + autostart once on EVERY brand when the app is still
+                    // battery-optimized or Power Save is on — screen-off stalls are not Xiaomi-only.
+                    // Never stack it on welcome/onboarding: if welcome shows this launch, surface later.
+                    //
+                    // ALSO re-prompt when exit_reasons prove an OEM already killed playback
+                    // (ScreenOffCPUCheckKill / OneKeyClean / …) — battery exemption alone does not stop those.
                     kotlinx.coroutines.delay(1500)
-                    if (!batteryReliabilityPromptShown && !welcomeWillShow && !showWelcomeDialog &&
-                        iad1tya.echo.music.utils.BackgroundReliability.isAggressiveOem() &&
-                        !iad1tya.echo.music.utils.BackgroundReliability.isIgnoringBatteryOptimizations(this@MainActivity)
-                    ) {
-                        showBatteryReliabilityDialog = true
+                    if (welcomeWillShow || showWelcomeDialog) return@LaunchedEffect
+                    val threatTs = withContext(Dispatchers.IO) {
+                        iad1tya.echo.music.utils.ExitReasonReporter
+                            .latestOemPlaybackThreatTimestamp(this@MainActivity)
                     }
+                    val powerSave = (getSystemService(POWER_SERVICE) as? android.os.PowerManager)
+                        ?.isPowerSaveMode == true
+                    val notExempt = !iad1tya.echo.music.utils.BackgroundReliability
+                        .isIgnoringBatteryOptimizations(this@MainActivity)
+                    when {
+                        threatTs > oemKillPromptTs -> {
+                            batteryReliabilityOemEvidence = true
+                            showBatteryReliabilityDialog = true
+                        }
+                        // Battery saver ON: always surface (even if they dismissed before). Exemption alone
+                        // does not stop HyperOS AA cuts when the system saver is throttling the radio.
+                        powerSave && !powerSaveSessionNagShown -> {
+                            batteryReliabilityOemEvidence = true
+                            showBatteryReliabilityDialog = true
+                            powerSaveSessionNagShown = true
+                        }
+                        !batteryReliabilityPromptShown && notExempt -> {
+                            batteryReliabilityOemEvidence = false
+                            showBatteryReliabilityDialog = true
+                        }
+                    }
+                }
+
+                // If saver turns on mid-session (or they start playing with saver on after dismissing
+                // welcome), nag once per process while music is actually playing.
+                val isPlayingNow = playerConnection?.isPlaying?.collectAsState()?.value == true
+                LaunchedEffect(isPlayingNow, showWelcomeDialog) {
+                    if (!isPlayingNow || powerSaveSessionNagShown || welcomeWillShow || showWelcomeDialog) {
+                        return@LaunchedEffect
+                    }
+                    kotlinx.coroutines.delay(2000)
+                    val powerSave = (getSystemService(POWER_SERVICE) as? android.os.PowerManager)
+                        ?.isPowerSaveMode == true
+                    if (!powerSave) return@LaunchedEffect
+                    batteryReliabilityOemEvidence = true
+                    showBatteryReliabilityDialog = true
+                    powerSaveSessionNagShown = true
                 }
 
                 LaunchedEffect(Unit) {
@@ -2041,19 +2112,35 @@ class MainActivity : ComponentActivity() {
 
                     if (showBatteryReliabilityDialog) {
                         iad1tya.echo.music.ui.screens.BackgroundReliabilityDialog(
+                            oemKillEvidence = batteryReliabilityOemEvidence,
                             onAllowBattery = {
                                 setBatteryReliabilityPromptShown(true)
+                                if (batteryReliabilityOemEvidence) {
+                                    val ts = iad1tya.echo.music.utils.ExitReasonReporter
+                                        .latestOemPlaybackThreatTimestamp(this@MainActivity)
+                                    if (ts > 0L) setOemKillPromptTs(ts)
+                                }
                                 showBatteryReliabilityDialog = false
                                 iad1tya.echo.music.utils.BackgroundReliability
                                     .requestIgnoreBatteryOptimizations(this@MainActivity)
                             },
                             onOpenAutostart = {
                                 setBatteryReliabilityPromptShown(true)
+                                if (batteryReliabilityOemEvidence) {
+                                    val ts = iad1tya.echo.music.utils.ExitReasonReporter
+                                        .latestOemPlaybackThreatTimestamp(this@MainActivity)
+                                    if (ts > 0L) setOemKillPromptTs(ts)
+                                }
                                 showBatteryReliabilityDialog = false
                                 iad1tya.echo.music.utils.BackgroundReliability.openAppDetails(this@MainActivity)
                             },
                             onDismiss = {
                                 setBatteryReliabilityPromptShown(true)
+                                if (batteryReliabilityOemEvidence) {
+                                    val ts = iad1tya.echo.music.utils.ExitReasonReporter
+                                        .latestOemPlaybackThreatTimestamp(this@MainActivity)
+                                    if (ts > 0L) setOemKillPromptTs(ts)
+                                }
                                 showBatteryReliabilityDialog = false
                             },
                         )

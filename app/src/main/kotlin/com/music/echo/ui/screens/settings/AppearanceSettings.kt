@@ -182,7 +182,7 @@ fun AppearanceSettings(
     val (miniPlayerBackground, onMiniPlayerBackgroundChange) =
         rememberEnumPreference(
             MiniPlayerBackgroundStyleKey,
-            defaultValue = PlayerBackgroundStyle.DEFAULT,
+            defaultValue = PlayerBackgroundStyle.GLOW_ANIMATED,
         )
 
     val (defaultOpenTab, onDefaultOpenTabChange) = rememberEnumPreference(

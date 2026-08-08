@@ -878,10 +878,14 @@ fun TempoPitchDialog(onDismiss: () -> Unit) {
     }
     val listenTogetherManager = iad1tya.echo.music.LocalListenTogetherManager.current
     val isInRoom = listenTogetherManager?.isInRoom ?: false
+    val skin = iad1tya.echo.music.ui.newui.rememberAuraPanelSkin()
+    val premium = skin.enabled && skin.darkGround
 
     AlertDialog(
         properties = DialogProperties(usePlatformDefaultWidth = false),
         onDismissRequest = onDismiss,
+        containerColor = if (premium) iad1tya.echo.music.ui.newui.AuraPalette.FrostFill
+        else MaterialTheme.colorScheme.surface,
         title = {
             Text(stringResource(R.string.tempo_and_pitch))
         },

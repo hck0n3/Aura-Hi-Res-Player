@@ -3,6 +3,10 @@ package iad1tya.echo.music.ui.newui
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -30,6 +34,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -49,6 +54,7 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import iad1tya.echo.music.BuildConfig
 import iad1tya.echo.music.LocalPlayerAwareWindowInsets
+import iad1tya.echo.music.LocalPlayerConnection
 import iad1tya.echo.music.navigateAsTab
 import iad1tya.echo.music.R
 import iad1tya.echo.music.constants.NewUiEnabledKey
@@ -159,7 +165,7 @@ fun AuraSettingsScreen(
     // Wording taken verbatim from the reference render — do not paraphrase.
     val newUiText = "Interfaz nueva"
     val newUiSubtitle = "Apágala y vuelve a la clásica"
-    val (newUiEnabled, onNewUiEnabledChange) = rememberPreference(NewUiEnabledKey, defaultValue = false)
+    val (newUiEnabled, onNewUiEnabledChange) = rememberPreference(NewUiEnabledKey, defaultValue = true)
 
     // ── The index ─────────────────────────────────────────────────────────────────────────────────
     val groups = buildList {
@@ -297,7 +303,10 @@ fun AuraSettingsScreen(
     // Only one group is open at a time — a settings index that can be fully unfolded is a wall of rows.
     var expandedGroup by rememberSaveable { mutableStateOf<String?>(null) }
 
-    val bloom = rememberAuraBloom(mediaId = null)
+    val playerConnection = LocalPlayerConnection.current
+    val mediaMetadata by playerConnection?.mediaMetadata?.collectAsState()
+        ?: remember { mutableStateOf(null) }
+    val bloom = rememberAuraBloom(mediaMetadata?.id)
     val scrollState = rememberScrollState()
 
     Box(
@@ -476,6 +485,7 @@ private fun AuraSettingsGroupRow(
     val single = group.entries.size == 1
     val rotation by animateFloatAsState(
         targetValue = if (!single && expanded) 90f else 0f,
+        animationSpec = AuraMotion.float,
         label = "aura-settings-chevron",
     )
     Column {
@@ -487,7 +497,13 @@ private fun AuraSettingsGroupRow(
             chevronRotation = rotation,
             onClick = { if (single) group.entries.first().onClick() else onToggle() },
         )
-        AnimatedVisibility(visible = !single && expanded) {
+        AnimatedVisibility(
+            visible = !single && expanded,
+            enter = expandVertically(animationSpec = AuraMotion.intSize) +
+                fadeIn(animationSpec = AuraMotion.float),
+            exit = shrinkVertically(animationSpec = AuraMotion.intSize) +
+                fadeOut(animationSpec = AuraMotion.float),
+        ) {
             Column {
                 group.entries.forEach { entry ->
                     AuraSettingsSubRow(

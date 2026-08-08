@@ -33,6 +33,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -73,6 +74,7 @@ import iad1tya.echo.music.ui.menu.ListenTogetherDialog
 import iad1tya.echo.music.ui.menu.TempoPitchDialog
 import iad1tya.echo.music.echomusic.AudioDeviceBottomSheet
 import iad1tya.echo.music.utils.ShareLinks
+import iad1tya.echo.music.utils.rememberEnumPreference
 import iad1tya.echo.music.utils.rememberPreference
 import kotlinx.coroutines.launch
 
@@ -103,7 +105,6 @@ fun AuraPlayerMenu(
     playerBottomSheetState: BottomSheetState,
     onShowDetailsDialog: () -> Unit,
     onDismiss: () -> Unit,
-    onSleepTimer: () -> Unit = {},
 ) {
     mediaMetadata ?: return
     val context = LocalContext.current
@@ -234,14 +235,17 @@ fun AuraPlayerMenu(
     val liked = currentSong?.song?.liked == true
     val isInLibrary = librarySong?.song?.inLibrary != null
     val hasVideo = mediaMetadata.isVideoSong || !mediaMetadata.podcastVideoUrl.isNullOrEmpty()
+    // Sheet already paints FrostFill ([BottomSheetMenu] + LocalAuraFloatingChrome). An opaque
+    // GroundRaised here was covering it — the "Más" menu looked like a solid Material card.
+    val floatingChrome = LocalAuraFloatingChrome.current
 
     LazyColumn(
         modifier = Modifier
             .fillMaxWidth()
             // The hosting sheet pads its content by 20 dp; the render's menu is edge-to-edge over
-            // GroundRaised, so bleed back out over that padding.
+            // the sheet plate, so bleed back out over that padding.
             .auraBleedHorizontal(20.dp)
-            .background(AuraPalette.GroundRaised),
+            .background(if (floatingChrome) Color.Transparent else AuraPalette.GroundRaised),
         contentPadding = PaddingValues(
             bottom = 16.dp + WindowInsets.systemBars.asPaddingValues().calculateBottomPadding(),
         ),
@@ -316,6 +320,34 @@ fun AuraPlayerMenu(
                     accentColor = AuraPalette.Teal,
                 )
             }
+        }
+
+        // Streaming quality — same keys as Ajustes ▸ Reproductor, surfaced here so the volume/quality
+        // cluster the owner asked for lives in one premium menu (not only the classic settings sheet).
+        item {
+            val (audioQuality, onAudioQualityChange) = rememberEnumPreference(
+                iad1tya.echo.music.constants.AudioQualityKey,
+                defaultValue = iad1tya.echo.music.constants.AudioQuality.OPUS,
+            )
+            AuraMenuRow(
+                icon = AuraIcons.Equalizer,
+                label = stringResource(R.string.audio_quality),
+                onClick = {
+                    val values = iad1tya.echo.music.constants.AudioQuality.entries
+                    val next = values[(values.indexOf(audioQuality) + 1) % values.size]
+                    onAudioQualityChange(next)
+                },
+                trailing = {
+                    AuraTechnicalText(
+                        text = when (audioQuality) {
+                            iad1tya.echo.music.constants.AudioQuality.OPUS -> "OPUS"
+                            iad1tya.echo.music.constants.AudioQuality.SAAVN -> "SAAVN"
+                            iad1tya.echo.music.constants.AudioQuality.LOSSLESS -> "QOBUZ"
+                        },
+                        color = AuraPalette.Teal,
+                    )
+                },
+            )
         }
         item { Spacer(Modifier.height(6.dp)); AuraDivider() }
 
@@ -398,17 +430,6 @@ fun AuraPlayerMenu(
                 icon = AuraIcons.Speed,
                 label = stringResource(R.string.advanced),
                 onClick = { showPitchTempoDialog = true },
-            )
-        }
-
-        item {
-            AuraMenuRow(
-                icon = AuraIcons.Timer,
-                label = stringResource(R.string.sleep_timer),
-                onClick = {
-                    onSleepTimer()
-                    onDismiss()
-                },
             )
         }
 

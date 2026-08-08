@@ -224,6 +224,8 @@ constructor(
                                 album.album.thumbnailUrl?.toUri(),
                                 MediaMetadata.MEDIA_TYPE_ALBUM,
                                 singleItemStyle = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
+                                browsableStyle = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
+                                playableStyle = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
                             )
                         }
 
@@ -803,6 +805,8 @@ constructor(
                             album.album.thumbnailUrl?.toUri(),
                             MediaMetadata.MEDIA_TYPE_ALBUM,
                             singleItemStyle = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
+                            browsableStyle = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
+                            playableStyle = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
                         )
                     }
                 } else {
@@ -954,6 +958,8 @@ constructor(
         iconUri: Uri?,
         mediaType: Int = MediaMetadata.MEDIA_TYPE_MUSIC,
         singleItemStyle: Int = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_CATEGORY_LIST_ITEM,
+        browsableStyle: Int = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM,
+        playableStyle: Int = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM,
     ) = MediaItem
         .Builder()
         .setMediaId(id)
@@ -969,8 +975,8 @@ constructor(
                 .setMediaType(mediaType)
                 .setExtras(
                     contentStyleExtras(
-                        browsableStyle = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM,
-                        playableStyle = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM,
+                        browsableStyle = browsableStyle,
+                        playableStyle = playableStyle,
                         singleItemStyle = singleItemStyle,
                     )
                 )
@@ -1013,10 +1019,11 @@ constructor(
         .build()
 
     private fun MediaLibraryService.LibraryParams?.withContentStyleHints(): MediaLibraryService.LibraryParams {
+        // Modern AA / YouTube Music-like: grid for browsable shelves, list for tracks.
         val extras = Bundle(this?.extras ?: Bundle()).apply {
             putInt(
                 MediaConstants.EXTRAS_KEY_CONTENT_STYLE_BROWSABLE,
-                MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM
+                MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM
             )
             putInt(
                 MediaConstants.EXTRAS_KEY_CONTENT_STYLE_PLAYABLE,

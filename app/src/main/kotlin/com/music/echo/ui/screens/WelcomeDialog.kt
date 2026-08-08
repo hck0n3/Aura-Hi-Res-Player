@@ -1,249 +1,135 @@
 package iad1tya.echo.music.ui.screens
 
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import iad1tya.echo.music.BuildConfig
 import iad1tya.echo.music.R
+import iad1tya.echo.music.ui.newui.AuraDialogWindowEffects
+import iad1tya.echo.music.ui.newui.AuraFloatingSurface
+import iad1tya.echo.music.ui.newui.AuraPalette
+import iad1tya.echo.music.ui.newui.AuraShapes
+import iad1tya.echo.music.ui.newui.AuraType
+import iad1tya.echo.music.ui.newui.rememberAuraPanelSkin
 import iad1tya.echo.music.ui.theme.BrandAccent
 
+private data class WelcomeTourPage(
+    val iconRes: Int,
+    val title: String,
+    val body: String,
+)
+
+/**
+ * First-run / version-bump welcome. With Interfaz nueva ON it is a short tour of where things live
+ * and how to switch back to the classic look — owner launch request.
+ */
 @Composable
 fun WelcomeDialog(
-    onDismissRequest: () -> Unit
+    onDismissRequest: () -> Unit,
 ) {
+    val skin = rememberAuraPanelSkin()
+    val premium = skin.enabled && skin.darkGround
+    val pages = remember {
+        listOf(
+            WelcomeTourPage(
+                iconRes = R.drawable.music_note,
+                title = "Nueva interfaz Aura",
+                body = "Esta versión estrena la apariencia premium: Inicio, Biblioteca, Buscar y el " +
+                    "reproductor comparten la misma piel oscura con tipografía y portadas más claras.",
+            ),
+            WelcomeTourPage(
+                iconRes = R.drawable.home_outlined,
+                title = "Dónde está todo",
+                body = "Barra inferior: Inicio · Buscar · Biblioteca · Ajustes. Arriba a la derecha: " +
+                    "cuenta (avatar), historial y atajos. El mini-reproductor flota encima de la barra.",
+            ),
+            WelcomeTourPage(
+                iconRes = R.drawable.play,
+                title = "Reproductor",
+                body = "Toca el mini para expandir. Abajo: Letras, cola, dispositivos y Más. " +
+                    "Los vídeos se abren en modo vídeo al tocarlos. Cast sigue arriba a la derecha.",
+            ),
+            WelcomeTourPage(
+                iconRes = R.drawable.tune,
+                title = "¿Prefieres la anterior?",
+                body = "En Ajustes (o en la hoja de cuenta ▸ Ajustes) desactiva «Interfaz nueva». " +
+                    "Vuelves a la apariencia clásica al instante, sin perder tu música ni tu cola.",
+            ),
+        )
+    }
+    var page by remember { mutableIntStateOf(0) }
+    val current = pages[page]
+    val isLast = page == pages.lastIndex
+
     Dialog(
         onDismissRequest = onDismissRequest,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
-        Card(
-            modifier = Modifier
-                .padding(24.dp)
-                .fillMaxWidth(),
-            shape = RoundedCornerShape(28.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surface
-            ),
-            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
-        ) {
-            Column(
+        if (premium) {
+            AuraDialogWindowEffects(enabled = true)
+            AuraFloatingSurface(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .padding(vertical = 20.dp, horizontal = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
+                    .padding(24.dp)
+                    .fillMaxWidth(),
+                shape = AuraShapes.Card,
             ) {
-                WelcomeHeader()
-
-                WelcomeSectionCard(title = "Todo lo que puedes hacer") {
-                    WelcomeFeatureRow(
-                        iconRes = R.drawable.music_note,
-                        title = "Música ilimitada",
-                        subtitle = "Todo el catálogo, sin anuncios, con reproductor a pantalla completa, cola y letra"
-                    )
-                    WelcomeDivider()
-                    WelcomeFeatureRow(
-                        iconRes = R.drawable.tune,
-                        title = "Audio de alta calidad",
-                        subtitle = "Sonido sin pérdida (hi-res con tu cuenta de Qobuz) y Volumen Seguro, que nivela las canciones muy altas"
-                    )
-                    WelcomeDivider()
-                    WelcomeFeatureRow(
-                        iconRes = R.drawable.play,
-                        title = "Transiciones suaves",
-                        subtitle = "Las canciones se funden sin hueco, con 9 curvas y duración a tu gusto"
-                    )
-                    WelcomeDivider()
-                    WelcomeFeatureRow(
-                        iconRes = R.drawable.equalizer,
-                        title = "Ecualizador a tu medida",
-                        subtitle = "10 bandas o modo paramétrico, y más de 8.000 perfiles listos para tu modelo de auricular"
-                    )
-                    WelcomeDivider()
-                    WelcomeFeatureRow(
-                        iconRes = R.drawable.lyrics,
-                        title = "Letras sincronizadas",
-                        subtitle = "Al ritmo de la canción, con traducción y romanización en 12 idiomas"
-                    )
-                    WelcomeDivider()
-                    WelcomeFeatureRow(
-                        iconRes = R.drawable.shuffle,
-                        title = "Aleatorio que no repite",
-                        subtitle = "Recorre la lista entera antes de repetir y recuerda entre días por dónde ibas"
-                    )
-                    WelcomeDivider()
-                    WelcomeFeatureRow(
-                        iconRes = R.drawable.discover_tune,
-                        title = "Descubrimiento con IA",
-                        subtitle = "Inicio, mezclas y radio infinita que aprenden de tus gustos en tu propio teléfono; crea listas describiéndolas con una frase"
-                    )
-                    WelcomeDivider()
-                    WelcomeFeatureRow(
-                        iconRes = R.drawable.login,
-                        title = "Tu biblioteca de siempre",
-                        subtitle = "Sincroniza YouTube Music e importa tus listas, me gusta y álbumes de Spotify"
-                    )
-                    WelcomeDivider()
-                    WelcomeFeatureRow(
-                        iconRes = R.drawable.library_music,
-                        title = "Migra desde otros servicios",
-                        subtitle = "Trae tus playlists de Tidal, Deezer o un archivo exportado, y revisa tú las dudosas"
-                    )
-                    WelcomeDivider()
-                    WelcomeFeatureRow(
-                        iconRes = R.drawable.download,
-                        title = "Sin conexión y ahorro de datos",
-                        subtitle = "Descarga lo que quieras y, si andas justo de datos, actívalo con un interruptor"
-                    )
-                    WelcomeDivider()
-                    WelcomeFeatureRow(
-                        iconRes = R.drawable.mic,
-                        title = "Reconocer canción y buscar por voz",
-                        subtitle = "Un botón siempre a mano identifica lo que suena y lo reproduce al momento"
-                    )
-                    WelcomeDivider()
-                    WelcomeFeatureRow(
-                        iconRes = R.drawable.group,
-                        title = "Escuchar juntos",
-                        subtitle = "Salas con chat para escuchar lo mismo, a la vez, con tus amigos"
-                    )
-                    WelcomeDivider()
-                    WelcomeFeatureRow(
-                        iconRes = R.drawable.videocam,
-                        title = "Video, fondos animados y temas",
-                        subtitle = "Videoclips con sonido, Canvas del artista y color tomado de la carátula"
-                    )
-                    WelcomeDivider()
-                    WelcomeFeatureRow(
-                        iconRes = R.drawable.cast,
-                        title = "En el coche, la tele y tu pantalla de inicio",
-                        subtitle = "Android Auto, Android TV, Chromecast y cuatro widgets"
-                    )
-                    WelcomeDivider()
-                    WelcomeFeatureRow(
-                        iconRes = R.drawable.queue_music,
-                        title = "Podcasts y música local",
-                        subtitle = "Tus programas con el progreso guardado, y los archivos que ya tienes en el teléfono"
-                    )
-                }
-
-                Button(
-                    onClick = onDismissRequest,
-                    modifier = Modifier.fillMaxWidth().height(50.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        contentColor = MaterialTheme.colorScheme.onPrimary
-                    )
-                ) {
-                    Text("Cerrar", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                }
+                WelcomeTourBody(
+                    current = current,
+                    page = page,
+                    pageCount = pages.size,
+                    isLast = isLast,
+                    premium = true,
+                    onNext = { if (isLast) onDismissRequest() else page++ },
+                    onSkip = onDismissRequest,
+                    onBack = { if (page > 0) page-- },
+                )
             }
-        }
-    }
-}
-
-@Composable
-private fun WelcomeHeader() {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(28.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 20.dp, horizontal = 16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Text(
-                text = "¡Bienvenido a",
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-            )
-            Text(
-                text = buildAnnotatedString {
-                    withStyle(
-                        SpanStyle(
-                            color = MaterialTheme.colorScheme.onSurface,
-                            fontWeight = FontWeight.Light
-                        )
-                    ) {
-                        append("AURA ")
-                    }
-                    withStyle(
-                        SpanStyle(
-                            color = BrandAccent,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    ) {
-                        append("HI-RES")
-                    }
-                },
-                style = MaterialTheme.typography.titleLarge.copy(
-                    fontSize = 26.sp,
-                    letterSpacing = 6.sp
+        } else {
+            androidx.compose.material3.Card(
+                modifier = Modifier
+                    .padding(24.dp)
+                    .fillMaxWidth(),
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(28.dp),
+                colors = androidx.compose.material3.CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
                 ),
-                textAlign = TextAlign.Center,
-            )
-            Text(
-                text = "Tu música, tu sonido, tu estilo.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-            )
-            Surface(
-                shape = RoundedCornerShape(8.dp),
-                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.10f),
             ) {
-                Text(
-                    text = BuildConfig.VERSION_NAME,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Medium,
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                WelcomeTourBody(
+                    current = current,
+                    page = page,
+                    pageCount = pages.size,
+                    isLast = isLast,
+                    premium = false,
+                    onNext = { if (isLast) onDismissRequest() else page++ },
+                    onSkip = onDismissRequest,
+                    onBack = { if (page > 0) page-- },
                 )
             }
         }
@@ -251,88 +137,92 @@ private fun WelcomeHeader() {
 }
 
 @Composable
-private fun WelcomeSectionCard(
-    title: String,
-    content: @Composable ColumnScope.() -> Unit,
+private fun WelcomeTourBody(
+    current: WelcomeTourPage,
+    page: Int,
+    pageCount: Int,
+    isLast: Boolean,
+    premium: Boolean,
+    onNext: () -> Unit,
+    onSkip: () -> Unit,
+    onBack: () -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.padding(start = 6.dp),
-        )
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(28.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-            ),
-            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        ) {
-            Column(
-                modifier = Modifier.padding(vertical = 4.dp),
-                content = content,
-            )
-        }
-    }
-}
+    val titleColor = if (premium) AuraPalette.OnGround else MaterialTheme.colorScheme.onSurface
+    val muted = if (premium) AuraPalette.OnGroundMuted else MaterialTheme.colorScheme.onSurfaceVariant
+    val accent = if (premium) AuraPalette.Teal else BrandAccent
 
-@Composable
-private fun WelcomeFeatureRow(
-    iconRes: Int,
-    title: String,
-    subtitle: String,
-) {
-    val tint = MaterialTheme.colorScheme.primary
-    Row(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 18.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 20.dp, vertical = 22.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Surface(
-            modifier = Modifier.size(36.dp),
-            shape = RoundedCornerShape(12.dp),
-            color = tint.copy(alpha = 0.10f),
+        Text(
+            text = "Aura Hi-Res Player",
+            style = if (premium) AuraType.SheetTitle else MaterialTheme.typography.titleLarge,
+            color = titleColor,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center,
+        )
+        Text(
+            text = BuildConfig.VERSION_NAME,
+            style = if (premium) AuraType.Technical else MaterialTheme.typography.labelMedium,
+            color = muted,
+        )
+
+        Icon(
+            painter = painterResource(current.iconRes),
+            contentDescription = null,
+            tint = accent,
+            modifier = Modifier
+                .padding(top = 8.dp)
+                .size(40.dp),
+        )
+        Text(
+            text = current.title,
+            style = if (premium) AuraType.RowTitle else MaterialTheme.typography.titleMedium,
+            color = titleColor,
+            fontWeight = FontWeight.SemiBold,
+            textAlign = TextAlign.Center,
+        )
+        Text(
+            text = current.body,
+            style = if (premium) AuraType.CalloutSubtitle else MaterialTheme.typography.bodyMedium,
+            color = muted,
+            textAlign = TextAlign.Center,
+            lineHeight = 20.sp,
+        )
+
+        Text(
+            text = "${page + 1} / $pageCount",
+            style = if (premium) AuraType.Technical else MaterialTheme.typography.labelSmall,
+            color = muted,
+        )
+
+        Box(Modifier.height(4.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                Icon(
-                    painter = painterResource(iconRes),
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp),
-                    tint = tint,
+            TextButton(onClick = if (page == 0) onSkip else onBack) {
+                Text(
+                    text = if (page == 0) "Omitir" else "Atrás",
+                    color = muted,
                 )
             }
-        }
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            Button(
+                onClick = onNext,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = accent,
+                    contentColor = if (premium) AuraPalette.Ground else MaterialTheme.colorScheme.onPrimary,
+                ),
+            ) {
+                Text(if (isLast) "Empezar" else "Siguiente")
+            }
         }
     }
-}
-
-@Composable
-private fun WelcomeDivider() {
-    HorizontalDivider(
-        modifier = Modifier.padding(start = 66.dp, end = 20.dp),
-        thickness = 0.5.dp,
-        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
-    )
 }

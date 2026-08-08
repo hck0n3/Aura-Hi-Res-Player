@@ -1,5 +1,4 @@
 
-
 package iad1tya.echo.music.ui.component
 
 import androidx.compose.foundation.background
@@ -17,6 +16,7 @@ import androidx.compose.material3.NavigationBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.surfaceColorAtElevation
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
@@ -27,6 +27,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.dp
+import iad1tya.echo.music.ui.newui.AuraPalette
+import iad1tya.echo.music.ui.newui.AuraShapes
+import iad1tya.echo.music.ui.newui.LocalAuraFloatingChrome
+import iad1tya.echo.music.ui.newui.auraFloatingContainerColor
+import iad1tya.echo.music.ui.newui.auraFloatingContentColor
+import iad1tya.echo.music.ui.newui.auraFloatingScrimColor
+import iad1tya.echo.music.ui.newui.rememberAuraPanelSkin
 
 val LocalBottomSheetPageState = compositionLocalOf { BottomSheetPageState() }
 
@@ -57,6 +64,10 @@ fun BottomSheetPage(
 ) {
     val focusManager = LocalFocusManager.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
+    val skin = rememberAuraPanelSkin()
+    val premium = skin.enabled && skin.darkGround
+    val sheetColor = if (premium) auraFloatingContainerColor() else background
+    val onSheet = if (premium) auraFloatingContentColor() else MaterialTheme.colorScheme.onSurface
 
     AnimatedBottomSheet(
         isVisible = state.isVisible,
@@ -65,26 +76,33 @@ fun BottomSheetPage(
             state.isVisible = false
         },
         sheetState = sheetState,
-        containerColor = background,
-        contentColor = MaterialTheme.colorScheme.onSurface,
+        shape = if (premium) AuraShapes.Sheet else RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+        containerColor = sheetColor,
+        contentColor = onSheet,
+        scrimColor = if (premium) auraFloatingScrimColor() else Color.Black.copy(alpha = 0.32f),
         dragHandle = {
             Box(
                 modifier = Modifier
                     .padding(vertical = 12.dp)
                     .size(width = 32.dp, height = 4.dp)
                     .clip(RoundedCornerShape(2.dp))
-                    .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f))
+                    .background(
+                        if (premium) AuraPalette.OnGround.copy(alpha = 0.28f)
+                        else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                    ),
             )
         },
-        modifier = modifier.fillMaxHeight()
+        modifier = modifier.fillMaxHeight(),
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp)
-                .padding(bottom = 16.dp)
-        ) {
-            state.content(this)
+        CompositionLocalProvider(LocalAuraFloatingChrome provides premium) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .padding(bottom = 16.dp),
+            ) {
+                state.content(this)
+            }
         }
     }
 }

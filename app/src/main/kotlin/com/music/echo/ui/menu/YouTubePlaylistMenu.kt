@@ -3,16 +3,22 @@
 package iad1tya.echo.music.ui.menu
 
 import android.annotation.SuppressLint
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.res.Configuration
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -20,6 +26,7 @@ import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -62,6 +69,8 @@ import iad1tya.echo.music.LocalDownloadUtil
 import iad1tya.echo.music.LocalListenTogetherManager
 import iad1tya.echo.music.LocalPlayerConnection
 import iad1tya.echo.music.R
+import iad1tya.echo.music.constants.EnableExportAsMp3Key
+import iad1tya.echo.music.constants.ExportingSongIdsKey
 import iad1tya.echo.music.constants.ListThumbnailSize
 import iad1tya.echo.music.constants.ThumbnailCornerRadius
 import iad1tya.echo.music.db.entities.SpeedDialItem
@@ -70,6 +79,7 @@ import iad1tya.echo.music.db.entities.PlaylistSongMap
 import iad1tya.echo.music.extensions.toMediaItem
 import iad1tya.echo.music.models.MediaMetadata
 import iad1tya.echo.music.models.toMediaMetadata
+import iad1tya.echo.music.playback.AudioExportService
 import iad1tya.echo.music.playback.ExoDownloadService
 import iad1tya.echo.music.playback.queues.YouTubeQueue
 import iad1tya.echo.music.ui.component.DefaultDialog
@@ -80,13 +90,17 @@ import iad1tya.echo.music.ui.component.NewAction
 import iad1tya.echo.music.ui.component.NewActionGrid
 import iad1tya.echo.music.ui.component.YouTubeListItem
 import iad1tya.echo.music.ui.utils.resize
+import iad1tya.echo.music.utils.dataStore
 import iad1tya.echo.music.utils.joinByBullet
 import iad1tya.echo.music.utils.makeTimeString
+import iad1tya.echo.music.utils.rememberPreference
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-
+import kotlinx.coroutines.withTimeoutOrNull
 @OptIn(ExperimentalMaterial3Api::class)
 @SuppressLint("MutableCollectionMutableState")
 @Composable
@@ -106,6 +120,7 @@ fun YouTubePlaylistMenu(
     val isGuest = listenTogetherManager?.isInRoom == true && !listenTogetherManager.isHost
     val dbPlaylist by database.playlistByBrowseId(playlist.id).collectAsState(initial = null)
     val isPinned by database.speedDialDao.isPinned(playlist.id).collectAsState(initial = false)
+    val (enableExportAsMp3) = rememberPreference(key = EnableExportAsMp3Key, defaultValue = false)
 
     var showChoosePlaylistDialog by rememberSaveable { mutableStateOf(false) }
     var showImportPlaylistDialog by rememberSaveable { mutableStateOf(false) }
@@ -259,6 +274,194 @@ fun YouTubePlaylistMenu(
                 }
             }
         )
+    }
+
+    // MP3 export: resolve songs → choice → optional selection → folder → serial starts
+    var showMp3ChoiceDialog by remember { mutableStateOf(false) }
+    var showMp3SelectDialog by remember { mutableStateOf(false) }
+    var selectedMp3Ids by remember { mutableStateOf(emptySet<String>()) }
+    var mp3SongPool by remember { mutableStateOf<List<SongItem>>(emptyList()) }
+    var pendingMp3Songs by remember { mutableStateOf<List<SongItem>>(emptyList()) }
+
+    val startSerialMp3Export: (List<SongItem>, String) -> Unit = { toExport, directoryUri ->
+        coroutineScope.launch(Dispatchers.IO) {
+            for (song in toExport) {
+                withContext(Dispatchers.Main) {
+                    AudioExportService.start(
+                        context = context,
+                        songId = song.id,
+                        songTitle = song.title,
+                        songArtist = song.artists.joinToString(", ") { it.name },
+                        songAlbum = song.album?.name ?: "",
+                        artworkUrl = song.thumbnail,
+                        targetDirectoryUri = directoryUri,
+                    )
+                }
+                val exporting = context.dataStore.data.map { prefs ->
+                    prefs[ExportingSongIdsKey].orEmpty().split(",").any { it == song.id }
+                }
+                withTimeoutOrNull(15_000) { exporting.first { it } }
+                exporting.first { !it }
+            }
+        }
+    }
+
+    val mp3FolderLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        if (uri != null && pendingMp3Songs.isNotEmpty()) {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                )
+            }
+            val toExport = pendingMp3Songs
+            pendingMp3Songs = emptyList()
+            onDismiss()
+            startSerialMp3Export(toExport, uri.toString())
+        } else {
+            pendingMp3Songs = emptyList()
+        }
+    }
+
+    val openMp3FolderPicker: (List<SongItem>) -> Unit = { list ->
+        if (list.isEmpty()) {
+            Toast.makeText(context, "No hay canciones para exportar", Toast.LENGTH_SHORT).show()
+        } else {
+            pendingMp3Songs = list
+            try {
+                mp3FolderLauncher.launch(null)
+            } catch (_: ActivityNotFoundException) {
+                pendingMp3Songs = emptyList()
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.export_directory_picker_unavailable),
+                    Toast.LENGTH_LONG,
+                ).show()
+            }
+        }
+    }
+
+    val beginMp3Export: () -> Unit = {
+        coroutineScope.launch {
+            val resolved = songs.ifEmpty {
+                withContext(Dispatchers.IO) {
+                    YouTube.playlist(playlist.id).completed().getOrNull()?.songs.orEmpty()
+                }
+            }
+            if (resolved.isEmpty()) {
+                Toast.makeText(context, "No hay canciones para exportar", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            mp3SongPool = resolved
+            showMp3ChoiceDialog = true
+        }
+    }
+
+    if (showMp3ChoiceDialog) {
+        DefaultDialog(
+            onDismiss = { showMp3ChoiceDialog = false },
+            title = { Text(text = "Exportar a MP3") },
+            content = {
+                Text(
+                    text = "¿Exportar todas las canciones de la playlist o seleccionar cuáles?",
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.padding(horizontal = 18.dp),
+                )
+            },
+            buttons = {
+                TextButton(onClick = { showMp3ChoiceDialog = false }) {
+                    Text(text = stringResource(android.R.string.cancel))
+                }
+                TextButton(
+                    onClick = {
+                        showMp3ChoiceDialog = false
+                        selectedMp3Ids = mp3SongPool.map { it.id }.toSet()
+                        showMp3SelectDialog = true
+                    },
+                ) {
+                    Text(text = "Seleccionar")
+                }
+                TextButton(
+                    onClick = {
+                        showMp3ChoiceDialog = false
+                        openMp3FolderPicker(mp3SongPool)
+                    },
+                ) {
+                    Text(text = "Todas")
+                }
+            },
+        )
+    }
+
+    if (showMp3SelectDialog) {
+        ListDialog(
+            onDismiss = { showMp3SelectDialog = false },
+        ) {
+            item {
+                ListItem(
+                    headlineContent = { Text(text = "Seleccionar todas") },
+                    trailingContent = {
+                        Checkbox(
+                            checked = mp3SongPool.isNotEmpty() && selectedMp3Ids.size == mp3SongPool.size,
+                            onCheckedChange = { checked ->
+                                selectedMp3Ids =
+                                    if (checked) mp3SongPool.map { it.id }.toSet() else emptySet()
+                            },
+                        )
+                    },
+                    modifier = Modifier.clickable {
+                        selectedMp3Ids =
+                            if (selectedMp3Ids.size == mp3SongPool.size) emptySet()
+                            else mp3SongPool.map { it.id }.toSet()
+                    },
+                )
+            }
+            items(mp3SongPool, key = { it.id }) { song ->
+                val checked = song.id in selectedMp3Ids
+                ListItem(
+                    headlineContent = { Text(text = song.title) },
+                    supportingContent = {
+                        Text(text = song.artists.joinToString { it.name })
+                    },
+                    trailingContent = {
+                        Checkbox(
+                            checked = checked,
+                            onCheckedChange = { on ->
+                                selectedMp3Ids =
+                                    if (on) selectedMp3Ids + song.id else selectedMp3Ids - song.id
+                            },
+                        )
+                    },
+                    modifier = Modifier.clickable {
+                        selectedMp3Ids =
+                            if (checked) selectedMp3Ids - song.id else selectedMp3Ids + song.id
+                    },
+                )
+            }
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                ) {
+                    TextButton(onClick = { showMp3SelectDialog = false }) {
+                        Text(text = stringResource(android.R.string.cancel))
+                    }
+                    Spacer(modifier = Modifier.weight(1f))
+                    TextButton(
+                        enabled = selectedMp3Ids.isNotEmpty(),
+                        onClick = {
+                            showMp3SelectDialog = false
+                            openMp3FolderPicker(mp3SongPool.filter { it.id in selectedMp3Ids })
+                        },
+                    ) {
+                        Text(text = "Continuar")
+                    }
+                }
+            }
+        }
     }
 
     ImportPlaylistDialog(
@@ -539,6 +742,21 @@ fun YouTubePlaylistMenu(
         item {
             Material3MenuGroup(
                 items = buildList {
+                    if (enableExportAsMp3) {
+                        add(
+                            Material3MenuItemData(
+                                title = { Text(text = "Exportar a MP3") },
+                                description = { Text(text = "Todas o seleccionar canciones") },
+                                icon = {
+                                    Icon(
+                                        painter = painterResource(R.drawable.file_export),
+                                        contentDescription = null,
+                                    )
+                                },
+                                onClick = { beginMp3Export() }
+                            )
+                        )
+                    }
                     if (songs.isNotEmpty()) {
                         add(
                             when (downloadState) {

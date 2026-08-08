@@ -455,10 +455,15 @@ private fun AuraStatsRangeSelector(
                     tint = AuraPalette.OnGroundFaint,
                 )
             }
-            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            DropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false },
+                shape = AuraShapes.Card,
+                containerColor = AuraPalette.FrostFill,
+            ) {
                 modes.forEach { (mode, label) ->
                     DropdownMenuItem(
-                        text = { Text(label) },
+                        text = { Text(label, color = AuraPalette.OnGround) },
                         onClick = {
                             onOptionChange(mode)
                             expanded = false

@@ -40,6 +40,7 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -80,6 +81,7 @@ import iad1tya.echo.music.ui.component.DefaultDialog
 import iad1tya.echo.music.ui.component.IconButton
 import iad1tya.echo.music.ui.component.IntegrationCard
 import iad1tya.echo.music.ui.component.IntegrationCardItem
+import iad1tya.echo.music.ui.newui.AuraPalette
 import iad1tya.echo.music.ui.newui.AuraPanel
 import iad1tya.echo.music.ui.newui.AuraShapes
 import iad1tya.echo.music.ui.newui.AuraSpacing
@@ -106,6 +108,12 @@ fun ListenTogetherSettings(
     val logs by viewModel.logs.collectAsState()
     val blockedUsernames by viewModel.blockedUsernames.collectAsState()
     
+    // ONE flag read for the whole screen. The rows below (IntegrationCard -> Material3SettingsGroup)
+    // already re-skin themselves; what was missing was the page background and the TopAppBar, which
+    // this screen draws by hand rather than through that seam.
+    val skin = rememberAuraPanelSkin()
+    val ground = if (skin.enabled && skin.darkGround) AuraPalette.Ground else MaterialTheme.colorScheme.surface
+
     val servers by ListenTogetherServers.serversFlow.collectAsState()
     var serverUrl by rememberPreference(ListenTogetherServerUrlKey, ListenTogetherServers.defaultServerUrl)
     var username by rememberPreference(ListenTogetherUsernameKey, "")
@@ -224,6 +232,11 @@ fun ListenTogetherSettings(
         )
     }
 
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(ground)
+    ) {
     Column(
         Modifier
             .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))
@@ -382,8 +395,18 @@ fun ListenTogetherSettings(
                     contentDescription = null,
                 )
             }
-        }
+        },
+        colors = TopAppBarDefaults.topAppBarColors(
+            containerColor = ground,
+            scrolledContainerColor = if (skin.enabled && skin.darkGround)
+                AuraPalette.GroundRaised
+            else
+                MaterialTheme.colorScheme.surfaceContainer,
+            titleContentColor = if (skin.enabled) skin.ink else MaterialTheme.colorScheme.onSurface,
+            navigationIconContentColor = if (skin.enabled) skin.ink else MaterialTheme.colorScheme.onSurface,
+        ),
     )
+    }
 }
 
 @Composable

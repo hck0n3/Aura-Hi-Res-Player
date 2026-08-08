@@ -24,7 +24,6 @@ import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.ProvideTextStyle
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
@@ -47,10 +46,33 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import iad1tya.echo.music.R
+import iad1tya.echo.music.ui.newui.AuraDialogWindowEffects
+import iad1tya.echo.music.ui.newui.AuraFloatingSurface
+import iad1tya.echo.music.ui.newui.AuraPalette
+import iad1tya.echo.music.ui.newui.AuraShapes
+import iad1tya.echo.music.ui.newui.AuraType
+import iad1tya.echo.music.ui.newui.rememberAuraPanelSkin
 import iad1tya.echo.music.ui.utils.rememberIsTvOrCar
 import iad1tya.echo.music.ui.utils.tvFocusable
 
 import kotlinx.coroutines.delay
+
+// ──────────────────────────────────────────────────────────────────────────────────────────────────
+// "Interfaz nueva" — [DefaultDialog] / [ListDialog] (and their callers [ActionPromptDialog] /
+// [TextFieldDialog]) are the ONE dialog chrome ~44 call sites share: song/album/playlist menus, every
+// settings confirmation, "Crear playlist" and "Agregar a playlist" among them. Retinting it here — the
+// same seam philosophy as `Material3SettingsGroup` for settings rows and `Items.kt` for song rows —
+// carries every one of those dialogs into the redesign at once, including ones inside ALREADY-ported
+// screens (AuraLibraryScreen, AuraPlayerMenu, AuraMigrationScreen…) that were still popping a plain
+// Material3 sheet on top of the new dark shell.
+//
+// Premium path: frosted translucent plate ([AuraFloatingSurface]) so the dimmed UI behind shows
+// through — same language as sheets/menus. Account flyout stays opaque ([FloatingFill]) in
+// SettingDialoge on purpose.
+//
+// With the flag OFF every branch below reduces to the exact original values — this is a strict
+// superset of the previous behaviour, never a redesign of it.
+// ──────────────────────────────────────────────────────────────────────────────────────────────────
 
 @Composable
 fun DefaultDialog(
@@ -62,59 +84,60 @@ fun DefaultDialog(
     horizontalAlignment: Alignment.Horizontal = Alignment.CenterHorizontally,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    val skin = rememberAuraPanelSkin()
+    val premium = skin.enabled && skin.darkGround
+    val iconTint = if (premium) AuraPalette.Teal
+    else AlertDialogDefaults.iconContentColor
+    val titleTint = if (premium) AuraPalette.OnGround
+    else AlertDialogDefaults.titleContentColor
+    val buttonTint = if (premium) AuraPalette.Teal
+    else MaterialTheme.colorScheme.primary
+
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
-        Surface(
+        AuraDialogWindowEffects(enabled = premium)
+        AuraFloatingSurface(
             modifier = Modifier.padding(24.dp),
-            shape = AlertDialogDefaults.shape,
-            color = AlertDialogDefaults.containerColor,
-            tonalElevation = AlertDialogDefaults.TonalElevation
+            shape = if (premium) AuraShapes.Card else AlertDialogDefaults.shape,
         ) {
             Column(
                 horizontalAlignment = horizontalAlignment,
-                modifier = modifier
-                    .padding(24.dp)
+                modifier = modifier.padding(24.dp)
             ) {
                 if (icon != null) {
-                    CompositionLocalProvider(LocalContentColor provides AlertDialogDefaults.iconContentColor) {
-                        Box(
-                            Modifier.align(Alignment.CenterHorizontally)
-                        ) {
-                            icon()
-                        }
+                    CompositionLocalProvider(LocalContentColor provides iconTint) {
+                        Box(Modifier.align(Alignment.CenterHorizontally)) { icon() }
                     }
-
                     Spacer(Modifier.height(16.dp))
                 }
                 if (title != null) {
-                    CompositionLocalProvider(LocalContentColor provides AlertDialogDefaults.titleContentColor) {
-                        ProvideTextStyle(MaterialTheme.typography.headlineSmall) {
+                    CompositionLocalProvider(LocalContentColor provides titleTint) {
+                        ProvideTextStyle(
+                            if (premium) AuraType.SheetTitle else MaterialTheme.typography.headlineSmall,
+                        ) {
                             Box(
-                                
-                                Modifier.align(if (icon == null) Alignment.Start else Alignment.CenterHorizontally)
-                            ) {
-                                title()
-                            }
+                                Modifier.align(
+                                    if (icon == null) Alignment.Start else Alignment.CenterHorizontally,
+                                ),
+                            ) { title() }
                         }
                     }
-
                     Spacer(Modifier.height(16.dp))
                 }
 
-                content()
+                CompositionLocalProvider(
+                    LocalContentColor provides if (premium) AuraPalette.OnGround else LocalContentColor.current,
+                ) {
+                    content()
+                }
 
                 if (buttons != null) {
                     Spacer(Modifier.height(24.dp))
-
-                    FlowRow(
-                        modifier = Modifier.align(Alignment.End)
-                    ) {
-                        CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.primary) {
-                            ProvideTextStyle(
-                                value = MaterialTheme.typography.labelLarge
-                            ) {
+                    FlowRow(modifier = Modifier.align(Alignment.End)) {
+                        CompositionLocalProvider(LocalContentColor provides buttonTint) {
+                            ProvideTextStyle(value = MaterialTheme.typography.labelLarge) {
                                 buttons()
                             }
                         }
@@ -191,15 +214,17 @@ fun ListDialog(
     modifier: Modifier = Modifier,
     content: LazyListScope.() -> Unit,
 ) {
+    val skin = rememberAuraPanelSkin()
+    val premium = skin.enabled && skin.darkGround
+
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
-        Surface(
+        AuraDialogWindowEffects(enabled = premium)
+        AuraFloatingSurface(
             modifier = Modifier.padding(24.dp),
-            shape = AlertDialogDefaults.shape,
-            color = AlertDialogDefaults.containerColor,
-            tonalElevation = AlertDialogDefaults.TonalElevation,
+            shape = if (premium) AuraShapes.Card else AlertDialogDefaults.shape,
         ) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -207,7 +232,11 @@ fun ListDialog(
                     .padding(vertical = 24.dp)
                     .imePadding(),
             ) {
-                LazyColumn(content = content)
+                CompositionLocalProvider(
+                    LocalContentColor provides if (premium) AuraPalette.OnGround else LocalContentColor.current,
+                ) {
+                    LazyColumn(content = content)
+                }
             }
         }
     }

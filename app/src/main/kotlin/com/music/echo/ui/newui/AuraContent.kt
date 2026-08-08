@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -25,22 +26,28 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableFloatState
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -50,14 +57,18 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
 import androidx.media3.exoplayer.offline.Download
 import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
+import coil3.request.crossfade
 import iad1tya.echo.music.LocalDownloadUtil
 import iad1tya.echo.music.LocalPlayerConnection
 import iad1tya.echo.music.R
 import iad1tya.echo.music.constants.CropAlbumArtKey
 import iad1tya.echo.music.constants.SwipeToSongKey
 import iad1tya.echo.music.db.entities.FormatEntity
+import iad1tya.echo.music.ui.component.PlayingIndicator
 import iad1tya.echo.music.ui.utils.resize
 import iad1tya.echo.music.utils.rememberPreference
 import java.util.Locale
@@ -101,7 +112,7 @@ fun AuraScreenHeader(
         verticalAlignment = Alignment.CenterVertically,
         modifier = modifier
             .fillMaxWidth()
-            .padding(start = AuraSpacing.Gutter, end = AuraSpacing.Gutter, top = 20.dp),
+            .padding(start = AuraSpacing.Gutter, end = AuraSpacing.Gutter, top = 8.dp),
     ) {
         Column(Modifier.weight(1f)) {
             if (label != null) {
@@ -135,7 +146,7 @@ fun AuraSectionHeader(
     title: String,
     modifier: Modifier = Modifier,
     label: String? = null,
-    accent: Color = AuraPalette.OnGroundFaint,
+    accent: Color = AuraPalette.OnGround,
     onClick: (() -> Unit)? = null,
     onPlayAll: (() -> Unit)? = null,
     leading: (@Composable () -> Unit)? = null,
@@ -143,27 +154,38 @@ fun AuraSectionHeader(
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
+        // The clickable region now covers the WHOLE row (title + chevron), matching the classic
+        // `NavigationTitle`'s `.clickable` on its own outer Row. It used to sit only on the title
+        // Column below, leaving the chevron a purely decorative sibling with no click handler of its
+        // own — "ver todos" worked when tapping the text but silently did nothing on the arrow next
+        // to it. `onPlayAll`'s own AuraIconButton still consumes its own taps first (innermost
+        // clickable wins in Compose), so it is unaffected by this.
         modifier = modifier
             .fillMaxWidth()
+            .then(
+                if (onClick != null) {
+                    Modifier
+                        .sizeIn(minHeight = AuraSpacing.MinTouchTarget)
+                        .clip(AuraShapes.Highlight)
+                        .auraClickableInternal(onClick = onClick, contentDescription = title)
+                } else {
+                    Modifier
+                },
+            )
             .padding(start = AuraSpacing.Gutter, end = 6.dp, top = AuraSpacing.SectionTop),
     ) {
         leading?.invoke()
         Column(
-            modifier = if (onClick != null) {
-                Modifier
-                    .weight(1f)
-                    .sizeIn(minHeight = AuraSpacing.MinTouchTarget)
-                    .clip(AuraShapes.Highlight)
-                    .auraClickableInternal(onClick = onClick, contentDescription = title)
-                    .padding(vertical = 4.dp)
-            } else {
-                Modifier.weight(1f)
-            },
+            modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.Center,
         ) {
-            AuraSectionLabel(
-                text = title.uppercase(Locale.ROOT),
+            // Apple Music / YTM: large readable section title (not mono uppercase tracking).
+            Text(
+                text = title,
+                style = AuraType.ContentSection,
                 color = accent,
+                maxLines = 2,
+                overflow = AuraDefaultOverflow,
             )
             if (label != null) {
                 Text(
@@ -179,8 +201,8 @@ fun AuraSectionHeader(
             AuraIconGlyph(
                 icon = AuraIcons.ChevronRight,
                 contentDescription = null,
-                size = 16.dp,
-                tint = AuraPalette.OnGroundDisabled,
+                size = 18.dp,
+                tint = AuraPalette.OnGroundMuted,
             )
         }
         if (onPlayAll != null) {
@@ -219,16 +241,23 @@ fun AuraCover(
     shape: Shape = AuraShapes.Artwork,
     decodeTo: Int = 256,
     ratio: Float = 1f,
+    /**
+     * When true, the image always fills the clipped frame (YTM/Apple exploration cards).
+     * When false, honour "Recortar las portadas" — Fit leaves gradient bars (horrible on video posters).
+     */
+    fillBleed: Boolean = false,
     overlay: (@Composable BoxScope.() -> Unit)? = null,
 ) {
     val brush = remember(seed) { AuraPalette.coverPlaceholder(seed) }
-    // "Recortar las portadas" (CropAlbumArtKey, default OFF). EVERY classic renderer reads it —
-    // Items.kt:1371/1453/1546, Thumbnail.kt:341, MiniPlayer.kt:857 — and the first cut of the new UI
-    // hard-coded ContentScale.Crop, so a wide cover lost its edges no matter what the user had chosen.
-    // That is the "las portadas salen recortadas" of the beta verdict. OFF = Fit: the whole frame is
-    // shown and the gradient placeholder fills whatever the image does not cover, which is exactly the
-    // render's `.cv` behaviour.
+    // Exploration cards ([fillBleed], videos, non-square frames) must Crop — Fit + sddefault 4:3
+    // inside a 16:9 poster is exactly the purple side bars in the owner's screenshots.
+    // Player / queue / hero keep [CropAlbumArtKey] when fillBleed is false and ratio is 1:1.
     val cropAlbumArt by rememberPreference(CropAlbumArtKey, false)
+    val contentScale = when {
+        fillBleed || ratio != 1f -> ContentScale.Crop
+        cropAlbumArt -> ContentScale.Crop
+        else -> ContentScale.Fit
+    }
     Box(
         modifier = modifier
             .width(size)
@@ -236,32 +265,111 @@ fun AuraCover(
             .clip(shape)
             .background(brush),
     ) {
-        if (thumbnailUrl != null) {
-            AsyncImage(
-                model = thumbnailUrl.resize(decodeTo, decodeTo),
-                contentDescription = null,
-                contentScale = if (cropAlbumArt) ContentScale.Crop else ContentScale.Fit,
-                modifier = Modifier.fillMaxSize(),
-            )
-        }
+        AuraStableCoverImage(
+            url = thumbnailUrl,
+            contentScale = contentScale,
+            decodeTo = decodeTo,
+            modifier = Modifier.fillMaxSize(),
+        )
         overlay?.invoke(this)
     }
 }
 
-/** The three teal bars of the render's "SONANDO" row — the app's "this is sounding" marker. */
+/**
+ * Cover swap without the empty-plate flash: keep the last decoded bitmap painted underneath while the
+ * next URL loads, and never ask Coil for a 250 ms crossfade (that fade is what the owner reads as
+ * "parpadeo al cambiar de canción").
+ */
 @Composable
-fun AuraPlayingBars(modifier: Modifier = Modifier) {
-    Row(
-        verticalAlignment = Alignment.Bottom,
-        horizontalArrangement = Arrangement.spacedBy(3.dp),
+fun AuraStableCoverImage(
+    url: String?,
+    contentScale: ContentScale,
+    modifier: Modifier = Modifier,
+    decodeTo: Int? = 256,
+) {
+    val context = LocalContext.current
+    var paintedUrl by remember { mutableStateOf(url) }
+    LaunchedEffect(url) {
+        if (url == null) paintedUrl = null
+    }
+    fun requestData(raw: String) =
+        if (decodeTo != null) raw.resize(decodeTo, decodeTo) else raw
+
+    Box(modifier) {
+        paintedUrl?.let { old ->
+            AsyncImage(
+                model = ImageRequest.Builder(context)
+                    .data(requestData(old))
+                    .crossfade(false)
+                    .build(),
+                contentDescription = null,
+                contentScale = contentScale,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        if (url != null && url != paintedUrl) {
+            AsyncImage(
+                model = ImageRequest.Builder(context)
+                    .data(requestData(url))
+                    .crossfade(false)
+                    .build(),
+                contentDescription = null,
+                contentScale = contentScale,
+                onSuccess = { paintedUrl = url },
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else if (url != null && paintedUrl == null) {
+            AsyncImage(
+                model = ImageRequest.Builder(context)
+                    .data(requestData(url))
+                    .crossfade(false)
+                    .build(),
+                contentDescription = null,
+                contentScale = contentScale,
+                onSuccess = { paintedUrl = url },
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+    }
+}
+
+/**
+ * "This is sounding" marker — same behaviour as classic [PlayingIndicatorBox]: animated teal bars
+ * while audio is actually ready/playing; a play glyph while the track is still buffering so the
+ * indicator does not lie about silence. Only one active row composes this at a time.
+ */
+@Composable
+fun AuraPlayingBars(
+    modifier: Modifier = Modifier,
+    isPlaying: Boolean = true,
+) {
+    val playerConnection = LocalPlayerConnection.current
+    val playbackState by (
+        playerConnection?.playbackState?.collectAsState()
+            ?: remember { mutableStateOf(Player.STATE_READY) }
+        )
+    val isCasting by (
+        playerConnection?.service?.castConnectionHandler?.isCasting?.collectAsState()
+            ?: remember { mutableStateOf(false) }
+        )
+    val animateBars = isPlaying && (playbackState == Player.STATE_READY || isCasting)
+    Box(
         modifier = modifier.height(17.dp),
+        contentAlignment = Alignment.Center,
     ) {
-        listOf(0.6f, 1f, 0.45f).forEach { fraction ->
-            Spacer(
-                Modifier
-                    .width(3.dp)
-                    .height(17.dp * fraction)
-                    .background(AuraPalette.Teal),
+        if (animateBars) {
+            PlayingIndicator(
+                color = AuraPalette.Teal,
+                modifier = Modifier.height(17.dp),
+                barWidth = 3.dp,
+                cornerRadius = 1.dp,
+            )
+        } else {
+            Icon(
+                imageVector = AuraIcons.Play,
+                contentDescription = null,
+                tint = AuraPalette.Teal,
+                modifier = Modifier.size(14.dp),
             )
         }
     }
@@ -381,6 +489,7 @@ fun AuraCoverCard(
             shape = shape,
             decodeTo = 512,
             ratio = ratio,
+            fillBleed = true,
         ) {
             if (isActive) {
                 Box(
@@ -406,12 +515,12 @@ fun AuraCoverCard(
             }
             badge?.invoke(this)
         }
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(10.dp))
         Text(
             text = title,
-            style = AuraType.RowTitle,
+            style = AuraType.CoverTitle,
             color = AuraPalette.OnGround,
-            maxLines = 1,
+            maxLines = 2,
             overflow = AuraDefaultOverflow,
         )
         if (!subtitle.isNullOrBlank()) {
@@ -422,6 +531,131 @@ fun AuraCoverCard(
                 maxLines = 1,
                 overflow = AuraDefaultOverflow,
             )
+        }
+    }
+}
+
+/**
+ * Full-width grid poster: cover fills the cell, title + subtitle sit ON the art over a bottom
+ * gradient (Singles / EPs / vídeos / directos / listas "ver todos"). Shelf [AuraCoverCard] keeps
+ * titles underneath — this one is for dense section grids where under-title text was getting
+ * clipped or looking empty.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun AuraPosterCard(
+    title: String,
+    modifier: Modifier = Modifier,
+    subtitle: String? = null,
+    thumbnailUrl: String? = null,
+    seed: String? = thumbnailUrl,
+    ratio: Float = 1f,
+    shape: Shape = AuraShapes.Artwork,
+    isActive: Boolean = false,
+    isPlaying: Boolean = false,
+    typeIcon: ImageVector? = null,
+    typeLabel: String? = null,
+    contentDescription: String = title,
+    onClick: (() -> Unit)? = null,
+    onLongClick: (() -> Unit)? = null,
+) {
+    val brush = remember(seed) { AuraPalette.coverPlaceholder(seed) }
+    // Posters always fill-bleed — never Fit letterboxes (owner: "portadas que no cubren todo").
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .aspectRatio(ratio)
+            .clip(shape)
+            .background(brush)
+            .then(
+                if (onClick != null || onLongClick != null) {
+                    Modifier.combinedClickable(
+                        onClick = { onClick?.invoke() },
+                        onClickLabel = contentDescription,
+                        onLongClick = onLongClick,
+                    )
+                } else Modifier,
+            ),
+    ) {
+        AuraStableCoverImage(
+            url = thumbnailUrl,
+            contentScale = ContentScale.Crop,
+            decodeTo = if (ratio != 1f) null else 512,
+            modifier = Modifier.fillMaxSize(),
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.58f)
+                .align(Alignment.BottomCenter)
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(Color.Transparent, AuraPalette.Ground.copy(alpha = 0.92f)),
+                    ),
+                ),
+        )
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(horizontal = 10.dp, vertical = 10.dp)
+                .fillMaxWidth(),
+        ) {
+            Text(
+                text = title,
+                style = AuraType.CoverTitle,
+                color = AuraPalette.OnGround,
+                maxLines = 2,
+                overflow = AuraDefaultOverflow,
+            )
+            if (!subtitle.isNullOrBlank()) {
+                Text(
+                    text = subtitle,
+                    style = AuraType.RowSubtitle,
+                    color = AuraPalette.OnGroundMuted,
+                    maxLines = 1,
+                    overflow = AuraDefaultOverflow,
+                )
+            }
+        }
+        if (typeIcon != null) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(8.dp)
+                    .size(22.dp)
+                    .clip(CircleShape)
+                    .background(AuraPalette.Ground.copy(alpha = 0.72f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                AuraIconGlyph(
+                    icon = typeIcon,
+                    contentDescription = typeLabel,
+                    size = 12.dp,
+                    tint = AuraPalette.Teal,
+                )
+            }
+        }
+        if (isActive) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(8.dp)
+                    .size(26.dp)
+                    .clip(CircleShape)
+                    .background(AuraPalette.Ground.copy(alpha = 0.72f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (isPlaying) {
+                    AuraPlayingBars()
+                } else {
+                    AuraIconGlyph(
+                        icon = AuraIcons.Pause,
+                        contentDescription = null,
+                        size = 14.dp,
+                        tint = AuraPalette.Teal,
+                    )
+                }
+            }
         }
     }
 }
@@ -492,6 +726,12 @@ fun AuraSongRow(
     format: FormatEntity? = null,
     playedInShuffle: Boolean = false,
     swipeMediaItem: MediaItem? = null,
+    /** Apple/YTM typed thumb: circle artists, 16:9 videos, softer playlist cards. */
+    artworkShape: Shape = AuraShapes.Artwork,
+    artworkRatio: Float = 1f,
+    artworkSize: Dp = 50.dp,
+    /** Small type chip on the cover (Vídeo / EP / Playlist…); null = none. */
+    typeChip: String? = null,
     onClick: (() -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
     onMenuClick: (() -> Unit)? = null,
@@ -510,8 +750,11 @@ fun AuraSongRow(
             artwork = {
                 AuraCover(
                     thumbnailUrl = thumbnailUrl,
-                    size = 50.dp,
+                    size = artworkSize,
                     seed = seed,
+                    shape = artworkShape,
+                    ratio = artworkRatio,
+                    fillBleed = true,
                 ) {
                     if (isActive && isPlaying) {
                         Box(
@@ -520,6 +763,23 @@ fun AuraSongRow(
                                 .background(AuraPalette.Ground.copy(alpha = 0.55f)),
                             contentAlignment = Alignment.Center,
                         ) { AuraPlayingBars() }
+                    }
+                    if (!typeChip.isNullOrBlank() && !isActive) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomStart)
+                                .padding(3.dp)
+                                .clip(AuraShapes.Pill)
+                                .background(AuraPalette.Ground.copy(alpha = 0.78f))
+                                .padding(horizontal = 5.dp, vertical = 2.dp),
+                        ) {
+                            Text(
+                                text = typeChip,
+                                style = AuraType.QualityBadge,
+                                color = AuraPalette.Teal,
+                                maxLines = 1,
+                            )
+                        }
                     }
                 }
             },
@@ -531,7 +791,7 @@ fun AuraSongRow(
                     if (dimmed) {
                         AuraIconGlyph(
                             icon = AuraIcons.Check,
-                            contentDescription = "Ya reproducida en aleatorio",
+                            contentDescription = "Ya reproducida",
                             size = 16.dp,
                             tint = AuraPalette.Teal,
                         )

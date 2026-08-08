@@ -304,29 +304,7 @@ fun Queue(
     val snackbarHostState = remember { SnackbarHostState() }
     var dismissJob: Job? by remember { mutableStateOf(null) }
 
-    var showSleepTimerDialog by remember { mutableStateOf(false) }
-    var sleepTimerValue by remember { mutableFloatStateOf(30f) }
-    val sleepTimerEnabled = remember(
-        playerConnection.service.sleepTimer.triggerTime,
-        playerConnection.service.sleepTimer.pauseWhenSongEnd
-    ) {
-        playerConnection.service.sleepTimer.isActive
-    }
-    var sleepTimerTimeLeft by remember { mutableLongStateOf(0L) }
     var showCommentSheet by rememberSaveable { mutableStateOf(false) }
-
-    LaunchedEffect(sleepTimerEnabled) {
-        if (sleepTimerEnabled) {
-            while (isActive) {
-                sleepTimerTimeLeft = if (playerConnection.service.sleepTimer.pauseWhenSongEnd) {
-                    playerConnection.player.duration - playerConnection.player.currentPosition
-                } else {
-                    playerConnection.service.sleepTimer.triggerTime - System.currentTimeMillis()
-                }
-                delay(1000L)
-            }
-        }
-    }
 
     BottomSheet(
         state = state,
@@ -371,27 +349,6 @@ fun Queue(
                         modifier = Modifier.size(buttonSize),
                         textButtonColor = textButtonColor,
                         iconButtonColor = iconButtonColor,
-                        iconSize = iconSize,
-                        textBackgroundColor = TextBackgroundColor,
-                        playerBackground = playerBackground
-                    )
-
-                    PlayerQueueButton(
-                        icon = R.drawable.bedtime,
-                        onClick = {
-                            if (sleepTimerEnabled) {
-                                playerConnection.service.sleepTimer.clear()
-                            } else {
-                                showSleepTimerDialog = true
-                            }
-                        },
-                        isActive = sleepTimerEnabled,
-                        enabled = !isListenTogetherGuest,
-                        shape = middleShape,
-                        modifier = Modifier.size(buttonSize),
-                        textButtonColor = textButtonColor,
-                        iconButtonColor = iconButtonColor,
-                        text = if (sleepTimerEnabled) makeTimeString(sleepTimerTimeLeft) else null,
                         iconSize = iconSize,
                         textBackgroundColor = TextBackgroundColor,
                         playerBackground = playerBackground
@@ -536,77 +493,28 @@ fun Queue(
                         }
                     }
 
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
-                        modifier = Modifier.width(120.dp)
+                    ToggleButton(
+                        checked = false,
+                        onCheckedChange = {
+                            showAudioDeviceBottomSheet = true
+                        },
+                        modifier = Modifier
+                            .height(56.dp)
+                            .width(64.dp),
+                        colors = ToggleButtonDefaults.toggleButtonColors(
+                            containerColor = TextBackgroundColor.copy(alpha = 0.2f),
+                            contentColor = TextBackgroundColor,
+                            checkedContainerColor = TextBackgroundColor.copy(alpha = 0.4f),
+                            checkedContentColor = TextBackgroundColor
+                        )
                     ) {
-                        ToggleButton(
-                            checked = false,
-                            onCheckedChange = {
-                                showAudioDeviceBottomSheet = true
-                            },
-                            shapes = ButtonGroupDefaults.connectedLeadingButtonShapes(),
-                            modifier = Modifier
-                                .height(56.dp)
-                                .weight(1f),
-                            colors = ToggleButtonDefaults.toggleButtonColors(
-                                containerColor = TextBackgroundColor.copy(alpha = 0.2f),
-                                contentColor = TextBackgroundColor,
-                                checkedContainerColor = TextBackgroundColor.copy(alpha = 0.4f),
-                                checkedContentColor = TextBackgroundColor
-                            )
-                        ) {
-                            Icon(
-                                painter = painterResource(
-                                    if (isBluetoothConnected) R.drawable.headset_applemusic else R.drawable.speaker_apple
-                                ),
-                                contentDescription = null,
-                                modifier = Modifier.size(30.dp)
-                            )
-                        }
-
-                        ToggleButton(
-                            checked = sleepTimerEnabled,
-                            onCheckedChange = {
-                                if (!isListenTogetherGuest) {
-                                    if (sleepTimerEnabled) {
-                                        playerConnection.service.sleepTimer.clear()
-                                    } else {
-                                        showSleepTimerDialog = true
-                                    }
-                                }
-                            },
-                            shapes = ButtonGroupDefaults.connectedTrailingButtonShapes(),
-                            modifier = Modifier
-                                .height(56.dp)
-                                .weight(1f),
-                            colors = ToggleButtonDefaults.toggleButtonColors(
-                                containerColor = TextBackgroundColor.copy(alpha = 0.2f),
-                                contentColor = TextBackgroundColor,
-                                checkedContainerColor = TextBackgroundColor.copy(alpha = 0.4f),
-                                checkedContentColor = TextBackgroundColor
-                            )
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center
-                            ) {
-                                Icon(
-                                    painter = painterResource(id = R.drawable.sleep_timer),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(30.dp)
-                                )
-                                if (sleepTimerEnabled) {
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        text = makeTimeString(sleepTimerTimeLeft),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = TextBackgroundColor,
-                                        maxLines = 1
-                                    )
-                                }
-                            }
-                        }
+                        Icon(
+                            painter = painterResource(
+                                if (isBluetoothConnected) R.drawable.headset_applemusic else R.drawable.speaker_apple
+                            ),
+                            contentDescription = null,
+                            modifier = Modifier.size(30.dp)
+                        )
                     }
 
                     TextButton(
@@ -640,68 +548,6 @@ fun Queue(
             }
             if (showAudioDeviceBottomSheet) {
                 AudioDeviceBottomSheet(onDismiss = { showAudioDeviceBottomSheet = false })
-            }
-
-            if (showSleepTimerDialog) {
-                ActionPromptDialog(
-                    titleBar = {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.Center
-                        ) {
-                            Text(
-                                text = stringResource(R.string.sleep_timer),
-                                overflow = TextOverflow.Ellipsis,
-                                maxLines = 1,
-                                style = MaterialTheme.typography.headlineSmall,
-                            )
-                        }
-                    },
-                    onDismiss = { showSleepTimerDialog = false },
-                    onConfirm = {
-                        showSleepTimerDialog = false
-                        playerConnection.service.sleepTimer.start(sleepTimerValue.roundToInt())
-                    },
-                    onCancel = {
-                        showSleepTimerDialog = false
-                    },
-                    onReset = {
-                        sleepTimerValue = 30f 
-                    },
-                    content = {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(
-                                text = pluralStringResource(
-                                    R.plurals.minute,
-                                    sleepTimerValue.roundToInt(),
-                                    sleepTimerValue.roundToInt()
-                                ),
-                                style = MaterialTheme.typography.bodyLarge,
-                            )
-
-                            Spacer(Modifier.height(16.dp))
-
-                            Slider(
-                                value = sleepTimerValue,
-                                onValueChange = { sleepTimerValue = it },
-                                valueRange = 5f..120f,
-                                steps = (120 - 5) / 5 - 1,
-                                modifier = Modifier.fillMaxWidth()
-                            )
-
-                            Spacer(Modifier.height(8.dp))
-
-                            OutlinedButton(
-                                onClick = {
-                                    showSleepTimerDialog = false
-                                    playerConnection.service.sleepTimer.start(-1)
-                                }
-                            ) {
-                                Text(stringResource(R.string.end_of_song))
-                            }
-                        }
-                    }
-                )
             }
         },
     ) {

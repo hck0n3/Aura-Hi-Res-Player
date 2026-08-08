@@ -10,7 +10,14 @@ import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -22,10 +29,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.datastore.preferences.core.edit
 import androidx.navigation.NavController
 import com.music.innertube.YouTube
 import iad1tya.echo.music.LocalPlayerAwareWindowInsets
@@ -38,38 +49,34 @@ import iad1tya.echo.music.constants.DataSyncIdKey
 import iad1tya.echo.music.constants.InnerTubeCookieKey
 import iad1tya.echo.music.constants.VisitorDataKey
 import iad1tya.echo.music.db.MusicDatabaseEntryPoint
-import iad1tya.echo.music.utils.dataStore
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import androidx.datastore.preferences.core.edit
-import androidx.compose.ui.platform.LocalContext
-import android.app.Activity
-import android.content.Context
-import android.content.Intent
 import iad1tya.echo.music.ui.component.IconButton
+import iad1tya.echo.music.ui.newui.AuraPalette
+import iad1tya.echo.music.ui.newui.AuraType
+import iad1tya.echo.music.ui.newui.rememberAuraPanelSkin
+import iad1tya.echo.music.utils.SyncUtils
+import iad1tya.echo.music.utils.dataStore
 import iad1tya.echo.music.utils.rememberPreference
 import iad1tya.echo.music.utils.reportException
 import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import timber.log.Timber
 
 /**
- * Cold-restarts the app so every screen reloads in the new (authenticated) state. Uses
- * ProcessPhoenix (a dedicated relaunch process) which is reliable across devices — the previous
- * AlarmManager / startActivity-then-exit approaches often just closed the app without reopening on
- * Xiaomi/Doze devices.
+ * Persists the YouTube Music session and returns to the previous screen WITHOUT cold-restarting.
+ * ProcessPhoenix felt like "leaving the app" (owner); DataStore + in-memory YouTube state already
+ * update every rememberPreference / sync consumer, so a rebirth is unnecessary for sign-in.
  */
-private fun restartApp(context: Context) {
-    runCatching { com.jakewharton.processphoenix.ProcessPhoenix.triggerRebirth(context) }
-        .onFailure {
-            // Fallback: best-effort relaunch + exit if Phoenix isn't available for some reason.
-            context.packageManager.getLaunchIntentForPackage(context.packageName)
-                ?.apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK) }
-                ?.let { context.startActivity(it) }
-            if (context is Activity) context.finishAffinity()
-            Runtime.getRuntime().exit(0)
-        }
+private fun finishLoginInPlace(navController: NavController, syncUtils: SyncUtils) {
+    runCatching {
+        syncUtils.syncLikedSongs()
+        syncUtils.syncLibrarySongs()
+        syncUtils.syncArtistsSubscriptions()
+        syncUtils.syncSavedPlaylists()
+    }
+    navController.navigateUp()
 }
 
 @SuppressLint("SetJavaScriptEnabled")
@@ -88,6 +95,7 @@ fun LoginScreen(
     var accountEmail by rememberPreference(AccountEmailKey, "")
     var accountChannelHandle by rememberPreference(AccountChannelHandleKey, "")
     var hasCompletedLogin by remember { mutableStateOf(false) }
+    val skin = rememberAuraPanelSkin()
 
     // Held in state so the account-picker callback can reload it. The WebView still loads the normal
     // ServiceLogin URL by default; the picker only PRE-FILLS the email so the user skips typing it.
@@ -120,158 +128,168 @@ fun LoginScreen(
 
     var webView: WebView? = null
 
-    AndroidView(
-        modifier = Modifier
-            .windowInsetsPadding(LocalPlayerAwareWindowInsets.current)
-            .fillMaxSize(),
-        factory = { webViewContext ->
-            WebView(webViewContext).apply {
-                webViewClient = object : WebViewClient() {
-                    override fun onPageFinished(view: WebView, url: String?) {
-                        loadUrl("javascript:Android.onRetrieveVisitorData(window.yt.config_.VISITOR_DATA)")
-                        loadUrl("javascript:Android.onRetrieveDataSyncId(window.yt.config_.DATASYNC_ID)")
+    Column(
+        Modifier
+            .fillMaxSize()
+            .then(
+                if (skin.enabled && skin.darkGround) Modifier.background(AuraPalette.Ground)
+                else Modifier,
+            ),
+    ) {
+        if (skin.enabled && skin.darkGround) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Top))
+                    .padding(start = 4.dp, end = 8.dp, top = 4.dp),
+            ) {
+                IconButton(
+                    onClick = navController::navigateUp,
+                    onLongClick = null,
+                ) {
+                    Icon(
+                        painterResource(R.drawable.arrow_back),
+                        contentDescription = null,
+                        tint = AuraPalette.OnGround,
+                    )
+                }
+                Text(
+                    text = stringResource(R.string.login),
+                    style = AuraType.ScreenTitle,
+                    color = AuraPalette.OnGround,
+                    modifier = Modifier.weight(1f),
+                )
+                androidx.compose.material3.TextButton(onClick = { launchAccountPicker() }) {
+                    Text(
+                        stringResource(R.string.login_use_phone_account),
+                        color = AuraPalette.Teal,
+                    )
+                }
+            }
+        } else {
+            TopAppBar(
+                title = { Text(stringResource(R.string.login)) },
+                navigationIcon = {
+                    IconButton(
+                        onClick = navController::navigateUp,
+                        onLongClick = null,
+                    ) {
+                        Icon(
+                            painterResource(R.drawable.arrow_back),
+                            contentDescription = null,
+                        )
+                    }
+                },
+                actions = {
+                    androidx.compose.material3.TextButton(onClick = { launchAccountPicker() }) {
+                        Text(stringResource(R.string.login_use_phone_account))
+                    }
+                },
+            )
+        }
 
-                        // getCookie(url) can return null (cookies not ready yet) — never force-assign it
-                        // (that crashed with "getCookie(...) must not be null"). Also require the
-                        // authenticated cookie (SAPISID) so we only complete once the user is actually
-                        // signed in; otherwise wait for the next onPageFinished.
-                        val pageCookie = if (url?.startsWith("https://music.youtube.com") == true)
-                            CookieManager.getInstance().getCookie(url) else null
-                        if (!hasCompletedLogin && !pageCookie.isNullOrBlank() && pageCookie.contains("SAPISID")) {
-                            innerTubeCookie = pageCookie
-                            hasCompletedLogin = true
+        AndroidView(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxSize()
+                .windowInsetsPadding(
+                    LocalPlayerAwareWindowInsets.current.only(
+                        WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
+                    ),
+                ),
+            factory = { webViewContext ->
+                WebView(webViewContext).apply {
+                    webViewClient = object : WebViewClient() {
+                        override fun onPageFinished(view: WebView, url: String?) {
+                            loadUrl("javascript:Android.onRetrieveVisitorData(window.yt.config_.VISITOR_DATA)")
+                            loadUrl("javascript:Android.onRetrieveDataSyncId(window.yt.config_.DATASYNC_ID)")
 
-                            coroutineScope.launch {
-                                
-                                delay(500)
+                            val pageCookie = if (url?.startsWith("https://music.youtube.com") == true)
+                                CookieManager.getInstance().getCookie(url) else null
+                            if (!hasCompletedLogin && !pageCookie.isNullOrBlank() && pageCookie.contains("SAPISID")) {
+                                innerTubeCookie = pageCookie
+                                hasCompletedLogin = true
 
-                                
-                                YouTube.cookie = innerTubeCookie
-                                YouTube.dataSyncId = dataSyncId
-                                YouTube.visitorData = visitorData
+                                coroutineScope.launch {
+                                    delay(500)
 
-                                Timber.d("Login: YouTube object initialized, validating...")
+                                    YouTube.cookie = innerTubeCookie
+                                    YouTube.dataSyncId = dataSyncId
+                                    YouTube.visitorData = visitorData
 
-                                YouTube.accountInfo().onSuccess {
-                                    accountName = it.name
-                                    accountEmail = it.email.orEmpty()
-                                    accountChannelHandle = it.channelHandle.orEmpty()
+                                    Timber.d("Login: YouTube object initialized, validating...")
 
-                                    Timber.d("Login: Successfully logged in as ${it.name}, persisting session and restarting...")
+                                    YouTube.accountInfo().onSuccess {
+                                        accountName = it.name
+                                        accountEmail = it.email.orEmpty()
+                                        accountChannelHandle = it.channelHandle.orEmpty()
 
-                                    webView?.apply {
-                                        stopLoading()
-                                        clearHistory()
-                                        clearCache(true)
-                                        clearFormData()
-                                    }
+                                        Timber.d("Login: Successfully logged in as ${it.name}")
 
-                                    // ATTACHING an account is as much of a boundary as detaching one.
-                                    //
-                                    // `App.forgetAccount` clears the account-scoped artist markers on
-                                    // the way OUT, which covers every logout and account switch made
-                                    // on this device. It does not cover a database that arrived here
-                                    // WITHOUT passing through a logout — and Android hands us exactly
-                                    // that on a "copy apps & data" transfer, a cloud restore or an
-                                    // `adb restore`: song.db is restored (it is not excluded from the
-                                    // backup rules, deliberately — see App.classifyInstallOrigin) while
-                                    // datastore/settings.preferences_pb, which holds the cookie, IS
-                                    // excluded. The app comes up signed out, carrying account A's
-                                    // `unfollowedByUserAt` + `ytmSyncedAt` markers, and the moment the
-                                    // user signs into account B those markers become 50 real
-                                    // `subscribeChannel(id, false)` calls per pass against B.
-                                    //
-                                    // So: any database reaching a login without having passed through
-                                    // a logout is by definition carrying markers written under an
-                                    // account we cannot identify. Drop them. Re-logging into the SAME
-                                    // account is a no-op — the subscription read-back re-stamps
-                                    // `ytmSyncedAt` from the account's real list on the next sync —
-                                    // and `followedByUserAt` / `bookmarkedAt` are untouched, so the
-                                    // library and the user's own follows survive intact.
-                                    //
-                                    // Best-effort: a database problem must never block a sign-in.
-                                    runCatching {
-                                        withContext(Dispatchers.IO) {
-                                            MusicDatabaseEntryPoint.get(context)
-                                                .clearArtistAccountSyncMarkers()
+                                        webView?.apply {
+                                            stopLoading()
+                                            clearHistory()
+                                            clearCache(true)
+                                            clearFormData()
                                         }
-                                    }.onFailure { e ->
-                                        Timber.w(e, "Login: could not clear the artist account-sync markers")
-                                    }
 
-                                    // Persist the session synchronously, then cold-restart so every
-                                    // screen (home, library, account) loads already authenticated.
-                                    context.dataStore.edit { prefs ->
-                                        prefs[InnerTubeCookieKey] = innerTubeCookie
-                                        if (visitorData.isNotEmpty()) prefs[VisitorDataKey] = visitorData
-                                        if (dataSyncId.isNotEmpty()) prefs[DataSyncIdKey] = dataSyncId
-                                        prefs[AccountNameKey] = it.name
-                                        prefs[AccountEmailKey] = it.email.orEmpty()
-                                        prefs[AccountChannelHandleKey] = it.channelHandle.orEmpty()
+                                        runCatching {
+                                            withContext(Dispatchers.IO) {
+                                                MusicDatabaseEntryPoint.get(context)
+                                                    .clearArtistAccountSyncMarkers()
+                                            }
+                                        }.onFailure { e ->
+                                            Timber.w(e, "Login: could not clear the artist account-sync markers")
+                                        }
+
+                                        context.dataStore.edit { prefs ->
+                                            prefs[InnerTubeCookieKey] = innerTubeCookie
+                                            if (visitorData.isNotEmpty()) prefs[VisitorDataKey] = visitorData
+                                            if (dataSyncId.isNotEmpty()) prefs[DataSyncIdKey] = dataSyncId
+                                            prefs[AccountNameKey] = it.name
+                                            prefs[AccountEmailKey] = it.email.orEmpty()
+                                            prefs[AccountChannelHandleKey] = it.channelHandle.orEmpty()
+                                        }
+                                        finishLoginInPlace(navController, syncUtils)
+                                    }.onFailure {
+                                        Timber.e(it, "Login: Authentication validation failed")
+                                        hasCompletedLogin = false
+                                        reportException(it)
                                     }
-                                    restartApp(context)
-                                }.onFailure {
-                                    Timber.e(it, "Login: Authentication validation failed")
-                                    hasCompletedLogin = false 
-                                    reportException(it)
                                 }
                             }
                         }
                     }
-                }
-                settings.apply {
-                    javaScriptEnabled = true
-                    // Hardening: this WebView only loads the remote Google sign-in page, so deny it any
-                    // access to local files/content — the JS bridge can't be used to read local data.
-                    allowFileAccess = false
-                    allowContentAccess = false
-                    setSupportZoom(true)
-                    builtInZoomControls = true
-                    displayZoomControls = false
-                }
-                addJavascriptInterface(object {
-                    @JavascriptInterface
-                    fun onRetrieveVisitorData(newVisitorData: String?) {
-                        if (newVisitorData != null) {
-                            visitorData = newVisitorData
-                        }
+                    settings.apply {
+                        javaScriptEnabled = true
+                        allowFileAccess = false
+                        allowContentAccess = false
+                        setSupportZoom(true)
+                        builtInZoomControls = true
+                        displayZoomControls = false
                     }
-                    @JavascriptInterface
-                    fun onRetrieveDataSyncId(newDataSyncId: String?) {
-                        if (newDataSyncId != null) {
-                            dataSyncId = newDataSyncId.substringBefore("||")
+                    addJavascriptInterface(object {
+                        @JavascriptInterface
+                        fun onRetrieveVisitorData(newVisitorData: String?) {
+                            if (newVisitorData != null) {
+                                visitorData = newVisitorData
+                            }
                         }
-                    }
-                }, "Android")
-                webView = this
-                webViewRef = this
-                loadUrl("https://accounts.google.com/ServiceLogin?continue=https%3A%2F%2Fmusic.youtube.com")
-            }
-        }
-    )
-
-    TopAppBar(
-        title = { Text(stringResource(R.string.login)) },
-        navigationIcon = {
-            IconButton(
-                onClick = navController::navigateUp,
-                onLongClick = null
-            ) {
-                Icon(
-                    painterResource(R.drawable.arrow_back),
-                    contentDescription = null
-                )
-            }
-        },
-        actions = {
-            // "Use a phone account": pre-selects one of the device's Google accounts so the user skips
-            // typing their email. The web sign-in (password/2FA) still runs — this is a convenience, not
-            // a full auto-login (YTM auth is a web cookie, not an OAuth token).
-            androidx.compose.material3.TextButton(onClick = { launchAccountPicker() }) {
-                Text(stringResource(R.string.login_use_phone_account))
-            }
-        }
-    )
+                        @JavascriptInterface
+                        fun onRetrieveDataSyncId(newDataSyncId: String?) {
+                            if (newDataSyncId != null) {
+                                dataSyncId = newDataSyncId.substringBefore("||")
+                            }
+                        }
+                    }, "Android")
+                    webView = this
+                    webViewRef = this
+                    loadUrl("https://accounts.google.com/ServiceLogin?continue=https%3A%2F%2Fmusic.youtube.com")
+                }
+            },
+        )
+    }
 
     BackHandler(enabled = webView?.canGoBack() == true) {
         webView?.goBack()

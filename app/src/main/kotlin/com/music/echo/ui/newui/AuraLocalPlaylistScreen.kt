@@ -61,7 +61,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -556,6 +555,7 @@ fun AuraLocalPlaylistScreen(
                                 songs = songs,
                                 contextId = contextId,
                                 snackbarHostState = snackbarHostState,
+                                onSearch = { isSearching = true },
                                 onMenu = {
                                     menuState.show {
                                         AuraLocalPlaylistMenuHost(
@@ -677,7 +677,8 @@ fun AuraLocalPlaylistScreen(
                     }
 
                     val isActive = song.song.id == mediaMetadata?.id
-                    val dimmed = song.song.id in shufflePlayedSet && !isActive
+                    val alreadyPlayed = song.song.song.totalPlayTime > 0L
+                    val dimmed = (song.song.id in shufflePlayedSet || alreadyPlayed) && !isActive
 
                     val dragHandle: (@Composable () -> Unit)? = if (canDrag) {
                         {
@@ -738,10 +739,14 @@ fun AuraLocalPlaylistScreen(
                                 }
                             },
                             artwork = {
+                                val videoThumb = song.song.song.isVideo
                                 AuraCover(
                                     thumbnailUrl = song.song.song.thumbnailUrl,
-                                    size = 50.dp,
+                                    size = if (videoThumb) 88.dp else 50.dp,
                                     seed = song.song.id,
+                                    ratio = if (videoThumb) 16f / 9f else 1f,
+                                    shape = if (videoThumb) AuraShapes.Card else AuraShapes.Artwork,
+                                    fillBleed = videoThumb,
                                 ) {
                                     if (isActive && isPlaying) {
                                         Box(
@@ -750,6 +755,22 @@ fun AuraLocalPlaylistScreen(
                                                 .background(AuraPalette.Ground.copy(alpha = 0.55f)),
                                             contentAlignment = Alignment.Center,
                                         ) { AuraPlayingBars() }
+                                    } else if (videoThumb && !isActive) {
+                                        Box(
+                                            modifier = Modifier
+                                                .align(Alignment.TopStart)
+                                                .padding(4.dp)
+                                                .clip(AuraShapes.Pill)
+                                                .background(AuraPalette.Ground.copy(alpha = 0.72f))
+                                                .padding(horizontal = 5.dp, vertical = 2.dp),
+                                        ) {
+                                            Text(
+                                                text = auraTypeLabel(AuraContentKind.Video),
+                                                style = AuraType.QualityBadge,
+                                                color = AuraPalette.Teal,
+                                                maxLines = 1,
+                                            )
+                                        }
                                     }
                                 }
                             },
@@ -761,7 +782,7 @@ fun AuraLocalPlaylistScreen(
                                     if (dimmed) {
                                         AuraIconGlyph(
                                             icon = AuraIcons.Check,
-                                            contentDescription = stringResource(R.string.cd_shuffle_already_played),
+                                            contentDescription = "Ya reproducida",
                                             size = 16.dp,
                                             tint = AuraPalette.Teal,
                                         )
@@ -880,52 +901,28 @@ fun AuraLocalPlaylistScreen(
             headerItems = 2,
         )
 
-        // ── Barra superior ────────────────────────────────────────────────────────────────────────
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Top))
-                .background(AuraPalette.Ground.copy(alpha = 0.82f))
-                .padding(horizontal = 6.dp, vertical = 4.dp),
-        ) {
-            AuraIconButton(
-                icon = if (inSelectMode) AuraIcons.Plus else AuraIcons.ChevronRight,
-                contentDescription = stringResource(
-                    if (inSelectMode) R.string.cd_exit_selection else R.string.cd_back,
-                ),
-                onClick = {
-                    when {
-                        isSearching -> {
-                            isSearching = false
-                            query = ""
-                            focusManager.clearFocus()
-                        }
-
-                        inSelectMode -> onExitSelectionMode()
-                        else -> navController.navigateUp()
+        // Sticky chrome: back only. Title/search stay in the scrolling header (owner: no black
+        // sticky bar with playlist name + search).
+        AuraDetailTopBar(
+            listState = lazyListState,
+            title = playlist?.playlist?.name.orEmpty(),
+            onBack = {
+                when {
+                    isSearching -> {
+                        isSearching = false
+                        query = ""
+                        focusManager.clearFocus()
                     }
-                },
-                size = 22.dp,
-                modifier = Modifier.graphicsLayer {
-                    rotationZ = if (inSelectMode) 45f else 180f
-                },
-            )
-            Text(
-                text = if (inSelectMode) {
-                    pluralStringResource(R.plurals.n_selected, selection.size, selection.size)
-                } else {
-                    playlist?.playlist?.name.orEmpty()
-                },
-                style = AuraType.SheetTitle,
-                color = AuraPalette.OnGround,
-                maxLines = 1,
-                overflow = AuraDefaultOverflow,
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(horizontal = 6.dp),
-            )
-            if (inSelectMode) {
+
+                    inSelectMode -> onExitSelectionMode()
+                    else -> navController.navigateUp()
+                }
+            },
+            inSelectMode = inSelectMode,
+            selectionCount = selection.size,
+            forceOpaque = false,
+            pinTitleOnScroll = false,
+            selectionActions = {
                 Checkbox(
                     checked = selection.size == songs.size && selection.isNotEmpty(),
                     onCheckedChange = {
@@ -962,15 +959,8 @@ fun AuraLocalPlaylistScreen(
                     },
                     size = 20.dp,
                 )
-            } else if (!isSearching) {
-                AuraIconButton(
-                    icon = AuraIcons.Search,
-                    contentDescription = stringResource(R.string.search),
-                    onClick = { isSearching = true },
-                    size = 20.dp,
-                )
-            }
-        }
+            },
+        )
 
         SnackbarHost(
             hostState = snackbarHostState,
@@ -993,6 +983,7 @@ private fun AuraLocalPlaylistHeader(
     songs: List<PlaylistSong>,
     contextId: String,
     snackbarHostState: SnackbarHostState,
+    onSearch: () -> Unit,
     onMenu: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -1167,6 +1158,24 @@ private fun AuraLocalPlaylistHeader(
                 accent = true,
                 modifier = Modifier.weight(1f).tvFocusable(isTvOrCar, scaleFocused = 1f),
             )
+        }
+
+        Spacer(modifier.height(12.dp))
+
+        // Search · Más — secondary row so labeled Play/Shuffle stay centered.
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = AuraSpacing.Gutter),
+            horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            AuraHeaderCircleButton(
+                icon = AuraIcons.Search,
+                contentDescription = stringResource(R.string.search),
+                onClick = onSearch,
+                modifier = Modifier.tvFocusable(isTvOrCar, scaleFocused = 1f),
+            )
             AuraHeaderCircleButton(
                 icon = AuraIcons.More,
                 contentDescription = stringResource(R.string.cd_playlist_more_options),
@@ -1175,7 +1184,7 @@ private fun AuraLocalPlaylistHeader(
             )
         }
 
-        Spacer(Modifier.height(18.dp))
+        Spacer(modifier.height(18.dp))
 
         Column(
             modifier = Modifier

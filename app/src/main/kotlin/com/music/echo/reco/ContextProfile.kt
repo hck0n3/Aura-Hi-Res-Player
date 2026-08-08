@@ -31,12 +31,12 @@ object ContextProfile {
 
     /** Bounds of [steerTerm] — an additive nudge on a positional sort key, same class as the existing
      *  soft "Menos de esto" push (+6) and the capped taste pull (8). Index must stay dominant. */
-    const val STEER_MIN = -4.0
+    const val STEER_MIN = -5.0
     const val STEER_MAX = 6.0
 
-    private const val ARTIST_PULL = -3.0
-    private const val GENRE_PULL_SCALE = -4.0
-    private const val OFF_GENRE_PUSH = 6.0
+    private const val ARTIST_PULL = -4.5
+    private const val GENRE_PULL_SCALE = -5.5
+    private const val OFF_GENRE_PUSH = 7.0
     private const val LANGUAGE_TIEBREAK = -1.0
 
     /**
@@ -68,7 +68,7 @@ object ContextProfile {
 
     /**
      * May a candidate the steer pushed BACK be kept out of the exploration reserve (MusicService's
-     * `withExplorationQuota`, ~1 slot in 5 held for an artist the taste profile does not know)?
+     * `withExplorationQuota`, ~1 slot in 10 held for an artist the taste profile does not know)?
      * ONLY when we actually KNOW its genre and know it to be off-context — [steerTerm] > 0 with a
      * non-null [candidateGenre].
      *

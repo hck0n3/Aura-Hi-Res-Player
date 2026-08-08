@@ -47,7 +47,12 @@ import com.music.innertube.YouTube
 import com.music.innertube.models.comment.CommentRenderer
 import com.music.innertube.models.comment.CommentThreadRenderer
 import iad1tya.echo.music.R
+import iad1tya.echo.music.ui.newui.LocalAuraFloatingChrome
+import iad1tya.echo.music.ui.newui.auraFloatingContainerColor
+import iad1tya.echo.music.ui.newui.auraFloatingScrimColor
+import iad1tya.echo.music.ui.newui.rememberAuraPanelSkin
 import kotlinx.coroutines.launch
+import androidx.compose.runtime.CompositionLocalProvider
 
 import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
 import androidx.compose.material3.adaptive.layout.AnimatedPane
@@ -68,6 +73,8 @@ fun CommentSheet(
 ) {
     val scope = rememberCoroutineScope()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val skin = rememberAuraPanelSkin()
+    val premium = skin.enabled && skin.darkGround
 
     var comments by remember { mutableStateOf<List<CommentThreadRenderer>>(emptyList()) }
     var nextToken by remember { mutableStateOf<String?>(null) }
@@ -93,8 +100,12 @@ fun CommentSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         dragHandle = { BottomSheetDefaults.DragHandle() },
-        containerColor = MaterialTheme.colorScheme.surfaceContainer
+        containerColor = if (premium) auraFloatingContainerColor()
+        else MaterialTheme.colorScheme.surfaceContainer,
+        scrimColor = if (premium) auraFloatingScrimColor() else BottomSheetDefaults.ScrimColor,
+        tonalElevation = 0.dp,
     ) {
+        CompositionLocalProvider(LocalAuraFloatingChrome provides premium) {
         Column(modifier = Modifier.fillMaxHeight()) {
             
             Row(
@@ -226,6 +237,7 @@ fun CommentSheet(
                     )
                 }
             }
+        }
         }
     }
 }

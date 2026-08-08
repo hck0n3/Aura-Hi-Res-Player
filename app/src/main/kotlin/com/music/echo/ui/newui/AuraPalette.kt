@@ -220,6 +220,19 @@ object AuraPalette {
     val FloatingFill: Color get() = SurfaceFill.compositeOver(GroundRaised)
 
     /**
+     * Frosted overlay plate (dialogs / sheets / menus).
+     *
+     * Must keep a real alpha — `compositeOver` alone yields an opaque color and the plate reads as a
+     * flat Material card (the owner complaint). RGB is the same GroundRaised film the shell uses;
+     * alpha opens so the dimmed UI behind shows through. Pair with window backdrop blur when the
+     * device allows it ([AuraFloatingSurface] / dialog window effects).
+     *
+     * Not an empty hole ([SurfaceFill] alone) and not fully opaque ([FloatingFill]). Account flyout
+     * stays on [FloatingFill] on purpose.
+     */
+    val FrostFill: Color get() = SurfaceFill.compositeOver(Ground).copy(alpha = 0.82f)
+
+    /**
      * Card / chip hairline: `rgba(255,255,255,.10)`.
      *
      * It stays the hairline of a [FloatingFill] control too, and it does not get weaker there: on the

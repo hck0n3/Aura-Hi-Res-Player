@@ -753,7 +753,8 @@ internal fun AuraExpandableText(
     }
 }
 
-/** Aleatorio / Reproducir. [accent] draws the gradient (the one full-colour element per screen). */
+/** Aleatorio / Reproducir / Guardar… as labeled pills. Prefer [AuraHeaderCircleButton] in collection
+ *  headers (icon-only); keep this for full-width actions that still need a word (Añadir música, Reintentar). */
 @Composable
 internal fun AuraHeaderButton(
     icon: ImageVector,
@@ -782,7 +783,8 @@ internal fun AuraHeaderButton(
                 onClick = onClick,
                 enabled = enabled,
                 contentDescription = label,
-            ),
+            )
+            .padding(horizontal = 16.dp),
     ) {
         val alpha = if (enabled) 1f else 0.4f
         AuraIconGlyph(
@@ -802,28 +804,44 @@ internal fun AuraHeaderButton(
     }
 }
 
-/** The 48 dp circular companion of [AuraHeaderButton] — the header's ⋯ / compartir. */
+/** 48 dp circular header action — shuffle / play / save / download / search / ⋯ / share.
+ *  [accent] = play gradient (the one full-colour control). Labels live only in [contentDescription]. */
 @Composable
 internal fun AuraHeaderCircleButton(
     icon: ImageVector,
     contentDescription: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    accent: Boolean = false,
+    enabled: Boolean = true,
 ) {
+    val shape = CircleShape
+    val alpha = if (enabled) 1f else 0.4f
     Box(
         modifier = modifier
             .size(48.dp)
-            .clip(CircleShape)
-            .background(AuraPalette.SurfaceFill)
-            .border(1.dp, AuraPalette.SurfaceLine, CircleShape)
-            .auraClickableInternal(onClick = onClick, contentDescription = contentDescription),
+            .clip(shape)
+            .then(
+                if (accent) {
+                    Modifier.background(AuraPalette.PlayButtonGradient)
+                } else {
+                    Modifier
+                        .background(AuraPalette.SurfaceFill)
+                        .border(1.dp, AuraPalette.SurfaceLine, shape)
+                },
+            )
+            .auraClickableInternal(
+                onClick = onClick,
+                enabled = enabled,
+                contentDescription = contentDescription,
+            ),
         contentAlignment = Alignment.Center,
     ) {
         AuraIconGlyph(
             icon = icon,
             contentDescription = null,
             size = 20.dp,
-            tint = AuraPalette.OnGround,
+            tint = (if (accent) AuraPalette.OnAccent else AuraPalette.OnGround).copy(alpha = alpha),
         )
     }
 }
@@ -949,10 +967,17 @@ internal fun <T : Enum<T>> AuraInlineSortControl(
                     tint = AuraPalette.OnGroundFaint,
                 )
             }
-            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            DropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false },
+                shape = AuraShapes.Card,
+                containerColor = AuraPalette.FrostFill,
+            ) {
                 options.forEach { (option, labelRes) ->
                     DropdownMenuItem(
-                        text = { Text(stringResource(labelRes)) },
+                        text = {
+                            Text(stringResource(labelRes), color = AuraPalette.OnGround)
+                        },
                         onClick = {
                             onSortTypeChange(option)
                             expanded = false

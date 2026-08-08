@@ -50,6 +50,8 @@ import iad1tya.echo.music.spotify.SpotifyAuth
 import iad1tya.echo.music.spotifyimport.SpotifyAutoSyncWorker
 import iad1tya.echo.music.constants.SpotifyAutoSyncFreqDaysKey
 import iad1tya.echo.music.constants.SpotifyAutoSyncSourceIdsKey
+import iad1tya.echo.music.ui.newui.AuraPalette
+import iad1tya.echo.music.ui.newui.rememberAuraPanelSkin
 import iad1tya.echo.music.utils.rememberPreference
 import android.net.Uri
 import kotlinx.coroutines.flow.first
@@ -64,6 +66,8 @@ fun SpotifyImportScreen(
     val state by spotifyImportViewModel.uiState.collectAsStateWithLifecycle()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     val context = LocalContext.current
+    val skin = rememberAuraPanelSkin()
+    val ground = if (skin.enabled && skin.darkGround) AuraPalette.Ground else MaterialTheme.colorScheme.background
 
     var showSpotifyLogin by remember { mutableStateOf(false) }
     var showSpotifySources by remember { mutableStateOf(false) }
@@ -96,6 +100,7 @@ fun SpotifyImportScreen(
 
     Scaffold(
         modifier = Modifier.fillMaxSize().nestedScroll(scrollBehavior.nestedScrollConnection),
+        containerColor = ground,
         topBar = {
             LargeTopAppBar(
                 title = { Text(stringResource(R.string.spotify_import_title)) },
@@ -106,6 +111,16 @@ fun SpotifyImportScreen(
                     ) {
                         Icon(painterResource(R.drawable.arrow_back), null)
                     }
+                },
+                colors = if (skin.enabled && skin.darkGround) {
+                    TopAppBarDefaults.largeTopAppBarColors(
+                        containerColor = ground,
+                        scrolledContainerColor = AuraPalette.GroundRaised,
+                        titleContentColor = skin.ink,
+                        navigationIconContentColor = skin.ink,
+                    )
+                } else {
+                    TopAppBarDefaults.largeTopAppBarColors()
                 },
                 scrollBehavior = scrollBehavior
             )

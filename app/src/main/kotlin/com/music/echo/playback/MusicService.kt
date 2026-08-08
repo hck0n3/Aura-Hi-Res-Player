@@ -84,6 +84,7 @@ import iad1tya.echo.music.constants.AudioOffload
 import iad1tya.echo.music.constants.AudioQualityKey
 import iad1tya.echo.music.constants.AutoDownloadOnLikeKey
 import iad1tya.echo.music.constants.AutoLoadMoreKey
+import iad1tya.echo.music.constants.OfflineModeKey
 import iad1tya.echo.music.constants.KeepGenreLaneKey
 import iad1tya.echo.music.constants.AutoSkipNextOnErrorKey
 import iad1tya.echo.music.constants.CrossfadeDurationKey
@@ -619,8 +620,6 @@ class MusicService :
     }
 
 
-    lateinit var sleepTimer: SleepTimer
-
     @Inject
     @PlayerCache
     lateinit var playerCache: SimpleCache
@@ -1036,6 +1035,22 @@ class MusicService :
     // True when a radio seed was started from the STATE_ENDED safety net (the queue truly ended): once the
     // seed appends items, advance+play into them so predictive infinite playback resumes with no manual action.
     @Volatile private var resumeAfterSeed = false
+    // Manual Next on the last finite-queue track while it is STILL PLAYING: [resumeAfterSeed] alone only
+    // advances when `!player.isPlaying` (the STATE_ENDED path). This flag forces the seek into the freshly
+    // appended radio even though the last album/playlist song has not finished yet.
+    @Volatile private var advanceIntoRadioRequested = false
+
+    /** True while [startRadioSeamlessly] is fetching/appending — used by PlayerConnection for manual Next. */
+    val isRadioSeedInFlight: Boolean get() = radioSeedInFlight
+
+    /**
+     * Arm the post-seed seek used by manual Next at the end of a finite queue. Safe to call while a B3
+     * head-start seed is already running — does not launch a second seed by itself.
+     */
+    fun requestAdvanceIntoRadio() {
+        resumeAfterSeed = true
+        advanceIntoRadioRequested = true
+    }
     // Idempotent watchdog armed by STATE_ENDED when a head-start (B3) seed was ALREADY in flight (so we skipped
     // launching a second one): if that in-flight seed settles with nothing appended, it clears the flags and the
     // player would dead-end. Once the seed settles, this re-checks and kicks a fresh seed if we're still stopped
@@ -1481,6 +1496,10 @@ class MusicService :
     private var periodicPersistJob: kotlinx.coroutines.Job? = null
         private set
 
+    // Extra PARTIAL_WAKE_LOCK + WifiLock while playing — belt beyond ExoPlayer WAKE_MODE_NETWORK
+    // so screen-off Wi‑Fi/CPU sleep does not stall audio on aggressive OEMs of every brand.
+    private val playbackKeepAlive by lazy { PlaybackKeepAlive(this) }
+
     private val screenStateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             when (intent.action) {
@@ -1488,6 +1507,13 @@ class MusicService :
                     // INSTANT VIDEO SWAP: screen off = invisible → no speculative player may keep
                     // buffering video bytes (heat/battery rule). No-op when nothing is prepared.
                     teardownInstantVideoSwap("screen off")
+                    // HyperOS ScreenOffCPUCheckKill: binder spam (widgets) with the screen off is a
+                    // proven playback killer on the owner's device. Widgets are not visible anyway.
+                    stopWidgetUpdates()
+                    // Re-assert wake/wifi locks — some skins drop ExoPlayer's when the display blanks.
+                    if (::player.isInitialized && player.isPlaying) {
+                        playbackKeepAlive.refreshIfPlaying(true)
+                    }
                     if (!player.isPlaying) {
                         scope.launch(Dispatchers.IO) {
                             discordRpc?.closeRPC()
@@ -1499,6 +1525,7 @@ class MusicService :
                     // sheet is still expanded over a video song in audio mode, unmetered, capable, etc).
                     scheduleInstantVideoPrepare(INSTANT_VIDEO_PREPARE_DELAY_MS)
                     if (player.isPlaying) {
+                        startWidgetUpdates()
                         scope.launch {
                             currentSong.value?.let { song ->
                                 updateDiscordRPC(song)
@@ -1777,8 +1804,6 @@ class MusicService :
         )
         player = createExoPlayer()
         player.addListener(this@MusicService)
-        sleepTimer = SleepTimer(scope, player)
-        player.addListener(sleepTimer)
         playerInitialized.value = true
         Timber.tag(TAG).d("Player successfully initialized")
 
@@ -3396,15 +3421,29 @@ class MusicService :
     }
 
     fun startRadioSeamlessly() {
+        // Offline mode: never seed radio / related / YouTube next — that is network by definition.
+        if (dataStore.get(OfflineModeKey, false)) {
+            resumeAfterSeed = false
+            advanceIntoRadioRequested = false
+            return
+        }
 
         if (!playerInitialized.value) {
             Timber.tag(TAG).w("startRadioSeamlessly called before player initialization")
             resumeAfterSeed = false // never reach the finally on this early return; don't leave it armed
+            advanceIntoRadioRequested = false
+            return
+        }
+
+        // A B3 head-start (or a prior call) is already fetching — do NOT launch a second seed (registry #60).
+        // Callers that need to jump into the result must [requestAdvanceIntoRadio] first.
+        if (radioSeedInFlight) {
             return
         }
 
         val currentMediaMetadata = player.currentMetadata ?: run {
             resumeAfterSeed = false
+            advanceIntoRadioRequested = false
             return
         }
         val currentMediaId = currentMediaMetadata.id
@@ -3639,9 +3678,14 @@ class MusicService :
                     val shufflePlaylistFirst = dataStore.get(ShufflePlaylistFirstKey, false)
                     applyShuffleOrder(player.currentMediaItemIndex, player.mediaItemCount, shufflePlaylistFirst)
                 }
-                if (resumeAfterSeed && !player.isPlaying) {
+                // STATE_ENDED arms resumeAfterSeed and waits for !isPlaying. Manual Next also arms
+                // advanceIntoRadioRequested so we SEEK into the radio while the last finite track is
+                // still audibly playing — otherwise Next appears to do nothing until the song ends.
+                if ((resumeAfterSeed && !player.isPlaying) || advanceIntoRadioRequested) {
                     resumeAfterSeed = false
+                    advanceIntoRadioRequested = false
                     player.seekTo(liveIndex + 1, 0)
+                    player.playWhenReady = true
                     player.play()
                 }
                 // A successful append created/changed the "next item" — re-arm the crossfade so the infinite-queue
@@ -3869,9 +3913,12 @@ class MusicService :
             // suggestions for THIS seed. Bounded: no-ops if this seed's chips are already loaded.
             if (appended) seedVideoId?.let { refreshAutoplaySuggestions(it) }
             // Absolute last resort: at a TRUE end-of-queue, never leave the user in silence — replay the queue.
-            if (!appended && resumeAfterSeed && !player.isPlaying && player.mediaItemCount > 0) {
+            if (!appended && (resumeAfterSeed || advanceIntoRadioRequested) &&
+                !player.isPlaying && player.mediaItemCount > 0
+            ) {
                 Timber.tag(TAG).w("Radio seed yielded nothing; replaying current queue so playback never stops")
                 resumeAfterSeed = false
+                advanceIntoRadioRequested = false
                 player.seekTo(0, 0)
                 player.play()
             }
@@ -3882,6 +3929,7 @@ class MusicService :
         seedJob.invokeOnCompletion {
             radioSeedInFlight = false
             resumeAfterSeed = false
+            advanceIntoRadioRequested = false
         }
     }
 
@@ -4313,17 +4361,18 @@ class MusicService :
     }
 
     /**
-     * Phase B #4 — exploration quota. Reserve roughly every 5th slot for a "fresh" candidate: one whose primary
+     * Phase B #4 — exploration quota. Reserve roughly every 8th slot for a "fresh" candidate: one whose primary
      * artist is NOT already in the taste profile ([iad1tya.echo.music.reco.TasteProfile.isKnownArtist]), so radio
-     * doesn't tunnel into pure exploitation of artists you already know. Never drops or duplicates anything —
+     * doesn't tunnel into pure exploitation of artists you already know — but far less often than the old
+     * 1-in-5 cadence that made context-faithful radio feel random. Never drops or duplicates anything —
      * output length == input length, and each partition keeps its incoming (taste/relatedness) order. Null profile
-     * (no taste yet), lists under 5, or no fresh/known split → returns the list unchanged (today's behaviour).
+     * (no taste yet), lists under 8, or no fresh/known split → returns the list unchanged (today's behaviour).
      * In-memory only, no network, no extra cost.
      *
      * [blocked] are ids that may NOT claim a reserved exploration slot: a CTX_SINK id, or a candidate the
      * genre steer pushed back for a genre we KNOW and know to be off-context
      * ([iad1tya.echo.music.reco.ContextProfile.blocksExploration]). Without that rule the quota undid the
-     * steer — the reserved 1-in-5 slots went to precisely the songs it had just demoted (the owner's "una
+     * steer — the reserved slots went to precisely the songs it had just demoted (the owner's "una
      * del género, otra que no tiene nada que ver").
      *
      * An UNKNOWN genre is deliberately NOT a reason to block, and that boundary is load-bearing: "not in
@@ -4339,7 +4388,7 @@ class MusicService :
         p: iad1tya.echo.music.reco.TasteProfile?,
         blocked: Set<String> = emptySet(),
     ): List<MediaItem> {
-        if (p == null || size < 5) return this
+        if (p == null || size < 8) return this
         val known = ArrayList<MediaItem>(size)
         val fresh = ArrayList<MediaItem>()
         for (mi in this) {
@@ -4355,7 +4404,7 @@ class MusicService :
         val fi = fresh.iterator()
         var pos = 0
         while (ki.hasNext() || fi.hasNext()) {
-            val takeFresh = pos % 5 == 4 && fi.hasNext()
+            val takeFresh = pos % 10 == 9 && fi.hasNext()
             out.add(if (takeFresh) fi.next() else if (ki.hasNext()) ki.next() else fi.next())
             pos++
         }
@@ -5233,6 +5282,30 @@ class MusicService :
             } else if (newId != videoModeMediaId) {
                 applyVideoToCurrent()
             }
+        } else if (
+            // Owner: tapping a VIDEO starts playback IN video mode (manual SEEK / new queue only —
+            // AUTO advances stay audio unless sticky video was already on above).
+            mediaItem != null &&
+            (reason == Player.MEDIA_ITEM_TRANSITION_REASON_SEEK ||
+                reason == Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED) &&
+            player.currentMetadata?.isVideoSong == true &&
+            !(iad1tya.echo.music.utils.PerformanceMode.isOn(this) &&
+                !iad1tya.echo.music.utils.DeviceForm.isTvOrCar(this))
+        ) {
+            userHasUsedVideo = true
+            videoSwapMeasureStart()
+            if (!tryInstantVideoSwap()) {
+                teardownInstantVideoSwap("auto video on manual video tap")
+                // Resolve the video URL first; arm videoMode only when ready so audio keeps
+                // playing through the resolve window (owner: play → stop ~4s → resume was the
+                // old path that set videoMode=true then swapToVideo mid-stream).
+                applyVideoToCurrent(armModeWhenReady = true)
+            }
+            val nextIdx = player.nextMediaItemIndex
+            if (nextIdx != C.INDEX_UNSET) {
+                runCatching { player.getMediaItemAt(nextIdx).mediaId }.getOrNull()
+                    ?.let { prebuildNextVideoItem(nextIdx, it) }
+            }
         }
         // PRE-BUILD the NEXT track as a video source NOW (while the current one plays) so the next
         // auto-advance is seamless: the item becomes video BEFORE it is current, so the transition needs no
@@ -5653,8 +5726,16 @@ class MusicService :
     }
 
     override fun onIsPlayingChanged(isPlaying: Boolean) {
+        playbackKeepAlive.setPlaying(isPlaying)
         if (isPlaying) {
             startPeriodicPersist()
+            if ((getSystemService(POWER_SERVICE) as? android.os.PowerManager)?.isPowerSaveMode == true) {
+                // Proven contributor to BT/AA cuts on HyperOS: saver throttles network → underruns.
+                // Also pairs with ScreenOffCPUCheckKill when the OEM demotes the process.
+                Timber.tag(TAG).w(
+                    "POWER_SAVE_ON while playing — turn off battery saver to avoid Bluetooth/Android Auto cuts",
+                )
+            }
         } else {
             // Nothing is audible right now, so a deferred offload ENABLE can land for free — and this
             // is what makes it land at all for a listener who pauses instead of finishing the track.
@@ -7303,7 +7384,7 @@ class MusicService :
     // directly) and the ResolvingDataSource only ever touches the SEPARATE merged audio sub-source.
 
     /** Resolve the current track's muxed video URL and swap its source in-place (audio is never stopped). */
-    private fun applyVideoToCurrent() {
+    private fun applyVideoToCurrent(armModeWhenReady: Boolean = false) {
         val item = player.currentMediaItem ?: return
         val id = item.mediaId
         // Restore any OTHER tracked video items (the previous track, or a stale pre-built one) to audio;
@@ -7313,7 +7394,11 @@ class MusicService :
         // Video PODCAST episode: it already carries a direct video stream — swap to it immediately, no
         // YouTube resolution (the id here is an http audio URL, which YTPlayerUtils can't resolve anyway).
         val podcastVideo = player.currentMetadata?.podcastVideoUrl
-        if (!podcastVideo.isNullOrEmpty()) { swapToVideo(id, podcastVideo, isMuxed = true); return }
+        if (!podcastVideo.isNullOrEmpty()) {
+            if (armModeWhenReady) _videoMode.value = true
+            swapToVideo(id, podcastVideo, isMuxed = true)
+            return
+        }
         // A direct/local track with no video stream (e.g. an audio-only podcast reached while sticky video
         // is still armed) can't show video — disarm video mode and play audio quietly (no failed-resolution
         // toast, and crucially no stuck spinner: leaving _videoMode=true here would show an endless spinner
@@ -7332,13 +7417,19 @@ class MusicService :
             return
         }
 
-        _videoUrl.value = null  // spinner while resolving
         val cached = videoUrlCache[id]?.takeIf { it.second > System.currentTimeMillis() }?.first
         if (!cached.isNullOrEmpty()) {
             videoSwapMark("applyVideoToCurrent: URL cache HIT")
-            swapToVideo(id, cached); return
+            if (armModeWhenReady) _videoMode.value = true
+            else if (!_videoMode.value) return
+            swapToVideo(id, cached)
+            return
         }
         videoSwapMark("applyVideoToCurrent: URL cache MISS → live resolve")
+        // Keep playing audio during resolve when arming lazily; spinner only if already in video mode.
+        if (!armModeWhenReady) {
+            _videoUrl.value = null  // spinner while resolving
+        }
         scope.launch(Dispatchers.IO) {
             val maxH = videoModeMaxHeight
             var result = runCatching { YTPlayerUtils.videoStreamUrlDiag(id, connectivityManager, maxH) }
@@ -7351,16 +7442,23 @@ class MusicService :
             }
             val url = result.getOrNull()
             withContext(Dispatchers.Main) {
-                if (!_videoMode.value || player.currentMediaItem?.mediaId != id) return@withContext
+                if (player.currentMediaItem?.mediaId != id) return@withContext
                 if (url.isNullOrEmpty()) {
-                    _videoMode.value = false
-                    _videoUrl.value = null
-                    val ex = result.exceptionOrNull()
-                    val reason = ex?.let { "${it.javaClass.simpleName}: ${it.message}" } ?: "sin formato de video"
-                    Toast.makeText(this@MusicService, "Video falló — $reason", Toast.LENGTH_LONG).show()
+                    if (!armModeWhenReady) {
+                        _videoMode.value = false
+                        _videoUrl.value = null
+                        val ex = result.exceptionOrNull()
+                        val reason = ex?.let { "${it.javaClass.simpleName}: ${it.message}" } ?: "sin formato de video"
+                        Toast.makeText(this@MusicService, "Video falló — $reason", Toast.LENGTH_LONG).show()
+                    }
                     return@withContext
                 }
                 videoUrlCache[id] = url to (System.currentTimeMillis() + 5 * 60 * 1000L)
+                if (armModeWhenReady) {
+                    _videoMode.value = true
+                } else if (!_videoMode.value) {
+                    return@withContext
+                }
                 swapToVideo(id, url)
             }
         }
@@ -7623,6 +7721,14 @@ class MusicService :
             // Podcast episodes (and any direct-URL media) are already a playable audio stream — play
             // the URL straight through instead of resolving it through YouTube.
             if (mediaId.startsWith("http://", ignoreCase = true) || mediaId.startsWith("https://", ignoreCase = true)) {
+                // Offline mode: direct URLs still need the network — refuse them.
+                if (dataStore.get(OfflineModeKey, false)) {
+                    throw PlaybackException(
+                        getString(R.string.error_offline_not_downloaded),
+                        null,
+                        PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
+                    )
+                }
                 return@Factory dataSpec.withUri(mediaId.toUri())
             }
 
@@ -7655,6 +7761,16 @@ class MusicService :
                     scope.launch(Dispatchers.IO) { recoverSong(mediaId, isOfflinePlayback = true) }
                     return@Factory dataSpec
                 }
+            }
+
+            // Strict offline: ONLY a full downloadCache hit may play. playerCache / songUrlCache / YT
+            // resolve all need the network (or a URL refresh) — refuse them while OfflineModeKey is ON.
+            if (dataStore.get(OfflineModeKey, false)) {
+                throw PlaybackException(
+                    getString(R.string.error_offline_not_downloaded),
+                    null,
+                    PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
+                )
             }
 
             // Read Room NOW — BEFORE serving any playerCache/songUrlCache hit — for the container-mismatch guard
@@ -8177,7 +8293,7 @@ class MusicService :
      * INSTANT VIDEO SWAP fast path (called ONLY from toggleVideoMode, audio→video direction). Publishes
      * the pre-prepared player exactly like performCrossfadeSwap publishes the crossfade secondary:
      * seek to the LIVE position first, adopt the live queue, swap the player reference, republish
-     * [_playerFlow] (the UI re-attaches the TextureView to the new player), move MediaSession/SleepTimer,
+     * [_playerFlow] (the UI re-attaches the TextureView to the new player), move the MediaSession,
      * restore volume/play state, then release the old player. Returns true only when fully published;
      * ANY doubt (gates below, or any pre-commit exception) releases the pre-player and returns false so
      * the caller falls through to the EXISTING swapToVideo path unchanged.
@@ -8256,13 +8372,10 @@ class MusicService :
             instantVideoPlayerUrl = null
             instantVideoPreparedAtPosMs = 0L
             old.removeListener(this)
-            old.removeListener(sleepTimer)
             pre.removeListener(instantVideoPlayerListener)
             pre.addListener(this)
-            pre.addListener(sleepTimer)
             player = pre
             _playerFlow.value = pre // UI (PlayerVideoSurface/MiniPlayer/PiP) re-attaches the surface here
-            sleepTimer.player = pre
             try {
                 (mediaSession as MediaSession).player = pre
             } catch (e: Exception) {
@@ -8914,8 +9027,31 @@ class MusicService :
         }
     }
 
+    private fun isPowerSaveModeActive(): Boolean =
+        (getSystemService(POWER_SERVICE) as? android.os.PowerManager)?.isPowerSaveMode == true
+
+    /**
+     * True when Android Auto (phone projection) or a car head-unit MediaSession controller is connected.
+     * Crossfade + binder broadcasts to Auto are a known micro-cut source (registry #104/#114); force hard cuts.
+     */
+    private fun isAndroidAutoControllerConnected(): Boolean {
+        if (!::mediaSession.isInitialized) return false
+        return runCatching {
+            mediaSession.connectedControllers.any { info ->
+                val pkg = info.packageName.orEmpty().lowercase()
+                pkg.contains("android.projection") ||
+                    pkg.contains("gearhead") ||
+                    pkg.contains("android.auto") ||
+                    pkg.contains("car.apps") ||
+                    pkg.endsWith(".car") ||
+                    iad1tya.echo.music.utils.DeviceForm.isCar(this)
+            }
+        }.getOrDefault(iad1tya.echo.music.utils.DeviceForm.isCar(this))
+    }
+
     override fun onDestroy() {
         isRunning = false
+        playbackKeepAlive.release()
         // The expanded flag lives in the process-wide PlaybackStateManager, which OUTLIVES this
         // service instance. If the UI died without collapsing (its onDispose reset is best-effort),
         // a recreated service would inherit "expanded" and keep speculative video warm-ups alive
@@ -8941,7 +9077,6 @@ class MusicService :
         releaseLoudnessEnhancer()
         mediaSession.release()
         player.removeListener(this)
-        player.removeListener(sleepTimer)
         playerSilenceProcessors.remove(player)
         playerNormProcessors.remove(player); playerLimiterProcessors.remove(player)
         playerEqProcessors.remove(player)?.let { eq -> equalizerService.removeAudioProcessor(eq) }
@@ -9195,25 +9330,25 @@ class MusicService :
     private fun startWidgetUpdates() {
         widgetUpdateJob?.cancel()
         widgetUpdateJob = scope.launch {
-            // #55 (battery/heat): this used to tick EVERY SECOND for the whole session regardless of whether
-            // the user has any widget on their home screen. Each tick fans out to several binder round trips
-            // (getAppWidgetIds per widget type, getAppWidgetOptions, updateAppWidget parcelling a full
-            // RemoteViews) and the playlist widget additionally runs five Room queries — including an
-            // unindexed most-played scan. For the (majority) of users with NO widget installed that is 100%
-            // waste, once a second, with the screen off. Check once and skip the whole loop.
-            var ticksSinceWidgetProbe = Int.MAX_VALUE
-            var hasWidgets = false
+            // #55 (battery/heat) + HyperOS ScreenOffCPUCheckKill (owner exit_reasons): never tick binder
+            // updates when there is no widget, and never while the screen is off (home widgets are not
+            // visible). A failed presence probe must NOT default to "has widgets" — that re-introduced
+            // the every-second waste for everyone.
             while (isActive) {
-                // Re-probe occasionally (cheap) so adding a widget mid-session still starts updating it.
-                if (ticksSinceWidgetProbe >= WIDGET_PRESENCE_PROBE_TICKS) {
-                    ticksSinceWidgetProbe = 0
-                    hasWidgets = runCatching { widgetManager.hasAnyWidget() }.getOrDefault(true)
+                val hasWidgets = runCatching { widgetManager.hasAnyWidget() }.getOrDefault(false)
+                val screenOn = (getSystemService(POWER_SERVICE) as? android.os.PowerManager)
+                    ?.isInteractive != false
+                when {
+                    hasWidgets && player.isPlaying && screenOn -> {
+                        updateWidgetUI(true)
+                        delay(1000)
+                    }
+                    hasWidgets && player.isPlaying -> {
+                        // Playing with screen off: skip binder; re-check presence infrequently.
+                        delay(30_000)
+                    }
+                    else -> delay(60_000)
                 }
-                ticksSinceWidgetProbe++
-                if (hasWidgets && player.isPlaying) {
-                    updateWidgetUI(true)
-                }
-                delay(1000)
             }
         }
     }
@@ -9416,6 +9551,16 @@ class MusicService :
         // falls through to the unchanged 9s equal-power crossfade path below. The cleanup above still ran, so
         // any incoming player preloaded before perf mode toggled on is released rather than leaked.
         if (highPerformanceModeHint) return
+        // Owner share_log (Xiaomi + Android Auto): battery saver skips next-track preload while
+        // crossfade stays ON → CROSSFADE_TRACE cut-not-ready ~4s silence. Force hard cuts here.
+        if (isPowerSaveModeActive()) {
+            traceCrossfade("skip-power-save", "battery saver ON — hard cut (avoids cut-not-ready)")
+            return
+        }
+        if (isAndroidAutoControllerConnected()) {
+            traceCrossfade("skip-android-auto", "Android Auto connected — hard cut (avoids AA micro-cuts)")
+            return
+        }
         if (!crossfadeEnabled || player.duration == C.TIME_UNSET) return
         if (player.duration <= crossfadeDuration) {
             traceCrossfade("skip-short", "dur=${player.duration}ms <= fade window — no blend possible")
@@ -9519,7 +9664,7 @@ class MusicService :
 
         crossfadeTriggerJob = scope.launch {
             delay(delayMs)
-            if (isActive && player.isPlaying && player.currentMediaItem?.mediaId == targetMediaId && !sleepTimer.pauseWhenSongEnd) {
+            if (isActive && player.isPlaying && player.currentMediaItem?.mediaId == targetMediaId) {
                 startCrossfade()
             }
         }
@@ -9635,7 +9780,8 @@ class MusicService :
         }
         proc.tailDetectEnabled = false
         if (isCrossfading || !crossfadeEnabled || highPerformanceModeHint || _videoMode.value) return
-        if (!player.isPlaying || sleepTimer.pauseWhenSongEnd) return
+        if (isPowerSaveModeActive() || isAndroidAutoControllerConnected()) return
+        if (!player.isPlaying) return
         if (crossfadeGapless && isNextItemGapless()) {
             traceCrossfade("gapless-bypass", "same-album pair -> deliberate gapless advance (Ajustes)")
             return
@@ -10093,7 +10239,6 @@ class MusicService :
         secondaryPlayer = null
 
         fadingPlayer?.removeListener(this)
-        fadingPlayer?.removeListener(sleepTimer)
 
         // Stop the outgoing player from auto-advancing into the NEXT track as it fades out. It still
         // holds the full queue, so when the current song ends mid-fade it would start the next song —
@@ -10126,9 +10271,6 @@ class MusicService :
 
         nextPlayer.removeListener(secondaryPlayerListener)
         nextPlayer.addListener(this)
-        nextPlayer.addListener(sleepTimer)
-
-        sleepTimer.player = player
 
         try {
             (mediaSession as MediaSession).player = player
@@ -10251,13 +10393,16 @@ class MusicService :
 
 
     private fun cleanupCrossfade() {
-        // The crossfade is over: clear the surviving player's per-instance normalization overrides so it
-        // resumes following the shared companion statics, and reset the de-dup guard so the next track
-        // (re)normalizes normally via setupLoudnessEnhancer.
+        // Clear per-instance overrides so the surviving player follows shared companions again.
+        // Do NOT wipe lastNormalizedId when it already matches the live track: that forced a second
+        // loudness pass at fade-end and was heard as a click/cut right after a clean blend.
         playerNormProcessors[player]?.instanceGain = null
         playerLimiterProcessors[player]?.setInstanceMakeup(null, null)
-        lastNormalizedId = null
-        lastNormalizedHadLoudness = false
+        val liveId = player.currentMediaItem?.mediaId
+        if (liveId == null || liveId != lastNormalizedId) {
+            lastNormalizedId = null
+            lastNormalizedHadLoudness = false
+        }
         // Refine the per-song tail memory with the EXACT end-of-stream measurement when the decoder
         // reached EOS (it runs ahead of the playback clock, so this is usually available even though the
         // silent tail itself never audibly played). Read BEFORE stop() — duration/item may reset after.
@@ -10302,7 +10447,6 @@ class MusicService :
                 persistSongUrlCache()
             }
         }
-        sleepTimer.notifySongTransition()
     }
 
     companion object {
@@ -10332,8 +10476,6 @@ class MusicService :
          */
         private const val ENRICH_BEFORE_SCORE_MS = 1500L
 
-        /** Ticks (~1s each) between "does the user actually have a widget?" probes — see startWidgetUpdates. */
-        private const val WIDGET_PRESENCE_PROBE_TICKS = 30
         const val ROOT = "root"
         const val SONG = "song"
         const val ARTIST = "artist"
@@ -10438,24 +10580,27 @@ class MusicService :
                 Timber.tag(TAG).d("Preload skipped: data saver is on")
                 return@launch
             }
-            // Battery saver: skip the upcoming-track network preload (up to N parallel stream-URL + loudness +
-            // lyrics fetches per transition) when the user has Battery Saver on. Playback is unaffected — the
-            // next track just resolves on demand instead of ahead of time. Respects the OS power-save intent.
-            if ((getSystemService(POWER_SERVICE) as? android.os.PowerManager)?.isPowerSaveMode == true) {
-                Timber.tag(TAG).d("Preload skipped: battery saver (power save mode) is on")
-                return@launch
+            // Battery saver used to SKIP all preload — but with crossfade still armed that produced
+            // CROSSFADE_TRACE cut-not-ready (~4s silence) on Android Auto (owner share_log-3). Keep a
+            // LIGHT url-only prefetch of the next track so hard cuts (crossfade is also gated off under
+            // saver) start without a resolve stall. Extras (loudness/lyrics) stay off.
+            val powerSave = (getSystemService(POWER_SERVICE) as? android.os.PowerManager)?.isPowerSaveMode == true
+            if (powerSave) {
+                Timber.tag(TAG).d("Preload: battery saver — url-only next track (extras skipped)")
             }
             // High-Performance Mode: DON'T skip entirely. Keep a LIGHT, url-only prefetch (resolve + cache the
             // stream URL so the first frame starts fast on low-end/TV/car too); only the heavier per-song
-            // extras (loudness/format DB caching + lyrics) are gated OFF below. Battery Saver above still
-            // skips everything.
+            // extras (loudness/format DB caching + lyrics) are gated OFF below. Battery Saver uses the same
+            // light path (see powerSave above).
             val perfMode = iad1tya.echo.music.utils.PerformanceMode.isOn(this@MusicService)
-            if (perfMode) {
+            if (perfMode && !powerSave) {
                 Timber.tag(TAG).d("Preload: high-performance mode — url-only (extras skipped)")
             }
+            val urlOnlyPreload = powerSave || perfMode
             // Default 2 (was 1) so the very next song is ready even while the current one is still resolving;
-            // the user's slider value is still honoured when set.
-            val preloadLimit = dataStore.get(iad1tya.echo.music.constants.PreloadNextSongLimitKey, 2)
+            // under battery saver / Auto: just the next 1 URL to limit radio wakeups.
+            val preloadLimit = if (powerSave) 1
+            else dataStore.get(iad1tya.echo.music.constants.PreloadNextSongLimitKey, 2)
             val preloadLyrics = dataStore.get(iad1tya.echo.music.constants.PreloadLyricsEnabledKey, true)
             // Only the next N upcoming tracks per the slider (the current track is resolved on play by the
             // ResolvingDataSource). distinct() so a duplicated id isn't resolved twice.
@@ -10515,8 +10660,8 @@ class MusicService :
                             // correct gain at second 0 — no audible volume swell. Mirrors the resolver's
                             // FormatEntity construction exactly. Preserve any existing row's loudness: only fill
                             // when missing, never overwrite a known loudness with null.
-                            // Gated OFF in High-Performance Mode (url-only prefetch there).
-                            if (!perfMode) kotlin.runCatching {
+                            // Gated OFF in High-Performance Mode / battery saver (url-only prefetch there).
+                            if (!urlOnlyPreload) kotlin.runCatching {
                                 val existing = database.format(mediaId).firstOrNull()
                                 val loudnessDb = data.audioConfig?.loudnessDb ?: existing?.loudnessDb
                                 val perceptualLoudnessDb = data.audioConfig?.perceptualLoudnessDb ?: existing?.perceptualLoudnessDb
@@ -10559,7 +10704,7 @@ class MusicService :
                     }
                 }
 
-                if (preloadLyrics && !perfMode) {
+                if (preloadLyrics && !urlOnlyPreload) {
                     val dbLyrics = database.lyrics(mediaId).firstOrNull()
                     if (dbLyrics == null) {
                         Timber.tag(TAG).d("Preloading lyrics for $mediaId")

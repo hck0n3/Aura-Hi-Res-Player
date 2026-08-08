@@ -54,10 +54,15 @@ import iad1tya.echo.music.constants.ListItemHeight
 import iad1tya.echo.music.db.entities.Song
 import iad1tya.echo.music.ui.component.SongListItem
 import iad1tya.echo.music.ui.component.YouTubeListItem
+import iad1tya.echo.music.ui.newui.LocalAuraFloatingChrome
+import iad1tya.echo.music.ui.newui.auraFloatingContainerColor
+import iad1tya.echo.music.ui.newui.auraFloatingScrimColor
+import iad1tya.echo.music.ui.newui.rememberAuraPanelSkin
 import iad1tya.echo.music.ui.utils.SnapLayoutInfoProvider
 import iad1tya.echo.music.ui.utils.tvFocusRestorer
 import iad1tya.echo.music.utils.listItemShape
 import iad1tya.echo.music.viewmodels.LocalPlaylistViewModel
+import androidx.compose.runtime.CompositionLocalProvider
 
 /**
  * Apple-Music-style "Add Music" bottom sheet: a global YouTube-Music song search, plus From-Replay,
@@ -72,6 +77,8 @@ fun AddMusicSheet(
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val previewController = rememberSongPreviewController()
+    val skin = rememberAuraPanelSkin()
+    val premium = skin.enabled && skin.darkGround
 
     val query by viewModel.searchQuery.collectAsState()
     val searchResults by viewModel.searchResults.collectAsState()
@@ -101,8 +108,12 @@ fun AddMusicSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         dragHandle = { BottomSheetDefaults.DragHandle() },
-        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        containerColor = if (premium) auraFloatingContainerColor()
+        else MaterialTheme.colorScheme.surfaceContainer,
+        scrimColor = if (premium) auraFloatingScrimColor() else BottomSheetDefaults.ScrimColor,
+        tonalElevation = 0.dp,
     ) {
+        CompositionLocalProvider(LocalAuraFloatingChrome provides premium) {
         Column(modifier = Modifier.fillMaxHeight()) {
             Text(
                 text = stringResource(R.string.add_music),
@@ -282,6 +293,7 @@ fun AddMusicSheet(
                     )
                 }
             }
+        }
         }
     }
 }

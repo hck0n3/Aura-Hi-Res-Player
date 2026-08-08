@@ -58,6 +58,8 @@ import iad1tya.echo.music.eq.data.ParametricEQBand
 import iad1tya.echo.music.eq.data.SavedEQProfile
 import iad1tya.echo.music.ui.component.Material3SettingsGroup
 import iad1tya.echo.music.ui.component.Material3SettingsItem
+import iad1tya.echo.music.ui.newui.AuraPalette
+import iad1tya.echo.music.ui.newui.rememberAuraPanelSkin
 import iad1tya.echo.music.ui.utils.rememberIsWideLayout
 import iad1tya.echo.music.utils.rememberPreference
 import kotlin.math.abs
@@ -120,7 +122,15 @@ fun AxionEqScreen(
         )
     }
 
+    // Visual-only pass, explicitly requested and scoped: page background + TopAppBar chrome match the
+    // "Interfaz nueva" ground, exactly like every other settings screen. Nothing below this — bands,
+    // curve, presets, the DSP engine banner — is touched; see eq/ and app/src/main/cpp/ (never touch
+    // without being asked) and the one prior authorized exception (#49, layout-only).
+    val skin = rememberAuraPanelSkin()
+    val ground = if (skin.enabled && skin.darkGround) AuraPalette.Ground else MaterialTheme.colorScheme.surface
+
     Scaffold(
+        containerColor = ground,
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.echo_equalizer)) },
@@ -129,6 +139,15 @@ fun AxionEqScreen(
                         Icon(painter = painterResource(R.drawable.arrow_back), contentDescription = null)
                     }
                 },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = ground,
+                    scrolledContainerColor = if (skin.enabled && skin.darkGround)
+                        AuraPalette.GroundRaised
+                    else
+                        MaterialTheme.colorScheme.surfaceContainer,
+                    titleContentColor = if (skin.enabled) skin.ink else MaterialTheme.colorScheme.onSurface,
+                    navigationIconContentColor = if (skin.enabled) skin.ink else MaterialTheme.colorScheme.onSurface,
+                ),
             )
         },
     ) { innerPadding ->

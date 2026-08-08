@@ -111,15 +111,41 @@ class AutoRecoPlaylistWorker(
         val tasteLines = tasteSongs.map { song ->
             "${song.song.title} — ${song.artists.joinToString(", ") { it.name }}"
         }
+        // Anchor artists / genres so the model stays assertive instead of "vaguely similar".
+        val topArtists = tasteSongs
+            .flatMap { it.artists.map { a -> a.name } }
+            .filter { it.isNotBlank() }
+            .groupingBy { it }
+            .eachCount()
+            .entries
+            .sortedByDescending { it.value }
+            .take(8)
+            .map { it.key }
+        val genreSnap = GenreCache.snapshot(context)
+        val topGenres = topArtists
+            .mapNotNull { genreSnap[it.lowercase()] }
+            .distinct()
+            .take(5)
 
-        // 2. AI ASK — the shared keyless chain (user key override → Aura Worker → Pollinations), with
-        //    the same over-generate-then-take-N padding "Lista AI" uses (SongResolver silently drops
-        //    tracks with no match). Bounded by the shared AI budget; on timeout/failure spec stays null
-        //    and we keep the last good playlist (NO non-AI fallback here: unlike a user-requested
-        //    playlist, a silent skip is strictly better than filling their recommendations with noise).
-        val prompt = "Canciones NUEVAS para descubrir, del mismo estilo y gusto de alguien que escucha " +
-            "estas canciones: ${tasteLines.joinToString("; ")}. Variadas pero coherentes con ese gusto. " +
-            "NO incluyas ninguna de las canciones listadas ni otras versiones de ellas."
+        // 2. AI ASK — assertive curator prompt: same keyless chain as "Lista AI".
+        val prompt = buildString {
+            append("Canciones NUEVAS que esta persona casi seguro amará. Sé ASERTIVO, no genérico. ")
+            if (topArtists.isNotEmpty()) {
+                append("Artistas ancla (prioridad máxima, mismo círculo/escena): ")
+                append(topArtists.joinToString(", "))
+                append(". ")
+            }
+            if (topGenres.isNotEmpty()) {
+                append("Géneros dominantes OBLIGATORIOS (cero deriva): ")
+                append(topGenres.joinToString(", "))
+                append(". ")
+            }
+            append("Referencias de gusto: ")
+            append(tasteLines.take(16).joinToString("; "))
+            append(". Reglas duras: mismo idioma y energía dominante; prioriza colaboradores y artistas ")
+            append("del mismo estilo que los ancla; NO mezcles géneros ajenos; NO incluyas las canciones ")
+            append("listadas ni covers/regrabaciones de ellas; variedad de artistas SIN salir del estilo.")
+        }
         val requestCount = (TARGET_SONGS * 3 + 1) / 2
         val spec = withTimeoutOrNull(AiPlaylistGenerator.AI_BUDGET_MS) {
             AiPlaylistService.generate(
@@ -132,15 +158,28 @@ class AutoRecoPlaylistWorker(
             ).getOrNull()
         } ?: return
 
-        // 3. RESOLVE — same shared resolver as the importers; short-circuits at the target so the
-        //    padded tail never costs extra network calls. Songs the user already plays are excluded
-        //    (this playlist is for DISCOVERY; the prompt asks too, but the model can't be trusted).
+        // 3. RESOLVE — same shared resolver; exclude already-played taste ids; prefer anchor artists.
+        val topArtistLower = topArtists.map { it.lowercase() }.toSet()
         val resolved = ArrayList<MediaMetadata>(TARGET_SONGS)
+        val candidates = ArrayList<MediaMetadata>()
         for (track in spec.tracks) {
-            if (resolved.size >= TARGET_SONGS) break
             val metadata = SongResolver.resolve(database, track.title, track.artist) ?: continue
             if (metadata.id in tasteIds) continue
-            if (resolved.any { it.id == metadata.id }) continue
+            if (candidates.any { it.id == metadata.id }) continue
+            candidates += metadata
+        }
+        candidates.sortByDescending { meta ->
+            val name = meta.artists.firstOrNull()?.name?.lowercase().orEmpty()
+            when {
+                name.isNotEmpty() && name in topArtistLower -> 3
+                name.isNotEmpty() && topArtistLower.any { it.contains(name) || name.contains(it) } -> 2
+                topGenres.isNotEmpty() &&
+                    genreSnap[name]?.let { g -> topGenres.any { it.equals(g, true) } } == true -> 1
+                else -> 0
+            }
+        }
+        for (metadata in candidates) {
+            if (resolved.size >= TARGET_SONGS) break
             resolved += metadata
         }
         if (resolved.isEmpty()) return // AI answered but nothing usable — keep the last good playlist.

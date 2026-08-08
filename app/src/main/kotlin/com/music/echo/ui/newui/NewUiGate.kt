@@ -6,7 +6,7 @@ import iad1tya.echo.music.constants.NewUiEnabledKey
 import iad1tya.echo.music.utils.rememberPreference
 
 /**
- * Reads the "Interfaz nueva" master switch ([NewUiEnabledKey], default `false`), ANDed with
+ * Reads the "Interfaz nueva" master switch ([NewUiEnabledKey], default `true` for launch), ANDed with
  * [NEW_UI_SWITCH_VISIBLE].
  *
  * The availability term is what keeps a beta tester from being trapped: beta and stable share the
@@ -22,7 +22,7 @@ import iad1tya.echo.music.utils.rememberPreference
  */
 @Composable
 fun rememberNewUiEnabled(): Boolean {
-    val enabled by rememberPreference(NewUiEnabledKey, defaultValue = false)
+    val enabled by rememberPreference(NewUiEnabledKey, defaultValue = true)
     return isNewUiActive(NEW_UI_SWITCH_VISIBLE, enabled)
 }
 

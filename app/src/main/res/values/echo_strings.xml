@@ -888,9 +888,11 @@
     <string name="discord_activity_name_description">Custom name for the activity (leave empty for default)</string>
     <string name="discord_advanced_mode">Advanced mode</string>
     <string name="discord_advanced_mode_description">Show additional customization options for Rich Presence</string>
-    <string name="speed_dial">Speed dial</string>
-    <string name="pin_to_speed_dial">Pin to Speed dial</string>
-    <string name="unpin_from_speed_dial">Unpin from Speed dial</string>
+    <string name="speed_dial">Pinned to Home</string>
+    <string name="pin_to_speed_dial">Pin playlist to Home</string>
+    <string name="unpin_from_speed_dial">Unpin from Home</string>
+    <string name="show_speed_dial">Pinned playlists on Home</string>
+    <string name="show_speed_dial_desc">Show playlists you pinned on the Home screen</string>
     <string name="randomize_home_order">Randomize Home Screen Order</string>
     <string name="randomize_home_order_desc">Randomly reorder home screen sections with weighted priorities</string>
 
@@ -1016,10 +1018,11 @@
     <string name="local_songs_scan_filters_note">Changes apply the next time you scan this device.</string>
     <string name="local_songs_scan_duration_title">Exclude short songs</string>
     <string name="local_songs_scan_duration_desc">Skip songs shorter than the selected duration.</string>
-    <string name="local_songs_scan_folders_title">Excluded folders</string>
-    <string name="local_songs_scan_folders_desc">Skip songs stored in folders that match any of these paths.</string>
+    <string name="local_songs_scan_folders_title">Folders to scan</string>
+    <string name="local_songs_scan_folders_desc">When you add folders here, ONLY those folders (and their subfolders) are scanned. Leave empty to scan the whole device.</string>
     <string name="local_songs_scan_folders_add">Add folder</string>
-    <string name="local_songs_scan_folders_empty">No folders excluded yet.</string>
+    <string name="local_songs_scan_folders_empty">No folders selected — the next scan will cover the whole device.</string>
+    <string name="local_songs_empty_scan_action">Scan device</string>
     <string name="allow">Allow</string>
     <string name="permission_storage_title">Storage access</string>
     <string name="permission_storage_desc">Required to read your downloaded and local audio files for playback.</string>
@@ -1028,7 +1031,7 @@
     <string name="sort_by_album">Album</string>
     <string name="local_songs_empty_title">No local songs found</string>
     <string name="local_songs_no_matches_title">No matching local songs</string>
-    <string name="local_songs_empty_desc">Open settings from the top bar and run a device scan to find offline audio on this device.</string>
+    <string name="local_songs_empty_desc">Tap “Scan device” or open the gear in the top bar to import offline audio on this device.</string>
     <string name="local_songs_no_matches_desc">Try a different song, artist, or album name.</string>
     <!-- Music Recognizer Widget strings -->
     <string name="widget_recognizer_name">Music Recognizer</string>

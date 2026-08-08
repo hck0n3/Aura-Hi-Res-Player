@@ -121,6 +121,7 @@ import iad1tya.echo.music.ui.newui.AuraPalette
 import iad1tya.echo.music.ui.newui.AuraQualityBadge
 import iad1tya.echo.music.ui.newui.AuraShapes
 import iad1tya.echo.music.ui.newui.AuraType
+import iad1tya.echo.music.ui.newui.LocalAuraFloatingChrome
 import iad1tya.echo.music.ui.newui.rememberNewUiEnabled
 import iad1tya.echo.music.ui.utils.resize
 import iad1tya.echo.music.ui.utils.tvFocusable
@@ -211,26 +212,33 @@ val LocalAuraItemSkin = staticCompositionLocalOf { ClassicItemSkin }
 @Composable
 fun rememberAuraItemSkin(): AuraItemSkin {
     val newUi = rememberNewUiEnabled()
+    val floating = LocalAuraFloatingChrome.current
     val surface = MaterialTheme.colorScheme.surface
     val onSurface = MaterialTheme.colorScheme.onSurface
     val onSurfaceVariant = MaterialTheme.colorScheme.onSurfaceVariant
     val primary = MaterialTheme.colorScheme.primary
-    return remember(newUi, surface, onSurface, onSurfaceVariant, primary) {
+    return remember(newUi, floating, surface, onSurface, onSurfaceVariant, primary) {
         if (!newUi) {
             ClassicItemSkin
         } else {
             val darkGround = surface.luminance() < 0.4f
             val wash = if (darkGround) AuraPalette.Teal else primary
+            // Inside frost dialogs/sheets the plate IS the surface — opaque Ground row cards would
+            // erase the translucency the owner asked for. Screens keep opaque [surface] (drag safety).
+            val resting = if (floating) Color.Transparent else surface
+            val washBase = if (floating) Color.Transparent else surface
             AuraItemSkin(
                 enabled = true,
                 darkGround = darkGround,
                 ink = if (darkGround) AuraPalette.OnGround else onSurface,
                 inkMuted = if (darkGround) AuraPalette.OnGroundMuted else onSurfaceVariant,
                 accent = wash,
-                fill = surface,
-                activeFill = wash.copy(alpha = 0.10f).compositeOver(surface),
+                fill = resting,
+                activeFill = if (floating) wash.copy(alpha = 0.14f)
+                else wash.copy(alpha = 0.10f).compositeOver(washBase),
                 activeLine = wash.copy(alpha = 0.25f),
-                selectedFill = wash.copy(alpha = 0.22f).compositeOver(surface),
+                selectedFill = if (floating) wash.copy(alpha = 0.22f)
+                else wash.copy(alpha = 0.22f).compositeOver(washBase),
             )
         }
     }

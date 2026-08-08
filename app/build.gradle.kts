@@ -220,8 +220,8 @@ android {
         // Public version reset to a fresh stable 0.0.1 for the Aura Hi-Res Player relaunch.
         // versionCode stays monotonic (never below the last shipped 673) so the in-app updater and
         // sideload-install-over-existing keep working; only the user-facing versionName resets.
-        versionCode = 868
-        versionName = "0.6.149-beta1"
+        versionCode = 870
+        versionName = "0.6.150"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -352,9 +352,12 @@ android {
         }
         create("release") {
             storeFile = file("keystore/release.keystore")
-            storePassword = System.getenv("STORE_PASSWORD")
-            keyAlias = System.getenv("KEY_ALIAS")
-            keyPassword = System.getenv("KEY_PASSWORD")
+            storePassword = (System.getenv("STORE_PASSWORD")
+                ?: localProperties.getProperty("STORE_PASSWORD"))?.takeIf { it.isNotBlank() }
+            keyAlias = (System.getenv("KEY_ALIAS")
+                ?: localProperties.getProperty("KEY_ALIAS"))?.takeIf { it.isNotBlank() }
+            keyPassword = (System.getenv("KEY_PASSWORD")
+                ?: localProperties.getProperty("KEY_PASSWORD"))?.takeIf { it.isNotBlank() }
         }
         getByName("debug") {
             keyAlias = "androiddebugkey"

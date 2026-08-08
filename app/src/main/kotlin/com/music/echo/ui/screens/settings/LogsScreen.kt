@@ -28,6 +28,10 @@ import androidx.navigation.NavController
 import iad1tya.echo.music.LocalPlayerAwareWindowInsets
 import iad1tya.echo.music.R
 import iad1tya.echo.music.ui.component.IconButton
+import iad1tya.echo.music.ui.newui.AuraPalette
+import iad1tya.echo.music.ui.newui.AuraPanel
+import iad1tya.echo.music.ui.newui.AuraType
+import iad1tya.echo.music.ui.newui.rememberAuraPanelSkin
 import iad1tya.echo.music.utils.AppLogger
 import iad1tya.echo.music.utils.DiagnosticHeader
 import kotlinx.coroutines.Dispatchers
@@ -66,11 +70,16 @@ fun LogsScreen(
         }
     }
 
+    // ONE flag read for the whole screen — same seam as AboutScreen/QobuzSettingsScreen (hand-rolled
+    // Cards, no Material3SettingsGroup/Items.kt row to inherit the skin from automatically).
+    val skin = rememberAuraPanelSkin()
+    val ground = if (skin.enabled && skin.darkGround) AuraPalette.Ground else MaterialTheme.colorScheme.surface
+
     Scaffold(
         modifier = Modifier
             .fillMaxSize()
             .nestedScroll(scrollBehavior.nestedScrollConnection),
-        containerColor = MaterialTheme.colorScheme.surface,
+        containerColor = ground,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             LargeTopAppBar(
@@ -103,8 +112,14 @@ fun LogsScreen(
                 },
                 windowInsets = TopAppBarDefaults.windowInsets,
                 colors = TopAppBarDefaults.largeTopAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+                    containerColor = ground,
+                    scrolledContainerColor = if (skin.enabled && skin.darkGround)
+                        AuraPalette.GroundRaised
+                    else
+                        MaterialTheme.colorScheme.surfaceContainer,
+                    titleContentColor = if (skin.enabled) skin.ink else MaterialTheme.colorScheme.onSurface,
+                    navigationIconContentColor = if (skin.enabled) skin.ink else MaterialTheme.colorScheme.onSurface,
+                    actionIconContentColor = if (skin.enabled) skin.ink else MaterialTheme.colorScheme.onSurface,
                 ),
                 scrollBehavior = scrollBehavior,
             )
@@ -131,25 +146,41 @@ fun LogsScreen(
                     selected = tab == LogTab.APP,
                     onClick = { tab = LogTab.APP },
                     label = { Text(stringResource(R.string.app_log)) },
+                    colors = if (skin.enabled) FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = skin.accent.copy(alpha = 0.16f),
+                        selectedLabelColor = skin.accent,
+                        labelColor = skin.inkMuted,
+                    ) else FilterChipDefaults.filterChipColors(),
                 )
                 FilterChip(
                     selected = tab == LogTab.CRASH,
                     onClick = { tab = LogTab.CRASH },
                     label = { Text(stringResource(R.string.last_crash)) },
+                    colors = if (skin.enabled) FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = skin.accent.copy(alpha = 0.16f),
+                        selectedLabelColor = skin.accent,
+                        labelColor = skin.inkMuted,
+                    ) else FilterChipDefaults.filterChipColors(),
                 )
                 FilterChip(
                     selected = tab == LogTab.SYSTEM_EXITS,
                     onClick = { tab = LogTab.SYSTEM_EXITS },
                     label = { Text(stringResource(R.string.system_exits)) },
+                    colors = if (skin.enabled) FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = skin.accent.copy(alpha = 0.16f),
+                        selectedLabelColor = skin.accent,
+                        labelColor = skin.inkMuted,
+                    ) else FilterChipDefaults.filterChipColors(),
                 )
             }
 
-            Card(
+            AuraPanel(
+                skin = skin,
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(
+                classicShape = RoundedCornerShape(20.dp),
+                classicColors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
                 ),
             ) {
@@ -157,7 +188,8 @@ fun LogsScreen(
                     Box(Modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.Center) {
                         Text(
                             text = stringResource(R.string.no_logs_yet),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = if (skin.enabled) AuraType.CalloutSubtitle else MaterialTheme.typography.bodyMedium,
+                            color = if (skin.enabled) skin.inkMuted else MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 } else {
@@ -170,7 +202,7 @@ fun LogsScreen(
                             .padding(12.dp),
                         fontFamily = FontFamily.Monospace,
                         fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.onSurface,
+                        color = if (skin.enabled) skin.ink else MaterialTheme.colorScheme.onSurface,
                     )
                 }
             }

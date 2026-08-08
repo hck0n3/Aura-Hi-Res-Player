@@ -507,23 +507,36 @@ class PlayerConnection(
         }
     }
 
-    fun seekToNext() {
+    fun seekToNextOrStartRadio() {
         try {
-            
             val castHandler = service.castConnectionHandler
             if (castHandler?.isCasting?.value == true) {
                 castHandler.skipToNext()
                 return
             }
-            player.seekToNext()
-            if (player.playbackState == Player.STATE_IDLE || player.playbackState == Player.STATE_ENDED) {
-                player.prepare()
+            if (player.hasNextMediaItem()) {
+                player.seekToNext()
+                if (player.playbackState == Player.STATE_IDLE || player.playbackState == Player.STATE_ENDED) {
+                    player.prepare()
+                }
+                player.playWhenReady = true
+                onSkipNext?.invoke()
+            } else if (player.mediaItemCount > 0) {
+                // Finite queue end: ask the service to jump into the radio as soon as items land,
+                // even if the last album/playlist song is still playing. If a B3 head-start seed is
+                // already in flight, only arm the advance — never launch a second seed (#60).
+                service.requestAdvanceIntoRadio()
+                if (!service.isRadioSeedInFlight) {
+                    startRadioSeamlessly()
+                }
             }
-            player.playWhenReady = true
-            onSkipNext?.invoke()
         } catch (e: Exception) {
-            Timber.tag(TAG).e(e, "Error in seekToNext")
+            Timber.tag(TAG).e(e, "Error in seekToNextOrStartRadio")
         }
+    }
+
+    fun seekToNext() {
+        seekToNextOrStartRadio()
     }
 
     var onRestartSong: (() -> Unit)? = null
@@ -570,6 +583,7 @@ class PlayerConnection(
         reason: Int,
     ) {
         playWhenReady.value = newPlayWhenReady
+        updateCanSkipPreviousAndNext()
     }
 
     override fun onMediaItemTransition(
@@ -639,7 +653,9 @@ class PlayerConnection(
                     player.isCommandAvailable(COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
             canSkipNext.value = window.isLive &&
                     window.isDynamic ||
-                    player.isCommandAvailable(COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
+                    player.isCommandAvailable(COMMAND_SEEK_TO_NEXT_MEDIA_ITEM) ||
+                    // Last item of a finite queue: Next must stay enabled so it can start/join radio.
+                    (player.mediaItemCount > 0 && !player.hasNextMediaItem())
         } else {
             canSkipPrevious.value = false
             canSkipNext.value = false

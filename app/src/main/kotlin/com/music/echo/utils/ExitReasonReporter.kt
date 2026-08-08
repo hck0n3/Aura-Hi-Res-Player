@@ -216,4 +216,42 @@ object ExitReasonReporter {
     /** [ApplicationExitInfo.getPss]/[ApplicationExitInfo.getRss] are in kB; 0 means "not recorded". */
     private fun formatKb(kb: Long): String =
         if (kb <= 0L) "n/a" else String.format(Locale.US, "%.1f MB", kb / 1024.0)
+
+    /**
+     * Newest timestamp (epoch ms) of an OEM/system kill that cuts Bluetooth / Android Auto playback.
+     * Proven on the owner's Xiaomi HyperOS logs: `ScreenOffCPUCheckKill`, `OneKeyClean` while a media
+     * FGS was running, `EXCESSIVE_RESOURCE_USAGE`, and `LockScreenClean` force-stops.
+     *
+     * Returns 0 when none in the last [OEM_THREAT_LOOKBACK_MS] or below API 30.
+     */
+    fun latestOemPlaybackThreatTimestamp(context: Context): Long {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return 0L
+        return runCatching {
+            val am = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+                ?: return@runCatching 0L
+            val cutoff = System.currentTimeMillis() - OEM_THREAT_LOOKBACK_MS
+            am.getHistoricalProcessExitReasons(context.packageName, 0, MAX_RECORDS)
+                .asSequence()
+                .filter { it.timestamp >= cutoff }
+                .filter { isOemPlaybackThreat(it) }
+                .maxOfOrNull { it.timestamp }
+                ?: 0L
+        }.getOrDefault(0L)
+    }
+
+    @RequiresApi(Build.VERSION_CODES.R)
+    private fun isOemPlaybackThreat(info: ApplicationExitInfo): Boolean {
+        if (info.reason == ApplicationExitInfo.REASON_EXCESSIVE_RESOURCE_USAGE) return true
+        val desc = info.description ?: return false
+        if (desc.contains("ScreenOffCPU", ignoreCase = true)) return true
+        if (desc.contains("OneKeyClean", ignoreCase = true)) return true
+        if (desc.contains("LockScreenClean", ignoreCase = true) &&
+            info.importance <= ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND_SERVICE
+        ) {
+            return true
+        }
+        return false
+    }
+
+    private const val OEM_THREAT_LOOKBACK_MS = 14L * 24L * 60L * 60L * 1000L
 }

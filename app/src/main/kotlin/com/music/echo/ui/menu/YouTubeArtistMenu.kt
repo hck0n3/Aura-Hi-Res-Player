@@ -109,30 +109,6 @@ fun YouTubeArtistMenu(
                         NewAction(
                             icon = {
                                 Icon(
-                                    painter = painterResource(if (isPinned) R.drawable.remove else R.drawable.add),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(28.dp),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            },
-                            text = if (isPinned) stringResource(R.string.unpin_from_speed_dial) else stringResource(R.string.pin_to_speed_dial),
-                            onClick = {
-                                coroutineScope.launch(Dispatchers.IO) {
-                                    if (isPinned) {
-                                        database.speedDialDao.delete(artist.id)
-                                    } else {
-                                        database.speedDialDao.insert(SpeedDialItem.fromYTItem(artist))
-                                    }
-                                }
-                                onDismiss()
-                            }
-                        )
-                    )
-
-                    add(
-                        NewAction(
-                            icon = {
-                                Icon(
                                     painter = painterResource(R.drawable.share),
                                     contentDescription = null,
                                     modifier = Modifier.size(28.dp),

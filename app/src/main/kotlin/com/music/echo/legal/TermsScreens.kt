@@ -21,8 +21,8 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -43,8 +43,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -71,6 +69,8 @@ import iad1tya.echo.music.R
 import iad1tya.echo.music.constants.TermsAcceptedAppVersionKey
 import iad1tya.echo.music.constants.TermsAcceptedAtKey
 import iad1tya.echo.music.constants.TermsAcceptedVersionKey
+import iad1tya.echo.music.ui.newui.AuraPalette
+import iad1tya.echo.music.ui.newui.AuraType
 import iad1tya.echo.music.ui.theme.BrandAccent
 import iad1tya.echo.music.ui.utils.rememberIsTvOrCar
 import iad1tya.echo.music.ui.utils.tvFocusable
@@ -82,9 +82,21 @@ import kotlinx.coroutines.withContext
 import java.text.DateFormat
 import java.util.Date
 
-// Same dark gradient family as the license gate screens, so the pre-app gates look like one flow.
-private val TermsGradient = Brush.verticalGradient(
-    colors = listOf(Color(0xFF0E2A30), Color(0xFF0A171B), Color(0xFF05070A)),
+/** Aura premium dark scheme for both the blocking gate and the Ajustes terms reader. */
+private val TermsAuraScheme = darkColorScheme(
+    primary = AuraPalette.Teal,
+    onPrimary = AuraPalette.OnAccent,
+    secondary = BrandAccent,
+    onSecondary = AuraPalette.OnAccent,
+    background = AuraPalette.Ground,
+    onBackground = AuraPalette.OnGround,
+    surface = AuraPalette.Ground,
+    onSurface = AuraPalette.OnGround,
+    surfaceVariant = AuraPalette.GroundRaised,
+    onSurfaceVariant = AuraPalette.OnGroundMuted,
+    surfaceContainer = AuraPalette.GroundRaised,
+    outline = AuraPalette.OnGroundDisabled,
+    outlineVariant = AuraPalette.SurfaceLine,
 )
 
 /**
@@ -121,11 +133,11 @@ private fun TermsAcceptanceScreen() {
     val isTvOrCar = rememberIsTvOrCar()
     val acceptFocus = remember { FocusRequester() }
 
-    MaterialTheme(colorScheme = darkColorScheme(primary = BrandAccent, secondary = BrandAccent)) {
+    MaterialTheme(colorScheme = TermsAuraScheme) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(TermsGradient)
+                .background(AuraPalette.Ground)
                 .systemBarsPadding()
                 // Remote/D-pad: scroll the terms with up/down while the buttons keep focus (the two
                 // buttons sit side by side, so vertical focus traversal is not needed).
@@ -148,22 +160,22 @@ private fun TermsAcceptanceScreen() {
         ) {
             Text(
                 text = buildAnnotatedString {
-                    withStyle(SpanStyle(color = Color.White, fontWeight = FontWeight.Light)) {
+                    withStyle(SpanStyle(color = AuraPalette.OnGround, fontWeight = FontWeight.Light)) {
                         append("AURA ")
                     }
                     withStyle(SpanStyle(color = BrandAccent, fontWeight = FontWeight.SemiBold)) {
                         append("HI-RES")
                     }
                 },
+                style = AuraType.SectionLabel,
                 fontSize = 22.sp,
                 letterSpacing = 5.sp,
             )
             Spacer(Modifier.height(4.dp))
             Text(
                 text = stringResource(R.string.terms_title),
-                style = MaterialTheme.typography.titleMedium,
-                color = Color.White.copy(alpha = 0.85f),
-                fontWeight = FontWeight.SemiBold,
+                style = AuraType.SheetTitle,
+                color = AuraPalette.OnGround,
             )
             Spacer(Modifier.height(12.dp))
 
@@ -187,7 +199,8 @@ private fun TermsAcceptanceScreen() {
                 ) {
                     Text(
                         text = stringResource(R.string.terms_exit),
-                        color = Color.White.copy(alpha = 0.6f),
+                        style = AuraType.RowSubtitle,
+                        color = AuraPalette.OnGroundGhost,
                     )
                 }
                 Spacer(Modifier.width(16.dp))
@@ -205,9 +218,14 @@ private fun TermsAcceptanceScreen() {
                     modifier = Modifier
                         .focusRequester(acceptFocus)
                         .tvFocusable(isTvOrCar, scaleFocused = 1f),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = AuraPalette.Teal,
+                        contentColor = AuraPalette.OnAccent,
+                    ),
                 ) {
                     Text(
                         text = stringResource(R.string.terms_accept),
+                        style = AuraType.RowTitle,
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
                     )
@@ -237,65 +255,74 @@ fun TermsScreen(
     val acceptedVersion by rememberPreference(TermsAcceptedVersionKey, defaultValue = 0)
     val acceptedAt by rememberPreference(TermsAcceptedAtKey, defaultValue = 0L)
 
-    Scaffold(
-        modifier = Modifier
-            .fillMaxSize()
-            .nestedScroll(scrollBehavior.nestedScrollConnection),
-        containerColor = MaterialTheme.colorScheme.surface,
-        contentWindowInsets = WindowInsets(0, 0, 0, 0),
-        topBar = {
-            LargeTopAppBar(
-                title = {
-                    Text(
-                        text = stringResource(R.string.terms_title),
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                },
-                navigationIcon = {
-                    iad1tya.echo.music.ui.component.IconButton(
-                        onClick = navController::navigateUp,
-                        onLongClick = null,
-                    ) {
-                        Icon(painterResource(R.drawable.arrow_back), contentDescription = null)
-                    }
-                },
-                windowInsets = TopAppBarDefaults.windowInsets,
-                colors = TopAppBarDefaults.largeTopAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer,
-                ),
-                scrollBehavior = scrollBehavior,
-            )
-        },
-    ) { innerPadding ->
-        TermsDocumentBody(
-            markdown = markdown,
-            listState = listState,
+    MaterialTheme(colorScheme = TermsAuraScheme) {
+        Scaffold(
             modifier = Modifier
                 .fillMaxSize()
-                .windowInsetsPadding(
-                    LocalPlayerAwareWindowInsets.current.only(
-                        WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
+                .nestedScroll(scrollBehavior.nestedScrollConnection),
+            containerColor = AuraPalette.Ground,
+            contentWindowInsets = WindowInsets(0, 0, 0, 0),
+            topBar = {
+                LargeTopAppBar(
+                    title = {
+                        Text(
+                            text = stringResource(R.string.terms_title),
+                            style = AuraType.SheetTitle,
+                            color = AuraPalette.OnGround,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    },
+                    navigationIcon = {
+                        iad1tya.echo.music.ui.component.IconButton(
+                            onClick = navController::navigateUp,
+                            onLongClick = null,
+                        ) {
+                            Icon(
+                                painterResource(R.drawable.arrow_back),
+                                contentDescription = null,
+                                tint = AuraPalette.OnGround,
+                            )
+                        }
+                    },
+                    windowInsets = TopAppBarDefaults.windowInsets,
+                    colors = TopAppBarDefaults.largeTopAppBarColors(
+                        containerColor = AuraPalette.Ground,
+                        scrolledContainerColor = AuraPalette.GroundRaised,
+                        titleContentColor = AuraPalette.OnGround,
+                        navigationIconContentColor = AuraPalette.OnGround,
                     ),
-                ),
-            contentPadding = PaddingValues(
-                start = 20.dp,
-                top = innerPadding.calculateTopPadding() + 8.dp,
-                end = 20.dp,
-                bottom = 32.dp,
-            ),
-            footer = if (acceptedAt > 0L) {
-                stringResource(
-                    R.string.terms_accepted_on,
-                    DateFormat.getDateInstance().format(Date(acceptedAt)),
-                    acceptedVersion,
+                    scrollBehavior = scrollBehavior,
                 )
-            } else {
-                null
             },
-        )
+        ) { innerPadding ->
+            TermsDocumentBody(
+                markdown = markdown,
+                listState = listState,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .windowInsetsPadding(
+                        LocalPlayerAwareWindowInsets.current.only(
+                            WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
+                        ),
+                    ),
+                contentPadding = PaddingValues(
+                    start = 20.dp,
+                    top = innerPadding.calculateTopPadding() + 8.dp,
+                    end = 20.dp,
+                    bottom = 32.dp,
+                ),
+                footer = if (acceptedAt > 0L) {
+                    stringResource(
+                        R.string.terms_accepted_on,
+                        DateFormat.getDateInstance().format(Date(acceptedAt)),
+                        acceptedVersion,
+                    )
+                } else {
+                    null
+                },
+            )
+        }
     }
 }
 
@@ -338,12 +365,12 @@ private fun TermsDocumentBody(
         footer?.let {
             item(key = "footer") {
                 Spacer(Modifier.height(20.dp))
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                HorizontalDivider(color = AuraPalette.Divider)
                 Spacer(Modifier.height(12.dp))
                 Text(
                     text = it,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primary,
+                    style = AuraType.RowSubtitle,
+                    color = AuraPalette.Teal,
                     fontWeight = FontWeight.Medium,
                 )
             }
@@ -356,59 +383,59 @@ private fun TermsLine(raw: String) {
     val line = raw.trimEnd()
     when {
         line.isBlank() -> Spacer(Modifier.height(6.dp))
-        // Explicit onSurface on every heading level. "##" already set a theme colour, but "#" and "###"
+        // Explicit OnGround on every heading level. "##" already set a theme colour, but "#" and "###"
         // set none and inherited whatever LocalContentColor the container happened to provide — which
         // defaults to BLACK when no Surface supplies one, so on a dark first-run screen those headings
         // were nearly invisible while the "##" ones showed fine.
         line.startsWith("### ") -> Text(
             text = parseInlineBold(line.removePrefix("### ")),
-            style = MaterialTheme.typography.titleSmall,
+            style = AuraType.RowTitle,
             fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurface,
+            color = AuraPalette.OnGround,
             modifier = Modifier.padding(top = 8.dp, bottom = 2.dp),
         )
         line.startsWith("## ") -> Text(
             text = parseInlineBold(line.removePrefix("## ")),
-            style = MaterialTheme.typography.titleMedium,
+            style = AuraType.RowTitle,
             fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.primary,
+            color = AuraPalette.Teal,
             modifier = Modifier.padding(top = 12.dp, bottom = 2.dp),
         )
         line.startsWith("# ") -> Text(
             text = parseInlineBold(line.removePrefix("# ")),
-            style = MaterialTheme.typography.titleLarge,
+            style = AuraType.SheetTitle,
             fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurface,
+            color = AuraPalette.OnGround,
             modifier = Modifier.padding(bottom = 4.dp),
         )
         line.startsWith("---") -> HorizontalDivider(
             modifier = Modifier.padding(vertical = 8.dp),
-            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+            color = AuraPalette.Divider,
         )
         line.startsWith("> ") -> Text(
             text = parseInlineBold(line.removePrefix("> ")),
-            style = MaterialTheme.typography.bodySmall,
+            style = AuraType.RowSubtitle,
             fontStyle = FontStyle.Italic,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = AuraPalette.OnGroundFaint,
             modifier = Modifier.padding(start = 12.dp, top = 2.dp, bottom = 2.dp),
         )
         line.startsWith("- ") -> Row(modifier = Modifier.padding(start = 8.dp)) {
             Text(
                 text = "•",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = AuraType.RowSubtitle,
+                color = AuraPalette.OnGroundMuted,
             )
             Spacer(Modifier.width(8.dp))
             Text(
                 text = parseInlineBold(line.removePrefix("- ")),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = AuraType.RowSubtitle,
+                color = AuraPalette.OnGroundMuted,
             )
         }
         else -> Text(
             text = parseInlineBold(line),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = AuraType.RowSubtitle,
+            color = AuraPalette.OnGroundMuted,
         )
     }
 }

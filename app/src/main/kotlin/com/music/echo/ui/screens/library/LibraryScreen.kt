@@ -48,15 +48,24 @@ import iad1tya.echo.music.constants.LibraryFilter
 import iad1tya.echo.music.constants.MiniPlayerBottomSpacing
 import iad1tya.echo.music.constants.MiniPlayerHeight
 import iad1tya.echo.music.constants.NavigationBarHeight
+import iad1tya.echo.music.constants.OfflineModeKey
 import iad1tya.echo.music.ui.component.AiPlaylistDialog
 import iad1tya.echo.music.ui.component.ChipsRow
 import iad1tya.echo.music.ui.component.CreatePlaylistDialog
 import iad1tya.echo.music.ui.component.TextFieldDialog
+import iad1tya.echo.music.ui.screens.DownloadedOnlyView
 import iad1tya.echo.music.utils.rememberEnumPreference
 import iad1tya.echo.music.utils.rememberPreference
 
 @Composable
 fun LibraryScreen(navController: NavController) {
+    val offlineMode by rememberPreference(OfflineModeKey, false)
+    if (offlineMode) {
+        // Owner: offline library is downloads-only; nothing stream-only.
+        DownloadedOnlyView(navController = navController)
+        return
+    }
+
     var filterType by rememberEnumPreference(ChipSortTypeKey, LibraryFilter.LIBRARY)
 
     var showImportMenu by remember { mutableStateOf(false) }

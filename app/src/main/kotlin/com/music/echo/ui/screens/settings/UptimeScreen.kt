@@ -21,6 +21,11 @@ import androidx.navigation.NavController
 import iad1tya.echo.music.R
 import iad1tya.echo.music.LocalPlayerAwareWindowInsets
 import androidx.compose.material3.TopAppBar
+import iad1tya.echo.music.ui.newui.AuraPalette
+import iad1tya.echo.music.ui.newui.AuraPanel
+import iad1tya.echo.music.ui.newui.AuraPanelSkin
+import iad1tya.echo.music.ui.newui.AuraType
+import iad1tya.echo.music.ui.newui.rememberAuraPanelSkin
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -91,7 +96,14 @@ fun UptimeScreen(
         }
     }
 
+    // ONE flag read for the whole screen, mirroring AboutScreen/QobuzSettingsScreen: this is a
+    // hand-rolled-card screen (no Material3SettingsGroup / Items.kt row to inherit the skin from),
+    // so it goes through the AuraPanel seam directly. See ui/newui/AuraPanel.kt.
+    val skin = rememberAuraPanelSkin()
+    val ground = if (skin.enabled && skin.darkGround) AuraPalette.Ground else MaterialTheme.colorScheme.surface
+
     Scaffold(
+        containerColor = ground,
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.service_uptime)) },
@@ -102,7 +114,16 @@ fun UptimeScreen(
                             contentDescription = null
                         )
                     }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = ground,
+                    scrolledContainerColor = if (skin.enabled && skin.darkGround)
+                        AuraPalette.GroundRaised
+                    else
+                        MaterialTheme.colorScheme.surfaceContainer,
+                    titleContentColor = if (skin.enabled) skin.ink else MaterialTheme.colorScheme.onSurface,
+                    navigationIconContentColor = if (skin.enabled) skin.ink else MaterialTheme.colorScheme.onSurface,
+                ),
             )
         },
         contentWindowInsets = LocalPlayerAwareWindowInsets.current
@@ -117,38 +138,41 @@ fun UptimeScreen(
             item {
                 Text(
                     text = stringResource(R.string.music_providers),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.primary,
+                    style = if (skin.enabled) AuraType.MenuGroupLabel else MaterialTheme.typography.titleMedium,
+                    fontWeight = if (skin.enabled) FontWeight.Normal else FontWeight.Bold,
+                    color = if (skin.enabled) skin.inkFaint else MaterialTheme.colorScheme.primary,
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
             }
             items(musicServices) { service ->
-                ServiceStatusCard(service)
+                ServiceStatusCard(service, skin)
             }
             item {
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
                     text = stringResource(R.string.canvas_providers),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.primary,
+                    style = if (skin.enabled) AuraType.MenuGroupLabel else MaterialTheme.typography.titleMedium,
+                    fontWeight = if (skin.enabled) FontWeight.Normal else FontWeight.Bold,
+                    color = if (skin.enabled) skin.inkFaint else MaterialTheme.colorScheme.primary,
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
             }
             items(canvasServices) { service ->
-                ServiceStatusCard(service)
+                ServiceStatusCard(service, skin)
             }
         }
     }
 }
 
 @Composable
-fun ServiceStatusCard(service: ServiceStatus) {
-    Card(
+fun ServiceStatusCard(service: ServiceStatus, skin: AuraPanelSkin = rememberAuraPanelSkin()) {
+    AuraPanel(
+        skin = skin,
         modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(
+        classicShape = MaterialTheme.shapes.large,
+        classicColors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant,
-        )
+        ),
     ) {
         Row(
             modifier = Modifier
@@ -160,15 +184,15 @@ fun ServiceStatusCard(service: ServiceStatus) {
             Column {
                 Text(
                     text = service.name,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = if (skin.enabled) AuraType.RowTitle else MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = if (skin.enabled) skin.ink else MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = service.displayUrl(),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    style = if (skin.enabled) AuraType.CalloutSubtitle else MaterialTheme.typography.bodySmall,
+                    color = if (skin.enabled) skin.inkMuted else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                 )
             }
 
@@ -179,7 +203,7 @@ fun ServiceStatusCard(service: ServiceStatus) {
                 val statusColor = when (service.status) {
                     ServiceStatus.Status.ONLINE -> Color(0xFF4CAF50)
                     ServiceStatus.Status.OFFLINE -> Color(0xFFF44336)
-                    ServiceStatus.Status.CHECKING -> MaterialTheme.colorScheme.primary
+                    ServiceStatus.Status.CHECKING -> if (skin.enabled) skin.accent else MaterialTheme.colorScheme.primary
                 }
                 val statusText = when (service.status) {
                     ServiceStatus.Status.ONLINE -> stringResource(R.string.status_online) + if (service.latencyMs != null) " (${service.latencyMs}ms)" else ""

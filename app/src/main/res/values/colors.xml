@@ -3,7 +3,7 @@
     <color name="teal_200">#FF03DAC5</color>
     <color name="teal_700">#FF018786</color>
     <!-- Ground of the "Muestreo" launcher icon (kept in sync with ic_launcher_background). -->
-    <color name="ic_launcher_static_background">#080D18</color>
+    <color name="ic_launcher_static_background">#1C1F22</color>
 
     <!-- Widget colors for light mode -->
     <color name="widget_text_primary">#1C1B1F</color>

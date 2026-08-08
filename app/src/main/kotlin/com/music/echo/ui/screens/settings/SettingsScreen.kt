@@ -111,7 +111,7 @@ fun SettingsScreen(
     // Wording taken verbatim from the reference render — do not paraphrase.
     val newUiText = "Interfaz nueva"
     val newUiSubtitle = "Apágala y vuelve a la clásica"
-    val (newUiEnabled, onNewUiEnabledChange) = rememberPreference(NewUiEnabledKey, defaultValue = false)
+    val (newUiEnabled, onNewUiEnabledChange) = rememberPreference(NewUiEnabledKey, defaultValue = true)
     val noResultsText = stringResource(R.string.settings_search_no_results, searchQuery)
 
     val scrollState = rememberScrollState()
@@ -367,17 +367,10 @@ fun SettingsScreen(
             Material3SettingsGroup(items = finalItemsList)
         }
 
-        // ── "Interfaz nueva" (beta) ──────────────────────────────────────────────────────────────
-        // The single master switch of the redesigned presentation layer, worded exactly as the
-        // reference render. It lives HERE, in the classic settings screen, on purpose: it is the only
-        // way back, so it must stay reachable no matter which UI is showing. Toggling it writes ONE
-        // boolean and nothing else — no database, no playback, no queue, no other preference.
-        // Beta builds only. The redesigned layer ships inert in stable releases so a public update can
-        // never drop a customer into a half-migrated interface: only six of ~95 screens are rebuilt, so
-        // tapping "Buscar" from the new Inicio still lands on the classic design. Gating on the version
-        // name rather than splitting the release keeps ONE codebase and one set of tests behind both
-        // tags — the alternative was hand-separating intertwined files, which is where changes get lost.
-        // Flip this to always-visible when the redesign covers enough of the app to stand on its own.
+        // ── "Interfaz nueva" ─────────────────────────────────────────────────────────────────────
+        // Master switch of the redesigned layer. Lives HERE (classic settings) on purpose: it is the
+        // escape hatch, so it must stay reachable no matter which UI is showing. One boolean only —
+        // no database, playback, queue, or other preference. Visible in every build since 0.6.150.
         if (NEW_UI_SWITCH_VISIBLE &&
             (newUiText.lowercase().contains(searchLower) ||
                 newUiSubtitle.lowercase().contains(searchLower))

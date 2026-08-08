@@ -56,6 +56,8 @@ import iad1tya.echo.music.constants.GridItemSize
 import iad1tya.echo.music.constants.GridItemsSizeKey
 import iad1tya.echo.music.constants.GridThumbnailHeight
 import iad1tya.echo.music.models.toMediaMetadata
+import iad1tya.echo.music.extensions.toMediaItem
+import iad1tya.echo.music.playback.queues.ListQueue
 import iad1tya.echo.music.playback.queues.YouTubeQueue
 import iad1tya.echo.music.ui.component.IconButton
 import iad1tya.echo.music.ui.component.LocalMenuState
@@ -93,6 +95,34 @@ fun ArtistItemsScreen(
     val title by viewModel.title.collectAsState()
     val itemsPage by viewModel.itemsPage.collectAsState()
     val hasFailed by viewModel.hasFailed.collectAsState()
+
+    // Top songs / song grids must play as a LIST queue (owner: continue with the next in this list),
+    // never a single-song YouTube radio that abandons the rest of the page.
+    val playSongFromPage: (SongItem) -> Unit = { song ->
+        if (song.id == mediaMetadata?.id) {
+            playerConnection.togglePlayPause()
+        } else {
+            val pageSongs = itemsPage?.items.orEmpty()
+                .filterIsInstance<SongItem>()
+                .distinctBy { it.id }
+            if (pageSongs.isEmpty()) {
+                playerConnection.playQueue(
+                    YouTubeQueue(
+                        song.endpoint ?: WatchEndpoint(videoId = song.id),
+                        song.toMediaMetadata(),
+                    ),
+                )
+            } else {
+                playerConnection.playQueue(
+                    ListQueue(
+                        title = title,
+                        items = pageSongs.map { it.toMediaItem() },
+                        startIndex = pageSongs.indexOfFirst { it.id == song.id }.coerceAtLeast(0),
+                    ),
+                )
+            }
+        }
+    }
 
     LaunchedEffect(lazyListState) {
         snapshotFlow {
@@ -200,18 +230,7 @@ fun ArtistItemsScreen(
                     Modifier
                         .clickable {
                             when (item) {
-                                is SongItem -> {
-                                    if (item.id == mediaMetadata?.id) {
-                                        playerConnection.togglePlayPause()
-                                    } else {
-                                        playerConnection.playQueue(
-                                            YouTubeQueue(
-                                                item.endpoint ?: WatchEndpoint(videoId = item.id),
-                                                item.toMediaMetadata()
-                                            ),
-                                        )
-                                    }
-                                }
+                                is SongItem -> playSongFromPage(item)
 
                                 is AlbumItem -> navController.navigate("album/${item.id}")
                                 is ArtistItem -> navController.navigate("artist/${item.id}")
@@ -263,12 +282,7 @@ fun ArtistItemsScreen(
                         .combinedClickable(
                             onClick = {
                                 when (item) {
-                                    is SongItem -> playerConnection.playQueue(
-                                        YouTubeQueue(
-                                            item.endpoint ?: WatchEndpoint(videoId = item.id),
-                                            item.toMediaMetadata()
-                                        )
-                                    )
+                                    is SongItem -> playSongFromPage(item)
 
                                     is AlbumItem -> navController.navigate("album/${item.id}")
                                     is ArtistItem -> navController.navigate("artist/${item.id}")
