@@ -237,7 +237,7 @@ fun AuraCover(
     thumbnailUrl: String?,
     size: Dp,
     modifier: Modifier = Modifier,
-    seed: String? = thumbnailUrl,
+    seed: String? = thumbnailUrl ?: "aura-cover",
     shape: Shape = AuraShapes.Artwork,
     decodeTo: Int = 256,
     ratio: Float = 1f,

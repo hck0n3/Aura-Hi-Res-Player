@@ -31,10 +31,12 @@ object LyricsProviderRegistry {
         providers.filter { it in providerNames }.joinToString(",")
 
     fun getDefaultProviderOrder(): List<String> = listOf(
-        "YouLyPlus",
-        "BetterLyrics",
-        "SimpMusic",
+        // Synced-first: LrcLib / BetterLyrics / YouLyPlus usually return timed LRC; hunt window in
+        // LyricsHelper prefers any SYNCED result over an earlier plaintext hit.
         "LrcLib",
+        "BetterLyrics",
+        "YouLyPlus",
+        "SimpMusic",
         "Kugou",
         "YouTubeSubtitle",
         "YouTubeMusic",

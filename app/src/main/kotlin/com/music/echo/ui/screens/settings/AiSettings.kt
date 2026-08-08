@@ -41,6 +41,7 @@ import iad1tya.echo.music.constants.AiPlaylistEnabledKey
 import iad1tya.echo.music.constants.AiProviderKey
 import iad1tya.echo.music.constants.AiRecommendedPlaylistKey
 import iad1tya.echo.music.constants.AskTranslateLyricsOnOpenKey
+import iad1tya.echo.music.constants.AutoTranslateLyricsKey
 import iad1tya.echo.music.constants.DeeplApiKey
 import iad1tya.echo.music.constants.DeeplFormalityKey
 import iad1tya.echo.music.constants.LanguageCodeToName
@@ -70,11 +71,12 @@ fun AiSettings(
     var openRouterApiKey by rememberPreference(OpenRouterApiKey, "")
     var openRouterBaseUrl by rememberPreference(OpenRouterBaseUrlKey, "https://openrouter.ai/api/v1/chat/completions")
     var openRouterModel by rememberPreference(OpenRouterModelKey, "google/gemini-2.5-flash-lite")
-    var translateLanguage by rememberPreference(TranslateLanguageKey, "en")
+    var translateLanguage by rememberPreference(TranslateLanguageKey, "es-419")
     var translateMode by rememberPreference(TranslateModeKey, "Literal")
     var deeplApiKey by rememberPreference(DeeplApiKey, "")
     var deeplFormality by rememberPreference(DeeplFormalityKey, "default")
     var askTranslateOnOpen by rememberPreference(AskTranslateLyricsOnOpenKey, false)
+    var autoTranslateLyrics by rememberPreference(AutoTranslateLyricsKey, true)
 
     val aiProviders = mapOf(
         "OpenRouter" to "https://openrouter.ai/api/v1/chat/completions",
@@ -624,9 +626,25 @@ fun AiSettings(
                 add(
                     Material3SettingsItem(
                         icon = painterResource(R.drawable.translate),
+                        title = { Text("Traducir letra automáticamente") },
+                        description = {
+                            Text("Al abrir la letra, Aura la traduce al español latinoamericano (o al idioma que elijas arriba) sin preguntar.")
+                        },
+                        onClick = { autoTranslateLyrics = !autoTranslateLyrics },
+                        trailingContent = {
+                            Switch(
+                                checked = autoTranslateLyrics,
+                                onCheckedChange = { autoTranslateLyrics = it },
+                            )
+                        },
+                    )
+                )
+                add(
+                    Material3SettingsItem(
+                        icon = painterResource(R.drawable.translate),
                         title = { Text("Preguntar traducir la letra al abrir") },
                         description = {
-                            Text("Cuando abras la letra de una canción en inglés, Aura te preguntará si quieres traducirla a tu idioma con IA gratuita.")
+                            Text("Cuando abras la letra de una canción en inglés, Aura te preguntará si quieres traducirla (solo si la traducción automática está apagada).")
                         },
                         onClick = { askTranslateOnOpen = !askTranslateOnOpen },
                         trailingContent = {

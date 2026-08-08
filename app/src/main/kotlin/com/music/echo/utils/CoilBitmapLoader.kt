@@ -1,11 +1,11 @@
-
-
 package iad1tya.echo.music.utils
 
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
 import android.net.Uri
+import androidx.core.content.ContextCompat
 import androidx.core.graphics.createBitmap
 import androidx.media3.common.util.BitmapLoader
 import coil3.imageLoader
@@ -14,6 +14,7 @@ import coil3.request.ImageRequest
 import coil3.request.SuccessResult
 import coil3.request.allowHardware
 import coil3.toBitmap
+import iad1tya.echo.music.R
 import iad1tya.echo.music.ui.utils.resize
 import com.google.common.util.concurrent.ListenableFuture
 import kotlinx.coroutines.CoroutineScope
@@ -28,8 +29,30 @@ class CoilBitmapLoader(
     
     override fun supportsMimeType(mimeType: String): Boolean = mimeType.startsWith("image/")
 
-    private fun createFallbackBitmap(): Bitmap =
-        createBitmap(64, 64)
+    /**
+     * Unbreakable cover rule: never hand media3 / Auto / notification a transparent or empty bitmap.
+     * Prefer the launcher artwork; fall back to a solid teal plate.
+     */
+    private fun createFallbackBitmap(): Bitmap {
+        runCatching {
+            val drawable = ContextCompat.getDrawable(context, R.drawable.ic_launcher_nobg)
+                ?: ContextCompat.getDrawable(context, R.drawable.ic_launcher_foreground)
+            if (drawable != null) {
+                val bmp = createBitmap(MAX_ARTWORK_PX, MAX_ARTWORK_PX)
+                val canvas = Canvas(bmp)
+                canvas.drawColor(0xFF0F766E.toInt())
+                val inset = (MAX_ARTWORK_PX * 0.12f).toInt()
+                drawable.setBounds(inset, inset, MAX_ARTWORK_PX - inset, MAX_ARTWORK_PX - inset)
+                drawable.draw(canvas)
+                return bmp
+            }
+        }.onFailure {
+            Timber.tag("CoilBitmapLoader").w(it, "Launcher cover fallback failed")
+        }
+        val bmp = createBitmap(MAX_ARTWORK_PX, MAX_ARTWORK_PX)
+        Canvas(bmp).drawColor(0xFF0F766E.toInt())
+        return bmp
+    }
 
     /**
      * Rewrite the artwork URL so the CDN returns a SMALL image, instead of downloading the 1200x1200 one the
@@ -98,38 +121,28 @@ class CoilBitmapLoader(
             //     successfully fetched.
             //  2. That fallback is plain blocking I/O (HttpURLConnection + BitmapFactory) with no suspension
             //     point, so a coroutine deadline cannot interrupt it regardless.
-            //  3. Failing the future does NOT restore the previous cover: verified in the media3 1.10.1
-            //     bytecode, MediaSessionLegacyStub publishes the new metadata with a NULL bitmap immediately
-            //     and its onFailure only logs. So expiring guaranteed the correct cover NEVER arrived — and a
-            //     head unit that keeps painting its last bitmap then shows exactly the reported stale cover.
-            // Slow is better than never here; the real lever is fetching a smaller image (below), not a cap.
-            loadBitmapInner(uri)
-        }
-
-    private suspend fun loadBitmapInner(uri: Uri): Bitmap {
-            // 1) Try Coil (uses the app's image cache).
-            val viaCoil = runCatching {
+            //  3. Throwing TimeoutException does NOT restore the previous cover in media3 1.10.1 — it leaves
+            //     a null artwork until a later success. Prefer a real fallback plate over empty.
+            val coilResult = runCatching {
                 val request = ImageRequest.Builder(context)
-                    // Ask the CDN for a small image instead of downloading the 1200x1200 one and shrinking it
-                    // here. This is the half that actually helps the reported bug: on a slow car link the
-                    // latency is the DOWNLOAD, and Coil's `.size()` only bounds DECODING — the fetcher GETs
-                    // whatever the URL says. Rewriting the URL is what changes the bytes on the wire.
                     .data(smallArtworkUri(uri))
-                    // Still cap the decode, for the sources whose URL cannot be rewritten.
-                    .size(MAX_ARTWORK_PX)
+                    .size(MAX_ARTWORK_PX, MAX_ARTWORK_PX)
                     .allowHardware(false)
                     .build()
                 when (val result = context.imageLoader.execute(request)) {
                     is SuccessResult -> result.image.toBitmap().copyIfNeeded()
                     is ErrorResult -> null
                 }
-            }.getOrNull()
-            if (viaCoil != null) return viaCoil
+            }.getOrElse {
+                Timber.tag("CoilBitmapLoader").w(it, "Coil artwork load failed")
+                null
+            }
+            if (coilResult != null) return@future coilResult
 
-            // 2) Fallback: download the bytes directly. Coil can fail to run in the MediaSession
-            //    service context (singleton imageLoader / network component not ready), which left
-            //    the media notification with no large icon — only the app icon showed. A plain
-            //    HTTP fetch makes the cover load reliably for the notification.
+            // Direct HTTP fallback when Coil cannot run in the media-session / service context
+            // (singleton imageLoader / network component not ready), which left
+            // the media notification with no large icon — only the app icon showed. A plain
+            // HTTP fetch makes the cover load reliably for the notification.
             val direct = runCatching {
                 when (uri.scheme?.lowercase()) {
                     "http", "https" -> {
@@ -154,7 +167,7 @@ class CoilBitmapLoader(
                 null
             }
 
-            return direct ?: createFallbackBitmap()
+            return@future direct ?: createFallbackBitmap()
     }
 
     private companion object {

@@ -399,6 +399,7 @@ class App : Application(), SingletonImageLoader.Factory, androidx.work.Configura
             settings[iad1tya.echo.music.constants.Defaults0130CurveAppliedKey] != true ||
             settings[iad1tya.echo.music.constants.Defaults0132GaplessOffAppliedKey] != true ||
             settings[iad1tya.echo.music.constants.LyricsBlurDefaultOnV1AppliedKey] != true ||
+            settings[iad1tya.echo.music.constants.LyricsEsLatamAutoTranslateV1AppliedKey] != true ||
             settings[iad1tya.echo.music.constants.AddToPlaylistLastUpdatedDefaultV1AppliedKey] != true ||
             settings[iad1tya.echo.music.constants.ThemeAccentRepairV1AppliedKey] != true
         if (batchAPending) {
@@ -416,6 +417,7 @@ class App : Application(), SingletonImageLoader.Factory, androidx.work.Configura
                     applyThemeSystemOnlyV2(p, settings)
                     applyPlaybackDefaults(p, settings)
                     applyLyricsBlurDefaultOnV1(p, settings)
+                    applyLyricsEsLatamAutoTranslateV1(p, settings)
                     applyAddToPlaylistLastUpdatedDefaultV1(p, settings)
                     // LAST, and reading `p` rather than `settings`, on purpose: applyPlaybackDefaults
                     // above is what writes LIQUID_GLASS into the mini-player key, so on the launch
@@ -709,10 +711,10 @@ class App : Application(), SingletonImageLoader.Factory, androidx.work.Configura
             p[iad1tya.echo.music.constants.GridItemsSizeKey] =
                 iad1tya.echo.music.constants.GridItemSize.SMALL.name
 
-            // Spanish default, only if the user hasn't explicitly chosen a language.
+            // Spanish LATAM default, only if the user hasn't explicitly chosen a language.
             val current = p[iad1tya.echo.music.constants.AppLanguageKey]
             if (current == null || current == SYSTEM_DEFAULT) {
-                p[iad1tya.echo.music.constants.AppLanguageKey] = "es"
+                p[iad1tya.echo.music.constants.AppLanguageKey] = "es-419"
             }
             p[iad1tya.echo.music.constants.SeedVersionKey] = CURRENT_SEED_VERSION
             // Keep legacy flags consistent for any code still reading them.
@@ -1120,6 +1122,30 @@ class App : Application(), SingletonImageLoader.Factory, androidx.work.Configura
         if (settings[iad1tya.echo.music.constants.LyricsBlurDefaultOnV1AppliedKey] == true) return
         p[iad1tya.echo.music.constants.LyricsStandardBlurKey] = true
         p[iad1tya.echo.music.constants.LyricsBlurDefaultOnV1AppliedKey] = true
+    }
+
+    /**
+     * One-shot: auto-translate lyrics ON + target Español Latinoamérica. Also moves the UI language
+     * from bare "es" (España) to "es-419" when the user never picked something else.
+     * Does not overwrite an explicit non-English translate target or AutoTranslate=false.
+     */
+    private fun applyLyricsEsLatamAutoTranslateV1(
+        p: androidx.datastore.preferences.core.MutablePreferences,
+        settings: androidx.datastore.preferences.core.Preferences,
+    ) {
+        if (settings[iad1tya.echo.music.constants.LyricsEsLatamAutoTranslateV1AppliedKey] == true) return
+        val translateLang = p[iad1tya.echo.music.constants.TranslateLanguageKey]
+        if (translateLang == null || translateLang.equals("en", ignoreCase = true)) {
+            p[iad1tya.echo.music.constants.TranslateLanguageKey] = "es-419"
+        }
+        if (p[iad1tya.echo.music.constants.AutoTranslateLyricsKey] == null) {
+            p[iad1tya.echo.music.constants.AutoTranslateLyricsKey] = true
+        }
+        val appLang = p[iad1tya.echo.music.constants.AppLanguageKey]
+        if (appLang == null || appLang == SYSTEM_DEFAULT || appLang.equals("es", ignoreCase = true)) {
+            p[iad1tya.echo.music.constants.AppLanguageKey] = "es-419"
+        }
+        p[iad1tya.echo.music.constants.LyricsEsLatamAutoTranslateV1AppliedKey] = true
     }
 
     /**

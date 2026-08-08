@@ -1267,17 +1267,13 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                var powerSaveSessionNagShown by remember { mutableStateOf(false) }
-
                 LaunchedEffect(Unit) {
-                    // Offer battery-exemption + autostart once on EVERY brand when the app is still
-                    // battery-optimized or Power Save is on — screen-off stalls are not Xiaomi-only.
-                    // Never stack it on welcome/onboarding: if welcome shows this launch, surface later.
-                    //
-                    // ALSO re-prompt when exit_reasons prove an OEM already killed playback
-                    // (ScreenOffCPUCheckKill / OneKeyClean / …) — battery exemption alone does not stop those.
+                    // First-use only (BatteryReliabilityPromptShownKey). Never re-nag on every launch
+                    // for battery saver / mid-session play — the owner asked for one shot after that.
+                    // OEM kill evidence still shapes the COPY when we do show, but does not bypass the flag.
                     kotlinx.coroutines.delay(1500)
                     if (welcomeWillShow || showWelcomeDialog) return@LaunchedEffect
+                    if (batteryReliabilityPromptShown) return@LaunchedEffect
                     val threatTs = withContext(Dispatchers.IO) {
                         iad1tya.echo.music.utils.ExitReasonReporter
                             .latestOemPlaybackThreatTimestamp(this@MainActivity)
@@ -1287,38 +1283,15 @@ class MainActivity : ComponentActivity() {
                     val notExempt = !iad1tya.echo.music.utils.BackgroundReliability
                         .isIgnoringBatteryOptimizations(this@MainActivity)
                     when {
-                        threatTs > oemKillPromptTs -> {
+                        threatTs > oemKillPromptTs || powerSave -> {
                             batteryReliabilityOemEvidence = true
                             showBatteryReliabilityDialog = true
                         }
-                        // Battery saver ON: always surface (even if they dismissed before). Exemption alone
-                        // does not stop HyperOS AA cuts when the system saver is throttling the radio.
-                        powerSave && !powerSaveSessionNagShown -> {
-                            batteryReliabilityOemEvidence = true
-                            showBatteryReliabilityDialog = true
-                            powerSaveSessionNagShown = true
-                        }
-                        !batteryReliabilityPromptShown && notExempt -> {
+                        notExempt -> {
                             batteryReliabilityOemEvidence = false
                             showBatteryReliabilityDialog = true
                         }
                     }
-                }
-
-                // If saver turns on mid-session (or they start playing with saver on after dismissing
-                // welcome), nag once per process while music is actually playing.
-                val isPlayingNow = playerConnection?.isPlaying?.collectAsState()?.value == true
-                LaunchedEffect(isPlayingNow, showWelcomeDialog) {
-                    if (!isPlayingNow || powerSaveSessionNagShown || welcomeWillShow || showWelcomeDialog) {
-                        return@LaunchedEffect
-                    }
-                    kotlinx.coroutines.delay(2000)
-                    val powerSave = (getSystemService(POWER_SERVICE) as? android.os.PowerManager)
-                        ?.isPowerSaveMode == true
-                    if (!powerSave) return@LaunchedEffect
-                    batteryReliabilityOemEvidence = true
-                    showBatteryReliabilityDialog = true
-                    powerSaveSessionNagShown = true
                 }
 
                 LaunchedEffect(Unit) {

@@ -736,6 +736,10 @@ val LyricsRomanizeCyrillicByLineKey = booleanPreferencesKey("lyricsRomanizeCyril
 // Opt-in (default false): when the lyrics of an English-looking song open, prompt "¿Traducir?"
 // and translate via the FREE keyless AI on confirm. Off = no prompt (previous behavior).
 val AskTranslateLyricsOnOpenKey = booleanPreferencesKey("askTranslateLyricsOnOpen")
+/** When true, opening lyrics auto-translates to [TranslateLanguageKey] (default: Español Latinoamérica). */
+val AutoTranslateLyricsKey = booleanPreferencesKey("autoTranslateLyrics")
+/** One-shot: seed auto-translate ON + target es-419 for everyone who still has English translate defaults. */
+val LyricsEsLatamAutoTranslateV1AppliedKey = booleanPreferencesKey("lyrics_es_latam_auto_translate_v1_applied")
 // AI text-to-playlist feature toggle (Library → "Lista AI"). Kill-switch, defaults on.
 val AiPlaylistEnabledKey = booleanPreferencesKey("ai_playlist_enabled")
 // Opt-in (default false): daily worker that rebuilds the ONE persistent "Recomendado para ti (IA)"

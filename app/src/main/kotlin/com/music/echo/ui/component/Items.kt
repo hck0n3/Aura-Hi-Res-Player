@@ -1579,6 +1579,7 @@ fun ItemThumbnail(
             .fillMaxSize()
             .aspectRatio(thumbnailRatio)
             .clip(frameShape)
+            .background(MaterialTheme.colorScheme.surfaceVariant)
     ) {
         if (albumIndex == null) {
             AsyncImage(
@@ -1590,6 +1591,9 @@ fun ItemThumbnail(
                     .build(),
                 contentDescription = null,
                 contentScale = if (cropAlbumArt) ContentScale.Crop else ContentScale.Fit,
+                placeholder = painterResource(R.drawable.ic_launcher_nobg),
+                error = painterResource(R.drawable.ic_launcher_nobg),
+                fallback = painterResource(R.drawable.ic_launcher_nobg),
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(frameShape)
@@ -1662,6 +1666,7 @@ fun LocalThumbnail(
         modifier = modifier
             .aspectRatio(thumbnailRatio)
             .clip(frameShape)
+            .background(MaterialTheme.colorScheme.surfaceVariant)
     ) {
         AsyncImage(
             model = ImageRequest.Builder(LocalContext.current)
@@ -1672,6 +1677,9 @@ fun LocalThumbnail(
                 .build(),
             contentDescription = null,
             contentScale = if (cropAlbumArt) ContentScale.Crop else ContentScale.Fit,
+            placeholder = painterResource(R.drawable.ic_launcher_nobg),
+            error = painterResource(R.drawable.ic_launcher_nobg),
+            fallback = painterResource(R.drawable.ic_launcher_nobg),
             modifier = Modifier.fillMaxSize()
         )
 

@@ -149,6 +149,7 @@ import iad1tya.echo.music.constants.LyricsRomanizeUkrainianKey
 import iad1tya.echo.music.constants.LyricsStandardBlurKey
 import iad1tya.echo.music.constants.LyricsScrollKey
 import iad1tya.echo.music.constants.AskTranslateLyricsOnOpenKey
+import iad1tya.echo.music.constants.AutoTranslateLyricsKey
 import iad1tya.echo.music.constants.LyricsTextPositionKey
 import iad1tya.echo.music.constants.LyricsTextSizeKey
 import iad1tya.echo.music.constants.PlayerBackgroundStyle
@@ -210,6 +211,13 @@ private val COMMON_ENGLISH_WORDS = setOf(
     "they", "what", "up", "out", "get", "got", "can", "never", "time", "one", "now", "if", "no"
 )
 
+private val COMMON_SPANISH_WORDS = setOf(
+    "el", "la", "los", "las", "de", "que", "y", "en", "un", "una", "es", "por", "para", "con",
+    "no", "se", "su", "como", "más", "pero", "me", "ya", "si", "porque", "cuando", "todo", "esta",
+    "este", "hay", "fue", "ser", "estar", "tiene", "amor", "vida", "corazón", "siempre", "nunca",
+    "solo", "aquí", "hoy", "noche", "día", "quiero", "te", "mi", "tú", "yo", "nosotros",
+)
+
 private fun lyricsLookEnglish(lines: List<LyricsEntry>): Boolean {
     val words = lines
         .asSequence()
@@ -221,6 +229,19 @@ private fun lyricsLookEnglish(lines: List<LyricsEntry>): Boolean {
     if (words.size < 8) return false
     val hits = words.count { it in COMMON_ENGLISH_WORDS }
     return hits.toDouble() / words.size >= 0.15
+}
+
+private fun lyricsLookSpanish(lines: List<LyricsEntry>): Boolean {
+    val words = lines
+        .asSequence()
+        .map { it.text }
+        .filter { it.isNotBlank() }
+        .flatMap { it.lowercase().split(Regex("[^a-záéíóúüñ']+")).asSequence() }
+        .filter { it.isNotBlank() }
+        .toList()
+    if (words.size < 8) return false
+    val hits = words.count { it in COMMON_SPANISH_WORDS }
+    return hits.toDouble() / words.size >= 0.12
 }
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
@@ -298,18 +319,17 @@ fun Lyrics(
     val aiProvider by rememberPreference(AiProviderKey, "OpenRouter")
     val openRouterBaseUrl by rememberPreference(OpenRouterBaseUrlKey, "https://openrouter.ai/api/v1/chat/completions")
     val openRouterModel by rememberPreference(OpenRouterModelKey, "google/gemini-2.5-flash-lite")
-    val translateLanguage by rememberPreference(TranslateLanguageKey, "en")
-    // When the translate target is still the default "en", use the DEVICE language instead — so a Spanish (etc.)
-    // user's translation actually goes to THEIR language (not a pointless English→English). An explicit non-"en"
-    // target the user picked always wins. Powers both the manual translate and the translate-on-open prompt.
+    val translateLanguage by rememberPreference(TranslateLanguageKey, "es-419")
+    // Prefer the stored target (default Español Latinoamérica). Legacy "en" still maps to the device
+    // language so an English-only install is not stuck translating English→English.
     val effectiveTranslateTarget = remember(translateLanguage) {
         if (translateLanguage.equals("en", ignoreCase = true)) java.util.Locale.getDefault().language
         else translateLanguage
     }
     val translateMode by rememberPreference(TranslateModeKey, "Literal")
     val deeplFormality by rememberPreference(DeeplFormalityKey, "default")
-    // Feature #2: opt-in (default off) — prompt "¿Traducir?" when an English-looking song's lyrics open.
     val askTranslateOnOpen by rememberPreference(AskTranslateLyricsOnOpenKey, false)
+    val autoTranslateLyrics by rememberPreference(AutoTranslateLyricsKey, true)
     // Per-song, per-session: songIds the user already answered (confirmed or dismissed) so we never nag.
     val answeredTranslateSongs = remember { mutableStateListOf<String>() }
     var showTranslatePrompt by remember { mutableStateOf(false) }
@@ -624,6 +644,7 @@ fun Lyrics(
     LaunchedEffect(showLyrics, lines.size, currentSong?.id, askTranslateOnOpen, hasActiveTranslations) {
         val songId = currentSong?.id
         if (askTranslateOnOpen &&
+            !autoTranslateLyrics &&
             showLyrics &&
             lines.isNotEmpty() &&
             songId != null &&
@@ -633,6 +654,65 @@ fun Lyrics(
             lyricsLookEnglish(lines)
         ) {
             showTranslatePrompt = true
+        }
+    }
+
+    // Default path: auto-translate to Español Latinoamérica (or the user's target) without asking.
+    val autoTranslatedSongs = remember { mutableStateListOf<String>() }
+    LaunchedEffect(
+        showLyrics,
+        lines.size,
+        currentSong?.id,
+        autoTranslateLyrics,
+        hasActiveTranslations,
+        effectiveTranslateTarget,
+    ) {
+        val songId = currentSong?.id ?: return@LaunchedEffect
+        if (!autoTranslateLyrics ||
+            !showLyrics ||
+            lines.isEmpty() ||
+            hasActiveTranslations ||
+            songId in autoTranslatedSongs ||
+            effectiveTranslateTarget.equals("en", ignoreCase = true) ||
+            lyricsLookSpanish(lines)
+        ) {
+            return@LaunchedEffect
+        }
+        autoTranslatedSongs.add(songId)
+        val effectiveApiKey = if (aiProvider == "DeepL") deeplApiKey else openRouterApiKey
+        if (effectiveApiKey.isNotBlank()) {
+            LyricsTranslationHelper.translateLyrics(
+                lyrics = lines,
+                targetLanguage = effectiveTranslateTarget,
+                apiKey = openRouterApiKey,
+                baseUrl = openRouterBaseUrl,
+                model = openRouterModel,
+                mode = translateMode,
+                scope = scope,
+                context = context,
+                provider = aiProvider,
+                deeplApiKey = deeplApiKey,
+                deeplFormality = deeplFormality,
+                useStreaming = true,
+                songId = songId,
+                database = database,
+            )
+        } else if (aiProvider != "DeepL") {
+            LyricsTranslationHelper.translateLyrics(
+                lyrics = lines,
+                targetLanguage = effectiveTranslateTarget,
+                apiKey = "",
+                baseUrl = "",
+                model = "",
+                mode = translateMode,
+                scope = scope,
+                context = context,
+                provider = "OpenRouter",
+                useStreaming = false,
+                songId = songId,
+                database = database,
+                keyless = true,
+            )
         }
     }
 

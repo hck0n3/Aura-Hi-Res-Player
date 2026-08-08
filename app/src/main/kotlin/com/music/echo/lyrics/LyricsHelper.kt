@@ -307,7 +307,7 @@ constructor(
         // After the first non-blank (unsynced) result, how long we keep hunting for a SYNCED
         // upgrade before showing the fallback. Short so a plaintext-only song still appears fast;
         // long enough that a concurrent provider's synced result usually lands first.
-        private const val SYNCED_HUNT_MS = 1_200L
+        private const val SYNCED_HUNT_MS = 4_500L
         // A result is SYNCED only if its first line is a real LRC timestamp ([m:ss] / [mm:ss...]),
         // NOT a bare "[" — otherwise "[Verse 1]" plaintext headers would be mistaken for synced.
         private val SYNCED_LINE = Regex("""^\[\d{1,2}:\d{2}""")
