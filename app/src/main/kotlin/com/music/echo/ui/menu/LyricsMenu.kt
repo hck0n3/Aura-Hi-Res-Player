@@ -316,7 +316,7 @@ fun LyricsMenu(
                                     color = MaterialTheme.colorScheme.onSecondaryContainer,
                                     maxLines = 1,
                                 )
-                                if (result.lyrics.startsWith("[")) {
+                                if (iad1tya.echo.music.lyrics.LyricsUtils.isTimedLyrics(result.lyrics)) {
                                     Icon(
                                         painter = painterResource(R.drawable.sync),
                                         contentDescription = null,

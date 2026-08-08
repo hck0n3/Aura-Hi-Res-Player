@@ -11,12 +11,46 @@ import java.util.Locale
 
 @Suppress("RegExpRedundantEscape")
 object LyricsUtils {
-    val LINE_REGEX = "((\\[\\d\\d:\\d\\d\\.\\d{2,3}\\] ?)+)(.+)".toRegex()
-    val TIME_REGEX = "\\[(\\d\\d):(\\d\\d)\\.(\\d{2,3})\\]".toRegex()
-    
-    
-    private val RICH_SYNC_LINE_REGEX = "\\[(\\d{1,2}):(\\d{2})\\.(\\d{2,3})\\](.+)".toRegex()
-    private val RICH_SYNC_WORD_REGEX = "<(\\d{1,2}):(\\d{2})\\.(\\d{2,3})>\\s*([^<]+)".toRegex()
+    /**
+     * Standard LRC line. Accepts the formats providers actually ship:
+     * `[mm:ss.xx]`, `[m:ss.xxx]`, `[mm:ss]` (no fraction), optional space before text.
+     * The old `\d\d`+required-fraction pattern dropped `[0:13.42]` / `[00:13]` lines entirely —
+     * Helper still classified them as synced, so the UI showed an empty "synced" panel.
+     */
+    val LINE_REGEX = """((\[\d{1,2}:\d{2}(?:\.\d{1,3})?] ?)+)(.*)""".toRegex()
+    val TIME_REGEX = """\[(\d{1,2}):(\d{2})(?:\.(\d{1,3}))?]""".toRegex()
+
+    private val RICH_SYNC_LINE_REGEX = """\[(\d{1,2}):(\d{2})(?:\.(\d{1,3}))?](.*)""".toRegex()
+    private val RICH_SYNC_WORD_REGEX = """<(\d{1,2}):(\d{2})(?:\.(\d{1,3}))?>\s*([^<]+)""".toRegex()
+
+    /**
+     * Same rule [iad1tya.echo.music.lyrics.LyricsHelper] uses to prefer timed results: the first
+     * non-blank content must be a real LRC timestamp (`[m:ss` / `[mm:ss`), NOT a section header
+     * like `[Verse 1]` / `[Chorus]`. Shared so the fetch path and the UI can never disagree on
+     * "is this timed?".
+     */
+    private val TIMED_HEAD = Regex("""^\[\d{1,2}:\d{2}""")
+
+    /** True when [lyrics] look like timed LRC (not plaintext with `[Verse]` headers). */
+    fun isTimedLyrics(lyrics: String): Boolean {
+        val head = lyrics.trimStart().lineSequence().firstOrNull { it.isNotBlank() } ?: return false
+        return TIMED_HEAD.containsMatchIn(head)
+    }
+
+    /** Fractional LRC part → milliseconds. Missing / 1 / 2 / 3 digits all accepted. */
+    fun parseLrcFractionToMs(fraction: String): Long {
+        if (fraction.isEmpty()) return 0L
+        val value = fraction.toLongOrNull() ?: return 0L
+        return when (fraction.length) {
+            1 -> value * 100L
+            2 -> value * 10L
+            else -> value // already milliseconds (3 digits); longer is truncated by the regex
+        }
+    }
+
+    /** Fractional LRC part → seconds (for rich-sync word timings). */
+    fun parseLrcFractionToSeconds(fraction: String): Double =
+        parseLrcFractionToMs(fraction) / 1000.0
     
     
     private val AGENT_REGEX = "\\{agent:([^}]+)\\}".toRegex()
@@ -380,10 +414,7 @@ object LyricsUtils {
             if (matchResult != null) {
                 val minutes = matchResult.groupValues[1].toLongOrNull() ?: 0L
                 val seconds = matchResult.groupValues[2].toLongOrNull() ?: 0L
-                val centiseconds = matchResult.groupValues[3].toLongOrNull() ?: 0L
-                
-                
-                val millisPart = if (matchResult.groupValues[3].length == 3) centiseconds else centiseconds * 10
+                val millisPart = parseLrcFractionToMs(matchResult.groupValues[3])
                 val lineTimeMs = minutes * DateUtils.MINUTE_IN_MILLIS + seconds * DateUtils.SECOND_IN_MILLIS + millisPart
                 
                 var content = matchResult.groupValues[4].trimStart()
@@ -405,7 +436,7 @@ object LyricsUtils {
                 val wordTimings = parseRichSyncWords(content, index, lines)
                 
                 
-                val plainText = content.replace(Regex("<\\d{1,2}:\\d{2}\\.\\d{2,3}>\\s*"), "").trim()
+                val plainText = content.replace(Regex("""<\d{1,2}:\d{2}(?:\.\d{1,3})?>\s*"""), "").trim()
                 
                 if (plainText.isNotBlank()) {
                     result.add(LyricsEntry(lineTimeMs, plainText, wordTimings, agent = agent, isBackground = isBackground))
@@ -427,11 +458,7 @@ object LyricsUtils {
         wordMatches.forEachIndexed { index, match ->
             val minutes = match.groupValues[1].toLongOrNull() ?: 0L
             val seconds = match.groupValues[2].toLongOrNull() ?: 0L
-            val fraction = match.groupValues[3].toLongOrNull() ?: 0L
-            
-            
-            val fractionPart = if (match.groupValues[3].length == 3) fraction / 1000.0 else fraction / 100.0
-            val startTimeSeconds = minutes * 60.0 + seconds + fractionPart
+            val startTimeSeconds = minutes * 60.0 + seconds + parseLrcFractionToSeconds(match.groupValues[3])
             
             val wordText = match.groupValues[4].trim()
             
@@ -440,9 +467,7 @@ object LyricsUtils {
                 val nextMatch = wordMatches[index + 1]
                 val nextMinutes = nextMatch.groupValues[1].toLongOrNull() ?: 0L
                 val nextSeconds = nextMatch.groupValues[2].toLongOrNull() ?: 0L
-                val nextFraction = nextMatch.groupValues[3].toLongOrNull() ?: 0L
-                val nextFractionPart = if (nextMatch.groupValues[3].length == 3) nextFraction / 1000.0 else nextFraction / 100.0
-                nextMinutes * 60.0 + nextSeconds + nextFractionPart
+                nextMinutes * 60.0 + nextSeconds + parseLrcFractionToSeconds(nextMatch.groupValues[3])
             } else {
                 
                 val nextLineTime = getNextLineStartTime(currentIndex, allLines)
@@ -466,10 +491,7 @@ object LyricsUtils {
         
         val minutes = matchResult.groupValues[1].toLongOrNull() ?: return null
         val seconds = matchResult.groupValues[2].toLongOrNull() ?: return null
-        val fraction = matchResult.groupValues[3].toLongOrNull() ?: 0L
-        
-        val fractionPart = if (matchResult.groupValues[3].length == 3) fraction / 1000.0 else fraction / 100.0
-        return minutes * 60.0 + seconds + fractionPart
+        return minutes * 60.0 + seconds + parseLrcFractionToSeconds(matchResult.groupValues[3])
     }
     
     
@@ -547,11 +569,7 @@ object LyricsUtils {
             .map { timeMatchResult ->
                 val min = timeMatchResult.groupValues[1].toLong()
                 val sec = timeMatchResult.groupValues[2].toLong()
-                val milString = timeMatchResult.groupValues[3]
-                var mil = milString.toLong()
-                if (milString.length == 2) {
-                    mil *= 10
-                }
+                val mil = parseLrcFractionToMs(timeMatchResult.groupValues[3])
                 val time = min * DateUtils.MINUTE_IN_MILLIS + sec * DateUtils.SECOND_IN_MILLIS + mil
                 LyricsEntry(time, text, words, agent = agent, isBackground = isBackground)
             }.toList()
