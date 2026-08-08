@@ -191,7 +191,8 @@ object KuGou {
             }
 
     @Suppress("RegExpRedundantEscape")
-    private val ACCEPTED_REGEX = "\\[(\\d\\d):(\\d\\d)\\.(\\d{2,3})\\].*".toRegex()
+    // Same permissive LRC stamp the app parser accepts ([m:ss], [mm:ss.x…], optional fraction).
+    private val ACCEPTED_REGEX = """\[\d{1,2}:\d{2}(?:\.\d{1,3})?].*""".toRegex()
     private val BANNED_REGEX = ".+].+[:：].+".toRegex()
 
     private const val DURATION_TOLERANCE = 8

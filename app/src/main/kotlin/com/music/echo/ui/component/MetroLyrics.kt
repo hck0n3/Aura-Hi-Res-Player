@@ -20,6 +20,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameMillis
 import androidx.compose.ui.Alignment
@@ -358,36 +359,30 @@ private fun WordLevelCanvasLyrics(
     // `effectivePlaybackPosition` ALREADY contains lyricsOffset (Lyrics.kt applies it before passing
     // this down); adding it again here seeded the sweep at position + 2×offset.
     var smoothPosition by remember { mutableLongStateOf(effectivePlaybackPosition) }
+    // Always the latest parent-resolved clock (includes crossfade OUTGOING pin + lyricsOffset).
+    val latestEffectivePosition = rememberUpdatedState(effectivePlaybackPosition)
 
-    // Keyed on lyricsOffset too: the loop below CAPTURES the offset, so keying only on isActiveLine
-    // froze it for as long as the line stayed active — moving the per-song offset slider did nothing
-    // to the line the user was actually looking at, which is the one case the slider exists for.
-    LaunchedEffect(isActiveLine, lyricsOffset) {
+    // CROSSFADE FIX: the previous loop read `player.currentPosition` (the LIVE / incoming player).
+    // During a crossfade pin the lines on screen belong to the OUTGOING song, so Metro's karaoke
+    // sweep ran on the wrong clock — highlight/animation jumped to the next song while the user
+    // still heard the previous one. Drive the sweep from the same position Lyrics.kt already
+    // resolved (outgoing-or-live + offset), and only interpolate between parent ticks.
+    LaunchedEffect(isActiveLine) {
         if (isActiveLine && playerConnection != null) {
-            
-            
-            
-            
-            
-            var lastPlayerPos = playerConnection.player.currentPosition
-            var lastUpdateTime = System.currentTimeMillis()
-            
+            var lastPos = latestEffectivePosition.value
+            var lastUpdateTime = android.os.SystemClock.elapsedRealtime()
             while (isActive) {
                 withFrameMillis {
-                    val now = System.currentTimeMillis()
-                    val playerPos = playerConnection.player.currentPosition
-                    val currentlyPlaying = playerConnection.player.isPlaying
-                    
-                    
-                    
-                    
-                    if (playerPos != lastPlayerPos) {
-                        lastPlayerPos = playerPos
+                    val now = android.os.SystemClock.elapsedRealtime()
+                    val base = latestEffectivePosition.value
+                    if (base != lastPos) {
+                        lastPos = base
                         lastUpdateTime = now
                     }
-                    
+                    val currentlyPlaying = playerConnection.player.isPlaying
                     val elapsed = now - lastUpdateTime
-                    smoothPosition = lastPlayerPos + lyricsOffset + (if (currentlyPlaying) elapsed else 0L)
+                    // Cap interpolation so a stalled parent tick cannot run minutes ahead of audio.
+                    smoothPosition = lastPos + (if (currentlyPlaying) elapsed.coerceAtMost(50L) else 0L)
                 }
             }
         }

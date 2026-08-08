@@ -200,8 +200,11 @@ constructor(
                     // A non-blank return is a success for THIS provider regardless of sync state.
                     LyricsProviderCircuitBreaker.recordSuccess(provider.name)
                     val candidate = LyricsWithProvider(lyrics, provider.name)
-                    if (SYNCED_LINE.containsMatchIn(lyrics.trimStart().take(24))) {
+                    if (LyricsUtils.isTimedLyrics(lyrics)) {
                         // Synced: best possible result, stop scanning immediately.
+                        // Uses LyricsUtils.isTimedLyrics — same rule the UI uses — so a plaintext
+                        // "[Verse 1]" header can never beat a cleaner unsynced result here and then
+                        // fail to parse on screen.
                         syncedWinner = candidate
                         break
                     } else if (unsyncedFallback == null) {
@@ -308,9 +311,6 @@ constructor(
         // upgrade before showing the fallback. Short so a plaintext-only song still appears fast;
         // long enough that a concurrent provider's synced result usually lands first.
         private const val SYNCED_HUNT_MS = 4_500L
-        // A result is SYNCED only if its first line is a real LRC timestamp ([m:ss] / [mm:ss...]),
-        // NOT a bare "[" — otherwise "[Verse 1]" plaintext headers would be mistaken for synced.
-        private val SYNCED_LINE = Regex("""^\[\d{1,2}:\d{2}""")
     }
 }
 
