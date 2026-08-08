@@ -1,23 +1,17 @@
-# Aura Hi-Res Player 0.6.154
+# Aura Hi-Res Player 0.6.155
 
-Transiciones sin bajones de volumen, un solo nivel de referencia, y cola inteligente más asertiva al gusto.
+Exportar como MP3 ya guarda título, artista, álbum, año y la portada dentro del archivo.
 
 ---
 
-## 🎚️ Transiciones y volumen
+## 📁 Exportar como MP3
 
-- Corregido: Safe Volume del tema actual **ya no pisa** el nivel de la siguiente canción precargada (eso provocaba cortes o bajones al cruzar).
-- El crossfade usa **un solo volumen** (el de la app), no el nivel accidental del ExoPlayer.
-- Si la transición no puede mezclar a tiempo: se libera el secundario y se restaura el volumen; precarga 3 s antes.
+- El MP3 exportado lleva **metadatos ID3** (título, artista, álbum, artista del álbum, año).
+- La **portada** va incrustada en el archivo (APIC), no solo el audio suelto.
+- Funciona también con portadas locales / `localaudioart` y con miniaturas WebP de YouTube (se convierten a JPEG).
+- Si falta la URL de portada en cola/radio, se usa la miniatura de YouTube del vídeo.
 
-## 🎯 Predicción / cola inteligente
+## 📦 Del 0.6.154
 
-- Más peso al gusto (artistas/géneros ancla) frente a lo genérico de YouTube.
-- Menos exploración aleatoria (~1 de cada 15 en vez de ~1 de 10).
-- Anti-deriva de género más fuerte en el contexto de la lista que acabas de terminar.
-- Inicio: menos “ruido” al ordenar por gusto.
-
-## 📦 Del 0.6.153
-
-- Actualizaciones visibles + aviso y salto a la pantalla de update.
-- Carruseles más fluidos, portadas en búsqueda, letras más suaves, Tu biblioteca con Me gusta.
+- Transiciones sin bajones de volumen; un solo nivel de referencia en el crossfade.
+- Cola inteligente más asertiva al gusto.
