@@ -91,11 +91,11 @@ class ContextProfileTest {
     @Test
     fun steerTermPullsContextArtistsAndGenres() {
         val p = salsaProfile()
-        // Context artist (case-insensitive), genre unknown → the cache-free artist pull, exactly -3.
-        assertEquals(-3.0, ContextProfile.steerTerm(p, listOf("MARC ANTHONY"), null), 1e-9)
-        // Unknown artist, dominant context genre (share 1.0, Spanish) → -4*1.0 - 1 clamped to STEER_MIN.
+        // Context artist (case-insensitive), genre unknown → the cache-free artist pull.
+        assertEquals(-4.5, ContextProfile.steerTerm(p, listOf("MARC ANTHONY"), null), 1e-9)
+        // Unknown artist, dominant context genre (share 1.0, Spanish) → clamped to STEER_MIN.
         assertEquals(ContextProfile.STEER_MIN, ContextProfile.steerTerm(p, listOf("La India"), "salsa y tropical"), 1e-9)
-        // KNOWN off-context genre → the bounded push, exactly +6 (a demotion, never a drop).
+        // KNOWN off-context genre → the bounded push (a demotion, never a drop).
         assertEquals(ContextProfile.STEER_MAX, ContextProfile.steerTerm(p, listOf("Queen"), "rock"), 1e-9)
     }
 
@@ -111,7 +111,7 @@ class ContextProfileTest {
             ContextProfile.steerTerm(p, listOf("Artista Nuevo"), null),
             1e-9,
         )
-        // Registry #39/#41 holds: it is 6x smaller than the KNOWN off-genre push, so "we don't know" is
+        // Registry #39/#41 holds: it is much smaller than the KNOWN off-genre push, so "we don't know" is
         // never treated as "wrong genre"...
         assertTrue(
             ContextProfile.steerTerm(p, listOf("Artista Nuevo"), null) <
@@ -119,7 +119,7 @@ class ContextProfileTest {
         )
         // ...and a candidate BY A CONTEXT ARTIST is matched cache-free, so the push can never fire on
         // the collection's own artists however blind the cache is.
-        assertEquals(-3.0, ContextProfile.steerTerm(p, listOf("Marc Anthony"), null), 1e-9)
+        assertEquals(-4.5, ContextProfile.steerTerm(p, listOf("Marc Anthony"), null), 1e-9)
     }
 
     @Test
@@ -161,14 +161,22 @@ class ContextProfileTest {
 
     @Test
     fun languageHintSoftensOffGenreLatinCandidates() {
-        // Spanish context + a KNOWN Spanish-proving genre that is NOT in the context → +6 - 1 = +5:
+        // Spanish context + a KNOWN Spanish-proving genre that is NOT in the context → STEER_MAX - 1:
         // the weak tie-break keeps same-language music a little closer, never punishes, never filters.
-        assertEquals(5.0, ContextProfile.steerTerm(salsaProfile(), listOf("Bad Bunny"), "urbano latino"), 1e-9)
+        assertEquals(
+            ContextProfile.STEER_MAX - 1.0,
+            ContextProfile.steerTerm(salsaProfile(), listOf("Bad Bunny"), "urbano latino"),
+            1e-9,
+        )
         // An English-flavoured context has no hint → no tie-break anywhere.
         val rockPool = listOf(track("Queen"), track("Queen", "Two"), track("Queen", "Three"))
         val rock = ContextProfile.build(rockPool, mapOf("queen" to "Rock"))!!
         assertNull(rock.languageHint)
-        assertEquals(7.0, ContextProfile.steerTerm(rock, listOf("Bad Bunny"), "urbano latino"), 1e-9)
+        assertEquals(
+            ContextProfile.STEER_MAX,
+            ContextProfile.steerTerm(rock, listOf("Bad Bunny"), "urbano latino"),
+            1e-9,
+        )
     }
 
     @Test
@@ -202,9 +210,9 @@ class ContextProfileTest {
         // quota cannot hand the front of the batch back to what the steer just demoted.
         val p = salsaProfile()
         assertTrue(ContextProfile.blocksExploration(ContextProfile.steerTerm(p, listOf("Queen"), "rock"), "rock"))
-        // Also when the weak Spanish tie-break softens it (+6 - 1 = +5) — still a known wrong genre.
+        // Also when the weak Spanish tie-break softens it (STEER_MAX - 1) — still a known wrong genre.
         val softened = ContextProfile.steerTerm(p, listOf("Bad Bunny"), "urbano latino")
-        assertEquals(5.0, softened, 1e-9)
+        assertEquals(ContextProfile.STEER_MAX - 1.0, softened, 1e-9)
         assertTrue(ContextProfile.blocksExploration(softened, "urbano latino"))
     }
 

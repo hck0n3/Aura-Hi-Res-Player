@@ -206,7 +206,7 @@ class HomeViewModel @Inject constructor(
         val rnd = java.util.Random()
         // Precompute the key ONCE per item — rnd inside the comparator would be inconsistent between
         // comparisons and crash TimSort ("Comparison method violates its general contract").
-        val scored = map { it to (p.score(it) + rnd.nextDouble() * 0.2) }.sortedByDescending { it.second }
+        val scored = map { it to (p.score(it) + rnd.nextDouble() * 0.08) }.sortedByDescending { it.second }
         // Diversity re-rank (MMR-lite): keep taste order but greedily spread artists so a shelf doesn't tunnel
         // into a single artist/genre (filter-bubble). Each already-placed artist adds a penalty to its next
         // song. O(n^2) — only worth it for shelf-sized lists; large lists keep the plain taste sort.
@@ -247,7 +247,7 @@ class HomeViewModel @Inject constructor(
     private fun List<com.music.innertube.models.YTItem>.rankedByTasteYt(): List<com.music.innertube.models.YTItem> {
         if (tasteProfile == null) return shuffled()
         val rnd = java.util.Random()
-        return map { it to (tasteScoreYt(it) + rnd.nextDouble() * 0.2) }
+        return map { it to (tasteScoreYt(it) + rnd.nextDouble() * 0.08) }
             .sortedByDescending { it.second }
             .map { it.first }
     }

@@ -30,13 +30,13 @@ object ContextProfile {
     const val MIN_KNOWN_ARTISTS = 3
 
     /** Bounds of [steerTerm] — an additive nudge on a positional sort key, same class as the existing
-     *  soft "Menos de esto" push (+6) and the capped taste pull (8). Index must stay dominant. */
-    const val STEER_MIN = -5.0
-    const val STEER_MAX = 6.0
+     *  soft "Menos de esto" push (+6) and the capped taste pull. Index must stay dominant. */
+    const val STEER_MIN = -5.5
+    const val STEER_MAX = 8.0
 
     private const val ARTIST_PULL = -4.5
     private const val GENRE_PULL_SCALE = -5.5
-    private const val OFF_GENRE_PUSH = 7.0
+    private const val OFF_GENRE_PUSH = 8.0
     private const val LANGUAGE_TIEBREAK = -1.0
 
     /**

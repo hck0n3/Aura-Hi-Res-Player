@@ -1,34 +1,23 @@
-# Aura Hi-Res Player 0.6.153
+# Aura Hi-Res Player 0.6.154
 
-Actualizaciones a la vista en Ajustes, aviso y salto directo cuando hay versión nueva, carruseles más fluidos, portadas siempre en búsqueda, letras sincronizadas más suaves y «Tu biblioteca» en artistas con canciones que solo tenías en Me gusta.
+Transiciones sin bajones de volumen, un solo nivel de referencia, y cola inteligente más asertiva al gusto.
 
 ---
 
-## 🔔 Actualizaciones
+## 🎚️ Transiciones y volumen
 
-- En Ajustes, **Actualizaciones** aparece arriba (grupo propio), sin esconderse en Cuentas.
-- Si hay una versión nueva: **notificación** y la app **abre** la pantalla de actualización.
-- Tocar la notificación también lleva a esa pantalla.
+- Corregido: Safe Volume del tema actual **ya no pisa** el nivel de la siguiente canción precargada (eso provocaba cortes o bajones al cruzar).
+- El crossfade usa **un solo volumen** (el de la app), no el nivel accidental del ExoPlayer.
+- Si la transición no puede mezclar a tiempo: se libera el secundario y se restaura el volumen; precarga 3 s antes.
 
-## 🎠 Carruseles
+## 🎯 Predicción / cola inteligente
 
-- Desplazamiento más fluido en estanterías de Inicio (incl. hermanas de Para ti) y en búsqueda: más inercia y encaje suave a la tarjeta.
+- Más peso al gusto (artistas/géneros ancla) frente a lo genérico de YouTube.
+- Menos exploración aleatoria (~1 de cada 15 en vez de ~1 de 10).
+- Anti-deriva de género más fuerte en el contexto de la lista que acabas de terminar.
+- Inicio: menos “ruido” al ordenar por gusto.
 
-## 🖼️ Portadas en búsqueda
+## 📦 Del 0.6.153
 
-- Los resultados sin miniatura de YouTube **ya no se tiran**: se usa portada de respaldo (i.ytimg o degradado Aura).
-- Podcasts y filas de resultados siempre muestran portada.
-
-## 🎤 Letras
-
-- El scroll de la línea actual ya no se atasca en animaciones de 1,5 s: sigue el tempo de la canción con desplazamiento suave.
-
-## 🎤 Artista · Tu biblioteca
-
-- Las canciones solo en **Me gusta** (sincronizadas de YTM sin `inLibrary`) vuelven a salir en **Tu biblioteca**.
-- También une el canal de YouTube con el artista local del mismo nombre, para no perder favoritos por ID distinto.
-
-## 📦 Del 0.6.152
-
-- Exportar a MP3 activado de fábrica y carpeta la primera vez.
-- Lista de exportación otra vez con cristal translúcido.
+- Actualizaciones visibles + aviso y salto a la pantalla de update.
+- Carruseles más fluidos, portadas en búsqueda, letras más suaves, Tu biblioteca con Me gusta.

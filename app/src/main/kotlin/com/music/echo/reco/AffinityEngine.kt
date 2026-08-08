@@ -260,8 +260,8 @@ class TasteProfile internal constructor(
 
     companion object {
         const val AVOID = -1_000_000.0
-        private const val LANE_BONUS = 0.3
-        private const val LIKE_BONUS = 0.3
-        private const val GENRE_BONUS = 0.4
+        private const val LANE_BONUS = 0.4
+        private const val LIKE_BONUS = 0.35
+        private const val GENRE_BONUS = 0.55
     }
 }

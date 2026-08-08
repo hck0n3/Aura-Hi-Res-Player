@@ -4291,13 +4291,10 @@ class MusicService :
             }
             // Lower key = earlier. `index` (relatedness rank) DOMINATES; taste/co-rel only NUDGE a song up a few
             // spots and jitter adds variety — relatedness stays the backbone.
-            // Registry #25: the `index` rank stays dominant and taste's coefficient (4.0) is unchanged. #5 adds a
-            // co-rel pull, #7 a soft push; CAP the combined forward (taste+coRel) pull at 8 so a favorite +
-            // highly-co-related song stays a NUDGE (not a scramble) even on a short ~12-item page. The context
-            // term `ctx` is additive and clamped ([-4, +6] — ContextProfile.STEER_MIN/STEER_MAX) so it can only
-            // nudge within the same few-spot class, never re-sort the batch.
-            val jitter = if (p == null) 0.0 else rnd.nextDouble() * 1.5
-            val pull = (taste * 4.0 + coRel * 2.0).coerceAtMost(8.0)
+            // Assertiveness (owner): taste weight raised so anchor artists/genres win more often against
+            // raw YouTube relatedness, still capped so a favorite cannot scramble a short page.
+            val jitter = if (p == null) 0.0 else rnd.nextDouble() * 1.0
+            val pull = (taste * 5.5 + coRel * 2.5).coerceAtMost(10.0)
             // See [deprioritized]: dominates every other term so a sunk off-context candidate can never be
             // lifted back into the head by the pull cap or the exploration quota.
             val sunk = if (m != null && m.id in deprioritized) 1000.0 else 0.0
@@ -4361,10 +4358,10 @@ class MusicService :
     }
 
     /**
-     * Phase B #4 — exploration quota. Reserve roughly every 8th slot for a "fresh" candidate: one whose primary
+     * Phase B #4 — exploration quota. Reserve roughly every 15th slot for a "fresh" candidate: one whose primary
      * artist is NOT already in the taste profile ([iad1tya.echo.music.reco.TasteProfile.isKnownArtist]), so radio
-     * doesn't tunnel into pure exploitation of artists you already know — but far less often than the old
-     * 1-in-5 cadence that made context-faithful radio feel random. Never drops or duplicates anything —
+     * doesn't tunnel into pure exploitation — but far less often than the old 1-in-5 / 1-in-10 cadences that made
+     * context-faithful radio feel random. Never drops or duplicates anything —
      * output length == input length, and each partition keeps its incoming (taste/relatedness) order. Null profile
      * (no taste yet), lists under 8, or no fresh/known split → returns the list unchanged (today's behaviour).
      * In-memory only, no network, no extra cost.
@@ -4404,7 +4401,7 @@ class MusicService :
         val fi = fresh.iterator()
         var pos = 0
         while (ki.hasNext() || fi.hasNext()) {
-            val takeFresh = pos % 10 == 9 && fi.hasNext()
+            val takeFresh = pos % 15 == 14 && fi.hasNext()
             out.add(if (takeFresh) fi.next() else if (ki.hasNext()) ki.next() else fi.next())
             pos++
         }
@@ -4879,11 +4876,12 @@ class MusicService :
                             safeVol,
                             if (safeVol) targetGain * targetMakeup else 1f,
                         )
-                        // Keep BOTH players in step: if a fade is running, the other one must move to this
-                        // same gain too, or the blend holds two different levels for the same moment.
-                        secondaryPlayer?.let {
-                            playerEqProcessors[it]?.applySafeVolume(safeVol, if (safeVol) targetGain * targetMakeup else 1f)
-                        }
+                        // Do NOT push THIS track's Safe Volume onto secondaryPlayer. The secondary is
+                        // pre-leveled for the NEXT song (prepareSecondaryPlayer); stomping it with the
+                        // current track's gain made the incoming fade start at the wrong level and then
+                        // snap/correct at swap — heard as a sudden volume drop or jump mid-transition.
+                        // During an active fade secondaryPlayer is already null; fadingPlayer keeps its
+                        // own pin from performCrossfadeSwap.
                         lastNormalizedId = currentMediaId
                         lastNormalizedHadLoudness = hasRealLoudness
 
@@ -9866,7 +9864,7 @@ class MusicService :
             while (isActive && secPlayer.playbackState != Player.STATE_READY) {
                 val dur = player.duration
                 val remaining = if (dur == C.TIME_UNSET) 0L else dur - player.currentPosition
-                if (remaining <= 800L) break
+                if (remaining <= 1200L) break
                 if (!player.isPlaying || player.currentMediaItem?.mediaId != targetMediaId) break
                 delay(50)
                 waited += 50
@@ -9881,7 +9879,32 @@ class MusicService :
             } else {
                 // Single-player path will hard-cut — make the failure VISIBLE in the shareable log.
                 traceCrossfade("cut-not-ready", "waited=${waited}ms incoming never READY (slow resolve/buffer)")
+                // Don't leave a half-buffered secondary (volume 0) or a ducked Exo volume behind the cut:
+                // the hard advance must sound at the user's single volume target.
+                runCatching {
+                    if (::playerVolume.isInitialized) {
+                        player.volume = if (isMuted.value) 0f else playerVolume.value
+                    }
+                }
+                releaseCrossfadeSecondary("cut-not-ready")
             }
+        }
+    }
+
+    /** Tear down a preloaded secondary that will not be used for a blend (cut-not-ready, cancel, etc.). */
+    private fun releaseCrossfadeSecondary(reason: String) {
+        val sec = secondaryPlayer ?: return
+        secondaryPlayer = null
+        secondaryTimelineVersion = -1L
+        runCatching {
+            playerSilenceProcessors.remove(sec)
+            playerNormProcessors.remove(sec)
+            playerLimiterProcessors.remove(sec)
+            playerEqProcessors.remove(sec)?.let { eq -> equalizerService.removeAudioProcessor(eq) }
+            sec.stop()
+            sec.release()
+        }.onFailure { e ->
+            Timber.tag(TAG).w(e, "crossfade: release secondary failed ($reason)")
         }
     }
 
@@ -10291,7 +10314,15 @@ class MusicService :
             val durOut = minOf(configured, (fpRemaining - 250L).coerceAtLeast(600L))
             val durIn = configured
             val curve = try { dataStore.get(CrossfadeCurveKey, 4) } catch (e: Exception) { 4 }
-            val startVolume = try { fadingPlayer?.volume ?: 1f } catch(e:Exception) { 1f }
+            // Single volume reference: the user's in-app level (playerVolume), never whatever Exo
+            // happened to hold (a ducked focus, a cancelled fade-in, or a stomped secondary). Both
+            // ramps and the finally-restore use the same target so the blend can't land quieter/louder
+            // than the rest of the session.
+            val startVolume = when {
+                !::playerVolume.isInitialized -> 1f
+                isMuted.value -> 0f
+                else -> playerVolume.value.coerceIn(0f, 1f)
+            }
             // Because LUFS Normalization is fixed and active, tracks play at roughly -14 LUFS,
             // leaving massive natural headroom. Thus, two tracks summing during an equal-power crossfade
             // will NEVER clip the Android mixer (they'll sum to ~-11 LUFS). We can safely remove the
@@ -10514,7 +10545,8 @@ class MusicService :
         // One-shot delay before the dead-end safety re-check (covers a stable network that never re-emits).
         private const val DEAD_END_RECHECK_MS = 45_000L
         // How early (ms before the fade) to build + buffer the incoming player so the crossfade has no gap.
-        private const val CROSSFADE_PRELOAD_LEAD_MS = 12000L
+        // 15s gives slow Lossless/resolve paths enough runway to reach READY before the fade window.
+        private const val CROSSFADE_PRELOAD_LEAD_MS = 15000L
         // Max time to wait for a LATE-ARMED / not-yet-buffered incoming player to reach STATE_READY before the
         // fade swaps. The outgoing has ~crossfadeDuration of runway from the trigger, so this stays well within
         // it; if READY isn't reached in time, we fall back to a clean single-player hard cut (no clipped pop-in).
