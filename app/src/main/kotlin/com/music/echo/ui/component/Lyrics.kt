@@ -164,6 +164,7 @@ import iad1tya.echo.music.constants.DeeplFormalityKey
 import iad1tya.echo.music.constants.PlayerBackgroundStyleKey
 import iad1tya.echo.music.db.entities.LyricsEntity.Companion.LYRICS_NOT_FOUND
 import iad1tya.echo.music.lyrics.LyricsEntry
+import iad1tya.echo.music.lyrics.LyricsUtils
 import iad1tya.echo.music.lyrics.LyricsUtils.findCurrentLineIndex
 import iad1tya.echo.music.lyrics.LyricsUtils.isBelarusian
 import iad1tya.echo.music.lyrics.LyricsUtils.isBulgarian
@@ -377,8 +378,14 @@ fun Lyrics(
     val lines = remember(lyrics, scope) {
         if (lyrics == null || lyrics == LYRICS_NOT_FOUND) {
             emptyList()
-        } else if (lyrics.startsWith("[")) {
-            val parsedLines = parseLyrics(lyrics)
+        } else {
+            // WRONG-SYNC FIX: do NOT use startsWith("["). Plaintext with "[Verse 1]" / "[Chorus]"
+            // headers used to enter the timed path, parse to ZERO lines (+ empty HEAD), and still
+            // mark isSynced=true — blank panel / desynced scroll while the song played. Only a real
+            // LRC head (same rule as LyricsHelper) + a non-empty parse counts as timed; otherwise
+            // fall through to the plaintext renderer so the words still appear.
+            val parsedLines = if (LyricsUtils.isTimedLyrics(lyrics)) parseLyrics(lyrics) else emptyList()
+            if (parsedLines.isNotEmpty()) {
 
             val isRussianLyrics = romanizeRussianLyrics && !romanizeCyrillicByLine && isRussian(lyrics)
             val isUkrainianLyrics = romanizeUkrainianLyrics && !romanizeCyrillicByLine && isUkrainian(lyrics)
@@ -467,7 +474,7 @@ fun Lyrics(
             }.let {
                 listOf(LyricsEntry.HEAD_LYRICS_ENTRY) + it
             }
-        } else {
+            } else {
             val isRussianLyrics = romanizeRussianLyrics && !romanizeCyrillicByLine && isRussian(lyrics)
             val isUkrainianLyrics = romanizeUkrainianLyrics && !romanizeCyrillicByLine && isUkrainian(lyrics)
             val isSerbianLyrics = romanizeSerbianLyrics && !romanizeCyrillicByLine && isSerbian(lyrics)
@@ -553,11 +560,16 @@ fun Lyrics(
 
                 newEntry
             }
+            }
         }
     }
+    // Timed only when we actually have parsed LRC lines (HEAD + ≥1). startsWith("[") was a false
+    // positive for "[Verse 1]" plaintext and for timed-looking lyrics the old regex failed to parse.
     val isSynced =
-        remember(lyrics) {
-            !lyrics.isNullOrEmpty() && lyrics.startsWith("[")
+        remember(lyrics, lines) {
+            !lyrics.isNullOrEmpty() &&
+                LyricsUtils.isTimedLyrics(lyrics) &&
+                lines.size > 1
         }
 
     
@@ -868,8 +880,8 @@ fun Lyrics(
         selectedIndices.clear()
     }
 
-    LaunchedEffect(lyrics) {
-        if (lyrics.isNullOrEmpty() || !lyrics.startsWith("[")) {
+    LaunchedEffect(lyrics, isSynced) {
+        if (!isSynced) {
             currentLineIndex = -1
             return@LaunchedEffect
         }

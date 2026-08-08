@@ -6,6 +6,8 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.ConnectivityManager
 import android.net.Uri
 import android.os.Build
@@ -17,6 +19,12 @@ import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
 import androidx.documentfile.provider.DocumentFile
+import coil3.imageLoader
+import coil3.request.ErrorResult
+import coil3.request.ImageRequest
+import coil3.request.SuccessResult
+import coil3.request.allowHardware
+import coil3.toBitmap
 import com.arthenica.ffmpegkit.FFmpegKit
 import com.arthenica.ffmpegkit.ReturnCode
 import com.music.innertube.YouTube
@@ -24,6 +32,7 @@ import iad1tya.echo.music.R
 import iad1tya.echo.music.constants.AudioQuality
 import iad1tya.echo.music.constants.ExportingSongIdsKey
 import iad1tya.echo.music.constants.ExportedSongIdsKey
+import iad1tya.echo.music.ui.utils.resize
 import iad1tya.echo.music.utils.YTPlayerUtils
 import iad1tya.echo.music.utils.dataStore
 import androidx.datastore.preferences.core.edit
@@ -38,6 +47,8 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
+import java.net.HttpURLConnection
+import java.net.URL
 
 class AudioExportService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -150,29 +161,46 @@ class AudioExportService : Service() {
                 error("Incomplete export source: wrote $bytesWritten of $totalBytes bytes")
             }
 
-            val artworkDownloaded = artworkUrl.isNotBlank() && runCatching {
-                httpClient.newCall(Request.Builder().url(artworkUrl).build()).execute().use { response ->
-                    if (!response.isSuccessful) return@use
-                    response.body?.byteStream()?.use { input ->
-                        tempArtworkFile.outputStream().use { output ->
-                            input.copyTo(output)
-                            output.flush()
-                        }
-                    }
-                }
-            }.isSuccess && tempArtworkFile.length() > 0L
-
-            val ffmpegCommand = buildFfmpegCommand(
-                inputPath = tempSourceFile.absolutePath,
-                outputPath = tempMp3File.absolutePath,
-                title = songTitle,
-                artist = songArtist,
-                album = songAlbum,
-                year = year,
-                coverPath = if (artworkDownloaded) tempArtworkFile.absolutePath else null,
+            // Cover must be a real JPEG APIC for gallery/file-manager players. Raw OkHttp on the
+            // thumbnail URL silently skipped localaudioart:/content URIs and left WebP bytes that
+            // many players ignore — so exports often had title tags but no visible cover.
+            val artworkDownloaded = prepareCoverJpeg(
+                songId = songId,
+                artworkUrl = artworkUrl,
+                destFile = tempArtworkFile,
             )
-            val session = FFmpegKit.execute(ffmpegCommand)
-            val returnCode = session.returnCode
+
+            val coverPath = if (artworkDownloaded) tempArtworkFile.absolutePath else null
+            var session = FFmpegKit.execute(
+                buildFfmpegCommand(
+                    inputPath = tempSourceFile.absolutePath,
+                    outputPath = tempMp3File.absolutePath,
+                    title = songTitle,
+                    artist = songArtist,
+                    album = songAlbum,
+                    year = year,
+                    coverPath = coverPath,
+                ),
+            )
+            var returnCode = session.returnCode
+            // If embedding the cover breaks the mux (odd image decode edge), still ship the MP3
+            // with ID3 text tags rather than failing the whole export.
+            if ((returnCode == null || !ReturnCode.isSuccess(returnCode)) && coverPath != null) {
+                Log.w(TAG, "FFmpeg cover embed failed; retrying metadata-only")
+                tempMp3File.delete()
+                session = FFmpegKit.execute(
+                    buildFfmpegCommand(
+                        inputPath = tempSourceFile.absolutePath,
+                        outputPath = tempMp3File.absolutePath,
+                        title = songTitle,
+                        artist = songArtist,
+                        album = songAlbum,
+                        year = year,
+                        coverPath = null,
+                    ),
+                )
+                returnCode = session.returnCode
+            }
             if (returnCode == null || !ReturnCode.isSuccess(returnCode)) {
                 error("FFmpeg failed: ${session.output}")
             }
@@ -303,7 +331,91 @@ class AudioExportService : Service() {
         }
     }
 
+    /**
+     * Resolve artwork (http(s), content://, localaudioart:, Coil-cached) into a software JPEG on disk
+     * suitable for ID3 APIC. Tries a hi-res resize first, then the raw URL, then the YouTube sddefault
+     * fallback for video ids. Returns false when no candidate can be decoded — caller still exports
+     * audio + text tags.
+     */
+    private suspend fun prepareCoverJpeg(
+        songId: String,
+        artworkUrl: String,
+        destFile: File,
+    ): Boolean {
+        val candidates = buildList {
+            val trimmed = artworkUrl.trim()
+            if (trimmed.isNotBlank()) {
+                if (trimmed.startsWith("http", ignoreCase = true)) {
+                    add(trimmed.resize(COVER_PX, COVER_PX))
+                }
+                add(trimmed)
+            }
+            // YouTube / YTM video ids — covers radio/queue rows that never persisted a thumbnailUrl.
+            if (songId.matches(YOUTUBE_VIDEO_ID)) {
+                add("https://i.ytimg.com/vi/$songId/sddefault.jpg")
+            }
+        }.distinct()
+
+        for (candidate in candidates) {
+            val bitmap = loadArtworkBitmap(candidate) ?: continue
+            val ok = runCatching {
+                destFile.outputStream().use { out ->
+                    // JPEG (not WebP/PNG) so file managers and car stereos show the APIC frame.
+                    bitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
+                    out.flush()
+                }
+                destFile.length() > 0L
+            }.getOrDefault(false)
+            if (ok) return true
+            runCatching { destFile.writeBytes(ByteArray(0)) }
+        }
+        return false
+    }
+
+    private suspend fun loadArtworkBitmap(model: String): Bitmap? {
+        val coilBitmap = runCatching {
+            val request = ImageRequest.Builder(this)
+                .data(model)
+                .size(COVER_PX, COVER_PX)
+                .allowHardware(false)
+                .build()
+            when (val result = imageLoader.execute(request)) {
+                is SuccessResult -> result.image.toBitmap()
+                is ErrorResult -> null
+            }
+        }.getOrNull()
+        if (coilBitmap != null) return coilBitmap
+
+        // Direct fetch when Coil's loader is not ready in this service context (same pattern as
+        // CoilBitmapLoader). Handles http(s) and content:// only — localaudioart: stays Coil-only.
+        return runCatching {
+            val uri = Uri.parse(model)
+            when (uri.scheme?.lowercase()) {
+                "http", "https" -> {
+                    val conn = (URL(model).openConnection() as HttpURLConnection).apply {
+                        connectTimeout = 10_000
+                        readTimeout = 10_000
+                        doInput = true
+                        // Some CDNs serve a tiny placeholder without a browser-like UA.
+                        setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14)")
+                    }
+                    try {
+                        conn.inputStream.use { BitmapFactory.decodeStream(it) }
+                    } finally {
+                        conn.disconnect()
+                    }
+                }
+                "content", "file" -> {
+                    contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
+                }
+                else -> null
+            }
+        }.getOrNull()
+    }
+
     companion object {
+        private val YOUTUBE_VIDEO_ID = Regex("^[\\w-]{11}$")
+        private const val COVER_PX = 1200
         private const val TAG = "AudioExportService"
         private const val CHANNEL_ID = "audio_export"
         private const val NOTIFICATION_ID = 0xE5A0
@@ -358,13 +470,26 @@ class AudioExportService : Service() {
             val titleMeta = title.ffmpegEscape()
             val artistMeta = artist.ffmpegEscape()
             val albumMeta = album.ffmpegEscape()
+            val albumArtistMeta = artistMeta
             val yearMeta = year?.toString()?.ffmpegEscape()
             val dateFlags = if (yearMeta != null) " -metadata date='$yearMeta' -metadata year='$yearMeta'" else ""
+            val textTags =
+                "-metadata title='$titleMeta' -metadata artist='$artistMeta' " +
+                    "-metadata album='$albumMeta' -metadata album_artist='$albumArtistMeta'" +
+                    dateFlags
             return if (coverPath != null) {
                 val escapedCover = coverPath.ffmpegEscape()
-                "-y -i '$escapedInput' -i '$escapedCover' -map 0:a -map 1:v -c:v mjpeg -disposition:v attached_pic -c:a libmp3lame -b:a 320k -id3v2_version 3 -metadata title='$titleMeta' -metadata artist='$artistMeta' -metadata album='$albumMeta'$dateFlags -metadata:s:v title='Album cover' -metadata:s:v comment='Cover (front)' '$escapedOutput'"
+                // map 1:0 (still image) + disposition:v:0 attached_pic → ID3 APIC "Cover (front)".
+                // write_id3v1 keeps title/artist visible on older file managers.
+                "-y -i '$escapedInput' -i '$escapedCover' -map 0:a:0 -map 1:0 " +
+                    "-c:a libmp3lame -b:a 320k -c:v mjpeg " +
+                    "-disposition:v:0 attached_pic -id3v2_version 3 -write_id3v1 1 " +
+                    "$textTags " +
+                    "-metadata:s:v:0 title='Album cover' -metadata:s:v:0 comment='Cover (front)' " +
+                    "'$escapedOutput'"
             } else {
-                "-y -i '$escapedInput' -c:a libmp3lame -b:a 320k -id3v2_version 3 -metadata title='$titleMeta' -metadata artist='$artistMeta' -metadata album='$albumMeta'$dateFlags '$escapedOutput'"
+                "-y -i '$escapedInput' -map 0:a:0 -c:a libmp3lame -b:a 320k " +
+                    "-id3v2_version 3 -write_id3v1 1 $textTags '$escapedOutput'"
             }
         }
 

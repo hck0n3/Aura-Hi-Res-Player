@@ -238,8 +238,10 @@ import iad1tya.echo.music.utils.isLocalMediaId
 import iad1tya.echo.music.utils.rememberEnumPreference
 import iad1tya.echo.music.utils.rememberPreference
 import dagger.hilt.android.EntryPointAccessors
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -3576,22 +3578,35 @@ fun InlineLyricsView(
     val coroutineScope = rememberCoroutineScope()
 
     LaunchedEffect(mediaMetadata?.id, currentLyrics) {
-        if (mediaMetadata != null && currentLyrics == null) {
-            delay(500)
-            withContext(Dispatchers.IO) {
-                try {
-                    val entryPoint = EntryPointAccessors.fromApplication(
-                        context.applicationContext,
-                        iad1tya.echo.music.di.LyricsHelperEntryPoint::class.java
+        val requested = mediaMetadata ?: return@LaunchedEffect
+        if (currentLyrics != null) return@LaunchedEffect
+        delay(500)
+        // Song may have changed during the delay — effect is cancelled on id change; this
+        // guard covers the window between delay wake and the next cancellation delivery.
+        if (mediaMetadata?.id != requested.id) return@LaunchedEffect
+        withContext(Dispatchers.IO) {
+            try {
+                val entryPoint = EntryPointAccessors.fromApplication(
+                    context.applicationContext,
+                    iad1tya.echo.music.di.LyricsHelperEntryPoint::class.java
+                )
+                val lyricsHelper = entryPoint.lyricsHelper()
+                val fetchedLyricsWithProvider = lyricsHelper.getLyrics(requested)
+                // Structured cancel: if the user skipped mid-fetch, do not write the result.
+                ensureActive()
+                database.query {
+                    upsert(
+                        LyricsEntity(
+                            id = requested.id,
+                            lyrics = fetchedLyricsWithProvider.lyrics,
+                            provider = fetchedLyricsWithProvider.provider,
+                        ),
                     )
-                    val lyricsHelper = entryPoint.lyricsHelper()
-                    val fetchedLyricsWithProvider = lyricsHelper.getLyrics(mediaMetadata)
-                    database.query {
-                        upsert(LyricsEntity(mediaMetadata.id, fetchedLyricsWithProvider.lyrics, fetchedLyricsWithProvider.provider))
-                    }
-                } catch (e: Exception) {
-                    timber.log.Timber.e(e, "Lyrics fetch/save failed")
                 }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                timber.log.Timber.e(e, "Lyrics fetch/save failed")
             }
         }
     }
