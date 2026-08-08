@@ -49,6 +49,21 @@ jobs:
         languages: ${{ matrix.language }}
         build-mode: ${{ matrix.build-mode }}
 
+    # Same as test-build.yml: ubuntu runners have no ~/.android/debug.keystore, and
+    # app/build.gradle.kts debug signingConfig points there → validateSigning fails
+    # otherwise (CodeQL has been red on main for every recent release for this reason alone).
+    - name: Ensure Android debug keystore
+      if: matrix.build-mode == 'manual'
+      run: |
+        mkdir -p ~/.android
+        if [ ! -f ~/.android/debug.keystore ]; then
+          keytool -genkeypair -v -keystore ~/.android/debug.keystore \
+            -storepass android -keypass android -alias androiddebugkey \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -dname "CN=Android Debug,O=Android,C=US"
+          echo "Generated standard Android debug keystore."
+        fi
+
     - name: Run manual build steps
       if: matrix.build-mode == 'manual'
       shell: bash
