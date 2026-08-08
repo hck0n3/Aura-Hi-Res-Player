@@ -2,6 +2,12 @@ package iad1tya.echo.music.ui.newui
 
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.gestures.FlingBehavior
+import androidx.compose.foundation.gestures.snapping.SnapPosition
+import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
@@ -52,4 +58,20 @@ object AuraMotion {
     val intSize get() = standard<IntSize>()
     val tint get() = color<Color>()
     val pressFloat get() = press<Float>()
+}
+
+/**
+ * Soft snap for Aura horizontal shelves (Inicio + búsqueda). Aligns to the start of each card so a
+ * flick settles cleanly instead of stopping mid-gap — the "más fluido" feel without inventing a
+ * third motion dialect.
+ */
+@Composable
+fun rememberAuraShelfFlingBehavior(
+    state: LazyListState = rememberLazyListState(),
+): Pair<LazyListState, FlingBehavior> {
+    val fling = rememberSnapFlingBehavior(
+        lazyListState = state,
+        snapPosition = SnapPosition.Start,
+    )
+    return state to fling
 }

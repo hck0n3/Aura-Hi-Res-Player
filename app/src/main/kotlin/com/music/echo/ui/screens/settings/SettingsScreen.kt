@@ -166,6 +166,19 @@ fun SettingsScreen(
         )
 
         val itemsList = buildList {
+            // Updates first so the row is always visible without scrolling past accounts/appearance.
+            if (updateText.lowercase().contains(searchLower) ||
+                searchLower.contains("actualiz")
+            ) {
+                add(
+                    Material3SettingsItem(
+                        icon = painterResource(R.drawable.download),
+                        title = { Text(updateText) },
+                        description = { Text("Cambios de esta versión y nuevas actualizaciones") },
+                        onClick = { navController.navigate("settings/update") }
+                    )
+                )
+            }
             if (showSubscribeEntry && subscribeText.lowercase().contains(searchLower)) {
                 add(
                     Material3SettingsItem(
@@ -201,16 +214,6 @@ fun SettingsScreen(
                         icon = painterResource(R.drawable.palette),
                         title = { Text(appearanceText) },
                         onClick = { navController.navigate("settings/appearance") }
-                    )
-                )
-            }
-            if (updateText.lowercase().contains(searchLower)) {
-                add(
-                    Material3SettingsItem(
-                        icon = painterResource(R.drawable.download),
-                        title = { Text(updateText) },
-                        description = { Text("Cambios de esta versión y nuevas actualizaciones") },
-                        onClick = { navController.navigate("settings/update") }
                     )
                 )
             }

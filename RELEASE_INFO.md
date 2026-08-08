@@ -1,18 +1,34 @@
-# Aura Hi-Res Player 0.6.152
+# Aura Hi-Res Player 0.6.153
 
-Exportar a MP3 activado de fábrica, permiso de carpeta la primera vez, y la lista de canciones a exportar otra vez con cristal translúcido.
+Actualizaciones a la vista en Ajustes, aviso y salto directo cuando hay versión nueva, carruseles más fluidos, portadas siempre en búsqueda, letras sincronizadas más suaves y «Tu biblioteca» en artistas con canciones que solo tenías en Me gusta.
 
 ---
 
-## 📤 Exportar a MP3
+## 🔔 Actualizaciones
 
-- La opción **Exportar como MP3** viene **activada** (también en esta actualización).
-- La primera vez que exportas, Aura **pide acceso a una carpeta** del almacenamiento (selector del sistema) y la recuerda.
-- En Android antiguos también puede pedir el permiso de escritura antes del selector.
-- La lista para elegir canciones vuelve a ser **placa esmerilada translúcida** (se ve lo de atrás), no una tarjeta Material opaca.
+- En Ajustes, **Actualizaciones** aparece arriba (grupo propio), sin esconderse en Cuentas.
+- Si hay una versión nueva: **notificación** y la app **abre** la pantalla de actualización.
+- Tocar la notificación también lleva a esa pantalla.
 
-## 🎛️ Del 0.6.151
+## 🎠 Carruseles
 
-- Aviso de batería solo la primera vez.
-- Letras sincronizadas + traducción automática al español latinoamericano.
-- Portada siempre (nunca hueco vacío).
+- Desplazamiento más fluido en estanterías de Inicio (incl. hermanas de Para ti) y en búsqueda: más inercia y encaje suave a la tarjeta.
+
+## 🖼️ Portadas en búsqueda
+
+- Los resultados sin miniatura de YouTube **ya no se tiran**: se usa portada de respaldo (i.ytimg o degradado Aura).
+- Podcasts y filas de resultados siempre muestran portada.
+
+## 🎤 Letras
+
+- El scroll de la línea actual ya no se atasca en animaciones de 1,5 s: sigue el tempo de la canción con desplazamiento suave.
+
+## 🎤 Artista · Tu biblioteca
+
+- Las canciones solo en **Me gusta** (sincronizadas de YTM sin `inLibrary`) vuelven a salir en **Tu biblioteca**.
+- También une el canal de YouTube con el artista local del mismo nombre, para no perder favoritos por ID distinto.
+
+## 📦 Del 0.6.152
+
+- Exportar a MP3 activado de fábrica y carpeta la primera vez.
+- Lista de exportación otra vez con cristal translúcido.

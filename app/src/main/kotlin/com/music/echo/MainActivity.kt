@@ -185,6 +185,7 @@ import iad1tya.echo.music.echomusic.updater.getAutoUpdateCheckSetting
 import iad1tya.echo.music.echomusic.updater.isNewerVersion
 import iad1tya.echo.music.echomusic.updater.saveUpdateAvailableState
 import iad1tya.echo.music.echomusic.updater.getUpdateNotificationsSetting
+import androidx.datastore.preferences.core.edit
 import android.util.Log
 import androidx.compose.ui.platform.LocalContext
 import iad1tya.echo.music.constants.OfflineModeKey
@@ -307,6 +308,9 @@ class MainActivity : ComponentActivity() {
         private const val ACTION_OPEN_WIDGET_TARGET = "iad1tya.echo.music.action.OPEN_WIDGET_TARGET"
         private const val EXTRA_WIDGET_TARGET_TYPE = "extra_widget_target_type"
         private const val EXTRA_WIDGET_TARGET_ID = "extra_widget_target_id"
+        /** Notification / in-app redirect: open Ajustes ▸ Actualizaciones. */
+        const val EXTRA_OPEN_UPDATE = "extra_open_update"
+        const val EXTRA_UPDATE_TAG = "extra_update_tag"
     }
 
     override fun attachBaseContext(newBase: Context) {
@@ -1321,6 +1325,84 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
+                // When a newer release is on GitHub: notify (once per tag) and open the update screen
+                // so the user never has to dig for it. Skipped while welcome/changelog is due this launch.
+                LaunchedEffect(Unit) {
+                    if (welcomeWillShow || showWelcomeDialog) return@LaunchedEffect
+                    if (!getAutoUpdateCheckSetting(this@MainActivity)) return@LaunchedEffect
+                    kotlinx.coroutines.delay(2200)
+                    val deferred = kotlinx.coroutines.CompletableDeferred<Pair<Boolean, String>>()
+                    checkForUpdate(
+                        context = this@MainActivity,
+                        onSuccess = { tag, isAvailable, _, _, _, _, _, _, _ ->
+                            deferred.complete(isAvailable to tag)
+                        },
+                        onError = { deferred.complete(false to "") },
+                    )
+                    val (available, tag) = deferred.await()
+                    if (!available || tag.isBlank()) return@LaunchedEffect
+                    saveUpdateAvailableState(this@MainActivity, true)
+                    if (getUpdateNotificationsSetting(this@MainActivity)) {
+                        val last = context.dataStore
+                            .get(iad1tya.echo.music.constants.LastUpdateNotifiedTagKey, "")
+                        if (tag != last) {
+                            val nm = getSystemService(android.app.NotificationManager::class.java)
+                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                                nm.createNotificationChannel(
+                                    android.app.NotificationChannel(
+                                        "app_updates",
+                                        "Actualizaciones de la app",
+                                        android.app.NotificationManager.IMPORTANCE_DEFAULT,
+                                    ),
+                                )
+                            }
+                            val launchIntent = android.content.Intent(
+                                this@MainActivity,
+                                MainActivity::class.java,
+                            ).apply {
+                                flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK or
+                                    android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP
+                                putExtra(EXTRA_OPEN_UPDATE, true)
+                                putExtra(EXTRA_UPDATE_TAG, tag)
+                            }
+                            val pending = android.app.PendingIntent.getActivity(
+                                this@MainActivity,
+                                2003,
+                                launchIntent,
+                                android.app.PendingIntent.FLAG_UPDATE_CURRENT or
+                                    android.app.PendingIntent.FLAG_IMMUTABLE,
+                            )
+                            val notification = androidx.core.app.NotificationCompat.Builder(
+                                this@MainActivity,
+                                "app_updates",
+                            )
+                                .setSmallIcon(R.drawable.ic_launcher_nobg)
+                                .setContentTitle("Actualización disponible")
+                                .setContentText("Aura Hi-Res Player $tag ya está disponible. Toca para actualizar.")
+                                .setContentIntent(pending)
+                                .setAutoCancel(true)
+                                .build()
+                            if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.TIRAMISU ||
+                                androidx.core.app.ActivityCompat.checkSelfPermission(
+                                    this@MainActivity,
+                                    android.Manifest.permission.POST_NOTIFICATIONS,
+                                ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                            ) {
+                                androidx.core.app.NotificationManagerCompat.from(this@MainActivity)
+                                    .notify(2003, notification)
+                            }
+                            context.dataStore.edit {
+                                it[iad1tya.echo.music.constants.LastUpdateNotifiedTagKey] = tag
+                            }
+                        }
+                    }
+                    runCatching {
+                        navController.navigate("settings/update") {
+                            launchSingleTop = true
+                        }
+                    }
+                }
+
                 DisposableEffect(Unit) {
                     val listener = Consumer<Intent> { intent ->
                         handleDeepLinkIntent(intent, navController)
@@ -2130,6 +2212,19 @@ class MainActivity : ComponentActivity() {
         // was already open. navigateToReentryTarget keeps the cold-start case a no-op AND stops the warm
         // one from wiping the user's chain: it used to popUpTo(startDestination), so tapping a shortcut
         // while three screens deep reset you through Home.
+        // Update notification tap (or an in-app redirect): land on Ajustes ▸ Actualizaciones so the
+        // user does not have to hunt for the download screen.
+        if (intent.getBooleanExtra(EXTRA_OPEN_UPDATE, false)) {
+            intent.removeExtra(EXTRA_OPEN_UPDATE)
+            intent.removeExtra(EXTRA_UPDATE_TAG)
+            runCatching {
+                navController.navigate("settings/update") {
+                    launchSingleTop = true
+                }
+            }
+            return
+        }
+
         if (intent.action == ACTION_SEARCH || intent.action == ACTION_LIBRARY) {
             val route = if (intent.action == ACTION_SEARCH) Screens.Search.route else Screens.Library.route
             intent.action = null

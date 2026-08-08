@@ -14,7 +14,6 @@ import com.music.innertube.models.filterExplicit
 import com.music.innertube.models.filterVideoSongs
 import com.music.innertube.models.filterYoutubeShorts
 import com.music.innertube.pages.ArtistPage
-import iad1tya.echo.music.constants.ArtistSongSortType
 import iad1tya.echo.music.constants.HideExplicitKey
 import iad1tya.echo.music.constants.HideVideoSongsKey
 import iad1tya.echo.music.constants.HideYoutubeShortsKey
@@ -38,6 +37,7 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
@@ -73,24 +73,28 @@ class ArtistViewModel @Inject constructor(
 
     val libraryArtist = database.artist(artistId)
         .stateIn(viewModelScope, SharingStarted.Lazily, null)
-    val librarySongs = context.dataStore.data
-        .map { (it[HideExplicitKey] ?: false) to (it[HideVideoSongsKey] ?: false) }
-        .distinctUntilChanged()
-        .flatMapLatest { (hideExplicit, hideVideoSongs) ->
-            database.artistSongsPreview(artistId).map { it.filterExplicit(hideExplicit).filterVideoSongsLocal(hideVideoSongs) }
-        }
-        .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
-    // FULL local song list for this artist. [librarySongs] above is deliberately a 3-item PREVIEW for the
+    // Display name used to bridge YouTube channel ids and local LA######## artist rows that share a name.
+    // Updated whenever the page (or a local artist row) resolves — empty means id-only matching.
+    private val libraryMatchName = MutableStateFlow("")
+
+    // FULL local song list for this artist. [librarySongs] below is deliberately a 3-item PREVIEW for the
     // shelf, so any action that plays "the artist's songs" (Shuffle / Play all) must read this instead —
     // shuffling the preview could only ever pick from 3 songs.
+    // Includes liked-only songs and same-name artist ids (YTM sync often sets liked without inLibrary).
     val allLibrarySongs = context.dataStore.data
         .map { (it[HideExplicitKey] ?: false) to (it[HideVideoSongsKey] ?: false) }
         .distinctUntilChanged()
-        .flatMapLatest { (hideExplicit, hideVideoSongs) ->
-            database.artistSongs(artistId, ArtistSongSortType.CREATE_DATE, descending = false)
+        .combine(libraryMatchName) { prefs, name -> prefs to name }
+        .flatMapLatest { (prefs, name) ->
+            val (hideExplicit, hideVideoSongs) = prefs
+            database.artistLibraryOrLikedSongs(artistId, name)
                 .map { it.filterExplicit(hideExplicit).filterVideoSongsLocal(hideVideoSongs) }
         }
+        .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
+    val librarySongs = allLibrarySongs
+        .map { it.take(3) }
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     val libraryAlbums = context.dataStore.data
@@ -116,7 +120,12 @@ class ArtistViewModel @Inject constructor(
     }
 
     init {
-        
+        viewModelScope.launch {
+            libraryArtist.collect { row ->
+                val localName = row?.artist?.name?.trim().orEmpty()
+                if (localName.isNotBlank()) libraryMatchName.value = localName
+            }
+        }
         viewModelScope.launch {
             context.dataStore.data
                 .map {
@@ -131,6 +140,11 @@ class ArtistViewModel @Inject constructor(
                     fetchArtistsFromYTM(hideExplicit, hideVideoSongs, hideYoutubeShorts)
                 }
         }
+    }
+
+    private fun noteLibraryArtistName(name: String?) {
+        val trimmed = name?.trim().orEmpty()
+        if (trimmed.isNotBlank()) libraryMatchName.value = trimmed
     }
 
     private var fetchJob: Job? = null
@@ -223,7 +237,10 @@ class ArtistViewModel @Inject constructor(
             // "Canciones más escuchadas") render instantly instead of waiting for the slow live fetch —
             // which previously left the screen blank until the user backed out and re-entered.
             if (artistPage == null) {
-                pageCache[artistId]?.let { artistPage = it }
+                pageCache[artistId]?.let {
+                    artistPage = it
+                    noteLibraryArtistName(it.artist.title)
+                }
                     ?: ArtistPageCache.load(context, artistId)?.let { persisted ->
                         if (artistPage == null) {
                             val filtered = persisted.copy(
@@ -233,8 +250,11 @@ class ArtistViewModel @Inject constructor(
                             )
                             pageCache[artistId] = filtered
                             artistPage = filtered
+                            noteLibraryArtistName(filtered.artist.title)
                         }
                     }
+            } else {
+                noteLibraryArtistName(artistPage?.artist?.title)
             }
             // Capture any already-resolved "Aparece en" (appears-on) section from this session's cached
             // page or the page just seeded from disk, BEFORE the live fetch below overwrites
@@ -264,6 +284,7 @@ class ArtistViewModel @Inject constructor(
 
                     val filteredPage = page.copy(sections = filteredSections)
                     artistPage = filteredPage
+                    noteLibraryArtistName(filteredPage.artist.title)
                     pageCache[artistId] = filteredPage
                     loaded = true
                     // Persist so a COLD first entry next session can show this instantly (see seed above).

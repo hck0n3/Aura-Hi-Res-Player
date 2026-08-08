@@ -32,8 +32,7 @@ object SearchPage {
                 // Extract library tokens using the new method that properly handles multiple toggle items
                 val libraryTokens = PageHelper.extractLibraryTokensFromMenuItems(renderer.menu?.menuRenderer?.items)
 
-                SongItem(
-                    id = renderer.playlistItemData?.videoId ?: renderer.navigationEndpoint?.watchEndpoint?.videoId
+                val songId = renderer.playlistItemData?.videoId ?: renderer.navigationEndpoint?.watchEndpoint?.videoId
                     ?: renderer.overlay?.musicItemThumbnailOverlayRenderer
                         ?.content?.musicPlayButtonRenderer
                         ?.playNavigationEndpoint?.watchEndpoint?.videoId
@@ -41,7 +40,9 @@ object SearchPage {
                         ?.musicResponsiveListItemFlexColumnRenderer
                         ?.text?.runs?.firstOrNull()
                         ?.navigationEndpoint?.watchEndpoint?.videoId
-                    ?: return null,
+                    ?: return null
+                SongItem(
+                    id = songId,
                     title =
                         renderer.flexColumns
                             .firstOrNull()
@@ -71,7 +72,9 @@ object SearchPage {
                             ?.text
                             ?.parseTime(),
                     musicVideoType = renderer.musicVideoType,
-                    thumbnail = renderer.thumbnail?.musicThumbnailRenderer?.getThumbnailUrl() ?: return null,
+                    // Never drop a hit for a missing thumb — i.ytimg fallback keeps a real cover.
+                    thumbnail = renderer.thumbnail?.musicThumbnailRenderer?.getThumbnailUrl()
+                        ?: "https://i.ytimg.com/vi/$songId/hqdefault.jpg",
                     explicit =
                         renderer.badges?.find {
                             it.musicInlineBadgeRenderer?.icon?.iconType == "MUSIC_EXPLICIT_BADGE"
@@ -92,7 +95,7 @@ object SearchPage {
                             ?.firstOrNull()
                             ?.text
                             ?: return null,
-                    thumbnail = renderer.thumbnail?.musicThumbnailRenderer?.getThumbnailUrl() ?: return null,
+                    thumbnail = renderer.thumbnail?.musicThumbnailRenderer?.getThumbnailUrl().orEmpty(),
                     shuffleEndpoint =
                         renderer.menu
                             ?.menuRenderer
@@ -142,7 +145,7 @@ object SearchPage {
                             ?.firstOrNull()
                             ?.text
                             ?.toIntOrNull(),
-                    thumbnail = renderer.thumbnail?.musicThumbnailRenderer?.getThumbnailUrl() ?: return null,
+                    thumbnail = renderer.thumbnail?.musicThumbnailRenderer?.getThumbnailUrl().orEmpty(),
                     explicit =
                         renderer.badges?.find {
                             it.musicInlineBadgeRenderer?.icon?.iconType == "MUSIC_EXPLICIT_BADGE"
@@ -179,7 +182,7 @@ object SearchPage {
                             ?.runs
                             ?.lastOrNull()
                             ?.text ?: return null,
-                    thumbnail = renderer.thumbnail?.musicThumbnailRenderer?.getThumbnailUrl() ?: return null,
+                    thumbnail = renderer.thumbnail?.musicThumbnailRenderer?.getThumbnailUrl().orEmpty(),
                     playEndpoint =
                         renderer.overlay
                             ?.musicItemThumbnailOverlayRenderer
@@ -213,7 +216,7 @@ object SearchPage {
                         Artist(name = it.text, id = it.navigationEndpoint?.browseEndpoint?.browseId)
                     },
                     songCountText = null,
-                    thumbnail = renderer.thumbnail?.musicThumbnailRenderer?.getThumbnailUrl() ?: return null,
+                    thumbnail = renderer.thumbnail?.musicThumbnailRenderer?.getThumbnailUrl().orEmpty(),
                     playEndpoint = null,
                     shuffleEndpoint = null,
                     radioEndpoint = null,

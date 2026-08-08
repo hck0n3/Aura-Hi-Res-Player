@@ -158,6 +158,7 @@ fun AuraSettingsScreen(
     val groupPlayerSound = stringResource(R.string.player_and_audio)
     val groupContentLyrics = "Contenido y letras"
     val groupAccounts = "Cuentas y sincronización"
+    val groupUpdates = "Actualizaciones"
     val groupBackupMigration = "Copias y migración"
 
     val noResultsText = stringResource(R.string.settings_search_no_results, searchQuery)
@@ -169,6 +170,19 @@ fun AuraSettingsScreen(
 
     // ── The index ─────────────────────────────────────────────────────────────────────────────────
     val groups = buildList {
+        // Own group near the top so updates are findable without searching (owner request).
+        add(
+            AuraSettingsGroup(
+                icon = AuraIcons.Download,
+                title = groupUpdates,
+                entries = listOf(
+                    AuraSettingsEntry(
+                        title = updateText,
+                        description = "Cambios de esta versión y nuevas actualizaciones",
+                    ) { navController.navigate("settings/update") },
+                ),
+            )
+        )
         add(
             AuraSettingsGroup(
                 icon = AuraIcons.Equalizer,
@@ -208,12 +222,6 @@ fun AuraSettingsScreen(
                         AuraSettingsEntry(scrobblingText, description = "Last.fm & ListenBrainz") {
                             navController.navigate("settings/lastfm")
                         }
-                    )
-                    add(
-                        AuraSettingsEntry(
-                            title = updateText,
-                            description = "Cambios de esta versión y nuevas actualizaciones",
-                        ) { navController.navigate("settings/update") }
                     )
                 },
             )

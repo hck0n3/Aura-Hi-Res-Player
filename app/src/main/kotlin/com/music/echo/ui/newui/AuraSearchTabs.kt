@@ -475,7 +475,10 @@ private fun AuraTrackShelf(
 ) {
     Column(modifier) {
         AuraSectionHeader(title = title, label = label, onClick = onMore)
+        val (listState, fling) = rememberAuraShelfFlingBehavior()
         LazyRow(
+            state = listState,
+            flingBehavior = fling,
             contentPadding = PaddingValues(horizontal = AuraSpacing.Gutter),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             modifier = Modifier
@@ -516,7 +519,10 @@ private fun AuraAlbumShelf(
 ) {
     Column(modifier) {
         AuraSectionHeader(title = title, onClick = onMore)
+        val (listState, fling) = rememberAuraShelfFlingBehavior()
         LazyRow(
+            state = listState,
+            flingBehavior = fling,
             contentPadding = PaddingValues(horizontal = AuraSpacing.Gutter),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             modifier = Modifier
@@ -555,7 +561,10 @@ private fun AuraArtistShelf(
 ) {
     Column(modifier) {
         AuraSectionHeader(title = title)
+        val (listState, fling) = rememberAuraShelfFlingBehavior()
         LazyRow(
+            state = listState,
+            flingBehavior = fling,
             contentPadding = PaddingValues(horizontal = AuraSpacing.Gutter),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             modifier = Modifier

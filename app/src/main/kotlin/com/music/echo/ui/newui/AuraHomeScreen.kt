@@ -1333,7 +1333,10 @@ private fun AuraShelf(
     modifier: Modifier = Modifier,
     content: androidx.compose.foundation.lazy.LazyListScope.() -> Unit,
 ) {
+    val (listState, fling) = rememberAuraShelfFlingBehavior()
     LazyRow(
+        state = listState,
+        flingBehavior = fling,
         contentPadding = PaddingValues(horizontal = AuraSpacing.Gutter),
         horizontalArrangement = Arrangement.spacedBy(AuraSpacing.ShelfItemGap),
         // TV/car: the classic Home carries this on all 20 of its scrollers (e.g. `HomeScreen.kt:1214`),

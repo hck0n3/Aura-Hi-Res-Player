@@ -805,8 +805,9 @@ fun Lyrics(
     val lazyListState = rememberLazyListState()
     
     
-    var isAnimating by remember { mutableStateOf(false) }
     var isAutoScrollEnabled by rememberSaveable { mutableStateOf(true) }
+    val lyricsScrollScope = rememberCoroutineScope()
+    var lyricsScrollJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
 
     
     BackHandler(enabled = isSelectionModeActive) {
@@ -907,32 +908,42 @@ fun Lyrics(
         }
     }
 
-    suspend fun performSmoothPageScroll(targetIndex: Int, duration: Int = 1500) {
-        if (isAnimating) return 
-        isAnimating = true
-        try {
-            val lookUpIndex = if (isLyricsProviderShown) targetIndex + 1 else targetIndex
-            val itemInfo = lazyListState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == lookUpIndex }
-            if (itemInfo != null) {
-                
-                val viewportHeight = lazyListState.layoutInfo.viewportEndOffset - lazyListState.layoutInfo.viewportStartOffset
-                val center = lazyListState.layoutInfo.viewportStartOffset + (viewportHeight / 2)
-                val itemCenter = itemInfo.offset + itemInfo.size / 2
-                val offset = itemCenter - center
-                if (kotlin.math.abs(offset) > 10) {
-                    lazyListState.animateScrollBy(
-                        value = offset.toFloat(),
-                        animationSpec = tween(durationMillis = duration)
-                    )
-                }
-            } else {
-                
-                lazyListState.scrollToItem(targetIndex)
+    suspend fun performSmoothPageScroll(targetIndex: Int, duration: Int = 420) {
+        val lookUpIndex = if (isLyricsProviderShown) targetIndex + 1 else targetIndex
+        val itemInfo = lazyListState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == lookUpIndex }
+        if (itemInfo != null) {
+            val viewportHeight = lazyListState.layoutInfo.viewportEndOffset - lazyListState.layoutInfo.viewportStartOffset
+            val center = lazyListState.layoutInfo.viewportStartOffset + (viewportHeight / 2)
+            val itemCenter = itemInfo.offset + itemInfo.size / 2
+            val offset = itemCenter - center
+            if (kotlin.math.abs(offset) > 8) {
+                lazyListState.animateScrollBy(
+                    value = offset.toFloat(),
+                    animationSpec = tween(
+                        durationMillis = duration,
+                        easing = FastOutSlowInEasing,
+                    ),
+                )
             }
-        } finally {
-            isAnimating = false
+        } else {
+            // Jumping with scrollToItem desynced the highlight; animate into place instead.
+            val viewportHeight = lazyListState.layoutInfo.viewportEndOffset -
+                lazyListState.layoutInfo.viewportStartOffset
+            val centerOffset = -(viewportHeight / 2)
+            lazyListState.animateScrollToItem(
+                index = lookUpIndex.coerceAtLeast(0),
+                scrollOffset = centerOffset,
+            )
         }
     }
+
+    fun scheduleLyricsScroll(targetIndex: Int, duration: Int) {
+        lyricsScrollJob?.cancel()
+        lyricsScrollJob = lyricsScrollScope.launch {
+            performSmoothPageScroll(targetIndex, duration)
+        }
+    }
+
     LaunchedEffect(currentLineIndex, lastPreviewTime, initialScrollDone, isAutoScrollEnabled) {
         if (!isSynced) return@LaunchedEffect
         if (isAutoScrollEnabled) {
@@ -940,7 +951,7 @@ fun Lyrics(
             shouldScrollToFirstLine = false
             
             val initialCenterIndex = kotlin.math.max(0, currentLineIndex)
-            performSmoothPageScroll(initialCenterIndex, 800) 
+            scheduleLyricsScroll(initialCenterIndex, 500)
             if(!isAppMinimized) {
                 initialScrollDone = true
             }
@@ -949,13 +960,14 @@ fun Lyrics(
             if (isSeeking) {
                 
                 val seekCenterIndex = kotlin.math.max(0, currentLineIndex)
-                performSmoothPageScroll(seekCenterIndex, 500) 
+                scheduleLyricsScroll(seekCenterIndex, 280)
             } else if ((lastPreviewTime == 0L || currentLineIndex != previousLineIndex) && scrollLyrics) {
                 
                 if (currentLineIndex != previousLineIndex) {
                     
                     val centerTargetIndex = currentLineIndex
-                    performSmoothPageScroll(centerTargetIndex, 1500) 
+                    // Short enough to keep up with typical LRC line spacing (~2–4s).
+                    scheduleLyricsScroll(centerTargetIndex, 420)
                 }
             }
         }
@@ -2164,9 +2176,7 @@ fun Lyrics(
             exit = slideOutVertically { it } + fadeOut()
         ) {
             FilledTonalButton(onClick = {
-                scope.launch {
-                    performSmoothPageScroll(currentLineIndex, 1500)
-                }
+                scheduleLyricsScroll(currentLineIndex, 500)
                 isAutoScrollEnabled = true
             }) {
                 Icon(

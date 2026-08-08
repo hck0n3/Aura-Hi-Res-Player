@@ -248,7 +248,9 @@ fun AuraCover(
     fillBleed: Boolean = false,
     overlay: (@Composable BoxScope.() -> Unit)? = null,
 ) {
-    val brush = remember(seed) { AuraPalette.coverPlaceholder(seed) }
+    val effectiveUrl = thumbnailUrl?.takeIf { it.isNotBlank() }
+    val effectiveSeed = seed?.takeIf { it.isNotBlank() } ?: effectiveUrl ?: "aura-cover"
+    val brush = remember(effectiveSeed) { AuraPalette.coverPlaceholder(effectiveSeed) }
     // Exploration cards ([fillBleed], videos, non-square frames) must Crop — Fit + sddefault 4:3
     // inside a 16:9 poster is exactly the purple side bars in the owner's screenshots.
     // Player / queue / hero keep [CropAlbumArtKey] when fillBleed is false and ratio is 1:1.
@@ -266,7 +268,7 @@ fun AuraCover(
             .background(brush),
     ) {
         AuraStableCoverImage(
-            url = thumbnailUrl,
+            url = effectiveUrl,
             contentScale = contentScale,
             decodeTo = decodeTo,
             modifier = Modifier.fillMaxSize(),
@@ -485,7 +487,7 @@ fun AuraCoverCard(
         AuraCover(
             thumbnailUrl = thumbnailUrl,
             size = width,
-            seed = seed,
+            seed = seed ?: title,
             shape = shape,
             decodeTo = 512,
             ratio = ratio,
@@ -751,7 +753,7 @@ fun AuraSongRow(
                 AuraCover(
                     thumbnailUrl = thumbnailUrl,
                     size = artworkSize,
-                    seed = seed,
+                    seed = seed ?: title,
                     shape = artworkShape,
                     ratio = artworkRatio,
                     fillBleed = true,

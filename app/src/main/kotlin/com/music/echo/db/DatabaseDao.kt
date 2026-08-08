@@ -198,23 +198,47 @@ interface DatabaseDao {
     @Query("SELECT * FROM playlist_song_map WHERE playlistId = :playlistId ORDER BY position")
     fun playlistSongs(playlistId: String): Flow<List<PlaylistSong>>
 
+    // "Tu biblioteca" on the artist page: include liked songs even when inLibrary is null.
+    // YTM liked sync sets liked=true without always writing inLibrary — requiring only inLibrary hid
+    // favorites the owner already marked (and that Home still surfaces via liked queries).
     @Transaction
     @Query(
-        "SELECT song.* FROM song_artist_map JOIN song ON song_artist_map.songId = song.id WHERE artistId = :artistId AND inLibrary IS NOT NULL ORDER BY inLibrary",
+        "SELECT song.* FROM song_artist_map JOIN song ON song_artist_map.songId = song.id WHERE artistId = :artistId AND (inLibrary IS NOT NULL OR liked = 1) ORDER BY COALESCE(inLibrary, likedDate)",
     )
     fun artistSongsByCreateDateAsc(artistId: String): Flow<List<Song>>
 
     @Transaction
     @Query(
-        "SELECT song.* FROM song_artist_map JOIN song ON song_artist_map.songId = song.id WHERE artistId = :artistId AND inLibrary IS NOT NULL ORDER BY title",
+        "SELECT song.* FROM song_artist_map JOIN song ON song_artist_map.songId = song.id WHERE artistId = :artistId AND (inLibrary IS NOT NULL OR liked = 1) ORDER BY title",
     )
     fun artistSongsByNameAsc(artistId: String): Flow<List<Song>>
 
     @Transaction
     @Query(
-        "SELECT song.* FROM song_artist_map JOIN song ON song_artist_map.songId = song.id WHERE artistId = :artistId AND inLibrary IS NOT NULL ORDER BY totalPlayTime",
+        "SELECT song.* FROM song_artist_map JOIN song ON song_artist_map.songId = song.id WHERE artistId = :artistId AND (inLibrary IS NOT NULL OR liked = 1) ORDER BY totalPlayTime",
     )
     fun artistSongsByPlayTimeAsc(artistId: String): Flow<List<Song>>
+
+    /**
+     * Same catalogue as [artistSongsByCreateDateAsc], but also matches other artist rows that share
+     * the same display name (YouTube channel id vs locally-generated LA######## id). Empty [artistName]
+     * falls back to id-only matching.
+     */
+    @Transaction
+    @Query(
+        """
+        SELECT DISTINCT song.* FROM song_artist_map
+        JOIN song ON song_artist_map.songId = song.id
+        JOIN artist ON artist.id = song_artist_map.artistId
+        WHERE (song.inLibrary IS NOT NULL OR song.liked = 1)
+          AND (
+            song_artist_map.artistId = :artistId
+            OR (:artistName != '' AND LOWER(artist.name) = LOWER(:artistName))
+          )
+        ORDER BY COALESCE(song.inLibrary, song.likedDate)
+        """,
+    )
+    fun artistLibraryOrLikedSongs(artistId: String, artistName: String): Flow<List<Song>>
 
     fun artistSongs(
         artistId: String,
@@ -268,7 +292,7 @@ interface DatabaseDao {
 
     @Transaction
     @Query(
-        "SELECT song.* FROM song_artist_map JOIN song ON song_artist_map.songId = song.id WHERE artistId = :artistId AND inLibrary IS NOT NULL LIMIT :previewSize",
+        "SELECT song.* FROM song_artist_map JOIN song ON song_artist_map.songId = song.id WHERE artistId = :artistId AND (inLibrary IS NOT NULL OR liked = 1) LIMIT :previewSize",
     )
     fun artistSongsPreview(
         artistId: String,

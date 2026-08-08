@@ -53,7 +53,6 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
-import coil3.compose.AsyncImage
 import com.music.innertube.YouTube
 import com.music.innertube.YouTube.SearchFilter.Companion.FILTER_ALBUM
 import com.music.innertube.YouTube.SearchFilter.Companion.FILTER_ARTIST
@@ -390,15 +389,12 @@ fun AuraSearchResultScreen(
                                         )
                                     },
                                     artwork = {
-                                        AuraArtwork(size = 50.dp, placeholderSeed = show.id) {
-                                            if (show.artworkUrl != null) {
-                                                AsyncImage(
-                                                    model = show.artworkUrl,
-                                                    contentDescription = null,
-                                                    modifier = Modifier.fillMaxSize(),
-                                                )
-                                            }
-                                        }
+                                        AuraCover(
+                                            thumbnailUrl = show.artworkUrl,
+                                            size = 50.dp,
+                                            seed = show.id,
+                                            fillBleed = true,
+                                        )
                                     },
                                     modifier = Modifier
                                         .animateItem()
