@@ -36,6 +36,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
@@ -216,6 +217,23 @@ fun ListDialog(
 ) {
     val skin = rememberAuraPanelSkin()
     val premium = skin.enabled && skin.darkGround
+    val baseScheme = MaterialTheme.colorScheme
+    // Material3 ListItem defaults to opaque surface containers — that paints a flat card over the
+    // frost plate and kills the premium look (MP3 song-picker and every other ListDialog).
+    val listScheme = if (premium) {
+        baseScheme.copy(
+            surface = Color.Transparent,
+            surfaceContainer = Color.Transparent,
+            surfaceContainerHigh = Color.Transparent,
+            surfaceContainerHighest = Color.Transparent,
+            surfaceContainerLow = Color.Transparent,
+            surfaceContainerLowest = Color.Transparent,
+            surfaceVariant = Color.Transparent,
+            background = Color.Transparent,
+        )
+    } else {
+        baseScheme
+    }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -232,10 +250,12 @@ fun ListDialog(
                     .padding(vertical = 24.dp)
                     .imePadding(),
             ) {
-                CompositionLocalProvider(
-                    LocalContentColor provides if (premium) AuraPalette.OnGround else LocalContentColor.current,
-                ) {
-                    LazyColumn(content = content)
+                MaterialTheme(colorScheme = listScheme) {
+                    CompositionLocalProvider(
+                        LocalContentColor provides if (premium) AuraPalette.OnGround else LocalContentColor.current,
+                    ) {
+                        LazyColumn(content = content)
+                    }
                 }
             }
         }

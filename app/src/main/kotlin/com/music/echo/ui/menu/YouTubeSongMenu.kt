@@ -126,10 +126,14 @@ fun YouTubeSongMenu(
         dbAlbumName = librarySong?.song?.albumName,
     )
 
-    val (enableExportAsMp3) = rememberPreference(key = EnableExportAsMp3Key, defaultValue = false)
-    val (exportDirectoryUri) = rememberPreference(key = ExportDirectoryUriKey, defaultValue = "")
+    val (enableExportAsMp3) = rememberPreference(key = EnableExportAsMp3Key, defaultValue = true)
+    val (exportDirectoryUri, onExportDirectoryUriChange) = rememberPreference(key = ExportDirectoryUriKey, defaultValue = "")
     val (exportingSongIds) = rememberPreference(key = ExportingSongIdsKey, defaultValue = "")
     val (exportedSongIds) = rememberPreference(key = ExportedSongIdsKey, defaultValue = "")
+    val ensureMp3Folder = iad1tya.echo.music.ui.utils.rememberMp3ExportFolderAccess(
+        exportDirectoryUri = exportDirectoryUri,
+        onExportDirectoryUriChange = onExportDirectoryUriChange,
+    )
 
     val isExporting = remember(exportingSongIds, song.id) { exportingSongIds.split(",").contains(song.id) }
     val isExported = remember(exportedSongIds, song.id) { exportedSongIds.split(",").contains(song.id) }
@@ -616,10 +620,7 @@ fun YouTubeSongMenu(
                                     )
                                 },
                                 onClick = {
-                                    if (exportDirectoryUri.isBlank()) {
-                                        android.widget.Toast.makeText(context, context.getString(R.string.export_directory_not_set), android.widget.Toast.LENGTH_SHORT).show()
-                                        onDismiss()
-                                    } else {
+                                    ensureMp3Folder { directoryUri ->
                                         onDismiss()
                                         iad1tya.echo.music.playback.AudioExportService.start(
                                             context = context,
@@ -628,7 +629,7 @@ fun YouTubeSongMenu(
                                             songArtist = artists.joinToString(", ") { it.name },
                                             songAlbum = song.album?.name ?: "",
                                             artworkUrl = song.thumbnail,
-                                            targetDirectoryUri = exportDirectoryUri
+                                            targetDirectoryUri = directoryUri,
                                         )
                                     }
                                 }

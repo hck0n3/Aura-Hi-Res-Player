@@ -155,10 +155,14 @@ fun AuraPlayerMenu(
         dbAlbumName = librarySong?.song?.albumName,
     )
 
-    val (enableExportAsMp3) = rememberPreference(EnableExportAsMp3Key, false)
-    val (exportDirectoryUri) = rememberPreference(ExportDirectoryUriKey, "")
+    val (enableExportAsMp3) = rememberPreference(EnableExportAsMp3Key, true)
+    val (exportDirectoryUri, onExportDirectoryUriChange) = rememberPreference(ExportDirectoryUriKey, "")
     val (exportingSongIds) = rememberPreference(ExportingSongIdsKey, "")
     val (exportedSongIds) = rememberPreference(ExportedSongIdsKey, "")
+    val ensureMp3Folder = iad1tya.echo.music.ui.utils.rememberMp3ExportFolderAccess(
+        exportDirectoryUri = exportDirectoryUri,
+        onExportDirectoryUriChange = onExportDirectoryUriChange,
+    )
     val isExporting = remember(exportingSongIds, mediaMetadata.id) {
         exportingSongIds.split(",").contains(mediaMetadata.id)
     }
@@ -548,14 +552,7 @@ fun AuraPlayerMenu(
                         icon = AuraIcons.Export,
                         label = stringResource(R.string.action_export),
                         onClick = {
-                            if (exportDirectoryUri.isBlank()) {
-                                Toast.makeText(
-                                    context,
-                                    context.getString(R.string.export_directory_not_set),
-                                    Toast.LENGTH_SHORT,
-                                ).show()
-                                onDismiss()
-                            } else {
+                            ensureMp3Folder { directoryUri ->
                                 onDismiss()
                                 iad1tya.echo.music.playback.AudioExportService.start(
                                     context = context,
@@ -564,7 +561,7 @@ fun AuraPlayerMenu(
                                     songArtist = artists.joinToString(", ") { it.name },
                                     songAlbum = mediaMetadata.album?.title ?: "",
                                     artworkUrl = mediaMetadata.thumbnailUrl ?: "",
-                                    targetDirectoryUri = exportDirectoryUri,
+                                    targetDirectoryUri = directoryUri,
                                 )
                             }
                         },

@@ -401,6 +401,8 @@ val ExportDirectoryUriKey = stringPreferencesKey("exportDirectoryUri")
 val ExportingSongIdsKey = stringPreferencesKey("exportingSongIds")
 val ExportedSongIdsKey = stringPreferencesKey("exportedSongIds")
 val EnableExportAsMp3Key = booleanPreferencesKey("enableExportAsMp3")
+/** One-shot: seed Export as MP3 ON for installs that never wrote the key. */
+val EnableExportAsMp3DefaultOnV1AppliedKey = booleanPreferencesKey("enable_export_as_mp3_default_on_v1_applied")
 
 val PauseListenHistoryKey = booleanPreferencesKey("pauseListenHistory")
 val PauseSearchHistoryKey = booleanPreferencesKey("pauseSearchHistory")

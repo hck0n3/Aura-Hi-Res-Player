@@ -131,10 +131,14 @@ fun OldPlayerMenu(
         dbAlbumName = librarySong?.song?.albumName,
     )
 
-    val (enableExportAsMp3) = rememberPreference(key = EnableExportAsMp3Key, defaultValue = false)
-    val (exportDirectoryUri) = rememberPreference(key = ExportDirectoryUriKey, defaultValue = "")
+    val (enableExportAsMp3) = rememberPreference(key = EnableExportAsMp3Key, defaultValue = true)
+    val (exportDirectoryUri, onExportDirectoryUriChange) = rememberPreference(key = ExportDirectoryUriKey, defaultValue = "")
     val (exportingSongIds) = rememberPreference(key = ExportingSongIdsKey, defaultValue = "")
     val (exportedSongIds) = rememberPreference(key = ExportedSongIdsKey, defaultValue = "")
+    val ensureMp3Folder = iad1tya.echo.music.ui.utils.rememberMp3ExportFolderAccess(
+        exportDirectoryUri = exportDirectoryUri,
+        onExportDirectoryUriChange = onExportDirectoryUriChange,
+    )
 
     val isExporting = remember(exportingSongIds, mediaMetadata.id) { exportingSongIds.split(",").contains(mediaMetadata.id) }
     val isExported = remember(exportedSongIds, mediaMetadata.id) { exportedSongIds.split(",").contains(mediaMetadata.id) }
@@ -458,10 +462,7 @@ fun OldPlayerMenu(
                                         )
                                     },
                                     onClick = {
-                                        if (exportDirectoryUri.isBlank()) {
-                                            android.widget.Toast.makeText(context, context.getString(R.string.export_directory_not_set), android.widget.Toast.LENGTH_SHORT).show()
-                                            onDismiss()
-                                        } else {
+                                        ensureMp3Folder { directoryUri ->
                                             onDismiss()
                                             iad1tya.echo.music.playback.AudioExportService.start(
                                                 context = context,
@@ -470,7 +471,7 @@ fun OldPlayerMenu(
                                                 songArtist = artists.joinToString(", ") { it.name },
                                                 songAlbum = mediaMetadata.album?.title ?: "",
                                                 artworkUrl = mediaMetadata.thumbnailUrl ?: "",
-                                                targetDirectoryUri = exportDirectoryUri
+                                                targetDirectoryUri = directoryUri,
                                             )
                                         }
                                     }

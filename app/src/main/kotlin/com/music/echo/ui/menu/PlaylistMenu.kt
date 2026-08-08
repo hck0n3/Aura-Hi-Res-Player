@@ -66,6 +66,7 @@ import iad1tya.echo.music.LocalPlayerConnection
 import iad1tya.echo.music.LocalSyncUtils
 import iad1tya.echo.music.R
 import iad1tya.echo.music.constants.EnableExportAsMp3Key
+import iad1tya.echo.music.constants.ExportDirectoryUriKey
 import iad1tya.echo.music.constants.ExportingSongIdsKey
 import iad1tya.echo.music.constants.InnerTubeCookieKey
 import iad1tya.echo.music.db.entities.Playlist
@@ -116,7 +117,8 @@ fun PlaylistMenu(
     // Same cookie gate the rest of the app uses to know if the user is signed into YouTube Music.
     val (innerTubeCookie) = rememberPreference(InnerTubeCookieKey, "")
     val isLoggedIn = remember(innerTubeCookie) { "SAPISID" in parseCookieString(innerTubeCookie) }
-    val (enableExportAsMp3) = rememberPreference(key = EnableExportAsMp3Key, defaultValue = false)
+    val (enableExportAsMp3) = rememberPreference(key = EnableExportAsMp3Key, defaultValue = true)
+    val (_, onExportDirectoryUriChange) = rememberPreference(key = ExportDirectoryUriKey, defaultValue = "")
     // Enhanced-shuffle context for this menu's Shuffle action (must match the screens' PL:/AP: scheme).
     val menuShuffleContextId = if (autoPlaylist == true || downloadPlaylist == true) {
         "AP:" + playlist.playlist.id
@@ -270,6 +272,7 @@ fun PlaylistMenu(
             }
             val toExport = pendingMp3Songs
             pendingMp3Songs = emptyList()
+            onExportDirectoryUriChange(uri.toString())
             onDismiss()
             startSerialMp3Export(toExport, uri.toString())
         } else {

@@ -115,7 +115,7 @@ fun StorageSettings(
     )
     val (enableExportAsMp3, onEnableExportAsMp3Change) = rememberPreference(
         key = EnableExportAsMp3Key,
-        defaultValue = false
+        defaultValue = true
     )
     val exportDirectoryLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->

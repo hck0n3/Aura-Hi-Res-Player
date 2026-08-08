@@ -400,6 +400,7 @@ class App : Application(), SingletonImageLoader.Factory, androidx.work.Configura
             settings[iad1tya.echo.music.constants.Defaults0132GaplessOffAppliedKey] != true ||
             settings[iad1tya.echo.music.constants.LyricsBlurDefaultOnV1AppliedKey] != true ||
             settings[iad1tya.echo.music.constants.LyricsEsLatamAutoTranslateV1AppliedKey] != true ||
+            settings[iad1tya.echo.music.constants.EnableExportAsMp3DefaultOnV1AppliedKey] != true ||
             settings[iad1tya.echo.music.constants.AddToPlaylistLastUpdatedDefaultV1AppliedKey] != true ||
             settings[iad1tya.echo.music.constants.ThemeAccentRepairV1AppliedKey] != true
         if (batchAPending) {
@@ -418,6 +419,7 @@ class App : Application(), SingletonImageLoader.Factory, androidx.work.Configura
                     applyPlaybackDefaults(p, settings)
                     applyLyricsBlurDefaultOnV1(p, settings)
                     applyLyricsEsLatamAutoTranslateV1(p, settings)
+                    applyEnableExportAsMp3DefaultOnV1(p, settings)
                     applyAddToPlaylistLastUpdatedDefaultV1(p, settings)
                     // LAST, and reading `p` rather than `settings`, on purpose: applyPlaybackDefaults
                     // above is what writes LIQUID_GLASS into the mini-player key, so on the launch
@@ -1146,6 +1148,17 @@ class App : Application(), SingletonImageLoader.Factory, androidx.work.Configura
             p[iad1tya.echo.music.constants.AppLanguageKey] = "es-419"
         }
         p[iad1tya.echo.music.constants.LyricsEsLatamAutoTranslateV1AppliedKey] = true
+    }
+
+    /** One-shot: show «Exportar como MP3» in menus by default (explicit false is preserved). */
+    private fun applyEnableExportAsMp3DefaultOnV1(
+        p: androidx.datastore.preferences.core.MutablePreferences,
+        settings: androidx.datastore.preferences.core.Preferences,
+    ) {
+        if (settings[iad1tya.echo.music.constants.EnableExportAsMp3DefaultOnV1AppliedKey] == true) return
+        // Force ON once for this update so the menu appears without digging in Storage settings.
+        p[iad1tya.echo.music.constants.EnableExportAsMp3Key] = true
+        p[iad1tya.echo.music.constants.EnableExportAsMp3DefaultOnV1AppliedKey] = true
     }
 
     /**

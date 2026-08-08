@@ -70,6 +70,7 @@ import iad1tya.echo.music.LocalListenTogetherManager
 import iad1tya.echo.music.LocalPlayerConnection
 import iad1tya.echo.music.R
 import iad1tya.echo.music.constants.EnableExportAsMp3Key
+import iad1tya.echo.music.constants.ExportDirectoryUriKey
 import iad1tya.echo.music.constants.ExportingSongIdsKey
 import iad1tya.echo.music.constants.ListThumbnailSize
 import iad1tya.echo.music.constants.ThumbnailCornerRadius
@@ -120,7 +121,8 @@ fun YouTubePlaylistMenu(
     val isGuest = listenTogetherManager?.isInRoom == true && !listenTogetherManager.isHost
     val dbPlaylist by database.playlistByBrowseId(playlist.id).collectAsState(initial = null)
     val isPinned by database.speedDialDao.isPinned(playlist.id).collectAsState(initial = false)
-    val (enableExportAsMp3) = rememberPreference(key = EnableExportAsMp3Key, defaultValue = false)
+    val (enableExportAsMp3) = rememberPreference(key = EnableExportAsMp3Key, defaultValue = true)
+    val (_, onExportDirectoryUriChange) = rememberPreference(key = ExportDirectoryUriKey, defaultValue = "")
 
     var showChoosePlaylistDialog by rememberSaveable { mutableStateOf(false) }
     var showImportPlaylistDialog by rememberSaveable { mutableStateOf(false) }
@@ -318,6 +320,7 @@ fun YouTubePlaylistMenu(
             }
             val toExport = pendingMp3Songs
             pendingMp3Songs = emptyList()
+            onExportDirectoryUriChange(uri.toString())
             onDismiss()
             startSerialMp3Export(toExport, uri.toString())
         } else {
