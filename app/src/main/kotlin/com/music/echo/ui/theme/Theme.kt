@@ -58,6 +58,7 @@ fun echomusicTheme(
     content: @Composable () -> Unit,
 ) {
     val context = LocalContext.current
+    val customRoles = rememberCustomThemeRoles()
 
     // A named preset ("Muestreo") is a LITERAL scheme, so it short-circuits the whole seed engine —
     // there is no seed that makes TonalSpot emit the icon's #080D18 ground. Null when NONE, which is
@@ -100,7 +101,7 @@ fun echomusicTheme(
 
     val colorScheme = remember(
         baseColorScheme, presetScheme, pureBlack, darkTheme, accentSeed, surfaceSeed, vividness,
-        newUiGround,
+        newUiGround, customRoles,
     ) {
         // Surfaces FIRST: withAccent measures its legibility clamp against the final surface, so the
         // AMOLED/deep-teal/soft-light substitutions have to be in place before it runs.
@@ -112,7 +113,10 @@ fun echomusicTheme(
             newUiGround = newUiGround,
             surfaceSeed = surfaceSeed,
         )
-        if (accentSeed == null) surfaced else surfaced.withAccent(accentSeed, vividness)
+        val accented = if (accentSeed == null) surfaced else surfaced.withAccent(accentSeed, vividness)
+        // Per-role overrides last so Tema ▸ Personalizar roles wins for classic + Material dialogs.
+        // AMOLED still ignores custom background inside applyCustomRoles.
+        accented.applyCustomRoles(customRoles, pureBlack)
     }
 
     MaterialTheme(

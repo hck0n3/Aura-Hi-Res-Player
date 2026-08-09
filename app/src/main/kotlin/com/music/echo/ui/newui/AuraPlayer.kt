@@ -177,7 +177,6 @@ import iad1tya.echo.music.utils.rememberDeviceThrottle
 import iad1tya.echo.music.utils.rememberEnumPreference
 import iad1tya.echo.music.utils.rememberPreference
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.isActive
 import androidx.core.net.toUri
 import androidx.core.view.WindowCompat
@@ -356,19 +355,6 @@ private fun AuraPlayerShape(
     val currentFormatEntity by database.format(mediaMetadata?.id).collectAsState(initial = null)
     val download by LocalDownloadUtil.current.getDownload(mediaMetadata?.id ?: "")
         .collectAsState(initial = null)
-    val librarySongFlow = remember(mediaMetadata?.id) {
-        val meta = mediaMetadata
-        if (meta != null) {
-            database.songWithEquivalent(
-                meta.id,
-                meta.title,
-                meta.artists.firstOrNull()?.name,
-            )
-        } else {
-            flowOf(null)
-        }
-    }
-    val librarySong by librarySongFlow.collectAsState(initial = null)
 
     val listenTogetherManager = LocalListenTogetherManager.current
     val listenTogetherRoleState = listenTogetherManager?.role?.collectAsState(initial = RoomRole.NONE)
@@ -1201,18 +1187,13 @@ private fun AuraPlayerShape(
                 // expanded — speaker → the same [AudioDeviceBottomSheet], letra → the same
                 // `showInlineLyrics` toggle (it is literally passed down as `onToggleLyrics`), cola → the
                 // same `queueSheetState.expandSoft()`. Those three now live ONLY in the queue bar. What is
-                // left here is what nothing else on this screen owns: like, descarga, biblioteca, búsqueda.
+                // left here is what nothing else on this screen owns: like, descarga, búsqueda.
                 //
-                // ── ONE ROW OF SIX, BY OWNER REQUEST ───────────────────────────────────────────────
-                // Original four: like, no me gusta, añadir a playlist, descargar — kept verbatim.
-                // Extended with biblioteca (toggle inLibrary, same path as AuraPlayerMenu / SongMenu)
-                // and quick-search (frost sheet, no navigation). Compartir / Ecualizador / Vídeo live
-                // in [AuraQueueBar]'s bottom row instead.
-                //
-                // Six controls use SpaceEvenly so 320 dp phones still fit without wrapping.
+                // FIVE: like, no me gusta, añadir a playlist, descargar, lupa. Biblioteca removed by
+                // owner (still in [AuraPlayerMenu]); lupa is the more useful fifth slot.
+                // Compartir / Ecualizador / Vídeo live in [AuraQueueBar]'s bottom row instead.
                 Spacer(Modifier.height(if (dense) 2.dp else 6.dp))
                 val liked = currentSong?.song?.liked == true
-                val isInLibrary = librarySong?.song?.inLibrary != null
                 val quickAccessGlyph = if (dense) 20.dp else 22.dp
                 val isLocalTrack = meta.id.isLocalMediaId() || currentSong?.song?.isLocal == true
                 Row(
@@ -1294,23 +1275,6 @@ private fun AuraPlayerShape(
                     }
                     }
                     AuraIconButton(
-                        icon = AuraIcons.Library,
-                        contentDescription = stringResource(
-                            if (isInLibrary) R.string.remove_from_library else R.string.add_to_library,
-                        ),
-                        onClick = { playerConnection.toggleLibrary() },
-                        size = quickAccessGlyph,
-                        tint = if (isInLibrary) transportAccent else AuraPalette.OnGround.copy(alpha = 0.7f),
-                        modifier = Modifier
-                            .tvFocusable(isTvOrCar, CircleShape)
-                            .then(
-                                if (isInLibrary) Modifier.background(
-                                    transportAccent.copy(alpha = 0.16f),
-                                    CircleShape,
-                                ) else Modifier,
-                            ),
-                    )
-                    AuraIconButton(
                         icon = AuraIcons.Search,
                         contentDescription = stringResource(R.string.search),
                         onClick = {
@@ -1318,6 +1282,10 @@ private fun AuraPlayerShape(
                                 AuraPlayerQuickSearchContent(
                                     navController = navController,
                                     onDismiss = bottomSheetPageState::dismiss,
+                                    onBrowseAway = {
+                                        bottomSheetPageState.dismiss()
+                                        state.collapseSoft()
+                                    },
                                     isListenTogetherGuest = isListenTogetherGuest,
                                 )
                             }

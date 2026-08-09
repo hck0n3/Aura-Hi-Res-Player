@@ -85,14 +85,22 @@ import iad1tya.echo.music.R
 import iad1tya.echo.music.constants.AccentVividnessKey
 import iad1tya.echo.music.constants.AppThemePresetKey
 import iad1tya.echo.music.constants.CustomAccentColorKey
+import iad1tya.echo.music.constants.CustomBackgroundColorKey
+import iad1tya.echo.music.constants.CustomOnBackgroundColorKey
+import iad1tya.echo.music.constants.CustomOnPrimaryColorKey
+import iad1tya.echo.music.constants.CustomOnSurfaceVariantColorKey
+import iad1tya.echo.music.constants.CustomOutlineColorKey
+import iad1tya.echo.music.constants.CustomSurfaceColorKey
 import iad1tya.echo.music.constants.DarkModeKey
 import iad1tya.echo.music.constants.DynamicThemeKey
 import iad1tya.echo.music.constants.PureBlackKey
 import iad1tya.echo.music.constants.PureBlackMiniPlayerKey
 import iad1tya.echo.music.constants.SelectedThemeColorKey
 import iad1tya.echo.music.ui.component.ColorPickerConversions
+import iad1tya.echo.music.ui.component.ColorPickerDialog
 import iad1tya.echo.music.ui.component.DefaultDialog
 import iad1tya.echo.music.ui.theme.AccentVividness
+import iad1tya.echo.music.ui.theme.CustomThemeRoles
 import iad1tya.echo.music.ui.theme.DefaultThemeColor
 import iad1tya.echo.music.ui.theme.distinctFromNoAccentSentinel
 import iad1tya.echo.music.ui.theme.MuestreoBlue
@@ -228,6 +236,30 @@ fun ThemeScreen(
         CustomAccentColorKey,
         defaultValue = 0,
     )
+    val (customBackgroundArgb, onCustomBackgroundArgb) = rememberPreference(
+        CustomBackgroundColorKey,
+        CustomThemeRoles.AUTO_ARGB,
+    )
+    val (customSurfaceArgb, onCustomSurfaceArgb) = rememberPreference(
+        CustomSurfaceColorKey,
+        CustomThemeRoles.AUTO_ARGB,
+    )
+    val (customOnBackgroundArgb, onCustomOnBackgroundArgb) = rememberPreference(
+        CustomOnBackgroundColorKey,
+        CustomThemeRoles.AUTO_ARGB,
+    )
+    val (customOnSurfaceVariantArgb, onCustomOnSurfaceVariantArgb) = rememberPreference(
+        CustomOnSurfaceVariantColorKey,
+        CustomThemeRoles.AUTO_ARGB,
+    )
+    val (customOutlineArgb, onCustomOutlineArgb) = rememberPreference(
+        CustomOutlineColorKey,
+        CustomThemeRoles.AUTO_ARGB,
+    )
+    val (customOnPrimaryArgb, onCustomOnPrimaryArgb) = rememberPreference(
+        CustomOnPrimaryColorKey,
+        CustomThemeRoles.AUTO_ARGB,
+    )
 
     val (themePreset, onThemePresetChange) = rememberEnumPreference(
         AppThemePresetKey,
@@ -271,6 +303,12 @@ fun ThemeScreen(
         handleColorSelection(DefaultThemeColor, ThemePreset.NONE, true)
         onAccentVividnessChange(AccentVividness.SOFT)
         onCustomAccentColorChange(0)
+        onCustomBackgroundArgb(CustomThemeRoles.AUTO_ARGB)
+        onCustomSurfaceArgb(CustomThemeRoles.AUTO_ARGB)
+        onCustomOnBackgroundArgb(CustomThemeRoles.AUTO_ARGB)
+        onCustomOnSurfaceVariantArgb(CustomThemeRoles.AUTO_ARGB)
+        onCustomOutlineArgb(CustomThemeRoles.AUTO_ARGB)
+        onCustomOnPrimaryArgb(CustomThemeRoles.AUTO_ARGB)
         onDarkModeChange(DarkMode.AUTO)
         onPureBlackChange(false)
     }
@@ -468,6 +506,25 @@ fun ThemeScreen(
             }
 
             item {
+                CustomRolesSection(
+                    isTvOrCar = isTvOrCar,
+                    pureBlack = pureBlack,
+                    backgroundArgb = customBackgroundArgb,
+                    surfaceArgb = customSurfaceArgb,
+                    onBackgroundArgb = customOnBackgroundArgb,
+                    onSurfaceVariantArgb = customOnSurfaceVariantArgb,
+                    outlineArgb = customOutlineArgb,
+                    onPrimaryArgb = customOnPrimaryArgb,
+                    onBackgroundArgbChange = onCustomBackgroundArgb,
+                    onSurfaceArgbChange = onCustomSurfaceArgb,
+                    onOnBackgroundArgbChange = onCustomOnBackgroundArgb,
+                    onOnSurfaceVariantArgbChange = onCustomOnSurfaceVariantArgb,
+                    onOutlineArgbChange = onCustomOutlineArgb,
+                    onOnPrimaryArgbChange = onCustomOnPrimaryArgb,
+                )
+            }
+
+            item {
                 ResetThemeSection(
                     isTvOrCar = isTvOrCar,
                     onReset = { showResetDialog = true },
@@ -502,6 +559,286 @@ fun ThemeScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 8.dp),
             )
+        }
+    }
+}
+
+/**
+ * Independent colour roles (fondo / texto / bordes / …) shared by classic Material and Aura.
+ * Each preference uses [CustomThemeRoles.AUTO_ARGB] (0) for automatic.
+ */
+private enum class ThemeRoleSlot {
+    BACKGROUND,
+    SURFACE,
+    ON_BACKGROUND,
+    ON_SURFACE_VARIANT,
+    OUTLINE,
+    ON_PRIMARY,
+}
+
+@Composable
+private fun CustomRolesSection(
+    isTvOrCar: Boolean,
+    pureBlack: Boolean,
+    backgroundArgb: Int,
+    surfaceArgb: Int,
+    onBackgroundArgb: Int,
+    onSurfaceVariantArgb: Int,
+    outlineArgb: Int,
+    onPrimaryArgb: Int,
+    onBackgroundArgbChange: (Int) -> Unit,
+    onSurfaceArgbChange: (Int) -> Unit,
+    onOnBackgroundArgbChange: (Int) -> Unit,
+    onOnSurfaceVariantArgbChange: (Int) -> Unit,
+    onOutlineArgbChange: (Int) -> Unit,
+    onOnPrimaryArgbChange: (Int) -> Unit,
+) {
+    var openSlot by remember { mutableStateOf<ThemeRoleSlot?>(null) }
+    val scheme = MaterialTheme.colorScheme
+
+    fun displayColor(argb: Int, fallback: Color): Color =
+        if (argb == CustomThemeRoles.AUTO_ARGB) fallback else Color(argb)
+
+    val previewBackground = if (pureBlack) {
+        Color.Black
+    } else {
+        displayColor(backgroundArgb, scheme.background)
+    }
+    val previewSurface = displayColor(surfaceArgb, scheme.surfaceContainerLow)
+    val previewOnBg = displayColor(onBackgroundArgb, scheme.onBackground)
+    val previewMuted = displayColor(onSurfaceVariantArgb, scheme.onSurfaceVariant)
+    val previewOutline = displayColor(outlineArgb, scheme.outline)
+    val previewOnPrimary = displayColor(onPrimaryArgb, scheme.onPrimary)
+
+    Column {
+        Text(
+            text = stringResource(R.string.theme_custom_roles),
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.primary,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(bottom = 4.dp, start = 4.dp),
+        )
+        Text(
+            text = stringResource(R.string.theme_custom_roles_desc),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 16.dp, start = 4.dp),
+        )
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(28.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.6f),
+            ),
+            elevation = CardDefaults.cardElevation(0.dp),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f)),
+        ) {
+            Column(
+                modifier = Modifier.padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                // Live preview of the six roles against the current accent.
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(previewBackground)
+                        .border(1.dp, previewOutline, RoundedCornerShape(20.dp))
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        text = stringResource(R.string.theme_role_preview),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = previewMuted,
+                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(previewSurface)
+                            .border(1.dp, previewOutline.copy(alpha = 0.55f), RoundedCornerShape(14.dp))
+                            .padding(12.dp),
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(
+                                text = stringResource(R.string.theme_role_preview_title),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = previewOnBg,
+                            )
+                            Text(
+                                text = stringResource(R.string.theme_role_preview_subtitle),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = previewMuted,
+                            )
+                        }
+                    }
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(scheme.primary)
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                    ) {
+                        Text(
+                            text = stringResource(R.string.theme_role_preview_button),
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = previewOnPrimary,
+                        )
+                    }
+                }
+
+                ThemeRoleRow(
+                    title = stringResource(R.string.theme_role_background),
+                    color = previewBackground,
+                    isAuto = backgroundArgb == CustomThemeRoles.AUTO_ARGB,
+                    isTvOrCar = isTvOrCar,
+                    onClick = { openSlot = ThemeRoleSlot.BACKGROUND },
+                    onReset = { onBackgroundArgbChange(CustomThemeRoles.AUTO_ARGB) },
+                )
+                ThemeRoleRow(
+                    title = stringResource(R.string.theme_role_surface),
+                    color = displayColor(surfaceArgb, scheme.surface),
+                    isAuto = surfaceArgb == CustomThemeRoles.AUTO_ARGB,
+                    isTvOrCar = isTvOrCar,
+                    onClick = { openSlot = ThemeRoleSlot.SURFACE },
+                    onReset = { onSurfaceArgbChange(CustomThemeRoles.AUTO_ARGB) },
+                )
+                ThemeRoleRow(
+                    title = stringResource(R.string.theme_role_on_background),
+                    color = previewOnBg,
+                    isAuto = onBackgroundArgb == CustomThemeRoles.AUTO_ARGB,
+                    isTvOrCar = isTvOrCar,
+                    onClick = { openSlot = ThemeRoleSlot.ON_BACKGROUND },
+                    onReset = { onOnBackgroundArgbChange(CustomThemeRoles.AUTO_ARGB) },
+                )
+                ThemeRoleRow(
+                    title = stringResource(R.string.theme_role_on_surface_variant),
+                    color = previewMuted,
+                    isAuto = onSurfaceVariantArgb == CustomThemeRoles.AUTO_ARGB,
+                    isTvOrCar = isTvOrCar,
+                    onClick = { openSlot = ThemeRoleSlot.ON_SURFACE_VARIANT },
+                    onReset = { onOnSurfaceVariantArgbChange(CustomThemeRoles.AUTO_ARGB) },
+                )
+                ThemeRoleRow(
+                    title = stringResource(R.string.theme_role_outline),
+                    color = previewOutline,
+                    isAuto = outlineArgb == CustomThemeRoles.AUTO_ARGB,
+                    isTvOrCar = isTvOrCar,
+                    onClick = { openSlot = ThemeRoleSlot.OUTLINE },
+                    onReset = { onOutlineArgbChange(CustomThemeRoles.AUTO_ARGB) },
+                )
+                ThemeRoleRow(
+                    title = stringResource(R.string.theme_role_on_primary),
+                    color = previewOnPrimary,
+                    isAuto = onPrimaryArgb == CustomThemeRoles.AUTO_ARGB,
+                    isTvOrCar = isTvOrCar,
+                    onClick = { openSlot = ThemeRoleSlot.ON_PRIMARY },
+                    onReset = { onOnPrimaryArgbChange(CustomThemeRoles.AUTO_ARGB) },
+                )
+            }
+        }
+    }
+
+    val slot = openSlot
+    if (slot != null) {
+        val (titleRes, initial, onConfirm) = when (slot) {
+            ThemeRoleSlot.BACKGROUND -> Triple(
+                R.string.theme_role_background,
+                displayColor(backgroundArgb, scheme.background),
+                onBackgroundArgbChange,
+            )
+            ThemeRoleSlot.SURFACE -> Triple(
+                R.string.theme_role_surface,
+                displayColor(surfaceArgb, scheme.surface),
+                onSurfaceArgbChange,
+            )
+            ThemeRoleSlot.ON_BACKGROUND -> Triple(
+                R.string.theme_role_on_background,
+                displayColor(onBackgroundArgb, scheme.onBackground),
+                onOnBackgroundArgbChange,
+            )
+            ThemeRoleSlot.ON_SURFACE_VARIANT -> Triple(
+                R.string.theme_role_on_surface_variant,
+                displayColor(onSurfaceVariantArgb, scheme.onSurfaceVariant),
+                onOnSurfaceVariantArgbChange,
+            )
+            ThemeRoleSlot.OUTLINE -> Triple(
+                R.string.theme_role_outline,
+                displayColor(outlineArgb, scheme.outline),
+                onOutlineArgbChange,
+            )
+            ThemeRoleSlot.ON_PRIMARY -> Triple(
+                R.string.theme_role_on_primary,
+                displayColor(onPrimaryArgb, scheme.onPrimary),
+                onOnPrimaryArgbChange,
+            )
+        }
+        ColorPickerDialog(
+            initialColor = initial,
+            title = stringResource(titleRes),
+            onDismiss = { openSlot = null },
+            onConfirm = { color ->
+                onConfirm(color.toArgb())
+                openSlot = null
+            },
+            onReset = {
+                onConfirm(CustomThemeRoles.AUTO_ARGB)
+                openSlot = null
+            },
+        )
+    }
+}
+
+@Composable
+private fun ThemeRoleRow(
+    title: String,
+    color: Color,
+    isAuto: Boolean,
+    isTvOrCar: Boolean,
+    onClick: () -> Unit,
+    onReset: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .tvFocusable(isTvOrCar, scaleFocused = 1f)
+            .clickable(onClick = onClick)
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(color)
+                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(12.dp)),
+        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = if (isAuto) {
+                    stringResource(R.string.theme_role_auto)
+                } else {
+                    ColorPickerConversions.colorToHex(color)
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        if (!isAuto) {
+            TextButton(onClick = onReset) {
+                Text(stringResource(R.string.reset))
+            }
         }
     }
 }

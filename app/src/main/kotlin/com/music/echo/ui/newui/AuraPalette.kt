@@ -4,6 +4,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -12,16 +14,22 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import iad1tya.echo.music.LocalPlayerConnection
 import iad1tya.echo.music.constants.AppThemePresetKey
 import iad1tya.echo.music.constants.DynamicThemeKey
 import iad1tya.echo.music.constants.PureBlackKey
 import iad1tya.echo.music.constants.SelectedThemeColorKey
 import iad1tya.echo.music.constants.ThumbnailCornerRadiusKey
+import iad1tya.echo.music.models.MediaMetadata
 import iad1tya.echo.music.ui.component.ColorPickerConversions
+import iad1tya.echo.music.ui.theme.CustomThemeRoles
 import iad1tya.echo.music.ui.theme.DefaultThemeColor
 import iad1tya.echo.music.ui.theme.ThemePreset
+import iad1tya.echo.music.ui.theme.effectiveAuraGround
 import iad1tya.echo.music.ui.theme.ensureLegibleOn
+import iad1tya.echo.music.ui.theme.rememberCustomThemeRoles
 import iad1tya.echo.music.utils.rememberEnumPreference
 import iad1tya.echo.music.utils.rememberPreference
 
@@ -79,6 +87,12 @@ object AuraPalette {
     /** Slightly lifted ground used by the merged player menu sheet (`background:#080D18` in the render). */
     private val BrandGroundRaised = Color(0xFF080D18)
 
+    /** `color:#EAF2FF` — shipped foreground on [BrandGround]. */
+    private val BrandOnGround = Color(0xFFEAF2FF)
+
+    /** Knob colour of a switch and the ink INSIDE the gradient play button (`#061018`). */
+    private val BrandOnAccent = Color(0xFF061018)
+
     /**
      * AMOLED's raised ground. NOT [Color.Black]: the mini-player pill and the player menu sheet stand
      * ON the ground and would disappear into it. Six levels of grey is the smallest lift that still
@@ -91,8 +105,21 @@ object AuraPalette {
     /** The three accents in force, plus everything derived from them, resolved once per theme change. */
     private var accent by mutableStateOf(AuraAccent.Brand)
 
-    /** True while "Negro puro (AMOLED)" is on, which is the only thing that moves the ground. */
+    /** True while "Negro puro (AMOLED)" is on, which is the only thing that moves the ground past overrides. */
     private var pureBlackGround by mutableStateOf(false)
+
+    /**
+     * Per-role overrides from Tema ▸ Personalizar roles. [CustomThemeRoles.None] keeps every getter
+     * on the shipped literals (flag-off / never customized).
+     */
+    private var roleOverrides by mutableStateOf(CustomThemeRoles.None)
+
+    /**
+     * Soft ink derived from the now-playing cover (same extraction as the ambient bloom). Null when
+     * nothing is playing or the cover has not resolved — then [BrandOnGround] ships. User role
+     * overrides still win in [OnGround].
+     */
+    private var artworkInk by mutableStateOf<Color?>(null)
 
     /**
      * "Radio de esquina de la miniatura" ([ThumbnailCornerRadiusKey]) resolved into the two shapes the
@@ -106,14 +133,28 @@ object AuraPalette {
      * that read these — so a theme change lands within the same composition pass instead of one frame
      * later. Writing only on a real change is what keeps it from looping.
      */
-    internal fun apply(next: AuraAccent, pureBlack: Boolean, coverCorners: AuraCoverCorners) {
+    internal fun apply(
+        next: AuraAccent,
+        pureBlack: Boolean,
+        coverCorners: AuraCoverCorners,
+        roles: CustomThemeRoles = CustomThemeRoles.None,
+        artworkInk: Color? = null,
+    ) {
         if (accent != next) accent = next
         if (pureBlackGround != pureBlack) pureBlackGround = pureBlack
         if (corners != coverCorners) corners = coverCorners
+        if (roleOverrides != roles) roleOverrides = roles
+        if (this.artworkInk != artworkInk) this.artworkInk = artworkInk
     }
 
     /** Test / process hook: back to the shipped literals. */
-    internal fun reset() = apply(AuraAccent.Brand, pureBlack = false, coverCorners = AuraCoverCorners.Render)
+    internal fun reset() = apply(
+        AuraAccent.Brand,
+        pureBlack = false,
+        coverCorners = AuraCoverCorners.Render,
+        roles = CustomThemeRoles.None,
+        artworkInk = null,
+    )
 
     // ── Accents ───────────────────────────────────────────────────────────────────────────────────
 
@@ -128,24 +169,42 @@ object AuraPalette {
 
     // ── Ground ────────────────────────────────────────────────────────────────────────────────────
 
-    /** The ground every new screen paints. Pure black while AMOLED is on, so AMOLED is not half-applied. */
-    val Ground: Color get() = if (pureBlackGround) Color.Black else BrandGround
+    /**
+     * The ground every new screen paints. Pure black while AMOLED is on (wins over a custom background).
+     * Else the user's Fondo override, else the brand deep.
+     */
+    val Ground: Color
+        get() = when {
+            pureBlackGround -> Color.Black
+            roleOverrides.background != null -> roleOverrides.background!!
+            else -> BrandGround
+        }
 
     /** The lifted ground of the mini pill and the merged player menu sheet. */
-    val GroundRaised: Color get() = if (pureBlackGround) AmoledGroundRaised else BrandGroundRaised
+    val GroundRaised: Color
+        get() = when {
+            pureBlackGround -> AmoledGroundRaised
+            roleOverrides.surface != null -> roleOverrides.surface!!
+            roleOverrides.background != null ->
+                Color.White.copy(alpha = 0.04f).compositeOver(roleOverrides.background!!)
+            else -> BrandGroundRaised
+        }
 
-    /** `color:#EAF2FF` — foreground text/icon colour on [Ground]. Never accent-derived. */
-    val OnGround = Color(0xFFEAF2FF)
+    /** Foreground text/icon colour on [Ground]. Cover-tinted while a track's artwork is resolved. */
+    val OnGround: Color
+        get() = roleOverrides.onBackground ?: artworkInk ?: BrandOnGround
 
-    /** Knob colour of a switch and the ink INSIDE the gradient play button (`#061018`). */
-    val OnAccent = Color(0xFF061018)
+    /** Knob colour of a switch and the ink INSIDE the gradient play button. */
+    val OnAccent: Color
+        get() = roleOverrides.onPrimary ?: BrandOnAccent
 
     // ── Derived, non-negotiable alpha steps ────────────────────────────────────────────────────────
-    /** Secondary text (artist names): `.a { opacity:.55 }`. */
-    val OnGroundMuted = OnGround.copy(alpha = 0.55f)
+    /** Secondary text (artist names): `.a { opacity:.55 }`, or a full override when set. */
+    val OnGroundMuted: Color
+        get() = roleOverrides.onSurfaceVariant ?: OnGround.copy(alpha = 0.55f)
 
     /** Technical data / section labels: `opacity:.5` and `.42`. */
-    val OnGroundFaint = OnGround.copy(alpha = 0.50f)
+    val OnGroundFaint: Color get() = OnGround.copy(alpha = 0.50f)
 
     /**
      * The faintest step that is still allowed to carry TEXT.
@@ -155,7 +214,7 @@ object AuraPalette {
      * text at 11–12 sp, which needs 4.5:1. `.48` composites to ~4.55:1 on the same ground, so the step
      * stays visibly below [OnGroundFaint] while clearing AA. Do not take it back down.
      */
-    val OnGroundGhost = OnGround.copy(alpha = 0.48f)
+    val OnGroundGhost: Color get() = OnGround.copy(alpha = 0.48f)
 
     /**
      * An UNSELECTED bottom-nav cell — glyph and label together.
@@ -170,7 +229,7 @@ object AuraPalette {
      * it reads ~7:1 on `#060A12` and better still on AMOLED's pure black, for every one of the 46
      * swatches, because no swatch is a term in it.
      */
-    val NavInactive = OnGround.copy(alpha = 0.62f)
+    val NavInactive: Color get() = OnGround.copy(alpha = 0.62f)
 
     /**
      * The pill that slides behind the SELECTED nav cell. The accent at a low alpha so the ground still
@@ -180,7 +239,7 @@ object AuraPalette {
     val NavIndicator: Color get() = accent.navIndicator
 
     /** Inactive transport icons: `opacity:.3`. Drag handles live here too. */
-    val OnGroundDisabled = OnGround.copy(alpha = 0.30f)
+    val OnGroundDisabled: Color get() = OnGround.copy(alpha = 0.30f)
 
     /** Card / chip fill: `rgba(255,255,255,.07)`. */
     val SurfaceFill = Color.White.copy(alpha = 0.07f)
@@ -233,20 +292,27 @@ object AuraPalette {
     val FrostFill: Color get() = SurfaceFill.compositeOver(Ground).copy(alpha = 0.82f)
 
     /**
-     * Card / chip hairline: `rgba(255,255,255,.10)`.
+     * Card / chip hairline: `rgba(255,255,255,.10)`, or the user's Bordes colour.
      *
      * It stays the hairline of a [FloatingFill] control too, and it does not get weaker there: on the
      * ground the render's own pairing separates fill from edge by only 1.08:1, whereas 10 % white over
      * the opaque plate is 1.36:1 — a *more* defined edge than the one the render draws, so there is no
      * second "floating" line value to keep in step with this one.
      */
-    val SurfaceLine = Color.White.copy(alpha = 0.10f)
+    val SurfaceLine: Color
+        get() = roleOverrides.outline ?: Color.White.copy(alpha = 0.10f)
 
-    /** Section separators (nav bar top, engine status bar top): `rgba(255,255,255,.08….09)`. */
-    val Divider = Color.White.copy(alpha = 0.09f)
+    /** Section separators (nav bar top, engine status bar top). */
+    val Divider: Color
+        get() = roleOverrides.outline?.copy(
+            alpha = (roleOverrides.outline!!.alpha * 0.9f).coerceIn(0.05f, 1f),
+        ) ?: Color.White.copy(alpha = 0.09f)
 
-    /** Empty progress track: `rgba(255,255,255,.13)`. */
-    val TrackEmpty = Color.White.copy(alpha = 0.13f)
+    /** Empty progress track. */
+    val TrackEmpty: Color
+        get() = roleOverrides.outline?.copy(
+            alpha = (roleOverrides.outline!!.alpha * 1.15f).coerceIn(0.08f, 1f),
+        ) ?: Color.White.copy(alpha = 0.13f)
 
     /** "SONANDO" row highlight: fill `rgba(accent,.10)` + border `rgba(accent,.25)`. */
     val NowPlayingFill: Color get() = accent.nowPlayingFill
@@ -469,6 +535,7 @@ class AuraAccent(
 @Composable
 fun AuraPaletteSync() {
     val scheme = MaterialTheme.colorScheme
+    val context = LocalContext.current
     val pureBlack by rememberPreference(PureBlackKey, defaultValue = false)
     val selectedThemeColorInt by rememberPreference(
         SelectedThemeColorKey,
@@ -477,16 +544,51 @@ fun AuraPaletteSync() {
     val themePreset by rememberEnumPreference(AppThemePresetKey, defaultValue = ThemePreset.NONE)
     val dynamicTheme by rememberPreference(DynamicThemeKey, defaultValue = true)
     val cornerRadius by rememberPreference(ThumbnailCornerRadiusKey, defaultValue = 3f)
+    val customRoles = rememberCustomThemeRoles()
+
+    // Now-playing cover seed (same Palette pass as the ambient bloom). When present it drives Teal /
+    // Blue / Violet AND a soft OnGround tint so Inicio titles, chips and play buttons move with the
+    // wash — not only the background gradients.
+    val playerConnection = LocalPlayerConnection.current
+    val nowPlayingState = if (playerConnection != null) {
+        playerConnection.mediaMetadata.collectAsState()
+    } else {
+        remember { mutableStateOf<MediaMetadata?>(null) }
+    }
+    val nowPlaying by nowPlayingState
+    val mediaId = nowPlaying?.id
+    val thumbnailUrl = nowPlaying?.thumbnailUrl
+    LaunchedEffect(mediaId, thumbnailUrl) {
+        val id = mediaId
+        val url = thumbnailUrl
+        if (id.isNullOrEmpty() || url.isNullOrEmpty()) return@LaunchedEffect
+        AuraBloomCache.ensure(context, id, url)
+    }
+    val artworkSeed = AuraBloomCache.accentSeed(mediaId)
 
     val followsUser = selectedThemeColorInt != DefaultThemeColor.toArgb() ||
         themePreset != ThemePreset.NONE ||
         dynamicTheme
 
-    // The ground the accent is measured against is the one that will be PAINTED, AMOLED included —
-    // measuring against `#060A12` and then drawing on `#000000` would understate the contrast.
-    val ground = if (pureBlack) Color.Black else scheme.surface
-    val resolved = remember(followsUser, scheme.primary, ground) {
-        if (followsUser) AuraAccent.from(scheme.primary, ground) else AuraAccent.Brand
+    // The ground the accent is measured against is the one that will be PAINTED, AMOLED + custom Fondo
+    // included — measuring against `#060A12` and then drawing on another canvas would understate contrast.
+    val ground = customRoles.effectiveAuraGround(pureBlack, fallback = scheme.surface)
+    val resolved = remember(followsUser, scheme.primary, ground, artworkSeed) {
+        when {
+            artworkSeed != null -> AuraAccent.from(artworkSeed, ground)
+            followsUser -> AuraAccent.from(scheme.primary, ground)
+            else -> AuraAccent.Brand
+        }
+    }
+    val artworkInk = remember(artworkSeed, ground) {
+        val seed = artworkSeed ?: return@remember null
+        val (hue, _, _) = ColorPickerConversions.colorToHsv(seed)
+        // Soft tint of the cover hue at high value — still reads as "white text", not a neon label.
+        ensureLegibleOn(
+            color = ColorPickerConversions.hsvToColor(hue, 0.10f, 0.96f),
+            against = ground,
+            minRatio = 4.5f,
+        )
     }
     // 3 is the shipped default of ThumbnailCornerRadiusKey and 1.0 the identity multiplier, so a user
     // who never touched the control gets the render's radii to the pixel.
@@ -495,7 +597,7 @@ fun AuraPaletteSync() {
         if (scale == 1f) AuraCoverCorners.Render else AuraCoverCorners(scale)
     }
 
-    AuraPalette.apply(resolved, pureBlack, corners)
+    AuraPalette.apply(resolved, pureBlack, corners, customRoles, artworkInk)
 }
 
 /**

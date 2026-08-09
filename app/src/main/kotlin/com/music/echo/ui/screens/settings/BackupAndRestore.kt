@@ -6,23 +6,26 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarScrollBehavior
-import androidx.compose.material3.Switch
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -54,24 +57,13 @@ import iad1tya.echo.music.ui.menu.LoadingScreen
 import iad1tya.echo.music.viewmodels.BackupRestoreViewModel
 import iad1tya.echo.music.viewmodels.ConvertedSongLog
 import iad1tya.echo.music.viewmodels.CsvImportState
-import iad1tya.echo.music.utils.rememberPreference
-import android.app.backup.BackupManager
-import android.content.Intent
-import android.provider.Settings
-import android.widget.Toast
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import java.time.Instant
-import java.time.ZoneId
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.Crossfade
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.padding
 
 enum class BackupSubScreen { MAIN, IMPORT }
 
@@ -197,155 +189,183 @@ fun BackupAndRestore(
         currentScreen = BackupSubScreen.MAIN
     }
 
-    Crossfade(targetState = currentScreen, label = "BackupSubScreen") { screen ->
-        Column(
-            Modifier
-                .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp)
-        ) {
-            Spacer(
-                Modifier.windowInsetsPadding(
-                    LocalPlayerAwareWindowInsets.current.only(
-                        WindowInsetsSides.Top
-                    )
-                )
-            )
-
-            when (screen) {
-                BackupSubScreen.MAIN -> {
-                    Material3SettingsGroup(
-                        items = listOf(
-                            Material3SettingsItem(
-                                title = { Text("Copia de seguridad local") },
-                                description = { Text("Crea una copia de seguridad ZIP manual de tus datos") },
-                                icon = painterResource(R.drawable.backup),
-                                onClick = {
-                                    val formatter = DateTimeFormatter.ofPattern("yyyyMMddHHmmss")
-                                    backupLauncher.launch(
-                                        "${context.getString(R.string.app_name)}_${
-                                            LocalDateTime.now().format(formatter)
-                                        }.backup"
-                                    )
-                                }
-                            ),
-                            Material3SettingsItem(
-                                title = { Text("Migración selectiva (Aura)") },
-                                description = { Text("Elige qué playlists migrar, y/o todos los artistas y todos los presets de EQ") },
-                                icon = painterResource(R.drawable.backup),
-                                onClick = { showSelectiveExportDialog = true }
-                            )
-                        )
-                    )
-                    Spacer(modifier = Modifier.padding(8.dp))
-
-                    Material3SettingsGroup(
-                        items = listOf(
-                            Material3SettingsItem(
-                                title = { Text("Importar") },
-                                description = { Text("Restaura datos desde copias de seguridad u otras fuentes") },
-                                icon = painterResource(R.drawable.restore),
-                                onClick = { currentScreen = BackupSubScreen.IMPORT }
-                            )
-                        )
-                    )
-                }
-                BackupSubScreen.IMPORT -> {
-                    Material3SettingsGroup(
-                        title = "Import Data",
-                        items = listOf(
-                            Material3SettingsItem(
-                                title = { Text("Importar desde Spotify") },
-                                icon = painterResource(R.drawable.ic_spotify),
-                                onClick = { navController.navigate("settings/spotify_import") }
-                            ),
-                            // Login-based whole-library migration, right beside Spotify (owner: "lo que
-                            // esté en ajustes permita loguearse para importar toda su biblioteca"). Tidal
-                            // signs in and pulls the whole playlist collection; Deezer/archivo remain
-                            // link/file (they have no login) — the picker offers each honestly.
-                            Material3SettingsItem(
-                                title = { Text("Migrar playlists (Tidal, Deezer, archivo)") },
-                                description = { Text("Inicia sesión en Tidal para traer toda tu biblioteca, o importa por enlace/archivo") },
-                                icon = painterResource(R.drawable.playlist_add),
-                                onClick = { navController.navigate("migration") }
-                            ),
-                            Material3SettingsItem(
-                                title = { Text("Sincronizar desde YouTube Music") },
-                                description = { Text("Trae tu me gusta, álbumes, artistas, suscripciones y playlists de tu cuenta") },
-                                icon = painterResource(R.drawable.sync),
-                                onClick = { navController.navigate("settings/ytm_sync") }
-                            ),
-                            Material3SettingsItem(
-                                title = { Text("Importar desde archivo local") },
-                                icon = painterResource(R.drawable.restore),
-                                onClick = {
-                                    // Use */* so the custom ".backup" file is always selectable:
-                                    // SAF derives MIME from the unknown ".backup" extension and an
-                                    // octet-stream-only filter greys it out on many devices.
-                                    restoreLauncher.launch(arrayOf("*/*"))
-                                }
-                            ),
-                            Material3SettingsItem(
-                                title = { Text("Importar lista 'm3u'") },
-                                icon = painterResource(R.drawable.playlist_add),
-                                onClick = {
-                                    importM3uLauncherOnline.launch(arrayOf("audio/*"))
-                                }
-                            ),
-                            Material3SettingsItem(
-                                title = { Text("Importar lista 'csv'") },
-                                icon = painterResource(R.drawable.playlist_add),
-                                onClick = {
-                                    importPlaylistFromCsv.launch(arrayOf("text/csv", "text/comma-separated-values", "application/csv", "text/plain"))
-                                }
-                            ),
-                            Material3SettingsItem(
-                                title = { Text("Importar lista de Aura Hi-Res Player") },
-                                description = { Text(".jrpl.json exported from the desktop app") },
-                                icon = painterResource(R.drawable.playlist_add),
-                                onClick = {
-                                    importJrLauncher.launch(arrayOf("application/json", "text/plain", "*/*"))
-                                }
-                            ),
-                            Material3SettingsItem(
-                                title = { Text("Importar migración selectiva (Aura)") },
-                                description = { Text("Playlists, artistas y presets exportados de Aura — aditivo, no borra nada") },
-                                icon = painterResource(R.drawable.restore),
-                                onClick = {
-                                    selectiveImportLauncher.launch(arrayOf("application/json", "*/*"))
-                                }
-                            )
-                        )
-                    )
-                }
-            }
-        }
-    }
     val titleRes = when (currentScreen) {
         BackupSubScreen.MAIN -> stringResource(R.string.backup_restore)
         BackupSubScreen.IMPORT -> "Import"
     }
 
-    TopAppBar(
-        title = { Text(titleRes) },
-        navigationIcon = {
-            IconButton(
-                onClick = {
-                    if (currentScreen != BackupSubScreen.MAIN) {
-                        currentScreen = BackupSubScreen.MAIN
-                    } else {
-                        navController.navigateUp()
+    // Classic layout used Crossfade + Column(verticalScroll) with TopAppBar drawn AFTER the
+    // content. Crossfade did not constrain height, so scroll never activated and Import options
+    // (Spotify / whole-library migration) were clipped under the bar and mini-player.
+    Scaffold(
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        topBar = {
+            TopAppBar(
+                title = { Text(titleRes) },
+                navigationIcon = {
+                    IconButton(
+                        onClick = {
+                            if (currentScreen != BackupSubScreen.MAIN) {
+                                currentScreen = BackupSubScreen.MAIN
+                            } else {
+                                navController.navigateUp()
+                            }
+                        },
+                        onLongClick = null,
+                    ) {
+                        Icon(
+                            painterResource(R.drawable.arrow_back),
+                            contentDescription = null,
+                        )
                     }
                 },
-                onLongClick = null,
+            )
+        },
+    ) { padding ->
+        Crossfade(
+            targetState = currentScreen,
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding),
+            label = "BackupSubScreen",
+        ) { screen ->
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .windowInsetsPadding(
+                        LocalPlayerAwareWindowInsets.current.only(
+                            WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
+                        ),
+                    )
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp)
+                    .padding(bottom = 24.dp),
             ) {
-                Icon(
-                    painterResource(R.drawable.arrow_back),
-                    contentDescription = null,
-                )
+                when (screen) {
+                    BackupSubScreen.MAIN -> {
+                        Material3SettingsGroup(
+                            items = listOf(
+                                Material3SettingsItem(
+                                    title = { Text("Copia de seguridad local") },
+                                    description = { Text("Crea una copia de seguridad ZIP manual de tus datos") },
+                                    icon = painterResource(R.drawable.backup),
+                                    onClick = {
+                                        val formatter = DateTimeFormatter.ofPattern("yyyyMMddHHmmss")
+                                        backupLauncher.launch(
+                                            "${context.getString(R.string.app_name)}_${
+                                                LocalDateTime.now().format(formatter)
+                                            }.backup",
+                                        )
+                                    },
+                                ),
+                                Material3SettingsItem(
+                                    title = { Text("Migración selectiva (Aura)") },
+                                    description = {
+                                        Text("Elige qué playlists migrar, y/o todos los artistas y todos los presets de EQ")
+                                    },
+                                    icon = painterResource(R.drawable.backup),
+                                    onClick = { showSelectiveExportDialog = true },
+                                ),
+                            ),
+                        )
+                        Spacer(modifier = Modifier.padding(8.dp))
+
+                        Material3SettingsGroup(
+                            items = listOf(
+                                Material3SettingsItem(
+                                    title = { Text("Importar") },
+                                    description = { Text("Restaura datos desde copias de seguridad u otras fuentes") },
+                                    icon = painterResource(R.drawable.restore),
+                                    onClick = { currentScreen = BackupSubScreen.IMPORT },
+                                ),
+                            ),
+                        )
+                    }
+                    BackupSubScreen.IMPORT -> {
+                        Material3SettingsGroup(
+                            title = "Import Data",
+                            items = listOf(
+                                Material3SettingsItem(
+                                    title = { Text("Importar desde Spotify") },
+                                    icon = painterResource(R.drawable.ic_spotify),
+                                    onClick = { navController.navigate("settings/spotify_import") },
+                                ),
+                                // Login-based whole-library migration, right beside Spotify (owner: "lo que
+                                // esté en ajustes permita loguearse para importar toda su biblioteca"). Tidal
+                                // signs in and pulls the whole playlist collection; Deezer/archivo remain
+                                // link/file (they have no login) — the picker offers each honestly.
+                                Material3SettingsItem(
+                                    title = { Text("Migrar playlists (Tidal, Deezer, archivo)") },
+                                    description = {
+                                        Text("Inicia sesión en Tidal para traer toda tu biblioteca, o importa por enlace/archivo")
+                                    },
+                                    icon = painterResource(R.drawable.playlist_add),
+                                    onClick = { navController.navigate("migration") },
+                                ),
+                                Material3SettingsItem(
+                                    title = { Text("Sincronizar desde YouTube Music") },
+                                    description = {
+                                        Text("Trae tu me gusta, álbumes, artistas, suscripciones y playlists de tu cuenta")
+                                    },
+                                    icon = painterResource(R.drawable.sync),
+                                    onClick = { navController.navigate("settings/ytm_sync") },
+                                ),
+                                Material3SettingsItem(
+                                    title = { Text("Importar desde archivo local") },
+                                    icon = painterResource(R.drawable.restore),
+                                    onClick = {
+                                        // Use */* so the custom ".backup" file is always selectable:
+                                        // SAF derives MIME from the unknown ".backup" extension and an
+                                        // octet-stream-only filter greys it out on many devices.
+                                        restoreLauncher.launch(arrayOf("*/*"))
+                                    },
+                                ),
+                                Material3SettingsItem(
+                                    title = { Text("Importar lista 'm3u'") },
+                                    icon = painterResource(R.drawable.playlist_add),
+                                    onClick = {
+                                        importM3uLauncherOnline.launch(arrayOf("audio/*"))
+                                    },
+                                ),
+                                Material3SettingsItem(
+                                    title = { Text("Importar lista 'csv'") },
+                                    icon = painterResource(R.drawable.playlist_add),
+                                    onClick = {
+                                        importPlaylistFromCsv.launch(
+                                            arrayOf(
+                                                "text/csv",
+                                                "text/comma-separated-values",
+                                                "application/csv",
+                                                "text/plain",
+                                            ),
+                                        )
+                                    },
+                                ),
+                                Material3SettingsItem(
+                                    title = { Text("Importar lista de Aura Hi-Res Player") },
+                                    description = { Text(".jrpl.json exported from the desktop app") },
+                                    icon = painterResource(R.drawable.playlist_add),
+                                    onClick = {
+                                        importJrLauncher.launch(arrayOf("application/json", "text/plain", "*/*"))
+                                    },
+                                ),
+                                Material3SettingsItem(
+                                    title = { Text("Importar migración selectiva (Aura)") },
+                                    description = {
+                                        Text("Playlists, artistas y presets exportados de Aura — aditivo, no borra nada")
+                                    },
+                                    icon = painterResource(R.drawable.restore),
+                                    onClick = {
+                                        selectiveImportLauncher.launch(arrayOf("application/json", "*/*"))
+                                    },
+                                ),
+                            ),
+                        )
+                    }
+                }
             }
         }
-    )
+    }
 
     AddToPlaylistDialogOnline(
         isVisible = showChoosePlaylistDialogOnline,

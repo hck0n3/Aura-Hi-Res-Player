@@ -68,13 +68,15 @@ import kotlinx.coroutines.launch
 
 /**
  * Player quick-search: same sources as Buscar (biblioteca ↔ YouTube Music), full YTM summary results,
- * and the sheet stays open until the user closes it (back / leading chevron). Queue actions never
- * dismiss the sheet for them.
+ * and the sheet stays open until the user closes it (back / leading chevron) — except when opening an
+ * artist / album / playlist browse destination, which dismisses the sheet and collapses the player so
+ * the discography (or album tracks) is actually reachable.
  */
 @Composable
 fun AuraPlayerQuickSearchContent(
     navController: NavController,
     onDismiss: () -> Unit,
+    onBrowseAway: () -> Unit = onDismiss,
     isListenTogetherGuest: Boolean = false,
     modifier: Modifier = Modifier,
     suggestionViewModel: OnlineSearchSuggestionViewModel = hiltViewModel(),
@@ -202,6 +204,24 @@ fun AuraPlayerQuickSearchContent(
         }
     }
 
+    val openBrowse: (YTItem) -> Unit = { item ->
+        when (item) {
+            is SongItem -> openSongActions(item)
+            is AlbumItem -> {
+                onBrowseAway()
+                navController.navigate("album/${item.id}")
+            }
+            is ArtistItem -> {
+                onBrowseAway()
+                navController.navigate("artist/${item.id}")
+            }
+            is PlaylistItem -> {
+                onBrowseAway()
+                navController.navigate("online_playlist/${item.id}")
+            }
+        }
+    }
+
     Column(modifier = modifier.fillMaxSize()) {
         Text(
             text = stringResource(R.string.search),
@@ -242,12 +262,12 @@ fun AuraPlayerQuickSearchContent(
 
         when (effectiveSource) {
             SearchSource.LOCAL -> {
-                // Same library search as Buscar ▸ Biblioteca. onDismiss is a no-op so playing a hit
-                // never closes the player sheet; only the leading back / BackHandler does.
+                // Library search as Buscar ▸ Biblioteca. Playing a song keeps the sheet open; tapping
+                // an artist / album / playlist calls onDismiss → onBrowseAway collapses the player.
                 AuraLocalSearchResults(
                     query = query.text,
                     navController = navController,
-                    onDismiss = {},
+                    onDismiss = onBrowseAway,
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f),
@@ -278,14 +298,7 @@ fun AuraPlayerQuickSearchContent(
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                             openSongActions(song)
                         },
-                        onItemClick = { item ->
-                            when (item) {
-                                is SongItem -> openSongActions(item)
-                                is AlbumItem -> navController.navigate("album/${item.id}")
-                                is ArtistItem -> navController.navigate("artist/${item.id}")
-                                is PlaylistItem -> navController.navigate("online_playlist/${item.id}")
-                            }
-                        },
+                        onItemClick = openBrowse,
                         onItemMenu = openYtMenu,
                         modifier = Modifier
                             .fillMaxWidth()
@@ -310,14 +323,7 @@ fun AuraPlayerQuickSearchContent(
                             database.query { delete(history) }
                         },
                         onSongClick = openSongActions,
-                        onItemClick = { item ->
-                            when (item) {
-                                is SongItem -> openSongActions(item)
-                                is AlbumItem -> navController.navigate("album/${item.id}")
-                                is ArtistItem -> navController.navigate("artist/${item.id}")
-                                is PlaylistItem -> navController.navigate("online_playlist/${item.id}")
-                            }
-                        },
+                        onItemClick = openBrowse,
                         onItemMenu = openYtMenu,
                         modifier = Modifier
                             .fillMaxWidth()

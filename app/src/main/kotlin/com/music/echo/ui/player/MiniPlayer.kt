@@ -215,33 +215,24 @@ private fun NewMiniPlayer(
     val useDarkTheme = rememberEffectiveDarkTheme()
     
     val miniPlayerBackgroundPref by rememberEnumPreference(MiniPlayerBackgroundStyleKey, defaultValue = PlayerBackgroundStyle.GLOW_ANIMATED)
-    // "Interfaz nueva": the new UI owns the look, and it draws no glass anywhere. With the flag on
-    // this composable is no longer reached in ANY orientation (AuraMiniPlayer replaces it, and
-    // AuraPlayer stopped delegating landscape/wide/TV in 0.6.147). The line is KEPT as a belt-and-
-    // braces guard rather than deleted: it costs one enum read, and if a future host ever routes a
-    // shape back through the classic sheet, without it
-    // the Liquid-Glass mini the owner complained about twice ("por qué me sigue saliendo el reproductor
-    // flotante y sus botones flotantes en liquid glass y eso no es parte de este diseño") came back the
-    // moment he rotated the phone, because the one-time high-tier migration (App.kt:818) had written
-    // LIQUID_GLASS into MiniPlayerBackgroundStyleKey for him.
+    // "Interfaz nueva": the new UI owns the look, and it draws no classic Liquid Glass shader. With the
+    // flag on this composable is no longer reached in ANY orientation (AuraMiniPlayer replaces it).
+    // Kept as a belt-and-braces guard: if a future host routes a shape back through the classic sheet,
+    // force DEFAULT here so the redesign never paints the frosted classic glass.
     //
-    // Forcing DEFAULT here is the single point that neutralises it: `useGlassMiniPlayer`,
-    // `isDynamicBackground`, MiniPlayerColorExtractor and the background renderer all derive from this
-    // value, and LiquidGlassMiniPlayerEnabledKey only ever matters while the style IS LIQUID_GLASS.
-    //
-    // What this does NOT do any more is silence the Ajustes rows. "Mini reproductor" → "Estilo de fondo"
-    // is live in BOTH interfaces (AppearanceSettings.kt:1108): with the flag on, AuraMiniPlayer reads the
-    // same key and paints the pill from it. So this line no longer decides whether the preference has an
-    // effect — it decides only that THIS composable, which the new UI never reaches, would not draw glass
-    // if some future host routed a shape back through it. The "Liquid Glass (Beta)" row is likewise not
-    // hidden under the flag: it is shown disabled, with a description that says the shader is
-    // classic-only (AppearanceSettings.kt:1315).
-    //
-    // GATED: with the flag OFF this is `false` and the stored preference is read exactly as today. The
-    // preference itself is never written here, so turning the beta off restores the user's choice.
+    // Classic (!newUi): Liquid Glass when the device is glass-eligible; otherwise Seguir el tema
+    // (DEFAULT). A deliberate LIVE_MESH / BLUR / GLOW pick in Ajustes is still honoured.
     val newUiOwnsMiniLook = iad1tya.echo.music.ui.newui.rememberNewUiEnabled()
-    val miniPlayerBackground =
-        if (newUiOwnsMiniLook) PlayerBackgroundStyle.DEFAULT else miniPlayerBackgroundPref
+    val miniCtx = androidx.compose.ui.platform.LocalContext.current
+    val glassEligibleClassic = remember {
+        iad1tya.echo.music.ui.component.isGlassEligible(miniCtx)
+    }
+    val miniPlayerBackground = when {
+        newUiOwnsMiniLook -> PlayerBackgroundStyle.DEFAULT
+        miniPlayerBackgroundPref == PlayerBackgroundStyle.LIQUID_GLASS && !glassEligibleClassic ->
+            PlayerBackgroundStyle.DEFAULT
+        else -> miniPlayerBackgroundPref
+    }
     // The mini-player is ALWAYS on screen while playing, yet its animated backgrounds (GLOW/LIVE_MESH)
     // had NO perf/thermal gate — unlike the full player — so picking one ran a per-frame gradient
     // forever, even in High-Performance Mode (fluidity audit). Gate it the same way: perf mode or
@@ -251,7 +242,6 @@ private fun NewMiniPlayer(
     // Same HARDWARE floor as the full player: on genuinely-LOW devices never run the per-frame animated
     // background, even with Performance Mode off — and this surface matters MORE, the mini-player is
     // always on screen while playing.
-    val miniCtx = androidx.compose.ui.platform.LocalContext.current
     val miniRawTierLow = remember {
         iad1tya.echo.music.utils.DeviceCapabilities.tier(miniCtx) == iad1tya.echo.music.utils.DeviceTier.LOW
     }

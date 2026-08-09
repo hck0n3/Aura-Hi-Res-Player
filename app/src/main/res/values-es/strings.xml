@@ -368,6 +368,19 @@
     <string name="theme_colors">Tema y colores</string>
     <string name="theme_mode">Modo de tema</string>
     <string name="color_palette">Paleta de colores</string>
+    <string name="theme_custom_roles">Personalizar roles</string>
+    <string name="theme_custom_roles_desc">Elige colores independientes para fondos, textos y bordes. Vale en la interfaz clásica y en la nueva. Déjalos en Automático para conservar los del motor de tema. Negro puro (AMOLED) sigue forzando el fondo negro.</string>
+    <string name="theme_role_background">Fondo</string>
+    <string name="theme_role_surface">Superficie / paneles</string>
+    <string name="theme_role_on_background">Texto principal</string>
+    <string name="theme_role_on_surface_variant">Texto secundario</string>
+    <string name="theme_role_outline">Bordes / líneas</string>
+    <string name="theme_role_on_primary">Texto sobre acento</string>
+    <string name="theme_role_auto">Automático</string>
+    <string name="theme_role_preview">Vista previa</string>
+    <string name="theme_role_preview_title">Título de canción</string>
+    <string name="theme_role_preview_subtitle">Nombre del artista</string>
+    <string name="theme_role_preview_button">Reproducir</string>
     <string name="use_system_colors">Usar colores del sistema</string>
     <string name="apple_music">Apple Music</string>
     <!-- Liquid Glass (Beta) -->

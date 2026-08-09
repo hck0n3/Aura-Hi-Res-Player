@@ -676,10 +676,18 @@ fun AuraMiniPlayer(
         // twice. That value is undone once, by a fresh key, in App.kt (`applyMiniPlayerGlassUndoV1`) —
         // NOT here, because a renderer that silently overrides a stored preference is how the row above
         // it becomes a placebo in the first place.
-        val miniStyle by rememberEnumPreference(
+        val miniStyleStored by rememberEnumPreference(
             key = MiniPlayerBackgroundStyleKey,
             defaultValue = PlayerBackgroundStyle.GLOW_ANIMATED,
         )
+        // Classic Liquid Glass on the shared key must not frost the redesign pill (owner rejected that
+        // look twice). Map it to Brillo animado — the New UI mini default — while classic NewMiniPlayer
+        // still renders real glass when Interfaz nueva is off.
+        val miniStyle = if (miniStyleStored == PlayerBackgroundStyle.LIQUID_GLASS) {
+            PlayerBackgroundStyle.GLOW_ANIMATED
+        } else {
+            miniStyleStored
+        }
         val ground = rememberAuraGround(
             mediaMetadata?.id,
             mediaMetadata?.thumbnailUrl,

@@ -5,6 +5,7 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.spring
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.collectAsState
@@ -82,7 +83,7 @@ object AuraBloomCache {
      */
     private const val MAX_ENTRIES = 32
 
-    private val entries = mutableStateMapOf<String, AuraBloomColors>()
+    private val entries = mutableStateMapOf<String, AuraBloomEntry>()
     private val insertionOrder = ArrayDeque<String>()
 
     /** Media ids whose extraction is currently running, so two screens never decode the same cover. */
@@ -91,7 +92,17 @@ object AuraBloomCache {
     /** Returns the stored bloom for [mediaId], or [AuraBloomColors.Brand] when nothing was stored. */
     fun get(mediaId: String?): AuraBloomColors {
         if (mediaId.isNullOrEmpty()) return AuraBloomColors.Brand
-        return entries[mediaId] ?: AuraBloomColors.Brand
+        return entries[mediaId]?.colors ?: AuraBloomColors.Brand
+    }
+
+    /**
+     * Opaque accent seed extracted with the bloom for [mediaId], or null when the cover has not been
+     * resolved yet / there is no now-playing id. [AuraPaletteSync] reads this so Teal / buttons /
+     * section titles follow the same cover as the wash — not only the ambient gradients.
+     */
+    fun accentSeed(mediaId: String?): Color? {
+        if (mediaId.isNullOrEmpty()) return null
+        return entries[mediaId]?.accentSeed
     }
 
     /**
@@ -113,14 +124,14 @@ object AuraBloomCache {
     }
 
     /**
-     * Stores a bloom for [mediaId]. Call this from a coroutine on a background dispatcher when a track
-     * changes — NEVER from a composable body or a draw lambda.
+     * Stores a bloom (+ accent seed) for [mediaId]. Call this from a coroutine on a background
+     * dispatcher when a track changes — NEVER from a composable body or a draw lambda.
      */
     @Synchronized
-    fun put(mediaId: String, colors: AuraBloomColors) {
+    fun put(mediaId: String, entry: AuraBloomEntry) {
         if (mediaId.isEmpty()) return
         inFlight.remove(mediaId)
-        if (entries.put(mediaId, colors) == null) {
+        if (entries.put(mediaId, entry) == null) {
             insertionOrder.addLast(mediaId)
             while (insertionOrder.size > MAX_ENTRIES) {
                 entries.remove(insertionOrder.removeFirst())
@@ -135,7 +146,24 @@ object AuraBloomCache {
         insertionOrder.clear()
         inFlight.clear()
     }
+
+    /**
+     * Ensures [mediaId] has a bloom+seed entry. Safe to call from several compositions: [claim]
+     * dedupes in-flight work. Used by [rememberAuraBloom] and [AuraPaletteSync].
+     */
+    suspend fun ensure(context: android.content.Context, mediaId: String, thumbnailUrl: String) {
+        if (!claim(mediaId)) return
+        val entry = runCatching { extractAuraBloom(context, thumbnailUrl) }.getOrNull()
+        if (entry != null) put(mediaId, entry) else release(mediaId)
+    }
 }
+
+/** One cover extraction: ambient lobes + the opaque seed [AuraPalette] uses for chrome. */
+@Immutable
+data class AuraBloomEntry(
+    val colors: AuraBloomColors,
+    val accentSeed: Color,
+)
 
 /**
  * The bloom a screen is currently painting, plus the dissolve between the previous one and it.
@@ -199,9 +227,7 @@ fun rememberAuraBloom(mediaId: String?): AuraBloomState {
         val id = mediaId
         val url = thumbnailUrl
         if (id.isNullOrEmpty() || url.isNullOrEmpty()) return@LaunchedEffect
-        if (!AuraBloomCache.claim(id)) return@LaunchedEffect
-        val colors = runCatching { extractAuraBloom(context, url) }.getOrNull()
-        if (colors != null) AuraBloomCache.put(id, colors) else AuraBloomCache.release(id)
+        AuraBloomCache.ensure(context, id, url)
     }
 
     LaunchedEffect(target) {
@@ -224,12 +250,13 @@ fun rememberAuraBloom(mediaId: String?): AuraBloomState {
 
 /**
  * One 100×100 decode (shared with the dynamic theme's Coil memory-cache slot) → [Palette] → three
- * lobe colours. Suspends on IO/Default; never call it from composition or a draw lambda.
+ * lobe colours + an opaque accent seed for [AuraPalette]. Suspends on IO/Default; never call it from
+ * composition or a draw lambda.
  */
 private suspend fun extractAuraBloom(
     context: android.content.Context,
     thumbnailUrl: String,
-): AuraBloomColors? {
+): AuraBloomEntry? {
     val bitmap: Bitmap = withContext(Dispatchers.IO) {
         val request = ImageRequest.Builder(context)
             .data(thumbnailUrl)
@@ -268,10 +295,14 @@ private suspend fun extractAuraBloom(
 
     // The render's own alphas (.32 / .30 / .24) are kept: they are what makes this a wash on a
     // near-black ground rather than three coloured blobs.
-    return AuraBloomColors(
-        topLeft = bloomLobeColor(primary, 0.32f),
-        topRight = bloomLobeColor(secondary, 0.30f),
-        center = bloomLobeColor(tertiary, 0.24f),
+    return AuraBloomEntry(
+        colors = AuraBloomColors(
+            topLeft = bloomLobeColor(primary, 0.32f),
+            topRight = bloomLobeColor(secondary, 0.30f),
+            center = bloomLobeColor(tertiary, 0.24f),
+        ),
+        // Opaque, chroma-floored seed — same HSV floors as the lobes, so chrome and wash agree.
+        accentSeed = bloomLobeColor(primary, 1f),
     )
 }
 

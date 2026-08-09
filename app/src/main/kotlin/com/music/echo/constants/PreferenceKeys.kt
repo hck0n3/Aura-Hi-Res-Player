@@ -251,6 +251,14 @@ val SelectedThemeColorKey = intPreferencesKey("selectedThemeColor")
 // pipeline reads, so nobody's existing colour moves or resets on update (project rule: never
 // repurpose a key). 0 == never set a custom colour, which is exactly today's behaviour.
 val CustomAccentColorKey = intPreferencesKey("customAccentColorArgb")
+// Optional per-role colour overrides for classic ColorScheme + AuraPalette (ThemeScreen
+// "Personalizar roles"). FRESH keys; 0 == automatic (today's derived look). Never repurpose.
+val CustomBackgroundColorKey = intPreferencesKey("customBackgroundArgb")
+val CustomSurfaceColorKey = intPreferencesKey("customSurfaceArgb")
+val CustomOnBackgroundColorKey = intPreferencesKey("customOnBackgroundArgb")
+val CustomOnSurfaceVariantColorKey = intPreferencesKey("customOnSurfaceVariantArgb")
+val CustomOutlineColorKey = intPreferencesKey("customOutlineArgb")
+val CustomOnPrimaryColorKey = intPreferencesKey("customOnPrimaryArgb")
 // How literally the accent seed is applied — see [iad1tya.echo.music.ui.theme.AccentVividness].
 // FRESH key, default SOFT == byte-for-byte today's Material 3 tonal look.
 val AccentVividnessKey = stringPreferencesKey("accentVividness")
@@ -1149,4 +1157,9 @@ val UseOwnQobuzHiResKey = booleanPreferencesKey("use_own_qobuz_hires")
 // Launch default is ON (fresh installs / unset key). Existing explicit `false` is never overwritten.
 val NewUiEnabledKey = booleanPreferencesKey("new_ui_enabled")
 val MiniPlayerGlowDefaultV1AppliedKey = booleanPreferencesKey("miniplayer_glow_default_v1_applied")
+// Classic mini-player: Liquid Glass on glass-eligible devices, "Seguir el tema" (DEFAULT) otherwise.
+// FRESH key; runs after glow/blur/undo so upgrades land on the owner order without clobbering
+// LIVE_MESH / other deliberate picks. New UI pill remaps LIQUID_GLASS → GLOW_ANIMATED (AuraShell).
+val MiniPlayerClassicGlassDefaultV1AppliedKey =
+    booleanPreferencesKey("miniplayer_classic_glass_default_v1_applied")
 val NewUiLaunchDefaultV1AppliedKey = booleanPreferencesKey("new_ui_launch_default_v1_applied")

@@ -12,7 +12,8 @@ El dueño es el beta tester. Si algo de esta lista desaparece en un cambio, **es
 - Fila inferior (junto a Letras / cola / altavoz): debe haber un control **Más / Ajustes** (icono o texto) que abre el menú de opciones del reproductor. **No** dejar solo los tres puntos arriba como única puerta.
 - **Cast** fijo arriba a la derecha (ya existe; no ocultarlo ni empujarlo fuera).
 - Bajo la portada animada (canvas): **sin** badge/aviso tipo `CANVAS ▸ EN MOVIMIENTO`. Solo animar.
-- Mini-reproductor: estilo por defecto = **Brillo animado (GLOW_ANIMATED)**.
+- Mini-reproductor (interfaz **nueva**): estilo por defecto = **Brillo animado (GLOW_ANIMATED)**. Liquid Glass del mini clásico no se aplica a la píldora Aura (se remapea a GLOW).
+- Mini-reproductor (interfaz **clásica**): **Liquid Glass** en dispositivos soportados (`isGlassEligible`); **Seguir el tema** en el resto.
 - Interfaz nueva: **ON por defecto** (instalación nueva / clave sin escribir). Quien la apagó a mano se respeta. Tour de bienvenida explica dónde está todo y cómo desactivarla.
 - Estilo Apple Music: en New UI solo afecta la **portada**, nunca los botones/controles.
 - Temporizador de apagado: **eliminado** (botón + motor). No reintroducirlo.
@@ -57,7 +58,7 @@ El dueño es el beta tester. Si algo de esta lista desaparece en un cambio, **es
 
 ## Cosas que el dueño ya pidió y se revirtieron/perdieron — vigiladas
 
-- Botones del reproductor: fila arriba like/dislike/playlist/download **+ biblioteca + lupa** (búsqueda rápida frost: misma lógica que Buscar — biblioteca ↔ YouTube Music completo con Enter; **no** se cierra sola al reproducir / cola / playlist; solo atrás o el gesto del usuario); share/EQ/vídeo en la barra inferior. Cast y Más inferiores intactos.
+- Botones del reproductor: fila arriba like/dislike/playlist/download **+ lupa** (sin icono de biblioteca en esa fila — biblioteca sigue en el menú Más). Búsqueda rápida frost: misma lógica que Buscar; **no** se cierra sola al reproducir / cola / playlist; solo atrás o el gesto del usuario; artista/álbum/playlist cierran hoja y colapsan el player. share/EQ/vídeo en la barra inferior. Cast y Más inferiores intactos.
 - EQ (Axion): presets de fábrica en **rejilla** con orden fijo (no reordenar el activo al frente); medidor **FFT** semáforo (cian = saturando), ON por defecto salvo High Performance / gama baja; indicador de saturación en preamp cuando FFT ON. Solo UI — no tocar Superpowered/DSP.
 - Cabecera de playlist (New UI): híbrido — **Aleatorio / Reproducir** con nombre; buscar / más / guardar / descargar / compartir solo icono.
 - Búsqueda: sin hueco doble de insets; voz inline (no diálogo grande de Google si hay SpeechRecognizer).
@@ -65,5 +66,5 @@ El dueño es el beta tester. Si algo de esta lista desaparece en un cambio, **es
 - Colecciones de biblioteca (Me gusta / Descargados / En caché / Mi Top…): misma regla — **no** título flotante + lupa sticky; solo atrás flotante; lupa en cabecera scroll (`AuraSongCollectionScaffold` + `pinTitleOnScroll = false`).
 - Grids de álbumes favoritos / “ver todos” del artista: piel Aura (`AuraFavoriteAlbumsScreen` / `AuraArtistSectionGridScreen`), no Material TopAppBar clásico.
 - Ritmo visual del suelo (AuraRhythm): solo cuando el reproductor está expandido y no hay modo alto rendimiento / Cast.
-- Volumen / calidad en New UI: ciclo de calidad en el menú Aura; hoja de dispositivos con piel frost.
+- Interfaz nueva: el color de la portada que suena tiñe el ambient bloom **y** la cromática Aura (acentos Teal/botones/títulos + tinta suave del texto OnGround) en Inicio y el resto de pantallas Aura. Sin canción → acento de Apariencia / marca.
 ---

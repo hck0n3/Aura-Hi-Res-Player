@@ -568,53 +568,62 @@ private fun SpotifySourcePickerSheet(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     ModalBottomSheet(
-        modifier = Modifier.fillMaxHeight(),
+        modifier = Modifier.fillMaxHeight(0.92f),
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
         containerColor = MaterialTheme.colorScheme.surface,
     ) {
+        // Bound height so weight(1f) LazyColumn actually scrolls; stacked header keeps
+        // "Seleccionar todo" reachable on narrow classic phones (side-by-side buttons overflowed).
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .fillMaxHeight()
                 .padding(horizontal = 20.dp)
                 .padding(bottom = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            Text(
+                text = stringResource(R.string.spotify_select_sources),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text = stringResource(R.string.spotify_selected_count, state.selectedSourceIds.size),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = stringResource(R.string.spotify_select_sources),
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    Text(
-                        text = stringResource(R.string.spotify_selected_count, state.selectedSourceIds.size),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
                 TextButton(
                     onClick = onClearSelection,
+                    modifier = Modifier.weight(1f),
                 ) {
-                    Text(stringResource(R.string.spotify_clear_selection))
+                    Text(
+                        text = stringResource(R.string.spotify_clear_selection),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
-                TextButton(
+                Button(
                     onClick = onSelectAll,
+                    modifier = Modifier.weight(1f),
                 ) {
-                    Text(stringResource(R.string.spotify_select_all))
+                    Text(
+                        text = stringResource(R.string.spotify_select_all),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
             }
 
             LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f),
+                    .weight(1f, fill = true),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 contentPadding = PaddingValues(bottom = 6.dp),
             ) {
@@ -652,7 +661,7 @@ private fun SpotifyScheduledSourcesSheet(
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(
-        modifier = Modifier.fillMaxHeight(),
+        modifier = Modifier.fillMaxHeight(0.92f),
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),

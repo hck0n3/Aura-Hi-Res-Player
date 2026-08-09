@@ -395,6 +395,7 @@ class App : Application(), SingletonImageLoader.Factory, androidx.work.Configura
             settings[iad1tya.echo.music.constants.MiniPlayerGlassUndoV1AppliedKey] != true ||
             settings[iad1tya.echo.music.constants.MiniPlayerBlurDefaultV1AppliedKey] != true ||
             settings[iad1tya.echo.music.constants.MiniPlayerGlowDefaultV1AppliedKey] != true ||
+            settings[iad1tya.echo.music.constants.MiniPlayerClassicGlassDefaultV1AppliedKey] != true ||
             settings[iad1tya.echo.music.constants.NewUiLaunchDefaultV1AppliedKey] != true ||
             settings[iad1tya.echo.music.constants.Defaults0130CurveAppliedKey] != true ||
             settings[iad1tya.echo.music.constants.Defaults0132GaplessOffAppliedKey] != true ||
@@ -430,6 +431,9 @@ class App : Application(), SingletonImageLoader.Factory, androidx.work.Configura
                     applyMiniPlayerBlurDefaultV1(p, settings)
                     // …then launch default Brillo animado (GLOW_ANIMATED) for unset/BLUR/DEFAULT.
                     applyMiniPlayerGlowDefaultV1(p, settings)
+                    // Classic order: Liquid Glass on supported devices, Seguir el tema otherwise.
+                    // AFTER glow so upgrades that still sit on GLOW_ANIMATED get the glass default.
+                    applyMiniPlayerClassicGlassDefaultV1(p, settings)
                     // Fresh / unset "Interfaz nueva" → ON for this launch (never overwrite explicit false).
                     applyNewUiLaunchDefaultV1(p, settings)
                 }
@@ -622,9 +626,20 @@ class App : Application(), SingletonImageLoader.Factory, androidx.work.Configura
             // works from first launch.
             p[iad1tya.echo.music.constants.PlayerBackgroundStyleKey] =
                 iad1tya.echo.music.constants.PlayerBackgroundStyle.APPLE_MUSIC.name
-            // Mini-player: Brillo animado (GLOW_ANIMATED) — launch default.
+            // Mini-player: Liquid Glass on glass-eligible devices, Seguir el tema otherwise (classic).
+            // New UI remaps LIQUID_GLASS → GLOW_ANIMATED on the pill.
+            val glassEligibleSeed = runCatching {
+                iad1tya.echo.music.ui.component.isGlassEligible(this@App)
+            }.getOrDefault(false)
             p[iad1tya.echo.music.constants.MiniPlayerBackgroundStyleKey] =
-                iad1tya.echo.music.constants.PlayerBackgroundStyle.GLOW_ANIMATED.name
+                if (glassEligibleSeed) {
+                    iad1tya.echo.music.constants.PlayerBackgroundStyle.LIQUID_GLASS.name
+                } else {
+                    iad1tya.echo.music.constants.PlayerBackgroundStyle.DEFAULT.name
+                }
+            if (glassEligibleSeed) {
+                p[iad1tya.echo.music.constants.LiquidGlassGlobalEnabledKey] = true
+            }
             // Interfaz nueva ON for fresh installs.
             if (p[iad1tya.echo.music.constants.NewUiEnabledKey] == null) {
                 p[iad1tya.echo.music.constants.NewUiEnabledKey] = true
@@ -1282,6 +1297,44 @@ class App : Application(), SingletonImageLoader.Factory, androidx.work.Configura
                 iad1tya.echo.music.constants.PlayerBackgroundStyle.GLOW_ANIMATED.name
         }
         p[iad1tya.echo.music.constants.MiniPlayerGlowDefaultV1AppliedKey] = true
+    }
+
+    /**
+     * Classic mini-player look: [PlayerBackgroundStyle.LIQUID_GLASS] when [isGlassEligible], else
+     * [PlayerBackgroundStyle.DEFAULT] ("Seguir el tema").
+     *
+     * Only rewrites factory-ish values (unset / DEFAULT / BLUR / GLOW_ANIMATED / LIQUID_GLASS) so a
+     * deliberate LIVE_MESH (etc.) pick survives. Enables the global Liquid Glass switch when applying
+     * glass — otherwise the mini style alone is inert (`GlassEffectConfig.globalEnabled`).
+     *
+     * New UI's pill remaps LIQUID_GLASS → GLOW_ANIMATED so this does not resurrect the frosted-pill
+     * complaint on the redesign.
+     */
+    private fun applyMiniPlayerClassicGlassDefaultV1(
+        p: androidx.datastore.preferences.core.MutablePreferences,
+        settings: androidx.datastore.preferences.core.Preferences,
+    ) {
+        if (settings[iad1tya.echo.music.constants.MiniPlayerClassicGlassDefaultV1AppliedKey] == true) return
+        val eligible = runCatching {
+            iad1tya.echo.music.ui.component.isGlassEligible(this@App)
+        }.getOrDefault(false)
+        val current = p[iad1tya.echo.music.constants.MiniPlayerBackgroundStyleKey]
+        val rewritable = current == null ||
+            current == iad1tya.echo.music.constants.PlayerBackgroundStyle.DEFAULT.name ||
+            current == iad1tya.echo.music.constants.PlayerBackgroundStyle.BLUR.name ||
+            current == iad1tya.echo.music.constants.PlayerBackgroundStyle.GLOW_ANIMATED.name ||
+            current == iad1tya.echo.music.constants.PlayerBackgroundStyle.LIQUID_GLASS.name
+        if (rewritable) {
+            if (eligible) {
+                p[iad1tya.echo.music.constants.MiniPlayerBackgroundStyleKey] =
+                    iad1tya.echo.music.constants.PlayerBackgroundStyle.LIQUID_GLASS.name
+                p[iad1tya.echo.music.constants.LiquidGlassGlobalEnabledKey] = true
+            } else {
+                p[iad1tya.echo.music.constants.MiniPlayerBackgroundStyleKey] =
+                    iad1tya.echo.music.constants.PlayerBackgroundStyle.DEFAULT.name
+            }
+        }
+        p[iad1tya.echo.music.constants.MiniPlayerClassicGlassDefaultV1AppliedKey] = true
     }
 
     /**
