@@ -64,6 +64,17 @@ import iad1tya.echo.music.R
 import androidx.compose.foundation.shape.RoundedCornerShape
 import iad1tya.echo.music.eq.audio.CustomEqualizerAudioProcessor
 import iad1tya.echo.music.eq.audio.SuperpoweredEngineStatus
+import iad1tya.echo.music.eq.audio.headroomPreampDb
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlin.math.min
+import kotlin.math.abs
+import kotlin.math.cos
+import kotlin.math.hypot
+import kotlin.math.ln
+import kotlin.math.log10
+import kotlin.math.pow
+import kotlin.math.roundToInt
 import iad1tya.echo.music.eq.data.EqConstants
 import iad1tya.echo.music.eq.data.EqMode
 import iad1tya.echo.music.eq.data.FactoryPreset
@@ -88,16 +99,8 @@ import iad1tya.echo.music.utils.DeviceTier
 import iad1tya.echo.music.utils.rememberPreference
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.setValue
-import kotlinx.coroutines.isActive
-import kotlin.math.min
-import kotlin.math.abs
-import kotlin.math.cos
-import kotlin.math.hypot
-import kotlin.math.ln
-import kotlin.math.log10
-import kotlin.math.pow
-import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.math.sqrt
 import racra.compose.smooth_corner_rect_library.AbsoluteSmoothCornerShape
@@ -312,6 +315,7 @@ private fun eqFftTrafficColor(level: Float, saturateColor: Color): Color = when 
 private data class EqFftSnapshot(
     val bars: FloatArray = FloatArray(EQ_FFT_BAR_COUNT),
     val peak: Float = 0f,
+    val hasSignal: Boolean = false,
 ) {
     companion object {
         val Zero = EqFftSnapshot()
@@ -321,24 +325,41 @@ private data class EqFftSnapshot(
 /**
  * Live FFT spectrum for the EQ screen — Android [Visualizer] tap only; does not touch Superpowered or
  * the gain path. Smoothed once per frame like [rememberAuraRhythmLevel], but with FFT capture enabled.
+ *
+ * [generation] forces a full release/reattach even when [audioSessionId] is unchanged (track transitions
+ * often reuse the session and leave a dead Visualizer until the user leaves EQ).
  */
 @Composable
 private fun rememberEqFftMeter(
     audioSessionId: Int,
     enabled: Boolean,
     playing: Boolean,
+    generation: Int,
+    onForceRebind: () -> Unit,
 ): State<EqFftSnapshot> {
     val snapshot = remember { mutableStateOf(EqFftSnapshot.Zero) }
     var rawBars by remember { mutableStateOf(FloatArray(EQ_FFT_BAR_COUNT)) }
     var rawPeak by remember { mutableFloatStateOf(0f) }
+    var captureOk by remember { mutableStateOf(false) }
+    var lastFftAtMs by remember { mutableLongStateOf(0L) }
 
-    DisposableEffect(audioSessionId, enabled) {
+    DisposableEffect(enabled) {
+        if (enabled) {
+            iad1tya.echo.music.ui.newui.AuraVisualizerExclusive.setEqFftActive(true)
+        }
+        onDispose {
+            iad1tya.echo.music.ui.newui.AuraVisualizerExclusive.setEqFftActive(false)
+        }
+    }
+
+    DisposableEffect(audioSessionId, enabled, generation) {
         if (!enabled || audioSessionId == C.AUDIO_SESSION_ID_UNSET || audioSessionId <= 0) {
             rawBars = FloatArray(EQ_FFT_BAR_COUNT)
             rawPeak = 0f
+            captureOk = false
             onDispose { }
         } else {
-            val visualizer = runCatching {
+            fun attach(): Visualizer? = runCatching {
                 Visualizer(audioSessionId).apply {
                     val range = Visualizer.getCaptureSizeRange()
                     captureSize = range[1].coerceAtLeast(range[0])
@@ -357,6 +378,7 @@ private fun rememberEqFftMeter(
                                 samplingRate: Int,
                             ) {
                                 if (fft == null || fft.size < 4) return
+                                lastFftAtMs = System.currentTimeMillis()
                                 val binCount = fft.size / 2
                                 var peak = 0f
                                 val bars = FloatArray(EQ_FFT_BAR_COUNT)
@@ -388,6 +410,14 @@ private fun rememberEqFftMeter(
                     setEnabled(true)
                 }
             }.getOrNull()
+
+            var visualizer = attach()
+            captureOk = visualizer != null
+            if (visualizer == null) {
+                visualizer = attach()
+                captureOk = visualizer != null
+            }
+            lastFftAtMs = System.currentTimeMillis()
             onDispose {
                 runCatching {
                     visualizer?.setEnabled(false)
@@ -395,12 +425,29 @@ private fun rememberEqFftMeter(
                 }
                 rawBars = FloatArray(EQ_FFT_BAR_COUNT)
                 rawPeak = 0f
+                captureOk = false
             }
         }
     }
 
     val latestBars = rememberUpdatedState(rawBars)
     val latestPeak = rememberUpdatedState(rawPeak)
+    val latestCaptureOk = rememberUpdatedState(captureOk)
+    val latestLastFft = rememberUpdatedState(lastFftAtMs)
+    val latestOnForceRebind = rememberUpdatedState(onForceRebind)
+
+    // Watchdog: after a track change the Visualizer can go silent with the same session id.
+    LaunchedEffect(enabled, playing, audioSessionId, generation) {
+        if (!enabled) return@LaunchedEffect
+        while (isActive) {
+            delay(1_200)
+            if (!playing) continue
+            val silentFor = System.currentTimeMillis() - latestLastFft.value
+            if (silentFor > 1_400L) {
+                latestOnForceRebind.value()
+            }
+        }
+    }
 
     LaunchedEffect(enabled, playing) {
         if (!enabled) {
@@ -411,14 +458,21 @@ private fun rememberEqFftMeter(
         var smoothedPeak = 0f
         while (isActive) {
             withFrameNanos {
-                val targetPeak = if (playing) latestPeak.value else 0f
+                val targetPeak = if (playing) latestPeak.value else smoothedPeak * 0.92f
                 smoothedPeak += (targetPeak - smoothedPeak) * if (targetPeak > smoothedPeak) 0.4f else 0.15f
-                val targets = if (playing) latestBars.value else FloatArray(EQ_FFT_BAR_COUNT)
+                val targets = if (playing) latestBars.value else FloatArray(EQ_FFT_BAR_COUNT) { i ->
+                    smoothed[i] * 0.92f
+                }
                 for (i in smoothed.indices) {
                     val t = targets.getOrElse(i) { 0f }
                     smoothed[i] += (t - smoothed[i]) * if (t > smoothed[i]) 0.45f else 0.18f
                 }
-                snapshot.value = EqFftSnapshot(smoothed.copyOf(), smoothedPeak.coerceIn(0f, 1f))
+                snapshot.value = EqFftSnapshot(
+                    bars = smoothed.copyOf(),
+                    peak = smoothedPeak.coerceIn(0f, 1f),
+                    hasSignal = latestCaptureOk.value &&
+                        (System.currentTimeMillis() - latestLastFft.value) < 2_000L,
+                )
             }
         }
     }
@@ -458,6 +512,7 @@ private fun EqFftMeter(
             )
             Text(
                 text = when {
+                    !snapshot.hasSignal -> "Sin señal"
                     snapshot.peak >= EQ_FFT_SATURATE_THRESHOLD -> "Saturación"
                     snapshot.peak >= EQ_FFT_AMBER_THRESHOLD -> "Cerca del límite"
                     else -> "OK"
@@ -564,29 +619,87 @@ private fun ColumnScope.EqMainContent(
     val (fftMeterEnabled, onFftMeterChange) = rememberPreference(EqFftMeterEnabledKey, fftDefault)
 
     val playerConnection = LocalPlayerConnection.current
-    val audioSessionId = playerConnection?.player?.audioSessionId ?: C.AUDIO_SESSION_ID_UNSET
-    var isPlaying by remember { mutableStateOf(false) }
+    var audioSessionId by remember {
+        mutableIntStateOf(playerConnection?.player?.audioSessionId ?: C.AUDIO_SESSION_ID_UNSET)
+    }
+    var meterPlaying by remember { mutableStateOf(false) }
+    var visualizerGeneration by remember { mutableIntStateOf(0) }
     DisposableEffect(playerConnection) {
         val player = playerConnection?.player
         if (player == null) {
-            isPlaying = false
+            audioSessionId = C.AUDIO_SESSION_ID_UNSET
+            meterPlaying = false
             onDispose { }
         } else {
-            val listener = object : Player.Listener {
+            val fullListener = object : Player.Listener {
+                override fun onAudioSessionIdChanged(sessionId: Int) {
+                    audioSessionId = sessionId
+                    visualizerGeneration++
+                }
+
+                override fun onMediaItemTransition(mediaItem: androidx.media3.common.MediaItem?, reason: Int) {
+                    // Same session id across tracks — still force Visualizer reattach.
+                    audioSessionId = player.audioSessionId
+                    visualizerGeneration++
+                    meterPlaying = player.isPlaying || player.playWhenReady
+                }
+
                 override fun onIsPlayingChanged(playing: Boolean) {
-                    isPlaying = playing
+                    meterPlaying = playing || player.playWhenReady
+                }
+
+                override fun onPlaybackStateChanged(playbackState: Int) {
+                    meterPlaying = player.isPlaying || player.playWhenReady
+                    if (playbackState == Player.STATE_READY || playbackState == Player.STATE_BUFFERING) {
+                        val sid = player.audioSessionId
+                        if (sid != audioSessionId) {
+                            audioSessionId = sid
+                            visualizerGeneration++
+                        }
+                    }
                 }
             }
-            player.addListener(listener)
-            isPlaying = player.isPlaying
-            onDispose { player.removeListener(listener) }
+            player.addListener(fullListener)
+            audioSessionId = player.audioSessionId
+            meterPlaying = player.isPlaying || player.playWhenReady
+            onDispose { player.removeListener(fullListener) }
         }
     }
     val fftSnapshot by rememberEqFftMeter(
         audioSessionId = audioSessionId,
         enabled = fftMeterEnabled,
-        playing = isPlaying,
+        playing = meterPlaying,
+        generation = visualizerGeneration,
+        onForceRebind = { visualizerGeneration++ },
     )
+    // Model output gain the same way the EQ engine does (preamp minus band-boost headroom).
+    val expectedGainDb = remember(preamp, bandGains, enabled) {
+        if (!enabled) {
+            0.0
+        } else {
+            headroomPreampDb(
+                userPreampDb = preamp.toDouble(),
+                enabledBandGainsDb = bandGains.map { it.toDouble() },
+            )
+        }
+    }
+    val displayPeak = remember(fftSnapshot.peak, expectedGainDb) {
+        (fftSnapshot.peak * 10.0.pow(expectedGainDb / 20.0).toFloat()).coerceIn(0f, 1f)
+    }
+    val displaySnapshot = remember(fftSnapshot, displayPeak, expectedGainDb) {
+        val scale = if (fftSnapshot.peak > 1e-4f) {
+            displayPeak / fftSnapshot.peak
+        } else {
+            10.0.pow(expectedGainDb / 20.0).toFloat()
+        }
+        EqFftSnapshot(
+            bars = FloatArray(EQ_FFT_BAR_COUNT) { i ->
+                (fftSnapshot.bars.getOrElse(i) { 0f } * scale).coerceIn(0f, 1f)
+            },
+            peak = displayPeak,
+            hasSignal = fftSnapshot.hasSignal,
+        )
+    }
 
     Material3SettingsGroup(
         items = listOf(
@@ -637,13 +750,13 @@ private fun ColumnScope.EqMainContent(
         skin = skin,
         preamp = preamp,
         enabled = enabled,
-        fftPeak = if (fftMeterEnabled) fftSnapshot.peak else null,
+        fftPeak = if (fftMeterEnabled) displayPeak else null,
         onPreampChange = { viewModel.setPreampLive(it) },
         onCommit = { viewModel.commit() },
     )
 
     if (fftMeterEnabled) {
-        EqFftMeter(snapshot = fftSnapshot, skin = skin)
+        EqFftMeter(snapshot = displaySnapshot, skin = skin)
     }
 
     // Curve preview + factory presets drive/show the 10-band (EqConstants.BAND_COUNT) GRAPHIC curve
@@ -1115,7 +1228,14 @@ private fun FactoryPresetGrid(
             verticalArrangement = Arrangement.spacedBy(8.dp),
             maxItemsInEachRow = 3,
         ) {
-            FactoryPreset.entries.forEach { preset ->
+            // Display order only: short names together so the FlowRow doesn't look jagged.
+            // Selection still uses canonical enum order above (do not move the active chip to front).
+            val displayPresets = remember {
+                FactoryPreset.entries.sortedWith(
+                    compareBy({ it.displayName.length }, { it.displayName }),
+                )
+            }
+            displayPresets.forEach { preset ->
                 key(preset) {
                     val isSelected = selectedPreset == preset
                     val shape = RoundedCornerShape(14.dp)

@@ -1,26 +1,28 @@
-# Aura Hi-Res Player 0.6.158
+# Aura Hi-Res Player 0.6.159
 
-Colores que siguen la portada, personalización por roles, copia/Spotify usables en clásico, y lupa del reproductor que abre discografías.
+Artista sin “Tu biblioteca” duplicada, lupa in-sheet, FFT que no muere al cambiar de pista, volumen de descargas/MP3 más parejo al stream, y portadas MP3.
 
 ---
 
-## 🎨 Apariencia
+## 🎨 Artista / Inicio
 
-- **Personalizar roles** (Tema y colores): fondo, superficie, texto, texto secundario, bordes y texto sobre acento — vale en interfaz clásica y nueva. Automático = 0 (sin romper temas actuales). AMOLED sigue forzando fondo negro.
-- Interfaz nueva: al cambiar de canción, la portada tiñe bloom **y** acentos/botones/títulos/texto de Inicio (y el resto de Aura), no solo el fondo.
+- Página de artista (New UI): una sola **Tu biblioteca** arriba; se omite la shelf YTM “De tu biblioteca / From your library” y títulos de sección repetidos. Espaciado de secciones unificado vía cabeceras Aura.
+- Título **Para ti**: mismo color que el resto de secciones (OnGround), sin Teal forzado.
 
-## 📱 Reproductor (interfaz nueva)
+## 📱 Reproductor
 
-- Quitado el icono de biblioteca de la fila rápida; queda la **lupa** (biblioteca sigue en Más).
-- Lupa: tocar artista / álbum / playlist cierra la hoja, pliega el reproductor y abre la página (discografía / contenido). Las canciones no cierran la hoja solas.
+- Lupa: artista / álbum / playlist se exploran **dentro** de la hoja frost (pila local); ya no colapsa el player.
+- FFT (Axion): reengancha al cambiar de canción + watchdog; semáforo según preamp + headroom de bandas (no solo el slider). Un Visualizer compartido con el ritmo del suelo.
 
-## 💾 Clásico
+## 🔊 Audio / archivos
 
-- Copia de seguridad / Importar: scroll arreglado; se llega a Spotify y migrar biblioteca.
-- Hoja de fuentes Spotify: **Seleccionar todo** visible y lista con scroll.
-- Mini-reproductor: **Liquid Glass** en dispositivos soportados; **Seguir el tema** en el resto. En interfaz nueva la píldora no usa ese glass (sigue Brillo animado).
+- Descargas: conservan el loudnessDb del stream (no lo pisa el fetch de descarga).
+- Export MP3: portada JPEG real + `loudnorm` para acercar el nivel al stream nivelado; reintento sin cover/loudnorm si FFmpeg falla; MediaScanner.
 
-## 📦 Del 0.6.157
+## 🎚 EQ
 
-- Transiciones de audio como en 0.6.146.
-- Búsqueda en el reproductor con lógica completa de Buscar.
+- Presets audiófilos: rejilla ordenada por longitud de nombre (selección sigue el enum).
+
+## 📦 Del 0.6.158
+
+- Personalizar roles de color, chrome por portada, mini Liquid Glass clásico, scroll Copia/Spotify.

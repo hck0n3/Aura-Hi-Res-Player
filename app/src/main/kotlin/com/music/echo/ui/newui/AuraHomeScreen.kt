@@ -529,7 +529,6 @@ fun AuraHomeScreen(
                                     Column(Modifier.animateItem()) {
                                         AuraSectionHeader(
                                             title = forYouTitle,
-                                            accent = AuraPalette.Teal.copy(alpha = 0.75f),
                                             onPlayAll = { playAllSongs(forYouTitle, picks) },
                                         )
                                         if (perfOn) {

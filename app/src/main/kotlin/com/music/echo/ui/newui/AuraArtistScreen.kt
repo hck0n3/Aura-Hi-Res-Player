@@ -216,6 +216,33 @@ fun AuraArtistScreen(
 
     val artistName = artistPage?.artist?.title ?: libraryArtist?.artist?.name
 
+    val fromYourLibraryTitle = stringResource(R.string.from_your_library)
+    val yourLibraryTitle = stringResource(R.string.your_library)
+    val filteredLibrarySongsYt = remember(allLibrarySongs, hideExplicit) {
+        if (hideExplicit) allLibrarySongs.filter { !it.song.explicit } else allLibrarySongs
+    }
+    // YouTube artist view: local "Tu biblioteca" preview is drawn when there is anything local.
+    val showedLocalLibraryPreview = !showLocal && filteredLibrarySongsYt.isNotEmpty()
+    val onlineArtistSections = remember(
+        artistPage?.sections,
+        showedLocalLibraryPreview,
+        fromYourLibraryTitle,
+        yourLibraryTitle,
+    ) {
+        val seenTitles = linkedSetOf<String>()
+        artistPage?.sections.orEmpty().filter { section ->
+            val title = section.title.trim()
+            if (title.isEmpty() || section.items.isEmpty()) return@filter false
+            if (showedLocalLibraryPreview &&
+                isArtistLibrarySectionTitle(title, yourLibraryTitle, fromYourLibraryTitle)
+            ) {
+                return@filter false
+            }
+            val key = title.lowercase()
+            seenTitles.add(key)
+        }
+    }
+
     // The Apple-Music background clip. HOISTED out of the hero on purpose: the header needs the same
     // answer, because the classic screen hides the SMALL artist video whenever the big background video
     // is the one on screen, and that condition cannot be evaluated from inside the hero. One lookup, on
@@ -663,16 +690,13 @@ fun AuraArtistScreen(
                     // online sections, when there is anything to show.
                     // Play uses the FULL local catalogue (`allLibrarySongs`), never the 3-row DB
                     // preview — otherwise tapping song 1 of 10 stopped after the three drawn rows.
-                    val filteredLibrarySongs = if (hideExplicit) {
-                        allLibrarySongs.filter { !it.song.explicit }
-                    } else {
-                        allLibrarySongs
-                    }
-                    val filteredLibraryPreview = filteredLibrarySongs.take(8)
-                    if (filteredLibraryPreview.isNotEmpty()) {
+                    // YTM's own "From your library" shelf is filtered out of [onlineArtistSections]
+                    // so it does not repeat under this block.
+                    val filteredLibraryPreview = filteredLibrarySongsYt.take(8)
+                    if (showedLocalLibraryPreview) {
                         item(key = "aura_artist_library_preview_label") {
                             AuraSectionHeader(
-                                title = stringResource(R.string.your_library),
+                                title = yourLibraryTitle,
                                 onClick = {
                                     navController.navigate("artist/${viewModel.artistId}/songs")
                                 },
@@ -705,8 +729,8 @@ fun AuraArtistScreen(
                                             ListQueue(
                                                 title = libraryArtist?.artist?.name
                                                     ?: context.getString(R.string.unknown_artist),
-                                                items = filteredLibrarySongs.map { it.toMediaItem() },
-                                                startIndex = filteredLibrarySongs
+                                                items = filteredLibrarySongsYt.map { it.toMediaItem() },
+                                                startIndex = filteredLibrarySongsYt
                                                     .indexOfFirst { it.id == song.id }
                                                     .coerceAtLeast(0),
                                             ),
@@ -741,7 +765,7 @@ fun AuraArtistScreen(
                         }
                     }
 
-                    artistPage?.sections?.forEachIndexed { sectionIndex, section ->
+                    onlineArtistSections.forEachIndexed { sectionIndex, section ->
                         val sectionItems = section.items.distinctBy { it.id }
                         if (sectionItems.isEmpty()) return@forEachIndexed
 
@@ -1042,6 +1066,32 @@ private fun AuraArtistHero(
             )
         }
     }
+}
+
+/**
+ * YouTube Music often injects a "From your library" / "De tu biblioteca" shelf on artist pages.
+ * Aura already draws [R.string.your_library] from the local catalogue above the online sections —
+ * showing both looks like a duplicated "Tu biblioteca".
+ */
+private fun isArtistLibrarySectionTitle(
+    title: String,
+    yourLibrary: String,
+    fromYourLibrary: String,
+): Boolean {
+    val t = title.trim().lowercase()
+    if (t.isEmpty()) return false
+    if (t == yourLibrary.trim().lowercase()) return true
+    if (t == fromYourLibrary.trim().lowercase()) return true
+    if (t == "from your library" || t == "your library") return true
+    if (t == "de tu biblioteca" || t == "tu biblioteca") return true
+    // Loose match: any YTM shelf whose title is clearly the library mirror.
+    if (t.contains("biblioteca") && (t.contains("tu") || t.contains("your") || t.startsWith("de "))) {
+        return true
+    }
+    if (t.contains("library") && (t.contains("your") || t.startsWith("from "))) {
+        return true
+    }
+    return false
 }
 
 /** "1,2 M suscriptores" / "3,4 M oyentes mensuales" — the two header stats, each behind its setting. */

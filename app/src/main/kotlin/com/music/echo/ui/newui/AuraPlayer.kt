@@ -67,6 +67,7 @@ import androidx.compose.runtime.Stable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -666,7 +667,20 @@ private fun AuraPlayerShape(
     // the queue alone — which is what made dragging the queue up and down flip between two grounds in
     // one gesture.
     val ground = rememberAuraGround(mediaMetadata?.id, mediaMetadata?.thumbnailUrl)
-    val audioSessionId = playerConnection.player.audioSessionId
+    var audioSessionId by remember {
+        mutableIntStateOf(playerConnection.player.audioSessionId)
+    }
+    DisposableEffect(playerConnection) {
+        val player = playerConnection.player
+        val listener = object : androidx.media3.common.Player.Listener {
+            override fun onAudioSessionIdChanged(sessionId: Int) {
+                audioSessionId = sessionId
+            }
+        }
+        player.addListener(listener)
+        audioSessionId = player.audioSessionId
+        onDispose { player.removeListener(listener) }
+    }
     val rhythmLevel by rememberAuraRhythmLevel(
         audioSessionId = audioSessionId,
         enabled = state.isExpanded && !highPerfMode && !isCasting,

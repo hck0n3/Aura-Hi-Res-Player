@@ -26,7 +26,7 @@ El dueño es el beta tester. Si algo de esta lista desaparece en un cambio, **es
 
 ## Artista (New UI)
 
-- Sección **Tu biblioteca** visible en la página de YouTube (el FAB local↔online está muerto).
+- Sección **Tu biblioteca** visible en la página de YouTube (el FAB local↔online está muerto). Una sola vez arriba; no repetir la shelf “De tu biblioteca / From your library” de YTM debajo. Espaciado de secciones = mismo [AuraSectionHeader] (`SectionTop`) en todas.
 - Tocar una canción de biblioteca o top → cola con el resto de esa lista (`allLibrarySongs` / sección completa).
 - Flecha “ver todos” del encabezado de sección: clickable en toda la fila.
 
@@ -58,7 +58,7 @@ El dueño es el beta tester. Si algo de esta lista desaparece en un cambio, **es
 
 ## Cosas que el dueño ya pidió y se revirtieron/perdieron — vigiladas
 
-- Botones del reproductor: fila arriba like/dislike/playlist/download **+ lupa** (sin icono de biblioteca en esa fila — biblioteca sigue en el menú Más). Búsqueda rápida frost: misma lógica que Buscar; **no** se cierra sola al reproducir / cola / playlist; solo atrás o el gesto del usuario; artista/álbum/playlist cierran hoja y colapsan el player. share/EQ/vídeo en la barra inferior. Cast y Más inferiores intactos.
+- Botones del reproductor: fila arriba like/dislike/playlist/download **+ lupa** (sin icono de biblioteca en esa fila — biblioteca sigue en el menú Más). Búsqueda rápida frost: misma lógica que Buscar; **no** se cierra sola al reproducir / cola / playlist; solo atrás o el gesto del usuario; artista/álbum/playlist se exploran **dentro** de la hoja frost (pila local; no colapsar el player). share/EQ/vídeo en la barra inferior. Cast y Más inferiores intactos.
 - EQ (Axion): presets de fábrica en **rejilla** con orden fijo (no reordenar el activo al frente); medidor **FFT** semáforo (cian = saturando), ON por defecto salvo High Performance / gama baja; indicador de saturación en preamp cuando FFT ON. Solo UI — no tocar Superpowered/DSP.
 - Cabecera de playlist (New UI): híbrido — **Aleatorio / Reproducir** con nombre; buscar / más / guardar / descargar / compartir solo icono.
 - Búsqueda: sin hueco doble de insets; voz inline (no diálogo grande de Google si hay SpeechRecognizer).

@@ -196,8 +196,12 @@ constructor(
                         bitrate = format.bitrate,
                         sampleRate = format.audioSampleRate,
                         contentLength = format.contentLength ?: 0L,
-                        loudnessDb = playbackData.audioConfig?.loudnessDb ?: existingFmt?.loudnessDb,
-                        perceptualLoudnessDb = playbackData.audioConfig?.perceptualLoudnessDb ?: existingFmt?.perceptualLoudnessDb,
+                        // Prefer the loudness already stored from stream playback. A download fetch can
+                        // return a different (or null) value; overwriting re-levels the playing track and
+                        // made downloads sound quieter than the same song while streaming.
+                        loudnessDb = existingFmt?.loudnessDb ?: playbackData.audioConfig?.loudnessDb,
+                        perceptualLoudnessDb = existingFmt?.perceptualLoudnessDb
+                            ?: playbackData.audioConfig?.perceptualLoudnessDb,
                         // Preserve a cached per-play measurement so a like/auto-download doesn't force a re-measure.
                         measuredLoudnessDb = existingFmt?.measuredLoudnessDb,
                         playbackUrl = playbackData.playbackTracking?.videostatsPlaybackUrl?.baseUrl

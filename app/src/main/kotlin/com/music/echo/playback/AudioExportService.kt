@@ -1,5 +1,8 @@
 package iad1tya.echo.music.playback
 
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.media.MediaScannerConnection
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
@@ -44,7 +47,7 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
-
+import java.io.FileOutputStream
 @AndroidEntryPoint
 class AudioExportService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -190,40 +193,76 @@ class AudioExportService : Service() {
                 error("Incomplete export source: wrote $bytesWritten of $totalBytes bytes")
             }
 
-            val artworkDownloaded = artworkUrl.isNotBlank() && runCatching {
-                httpClient.newCall(Request.Builder().url(artworkUrl).build()).execute().use { response ->
-                    if (!response.isSuccessful) return@use
-                    response.body?.byteStream()?.use { input ->
-                        tempArtworkFile.outputStream().use { output ->
-                            input.copyTo(output)
-                            output.flush()
-                        }
-                    }
-                }
-            }.isSuccess && tempArtworkFile.length() > 0L
+            val resolvedArtworkUrl = artworkUrl.takeIf { it.isNotBlank() }
+                ?: dbSong?.song?.thumbnailUrl?.takeIf { it.isNotBlank() }
+                ?: playbackData.videoDetails?.thumbnail?.thumbnails?.lastOrNull()?.url
+                ?: ""
 
-            val ffmpegCommand = buildFfmpegCommand(
-                inputPath = tempSourceFile.absolutePath,
-                outputPath = tempMp3File.absolutePath,
-                title = songTitle,
-                artist = songArtist,
-                album = songAlbum,
-                albumArtist = albumArtist,
-                genre = genre,
-                track = trackNumber,
-                lyrics = lyrics,
-                year = year,
-                coverPath = if (artworkDownloaded) tempArtworkFile.absolutePath else null,
+            val artworkDownloaded = prepareJpegCover(
+                artworkUrl = resolvedArtworkUrl,
+                destFile = tempArtworkFile,
             )
-            val session = FFmpegKit.execute(ffmpegCommand)
-            val returnCode = session.returnCode
-            if (returnCode == null || !ReturnCode.isSuccess(returnCode)) {
-                error("FFmpeg failed: ${session.output}")
+            Log.i(
+                TAG,
+                "export artwork=${if (artworkDownloaded) "ok" else "fail"} " +
+                    "bytes=${if (artworkDownloaded) tempArtworkFile.length() else 0}",
+            )
+
+            fun runFfmpeg(coverPath: String?, useLoudnorm: Boolean): Boolean {
+                val ffmpegCommand = buildFfmpegCommand(
+                    inputPath = tempSourceFile.absolutePath,
+                    outputPath = tempMp3File.absolutePath,
+                    title = songTitle,
+                    artist = songArtist,
+                    album = songAlbum,
+                    albumArtist = albumArtist,
+                    genre = genre,
+                    track = trackNumber,
+                    lyrics = lyrics,
+                    year = year,
+                    coverPath = coverPath,
+                    useLoudnorm = useLoudnorm,
+                )
+                val session = FFmpegKit.execute(ffmpegCommand)
+                val returnCode = session.returnCode
+                val ok = returnCode != null && ReturnCode.isSuccess(returnCode)
+                if (!ok) {
+                    Log.e(
+                        TAG,
+                        "FFmpeg failed cover=${coverPath != null} loudnorm=$useLoudnorm: " +
+                            "${session.output?.take(400)}",
+                    )
+                }
+                return ok
+            }
+
+            val coverPath = if (artworkDownloaded) tempArtworkFile.absolutePath else null
+            var usedLoudnorm = true
+            val ffmpegOk = run {
+                if (coverPath != null) {
+                    if (runFfmpeg(coverPath, useLoudnorm = true)) return@run true
+                    if (runFfmpeg(null, useLoudnorm = true)) return@run true
+                } else if (runFfmpeg(null, useLoudnorm = true)) {
+                    return@run true
+                }
+                usedLoudnorm = false
+                Log.i(TAG, "export loudnorm=skip retrying without")
+                if (coverPath != null) {
+                    if (runFfmpeg(coverPath, useLoudnorm = false)) return@run true
+                    if (runFfmpeg(null, useLoudnorm = false)) return@run true
+                }
+                runFfmpeg(null, useLoudnorm = false)
+            }
+            if (!ffmpegOk) {
+                error("FFmpeg failed")
             }
             if (!tempMp3File.exists() || tempMp3File.length() <= 0L) {
                 error("Exported MP3 file is empty")
             }
-
+            Log.i(
+                TAG,
+                "export ffmpeg=ok loudnorm=${if (usedLoudnorm) "ok" else "skip"} size=${tempMp3File.length()}",
+            )
             val destinationDir = DocumentFile.fromTreeUri(this, Uri.parse(targetDirectoryUri))
                 ?: error("Export directory unavailable")
             val outputFile = destinationDir.createFile("audio/mpeg", "$safeTitle.mp3")
@@ -234,6 +273,16 @@ class AudioExportService : Service() {
                     input.copyTo(output)
                     output.flush()
                 } ?: error("Unable to open output stream")
+            }
+
+            // Help Files / media apps pick up ID3 + cover after SAF write.
+            runCatching {
+                MediaScannerConnection.scanFile(
+                    this,
+                    arrayOf(outputFile.uri.toString()),
+                    arrayOf("audio/mpeg"),
+                    null,
+                )
             }
 
             addExportedSongId(songId)
@@ -347,6 +396,30 @@ class AudioExportService : Service() {
         }
     }
 
+    /**
+     * Download artwork bytes and re-encode as a real JPEG. YouTube often serves webp; FFmpeg's
+     * attached_pic path is unreliable unless the second input is a plain JPEG.
+     */
+    private fun prepareJpegCover(artworkUrl: String, destFile: File): Boolean {
+        if (artworkUrl.isBlank()) return false
+        return runCatching {
+            val bytes = httpClient.newCall(Request.Builder().url(artworkUrl).build()).execute().use { response ->
+                if (!response.isSuccessful) return@runCatching false
+                response.body?.bytes() ?: return@runCatching false
+            }
+            if (bytes.isEmpty()) return@runCatching false
+            val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                ?: return@runCatching false
+            FileOutputStream(destFile).use { out ->
+                val ok = bitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
+                out.flush()
+                if (!ok) return@runCatching false
+            }
+            if (!bitmap.isRecycled) bitmap.recycle()
+            destFile.length() > 0L
+        }.getOrDefault(false)
+    }
+
     companion object {
         private const val TAG = "AudioExportService"
         private const val CHANNEL_ID = "audio_export"
@@ -400,6 +473,7 @@ class AudioExportService : Service() {
             lyrics: String?,
             year: Int?,
             coverPath: String?,
+            useLoudnorm: Boolean = true,
         ): String {
             val escapedInput = inputPath.ffmpegEscape()
             val escapedOutput = outputPath.ffmpegEscape()
@@ -418,11 +492,13 @@ class AudioExportService : Service() {
             val trackFlag = if (trackMeta != null) " -metadata track='$trackMeta'" else ""
             val lyricsFlag = if (lyricsMeta != null) " -metadata lyrics='$lyricsMeta'" else ""
             val extraMeta = "$dateFlags$albumArtistFlag$genreFlag$trackFlag$lyricsFlag"
+            // Match typical streaming loudness so exported MP3s aren't quieter than Aura's leveled stream.
+            val loudnormFilter = if (useLoudnorm) " -af loudnorm=I=-14:TP=-1.5:LRA=11" else ""
             return if (coverPath != null) {
                 val escapedCover = coverPath.ffmpegEscape()
-                "-y -i '$escapedInput' -i '$escapedCover' -map 0:a -map 1:v -c:v mjpeg -disposition:v attached_pic -c:a libmp3lame -b:a 320k -id3v2_version 3 -metadata title='$titleMeta' -metadata artist='$artistMeta' -metadata album='$albumMeta'$extraMeta -metadata:s:v title='Album cover' -metadata:s:v comment='Cover (front)' '$escapedOutput'"
+                "-y -i '$escapedInput' -i '$escapedCover' -map 0:a -map 1:v -c:v mjpeg -disposition:v attached_pic$loudnormFilter -c:a libmp3lame -b:a 320k -id3v2_version 3 -metadata title='$titleMeta' -metadata artist='$artistMeta' -metadata album='$albumMeta'$extraMeta -metadata:s:v title='Album cover' -metadata:s:v comment='Cover (front)' '$escapedOutput'"
             } else {
-                "-y -i '$escapedInput' -c:a libmp3lame -b:a 320k -id3v2_version 3 -metadata title='$titleMeta' -metadata artist='$artistMeta' -metadata album='$albumMeta'$extraMeta '$escapedOutput'"
+                "-y -i '$escapedInput'$loudnormFilter -c:a libmp3lame -b:a 320k -id3v2_version 3 -metadata title='$titleMeta' -metadata artist='$artistMeta' -metadata album='$albumMeta'$extraMeta '$escapedOutput'"
             }
         }
 

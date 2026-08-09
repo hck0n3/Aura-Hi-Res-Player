@@ -5,15 +5,31 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.media3.common.C
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlin.math.min
 import kotlin.math.sqrt
+
+/**
+ * Android allows one live [Visualizer] per audio session. The EQ FFT meter and the player ground
+ * rhythm both need one — when EQ holds the session, rhythm must stand down (and vice versa).
+ */
+object AuraVisualizerExclusive {
+    private val _eqFftActive = MutableStateFlow(false)
+    val eqFftActive = _eqFftActive.asStateFlow()
+
+    fun setEqFftActive(active: Boolean) {
+        _eqFftActive.value = active
+    }
+}
 
 /**
  * Low-rate waveform energy for the full-player ground. Capture is capped well below the device
@@ -30,9 +46,11 @@ fun rememberAuraRhythmLevel(
 ): State<Float> {
     val level = remember { mutableFloatStateOf(0f) }
     var raw by remember { mutableFloatStateOf(0f) }
+    val eqFftHoldsSession by AuraVisualizerExclusive.eqFftActive.collectAsState()
+    val captureEnabled = enabled && !eqFftHoldsSession
 
-    DisposableEffect(audioSessionId, enabled) {
-        if (!enabled || audioSessionId == C.AUDIO_SESSION_ID_UNSET || audioSessionId <= 0) {
+    DisposableEffect(audioSessionId, captureEnabled) {
+        if (!captureEnabled || audioSessionId == C.AUDIO_SESSION_ID_UNSET || audioSessionId <= 0) {
             raw = 0f
             onDispose { }
         } else {
@@ -81,8 +99,8 @@ fun rememberAuraRhythmLevel(
         }
     }
 
-    LaunchedEffect(enabled, playing) {
-        if (!enabled) {
+    LaunchedEffect(captureEnabled, playing) {
+        if (!captureEnabled) {
             level.floatValue = 0f
             return@LaunchedEffect
         }
