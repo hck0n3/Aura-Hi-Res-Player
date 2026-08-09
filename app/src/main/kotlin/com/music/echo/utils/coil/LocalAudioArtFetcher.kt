@@ -52,44 +52,88 @@ class LocalAudioArtFetcher(
                 context.contentResolver.loadThumbnail(uri, Size(512, 512), null)
             }.getOrNull()?.takeIf { it.width > 1 && it.height > 1 }?.let { return it }
         }
+
+        // Fallback: check for folder art in the same directory if this is a file or file-backed content URI
+        findFolderArt(uri)?.let { return it }
+
         return null
     }
 
     private fun decodeEmbeddedPicture(uri: android.net.Uri): Bitmap? {
         val retriever = MediaMetadataRetriever()
+        var pfd: android.os.ParcelFileDescriptor? = null
         return try {
-            val opened = openRetriever(retriever, uri)
-            if (!opened) return null
+            when (uri.scheme) {
+                "file" -> {
+                    val path = uri.path ?: return null
+                    retriever.setDataSource(path)
+                }
+                "content" -> {
+                    var success = false
+                    try {
+                        retriever.setDataSource(context, uri)
+                        success = true
+                    } catch (_: Exception) {
+                        // Some OEM / SAF document URIs reject setDataSource(Context, Uri)
+                    }
+                    if (!success) {
+                        pfd = context.contentResolver.openFileDescriptor(uri, "r")
+                        if (pfd != null) {
+                            retriever.setDataSource(pfd.fileDescriptor)
+                        } else {
+                            return null
+                        }
+                    }
+                }
+                else -> return null
+            }
             val bytes = retriever.embeddedPicture ?: return null
             BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
                 ?.takeIf { it.width > 1 && it.height > 1 }
         } catch (_: Exception) {
             null
         } finally {
+            runCatching { pfd?.close() }
             runCatching { retriever.release() }
         }
     }
 
-    private fun openRetriever(retriever: MediaMetadataRetriever, uri: android.net.Uri): Boolean {
-        when (uri.scheme) {
-            "file" -> {
-                val path = uri.path ?: return false
-                retriever.setDataSource(path)
-                return true
-            }
+    private fun findFolderArt(uri: android.net.Uri): Bitmap? {
+        val filePath = when (uri.scheme) {
+            "file" -> uri.path
             "content" -> {
+                // Try querying DATA column for direct file path on legacy/file-backed URIs
                 runCatching {
-                    retriever.setDataSource(context, uri)
-                    return true
-                }
-                // Some OEM / SAF document URIs reject setDataSource(Context, Uri) but accept a FD.
-                return context.contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
-                    retriever.setDataSource(pfd.fileDescriptor)
-                    true
-                } == true
+                    context.contentResolver.query(
+                        uri,
+                        arrayOf(android.provider.MediaStore.MediaColumns.DATA),
+                        null,
+                        null,
+                        null,
+                    )?.use { cursor ->
+                        if (cursor.moveToFirst()) {
+                            cursor.getString(0)
+                        } else null
+                    }
+                }.getOrNull()
             }
-            else -> return false
+            else -> null
+        } ?: return null
+
+        val parentDir = java.io.File(filePath).parentFile ?: return null
+        if (!parentDir.exists() || !parentDir.isDirectory) return null
+
+        val artNames = listOf("cover.jpg", "cover.png", "folder.jpg", "folder.png", "album.jpg", "album.png", "front.jpg", "front.png")
+        for (name in artNames) {
+            val artFile = java.io.File(parentDir, name)
+            if (artFile.exists() && artFile.canRead()) {
+                val bmp = runCatching { BitmapFactory.decodeFile(artFile.absolutePath) }.getOrNull()
+                if (bmp != null && bmp.width > 1 && bmp.height > 1) {
+                    return bmp
+                }
+            }
         }
+        return null
     }
 
     class Factory : Fetcher.Factory<CoilUri> {

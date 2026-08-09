@@ -1,18 +1,21 @@
-# Aura Hi-Res Player 0.6.161
+# Aura Hi-Res Player 0.6.162
 
-Vídeo más estable (sin trabones por rebinds ni `prepare` en rebuffers) y Cast oculto cuando las letras están abiertas.
+Abrir archivos de audio locales desde otras apps, mejores etiquetas/portadas de MP3 y streaming de vídeo más fiable.
 
 ---
 
-## 📱 Reproductor
+## 📂 Música local
 
-- Con **letras** activas, el botón **Cast** de la esquina superior derecha se oculta (clásico y New UI).
+- **Abrir con Aura**: desde el gestor de archivos, Descargas u otra app puedes abrir un MP3/FLAC/OGG y suena al instante.
+- Si MediaStore no trae título/artista/álbum (archivos recién bajados), se leen las etiquetas ID3 del propio archivo.
+- Portadas: además del arte embebido, se busca `cover.jpg` / `folder.jpg` / `album.jpg` en la carpeta del tema.
 
 ## 🎬 Vídeo / streaming
 
-- La superficie de vídeo ya no llama `setVideoTextureView` en cada recomposición (solo al cambiar de TextureView o de URL) — eso congelaba el cuadro mientras el audio seguía.
-- La recuperación “vídeo atascado” solo actúa en **IDLE** (pipeline muerto). Un BUFFERING normal de varios segundos ya no dispara `prepare()` a los 3 s (que reiniciaba el stream y se veía como traba → continúa).
+- En modo vídeo se usa el cliente de vídeo correcto al resolver el stream (antes podía quedar en el de solo audio).
+- Si la URL trae el parámetro `n=`, se aplica el n-transform aunque el cliente no lo pidiera explícitamente — evita 403 en algunos streams.
+- Peticiones con cliente TV mandan el User-Agent de TVHTML5 (antes podían ir mal firmadas).
 
-## 📦 Del 0.6.160
+## 📦 Del 0.6.161
 
-- Portadas MP3: lectura APIC/ID3 real + caché Coil + Exportadas apuntan al archivo.
+- Vídeo más estable (sin trabones por rebinds ni `prepare` en rebuffers) y Cast oculto con letras abiertas.

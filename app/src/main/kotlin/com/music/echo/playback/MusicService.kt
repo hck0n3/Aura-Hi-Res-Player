@@ -8189,6 +8189,7 @@ class MusicService :
                 val c = req.url.queryParameter("c")?.trim().orEmpty()
                 val agent = when {
                     c.startsWith("WEB", true) -> com.music.innertube.models.YouTubeClient.USER_AGENT_WEB
+                    c.startsWith("TV", true) -> com.music.innertube.models.YouTubeClient.TVHTML5.userAgent
                     c.startsWith("IOS", true) -> com.music.innertube.models.YouTubeClient.IOS.userAgent
                     c.startsWith("ANDROID_VR", true) -> com.music.innertube.models.YouTubeClient.ANDROID_VR_NO_AUTH.userAgent
                     c.startsWith("ANDROID", true) -> com.music.innertube.models.YouTubeClient.MOBILE.userAgent

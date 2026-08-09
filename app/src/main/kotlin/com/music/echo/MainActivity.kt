@@ -20,9 +20,11 @@ import android.content.ComponentName
 import android.content.Intent
 import android.content.ServiceConnection
 import android.content.pm.PackageManager
+import android.media.MediaMetadataRetriever
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
+import android.os.ParcelFileDescriptor
 import android.os.SystemClock
 import android.view.HapticFeedbackConstants
 import android.view.View
@@ -201,7 +203,9 @@ import iad1tya.echo.music.db.MusicDatabase
 import iad1tya.echo.music.db.entities.SearchHistory
 import iad1tya.echo.music.extensions.metadata
 import iad1tya.echo.music.extensions.toEnum
+import iad1tya.echo.music.extensions.toMediaItem
 import iad1tya.echo.music.migration.TidalAuthCallbackBus
+import iad1tya.echo.music.models.MediaMetadata
 import iad1tya.echo.music.models.toMediaMetadata
 import iad1tya.echo.music.playback.DownloadUtil
 import iad1tya.echo.music.playback.MusicService
@@ -209,8 +213,10 @@ import iad1tya.echo.music.playback.MusicService.MusicBinder
 import iad1tya.echo.music.playback.PlayerConnection
 import iad1tya.echo.music.playback.PreviousQueueOffer
 import iad1tya.echo.music.playback.PreviousQueueRule
+import iad1tya.echo.music.playback.queues.ListQueue
 import iad1tya.echo.music.playback.queues.YouTubeQueue
 import iad1tya.echo.music.recognition.RecognitionForegroundService
+import iad1tya.echo.music.utils.coil.LocalAudioArtFetcher
 import iad1tya.echo.music.ui.component.AppNavigationRail
 import iad1tya.echo.music.ui.component.BottomSheetMenu
 import iad1tya.echo.music.ui.component.BottomSheetPage
@@ -2312,6 +2318,23 @@ class MainActivity : ComponentActivity() {
 
         val coroutineScope = lifecycle.coroutineScope
 
+        // Local audio files (content:// or file://) opened from file manager, downloads, or external apps
+        if (uri.scheme == "content" || uri.scheme == "file") {
+            coroutineScope.launch(Dispatchers.IO) {
+                val metadata = resolveLocalMediaMetadata(this@MainActivity, uri)
+                withContext(Dispatchers.Main) {
+                    playerConnection?.playQueue(
+                        ListQueue(
+                            title = metadata.title,
+                            items = listOf(metadata.toMediaItem()),
+                            startIndex = 0,
+                        )
+                    )
+                }
+            }
+            return
+        }
+
         // ── Shared helpers so every YouTube/YTM link shape below reuses the SAME play/navigate paths.
 
         // Enqueue + play a single video (optionally inside a playlist/mix context). This is how the app
@@ -2460,6 +2483,57 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    private fun resolveLocalMediaMetadata(context: Context, uri: android.net.Uri): MediaMetadata {
+        val retriever = MediaMetadataRetriever()
+        var pfd: ParcelFileDescriptor? = null
+        var title: String? = null
+        var artist: String? = null
+        var album: String? = null
+        var duration = 0
+        try {
+            when (uri.scheme) {
+                "file" -> uri.path?.let { retriever.setDataSource(it) }
+                "content" -> {
+                    var success = false
+                    try {
+                        retriever.setDataSource(context, uri)
+                        success = true
+                    } catch (_: Exception) { }
+                    if (!success) {
+                        pfd = context.contentResolver.openFileDescriptor(uri, "r")
+                        pfd?.let { retriever.setDataSource(it.fileDescriptor) }
+                    }
+                }
+            }
+            title = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE)?.trim()?.takeIf(String::isNotBlank)
+            artist = (retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST)
+                ?: retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUMARTIST))?.trim()?.takeIf(String::isNotBlank)
+            album = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUM)?.trim()?.takeIf(String::isNotBlank)
+            duration = (retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L)
+                .div(1000L).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+        } catch (_: Exception) {
+        } finally {
+            runCatching { pfd?.close() }
+            runCatching { retriever.release() }
+        }
+
+        if (title.isNullOrBlank()) {
+            val fileName = uri.lastPathSegment?.substringAfterLast('/')?.substringBeforeLast('.')
+            title = fileName?.takeIf(String::isNotBlank) ?: context.getString(R.string.unknown)
+        }
+        val unknownArtist = context.getString(R.string.unknown_artist)
+        val artistName = artist ?: unknownArtist
+
+        return MediaMetadata(
+            id = uri.toString(),
+            title = title,
+            artists = listOf(MediaMetadata.Artist(id = "LOCAL_${uri.hashCode()}", name = artistName)),
+            duration = duration,
+            thumbnailUrl = LocalAudioArtFetcher.uriFor(uri.toString()),
+            album = album?.let { MediaMetadata.Album(id = "LOCAL_ALBUM_${it.hashCode()}", title = it) },
+        )
     }
 
     @SuppressLint("ObsoleteSdkInt")

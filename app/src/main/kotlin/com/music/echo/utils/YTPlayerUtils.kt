@@ -1092,9 +1092,9 @@ object YTPlayerUtils {
             val client: YouTubeClient
             if (clientIndex == -1) {
                 
-                client = MAIN_CLIENT
+                client = if (preferVideo) VIDEO_CLIENT else (usedAgeRestrictedClient ?: MAIN_CLIENT)
                 streamPlayerResponse = retryMainPlayerResponse ?: mainPlayerResponse
-                Timber.tag(logTag).d("Trying stream from MAIN_CLIENT: ${client.clientName}")
+                Timber.tag(logTag).d("Trying stream from ${if (preferVideo) "VIDEO_CLIENT" else "MAIN_CLIENT"}: ${client.clientName}")
             } else {
                 
                 client = STREAM_FALLBACK_CLIENTS[clientIndex]
@@ -1146,8 +1146,9 @@ object YTPlayerUtils {
 
             
             if (streamPlayerResponse?.playabilityStatus?.status == "OK") {
-                Timber.tag(logTag).d("Player response status OK for client: ${if (clientIndex == -1) MAIN_CLIENT.clientName else STREAM_FALLBACK_CLIENTS[clientIndex].clientName}")
-                PlaybackLogManager.log(PlaybackLogLevel.INFO, "Player response OK", if (clientIndex == -1) MAIN_CLIENT.clientName else STREAM_FALLBACK_CLIENTS[clientIndex].clientName)
+                val resolvedClientName = if (clientIndex == -1) (if (preferVideo) VIDEO_CLIENT else MAIN_CLIENT).clientName else STREAM_FALLBACK_CLIENTS[clientIndex].clientName
+                Timber.tag(logTag).d("Player response status OK for client: $resolvedClientName")
+                PlaybackLogManager.log(PlaybackLogLevel.INFO, "Player response OK", resolvedClientName)
 
                 
                 val hasDirectUrls = streamPlayerResponse.streamingData?.adaptiveFormats
@@ -1171,7 +1172,7 @@ object YTPlayerUtils {
                     )
 
                 if (format == null) {
-                    Timber.tag(logTag).d("No suitable format found for client: ${if (clientIndex == -1) MAIN_CLIENT.clientName else STREAM_FALLBACK_CLIENTS[clientIndex].clientName}")
+                    Timber.tag(logTag).d("No suitable format found for client: $resolvedClientName")
                     continue
                 }
 
@@ -1187,7 +1188,7 @@ object YTPlayerUtils {
 
                 
                 val currentClient = if (clientIndex == -1) {
-                    usedAgeRestrictedClient ?: MAIN_CLIENT
+                    if (preferVideo) VIDEO_CLIENT else (usedAgeRestrictedClient ?: MAIN_CLIENT)
                 } else {
                     STREAM_FALLBACK_CLIENTS[clientIndex]
                 }
@@ -1196,7 +1197,8 @@ object YTPlayerUtils {
                 val isPrivatelyOwnedTrack = streamPlayerResponse.videoDetails?.musicVideoType == "MUSIC_VIDEO_TYPE_PRIVATELY_OWNED_TRACK"
 
                 
-                if (currentClient.useWebPoTokens) {
+                val needsNTransform = currentClient.useWebPoTokens || streamUrl?.let { Regex("[?&]n=").containsMatchIn(it) } == true
+                if (needsNTransform) {
                     try {
                         Timber.tag(logTag).d("Applying n-transform to stream URL for ${currentClient.clientName}")
                         val ntrStartMs = SystemClock.elapsedRealtime()

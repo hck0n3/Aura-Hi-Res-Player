@@ -332,7 +332,31 @@ constructor(
                 if (!SupportedLocalAudio.isSupported(displayName, mimeType)) {
                     continue
                 }
-                val artistValue = normalizeArtistName(cursor.getString(artistIndex), unknownArtist)
+
+                val rawTitle = cursor.getString(titleIndex)
+                val rawArtist = cursor.getString(artistIndex)
+                val rawAlbum = cursor.getString(albumIndex)
+                val rawYear = cursor.getIntOrNull(yearIndex)?.takeIf { it > 0 }
+                val rawDuration = cursor.getLong(durationIndex).coerceAtLeast(0L)
+                val dataPath = cursor.getStringOrNull(dataPathIndex)
+
+                // If MediaStore lacks ID3 tags (e.g. newly downloaded files), read tags directly via MediaMetadataRetriever
+                val needsId3Extraction = rawArtist.isNullOrBlank() || rawArtist.equals("<unknown>", ignoreCase = true) ||
+                    rawAlbum.isNullOrBlank() || rawAlbum.equals("<unknown>", ignoreCase = true) ||
+                    rawTitle.isNullOrBlank() || rawTitle == displayName || rawTitle.endsWith(".mp3", ignoreCase = true) ||
+                    rawYear == null || rawDuration == 0L
+
+                val id3 = if (needsId3Extraction) {
+                    extractId3Metadata(contentUri, dataPath)
+                } else null
+
+                val effectiveTitle = id3?.title ?: rawTitle
+                val effectiveArtist = id3?.artist ?: rawArtist
+                val effectiveAlbum = id3?.album ?: rawAlbum
+                val effectiveYear = id3?.year ?: rawYear
+                val effectiveDurationMs = if (rawDuration > 0L) rawDuration else (id3?.durationMs ?: 0L)
+
+                val artistValue = normalizeArtistName(effectiveArtist, unknownArtist)
                 val splitArtists = splitArtistNames(artistValue).ifEmpty { listOf(unknownArtist) }
                 val mediaStoreArtistId = cursor.getLongOrNull(artistIdIndex)
                 val artists = splitArtists.mapIndexed { index, name ->
@@ -342,9 +366,9 @@ constructor(
                     )
                 }
                 val mediaStoreAlbumId = cursor.getLongOrNull(albumIdIndex)
-                val albumName = normalizeAlbumName(cursor.getString(albumIndex))
+                val albumName = normalizeAlbumName(effectiveAlbum)
                 val title = normalizeTitle(
-                    title = cursor.getString(titleIndex),
+                    title = effectiveTitle,
                     displayName = displayName,
                     fallback = unknownTitle,
                 )
@@ -360,10 +384,10 @@ constructor(
                         )
                     },
                     albumName = albumName,
-                    durationSeconds = (cursor.getLong(durationIndex).coerceAtLeast(0L) / 1000L)
+                    durationSeconds = (effectiveDurationMs / 1000L)
                         .coerceAtMost(Int.MAX_VALUE.toLong())
                         .toInt(),
-                    year = cursor.getIntOrNull(yearIndex)?.takeIf { it > 0 },
+                    year = effectiveYear,
                     dateModified = cursor.getLong(dateModifiedIndex)
                         .takeIf { it > 0L }
                         ?.let { LocalDateTime.ofInstant(Instant.ofEpochSecond(it), ZoneId.systemDefault()) },
@@ -506,6 +530,68 @@ constructor(
 
     private fun android.database.Cursor.getStringOrNull(columnIndex: Int): String? {
         return if (columnIndex >= 0 && !isNull(columnIndex)) getString(columnIndex) else null
+    }
+
+    private data class ExtractedId3Metadata(
+        val title: String? = null,
+        val artist: String? = null,
+        val album: String? = null,
+        val year: Int? = null,
+        val durationMs: Long? = null,
+    )
+
+    private fun extractId3Metadata(contentUri: Uri, dataPath: String?): ExtractedId3Metadata? {
+        val retriever = android.media.MediaMetadataRetriever()
+        var pfd: android.os.ParcelFileDescriptor? = null
+        return try {
+            var opened = false
+            if (!dataPath.isNullOrBlank()) {
+                val file = java.io.File(dataPath)
+                if (file.exists() && file.canRead()) {
+                    retriever.setDataSource(file.absolutePath)
+                    opened = true
+                }
+            }
+            if (!opened) {
+                try {
+                    retriever.setDataSource(context, contentUri)
+                    opened = true
+                } catch (_: Exception) {
+                    pfd = context.contentResolver.openFileDescriptor(contentUri, "r")
+                    if (pfd != null) {
+                        retriever.setDataSource(pfd.fileDescriptor)
+                        opened = true
+                    }
+                }
+            }
+            if (!opened) return null
+
+            val title = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_TITLE)
+                ?.trim()?.takeIf(String::isNotBlank)
+            val artist = (retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_ARTIST)
+                ?: retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_ALBUMARTIST))
+                ?.trim()?.takeIf { it.isNotBlank() && !it.equals("<unknown>", ignoreCase = true) }
+            val album = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_ALBUM)
+                ?.trim()?.takeIf { it.isNotBlank() && !it.equals("<unknown>", ignoreCase = true) }
+            val yearStr = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_YEAR)
+                ?: retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DATE)
+            val year = yearStr?.filter(Char::isDigit)?.take(4)?.toIntOrNull()?.takeIf { it in 1900..2100 }
+            val durationMs = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)
+                ?.toLongOrNull()?.takeIf { it > 0L }
+
+            ExtractedId3Metadata(
+                title = title,
+                artist = artist,
+                album = album,
+                year = year,
+                durationMs = durationMs,
+            )
+        } catch (_: Exception) {
+            null
+        } finally {
+            runCatching { pfd?.close() }
+            runCatching { retriever.release() }
+        }
     }
 
     private data class LocalScanSnapshot(
