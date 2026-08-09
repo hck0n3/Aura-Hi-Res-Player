@@ -1495,19 +1495,21 @@ private fun AuraPlayerShape(
             }
         }
 
-        // CAST: pinned top-right in every layout (owner: always here; Más moved to the bottom bar).
-        // `immersiveControlsVisible` mirrors the classic gate (Player.kt:3387): while the fullscreen
-        // video has hidden its transport, a cast button floating alone over the picture is the one thing
-        // that stops it being a clean view.
-        if (!LocalIsInPipMode.current && !queueSheetState.isExpanded && immersiveControlsVisible) {
+        // CAST: pinned top-right (owner). Hidden while inline lyrics are open — the lyrics pane owns
+        // that corner; Cast must not float over the text. Also gated on immersiveControlsVisible so
+        // fullscreen video tap-to-hide stays a clean view.
+        if (!LocalIsInPipMode.current &&
+            !queueSheetState.isExpanded &&
+            immersiveControlsVisible &&
+            !showInlineLyrics
+        ) {
             CastButton(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .windowInsetsPadding(
                         WindowInsets.systemBars.only(WindowInsetsSides.Top + WindowInsetsSides.End)
                     )
-                    // Closer to the edge now that the header ⋮ is gone while lyrics are closed.
-                    .padding(horizontal = if (showInlineLyrics) 52.dp else 16.dp, vertical = 20.dp)
+                    .padding(horizontal = 16.dp, vertical = 20.dp)
                     .size(22.dp),
                 tintColor = AuraPalette.OnGround,
             )

@@ -1,15 +1,18 @@
-# Aura Hi-Res Player 0.6.160
+# Aura Hi-Res Player 0.6.161
 
-Aura ya lee la portada embebida de los MP3 locales/exportados (antes prefería una miniatura vacía de MediaStore).
+Vídeo más estable (sin trabones por rebinds ni `prepare` en rebuffers) y Cast oculto cuando las letras están abiertas.
 
 ---
 
-## 🖼 Portadas MP3 / música local
+## 📱 Reproductor
 
-- Al mostrar carátulas de archivos locales, Aura lee primero el **APIC/ID3** del propio audio; `loadThumbnail` de MediaStore solo es respaldo (antes devolvía éxito con un glifo vacío y nunca llegaba al cover real).
-- Tras exportar a MP3, la fila de la canción apunta al archivo exportado para que **Exportadas** / el reproductor usen esa portada.
-- Una limpieza one-shot de la caché de imágenes de Coil evita seguir viendo miniaturas en blanco cacheadas de versiones anteriores.
+- Con **letras** activas, el botón **Cast** de la esquina superior derecha se oculta (clásico y New UI).
 
-## 📦 Del 0.6.159
+## 🎬 Vídeo / streaming
 
-- Artista sin “Tu biblioteca” duplicada, lupa in-sheet, FFT estable, volumen de descargas/MP3 más parejo, export con JPEG + loudnorm.
+- La superficie de vídeo ya no llama `setVideoTextureView` en cada recomposición (solo al cambiar de TextureView o de URL) — eso congelaba el cuadro mientras el audio seguía.
+- La recuperación “vídeo atascado” solo actúa en **IDLE** (pipeline muerto). Un BUFFERING normal de varios segundos ya no dispara `prepare()` a los 3 s (que reiniciaba el stream y se veía como traba → continúa).
+
+## 📦 Del 0.6.160
+
+- Portadas MP3: lectura APIC/ID3 real + caché Coil + Exportadas apuntan al archivo.

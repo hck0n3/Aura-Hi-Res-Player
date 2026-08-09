@@ -10,7 +10,7 @@ El dueño es el beta tester. Si algo de esta lista desaparece en un cambio, **es
 ## Reproductor (interfaz nueva)
 
 - Fila inferior (junto a Letras / cola / altavoz): debe haber un control **Más / Ajustes** (icono o texto) que abre el menú de opciones del reproductor. **No** dejar solo los tres puntos arriba como única puerta.
-- **Cast** fijo arriba a la derecha (ya existe; no ocultarlo ni empujarlo fuera).
+- **Cast** fijo arriba a la derecha (ya existe; no empujarlo fuera). **Excepción:** con letras inline ON, Cast se oculta (el dueño lo pidió — no debe flotar sobre el texto).
 - Bajo la portada animada (canvas): **sin** badge/aviso tipo `CANVAS ▸ EN MOVIMIENTO`. Solo animar.
 - Mini-reproductor (interfaz **nueva**): estilo por defecto = **Brillo animado (GLOW_ANIMATED)**. Liquid Glass del mini clásico no se aplica a la píldora Aura (se remapea a GLOW).
 - Mini-reproductor (interfaz **clásica**): **Liquid Glass** en dispositivos soportados (`isGlassEligible`); **Seguir el tema** en el resto.

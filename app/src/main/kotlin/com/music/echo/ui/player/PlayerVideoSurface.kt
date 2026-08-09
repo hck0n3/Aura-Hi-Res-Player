@@ -32,6 +32,11 @@ import iad1tya.echo.music.playback.PlayerConnection
  *
  * [fillCrop]: when true the video COVERS the whole area (fills both width and height, cropping the
  * overflow) instead of fitting with letterbox bars — used for true fullscreen in landscape.
+ *
+ * **Binding contract (regression #43 + 0.6.161):** media3's `setVideoTextureView` is NOT a no-op when
+ * the same view is already attached — it always tears down callbacks / may null the output. Calling it
+ * from AndroidView `update` on every recomposition caused freeze-then-resume while audio kept going.
+ * Bind only when the TextureView instance changes (or [videoUrl] changes); skip identical rebinds.
  */
 @Composable
 fun PlayerVideoSurface(
@@ -42,6 +47,9 @@ fun PlayerVideoSurface(
 ) {
     var videoAspectRatio by remember { mutableFloatStateOf(16f / 9f) }
     var surfaceRef by remember { mutableStateOf<TextureView?>(null) }
+    // Last TextureView we successfully handed to ExoPlayer. Identity check prevents setVideoTextureView
+    // spam on Compose recompositions (progress ticks, bloom, lyrics chrome, etc.).
+    var boundTextureView by remember { mutableStateOf<TextureView?>(null) }
 
     DisposableEffect(playerConnection.player) {
         val listener = object : Player.Listener {
@@ -78,48 +86,46 @@ fun PlayerVideoSurface(
 
         onDispose {
             playerConnection.player.removeListener(listener)
+            boundTextureView = null
         }
     }
 
+    fun bindIfNeeded(textureView: TextureView, force: Boolean) {
+        if (!textureView.isAvailable) return
+        if (!force && boundTextureView === textureView) return
+        runCatching { playerConnection.player.setVideoTextureView(textureView) }
+            .onSuccess { boundTextureView = textureView }
+    }
+
+    // New URL (resolve finished / track swap): force re-bind even if the same TextureView instance.
     LaunchedEffect(videoUrl, playerConnection.player) {
         if (videoUrl.isNullOrEmpty()) return@LaunchedEffect
-        val textureView = surfaceRef
-        if (textureView != null && textureView.isAvailable) {
-            runCatching { playerConnection.player.setVideoTextureView(textureView) }
-        }
+        val textureView = surfaceRef ?: return@LaunchedEffect
+        bindIfNeeded(textureView, force = true)
     }
 
     val factory = { ctx: android.content.Context ->
         TextureView(ctx).also { tv ->
             surfaceRef = tv
+            // First attach: media3 installs a SurfaceTextureListener when !isAvailable and binds when
+            // the texture appears. Mark this instance bound so AndroidView `update` does not call
+            // setVideoTextureView again (that teardown is what freezes the picture mid-song).
             runCatching { playerConnection.player.setVideoTextureView(tv) }
+                .onSuccess { boundTextureView = tv }
         }
     }
-    // Re-assert the surface binding on recomposition/attach. This is the fix for the "video freezes, audio
-    // keeps playing after rotating" bug: rotation swaps the player sheet between its landscape and portrait
-    // branches, which DESTROYS this TextureView and creates a NEW one whose SurfaceTexture isn't available
-    // yet at factory() time.
-    //
-    // ONLY when the SurfaceTexture is actually AVAILABLE. The previous version re-asserted unconditionally on
-    // the claim that "setVideoTextureView(sameTv) is a no-op when tv is already the current one" — that claim
-    // is FALSE. In media3 1.10.1 ExoPlayerImpl.setVideoTextureView always runs removeSurfaceCallbacks() and
-    // then, if !textureView.isAvailable(), calls setVideoOutputInternal(null) — it actively TEARS DOWN the
-    // video output. Since `update` runs on every recomposition (the lambda is recreated each time, so Compose
-    // always considers it changed), any recomposition landing in a window where the SurfaceTexture is not yet
-    // available blanked the video. The AUDIO renderer needs no surface, so audio kept playing over a frozen
-    // frame — exactly the reported symptom. Gating on isAvailable() keeps the rotation fix (re-attach once the
-    // new surface is live) and drops the only branch that could break it. media3 installs its own
-    // SurfaceTextureListener at factory() time, which handles the not-available -> available transition.
+    // Re-assert ONLY when the TextureView instance changed AND its SurfaceTexture is live.
+    // Rotation destroys this view and creates a new one — identity differs → rebind once available.
+    // Same instance on recomposition → skip (avoids media3 teardown that freezes the picture).
     val update = { tv: android.view.View ->
         val textureView = tv as TextureView
         surfaceRef = textureView
-        if (textureView.isAvailable) {
-            runCatching { playerConnection.player.setVideoTextureView(textureView) }
-        }
+        bindIfNeeded(textureView, force = false)
         Unit
     }
     val onRelease = { tv: android.view.View ->
         if (surfaceRef === tv) surfaceRef = null
+        if (boundTextureView === tv) boundTextureView = null
         runCatching { playerConnection.player.clearVideoTextureView(tv as TextureView) }
         Unit
     }

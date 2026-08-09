@@ -5986,8 +5986,9 @@ class MusicService :
 
         if (_videoMode.value && !_videoUrl.value.isNullOrEmpty()) {
             when (playbackState) {
-                Player.STATE_BUFFERING, Player.STATE_IDLE -> scheduleVideoStuckRecoveryCheck()
-                Player.STATE_READY -> videoStuckRecoveryJob?.cancel()
+                // BUFFERING is a healthy rebuffer — do not arm stuck recovery (see maybeRecoverStuckVideo).
+                Player.STATE_IDLE -> scheduleVideoStuckRecoveryCheck()
+                Player.STATE_READY, Player.STATE_BUFFERING -> videoStuckRecoveryJob?.cancel()
             }
         }
 
@@ -7421,24 +7422,30 @@ class MusicService :
         videoStuckRecoveryJob?.cancel()
         if (!_videoMode.value || _videoUrl.value.isNullOrEmpty()) return
         videoStuckRecoveryJob = scope.launch {
-            delay(3_000)
+            // Idle-only recovery waits a beat for a transient IDLE→BUFFERING transition after a swap.
+            delay(5_000)
             withContext(Dispatchers.Main) { maybeRecoverStuckVideo() }
         }
     }
 
-    /** Re-prepare once when video mode is on but the decoder stays BUFFERING/IDLE while playWhenReady. */
+    /**
+     * Re-prepare once when video mode is on but the pipeline is dead ([Player.STATE_IDLE]) while the
+     * user still wants playback. **Must not treat [Player.STATE_BUFFERING] as stuck** — normal video
+     * rebuffers often last several seconds; calling `prepare()` there forced a full restart and looked
+     * exactly like "se traba y al rato continúa" (0.6.161).
+     */
     private fun maybeRecoverStuckVideo() {
         if (!_videoMode.value || _videoUrl.value.isNullOrEmpty()) return
         if (!player.playWhenReady) return
         val state = player.playbackState
-        if (state != Player.STATE_BUFFERING && state != Player.STATE_IDLE) return
+        if (state != Player.STATE_IDLE) return
         val id = player.currentMediaItem?.mediaId ?: return
         if (id != videoModeMediaId) return
         val now = System.currentTimeMillis()
         val last = videoStuckRecoveryAttemptedAt[id] ?: 0L
         if (now - last < 30_000L) return
         videoStuckRecoveryAttemptedAt[id] = now
-        Timber.tag(TAG).w("Video stuck in $state — re-preparing $id")
+        Timber.tag(TAG).w("Video stuck in IDLE — re-preparing $id")
         val playing = player.playWhenReady
         player.prepare()
         player.playWhenReady = playing

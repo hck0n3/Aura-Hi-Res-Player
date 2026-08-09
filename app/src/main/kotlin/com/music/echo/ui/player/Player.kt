@@ -3237,15 +3237,14 @@ fun BottomSheetPlayer(
             }
         }
 
-        // CAST: the cast/output button is PINNED to the TOP-RIGHT of the expanded player in EVERY layout
-        // (portrait, inline lyrics, Apple-Music full-screen canvas, landscape, wide/TV split, video) — it
-        // used to live only inside the portrait ThumbnailHeader, so it vanished with lyrics/canvas/landscape.
-        // Hidden in PiP (the floating window must stay a clean video). Gated on the queue sheet NOT being
-        // expanded — merely drawing it before the Queue covered it visually but left it in the D-pad focus
-        // search under the expanded sheet. Gated on immersiveControlsVisible so it follows the immersive
-        // layouts' tap-to-hide controls (clean full-screen video/canvas view) instead of floating alone.
-        // FOSS builds: CastButton is a no-op stub, nothing renders.
-        if (!LocalIsInPipMode.current && !queueSheetState.isExpanded && immersiveControlsVisible) {
+        // CAST: pinned top-right in every layout except inline lyrics (owner: hide Cast while lyrics
+        // own that corner). Also hidden in PiP, when the queue sheet is expanded, and when immersive
+        // tap-to-hide has cleared the chrome. FOSS: CastButton is a no-op stub.
+        if (!LocalIsInPipMode.current &&
+            !queueSheetState.isExpanded &&
+            immersiveControlsVisible &&
+            !showInlineLyrics
+        ) {
             CastButton(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
