@@ -79,8 +79,8 @@ jobs:
         languages: ${{ matrix.language }}
         build-mode: ${{ matrix.build-mode }}
 
-    # Same debug assemble the working "Test Build" / main CI paths use. Without local.properties
-    # + debug keystore the manual java-kotlin / c-cpp jobs exited 1 for every recent release.
+    # CodeQL traces kotlinc/javac. Gradle caches / daemon hide those invocations and the analyze
+    # step then fails with "could not process any of it". Force a clean traced compile.
     - name: Run manual build steps
       if: matrix.build-mode == 'manual'
       shell: bash
@@ -88,9 +88,14 @@ jobs:
         LASTFM_API_KEY: ${{ secrets.LASTFM_API_KEY }}
         LASTFM_SECRET: ${{ secrets.LASTFM_SECRET }}
         SUPERPOWERED_LICENSE_KEY: ${{ secrets.SUPERPOWERED_LICENSE_KEY }}
-      run: ./gradlew assembleUniversalGmsDebug --console=plain
+      run: |
+        ./gradlew --stop || true
+        ./gradlew clean assembleUniversalGmsDebug --no-daemon --no-build-cache --console=plain
 
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v4
       with:
         category: "/language:${{matrix.language}}"
+        # Large Android monorepo — give the analyzer more RAM headroom on the runner.
+        ram: 14336
+        threads: 4
