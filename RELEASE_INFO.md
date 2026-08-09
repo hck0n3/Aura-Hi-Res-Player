@@ -1,34 +1,39 @@
-# Aura Hi-Res Player 0.6.166
+# Aura Hi-Res Player 0.6.167
 
-Búsqueda más fluida, Cast sin tapar títulos, local→artista online, aleatorio anti-repetir, exportar MP3 o vídeo para redes, y Vídeos dentro de Exportados.
+Import Spotify más completo (CSV de fallos), Local con Música y Vídeos, MP3 exportados más fuertes, share de artista y menos tirones al abrir la lupa.
 
 ---
 
-## 🔍 Búsqueda y reproductor
+## 📥 Spotify
 
-- Las sugerencias de búsqueda (Buscar y lupa del player) empiezan siempre **arriba** al escribir; menos tirones al teclear.
-- Cast arriba a la derecha ya no se cruza con títulos de álbum largos (sigue oculto con letras inline).
+- La importación registra **por qué** falla cada canción y avisa si la biblioteca no quedó completa.
+- Puedes **exportar un CSV** de lo que no entró (compatible con Migrar) y **reintentar** esos fallos.
+- Búsqueda alternativa de título/artista cuando el primer match no basta.
 
-## 📁 Local y navegación
+## 📁 Biblioteca Local
 
-- Desde un MP3 local, **Ir al artista / álbum** abre la página **online** de YouTube Music (con Tu biblioteca arriba).
-- En archivos locales, **Compartir** sustituye a Exportar (el archivo ya está en el teléfono).
+- Dentro de **Local**: secciones **Música** y **Vídeos** (vídeos exportados ya no viven en Exportados).
+- Exportados = solo audio MP3.
 
-## 🔀 Aleatorio
+## 🔊 Volumen y exportación
 
-- Al activar aleatorio desde el player o la cola se inicia la sesión anti-repetir (mismo criterio que en playlists).
+- MP3/MP4 exportados usan loudnorm más cercano al volumen de la app (menos “bajitos”).
+- La notificación de exportar muestra **barra de progreso %**.
 
-## 📤 Exportar MP3 o vídeo
+## 🎵 Reproductor y artista
 
-- En el menú Más / ⋮ la acción se llama **Exportar MP3 o vídeo** y pregunta el formato.
-- **MP3**: como antes (etiquetas y portada).
-- **Vídeo**: MP4 H.264 + AAC hasta 1080p, listo para WhatsApp / Instagram / Facebook, y se puede compartir al terminar.
-- En **Biblioteca → Exportados** hay un apartado **Vídeos** (solo ahí; no es un tile suelto).
+- Si una canción tiene **varios artistas**, al tocarlos aparece un popup para elegir a cuál ir.
+- **Compartir** en la página de artista abre el chooser de apps (ya no se queda en silencio).
+- Abrir la lupa del reproductor: menos tirón a mitad de la animación.
 
-## 🖼️ Vídeos en la interfaz
+## 📚 Biblioteca
 
-- Miniaturas de vídeo a **16:9 a pantalla completa** (sin bandas laterales).
+- Tirar para actualizar ya no se queda cargando para siempre.
 
-## 📦 Del 0.6.165
+## 🛡️ Publicación
 
-- Crossfade: intros en silencio ya no saltan la canción.
+- Las updates estables solo se publican si GitHub (Build + CodeQL) está todo en verde.
+
+## 📦 Del 0.6.166
+
+- Exportar MP3 o vídeo, búsqueda/Cast/local→online y Exportados (ahora Vídeos en Local).

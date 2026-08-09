@@ -105,6 +105,11 @@ Antes de una versión estable, comprueba:
 5. Ejecutar `.\scripts\pre-publish-check.ps1 -Build` (Windows) o `./scripts/pre-publish-check.sh --build`
    (Linux/CI). Debe terminar en **READY**; cualquier **FAIL** bloquea la publicación (secretos GitHub,
    clave Superpowered, certificado `CN=JR MUSIC PRO`, coincidencia con el APK publicado).
+6. **⛔ Publicar solo si GitHub está todo en verde.** Tras el push a `main`, esperar a que
+   **Android Build & Sign** y **CodeQL Advanced** (y cualquier otro check del commit) terminen en
+   `success`. Solo entonces crear/pushear el tag estable `vX.Y.Z` (sin `-beta`). Si algo está rojo o
+   en curso, **no** taggear: corregir y reintentar. El agente debe verificar el estado de Actions
+   aquí (API o badges) antes de publicar — no basta con “compila en local”.
 
 ### PC nueva o disco formateado (Windows)
 

@@ -1,0 +1,19 @@
+---
+description: Never publish a stable release unless GitHub CI is fully green
+alwaysApply: true
+---
+
+# Publish only when everything is green
+
+Before creating or pushing a stable release tag (`vX.Y.Z` without `-beta` / `-test`):
+
+1. Local `pre-publish-check` must end in **READY**.
+2. Push the release commit to `main` first.
+3. Wait until **all** GitHub checks for that commit are `success`:
+   - Android Build & Sign
+   - CodeQL Advanced (every matrix job)
+   - Any other required check on the commit
+4. Only then push the tag so the in-app updater can see `releases/latest`.
+5. If any check is red, in progress, or cancelled: **do not tag**. Fix and re-run until green.
+
+Compiling locally is not enough. Verify Actions status in this session before publishing.

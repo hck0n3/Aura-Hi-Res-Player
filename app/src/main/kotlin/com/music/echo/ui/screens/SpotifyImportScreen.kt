@@ -379,7 +379,31 @@ fun SpotifyImportScreen(
     state.summary?.let { summary ->
         SpotifyImportSummaryDialog(
             summary = summary,
-            onDismiss = { spotifyImportViewModel.dismissSummary() }
+            onDismiss = { spotifyImportViewModel.dismissSummary() },
+            onExportFailuresCsv = {
+                val file = spotifyImportViewModel.exportFailuresCsv()
+                if (file != null) {
+                    runCatching {
+                        val uri = androidx.core.content.FileProvider.getUriForFile(
+                            context,
+                            "${context.packageName}.FileProvider",
+                            file,
+                        )
+                        val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                            type = "text/csv"
+                            putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                        context.startActivity(android.content.Intent.createChooser(intent, null))
+                    }
+                    android.widget.Toast.makeText(
+                        context,
+                        context.getString(R.string.spotify_import_failures_csv_migrar_hint),
+                        android.widget.Toast.LENGTH_LONG,
+                    ).show()
+                }
+            },
+            onRetryFailures = { spotifyImportViewModel.retryFailures() },
         )
     }
 
@@ -833,11 +857,22 @@ private fun SpotifyErrorDialog(
 private fun SpotifyImportSummaryDialog(
     summary: SpotifyImportSummaryUi,
     onDismiss: () -> Unit,
+    onExportFailuresCsv: () -> Unit = {},
+    onRetryFailures: () -> Unit = {},
 ) {
+    val hasFailures = summary.allFailures.isNotEmpty()
     DefaultDialog(
         onDismiss = onDismiss,
         title = { Text(stringResource(R.string.spotify_import_complete)) },
         buttons = {
+            if (hasFailures) {
+                TextButton(onClick = onExportFailuresCsv) {
+                    Text(stringResource(R.string.spotify_import_export_failures_csv))
+                }
+                TextButton(onClick = onRetryFailures) {
+                    Text(stringResource(R.string.spotify_import_retry_failures))
+                }
+            }
             TextButton(onClick = onDismiss) {
                 Text(stringResource(android.R.string.ok))
             }
@@ -854,6 +889,13 @@ private fun SpotifyImportSummaryDialog(
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.SemiBold,
             )
+            if (!summary.isComplete) {
+                Text(
+                    text = stringResource(R.string.spotify_import_incomplete_warning),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
             summary.sources.forEach { source ->
                 // Show the REAL account total (not the fetched count) as the denominator so a shortfall is
                 // visible; tint it as an error when fewer tracks were imported than the account actually holds.

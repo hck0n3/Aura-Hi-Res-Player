@@ -719,6 +719,8 @@
     <string name="export_video_unavailable">Esta pista no tiene vídeo para exportar</string>
     <string name="exported_videos_section">Vídeos</string>
     <string name="exported_songs_section">Canciones</string>
+    <string name="local_music_section">Música</string>
+    <string name="local_videos_section">Vídeos</string>
     <string name="action_share">Compartir</string>
     <string name="share_local_desc">Comparte este archivo</string>
     <string name="export_directory_not_set">Primero define una carpeta de exportación en los ajustes de Almacenamiento</string>
@@ -1102,4 +1104,12 @@
     <string name="cd_playlist_more_options">Más opciones de la lista</string>
     <string name="cd_change_sort_order">Cambiar el criterio de orden</string>
     <string name="cd_reverse_sort_order">Invertir el orden</string>
+
+    <!-- Completitud de importación Spotify / CSV de fallos -->
+    <string name="spotify_import_incomplete_warning">Algunos elementos no se pudieron emparejar. Exporta el CSV de fallos e impórtalo en Migrar, o pulsa Reintentar fallos.</string>
+    <string name="spotify_import_export_failures_csv">Exportar CSV de fallos</string>
+    <string name="spotify_import_retry_failures">Reintentar fallos</string>
+    <string name="spotify_import_failures_csv_migrar_hint">CSV listo. Abre Migrar e importa el archivo para reintentar las canciones sin emparejar.</string>
+    <string name="spotify_import_done_text_with_failures">%1$d de %2$d canciones importadas · %3$d fallidas</string>
+    <string name="spotify_import_retry_progress">Reintentando emparejamientos fallidos</string>
 </resources>

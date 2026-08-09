@@ -18,6 +18,25 @@ enum class SpotifyImportSourceType {
 }
 
 @Immutable
+enum class SpotifyImportFailureReason {
+    LOW_SCORE,
+    NO_CANDIDATES,
+    RATE_LIMIT,
+    UNAVAILABLE,
+    SEARCH_ERROR,
+    SOURCE_ERROR,
+}
+
+@Immutable
+data class SpotifyImportFailureUi(
+    val title: String,
+    val artists: String,
+    val album: String,
+    val spotifyId: String,
+    val reason: SpotifyImportFailureReason,
+)
+
+@Immutable
 data class SpotifyImportSourceUi(
     val id: String,
     val title: String,
@@ -49,6 +68,7 @@ data class SpotifyImportSourceSummaryUi(
     // (e.g. local-file/podcast tracks that can't be matched). Nullable: a playlist opened
     // by link may not carry a track total. Default keeps existing call sites source-compatible.
     val accountTotalTracks: Int? = null,
+    val failures: List<SpotifyImportFailureUi> = emptyList(),
 )
 
 @Immutable
@@ -67,6 +87,17 @@ data class SpotifyImportSummaryUi(
     val failedTracks: Int
         get() = sources.sumOf { it.failedTracks }
 
+    val allFailures: List<SpotifyImportFailureUi>
+        get() = sources.flatMap { it.failures }
+
+    /**
+     * True when every fetched item matched and there is no account-level shortfall.
+     */
+    val isComplete: Boolean
+        get() = allFailures.isEmpty() &&
+            failedTracks == 0 &&
+            importedTracks >= accountTotalTracks
+
     /**
      * The real Spotify account total across all sources (falling back to the fetched
      * count when a source didn't report one). Lets the UI show "imported X of Y" against
@@ -74,6 +105,24 @@ data class SpotifyImportSummaryUi(
      */
     val accountTotalTracks: Int
         get() = sources.sumOf { it.accountTotalTracks ?: it.totalTracks }
+
+    /** After a retry pass: drop recovered failures and bump imported counts per source. */
+    fun withRetryResult(
+        remainingFailures: List<SpotifyImportFailureUi>,
+    ): SpotifyImportSummaryUi {
+        val remainingKeys = remainingFailures.mapTo(HashSet()) { it.failureKey() }
+        return copy(
+            sources = sources.map { src ->
+                val stillFailed = src.failures.filter { it.failureKey() in remainingKeys }
+                val recovered = src.failures.size - stillFailed.size
+                src.copy(
+                    importedTracks = src.importedTracks + recovered,
+                    failedTracks = stillFailed.size,
+                    failures = stillFailed,
+                )
+            },
+        )
+    }
 }
 
 @Immutable
@@ -94,3 +143,5 @@ data class SpotifyImportUiState(
     val canImport: Boolean
         get() = selectedSourceIds.isNotEmpty() && progress == null && !isLoading
 }
+
+internal fun SpotifyImportFailureUi.failureKey(): String = "$spotifyId\u0000$title\u0000$artists"

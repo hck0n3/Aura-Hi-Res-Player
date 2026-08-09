@@ -78,6 +78,16 @@ object SpotifyMapper {
     }
 
     /**
+     * Alternate query used when the primary artist-first search yields no usable match:
+     * "title - artist" (title-first). Distinct from [buildSearchQuery] whenever an artist is present.
+     */
+    fun buildAlternateSearchQuery(track: SpotifyTrack): String {
+        val artist = track.artists.firstOrNull()?.name.orEmpty()
+        val title = track.name
+        return if (artist.isEmpty()) title else "$title - $artist"
+    }
+
+    /**
      * Returns the best thumbnail URL from a Spotify playlist, preferring medium resolution.
      */
     fun getPlaylistThumbnail(playlist: SpotifyPlaylist): String? {

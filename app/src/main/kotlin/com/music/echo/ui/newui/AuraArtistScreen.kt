@@ -1,8 +1,6 @@
 package iad1tya.echo.music.ui.newui
 
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.content.Context
+import android.content.Intent
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -971,14 +969,15 @@ fun AuraArtistScreen(
                     icon = AuraIcons.Share,
                     contentDescription = stringResource(R.string.share),
                     onClick = {
-                        // Copiar enlace, exactly as the classic bar does it: the page's own shareLink
-                        // into the clipboard, with the same confirmation toast.
-                        viewModel.artistPage?.artist?.shareLink?.let { link ->
-                            val clipboard =
-                                context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            clipboard.setPrimaryClip(ClipData.newPlainText("Artist Link", link))
-                            Toast.makeText(context, R.string.link_copied, Toast.LENGTH_SHORT).show()
+                        val artistId = viewModel.artistPage?.artist?.id
+                            ?: viewModel.artistId
+                        val link = viewModel.artistPage?.artist?.shareLink
+                            ?: iad1tya.echo.music.utils.ShareLinks.channel(artistId)
+                        val intent = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_TEXT, link)
                         }
+                        context.startActivity(Intent.createChooser(intent, null))
                     },
                     size = 20.dp,
                 )

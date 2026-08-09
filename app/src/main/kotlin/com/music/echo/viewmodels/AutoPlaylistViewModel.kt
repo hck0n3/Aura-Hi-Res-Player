@@ -7,14 +7,12 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import iad1tya.echo.music.constants.ExportedSongIdsKey
-import iad1tya.echo.music.constants.ExportedVideoIdsKey
 import iad1tya.echo.music.constants.HideExplicitKey
 import iad1tya.echo.music.constants.HideVideoSongsKey
 import iad1tya.echo.music.constants.SongSortDescendingKey
 import iad1tya.echo.music.constants.SongSortType
 import iad1tya.echo.music.constants.SongSortTypeKey
 import iad1tya.echo.music.db.MusicDatabase
-import iad1tya.echo.music.db.entities.Song
 import iad1tya.echo.music.extensions.filterExplicit
 import iad1tya.echo.music.extensions.filterVideoSongs
 import iad1tya.echo.music.extensions.toEnum
@@ -94,31 +92,6 @@ constructor(
             }
             .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
-    /**
-     * MP4 exports shown as the "Vídeos" section inside Biblioteca ▸ Exportados only.
-     * Empty for every other auto-playlist.
-     */
-    val exportedVideos =
-        context.dataStore.data
-            .map {
-                Triple(
-                    it[SongSortTypeKey].toEnum(SongSortType.CREATE_DATE) to (it[SongSortDescendingKey] ?: true),
-                    it[HideExplicitKey] ?: false,
-                    it[ExportedVideoIdsKey] ?: "",
-                )
-            }
-            .distinctUntilChanged()
-            .flatMapLatest { (sortDesc, hideExplicit, exportedVideoIds) ->
-                if (playlist != "exported") return@flatMapLatest flowOf(emptyList<Song>())
-                val (sortType, descending) = sortDesc
-                val ids = exportedVideoIds.split(",").filter { it.isNotBlank() }
-                if (ids.isEmpty()) return@flatMapLatest flowOf(emptyList())
-                database.getSongsByIdsFlow(ids).map {
-                    it.filterExplicit(hideExplicit).sortedAsExported(ids, sortType, descending)
-                }
-            }
-            .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
-
     fun syncLikedSongs() {
         viewModelScope.launch(Dispatchers.IO) { syncUtils.syncLikedSongs() }
     }
@@ -130,11 +103,14 @@ constructor(
     fun refresh() {
         viewModelScope.launch(Dispatchers.IO) {
             _isRefreshing.value = true
-            when (playlist) {
-                "liked" -> syncUtils.syncLikedSongsSuspend()
-                "uploaded" -> syncUtils.syncUploadedSongsSuspend()
+            try {
+                when (playlist) {
+                    "liked" -> syncUtils.syncLikedSongsSuspend()
+                    "uploaded" -> syncUtils.syncUploadedSongsSuspend()
+                }
+            } finally {
+                _isRefreshing.value = false
             }
-            _isRefreshing.value = false
         }
     }
 }

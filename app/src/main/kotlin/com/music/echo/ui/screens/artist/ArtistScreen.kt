@@ -2,9 +2,7 @@
 
 package iad1tya.echo.music.ui.screens.artist
 
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.content.Context
+import android.content.Intent
 import android.widget.Toast
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -1263,17 +1261,19 @@ fun ArtistScreen(
         actions = {
             IconButton(
                 onClick = {
-                    viewModel.artistPage?.artist?.shareLink?.let { link ->
-                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        val clip = ClipData.newPlainText("Artist Link", link)
-                        clipboard.setPrimaryClip(clip)
-                        Toast.makeText(context, R.string.link_copied, Toast.LENGTH_SHORT).show()
+                    val artistId = viewModel.artistPage?.artist?.id ?: viewModel.artistId
+                    val link = viewModel.artistPage?.artist?.shareLink
+                        ?: iad1tya.echo.music.utils.ShareLinks.channel(artistId)
+                    val intent = Intent(Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(Intent.EXTRA_TEXT, link)
                     }
+                    context.startActivity(Intent.createChooser(intent, null))
                 },
             ) {
                 Icon(
-                    painterResource(R.drawable.link),
-                    contentDescription = null,
+                    painterResource(R.drawable.share),
+                    contentDescription = stringResource(R.string.share),
                 )
             }
         },

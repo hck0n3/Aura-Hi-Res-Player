@@ -245,6 +245,46 @@ class SpotifyImportViewModel @Inject constructor(
         importManager.consumeError()
         _uiState.update { it.copy(errorMessage = null) }
     }
+
+    /** Writes the failures CSV to cache and returns the file, or null on error. */
+    fun exportFailuresCsv(): java.io.File? {
+        val failures = uiState.value.summary?.allFailures.orEmpty()
+        if (failures.isEmpty()) return null
+        return runCatching { repository.writeFailuresCsv(failures) }.getOrNull()
+    }
+
+    /**
+     * Re-runs YouTube matching only for failed tracks and updates the summary in place.
+     */
+    fun retryFailures() {
+        val summary = uiState.value.summary ?: return
+        val failures = summary.allFailures
+        if (failures.isEmpty() || importManager.isRunning || uiState.value.progress != null) return
+        viewModelScope.launch(Dispatchers.IO) {
+            // Hide the summary dialog while the retry progress dialog is shown.
+            importManager.setSummary(null)
+            _uiState.update { it.copy(errorMessage = null) }
+            runCatching {
+                repository.retryFailures(failures) { p ->
+                    _uiState.update { it.copy(progress = p) }
+                }
+            }.onSuccess { remaining ->
+                val updated = summary.withRetryResult(remaining)
+                _uiState.update { it.copy(progress = null) }
+                importManager.setSummary(updated)
+            }.onFailure { error ->
+                if (error is CancellationException) throw error
+                reportException(error)
+                _uiState.update {
+                    it.copy(
+                        progress = null,
+                        errorMessage = error.message,
+                    )
+                }
+                importManager.setSummary(summary)
+            }
+        }
+    }
 }
 
 private fun SpotifyImportSource.toUi(): SpotifyImportSourceUi =

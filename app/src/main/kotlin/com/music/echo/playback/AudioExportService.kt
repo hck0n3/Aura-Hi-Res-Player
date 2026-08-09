@@ -151,8 +151,11 @@ class AudioExportService : Service() {
                 }
             }
 
+            updateExportProgress(15, getString(R.string.export_processing_audio))
             downloadTo(videoStreamUrl, tempVideoFile)
+            updateExportProgress(45, getString(R.string.export_processing_audio))
             downloadTo(rangedAudioUrl, tempAudioFile)
+            updateExportProgress(65, getString(R.string.export_processing_tags))
 
             val ffmpegCommand = buildVideoFfmpegCommand(
                 videoPath = tempVideoFile.absolutePath,
@@ -168,6 +171,7 @@ class AudioExportService : Service() {
             if (!tempMp4File.exists() || tempMp4File.length() <= 0L) {
                 error("Exported MP4 file is empty")
             }
+            updateExportProgress(90, getString(R.string.export_writing_file))
 
             val destinationDir = DocumentFile.fromTreeUri(this, Uri.parse(targetDirectoryUri))
                 ?: error("Export directory unavailable")
@@ -332,6 +336,7 @@ class AudioExportService : Service() {
                                 val progress = ((bytesWritten * 55L) / totalBytes).toInt().coerceIn(0, 55)
                                 if (progress > lastProgress) {
                                     lastProgress = progress
+                                    updateExportProgress(progress, getString(R.string.export_processing_audio))
                                 }
                             }
                         }
@@ -386,6 +391,7 @@ class AudioExportService : Service() {
                 return ok
             }
 
+            updateExportProgress(60, getString(R.string.export_processing_tags))
             val coverPath = if (artworkDownloaded) tempArtworkFile.absolutePath else null
             var usedLoudnorm = true
             val ffmpegOk = run {
@@ -413,6 +419,7 @@ class AudioExportService : Service() {
                 TAG,
                 "export ffmpeg=ok loudnorm=${if (usedLoudnorm) "ok" else "skip"} size=${tempMp3File.length()}",
             )
+            updateExportProgress(90, getString(R.string.export_writing_file))
             val destinationDir = DocumentFile.fromTreeUri(this, Uri.parse(targetDirectoryUri))
                 ?: error("Export directory unavailable")
             val outputFile = destinationDir.createFile("audio/mpeg", "$safeTitle.mp3")
@@ -485,6 +492,22 @@ class AudioExportService : Service() {
         stopSelf()
     }
 
+    private fun updateExportProgress(percent: Int, text: String) {
+        runCatching {
+            val nm = getSystemService<NotificationManager>() ?: return
+            val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_launcher_nobg)
+                .setContentTitle(getString(R.string.exporting))
+                .setContentText(text)
+                .setProgress(100, percent.coerceIn(0, 100), false)
+                .setOngoing(true)
+                .setOnlyAlertOnce(true)
+                .setPriority(NotificationCompat.PRIORITY_LOW)
+                .build()
+            nm.notify(NOTIFICATION_ID, notification)
+        }
+    }
+
     private fun startExportForeground() {
         runCatching {
             val nm = getSystemService<NotificationManager>()
@@ -499,8 +522,9 @@ class AudioExportService : Service() {
             }
             val notification = NotificationCompat.Builder(this, CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_launcher_nobg)
-                .setContentTitle("Exporting song")
-                .setContentText("Saving audio file")
+                .setContentTitle(getString(R.string.exporting))
+                .setContentText(getString(R.string.export_preparing))
+                .setProgress(100, 0, false)
                 .setOngoing(true)
                 .setPriority(NotificationCompat.PRIORITY_LOW)
                 .build()
@@ -673,7 +697,8 @@ class AudioExportService : Service() {
             val lyricsFlag = if (lyricsMeta != null) " -metadata lyrics='$lyricsMeta'" else ""
             val extraMeta = "$dateFlags$albumArtistFlag$genreFlag$trackFlag$lyricsFlag"
             // Match typical streaming loudness so exported MP3s aren't quieter than Aura's leveled stream.
-            val loudnormFilter = if (useLoudnorm) " -af loudnorm=I=-14:TP=-1.5:LRA=11" else ""
+            // Target closer to in-app Safe Volume perceived level (was I=-14 → exports sounded quieter).
+            val loudnormFilter = if (useLoudnorm) " -af loudnorm=I=-11:TP=-1.5:LRA=11" else ""
             return if (coverPath != null) {
                 val escapedCover = coverPath.ffmpegEscape()
                 "-y -i '$escapedInput' -i '$escapedCover' -map 0:a -map 1:v -c:v mjpeg -disposition:v attached_pic$loudnormFilter -c:a libmp3lame -b:a 320k -id3v2_version 3 -metadata title='$titleMeta' -metadata artist='$artistMeta' -metadata album='$albumMeta'$extraMeta -metadata:s:v title='Album cover' -metadata:s:v comment='Cover (front)' '$escapedOutput'"
@@ -692,7 +717,9 @@ class AudioExportService : Service() {
             val escapedVideo = videoPath.ffmpegEscape()
             val escapedAudio = audioPath.ffmpegEscape()
             val escapedOutput = outputPath.ffmpegEscape()
-            return "-y -i '$escapedVideo' -i '$escapedAudio' -map 0:v:0 -map 1:a:0 -vf scale='min(1920,iw)':-2 -c:v libx264 -pix_fmt yuv420p -preset veryfast -crf 20 -c:a aac -b:a 192k -movflags +faststart '$escapedOutput'"
+            return "-y -i '$escapedVideo' -i '$escapedAudio' -map 0:v:0 -map 1:a:0 " +
+                "-vf scale='min(1920,iw)':-2 -c:v libx264 -pix_fmt yuv420p -preset veryfast -crf 20 " +
+                "-af loudnorm=I=-11:TP=-1.5:LRA=11 -c:a aac -b:a 192k -movflags +faststart '$escapedOutput'"
         }
     }
 }

@@ -398,8 +398,12 @@ constructor(
     fun refresh() {
         viewModelScope.launch(Dispatchers.IO) {
             _isRefreshing.value = true
-            syncUtils.performFullSyncSuspend()
-            _isRefreshing.value = false
+            try {
+                syncUtils.performFullSyncSuspend()
+            } finally {
+                // Cancel/throw must never leave PullToRefresh spinning forever.
+                _isRefreshing.value = false
+            }
         }
     }
 

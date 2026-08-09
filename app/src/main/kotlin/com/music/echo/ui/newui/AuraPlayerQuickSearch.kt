@@ -111,8 +111,11 @@ fun AuraPlayerQuickSearchContent(
     val browseTop = browseStack.lastOrNull() ?: QuickSearchBrowse.Search
 
     val focusRequester = remember { FocusRequester() }
+    // Defer IME/focus until after the frost sheet finishes expanding — focusing on the first
+    // frame races ModalBottomSheet.show() and causes the open animation to hitch then resume.
     LaunchedEffect(browseTop) {
         if (browseTop is QuickSearchBrowse.Search) {
+            kotlinx.coroutines.delay(280)
             runCatching { focusRequester.requestFocus() }
         }
     }

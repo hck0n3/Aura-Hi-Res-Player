@@ -408,7 +408,7 @@ val MaxSongCacheSizeKey = intPreferencesKey("maxSongCacheSize")
 val ExportDirectoryUriKey = stringPreferencesKey("exportDirectoryUri")
 val ExportingSongIdsKey = stringPreferencesKey("exportingSongIds")
 val ExportedSongIdsKey = stringPreferencesKey("exportedSongIds")
-/** Song ids exported as social MP4 (Biblioteca ▸ Exportados ▸ Videos). */
+/** Song ids exported as social MP4 (Biblioteca ▸ Local ▸ Vídeos). */
 val ExportedVideoIdsKey = stringPreferencesKey("exportedVideoIds")
 val EnableExportAsMp3Key = booleanPreferencesKey("enableExportAsMp3")
 /** One-shot: seed Export as MP3 ON for installs that never wrote the key. */

@@ -419,6 +419,8 @@
     <string name="export_video_unavailable">This track has no video to export</string>
     <string name="exported_videos_section">Videos</string>
     <string name="exported_songs_section">Songs</string>
+    <string name="local_music_section">Music</string>
+    <string name="local_videos_section">Videos</string>
     <string name="action_share">Share</string>
     <string name="share_local_desc">Share this file</string>
     <string name="export_directory_not_set">Set an export folder in Storage settings first</string>
@@ -1211,4 +1213,12 @@
     <string name="cd_playlist_more_options">More playlist options</string>
     <string name="cd_change_sort_order">Change sort order</string>
     <string name="cd_reverse_sort_order">Reverse the order</string>
+
+    <!-- Spotify import completeness / failure CSV -->
+    <string name="spotify_import_incomplete_warning">Some items could not be matched. Export the failures CSV and import it in Migrate, or tap Retry failures.</string>
+    <string name="spotify_import_export_failures_csv">Export failures CSV</string>
+    <string name="spotify_import_retry_failures">Retry failures</string>
+    <string name="spotify_import_failures_csv_migrar_hint">CSV ready. Open Migrate and import the file to retry unmatched tracks.</string>
+    <string name="spotify_import_done_text_with_failures">%1$d of %2$d tracks imported · %3$d failed</string>
+    <string name="spotify_import_retry_progress">Retrying failed matches</string>
 </resources>

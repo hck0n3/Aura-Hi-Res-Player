@@ -45,11 +45,14 @@ import iad1tya.echo.music.spotify.SpotifyMapper
 import iad1tya.echo.music.spotify.models.SpotifyArtist
 import iad1tya.echo.music.spotify.models.SpotifyPlaylist
 import iad1tya.echo.music.spotify.models.SpotifyPlaylistTracksRef
+import iad1tya.echo.music.spotify.models.SpotifySimpleAlbum
+import iad1tya.echo.music.spotify.models.SpotifySimpleArtist
 import iad1tya.echo.music.spotify.models.SpotifyTrack
 import iad1tya.echo.music.utils.clearWebAuthSession
 import iad1tya.echo.music.utils.dataStore
 import iad1tya.echo.music.utils.reportException
 import io.ktor.client.plugins.ResponseException
+import java.io.File
 import java.time.LocalDateTime
 import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
@@ -270,7 +273,7 @@ class SpotifyImportRepository @Inject constructor(
                     return@forEachIndexed
                 }
 
-                val matched = matchTracks(
+                val batch = matchTracks(
                     sourceIndex = sourceIndex,
                     sourceCount = sources.size,
                     sourceTitle = source.title,
@@ -278,22 +281,23 @@ class SpotifyImportRepository @Inject constructor(
                     onProgress = onProgress,
                 )
 
-                mirrorPlaylist(source, matched.map { it.metadata })
+                mirrorPlaylist(source, batch.matched.map { it.metadata })
                 summaries += SpotifyImportSourceSummaryUi(
                     title = source.title,
                     // Fetched (post null/blank filter) count we actually tried to match.
                     totalTracks = tracks.size,
-                    importedTracks = matched.size,
-                    failedTracks = tracks.size - matched.size,
+                    importedTracks = batch.matched.size,
+                    failedTracks = batch.failures.size,
                     // Real Spotify total, so a fetched-vs-account shortfall is visible.
                     accountTotalTracks = source.trackCount,
+                    failures = batch.failures,
                 )
                 onProgress(
                     SpotifyImportProgressUi(
                         sourceTitle = source.title,
                         completedSources = sourceIndex + 1,
                         totalSources = sources.size,
-                        matchedTracks = matched.size,
+                        matchedTracks = batch.matched.size,
                         totalTracks = tracks.size,
                         percent = progressPercent(sourceIndex + 1, sources.size, 0, 0),
                     ),
@@ -311,6 +315,15 @@ class SpotifyImportRepository @Inject constructor(
                     importedTracks = 0,
                     failedTracks = source.trackCount ?: 0,
                     accountTotalTracks = source.trackCount,
+                    failures = listOf(
+                        SpotifyImportFailureUi(
+                            title = source.title,
+                            artists = "",
+                            album = "",
+                            spotifyId = "",
+                            reason = SpotifyImportFailureReason.SOURCE_ERROR,
+                        ),
+                    ),
                 )
                 onProgress(
                     SpotifyImportProgressUi(
@@ -587,22 +600,22 @@ class SpotifyImportRepository @Inject constructor(
         sourceTitle: String,
         tracks: List<SpotifyTrack>,
         onProgress: (SpotifyImportProgressUi) -> Unit,
-    ): List<MatchedTrack> =
+    ): MatchBatch =
         coroutineScope {
             val semaphore = Semaphore(MAX_CONCURRENT_MATCHES)
             val completed = AtomicInteger(0)
 
-            tracks.mapIndexed { index, track ->
+            val results = tracks.mapIndexed { index, track ->
                 async {
                     semaphore.withPermit {
-                        val matched =
+                        val result =
                             try {
                                 matchTrack(track, index)
                             } catch (error: CancellationException) {
                                 throw error
                             } catch (error: Throwable) {
                                 reportException(error)
-                                null
+                                MatchResult.Failure(SpotifyImportFailureReason.SEARCH_ERROR)
                             }
                         val completedCount = completed.incrementAndGet()
                         onProgress(
@@ -615,28 +628,140 @@ class SpotifyImportRepository @Inject constructor(
                                 percent = progressPercent(sourceIndex, sourceCount, completedCount, tracks.size),
                             ),
                         )
-                        matched
+                        track to result
                     }
                 }
             }.awaitAll()
-                .filterNotNull()
-                .sortedBy { it.index }
+
+            val matched = ArrayList<MatchedTrack>()
+            val failures = ArrayList<SpotifyImportFailureUi>()
+            results.forEach { (track, result) ->
+                when (result) {
+                    is MatchResult.Success -> matched += result.matched
+                    is MatchResult.Failure -> failures += track.toFailureUi(result.reason)
+                }
+            }
+            MatchBatch(
+                matched = matched.sortedBy { it.index },
+                failures = failures,
+            )
         }
+
+    /**
+     * Re-search YouTube for previously failed Spotify *tracks* and insert any new matches into the
+     * local library. Returns the failures that still did not match (including artist/album/source
+     * rows that are not song-retryable — those stay for CSV → Migrar).
+     */
+    suspend fun retryFailures(
+        failures: List<SpotifyImportFailureUi>,
+        onProgress: (SpotifyImportProgressUi) -> Unit = {},
+    ): List<SpotifyImportFailureUi> =
+        withContext(Dispatchers.IO) {
+            if (failures.isEmpty()) return@withContext emptyList()
+            val skipped = failures.filterNot { it.isSongRetryable() }
+            val retryable = failures.filter { it.isSongRetryable() }
+            if (retryable.isEmpty()) return@withContext failures
+            ensurePublicReadToken()
+            val tracks = retryable.map { it.toSpotifyTrack() }
+            val batch = matchTracks(
+                sourceIndex = 0,
+                sourceCount = 1,
+                sourceTitle = context.getString(R.string.spotify_import_retry_progress),
+                tracks = tracks,
+                onProgress = onProgress,
+            )
+            if (batch.matched.isNotEmpty()) {
+                insertMatchedIntoLibrary(batch.matched.map { it.metadata })
+            }
+            skipped + batch.failures
+        }
+
+    /** Track-shaped failures only — not followed artists, source-level errors, etc. */
+    private fun SpotifyImportFailureUi.isSongRetryable(): Boolean {
+        if (reason == SpotifyImportFailureReason.SOURCE_ERROR) return false
+        // Followed-artist rows are written as title == artists and blank album.
+        if (album.isBlank() && artists.equals(title, ignoreCase = true)) return false
+        return true
+    }
+
+    /**
+     * Writes a CSV of failed matches to cache. Header is FileSource-compatible
+     * (`Title`,`Artists`) plus Album/SpotifyId/Reason for debugging.
+     */
+    fun writeFailuresCsv(failures: List<SpotifyImportFailureUi>): File {
+        val file = File(context.cacheDir, "spotify_import_failures_${System.currentTimeMillis()}.csv")
+        val esc = { v: String -> "\"" + v.replace("\"", "\"\"") + "\"" }
+        val sb = StringBuilder("Title,Artists,Album,SpotifyId,Reason\n")
+        failures.forEach { f ->
+            sb.append(esc(f.title)).append(',')
+                .append(esc(f.artists)).append(',')
+                .append(esc(f.album)).append(',')
+                .append(esc(f.spotifyId)).append(',')
+                .append(esc(f.reason.name)).append('\n')
+        }
+        file.writeText(sb.toString())
+        return file
+    }
+
+    private suspend fun insertMatchedIntoLibrary(tracks: List<MediaMetadata>) {
+        database.withTransaction {
+            val libraryNow = LocalDateTime.now()
+            tracks.forEach { metadata ->
+                val existing = getSongByIdBlocking(metadata.id)?.song
+                if (existing == null) {
+                    insert(metadata) { song -> song.copy(inLibrary = libraryNow) }
+                } else if (existing.inLibrary == null) {
+                    update(existing.copy(inLibrary = libraryNow))
+                }
+            }
+        }
+    }
 
     private suspend fun matchTrack(
         track: SpotifyTrack,
         index: Int,
-    ): MatchedTrack? {
+    ): MatchResult {
+        // Local Spotify files have no YouTube counterpart; skip without searching.
+        if (track.isLocal) {
+            return MatchResult.Failure(SpotifyImportFailureReason.UNAVAILABLE)
+        }
+
+        val primaryQuery = SpotifyMapper.buildSearchQuery(track)
+        val primary = searchAndScore(track, index, primaryQuery)
+        if (primary is MatchResult.Success) return primary
+        if (primary is MatchResult.Failure &&
+            primary.reason != SpotifyImportFailureReason.LOW_SCORE &&
+            primary.reason != SpotifyImportFailureReason.NO_CANDIDATES
+        ) {
+            return primary
+        }
+
+        val alternateQuery = SpotifyMapper.buildAlternateSearchQuery(track)
+        if (alternateQuery == primaryQuery) return primary
+
+        val alternate = searchAndScore(track, index, alternateQuery)
+        return if (alternate is MatchResult.Success) alternate else primary
+    }
+
+    private suspend fun searchAndScore(
+        track: SpotifyTrack,
+        index: Int,
+        query: String,
+    ): MatchResult {
         val searchResult = searchWithRateLimitBackoff {
             YouTube.search(
-                query = SpotifyMapper.buildSearchQuery(track),
+                query = query,
                 filter = YouTube.SearchFilter.FILTER_SONG,
             )
         }.getOrElse { error ->
             if (error is CancellationException) {
                 throw error
             }
-            return null
+            return if (error.isRateLimited()) {
+                MatchResult.Failure(SpotifyImportFailureReason.RATE_LIMIT)
+            } else {
+                MatchResult.Failure(SpotifyImportFailureReason.SEARCH_ERROR)
+            }
         }
         val candidates = searchResult.items
             .filterIsInstance<SongItem>()
@@ -657,16 +782,41 @@ class SpotifyImportRepository @Inject constructor(
                 )
             }
             .maxByOrNull { it.second }
-            ?: return null
+            ?: return MatchResult.Failure(SpotifyImportFailureReason.NO_CANDIDATES)
 
         // Quality gate: maxByOrNull always returns the "least-bad" candidate, so without a floor
         // a completely wrong song was still counted as imported. Below the floor we treat the
-        // track as unmatched (return null → counts as failed) rather than import a wrong song.
+        // track as unmatched rather than import a wrong song.
         val (bestCandidate, bestScore) = best
-        if (bestScore < MIN_MATCH_SCORE) return null
+        if (bestScore < MIN_MATCH_SCORE) {
+            return MatchResult.Failure(SpotifyImportFailureReason.LOW_SCORE)
+        }
 
-        return MatchedTrack(index = index, metadata = bestCandidate.toMediaMetadata())
+        return MatchResult.Success(
+            MatchedTrack(index = index, metadata = bestCandidate.toMediaMetadata()),
+        )
     }
+
+    private fun SpotifyTrack.toFailureUi(reason: SpotifyImportFailureReason): SpotifyImportFailureUi =
+        SpotifyImportFailureUi(
+            title = name,
+            artists = artists.joinToString("; ") { it.name },
+            album = album?.name.orEmpty(),
+            spotifyId = id,
+            reason = reason,
+        )
+
+    private fun SpotifyImportFailureUi.toSpotifyTrack(): SpotifyTrack =
+        SpotifyTrack(
+            id = spotifyId.ifBlank { "retry_${title.hashCode()}" },
+            name = title,
+            artists = artists.split(';')
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+                .map { SpotifySimpleArtist(name = it) }
+                .ifEmpty { listOf(SpotifySimpleArtist(name = artists)) },
+            album = album.takeIf { it.isNotBlank() }?.let { SpotifySimpleAlbum(name = it) },
+        )
 
     // ── Followed artists ────────────────────────────────────────────────
 
@@ -705,21 +855,31 @@ class SpotifyImportRepository @Inject constructor(
 
         val completed = AtomicInteger(0)
         val imported = AtomicInteger(0)
+        val failures = java.util.Collections.synchronizedList(ArrayList<SpotifyImportFailureUi>())
         coroutineScope {
             val semaphore = Semaphore(MAX_CONCURRENT_MATCHES)
             artists.map { artist ->
                 async {
                     semaphore.withPermit {
-                        val followed =
+                        val followResult =
                             try {
-                                matchAndFollowArtist(artist)
+                                matchAndFollowArtistDetailed(artist)
                             } catch (error: CancellationException) {
                                 throw error
                             } catch (error: Throwable) {
                                 reportException(error)
-                                false
+                                ItemMatchOutcome.Failure(SpotifyImportFailureReason.SEARCH_ERROR)
                             }
-                        if (followed) imported.incrementAndGet()
+                        when (followResult) {
+                            is ItemMatchOutcome.Success -> imported.incrementAndGet()
+                            is ItemMatchOutcome.Failure -> failures += SpotifyImportFailureUi(
+                                title = artist.name,
+                                artists = artist.name,
+                                album = "",
+                                spotifyId = artist.id,
+                                reason = followResult.reason,
+                            )
+                        }
                         val completedCount = completed.incrementAndGet()
                         onProgress(
                             SpotifyImportProgressUi(
@@ -751,8 +911,9 @@ class SpotifyImportRepository @Inject constructor(
             title = source.title,
             totalTracks = artists.size,
             importedTracks = imported.get(),
-            failedTracks = artists.size - imported.get(),
+            failedTracks = failures.size,
             accountTotalTracks = source.trackCount,
+            failures = failures.toList(),
         )
     }
 
@@ -782,10 +943,10 @@ class SpotifyImportRepository @Inject constructor(
     /**
      * Searches YouTube Music for [spotifyArtist], picks the first result whose
      * name likely matches, then upserts it as a bookmarked [ArtistEntity] and
-     * subscribes the channel on YouTube. Returns true when the artist was matched
+     * subscribes the channel on YouTube. Success when the artist was matched
      * and bookmarked locally (the YouTube subscribe is best-effort).
      */
-    private suspend fun matchAndFollowArtist(spotifyArtist: SpotifyArtist): Boolean {
+    private suspend fun matchAndFollowArtistDetailed(spotifyArtist: SpotifyArtist): ItemMatchOutcome {
         val searchResult = searchWithRateLimitBackoff {
             YouTube.search(
                 query = spotifyArtist.name,
@@ -793,13 +954,17 @@ class SpotifyImportRepository @Inject constructor(
             )
         }.getOrElse { error ->
             if (error is CancellationException) throw error
-            return false
+            return if (error.isRateLimited()) {
+                ItemMatchOutcome.Failure(SpotifyImportFailureReason.RATE_LIMIT)
+            } else {
+                ItemMatchOutcome.Failure(SpotifyImportFailureReason.SEARCH_ERROR)
+            }
         }
 
         val match = searchResult.items
             .filterIsInstance<ArtistItem>()
             .firstOrNull { ArtistNameMatching.isLikelyMatch(spotifyArtist.name, it.title) }
-            ?: return false
+            ?: return ItemMatchOutcome.Failure(SpotifyImportFailureReason.NO_CANDIDATES)
 
         // Resolve the real channel id the same way SyncUtils does: search-result
         // ArtistItems carry channelId == null and a browse id that is often not a
@@ -871,7 +1036,7 @@ class SpotifyImportRepository @Inject constructor(
                 }
         }
 
-        return true
+        return ItemMatchOutcome.Success
     }
 
     private suspend fun importSavedAlbums(
@@ -897,21 +1062,31 @@ class SpotifyImportRepository @Inject constructor(
 
         val completed = AtomicInteger(0)
         val imported = AtomicInteger(0)
+        val failures = java.util.Collections.synchronizedList(ArrayList<SpotifyImportFailureUi>())
         coroutineScope {
             val semaphore = Semaphore(MAX_CONCURRENT_MATCHES)
             albums.map { album ->
                 async {
                     semaphore.withPermit {
-                        val ok =
+                        val outcome =
                             try {
-                                matchAndBookmarkAlbum(album)
+                                matchAndBookmarkAlbumDetailed(album)
                             } catch (error: CancellationException) {
                                 throw error
                             } catch (error: Throwable) {
                                 reportException(error)
-                                false
+                                ItemMatchOutcome.Failure(SpotifyImportFailureReason.SEARCH_ERROR)
                             }
-                        if (ok) imported.incrementAndGet()
+                        when (outcome) {
+                            is ItemMatchOutcome.Success -> imported.incrementAndGet()
+                            is ItemMatchOutcome.Failure -> failures += SpotifyImportFailureUi(
+                                title = album.name,
+                                artists = album.artists.joinToString("; ") { it.name },
+                                album = album.name,
+                                spotifyId = album.id,
+                                reason = outcome.reason,
+                            )
+                        }
                         val completedCount = completed.incrementAndGet()
                         onProgress(
                             SpotifyImportProgressUi(
@@ -943,8 +1118,9 @@ class SpotifyImportRepository @Inject constructor(
             title = source.title,
             totalTracks = albums.size,
             importedTracks = imported.get(),
-            failedTracks = albums.size - imported.get(),
+            failedTracks = failures.size,
             accountTotalTracks = source.trackCount,
+            failures = failures.toList(),
         )
     }
 
@@ -973,10 +1149,10 @@ class SpotifyImportRepository @Inject constructor(
      * Searches YouTube Music for [spotifyAlbum] (album + artist), picks the first close title match,
      * and upserts it as a bookmarked [AlbumEntity] so it appears under Favorite Albums.
      */
-    private suspend fun matchAndBookmarkAlbum(spotifyAlbum: SpotifyAlbum): Boolean {
+    private suspend fun matchAndBookmarkAlbumDetailed(spotifyAlbum: SpotifyAlbum): ItemMatchOutcome {
         val artistName = spotifyAlbum.artists.firstOrNull()?.name.orEmpty()
         val query = listOf(spotifyAlbum.name, artistName).filter { it.isNotBlank() }.joinToString(" ")
-        if (query.isBlank()) return false
+        if (query.isBlank()) return ItemMatchOutcome.Failure(SpotifyImportFailureReason.UNAVAILABLE)
 
         val searchResult = searchWithRateLimitBackoff {
             YouTube.search(
@@ -985,7 +1161,11 @@ class SpotifyImportRepository @Inject constructor(
             )
         }.getOrElse { error ->
             if (error is CancellationException) throw error
-            return false
+            return if (error.isRateLimited()) {
+                ItemMatchOutcome.Failure(SpotifyImportFailureReason.RATE_LIMIT)
+            } else {
+                ItemMatchOutcome.Failure(SpotifyImportFailureReason.SEARCH_ERROR)
+            }
         }
 
         val match = searchResult.items
@@ -993,7 +1173,7 @@ class SpotifyImportRepository @Inject constructor(
             .firstOrNull { item ->
                 item.title.contains(spotifyAlbum.name, ignoreCase = true) ||
                     spotifyAlbum.name.contains(item.title, ignoreCase = true)
-            } ?: return false
+            } ?: return ItemMatchOutcome.Failure(SpotifyImportFailureReason.NO_CANDIDATES)
 
         val existing = database.album(match.id).first()?.album
 
@@ -1023,7 +1203,7 @@ class SpotifyImportRepository @Inject constructor(
             }
         }
 
-        return true
+        return ItemMatchOutcome.Success
     }
 
     private suspend fun mirrorPlaylist(
@@ -1129,6 +1309,21 @@ class SpotifyImportRepository @Inject constructor(
         val index: Int,
         val metadata: MediaMetadata,
     )
+
+    private data class MatchBatch(
+        val matched: List<MatchedTrack>,
+        val failures: List<SpotifyImportFailureUi>,
+    )
+
+    private sealed class MatchResult {
+        data class Success(val matched: MatchedTrack) : MatchResult()
+        data class Failure(val reason: SpotifyImportFailureReason) : MatchResult()
+    }
+
+    private sealed class ItemMatchOutcome {
+        data object Success : ItemMatchOutcome()
+        data class Failure(val reason: SpotifyImportFailureReason) : ItemMatchOutcome()
+    }
 
     companion object {
         // YouTube matching runs one search per track. A big library (4000+ liked songs) at high

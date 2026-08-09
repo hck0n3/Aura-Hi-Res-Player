@@ -48,6 +48,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -104,20 +105,32 @@ import iad1tya.echo.music.LocalPlayerConnection
 import iad1tya.echo.music.R
 import iad1tya.echo.music.constants.CONTENT_TYPE_HEADER
 import iad1tya.echo.music.constants.CONTENT_TYPE_SONG
+import iad1tya.echo.music.constants.ListThumbnailSize
 import iad1tya.echo.music.constants.LocalSongsIncludedFoldersKey
 import iad1tya.echo.music.constants.LocalSongsMinDurationSecondsKey
 import iad1tya.echo.music.constants.LocalSongsSortDescendingKey
 import iad1tya.echo.music.constants.LocalSongsSortTypeKey
+import iad1tya.echo.music.constants.ThumbnailCornerRadius
+import iad1tya.echo.music.db.entities.Song
 import iad1tya.echo.music.extensions.toMediaItem
 import iad1tya.echo.music.extensions.togglePlayPause
 import iad1tya.echo.music.localmedia.LocalSongScanConfig
 import iad1tya.echo.music.localmedia.SupportedLocalAudio
 import iad1tya.echo.music.playback.queues.ListQueue
+import iad1tya.echo.music.ui.component.ItemThumbnail
+import iad1tya.echo.music.ui.component.ListItem
 import iad1tya.echo.music.ui.component.LocalMenuState
 import iad1tya.echo.music.ui.component.SongListItem
 import iad1tya.echo.music.ui.component.SortHeader
 import iad1tya.echo.music.ui.menu.SongMenu
+import iad1tya.echo.music.ui.newui.AuraCover
+import iad1tya.echo.music.ui.newui.AuraIconButton
+import iad1tya.echo.music.ui.newui.AuraIcons
+import iad1tya.echo.music.ui.newui.AuraPalette
+import iad1tya.echo.music.ui.newui.AuraRow
+import iad1tya.echo.music.ui.newui.AuraSectionLabel
 import iad1tya.echo.music.ui.newui.AuraShapes
+import iad1tya.echo.music.ui.newui.AuraSpacing
 import iad1tya.echo.music.ui.newui.LocalAuraFloatingChrome
 import iad1tya.echo.music.ui.newui.auraFloatingContainerColor
 import iad1tya.echo.music.ui.newui.auraFloatingScrimColor
@@ -163,6 +176,7 @@ fun LocalSongScreen(
     val isPlaying by playerConnection.isPlaying.collectAsState()
     val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
     val songs by viewModel.songs.collectAsState()
+    val exportedVideos by viewModel.exportedVideos.collectAsState()
     val scanState by viewModel.scanState.collectAsState()
     val listState = rememberLazyListState()
     val scanSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -261,7 +275,25 @@ fun LocalSongScreen(
         }
     }
 
+    val visibleVideos by remember(exportedVideos, query) {
+        derivedStateOf {
+            val normalizedQuery = query.trim()
+            if (normalizedQuery.isBlank()) {
+                exportedVideos
+            } else {
+                exportedVideos.filter { song ->
+                    song.song.title.contains(normalizedQuery, ignoreCase = true) ||
+                        song.artists.any { artist -> artist.name.contains(normalizedQuery, ignoreCase = true) }
+                }
+            }
+        }
+    }
+
     val queueItems = remember(visibleSongs) { visibleSongs.map { it.toMediaItem() } }
+    val videoQueueItems = remember(visibleVideos) { visibleVideos.map { it.toMediaItem() } }
+    val showSectionLabels = visibleVideos.isNotEmpty()
+    val videosSectionTitle = stringResource(R.string.local_videos_section)
+    val musicSectionTitle = stringResource(R.string.local_music_section)
 
     if (showScanSheet) {
         LocalSongScanSheet(
@@ -453,7 +485,65 @@ fun LocalSongScreen(
                 )
             }
 
-            if (visibleSongs.isEmpty()) {
+            if (showSectionLabels) {
+                item(
+                    key = "local_videos_section",
+                    contentType = CONTENT_TYPE_HEADER,
+                ) {
+                    LocalLibrarySectionLabel(
+                        text = videosSectionTitle,
+                        auraStyle = hideChrome,
+                    )
+                }
+                items(
+                    items = visibleVideos,
+                    key = { "local_vid_" + it.id },
+                    contentType = { CONTENT_TYPE_SONG },
+                ) { song ->
+                    LocalExportedVideoRow(
+                        song = song,
+                        isActive = song.id == mediaMetadata?.id,
+                        isPlaying = isPlaying,
+                        auraStyle = hideChrome,
+                        onClick = {
+                            if (song.id == mediaMetadata?.id) {
+                                playerConnection.player.togglePlayPause()
+                            } else {
+                                playerConnection.playQueue(
+                                    ListQueue(
+                                        title = videosSectionTitle,
+                                        items = videoQueueItems,
+                                        startIndex = visibleVideos.indexOfFirst { it.id == song.id },
+                                        contextId = "local:videos",
+                                    ),
+                                )
+                            }
+                        },
+                        onLongClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            menuState.show {
+                                SongMenu(
+                                    originalSong = song,
+                                    navController = navController,
+                                    onDismiss = menuState::dismiss,
+                                )
+                            }
+                        },
+                        onMenuClick = {
+                            menuState.show {
+                                SongMenu(
+                                    originalSong = song,
+                                    navController = navController,
+                                    onDismiss = menuState::dismiss,
+                                )
+                            }
+                        },
+                        modifier = Modifier.animateItem(),
+                    )
+                }
+            }
+
+            if (visibleSongs.isEmpty() && visibleVideos.isEmpty()) {
                 item(
                     key = "empty",
                     contentType = CONTENT_TYPE_HEADER,
@@ -463,12 +553,24 @@ fun LocalSongScreen(
                         onScanClick = { showScanSheet = true },
                     )
                 }
-            } else {
-                item(
-                    key = "divider",
-                    contentType = CONTENT_TYPE_HEADER,
-                ) {
-                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+            } else if (visibleSongs.isNotEmpty()) {
+                if (showSectionLabels) {
+                    item(
+                        key = "local_music_section",
+                        contentType = CONTENT_TYPE_HEADER,
+                    ) {
+                        LocalLibrarySectionLabel(
+                            text = musicSectionTitle,
+                            auraStyle = hideChrome,
+                        )
+                    }
+                } else {
+                    item(
+                        key = "divider",
+                        contentType = CONTENT_TYPE_HEADER,
+                    ) {
+                        HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                    }
                 }
 
                 itemsIndexed(
@@ -516,6 +618,7 @@ fun LocalSongScreen(
                                                 },
                                                 items = queueItems,
                                                 startIndex = index,
+                                                contextId = "local:music",
                                             ),
                                         )
                                     }
@@ -537,6 +640,107 @@ fun LocalSongScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun LocalLibrarySectionLabel(
+    text: String,
+    auraStyle: Boolean,
+) {
+    if (auraStyle) {
+        AuraSectionLabel(
+            text = text.uppercase(Locale.ROOT),
+            modifier = Modifier.padding(
+                start = AuraSpacing.Gutter,
+                end = AuraSpacing.Gutter,
+                top = AuraSpacing.SectionTop,
+                bottom = AuraSpacing.SectionGap,
+            ),
+        )
+    } else {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        )
+    }
+}
+
+@Composable
+private fun LocalExportedVideoRow(
+    song: Song,
+    isActive: Boolean,
+    isPlaying: Boolean,
+    auraStyle: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    onMenuClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val thumbUrl = song.song.thumbnailUrl
+        ?: "https://i.ytimg.com/vi/${song.id}/hqdefault.jpg"
+    if (auraStyle) {
+        AuraRow(
+            title = song.song.title,
+            subtitle = song.artists.joinToString { it.name },
+            highlighted = isActive,
+            contentDescription = song.song.title,
+            onClick = onClick,
+            onLongClick = onLongClick,
+            artwork = {
+                AuraCover(
+                    thumbnailUrl = thumbUrl,
+                    size = 72.dp,
+                    seed = song.id,
+                    ratio = 16f / 9f,
+                    fillBleed = true,
+                )
+            },
+            trailing = {
+                AuraIconButton(
+                    icon = AuraIcons.More,
+                    contentDescription = stringResource(R.string.more_options),
+                    onClick = onMenuClick,
+                    size = 18.dp,
+                    tint = AuraPalette.OnGroundFaint,
+                )
+            },
+            modifier = modifier.padding(horizontal = AuraSpacing.Gutter),
+        )
+    } else {
+        ListItem(
+            title = song.song.title,
+            subtitle = song.artists.joinToString { it.name },
+            isActive = isActive,
+            thumbnailContent = {
+                ItemThumbnail(
+                    thumbnailUrl = thumbUrl,
+                    isActive = isActive,
+                    isPlaying = isPlaying,
+                    thumbnailRatio = 16f / 9f,
+                    shape = RoundedCornerShape(ThumbnailCornerRadius),
+                    modifier = Modifier
+                        .height(ListThumbnailSize)
+                        .width(ListThumbnailSize * 16f / 9f),
+                )
+            },
+            trailingContent = {
+                IconButton(onClick = onMenuClick) {
+                    Icon(
+                        painter = painterResource(R.drawable.more_vert),
+                        contentDescription = null,
+                    )
+                }
+            },
+            modifier = modifier
+                .fillMaxWidth()
+                .combinedClickable(
+                    onClick = onClick,
+                    onLongClick = onLongClick,
+                ),
+        )
     }
 }
 

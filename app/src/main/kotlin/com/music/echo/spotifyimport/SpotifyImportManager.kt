@@ -82,6 +82,11 @@ class SpotifyImportManager @Inject constructor(
     fun consumeSummary() { _summary.value = null }
     fun consumeError() { _error.value = null }
 
+    /** Push an updated summary (e.g. after retrying failures) so open screens stay in sync. */
+    fun setSummary(summary: SpotifyImportSummaryUi?) {
+        _summary.value = summary
+    }
+
     // --- Notifications -------------------------------------------------------------------------
 
     private fun manager() = NotificationManagerCompat.from(context)
@@ -125,15 +130,23 @@ class SpotifyImportManager @Inject constructor(
     }
 
     private fun showComplete(s: SpotifyImportSummaryUi) {
+        val text = if (s.failedTracks > 0) {
+            context.getString(
+                R.string.spotify_import_done_text_with_failures,
+                s.importedTracks,
+                s.totalTracks,
+                s.failedTracks,
+            )
+        } else {
+            context.getString(
+                R.string.spotify_import_done_text,
+                s.importedTracks,
+                s.totalTracks,
+            )
+        }
         val n = base()
             .setContentTitle(context.getString(R.string.spotify_import_done_title))
-            .setContentText(
-                context.getString(
-                    R.string.spotify_import_done_text,
-                    s.importedTracks,
-                    s.totalTracks,
-                )
-            )
+            .setContentText(text)
             .setOngoing(false)
             .setAutoCancel(true)
             .build()

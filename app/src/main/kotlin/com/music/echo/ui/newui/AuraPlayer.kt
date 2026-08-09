@@ -147,10 +147,13 @@ import iad1tya.echo.music.playback.removeSongDownloads
 import iad1tya.echo.music.ui.component.BottomSheet
 import iad1tya.echo.music.ui.component.BottomSheetState
 import iad1tya.echo.music.ui.component.CastButton
+import iad1tya.echo.music.ui.component.ListDialog
 import iad1tya.echo.music.ui.component.LocalBottomSheetPageState
 import iad1tya.echo.music.ui.component.LocalMenuState
 import iad1tya.echo.music.ui.component.PlayerProgressSlider
 import iad1tya.echo.music.ui.component.rememberBottomSheetState
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.clickable
 import iad1tya.echo.music.ui.menu.AddToPlaylistDialog
 import iad1tya.echo.music.ui.player.CanvasArtworkPlaybackCache
 import iad1tya.echo.music.ui.player.rememberCanvasAnimationEnabled
@@ -635,6 +638,42 @@ private fun AuraPlayerShape(
     // block is invoked from three different arrangements, so a `rememberSaveable` living inside it would
     // be destroyed and recreated by a rotation and the open dialog would vanish mid-gesture.
     var showChoosePlaylistDialog by rememberSaveable { mutableStateOf(false) }
+    var showSelectArtistDialog by rememberSaveable { mutableStateOf(false) }
+    if (showSelectArtistDialog) {
+        val artists = mediaMetadata?.artists.orEmpty().filter { it.name.isNotBlank() }.distinctBy { it.id to it.name }
+        ListDialog(onDismiss = { showSelectArtistDialog = false }) {
+            items(items = artists, key = { "${it.id}_${it.name}" }) { artist ->
+                Text(
+                    text = artist.name,
+                    style = AuraType.MenuLabel,
+                    color = AuraPalette.OnGround,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            showSelectArtistDialog = false
+                            coroutineScope.launch {
+                                val browseId = if (needsOnlineBrowseResolution(artist.id)) {
+                                    withContext(Dispatchers.IO) {
+                                        resolveOnlineArtistBrowseId(artist.name)
+                                    }
+                                } else {
+                                    artist.id
+                                }
+                                if (!browseId.isNullOrBlank()) {
+                                    navController.navigate("artist/$browseId")
+                                } else {
+                                    navController.navigate(
+                                        "search/${URLEncoder.encode(artist.name, "UTF-8")}"
+                                    )
+                                }
+                                state.collapseSoft()
+                            }
+                        }
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                )
+            }
+        }
+    }
     AddToPlaylistDialog(
         isVisible = showChoosePlaylistDialog,
         onGetSong = {
@@ -1054,8 +1093,13 @@ private fun AuraPlayerShape(
                                     interactionSource = remember { MutableInteractionSource() },
                                     role = Role.Button,
                                     onClick = {
-                                        val artist = meta.artists.firstOrNull { it.name.isNotBlank() }
-                                            ?: return@combinedClickable
+                                        val named = meta.artists.filter { it.name.isNotBlank() }
+                                        if (named.isEmpty()) return@combinedClickable
+                                        if (named.size > 1) {
+                                            showSelectArtistDialog = true
+                                            return@combinedClickable
+                                        }
+                                        val artist = named.first()
                                         coroutineScope.launch {
                                             val browseId = if (needsOnlineBrowseResolution(artist.id)) {
                                                 withContext(Dispatchers.IO) {
