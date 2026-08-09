@@ -8515,10 +8515,10 @@ class MusicService :
             _videoMode.value = true
             _videoUrl.value = url
             // Old player: silence, detach its surface, full release (mirrors cleanupCrossfade's teardown).
+            // NO clearMediaItems: redundant before release() and races media3 transition eval (CRASH_REPORTS #2/#5).
             runCatching {
                 old.volume = 0f
                 old.stop()
-                old.clearMediaItems()
                 old.clearVideoSurface()
             }
             playerSilenceProcessors.remove(old)
@@ -8563,7 +8563,7 @@ class MusicService :
         playerEqProcessors.remove(pre)?.let { eq -> equalizerService.removeAudioProcessor(eq) }
         runCatching {
             pre.stop()
-            pre.clearMediaItems()
+            // NO clearMediaItems: redundant before release() and races media3 transition eval (CRASH_REPORTS #2/#5).
             pre.release()
         }
     }
@@ -10358,15 +10358,19 @@ class MusicService :
         // Stop the outgoing player from auto-advancing into the NEXT track as it fades out. It still
         // holds the full queue, so when the current song ends mid-fade it would start the next song —
         // which the incoming player is ALSO playing → "the next track plays twice at once" at the start
-        // of the transition. Drop everything after its current item and disable repeat so it just ends.
+        // of the transition.
+        //
+        // MUST NOT mutate the fading playlist (removeMediaItems/clearMediaItems): that races media3's
+        // evaluateMediaItemTransitionReason and throws a bare IllegalStateException on the main Handler
+        // (CRASH_REPORTS #2 + #5 — Xiaomi users mid-playlist with crossfade ON). pauseAtEndOfMediaItems
+        // parks the player at EOS without touching the timeline; release() in cleanupCrossfade frees it.
         try {
             fadingPlayer?.let { fp ->
                 fp.repeatMode = androidx.media3.common.Player.REPEAT_MODE_OFF
-                val next = fp.currentMediaItemIndex + 1
-                if (next in 1 until fp.mediaItemCount) fp.removeMediaItems(next, fp.mediaItemCount)
+                fp.pauseAtEndOfMediaItems = true
             }
         } catch (e: Exception) {
-            Timber.tag(TAG).e(e, "crossfade: failed to cap fading player queue")
+            Timber.tag(TAG).e(e, "crossfade: failed to park fading player at end of item")
         }
 
 
