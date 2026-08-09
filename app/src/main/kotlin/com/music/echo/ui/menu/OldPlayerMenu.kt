@@ -62,12 +62,14 @@ import iad1tya.echo.music.R
 import iad1tya.echo.music.constants.EnableExportAsMp3Key
 import iad1tya.echo.music.constants.ExportDirectoryUriKey
 import iad1tya.echo.music.constants.ExportedSongIdsKey
+import iad1tya.echo.music.constants.ExportedVideoIdsKey
 import iad1tya.echo.music.constants.ExportingSongIdsKey
 import iad1tya.echo.music.constants.ListItemHeight
 import iad1tya.echo.music.extensions.toggleRepeatMode
 import iad1tya.echo.music.listentogether.RoomRole
 import iad1tya.echo.music.models.MediaMetadata
 import iad1tya.echo.music.models.rememberResolvedAlbum
+import iad1tya.echo.music.playback.AudioExportService
 import iad1tya.echo.music.playback.ExoDownloadService
 import iad1tya.echo.music.ui.component.BottomSheetState
 import iad1tya.echo.music.ui.component.ListDialog
@@ -76,7 +78,11 @@ import iad1tya.echo.music.ui.component.Material3MenuItemData
 import iad1tya.echo.music.ui.component.NewAction
 import iad1tya.echo.music.ui.component.NewActionGrid
 import iad1tya.echo.music.ui.component.VolumeSlider
+import iad1tya.echo.music.ui.utils.ExportFormat
+import iad1tya.echo.music.ui.utils.ExportFormatChooserDialog
+import iad1tya.echo.music.utils.isLocalMediaId
 import iad1tya.echo.music.utils.rememberPreference
+import iad1tya.echo.music.utils.shareLocalAudio
 import kotlinx.coroutines.launch
 
 @Composable
@@ -135,18 +141,25 @@ fun OldPlayerMenu(
     val (exportDirectoryUri, onExportDirectoryUriChange) = rememberPreference(key = ExportDirectoryUriKey, defaultValue = "")
     val (exportingSongIds) = rememberPreference(key = ExportingSongIdsKey, defaultValue = "")
     val (exportedSongIds) = rememberPreference(key = ExportedSongIdsKey, defaultValue = "")
+    val (exportedVideoIds) = rememberPreference(key = ExportedVideoIdsKey, defaultValue = "")
     val ensureMp3Folder = iad1tya.echo.music.ui.utils.rememberMp3ExportFolderAccess(
         exportDirectoryUri = exportDirectoryUri,
         onExportDirectoryUriChange = onExportDirectoryUriChange,
     )
 
     val isExporting = remember(exportingSongIds, mediaMetadata.id) { exportingSongIds.split(",").contains(mediaMetadata.id) }
-    val isExported = remember(exportedSongIds, mediaMetadata.id) { exportedSongIds.split(",").contains(mediaMetadata.id) }
+    @Suppress("UNUSED_VARIABLE")
+    val isExported = remember(exportedSongIds, exportedVideoIds, mediaMetadata.id) {
+        val id = mediaMetadata.id
+        exportedSongIds.split(",").contains(id) || exportedVideoIds.split(",").contains(id)
+    }
+    val isLocalTrack = mediaMetadata.id.isLocalMediaId() || currentSong?.song?.isLocal == true
 
     var showChoosePlaylistDialog by rememberSaveable { mutableStateOf(false) }
     var showListenTogetherDialog by rememberSaveable { mutableStateOf(false) }
     var showSelectArtistDialog by rememberSaveable { mutableStateOf(false) }
     var showPitchTempoDialog by rememberSaveable { mutableStateOf(false) }
+    var showExportFormatDialog by rememberSaveable { mutableStateOf(false) }
     // Refetch icon rotation: each tap subtracts 360°, spinning the icon one full turn as the reload fires.
     var refetchIconDegree by remember { mutableFloatStateOf(0f) }
     val rotationAnimation by animateFloatAsState(
@@ -179,6 +192,28 @@ fun OldPlayerMenu(
         mediaMetadata = mediaMetadata,
         onDismiss = { showListenTogetherDialog = false }
     )
+
+    if (showExportFormatDialog) {
+        ExportFormatChooserDialog(
+            videoAvailable = mediaMetadata.isVideoSong,
+            onDismiss = { showExportFormatDialog = false },
+            onChoose = { format ->
+                ensureMp3Folder { directoryUri ->
+                    onDismiss()
+                    AudioExportService.start(
+                        context = context,
+                        songId = mediaMetadata.id,
+                        songTitle = mediaMetadata.title,
+                        songArtist = artists.joinToString(", ") { it.name },
+                        songAlbum = mediaMetadata.album?.title ?: "",
+                        artworkUrl = mediaMetadata.thumbnailUrl ?: "",
+                        targetDirectoryUri = directoryUri,
+                        exportAsVideo = format == ExportFormat.Video,
+                    )
+                }
+            },
+        )
+    }
 
     if (showSelectArtistDialog) {
         ListDialog(onDismiss = { showSelectArtistDialog = false }) {
@@ -426,6 +461,23 @@ fun OldPlayerMenu(
 
                     if (enableExportAsMp3) {
                         when {
+                            isLocalTrack -> add(
+                                Material3MenuItemData(
+                                    title = { Text(text = stringResource(R.string.action_share)) },
+                                    description = { Text(text = stringResource(R.string.share_local_desc)) },
+                                    icon = {
+                                        Icon(
+                                            painter = painterResource(R.drawable.share),
+                                            contentDescription = null,
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                    },
+                                    onClick = {
+                                        shareLocalAudio(context, mediaMetadata.id)
+                                        onDismiss()
+                                    }
+                                )
+                            )
                             isExporting -> add(
                                 Material3MenuItemData(
                                     title = { Text(text = stringResource(R.string.exporting)) },
@@ -433,19 +485,6 @@ fun OldPlayerMenu(
                                         CircularProgressIndicator(
                                             modifier = Modifier.size(24.dp),
                                             strokeWidth = 2.dp
-                                        )
-                                    },
-                                    onClick = {}
-                                )
-                            )
-                            isExported -> add(
-                                Material3MenuItemData(
-                                    title = { Text(text = stringResource(R.string.action_exported)) },
-                                    icon = {
-                                        Icon(
-                                            painter = painterResource(R.drawable.folder_managed),
-                                            contentDescription = null,
-                                            modifier = Modifier.size(24.dp)
                                         )
                                     },
                                     onClick = {}
@@ -461,20 +500,7 @@ fun OldPlayerMenu(
                                             modifier = Modifier.size(24.dp)
                                         )
                                     },
-                                    onClick = {
-                                        ensureMp3Folder { directoryUri ->
-                                            onDismiss()
-                                            iad1tya.echo.music.playback.AudioExportService.start(
-                                                context = context,
-                                                songId = mediaMetadata.id,
-                                                songTitle = mediaMetadata.title,
-                                                songArtist = artists.joinToString(", ") { it.name },
-                                                songAlbum = mediaMetadata.album?.title ?: "",
-                                                artworkUrl = mediaMetadata.thumbnailUrl ?: "",
-                                                targetDirectoryUri = directoryUri,
-                                            )
-                                        }
-                                    }
+                                    onClick = { showExportFormatDialog = true }
                                 )
                             )
                         }

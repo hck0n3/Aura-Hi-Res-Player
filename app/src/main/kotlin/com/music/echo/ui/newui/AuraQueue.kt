@@ -558,7 +558,13 @@ fun AuraQueue(
                         AuraIconButton(
                             icon = AuraIcons.Shuffle,
                             contentDescription = stringResource(R.string.shuffle),
-                            onClick = { playerConnection.player.shuffleModeEnabled = !shuffleModeEnabled },
+                            onClick = {
+                                if (shuffleModeEnabled) {
+                                    playerConnection.player.shuffleModeEnabled = false
+                                } else {
+                                    playerConnection.service.toggleShuffleOrReshuffle()
+                                }
+                            },
                             enabled = !isListenTogetherGuest,
                             size = 22.dp,
                             tint = if (shuffleModeEnabled) AuraPalette.Teal else AuraPalette.OnGroundDisabled,

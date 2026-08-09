@@ -71,6 +71,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -174,15 +175,22 @@ import iad1tya.echo.music.utils.DeviceCapabilities
 import iad1tya.echo.music.utils.DeviceTier
 import iad1tya.echo.music.utils.isLocalMediaId
 import iad1tya.echo.music.utils.makeTimeString
+import iad1tya.echo.music.utils.needsOnlineBrowseResolution
 import iad1tya.echo.music.utils.rememberDeviceThrottle
 import iad1tya.echo.music.utils.rememberEnumPreference
 import iad1tya.echo.music.utils.rememberPreference
+import iad1tya.echo.music.utils.resolveOnlineAlbumBrowseId
+import iad1tya.echo.music.utils.resolveOnlineArtistBrowseId
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.core.net.toUri
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import java.net.URLEncoder
 import kotlin.math.roundToInt
 
 /**
@@ -337,6 +345,7 @@ private fun AuraPlayerShape(
     val clipboardManager = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
     val menuState = LocalMenuState.current
     val bottomSheetPageState = LocalBottomSheetPageState.current
+    val coroutineScope = rememberCoroutineScope()
 
     val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
     val currentSong by playerConnection.currentSong.collectAsState(initial = null)
@@ -771,7 +780,12 @@ private fun AuraPlayerShape(
                 // hi-res badge. Two single lines of technical type instead of two lines of `titleMedium`
                 // inside the artwork slot, so the cover gets the height back (see report 4).
                 Column(
-                    modifier = Modifier.weight(1f).padding(horizontal = 4.dp),
+                    // Reserve space for pinned top-right Cast (~40dp) so long album titles never
+                    // run under the icon. Cast stays TopEnd overlay (owner rule); hidden with
+                    // inline lyrics so this spacer only matters when Cast can show.
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(start = 4.dp, end = if (showInlineLyrics) 4.dp else 40.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     if (techInfo.isHiRes) {
@@ -990,8 +1004,29 @@ private fun AuraPlayerShape(
                                 role = Role.Button,
                                 onClick = {
                                     resolvedAlbum?.let { album ->
-                                        navController.navigate("album/${album.id}")
-                                        state.collapseSoft()
+                                        coroutineScope.launch {
+                                            val browseId = if (needsOnlineBrowseResolution(album.id)) {
+                                                val query = listOfNotNull(
+                                                    album.title.takeIf { it.isNotBlank() },
+                                                    meta.artists.joinToString(" ") { it.name }
+                                                        .takeIf { it.isNotBlank() },
+                                                ).joinToString(" ")
+                                                withContext(Dispatchers.IO) {
+                                                    resolveOnlineAlbumBrowseId(query)
+                                                }
+                                            } else {
+                                                album.id
+                                            }
+                                            if (!browseId.isNullOrBlank()) {
+                                                navController.navigate("album/$browseId")
+                                                state.collapseSoft()
+                                            } else if (album.title.isNotBlank()) {
+                                                navController.navigate(
+                                                    "search/${URLEncoder.encode(album.title, "UTF-8")}"
+                                                )
+                                                state.collapseSoft()
+                                            }
+                                        }
                                     }
                                 },
                                 // GESTURE: long-press copies the title (same string, same Toast).
@@ -1019,9 +1054,25 @@ private fun AuraPlayerShape(
                                     interactionSource = remember { MutableInteractionSource() },
                                     role = Role.Button,
                                     onClick = {
-                                        meta.artists.firstOrNull { !it.id.isNullOrBlank() }?.id?.let { artistId ->
-                                            navController.navigate("artist/$artistId")
-                                            state.collapseSoft()
+                                        val artist = meta.artists.firstOrNull { it.name.isNotBlank() }
+                                            ?: return@combinedClickable
+                                        coroutineScope.launch {
+                                            val browseId = if (needsOnlineBrowseResolution(artist.id)) {
+                                                withContext(Dispatchers.IO) {
+                                                    resolveOnlineArtistBrowseId(artist.name)
+                                                }
+                                            } else {
+                                                artist.id
+                                            }
+                                            if (!browseId.isNullOrBlank()) {
+                                                navController.navigate("artist/$browseId")
+                                                state.collapseSoft()
+                                            } else {
+                                                navController.navigate(
+                                                    "search/${URLEncoder.encode(artist.name, "UTF-8")}"
+                                                )
+                                                state.collapseSoft()
+                                            }
                                         }
                                     },
                                     // GESTURE: long-press copies the artist.
@@ -1113,7 +1164,15 @@ private fun AuraPlayerShape(
                     AuraIconButton(
                         icon = AuraIcons.Shuffle,
                         contentDescription = stringResource(R.string.shuffle),
-                        onClick = { playerConnection.player.shuffleModeEnabled = !shuffleModeEnabled },
+                        onClick = {
+                            if (shuffleModeEnabled) {
+                                // OFF (toggle). Reshuffle = turn on again → beginShuffleSession.
+                                playerConnection.player.shuffleModeEnabled = false
+                            } else {
+                                // Ensure anti-repeat session even if media3 quirks skip the callback.
+                                playerConnection.service.toggleShuffleOrReshuffle()
+                            }
+                        },
                         enabled = !isListenTogetherGuest,
                         size = if (dense) 22.dp else 24.dp,
                         tint = if (shuffleModeEnabled) transportAccent else AuraPalette.OnGroundFaint,
@@ -1509,7 +1568,7 @@ private fun AuraPlayerShape(
                     .windowInsetsPadding(
                         WindowInsets.systemBars.only(WindowInsetsSides.Top + WindowInsetsSides.End)
                     )
-                    .padding(horizontal = 16.dp, vertical = 20.dp)
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
                     .size(22.dp),
                 tintColor = AuraPalette.OnGround,
             )

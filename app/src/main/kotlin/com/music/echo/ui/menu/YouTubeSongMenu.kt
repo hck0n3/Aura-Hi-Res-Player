@@ -65,9 +65,13 @@ import iad1tya.echo.music.R
 import iad1tya.echo.music.constants.EnableExportAsMp3Key
 import iad1tya.echo.music.constants.ExportDirectoryUriKey
 import iad1tya.echo.music.constants.ExportedSongIdsKey
+import iad1tya.echo.music.constants.ExportedVideoIdsKey
 import iad1tya.echo.music.constants.ExportingSongIdsKey
 import iad1tya.echo.music.constants.ListItemHeight
 import iad1tya.echo.music.constants.ListThumbnailSize
+import iad1tya.echo.music.playback.AudioExportService
+import iad1tya.echo.music.ui.utils.ExportFormat
+import iad1tya.echo.music.ui.utils.ExportFormatChooserDialog
 import iad1tya.echo.music.constants.ThumbnailCornerRadius
 import iad1tya.echo.music.db.entities.SpeedDialItem
 import iad1tya.echo.music.db.entities.SongEntity
@@ -130,13 +134,18 @@ fun YouTubeSongMenu(
     val (exportDirectoryUri, onExportDirectoryUriChange) = rememberPreference(key = ExportDirectoryUriKey, defaultValue = "")
     val (exportingSongIds) = rememberPreference(key = ExportingSongIdsKey, defaultValue = "")
     val (exportedSongIds) = rememberPreference(key = ExportedSongIdsKey, defaultValue = "")
+    val (exportedVideoIds) = rememberPreference(key = ExportedVideoIdsKey, defaultValue = "")
     val ensureMp3Folder = iad1tya.echo.music.ui.utils.rememberMp3ExportFolderAccess(
         exportDirectoryUri = exportDirectoryUri,
         onExportDirectoryUriChange = onExportDirectoryUriChange,
     )
 
     val isExporting = remember(exportingSongIds, song.id) { exportingSongIds.split(",").contains(song.id) }
-    val isExported = remember(exportedSongIds, song.id) { exportedSongIds.split(",").contains(song.id) }
+    @Suppress("UNUSED_VARIABLE")
+    val isExported = remember(exportedSongIds, exportedVideoIds, song.id) {
+        exportedSongIds.split(",").contains(song.id) || exportedVideoIds.split(",").contains(song.id)
+    }
+    var showExportFormatDialog by rememberSaveable { mutableStateOf(false) }
 
     var showChoosePlaylistDialog by rememberSaveable {  
         mutableStateOf(false)  
@@ -158,6 +167,28 @@ fun YouTubeSongMenu(
     var showSelectArtistDialog by rememberSaveable {  
         mutableStateOf(false)  
     }  
+
+    if (showExportFormatDialog) {
+        ExportFormatChooserDialog(
+            videoAvailable = song.isVideoSong,
+            onDismiss = { showExportFormatDialog = false },
+            onChoose = { format ->
+                ensureMp3Folder { directoryUri ->
+                    onDismiss()
+                    AudioExportService.start(
+                        context = context,
+                        songId = song.id,
+                        songTitle = song.title,
+                        songArtist = artists.joinToString(", ") { it.name },
+                        songAlbum = song.album?.name ?: "",
+                        artworkUrl = song.thumbnail,
+                        targetDirectoryUri = directoryUri,
+                        exportAsVideo = format == ExportFormat.Video,
+                    )
+                }
+            },
+        )
+    }
 
     if (showSelectArtistDialog) {  
         ListDialog(  
@@ -600,16 +631,6 @@ fun YouTubeSongMenu(
                                 },
                                 onClick = {}
                             )
-                            isExported -> Material3MenuItemData(
-                                title = { Text(text = stringResource(R.string.action_exported)) },
-                                icon = {
-                                    Icon(
-                                        painter = painterResource(R.drawable.folder_managed),
-                                        contentDescription = null
-                                    )
-                                },
-                                onClick = {}
-                            )
                             else -> Material3MenuItemData(
                                 title = { Text(text = stringResource(R.string.action_export)) },
                                 description = { Text(text = stringResource(R.string.export_desc)) },
@@ -619,20 +640,7 @@ fun YouTubeSongMenu(
                                         contentDescription = null,
                                     )
                                 },
-                                onClick = {
-                                    ensureMp3Folder { directoryUri ->
-                                        onDismiss()
-                                        iad1tya.echo.music.playback.AudioExportService.start(
-                                            context = context,
-                                            songId = song.id,
-                                            songTitle = song.title,
-                                            songArtist = artists.joinToString(", ") { it.name },
-                                            songAlbum = song.album?.name ?: "",
-                                            artworkUrl = song.thumbnail,
-                                            targetDirectoryUri = directoryUri,
-                                        )
-                                    }
-                                }
+                                onClick = { showExportFormatDialog = true }
                             )
                         }
                     )

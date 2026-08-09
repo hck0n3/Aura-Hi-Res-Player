@@ -57,12 +57,14 @@ import iad1tya.echo.music.R
 import iad1tya.echo.music.constants.EnableExportAsMp3Key
 import iad1tya.echo.music.constants.ExportDirectoryUriKey
 import iad1tya.echo.music.constants.ExportedSongIdsKey
+import iad1tya.echo.music.constants.ExportedVideoIdsKey
 import iad1tya.echo.music.constants.ExportingSongIdsKey
 import iad1tya.echo.music.constants.ListItemHeight
 import iad1tya.echo.music.extensions.toggleRepeatMode
 import iad1tya.echo.music.listentogether.RoomRole
 import iad1tya.echo.music.models.MediaMetadata
 import iad1tya.echo.music.models.rememberResolvedAlbum
+import iad1tya.echo.music.playback.AudioExportService
 import iad1tya.echo.music.playback.enqueueSongDownloads
 import iad1tya.echo.music.playback.removeSongDownloads
 import iad1tya.echo.music.ui.component.BottomSheetState
@@ -74,10 +76,20 @@ import iad1tya.echo.music.ui.menu.AddToPlaylistDialog
 import iad1tya.echo.music.ui.menu.ListenTogetherDialog
 import iad1tya.echo.music.ui.menu.TempoPitchDialog
 import iad1tya.echo.music.echomusic.AudioDeviceBottomSheet
+import iad1tya.echo.music.ui.utils.ExportFormat
+import iad1tya.echo.music.ui.utils.ExportFormatChooserDialog
 import iad1tya.echo.music.utils.ShareLinks
+import iad1tya.echo.music.utils.isLocalMediaId
+import iad1tya.echo.music.utils.needsOnlineBrowseResolution
 import iad1tya.echo.music.utils.rememberEnumPreference
 import iad1tya.echo.music.utils.rememberPreference
+import iad1tya.echo.music.utils.resolveOnlineAlbumBrowseId
+import iad1tya.echo.music.utils.resolveOnlineArtistBrowseId
+import iad1tya.echo.music.utils.shareLocalAudio
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.net.URLEncoder
 
 /**
  * # "Interfaz nueva" — Menú del reproductor (FUSIONADO)
@@ -160,6 +172,7 @@ fun AuraPlayerMenu(
     val (exportDirectoryUri, onExportDirectoryUriChange) = rememberPreference(ExportDirectoryUriKey, "")
     val (exportingSongIds) = rememberPreference(ExportingSongIdsKey, "")
     val (exportedSongIds) = rememberPreference(ExportedSongIdsKey, "")
+    val (exportedVideoIds) = rememberPreference(ExportedVideoIdsKey, "")
     val ensureMp3Folder = iad1tya.echo.music.ui.utils.rememberMp3ExportFolderAccess(
         exportDirectoryUri = exportDirectoryUri,
         onExportDirectoryUriChange = onExportDirectoryUriChange,
@@ -167,15 +180,19 @@ fun AuraPlayerMenu(
     val isExporting = remember(exportingSongIds, mediaMetadata.id) {
         exportingSongIds.split(",").contains(mediaMetadata.id)
     }
-    val isExported = remember(exportedSongIds, mediaMetadata.id) {
-        exportedSongIds.split(",").contains(mediaMetadata.id)
+    @Suppress("UNUSED_VARIABLE")
+    val isExported = remember(exportedSongIds, exportedVideoIds, mediaMetadata.id) {
+        val id = mediaMetadata.id
+        exportedSongIds.split(",").contains(id) || exportedVideoIds.split(",").contains(id)
     }
+    val isLocalTrack = mediaMetadata.id.isLocalMediaId() || currentSong?.song?.isLocal == true
 
     var showChoosePlaylistDialog by rememberSaveable { mutableStateOf(false) }
     var showListenTogetherDialog by rememberSaveable { mutableStateOf(false) }
     var showSelectArtistDialog by rememberSaveable { mutableStateOf(false) }
     var showPitchTempoDialog by rememberSaveable { mutableStateOf(false) }
     var showAudioDeviceSheet by rememberSaveable { mutableStateOf(false) }
+    var showExportFormatDialog by rememberSaveable { mutableStateOf(false) }
 
     AddToPlaylistDialog(
         isVisible = showChoosePlaylistDialog,
@@ -203,6 +220,28 @@ fun AuraPlayerMenu(
         AudioDeviceBottomSheet(onDismiss = { showAudioDeviceSheet = false })
     }
 
+    if (showExportFormatDialog) {
+        ExportFormatChooserDialog(
+            videoAvailable = mediaMetadata.isVideoSong,
+            onDismiss = { showExportFormatDialog = false },
+            onChoose = { format ->
+                ensureMp3Folder { directoryUri ->
+                    onDismiss()
+                    AudioExportService.start(
+                        context = context,
+                        songId = mediaMetadata.id,
+                        songTitle = mediaMetadata.title,
+                        songArtist = artists.joinToString(", ") { it.name },
+                        songAlbum = mediaMetadata.album?.title ?: "",
+                        artworkUrl = mediaMetadata.thumbnailUrl ?: "",
+                        targetDirectoryUri = directoryUri,
+                        exportAsVideo = format == ExportFormat.Video,
+                    )
+                }
+            },
+        )
+    }
+
     if (showSelectArtistDialog) {
         ListDialog(onDismiss = { showSelectArtistDialog = false }) {
             items(artists) { artist ->
@@ -212,16 +251,25 @@ fun AuraPlayerMenu(
                         .fillParentMaxWidth()
                         .height(ListItemHeight)
                         .clickable {
-                            if (artist.id != null) {
-                                navController.navigate("artist/${artist.id}")
-                            } else {
-                                navController.navigate(
-                                    "search/${java.net.URLEncoder.encode(artist.name, "UTF-8")}"
-                                )
+                            coroutineScope.launch {
+                                val browseId = if (needsOnlineBrowseResolution(artist.id)) {
+                                    withContext(Dispatchers.IO) {
+                                        resolveOnlineArtistBrowseId(artist.name)
+                                    }
+                                } else {
+                                    artist.id
+                                }
+                                if (!browseId.isNullOrBlank()) {
+                                    navController.navigate("artist/$browseId")
+                                } else {
+                                    navController.navigate(
+                                        "search/${URLEncoder.encode(artist.name, "UTF-8")}"
+                                    )
+                                }
+                                showSelectArtistDialog = false
+                                playerBottomSheetState.collapseSoft()
+                                onDismiss()
                             }
-                            showSelectArtistDialog = false
-                            playerBottomSheetState.collapseSoft()
-                            onDismiss()
                         }
                         .padding(horizontal = 24.dp),
                 ) {
@@ -539,6 +587,14 @@ fun AuraPlayerMenu(
         if (enableExportAsMp3) {
             item {
                 when {
+                    isLocalTrack -> AuraMenuRow(
+                        icon = AuraIcons.Share,
+                        label = stringResource(R.string.action_share),
+                        onClick = {
+                            shareLocalAudio(context, mediaMetadata.id)
+                            onDismiss()
+                        },
+                    )
                     isExporting -> AuraMenuRow(
                         icon = AuraIcons.Export,
                         label = stringResource(R.string.exporting),
@@ -551,29 +607,10 @@ fun AuraPlayerMenu(
                             )
                         },
                     )
-                    isExported -> AuraMenuRow(
-                        icon = AuraIcons.Export,
-                        label = stringResource(R.string.action_exported),
-                        iconTint = AuraPalette.Teal,
-                        onClick = {},
-                    )
                     else -> AuraMenuRow(
                         icon = AuraIcons.Export,
                         label = stringResource(R.string.action_export),
-                        onClick = {
-                            ensureMp3Folder { directoryUri ->
-                                onDismiss()
-                                iad1tya.echo.music.playback.AudioExportService.start(
-                                    context = context,
-                                    songId = mediaMetadata.id,
-                                    songTitle = mediaMetadata.title,
-                                    songArtist = artists.joinToString(", ") { it.name },
-                                    songAlbum = mediaMetadata.album?.title ?: "",
-                                    artworkUrl = mediaMetadata.thumbnailUrl ?: "",
-                                    targetDirectoryUri = directoryUri,
-                                )
-                            }
-                        },
+                        onClick = { showExportFormatDialog = true },
                     )
                 }
             }
@@ -614,15 +651,24 @@ fun AuraPlayerMenu(
                     onClick = {
                         if (artists.size == 1) {
                             val only = artists[0]
-                            if (only.id != null) {
-                                navController.navigate("artist/${only.id}")
-                            } else {
-                                navController.navigate(
-                                    "search/${java.net.URLEncoder.encode(only.name, "UTF-8")}"
-                                )
+                            coroutineScope.launch {
+                                val browseId = if (needsOnlineBrowseResolution(only.id)) {
+                                    withContext(Dispatchers.IO) {
+                                        resolveOnlineArtistBrowseId(only.name)
+                                    }
+                                } else {
+                                    only.id
+                                }
+                                if (!browseId.isNullOrBlank()) {
+                                    navController.navigate("artist/$browseId")
+                                } else {
+                                    navController.navigate(
+                                        "search/${URLEncoder.encode(only.name, "UTF-8")}"
+                                    )
+                                }
+                                playerBottomSheetState.collapseSoft()
+                                onDismiss()
                             }
-                            playerBottomSheetState.collapseSoft()
-                            onDismiss()
                         } else {
                             showSelectArtistDialog = true
                         }
@@ -637,9 +683,28 @@ fun AuraPlayerMenu(
                     icon = AuraIcons.Album,
                     label = stringResource(R.string.view_album),
                     onClick = {
-                        navController.navigate("album/${album.id}")
-                        playerBottomSheetState.collapseSoft()
-                        onDismiss()
+                        coroutineScope.launch {
+                            val browseId = if (needsOnlineBrowseResolution(album.id)) {
+                                val query = listOfNotNull(
+                                    album.title.takeIf { it.isNotBlank() },
+                                    artists.joinToString(" ") { it.name }.takeIf { it.isNotBlank() },
+                                ).joinToString(" ")
+                                withContext(Dispatchers.IO) {
+                                    resolveOnlineAlbumBrowseId(query)
+                                }
+                            } else {
+                                album.id
+                            }
+                            if (!browseId.isNullOrBlank()) {
+                                navController.navigate("album/$browseId")
+                            } else if (album.title.isNotBlank()) {
+                                navController.navigate(
+                                    "search/${URLEncoder.encode(album.title, "UTF-8")}"
+                                )
+                            }
+                            playerBottomSheetState.collapseSoft()
+                            onDismiss()
+                        }
                     },
                 )
             }

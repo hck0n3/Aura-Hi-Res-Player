@@ -74,6 +74,7 @@ import iad1tya.echo.music.R
 import iad1tya.echo.music.constants.EnableExportAsMp3Key
 import iad1tya.echo.music.constants.ExportDirectoryUriKey
 import iad1tya.echo.music.constants.ExportedSongIdsKey
+import iad1tya.echo.music.constants.ExportedVideoIdsKey
 import iad1tya.echo.music.constants.ExportingSongIdsKey
 import iad1tya.echo.music.constants.ListItemHeight
 import iad1tya.echo.music.constants.ListThumbnailSize
@@ -85,6 +86,7 @@ import iad1tya.echo.music.db.entities.Song
 import iad1tya.echo.music.extensions.toMediaItem
 import iad1tya.echo.music.models.rememberResolvedAlbum
 import iad1tya.echo.music.models.toMediaMetadata
+import iad1tya.echo.music.playback.AudioExportService
 import iad1tya.echo.music.playback.enqueueSongDownloads
 import iad1tya.echo.music.playback.removeSongDownloads
 import iad1tya.echo.music.playback.queues.YouTubeQueue
@@ -96,14 +98,22 @@ import iad1tya.echo.music.ui.component.NewAction
 import iad1tya.echo.music.ui.component.NewActionGrid
 import iad1tya.echo.music.ui.component.SongListItem
 import iad1tya.echo.music.ui.component.TextFieldDialog
-import iad1tya.echo.music.utils.listItemShape
-import iad1tya.echo.music.utils.refetchSongAudio
+import iad1tya.echo.music.ui.utils.ExportFormat
+import iad1tya.echo.music.ui.utils.ExportFormatChooserDialog
 import iad1tya.echo.music.ui.utils.ShowMediaInfo
+import iad1tya.echo.music.utils.isLocalMediaId
+import iad1tya.echo.music.utils.listItemShape
+import iad1tya.echo.music.utils.needsOnlineBrowseResolution
+import iad1tya.echo.music.utils.refetchSongAudio
 import iad1tya.echo.music.utils.rememberPreference
+import iad1tya.echo.music.utils.resolveOnlineAlbumBrowseId
+import iad1tya.echo.music.utils.resolveOnlineArtistBrowseId
+import iad1tya.echo.music.utils.shareLocalAudio
 import iad1tya.echo.music.viewmodels.CachePlaylistViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.net.URLEncoder
 
 @Composable
 fun SongMenu(
@@ -141,13 +151,19 @@ fun SongMenu(
     val (exportDirectoryUri, onExportDirectoryUriChange) = rememberPreference(key = ExportDirectoryUriKey, defaultValue = "")
     val (exportingSongIds) = rememberPreference(key = ExportingSongIdsKey, defaultValue = "")
     val (exportedSongIds) = rememberPreference(key = ExportedSongIdsKey, defaultValue = "")
+    val (exportedVideoIds) = rememberPreference(key = ExportedVideoIdsKey, defaultValue = "")
     val ensureMp3Folder = iad1tya.echo.music.ui.utils.rememberMp3ExportFolderAccess(
         exportDirectoryUri = exportDirectoryUri,
         onExportDirectoryUriChange = onExportDirectoryUriChange,
     )
 
     val isExporting = remember(exportingSongIds, song.id) { exportingSongIds.split(",").contains(song.id) }
-    val isExported = remember(exportedSongIds, song.id) { exportedSongIds.split(",").contains(song.id) }
+    @Suppress("UNUSED_VARIABLE")
+    val isExported = remember(exportedSongIds, exportedVideoIds, song.id) {
+        exportedSongIds.split(",").contains(song.id) || exportedVideoIds.split(",").contains(song.id)
+    }
+    val isLocalTrack = song.song.isLocal || song.id.isLocalMediaId()
+    var showExportFormatDialog by rememberSaveable { mutableStateOf(false) }
 
     var refetchIconDegree by remember { mutableFloatStateOf(0f) }
 
@@ -284,6 +300,28 @@ fun SongMenu(
 
     val ringtoneViewModel = iad1tya.echo.music.LocalRingtoneViewModel.current
 
+    if (showExportFormatDialog) {
+        ExportFormatChooserDialog(
+            videoAvailable = song.song.isVideo,
+            onDismiss = { showExportFormatDialog = false },
+            onChoose = { format ->
+                ensureMp3Folder { directoryUri ->
+                    onDismiss()
+                    AudioExportService.start(
+                        context = context,
+                        songId = song.id,
+                        songTitle = song.song.title,
+                        songArtist = song.artists.joinToString(", ") { it.name },
+                        songAlbum = song.song.albumName ?: "",
+                        artworkUrl = song.song.thumbnailUrl ?: "",
+                        targetDirectoryUri = directoryUri,
+                        exportAsVideo = format == ExportFormat.Video,
+                    )
+                }
+            },
+        )
+    }
+
     if (showSelectArtistDialog) {
         ListDialog(
             onDismiss = { showSelectArtistDialog = false },
@@ -297,13 +335,24 @@ fun SongMenu(
                     modifier = Modifier
                         .height(ListItemHeight)
                         .clickable {
-                            if (artist.id != null) {
-                                navController.navigate("artist/${artist.id}")
-                            } else {
-                                navController.navigate("search/${java.net.URLEncoder.encode(artist.name, "UTF-8")}")
+                            scope.launch {
+                                val browseId = if (needsOnlineBrowseResolution(artist.id)) {
+                                    withContext(Dispatchers.IO) {
+                                        resolveOnlineArtistBrowseId(artist.name)
+                                    }
+                                } else {
+                                    artist.id
+                                }
+                                if (!browseId.isNullOrBlank()) {
+                                    navController.navigate("artist/$browseId")
+                                } else {
+                                    navController.navigate(
+                                        "search/${URLEncoder.encode(artist.name, "UTF-8")}"
+                                    )
+                                }
+                                showSelectArtistDialog = false
+                                onDismiss()
                             }
-                            showSelectArtistDialog = false
-                            onDismiss()
                         }
                         .padding(horizontal = 12.dp),
                 ) {
@@ -696,22 +745,26 @@ fun SongMenu(
                 Material3MenuGroup(
                     items = listOf(
                         when {
+                            isLocalTrack -> Material3MenuItemData(
+                                title = { Text(text = stringResource(R.string.action_share)) },
+                                description = { Text(text = stringResource(R.string.share_local_desc)) },
+                                icon = {
+                                    Icon(
+                                        painter = painterResource(R.drawable.share),
+                                        contentDescription = null,
+                                    )
+                                },
+                                onClick = {
+                                    shareLocalAudio(context, song.id)
+                                    onDismiss()
+                                }
+                            )
                             isExporting -> Material3MenuItemData(
                                 title = { Text(text = stringResource(R.string.exporting)) },
                                 icon = {
                                     CircularProgressIndicator(
                                         modifier = Modifier.size(24.dp),
                                         strokeWidth = 2.dp
-                                    )
-                                },
-                                onClick = {}
-                            )
-                            isExported -> Material3MenuItemData(
-                                title = { Text(text = stringResource(R.string.action_exported)) },
-                                icon = {
-                                    Icon(
-                                        painter = painterResource(R.drawable.folder_managed),
-                                        contentDescription = null
                                     )
                                 },
                                 onClick = {}
@@ -725,20 +778,7 @@ fun SongMenu(
                                         contentDescription = null,
                                     )
                                 },
-                                onClick = {
-                                    ensureMp3Folder { directoryUri ->
-                                        onDismiss()
-                                        iad1tya.echo.music.playback.AudioExportService.start(
-                                            context = context,
-                                            songId = song.id,
-                                            songTitle = song.song.title,
-                                            songArtist = song.artists.joinToString(", ") { it.name },
-                                            songAlbum = song.song.albumName ?: "",
-                                            artworkUrl = song.song.thumbnailUrl ?: "",
-                                            targetDirectoryUri = directoryUri,
-                                        )
-                                    }
-                                }
+                                onClick = { showExportFormatDialog = true }
                             )
                         }
                     )
@@ -789,12 +829,24 @@ fun SongMenu(
                             },
                             onClick = {
                                 if (song.artists.size == 1) {
-                                    if (song.artists[0].id != null) {
-                                        navController.navigate("artist/${song.artists[0].id}")
-                                    } else {
-                                        navController.navigate("search/${java.net.URLEncoder.encode(song.artists[0].name, "UTF-8")}")
+                                    val only = song.artists[0]
+                                    scope.launch {
+                                        val browseId = if (needsOnlineBrowseResolution(only.id)) {
+                                            withContext(Dispatchers.IO) {
+                                                resolveOnlineArtistBrowseId(only.name)
+                                            }
+                                        } else {
+                                            only.id
+                                        }
+                                        if (!browseId.isNullOrBlank()) {
+                                            navController.navigate("artist/$browseId")
+                                        } else {
+                                            navController.navigate(
+                                                "search/${URLEncoder.encode(only.name, "UTF-8")}"
+                                            )
+                                        }
+                                        onDismiss()
                                     }
-                                    onDismiss()
                                 } else {
                                     showSelectArtistDialog = true
                                 }
@@ -817,8 +869,28 @@ fun SongMenu(
                                     )
                                 },
                                 onClick = {
-                                    onDismiss()
-                                    navController.navigate("album/${album.id}")
+                                    scope.launch {
+                                        val browseId = if (needsOnlineBrowseResolution(album.id)) {
+                                            val query = listOfNotNull(
+                                                album.title.takeIf { it.isNotBlank() },
+                                                song.artists.joinToString(" ") { it.name }
+                                                    .takeIf { it.isNotBlank() },
+                                            ).joinToString(" ")
+                                            withContext(Dispatchers.IO) {
+                                                resolveOnlineAlbumBrowseId(query)
+                                            }
+                                        } else {
+                                            album.id
+                                        }
+                                        if (!browseId.isNullOrBlank()) {
+                                            navController.navigate("album/$browseId")
+                                        } else if (album.title.isNotBlank()) {
+                                            navController.navigate(
+                                                "search/${URLEncoder.encode(album.title, "UTF-8")}"
+                                            )
+                                        }
+                                        onDismiss()
+                                    }
                                 }
                             )
                         )

@@ -138,6 +138,9 @@ fun AuraAutoPlaylistScreen(
     val contextId = "AP:$playlistId"
 
     val songs by viewModel.likedSongs.collectAsState(null)
+    val exportedVideos by viewModel.exportedVideos.collectAsState()
+    val isExportedScreen = playlistId == "exported"
+    val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
 
     val (ytmSync) = rememberPreference(YtmSyncKey, true)
     val (innerTubeCookie) = rememberPreference(InnerTubeCookieKey, "")
@@ -308,8 +311,102 @@ fun AuraAutoPlaylistScreen(
                 trailing = { AuraSongCountLabel(filtered.size) },
             )
         },
-        extraItemsPresent = activeDownloads.isNotEmpty(),
+        extraItemsPresent = activeDownloads.isNotEmpty() ||
+            (isExportedScreen && exportedVideos.isNotEmpty()),
         extraItems = { isSearching ->
+            // ── Vídeos exportados (solo "Exportados") ─────────────────────────────────────────────
+            if (isExportedScreen && exportedVideos.isNotEmpty() && !isSearching) {
+                item(key = "aura_exported_videos_label") {
+                    AuraSectionLabel(
+                        text = stringResource(R.string.exported_videos_section).uppercase(Locale.ROOT),
+                        modifier = Modifier
+                            .padding(
+                                start = AuraSpacing.Gutter,
+                                end = AuraSpacing.Gutter,
+                                top = AuraSpacing.SectionTop,
+                                bottom = AuraSpacing.SectionGap,
+                            ),
+                    )
+                }
+                items(
+                    items = exportedVideos,
+                    key = { "aura_exp_vid_" + it.id },
+                ) { song ->
+                    val videoList = exportedVideos
+                    AuraRow(
+                        title = song.song.title,
+                        subtitle = song.artists.joinToString { it.name },
+                        highlighted = song.id == mediaMetadata?.id,
+                        contentDescription = song.song.title,
+                        onClick = {
+                            if (song.song.id == mediaMetadata?.id) {
+                                playerConnection.togglePlayPause()
+                            } else {
+                                playerConnection.playQueue(
+                                    iad1tya.echo.music.playback.queues.ListQueue(
+                                        title = playlist,
+                                        items = videoList.map { it.toMediaItem() },
+                                        startIndex = videoList.indexOfFirst { it.id == song.id },
+                                        contextId = "$contextId:videos",
+                                    ),
+                                )
+                            }
+                        },
+                        onLongClick = {
+                            menuState.show {
+                                SongMenu(
+                                    originalSong = song,
+                                    navController = navController,
+                                    onDismiss = menuState::dismiss,
+                                )
+                            }
+                        },
+                        artwork = {
+                            AuraCover(
+                                thumbnailUrl = song.song.thumbnailUrl
+                                    ?: "https://i.ytimg.com/vi/${song.id}/hqdefault.jpg",
+                                size = 72.dp,
+                                seed = song.id,
+                                ratio = 16f / 9f,
+                                fillBleed = true,
+                            )
+                        },
+                        trailing = {
+                            AuraIconButton(
+                                icon = AuraIcons.More,
+                                contentDescription = stringResource(R.string.more_options),
+                                onClick = {
+                                    menuState.show {
+                                        SongMenu(
+                                            originalSong = song,
+                                            navController = navController,
+                                            onDismiss = menuState::dismiss,
+                                        )
+                                    }
+                                },
+                                size = 18.dp,
+                                tint = AuraPalette.OnGroundFaint,
+                            )
+                        },
+                        modifier = Modifier.padding(horizontal = AuraSpacing.Gutter),
+                    )
+                }
+                if (!currentSongs.isNullOrEmpty()) {
+                    item(key = "aura_exported_songs_label") {
+                        AuraSectionLabel(
+                            text = stringResource(R.string.exported_songs_section).uppercase(Locale.ROOT),
+                            modifier = Modifier
+                                .padding(
+                                    start = AuraSpacing.Gutter,
+                                    end = AuraSpacing.Gutter,
+                                    top = AuraSpacing.SectionTop,
+                                    bottom = AuraSpacing.SectionGap,
+                                ),
+                        )
+                    }
+                }
+            }
+
             // ── Almacenamiento (solo "Descargado") ────────────────────────────────────────────────
             if (isDownloadsScreen && !isSearching) {
                 item(key = "aura_ap_storage") {

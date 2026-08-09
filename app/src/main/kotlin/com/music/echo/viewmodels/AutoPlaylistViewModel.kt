@@ -7,12 +7,14 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import iad1tya.echo.music.constants.ExportedSongIdsKey
+import iad1tya.echo.music.constants.ExportedVideoIdsKey
 import iad1tya.echo.music.constants.HideExplicitKey
 import iad1tya.echo.music.constants.HideVideoSongsKey
 import iad1tya.echo.music.constants.SongSortDescendingKey
 import iad1tya.echo.music.constants.SongSortType
 import iad1tya.echo.music.constants.SongSortTypeKey
 import iad1tya.echo.music.db.MusicDatabase
+import iad1tya.echo.music.db.entities.Song
 import iad1tya.echo.music.extensions.filterExplicit
 import iad1tya.echo.music.extensions.filterVideoSongs
 import iad1tya.echo.music.extensions.toEnum
@@ -23,9 +25,11 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -85,10 +89,35 @@ constructor(
                             }
                     }
 
-                    else -> kotlinx.coroutines.flow.flowOf(emptyList())
+                    else -> flowOf(emptyList())
                 }
             }
-            .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.Lazily, emptyList())
+            .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
+    /**
+     * MP4 exports shown as the "Vídeos" section inside Biblioteca ▸ Exportados only.
+     * Empty for every other auto-playlist.
+     */
+    val exportedVideos =
+        context.dataStore.data
+            .map {
+                Triple(
+                    it[SongSortTypeKey].toEnum(SongSortType.CREATE_DATE) to (it[SongSortDescendingKey] ?: true),
+                    it[HideExplicitKey] ?: false,
+                    it[ExportedVideoIdsKey] ?: "",
+                )
+            }
+            .distinctUntilChanged()
+            .flatMapLatest { (sortDesc, hideExplicit, exportedVideoIds) ->
+                if (playlist != "exported") return@flatMapLatest flowOf(emptyList<Song>())
+                val (sortType, descending) = sortDesc
+                val ids = exportedVideoIds.split(",").filter { it.isNotBlank() }
+                if (ids.isEmpty()) return@flatMapLatest flowOf(emptyList())
+                database.getSongsByIdsFlow(ids).map {
+                    it.filterExplicit(hideExplicit).sortedAsExported(ids, sortType, descending)
+                }
+            }
+            .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     fun syncLikedSongs() {
         viewModelScope.launch(Dispatchers.IO) { syncUtils.syncLikedSongs() }

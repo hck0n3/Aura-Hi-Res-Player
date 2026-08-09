@@ -1590,7 +1590,13 @@ fun ItemThumbnail(
                     .networkCachePolicy(coil3.request.CachePolicy.ENABLED)
                     .build(),
                 contentDescription = null,
-                contentScale = if (cropAlbumArt) ContentScale.Crop else ContentScale.Fit,
+                // Wide frames (video 16:9) always Crop/full-bleed — Fit leaves letterbox bars.
+                // Square album art still respects "Recortar las portadas".
+                contentScale = if (cropAlbumArt || thumbnailRatio != 1f) {
+                    ContentScale.Crop
+                } else {
+                    ContentScale.Fit
+                },
                 placeholder = painterResource(R.drawable.ic_launcher_nobg),
                 error = painterResource(R.drawable.ic_launcher_nobg),
                 fallback = painterResource(R.drawable.ic_launcher_nobg),
@@ -1676,7 +1682,11 @@ fun LocalThumbnail(
                 .networkCachePolicy(coil3.request.CachePolicy.ENABLED)
                 .build(),
             contentDescription = null,
-            contentScale = if (cropAlbumArt) ContentScale.Crop else ContentScale.Fit,
+            contentScale = if (cropAlbumArt || thumbnailRatio != 1f) {
+                ContentScale.Crop
+            } else {
+                ContentScale.Fit
+            },
             placeholder = painterResource(R.drawable.ic_launcher_nobg),
             error = painterResource(R.drawable.ic_launcher_nobg),
             fallback = painterResource(R.drawable.ic_launcher_nobg),

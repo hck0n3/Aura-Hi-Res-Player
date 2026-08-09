@@ -144,6 +144,7 @@ fun AutoPlaylistScreen(
     }
 
     val songs by viewModel.likedSongs.collectAsState(null)
+    val exportedVideos by viewModel.exportedVideos.collectAsState()
     val mutableSongs =
         remember {
             mutableStateListOf<Song>()
@@ -331,7 +332,9 @@ fun AutoPlaylistScreen(
             contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
         ) {
             if (songs != null) {
-                if (songs!!.isEmpty()) {
+                val showExportedVideos =
+                    playlistId == "exported" && exportedVideos.isNotEmpty() && !isSearching
+                if (songs!!.isEmpty() && !showExportedVideos) {
                     item(key = "empty_placeholder") {
                         EmptyPlaceholder(
                             icon = R.drawable.music_note,
@@ -339,7 +342,7 @@ fun AutoPlaylistScreen(
                         )
                     }
                 } else {
-                    if (!isSearching) {
+                    if (!isSearching && songs!!.isNotEmpty()) {
                         item(key = "playlist_header") {
                             AutoPlaylistHeader(
                                 name = playlist,
@@ -371,26 +374,111 @@ fun AutoPlaylistScreen(
                         }
                     }
 
-                    item(key = "songs_header") {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(start = 16.dp),
-                        ) {
-                            SortHeader(
-                                sortType = sortType,
-                                sortDescending = sortDescending,
-                                onSortTypeChange = onSortTypeChange,
-                                onSortDescendingChange = onSortDescendingChange,
-                                sortTypeText = { sortType ->
-                                    when (sortType) {
-                                        SongSortType.CREATE_DATE -> R.string.sort_by_create_date
-                                        SongSortType.NAME -> R.string.sort_by_name
-                                        SongSortType.ARTIST -> R.string.sort_by_artist
-                                        SongSortType.PLAY_TIME -> R.string.sort_by_play_time
+                    if (showExportedVideos) {
+                        item(key = "exported_videos_section") {
+                            Text(
+                                text = stringResource(R.string.exported_videos_section),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                            )
+                        }
+                        itemsIndexed(
+                            items = exportedVideos,
+                            key = { _, song -> "exported_video_" + song.id },
+                        ) { index, song ->
+                            val videoList = exportedVideos
+                            SongListItem(
+                                song = song,
+                                isActive = song.song.id == mediaMetadata?.id,
+                                isPlaying = isPlaying,
+                                showInLibraryIcon = true,
+                                playedInShuffle = song.song.id in shufflePlayedSet,
+                                shape = listItemShape(index, videoList.size),
+                                trailingContent = {
+                                    IconButton(
+                                        onClick = {
+                                            menuState.show {
+                                                SongMenu(
+                                                    originalSong = song,
+                                                    navController = navController,
+                                                    onDismiss = menuState::dismiss,
+                                                )
+                                            }
+                                        },
+                                    ) {
+                                        Icon(
+                                            painter = painterResource(R.drawable.more_vert),
+                                            contentDescription = null,
+                                        )
                                     }
                                 },
-                                modifier = Modifier.weight(1f),
+                                modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .combinedClickable(
+                                        onClick = {
+                                            if (song.song.id == mediaMetadata?.id) {
+                                                playerConnection.togglePlayPause()
+                                            } else {
+                                                playerConnection.playQueue(
+                                                    ListQueue(
+                                                        title = playlist,
+                                                        items = videoList.map { it.toMediaItem() },
+                                                        startIndex = videoList.indexOfFirst { it.id == song.id },
+                                                        contextId = "AP:" + playlistId + ":videos",
+                                                    ),
+                                                )
+                                            }
+                                        },
+                                        onLongClick = {
+                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            menuState.show {
+                                                SongMenu(
+                                                    originalSong = song,
+                                                    navController = navController,
+                                                    onDismiss = menuState::dismiss,
+                                                )
+                                            }
+                                        },
+                                    )
+                                    .animateItem(),
                             )
+                        }
+                        if (songs!!.isNotEmpty()) {
+                            item(key = "exported_songs_section") {
+                                Text(
+                                    text = stringResource(R.string.exported_songs_section),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                                )
+                            }
+                        }
+                    }
+
+                    if (songs!!.isNotEmpty()) {
+                        item(key = "songs_header") {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(start = 16.dp),
+                            ) {
+                                SortHeader(
+                                    sortType = sortType,
+                                    sortDescending = sortDescending,
+                                    onSortTypeChange = onSortTypeChange,
+                                    onSortDescendingChange = onSortDescendingChange,
+                                    sortTypeText = { sortType ->
+                                        when (sortType) {
+                                            SongSortType.CREATE_DATE -> R.string.sort_by_create_date
+                                            SongSortType.NAME -> R.string.sort_by_name
+                                            SongSortType.ARTIST -> R.string.sort_by_artist
+                                            SongSortType.PLAY_TIME -> R.string.sort_by_play_time
+                                        }
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                )
+                            }
                         }
                     }
                 }

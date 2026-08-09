@@ -544,6 +544,11 @@ private fun PlayerOnlineSuggestionPanel(
             .drop(1)
             .collect { if (lazyListState.isScrollInProgress) keyboardController?.hide() }
     }
+    LaunchedEffect(query, viewState) {
+        if (!lazyListState.isScrollInProgress) {
+            lazyListState.scrollToItem(0)
+        }
+    }
 
     LazyColumn(state = lazyListState, modifier = modifier) {
         if (viewState.history.isNotEmpty()) {

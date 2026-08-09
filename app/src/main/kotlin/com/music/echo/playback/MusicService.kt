@@ -6155,6 +6155,19 @@ class MusicService :
      * on again for it. Only a true user activation may reset the lap; a restore (the app re-installing its
      * own previous state) may not.
      */
+    /**
+     * Player/queue shuffle control: turn shuffle ON (starts a session via the media3 callback), or if
+     * already ON force a fresh anti-repeat session + reshuffle. media3 ignores setShuffleModeEnabled(true)
+     * when the flag is already true, so a second tap would otherwise be a no-op.
+     */
+    fun toggleShuffleOrReshuffle() {
+        if (player.shuffleModeEnabled) {
+            beginShuffleSession(isUserActivation = true)
+        } else {
+            player.shuffleModeEnabled = true
+        }
+    }
+
     private fun beginShuffleSession(isUserActivation: Boolean = true) {
             if (player.mediaItemCount == 0) return
 

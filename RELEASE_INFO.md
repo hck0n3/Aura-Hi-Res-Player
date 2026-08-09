@@ -1,13 +1,34 @@
-# Aura Hi-Res Player 0.6.165
+# Aura Hi-Res Player 0.6.166
 
-Hotfix: las canciones que empiezan en silencio ya no saltan solas a la siguiente con el fundido encendido.
+Búsqueda más fluida, Cast sin tapar títulos, local→artista online, aleatorio anti-repetir, exportar MP3 o vídeo para redes, y Vídeos dentro de Exportados.
 
 ---
 
-## 🛠️ Estabilidad
+## 🔍 Búsqueda y reproductor
 
-- Con **crossfade ON**, un intro largo en silencio ya no se confunde con el final de la canción (antes, tras ~7 s, pasaba a la siguiente). Ahora el fundido por silencio solo actúa **después** de haber oído audio real.
+- Las sugerencias de búsqueda (Buscar y lupa del player) empiezan siempre **arriba** al escribir; menos tirones al teclear.
+- Cast arriba a la derecha ya no se cruza con títulos de álbum largos (sigue oculto con letras inline).
 
-## 📦 Del 0.6.164
+## 📁 Local y navegación
 
-- Portadas de MP3 locales restauradas y recuperación cuando un stream llega como archivo inválido.
+- Desde un MP3 local, **Ir al artista / álbum** abre la página **online** de YouTube Music (con Tu biblioteca arriba).
+- En archivos locales, **Compartir** sustituye a Exportar (el archivo ya está en el teléfono).
+
+## 🔀 Aleatorio
+
+- Al activar aleatorio desde el player o la cola se inicia la sesión anti-repetir (mismo criterio que en playlists).
+
+## 📤 Exportar MP3 o vídeo
+
+- En el menú Más / ⋮ la acción se llama **Exportar MP3 o vídeo** y pregunta el formato.
+- **MP3**: como antes (etiquetas y portada).
+- **Vídeo**: MP4 H.264 + AAC hasta 1080p, listo para WhatsApp / Instagram / Facebook, y se puede compartir al terminar.
+- En **Biblioteca → Exportados** hay un apartado **Vídeos** (solo ahí; no es un tile suelto).
+
+## 🖼️ Vídeos en la interfaz
+
+- Miniaturas de vídeo a **16:9 a pantalla completa** (sin bandas laterales).
+
+## 📦 Del 0.6.165
+
+- Crossfade: intros en silencio ya no saltan la canción.

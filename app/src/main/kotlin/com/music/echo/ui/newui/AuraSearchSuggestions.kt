@@ -120,6 +120,14 @@ fun AuraOnlineSearchSuggestions(
     // The view model owns the debounce; the panel only hands it the current text.
     LaunchedEffect(query) { viewModel.query.value = query }
 
+    // New suggestions must start from the top — otherwise typing leaves the list mid-scroll and
+    // history/suggestions appear to "rise from the bottom".
+    LaunchedEffect(query, viewState) {
+        if (!lazyListState.isScrollInProgress) {
+            lazyListState.scrollToItem(0)
+        }
+    }
+
     val openMenu: (YTItem) -> Unit = { item ->
         menuState.show {
             val dismiss = {
@@ -164,7 +172,7 @@ fun AuraOnlineSearchSuggestions(
             item(key = "aura_history_header") {
                 AuraSectionHeader(
                     title = stringResource(R.string.search_history),
-                    modifier = Modifier.animateItem(),
+                    modifier = Modifier,
                 )
             }
         }
@@ -180,7 +188,7 @@ fun AuraOnlineSearchSuggestions(
                         TextFieldValue(history.query, TextRange(history.query.length)),
                     )
                 },
-                modifier = Modifier.animateItem(),
+                modifier = Modifier,
             )
         }
 
@@ -188,7 +196,7 @@ fun AuraOnlineSearchSuggestions(
             item(key = "aura_suggestions_header") {
                 AuraSectionHeader(
                     title = stringResource(R.string.suggestions),
-                    modifier = Modifier.animateItem(),
+                    modifier = Modifier,
                 )
             }
         }
@@ -202,7 +210,7 @@ fun AuraOnlineSearchSuggestions(
                 onFillTextField = {
                     onQueryChange(TextFieldValue(suggestion, TextRange(suggestion.length)))
                 },
-                modifier = Modifier.animateItem(),
+                modifier = Modifier,
             )
         }
 
@@ -213,7 +221,7 @@ fun AuraOnlineSearchSuggestions(
                         if (viewState.isFromLink) R.string.parsed_from_link else R.string.top_result
                     ),
                     accent = AuraPalette.Teal,
-                    modifier = Modifier.animateItem(),
+                    modifier = Modifier,
                 )
             }
         }
@@ -259,7 +267,7 @@ fun AuraOnlineSearchSuggestions(
                     openMenu(item)
                 },
                 onMenuClick = { openMenu(item) },
-                modifier = Modifier.animateItem(),
+                modifier = Modifier,
             )
         }
 
@@ -478,7 +486,7 @@ fun AuraLocalSearchResults(
                     AuraSectionHeader(
                         title = stringResource(auraLocalFilterLabel(filter)),
                         onClick = { viewModel.filter.value = filter },
-                        modifier = Modifier.animateItem(),
+                        modifier = Modifier,
                     )
                 }
             }
@@ -546,7 +554,7 @@ fun AuraLocalSearchResults(
                             }
                         },
                         modifier = Modifier
-                            .animateItem()
+                            
                             .padding(horizontal = AuraSpacing.Gutter),
                     )
 
@@ -567,7 +575,7 @@ fun AuraLocalSearchResults(
                             navController.navigate("album/${item.id}")
                         },
                         modifier = Modifier
-                            .animateItem()
+                            
                             .padding(horizontal = AuraSpacing.Gutter),
                     )
                     }
@@ -591,7 +599,7 @@ fun AuraLocalSearchResults(
                             navController.navigate("artist/${item.id}")
                         },
                         modifier = Modifier
-                            .animateItem()
+                            
                             .padding(horizontal = AuraSpacing.Gutter),
                     )
                     }
@@ -615,7 +623,7 @@ fun AuraLocalSearchResults(
                             navController.navigate("local_playlist/${item.id}")
                         },
                         modifier = Modifier
-                            .animateItem()
+                            
                             .padding(horizontal = AuraSpacing.Gutter),
                     )
                     }

@@ -18,6 +18,7 @@ import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.core.content.getSystemService
 import androidx.documentfile.provider.DocumentFile
 import com.arthenica.ffmpegkit.FFmpegKit
@@ -28,6 +29,7 @@ import iad1tya.echo.music.R
 import iad1tya.echo.music.constants.AudioQuality
 import iad1tya.echo.music.constants.ExportingSongIdsKey
 import iad1tya.echo.music.constants.ExportedSongIdsKey
+import iad1tya.echo.music.constants.ExportedVideoIdsKey
 import iad1tya.echo.music.db.MusicDatabase
 import iad1tya.echo.music.db.entities.LyricsEntity
 import iad1tya.echo.music.reco.GenreCache
@@ -74,18 +76,166 @@ class AudioExportService : Service() {
         val songArtist = intent.getStringExtra(EXTRA_SONG_ARTIST).orEmpty()
         val songAlbum = intent.getStringExtra(EXTRA_SONG_ALBUM).orEmpty()
         val artworkUrl = intent.getStringExtra(EXTRA_ARTWORK_URL).orEmpty()
+        val exportAsVideo = intent.getBooleanExtra(EXTRA_EXPORT_AS_VIDEO, false)
 
         serviceScope.launch {
-            exportSong(
-                songId = songId,
-                songTitle = songTitle,
-                songArtist = songArtist,
-                songAlbum = songAlbum,
-                artworkUrl = artworkUrl,
-                targetDirectoryUri = targetDirectoryUri,
-            )
+            if (exportAsVideo) {
+                exportVideo(
+                    songId = songId,
+                    songTitle = songTitle,
+                    targetDirectoryUri = targetDirectoryUri,
+                )
+            } else {
+                exportSong(
+                    songId = songId,
+                    songTitle = songTitle,
+                    songArtist = songArtist,
+                    songAlbum = songAlbum,
+                    artworkUrl = artworkUrl,
+                    targetDirectoryUri = targetDirectoryUri,
+                )
+            }
         }
         return START_NOT_STICKY
+    }
+
+    private suspend fun exportVideo(
+        songId: String,
+        songTitle: String,
+        targetDirectoryUri: String,
+    ) {
+        val safeTitle = sanitizeTitle(songTitle.ifBlank { songId })
+        addExportingSongId(songId)
+        var videoFileRef: File? = null
+        var audioFileRef: File? = null
+        var mp4FileRef: File? = null
+        runCatching {
+            val connectivityManager = getSystemService<ConnectivityManager>()
+                ?: error("No connectivity manager")
+            val playbackData = YTPlayerUtils.playerResponseForPlayback(
+                videoId = songId,
+                audioQuality = AudioQuality.OPUS,
+                connectivityManager = connectivityManager,
+            ).getOrThrow()
+            val videoStreamUrl = YTPlayerUtils.videoStreamUrlDiag(
+                videoId = songId,
+                connectivityManager = connectivityManager,
+                videoMaxHeight = 1080,
+            ).getOrNull()?.takeIf { it.isNotBlank() }
+                ?: error("No video stream available for this song")
+
+            val rangedAudioUrl = playbackData.streamUrl.let { baseUrl ->
+                val totalLength = playbackData.format.contentLength ?: 10_000_000L
+                "$baseUrl&range=0-$totalLength"
+            }
+
+            val tempVideoFile = File.createTempFile("export_video_", ".mp4", cacheDir).also { videoFileRef = it }
+            val tempAudioFile = File.createTempFile("export_audio_", ".m4a", cacheDir).also { audioFileRef = it }
+            val tempMp4File = File.createTempFile("export_result_", ".mp4", cacheDir).also { mp4FileRef = it }
+
+            fun downloadTo(url: String, dest: File) {
+                httpClient.newCall(Request.Builder().url(url).build()).execute().use { response ->
+                    if (!response.isSuccessful) {
+                        error("Stream request failed with ${response.code}")
+                    }
+                    val body = response.body ?: error("No response body")
+                    body.byteStream().use { input ->
+                        dest.outputStream().use { output ->
+                            input.copyTo(output)
+                            output.flush()
+                        }
+                    }
+                }
+                if (!dest.exists() || dest.length() <= 0L) {
+                    error("Downloaded stream is empty")
+                }
+            }
+
+            downloadTo(videoStreamUrl, tempVideoFile)
+            downloadTo(rangedAudioUrl, tempAudioFile)
+
+            val ffmpegCommand = buildVideoFfmpegCommand(
+                videoPath = tempVideoFile.absolutePath,
+                audioPath = tempAudioFile.absolutePath,
+                outputPath = tempMp4File.absolutePath,
+            )
+            val session = FFmpegKit.execute(ffmpegCommand)
+            val returnCode = session.returnCode
+            if (returnCode == null || !ReturnCode.isSuccess(returnCode)) {
+                Log.e(TAG, "FFmpeg video export failed: ${session.output?.take(400)}")
+                error("FFmpeg failed")
+            }
+            if (!tempMp4File.exists() || tempMp4File.length() <= 0L) {
+                error("Exported MP4 file is empty")
+            }
+
+            val destinationDir = DocumentFile.fromTreeUri(this, Uri.parse(targetDirectoryUri))
+                ?: error("Export directory unavailable")
+            val outputFile = destinationDir.createFile("video/mp4", "$safeTitle.mp4")
+                ?: error("Unable to create output file")
+
+            tempMp4File.inputStream().use { input ->
+                contentResolver.openOutputStream(outputFile.uri, "w")?.use { output ->
+                    input.copyTo(output)
+                    output.flush()
+                } ?: error("Unable to open output stream")
+            }
+
+            addExportedVideoId(songId)
+
+            val shared = runCatching {
+                val shareCopy = File(cacheDir, "share_export_$safeTitle.mp4")
+                tempMp4File.copyTo(shareCopy, overwrite = true)
+                withContext(Dispatchers.Main) {
+                    val uri = FileProvider.getUriForFile(
+                        this@AudioExportService,
+                        "${packageName}.FileProvider",
+                        shareCopy,
+                    )
+                    val send = Intent(Intent.ACTION_SEND).apply {
+                        type = "video/mp4"
+                        putExtra(Intent.EXTRA_STREAM, uri)
+                        clipData = android.content.ClipData.newRawUri(shareCopy.name, uri)
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    startActivity(
+                        Intent.createChooser(send, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                    )
+                }
+            }.isSuccess
+            if (!shared) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(
+                        this@AudioExportService,
+                        "Exported: $safeTitle.mp4",
+                        Toast.LENGTH_LONG,
+                    ).show()
+                }
+            }
+        }.onFailure { throwable ->
+            if (throwable is CancellationException) {
+                Log.w(TAG, "Video export cancelled for $songId")
+            } else {
+                Log.e(TAG, "Video export failed for $songId", throwable)
+                runCatching {
+                    withContext(NonCancellable + Dispatchers.Main) {
+                        Toast.makeText(
+                            this@AudioExportService,
+                            "Export failed: $safeTitle",
+                            Toast.LENGTH_LONG,
+                        ).show()
+                    }
+                }
+            }
+        }
+        videoFileRef?.delete()
+        audioFileRef?.delete()
+        mp4FileRef?.delete()
+        withContext(NonCancellable) {
+            removeExportingSongId(songId)
+        }
+        ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+        stopSelf()
     }
 
     private suspend fun exportSong(
@@ -391,6 +541,17 @@ class AudioExportService : Service() {
         }
     }
 
+    private suspend fun addExportedVideoId(songId: String) {
+        dataStore.edit { preferences ->
+            val current = preferences[ExportedVideoIdsKey].orEmpty()
+                .split(',')
+                .map { it.trim() }
+                .filter { it.isNotBlank() }
+            val updated = listOf(songId) + current.filterNot { it == songId }
+            preferences[ExportedVideoIdsKey] = updated.take(1000).joinToString(",")
+        }
+    }
+
     private suspend fun addExportingSongId(songId: String) {
         dataStore.edit { preferences ->
             val current = preferences[ExportingSongIdsKey].orEmpty()
@@ -447,6 +608,7 @@ class AudioExportService : Service() {
         private const val EXTRA_SONG_ALBUM = "extra_song_album"
         private const val EXTRA_ARTWORK_URL = "extra_artwork_url"
         private const val EXTRA_TARGET_DIRECTORY_URI = "extra_target_directory_uri"
+        private const val EXTRA_EXPORT_AS_VIDEO = "extra_export_as_video"
 
         fun start(
             context: Context,
@@ -456,6 +618,7 @@ class AudioExportService : Service() {
             songAlbum: String,
             artworkUrl: String,
             targetDirectoryUri: String,
+            exportAsVideo: Boolean = false,
         ) {
             val intent = Intent(context, AudioExportService::class.java).apply {
                 putExtra(EXTRA_SONG_ID, songId)
@@ -464,6 +627,7 @@ class AudioExportService : Service() {
                 putExtra(EXTRA_SONG_ALBUM, songAlbum)
                 putExtra(EXTRA_ARTWORK_URL, artworkUrl)
                 putExtra(EXTRA_TARGET_DIRECTORY_URI, targetDirectoryUri)
+                putExtra(EXTRA_EXPORT_AS_VIDEO, exportAsVideo)
             }
             // P11: start as a foreground service so onStartCommand can call startForeground within
             // the platform deadline and the export survives the app leaving the foreground.
@@ -519,5 +683,16 @@ class AudioExportService : Service() {
         }
 
         private fun String.ffmpegEscape(): String = replace("'", "'\\''")
+
+        private fun buildVideoFfmpegCommand(
+            videoPath: String,
+            audioPath: String,
+            outputPath: String,
+        ): String {
+            val escapedVideo = videoPath.ffmpegEscape()
+            val escapedAudio = audioPath.ffmpegEscape()
+            val escapedOutput = outputPath.ffmpegEscape()
+            return "-y -i '$escapedVideo' -i '$escapedAudio' -map 0:v:0 -map 1:a:0 -vf scale='min(1920,iw)':-2 -c:v libx264 -pix_fmt yuv420p -preset veryfast -crf 20 -c:a aac -b:a 192k -movflags +faststart '$escapedOutput'"
+        }
     }
 }
