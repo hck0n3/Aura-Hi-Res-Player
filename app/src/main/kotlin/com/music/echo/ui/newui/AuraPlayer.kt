@@ -140,7 +140,8 @@ import iad1tya.echo.music.extensions.togglePlayPause
 import iad1tya.echo.music.extensions.toggleRepeatMode
 import iad1tya.echo.music.listentogether.RoomRole
 import iad1tya.echo.music.models.rememberResolvedAlbum
-import iad1tya.echo.music.playback.ExoDownloadService
+import iad1tya.echo.music.playback.enqueueSongDownloads
+import iad1tya.echo.music.playback.removeSongDownloads
 import iad1tya.echo.music.ui.component.BottomSheet
 import iad1tya.echo.music.ui.component.BottomSheetState
 import iad1tya.echo.music.ui.component.CastButton
@@ -903,6 +904,7 @@ private fun AuraPlayerShape(
                             PlayerVideoSurface(
                                 playerConnection = playerConnection,
                                 modifier = Modifier.fillMaxWidth(),
+                                videoUrl = videoUrl,
                             )
                         }
                     }
@@ -1265,22 +1267,13 @@ private fun AuraPlayerShape(
                             else AuraIcons.Download,
                             contentDescription = stringResource(R.string.action_download),
                             onClick = {
+                                val isVideo = meta.isVideoSong
                                 when (download?.state) {
                                     Download.STATE_COMPLETED, Download.STATE_QUEUED, Download.STATE_DOWNLOADING ->
-                                        DownloadService.sendRemoveDownload(
-                                            context, ExoDownloadService::class.java, meta.id, false,
-                                        )
+                                        removeSongDownloads(context, meta.id, isVideo)
                                     else -> {
                                         database.transaction { insert(meta) }
-                                        DownloadService.sendAddDownload(
-                                            context,
-                                            ExoDownloadService::class.java,
-                                            DownloadRequest.Builder(meta.id, meta.id.toUri())
-                                                .setCustomCacheKey(meta.id)
-                                                .setData(meta.title.toByteArray())
-                                                .build(),
-                                            false,
-                                        )
+                                        enqueueSongDownloads(context, meta.id, meta.title, isVideo)
                                     }
                                 }
                             },
@@ -1627,6 +1620,7 @@ private fun AuraImmersiveVideo(
     onControlsVisibilityChanged: (Boolean) -> Unit,
 ) {
     val playerConnection = LocalPlayerConnection.current ?: return
+    val videoUrl by playerConnection.videoUrl.collectAsState()
     val view = LocalView.current
 
     DisposableEffect(Unit) {
@@ -1679,6 +1673,7 @@ private fun AuraImmersiveVideo(
                 playerConnection = playerConnection,
                 modifier = Modifier.fillMaxSize(),
                 fillCrop = true,
+                videoUrl = videoUrl,
             )
             // The fullscreen TextureView can swallow taps, so a transparent layer over it keeps
             // tap-to-toggle reliable. Same device as the classic branch (Player.kt:2821).

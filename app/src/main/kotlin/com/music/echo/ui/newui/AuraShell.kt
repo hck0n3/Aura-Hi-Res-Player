@@ -751,6 +751,7 @@ fun AuraMiniPlayer(
                     PlayerVideoSurface(
                         playerConnection = playerConnection,
                         modifier = Modifier.fillMaxSize().clip(AuraShapes.Artwork),
+                        videoUrl = videoUrl,
                     )
                 } else {
                     AuraStableCoverImage(

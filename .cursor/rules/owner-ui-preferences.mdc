@@ -62,6 +62,7 @@ El dueño es el beta tester. Si algo de esta lista desaparece en un cambio, **es
 - Cabecera de playlist (New UI): híbrido — **Aleatorio / Reproducir** con nombre; buscar / más / guardar / descargar / compartir solo icono.
 - Búsqueda: sin hueco doble de insets; voz inline (no diálogo grande de Google si hay SpeechRecognizer).
 - Playlist: búsqueda no en barra sticky permanente; en cabecera que hace scroll. Sin placa negra sticky con el nombre al hacer scroll (solo atrás flotante; `pinTitleOnScroll = false`).
+- Colecciones de biblioteca (Me gusta / Descargados / En caché / Mi Top…): misma regla — **no** título flotante + lupa sticky; solo atrás flotante; lupa en cabecera scroll (`AuraSongCollectionScaffold` + `pinTitleOnScroll = false`).
 - Grids de álbumes favoritos / “ver todos” del artista: piel Aura (`AuraFavoriteAlbumsScreen` / `AuraArtistSectionGridScreen`), no Material TopAppBar clásico.
 - Ritmo visual del suelo (AuraRhythm): solo cuando el reproductor está expandido y no hay modo alto rendimiento / Cast.
 - Volumen / calidad en New UI: ciclo de calidad en el menú Aura; hoja de dispositivos con piel frost.

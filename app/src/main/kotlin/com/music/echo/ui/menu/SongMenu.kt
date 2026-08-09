@@ -85,7 +85,8 @@ import iad1tya.echo.music.db.entities.Song
 import iad1tya.echo.music.extensions.toMediaItem
 import iad1tya.echo.music.models.rememberResolvedAlbum
 import iad1tya.echo.music.models.toMediaMetadata
-import iad1tya.echo.music.playback.ExoDownloadService
+import iad1tya.echo.music.playback.enqueueSongDownloads
+import iad1tya.echo.music.playback.removeSongDownloads
 import iad1tya.echo.music.playback.queues.YouTubeQueue
 import iad1tya.echo.music.ui.component.ListDialog
 import iad1tya.echo.music.ui.component.LocalBottomSheetPageState
@@ -646,12 +647,7 @@ fun SongMenu(
                                     )
                                 },
                                 onClick = {
-                                    DownloadService.sendRemoveDownload(
-                                        context,
-                                        ExoDownloadService::class.java,
-                                        song.id,
-                                        false,
-                                    )
+                                    removeSongDownloads(context, song.id, song.song.isVideo)
                                 }
                             )
                         }
@@ -665,12 +661,7 @@ fun SongMenu(
                                     )
                                 },
                                 onClick = {
-                                    DownloadService.sendRemoveDownload(
-                                        context,
-                                        ExoDownloadService::class.java,
-                                        song.id,
-                                        false,
-                                    )
+                                    removeSongDownloads(context, song.id, song.song.isVideo)
                                 }
                             )
                         }
@@ -685,17 +676,11 @@ fun SongMenu(
                                     )
                                 },
                                 onClick = {
-                                    val downloadRequest =
-                                        DownloadRequest
-                                            .Builder(song.id, song.id.toUri())
-                                            .setCustomCacheKey(song.id)
-                                            .setData(song.song.title.toByteArray())
-                                            .build()
-                                    DownloadService.sendAddDownload(
+                                    enqueueSongDownloads(
                                         context,
-                                        ExoDownloadService::class.java,
-                                        downloadRequest,
-                                        false,
+                                        song.id,
+                                        song.song.title,
+                                        song.song.isVideo,
                                     )
                                 }
                             )

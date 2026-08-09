@@ -281,6 +281,8 @@ fun AuraCover(
  * Cover swap without the empty-plate flash: keep the last decoded bitmap painted underneath while the
  * next URL loads, and never ask Coil for a 250 ms crossfade (that fade is what the owner reads as
  * "parpadeo al cambiar de canción").
+ *
+ * YouTube thumbnails upgrade maxresdefault → sddefault → hqdefault (same chain as [Thumbnail.kt]).
  */
 @Composable
 fun AuraStableCoverImage(
@@ -290,8 +292,10 @@ fun AuraStableCoverImage(
     decodeTo: Int? = 256,
 ) {
     val context = LocalContext.current
-    var paintedUrl by remember { mutableStateOf(url) }
+    var paintedUrl by remember { mutableStateOf(url?.let(::upgradeAuraYoutubeCover)) }
+    var loadUrl by remember { mutableStateOf(url?.let(::upgradeAuraYoutubeCover)) }
     LaunchedEffect(url) {
+        loadUrl = url?.let(::upgradeAuraYoutubeCover)
         if (url == null) paintedUrl = null
     }
     fun requestData(raw: String) =
@@ -309,30 +313,51 @@ fun AuraStableCoverImage(
                 modifier = Modifier.fillMaxSize(),
             )
         }
-        if (url != null && url != paintedUrl) {
+        if (loadUrl != null && loadUrl != paintedUrl) {
             AsyncImage(
                 model = ImageRequest.Builder(context)
-                    .data(requestData(url))
+                    .data(requestData(loadUrl!!))
                     .crossfade(false)
                     .build(),
                 contentDescription = null,
                 contentScale = contentScale,
-                onSuccess = { paintedUrl = url },
+                onSuccess = { paintedUrl = loadUrl },
+                onError = {
+                    loadUrl = loadUrl?.let(::downgradeAuraYoutubeCover)
+                },
                 modifier = Modifier.fillMaxSize(),
             )
-        } else if (url != null && paintedUrl == null) {
+        } else if (url != null && paintedUrl == null && loadUrl != null) {
             AsyncImage(
                 model = ImageRequest.Builder(context)
-                    .data(requestData(url))
+                    .data(requestData(loadUrl!!))
                     .crossfade(false)
                     .build(),
                 contentDescription = null,
                 contentScale = contentScale,
-                onSuccess = { paintedUrl = url },
+                onSuccess = { paintedUrl = loadUrl },
+                onError = {
+                    loadUrl = loadUrl?.let(::downgradeAuraYoutubeCover)
+                },
                 modifier = Modifier.fillMaxSize(),
             )
         }
     }
+}
+
+/** Upgrade ytimg URLs to maxresdefault for sharp exploration/player covers. */
+internal fun upgradeAuraYoutubeCover(raw: String): String {
+    if (!raw.contains("ytimg.com") && !raw.contains("img.youtube.com")) return raw
+    return raw.replace(
+        Regex("(default|mqdefault|hqdefault|sddefault|maxresdefault)\\.(jpg|webp)"),
+        "maxresdefault.$2",
+    )
+}
+
+internal fun downgradeAuraYoutubeCover(url: String): String? = when {
+    url.contains("maxresdefault") -> url.replace("maxresdefault", "sddefault")
+    url.contains("sddefault") -> url.replace("sddefault", "hqdefault")
+    else -> null
 }
 
 /**

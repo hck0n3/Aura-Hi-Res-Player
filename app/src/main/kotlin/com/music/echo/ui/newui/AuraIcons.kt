@@ -467,6 +467,18 @@ object AuraIcons {
         }
     }
 
+    /** Note head + stem — shown on the video toggle while video mode is ON ("switch to music"). */
+    val Music: ImageVector by lazy {
+        stroked("Music", join = StrokeJoin.Miter) {
+            // stem
+            moveTo(10f, 4f); verticalLineToRelative(11.5f)
+            // note head
+            moveTo(10f, 15.5f); arcToRelative(3f, 2.2f, 0f, true, true, -0.01f, 0f)
+            // flag
+            moveTo(10f, 4f); lineToRelative(7f, 1.5f); verticalLineToRelative(3f); lineToRelative(-7f, -1.5f); close()
+        }
+    }
+
     /** `#i-cast` — "Transmitir" (the audio-output / Cast picker). */
     val Cast: ImageVector by lazy {
         stroked("Cast", join = StrokeJoin.Miter) {

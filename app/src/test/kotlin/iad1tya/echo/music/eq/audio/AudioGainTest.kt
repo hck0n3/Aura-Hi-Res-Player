@@ -1,7 +1,7 @@
 package iad1tya.echo.music.eq.audio
 
-import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertEquals
 import org.junit.Test
 import kotlin.math.abs
 import kotlin.math.log10
@@ -150,6 +150,17 @@ class AudioGainTest {
         val d = effectiveLoudnessDb(null, null)
         assertTrue("unknown track attenuated", normalizationMultiplier(d, enabled = true) < 1f)
         assertEquals("unknown track not boosted", 0.0, loudnessMakeupDb(d, enabled = true), 1e-9)
+    }
+
+    @Test fun safeVolumeAttenuatesWhenPreampPositive() {
+        val base = 1.0f
+        val trimmed = safeVolumeGainWithEqPreamp(base, preampDb = 6.0)
+        assertTrue(trimmed < base)
+    }
+
+    @Test fun safeVolumeIgnoresNonPositivePreamp() {
+        assertEquals(0.8f, safeVolumeGainWithEqPreamp(0.8f, preampDb = 0.0), 1e-6f)
+        assertEquals(0.8f, safeVolumeGainWithEqPreamp(0.8f, preampDb = -3.0), 1e-6f)
     }
 
     // ── dbToLinear ──

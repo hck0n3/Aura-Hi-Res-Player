@@ -157,6 +157,7 @@ import iad1tya.echo.music.eq.audio.NormalizationGainAudioProcessor
 import iad1tya.echo.music.eq.audio.TruePeakLimiterAudioProcessor
 import iad1tya.echo.music.eq.audio.normalizationMultiplier
 import iad1tya.echo.music.eq.audio.loudnessMakeupDb
+import iad1tya.echo.music.eq.audio.safeVolumeGainWithEqPreamp
 import iad1tya.echo.music.eq.audio.dbToLinear
 import iad1tya.echo.music.eq.audio.effectiveLoudnessDb
 import iad1tya.echo.music.eq.data.EQProfileRepository
@@ -1302,6 +1303,14 @@ class MusicService :
     private var userHasUsedVideo: Boolean
         get() = playbackState.userHasUsedVideo
         set(value) { playbackState.userHasUsedVideo = value }
+
+    private var userExplicitlyExitedVideo: Boolean
+        get() = playbackState.userExplicitlyExitedVideo
+        set(value) { playbackState.userExplicitlyExitedVideo = value }
+
+    /** One re-prepare per [mediaId] when video stalls in BUFFERING/IDLE (debounced). */
+    private val videoStuckRecoveryAttemptedAt = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    private var videoStuckRecoveryJob: kotlinx.coroutines.Job? = null
 
     // PLAYER-EXPANDED SIGNAL — mirrored from the UI (PlayerConnection.setPlayerSheetExpanded), same
     // pattern as userHasUsedVideo. Used ONLY to gate speculative, user-visible-moment work (the video
@@ -4677,17 +4686,11 @@ class MusicService :
                     // here would abort the whole query block — rolling back the like. Never let the optional
                     // download break the like itself.
                     try {
-                        val downloadRequest =
-                            androidx.media3.exoplayer.offline.DownloadRequest
-                                .Builder(toggled.id, toggled.id.toUri())
-                                .setCustomCacheKey(toggled.id)
-                                .setData(toggled.title.toByteArray())
-                                .build()
-                        androidx.media3.exoplayer.offline.DownloadService.sendAddDownload(
+                        enqueueSongDownloads(
                             this@MusicService,
-                            ExoDownloadService::class.java,
-                            downloadRequest,
-                            false
+                            toggled.id,
+                            toggled.title,
+                            meta.isVideoSong,
                         )
                     } catch (e: Exception) {
                         Timber.tag(TAG).e(e, "auto-download on like failed (non-fatal)")
@@ -4845,7 +4848,7 @@ class MusicService :
                             // Safe Volume (opt-in): re-assert the FULL levelling gain (attenuation x makeup).
                             playerEqProcessors[player]?.applySafeVolume(
                                 safeVol,
-                                if (safeVol) lastAppliedGain * lastAppliedMakeup else 1f,
+                                if (safeVol) safeVolumeAppliedGain(lastAppliedGain * lastAppliedMakeup) else 1f,
                             )
                         }
                         return@launch
@@ -4876,7 +4879,7 @@ class MusicService :
                         // stage ramps to it and the limiter catches the peaks. Off → unity, bit-perfect.
                         playerEqProcessors[player]?.applySafeVolume(
                             safeVol,
-                            if (safeVol) targetGain * targetMakeup else 1f,
+                            if (safeVol) safeVolumeAppliedGain(targetGain * targetMakeup) else 1f,
                         )
                         // Do NOT push THIS track's Safe Volume onto secondaryPlayer. The secondary is
                         // pre-leveled for the NEXT song (prepareSecondaryPlayer); stomping it with the
@@ -4994,7 +4997,7 @@ class MusicService :
             // safeVolumeEnabledHint, NOT dataStore.get(): that extension is runBlocking { data.first() } and
             // this runs on Main — the exact ANR pattern this file documents as a past regression.
             if (safeVolumeEnabledHint) {
-                playerEqProcessors[player]?.applySafeVolume(true, targetGain * targetMakeup)
+                playerEqProcessors[player]?.applySafeVolume(true, safeVolumeAppliedGain(targetGain * targetMakeup))
             }
 
             norm.measureThisTrack = false
@@ -5286,12 +5289,14 @@ class MusicService :
             // Owner: tapping a VIDEO starts playback IN video mode (manual SEEK / new queue only —
             // AUTO advances stay audio unless sticky video was already on above).
             mediaItem != null &&
+            !userExplicitlyExitedVideo &&
             (reason == Player.MEDIA_ITEM_TRANSITION_REASON_SEEK ||
                 reason == Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED) &&
             player.currentMetadata?.isVideoSong == true &&
             !(iad1tya.echo.music.utils.PerformanceMode.isOn(this) &&
                 !iad1tya.echo.music.utils.DeviceForm.isTvOrCar(this))
         ) {
+            userExplicitlyExitedVideo = false
             userHasUsedVideo = true
             videoSwapMeasureStart()
             if (!tryInstantVideoSwap()) {
@@ -5977,6 +5982,13 @@ class MusicService :
                 Timber.tag(TAG).d("Playback successful for $mediaId, reset retry count")
             }
             scheduleCrossfade()
+        }
+
+        if (_videoMode.value && !_videoUrl.value.isNullOrEmpty()) {
+            when (playbackState) {
+                Player.STATE_BUFFERING, Player.STATE_IDLE -> scheduleVideoStuckRecoveryCheck()
+                Player.STATE_READY -> videoStuckRecoveryJob?.cancel()
+            }
         }
 
         if (playbackState == Player.STATE_IDLE || playbackState == Player.STATE_ENDED) {
@@ -7354,6 +7366,7 @@ class MusicService :
         if (_videoMode.value) {
             exitVideoMode()
         } else {
+            userExplicitlyExitedVideo = false
             userHasUsedVideo = true
             videoSwapMeasureStart() // debug-only latency probe: T0 = the audio→video toggle
             // INSTANT FAST PATH: publish the pre-prepared dual player if (and only if) it is healthy —
@@ -7384,6 +7397,52 @@ class MusicService :
     // The fix (prebuildNextVideoItem + the videoModeItems map read in createMediaSource) marks the upcoming
     // id as a video item FIRST, so its source is built through videoFactory (which honours the video URI
     // directly) and the ResolvingDataSource only ever touches the SEPARATE merged audio sub-source.
+
+    private fun isVideoDownloadComplete(songId: String): Boolean {
+        val vidKey = videoDownloadMediaId(songId)
+        val cachedLength = androidx.media3.datasource.cache.ContentMetadata
+            .getContentLength(downloadCache.getContentMetadata(vidKey))
+        return cachedLength != C.LENGTH_UNSET.toLong() && cachedLength > 0 &&
+            downloadCache.isCached(vidKey, 0, cachedLength)
+    }
+
+    private fun currentEqPreampDb(): Double {
+        val prefsPreamp = getSharedPreferences("echo_eq_prefs", Context.MODE_PRIVATE)
+            .getFloat("preampDb", 0f).toDouble()
+        if (!::eqProfileRepository.isInitialized) return prefsPreamp
+        val profile = eqProfileRepository.unsavedProfile.value ?: eqProfileRepository.activeProfile.value
+        return profile?.preamp ?: prefsPreamp
+    }
+
+    private fun safeVolumeAppliedGain(baseGain: Float): Float =
+        safeVolumeGainWithEqPreamp(baseGain, currentEqPreampDb())
+
+    private fun scheduleVideoStuckRecoveryCheck() {
+        videoStuckRecoveryJob?.cancel()
+        if (!_videoMode.value || _videoUrl.value.isNullOrEmpty()) return
+        videoStuckRecoveryJob = scope.launch {
+            delay(3_000)
+            withContext(Dispatchers.Main) { maybeRecoverStuckVideo() }
+        }
+    }
+
+    /** Re-prepare once when video mode is on but the decoder stays BUFFERING/IDLE while playWhenReady. */
+    private fun maybeRecoverStuckVideo() {
+        if (!_videoMode.value || _videoUrl.value.isNullOrEmpty()) return
+        if (!player.playWhenReady) return
+        val state = player.playbackState
+        if (state != Player.STATE_BUFFERING && state != Player.STATE_IDLE) return
+        val id = player.currentMediaItem?.mediaId ?: return
+        if (id != videoModeMediaId) return
+        val now = System.currentTimeMillis()
+        val last = videoStuckRecoveryAttemptedAt[id] ?: 0L
+        if (now - last < 30_000L) return
+        videoStuckRecoveryAttemptedAt[id] = now
+        Timber.tag(TAG).w("Video stuck in $state — re-preparing $id")
+        val playing = player.playWhenReady
+        player.prepare()
+        player.playWhenReady = playing
+    }
 
     /** Resolve the current track's muxed video URL and swap its source in-place (audio is never stopped). */
     private fun applyVideoToCurrent(armModeWhenReady: Boolean = false) {
@@ -7418,6 +7477,28 @@ class MusicService :
             _videoUrl.value = null
             return
         }
+
+        val offlineOnly = dataStore.get(OfflineModeKey, false)
+        val videoDownloaded = isVideoDownloadComplete(id)
+        if (offlineOnly || videoDownloaded) {
+            if (!videoDownloaded) {
+                if (!armModeWhenReady && _videoMode.value) {
+                    Toast.makeText(
+                        this,
+                        getString(R.string.error_offline_not_downloaded),
+                        Toast.LENGTH_SHORT,
+                    ).show()
+                }
+                _videoMode.value = false
+                _videoUrl.value = null
+                return
+            }
+            if (armModeWhenReady) _videoMode.value = true
+            else if (!_videoMode.value) return
+            swapToVideo(id, offlineVideoCacheUri(id))
+            return
+        }
+        if (offlineOnly) return
 
         val cached = videoUrlCache[id]?.takeIf { it.second > System.currentTimeMillis() }?.first
         if (!cached.isNullOrEmpty()) {
@@ -7486,13 +7567,22 @@ class MusicService :
         // the single id, is now authoritative there).
         videoModeItems[id] = VideoTrackState(url, origUri, isMuxed)
 
+        val playing = player.playWhenReady
+
         if (item.localConfiguration?.uri?.toString() == url) {
             _videoUrl.value = url
+            if (playing) player.playWhenReady = true
+            if (playing &&
+                (player.playbackState == Player.STATE_IDLE || player.playbackState == Player.STATE_BUFFERING)
+            ) {
+                player.prepare()
+                player.playWhenReady = true
+            }
+            scheduleVideoStuckRecoveryCheck()
             return
         }
 
         val pos = player.currentPosition
-        val playing = player.playWhenReady
         player.replaceMediaItem(idx, item.buildUpon().setUri(url).build())
         // Video swap: seek keyframe-aligned (CLOSEST_SYNC) so the first video frame decodes sooner — an EXACT
         // seek must decode every frame from the previous keyframe up to pos before it can show anything.
@@ -7504,7 +7594,9 @@ class MusicService :
         player.setSeekParameters(androidx.media3.exoplayer.SeekParameters.DEFAULT)
         player.playWhenReady = playing
         player.prepare()
+        if (playing) player.playWhenReady = true
         _videoUrl.value = url
+        scheduleVideoStuckRecoveryCheck()
     }
 
     /**
@@ -7704,6 +7796,8 @@ class MusicService :
      *  the trailing schedule merely re-arms the speculative pre-prepare for a possible re-toggle. */
     fun exitVideoMode() {
         if (!_videoMode.value && videoModeMediaId == null && videoModeItems.isEmpty()) return
+        userExplicitlyExitedVideo = true
+        videoStuckRecoveryJob?.cancel()
         teardownInstantVideoSwap("exit video mode")
         _videoMode.value = false
         _videoUrl.value = null
@@ -8099,10 +8193,33 @@ class MusicService :
     }
 
     private val videoDataSourceFactory: DataSource.Factory by lazy {
-        DefaultDataSource.Factory(
-            this,
-            androidx.media3.datasource.okhttp.OkHttpDataSource.Factory(videoOkHttpClient)
-        )
+        ResolvingDataSource.Factory(
+            DefaultDataSource.Factory(
+                this,
+                createCacheDataSource().apply {
+                    setUpstreamDataSourceFactory(
+                        androidx.media3.datasource.okhttp.OkHttpDataSource.Factory(videoOkHttpClient),
+                    )
+                },
+            ),
+        ) { dataSpec ->
+            songIdFromOfflineVideoCacheUri(dataSpec.uri.toString())?.let { songId ->
+                val vidKey = videoDownloadMediaId(songId)
+                val cachedLength = androidx.media3.datasource.cache.ContentMetadata
+                    .getContentLength(downloadCache.getContentMetadata(vidKey))
+                val fullyDownloaded = cachedLength != C.LENGTH_UNSET.toLong() && cachedLength > 0 &&
+                    downloadCache.isCached(vidKey, 0, cachedLength)
+                if (fullyDownloaded) {
+                    return@Factory dataSpec.buildUpon().setKey(vidKey).setUri(vidKey.toUri()).build()
+                }
+                throw PlaybackException(
+                    getString(R.string.error_offline_not_downloaded),
+                    null,
+                    PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
+                )
+            }
+            dataSpec
+        }
     }
 
     // Video URLs whose googlevideo connection we've already warmed this session (once per exact URL —
@@ -8263,7 +8380,12 @@ class MusicService :
             // this same track's values (never re-normalizes — no instanceGain pin, so nothing to clean up).
             // Full gain (attenuation x makeup) — must match what the main path applied for this same track,
             // or the published player starts at a different level than the one it replaces.
-            if (safeVolumeEnabledHint) playerEqProcessors[pre]?.applySafeVolume(true, lastAppliedGain * lastAppliedMakeup)
+            if (safeVolumeEnabledHint) {
+                playerEqProcessors[pre]?.applySafeVolume(
+                    true,
+                    safeVolumeAppliedGain(lastAppliedGain * lastAppliedMakeup),
+                )
+            }
             pre.prepare()
             instantVideoPlayer = pre
             instantVideoPlayerId = id
@@ -8361,7 +8483,7 @@ class MusicService :
             // even if lastAppliedGain / the Safe Volume toggle changed between pre-prepare and this swap.
             playerEqProcessors[pre]?.applySafeVolume(
                 safeVolumeEnabledHint,
-                if (safeVolumeEnabledHint) lastAppliedGain * lastAppliedMakeup else 1f,
+                if (safeVolumeEnabledHint) safeVolumeAppliedGain(lastAppliedGain * lastAppliedMakeup) else 1f,
             )
 
             // ---- COMMIT: publish (mirrors performCrossfadeSwap's swap block) ----
@@ -10165,7 +10287,9 @@ class MusicService :
                 // MUST be the SAME full gain (attenuation x makeup) the main path applies when this track
                 // becomes current — priming only the attenuate half would make a quiet track fade in lower
                 // than it plays a moment later, i.e. an audible jump at the swap. No fade timing/curve here.
-                if (safeVolumeEnabledHint) playerEqProcessors[sec]?.applySafeVolume(true, mult * makeup)
+                if (safeVolumeEnabledHint) {
+                    playerEqProcessors[sec]?.applySafeVolume(true, safeVolumeAppliedGain(mult * makeup))
+                }
                 primedSyncGain = true
                 Timber.tag(TAG).d("Crossfade: pre-leveled incoming $incomingId from cache (loudnessDb=$loudnessDb)")
             }
@@ -10200,7 +10324,9 @@ class MusicService :
                         playerNormProcessors[sec]?.instanceGain = mult
                         playerLimiterProcessors[sec]?.setInstanceMakeup(makeup, null)
                         // Full gain, same as the sync prime above — never only the attenuate half.
-                        if (safeVolumeEnabledHint) playerEqProcessors[sec]?.applySafeVolume(true, mult * makeup)
+                        if (safeVolumeEnabledHint) {
+                    playerEqProcessors[sec]?.applySafeVolume(true, safeVolumeAppliedGain(mult * makeup))
+                }
                     }
                 }
             }

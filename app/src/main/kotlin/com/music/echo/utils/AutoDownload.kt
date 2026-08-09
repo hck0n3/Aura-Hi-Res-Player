@@ -1,12 +1,9 @@
 package iad1tya.echo.music.utils
 
 import android.content.Context
-import androidx.core.net.toUri
-import androidx.media3.exoplayer.offline.DownloadRequest
-import androidx.media3.exoplayer.offline.DownloadService
 import iad1tya.echo.music.constants.AutoDownloadOnLikeKey
 import iad1tya.echo.music.db.entities.Song
-import iad1tya.echo.music.playback.ExoDownloadService
+import iad1tya.echo.music.playback.enqueueSongDownloads
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
@@ -20,11 +17,11 @@ suspend fun downloadSongsIfAutoOnLike(context: Context, songs: List<Song>) {
     val auto = context.dataStore.data.map { it[AutoDownloadOnLikeKey] ?: true }.first()
     if (!auto) return
     songs.forEach { song ->
-        val request = DownloadRequest
-            .Builder(song.id, song.id.toUri())
-            .setCustomCacheKey(song.id)
-            .setData(song.song.title.toByteArray())
-            .build()
-        DownloadService.sendAddDownload(context, ExoDownloadService::class.java, request, false)
+        enqueueSongDownloads(
+            context,
+            song.id,
+            song.song.title,
+            song.song.isVideo,
+        )
     }
 }

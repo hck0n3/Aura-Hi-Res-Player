@@ -1275,7 +1275,15 @@ private fun AuraQueueBar(
                 contentColor = contentColor,
                 activeContainerColor = activeContainerColor,
                 activeContentColor = activeContentColor,
-            ) { tint -> AuraIconGlyph(AuraIcons.Video, null, size = 21.dp, tint = tint) }
+            ) { tint ->
+                // Alternate glyph so the control reads as music↔video, not "video only".
+                AuraIconGlyph(
+                    if (videoModeActive) AuraIcons.Music else AuraIcons.Video,
+                    null,
+                    size = 21.dp,
+                    tint = tint,
+                )
+            }
         }
 
         // ALEATORIO / REPETIR stay on the transport row only (no duplicates here).

@@ -1,36 +1,26 @@
-# Aura Hi-Res Player 0.6.155
+# Aura Hi-Res Player 0.6.156
 
-Letras alineadas con lo que suena, Me gusta como biblioteca, export MP3 en todas las playlists, acceso rápido en el reproductor, EQ con medidor FFT, y menos cortes en Auto / HyperOS.
+Vídeo más fiable, Safe Volume sin voz rasposa con preamp alto, colecciones de biblioteca sin barra fea, y Me gusta de vídeos con audio+vídeo offline.
 
 ---
 
-## 🎤 Letras y biblioteca
+## 🎬 Vídeo
 
-- Durante el crossfade, las letras siguen la canción que **se oye** (no la siguiente a medias).
-- En artista y conteos: **Me gusta** cuenta como biblioteca (mismas canciones / mismos totales).
+- Arranque del primer vídeo y recuperación si se queda en buffer.
+- Botón música ↔ vídeo: icono y función alternan (no solo “entrar a vídeo”).
+- Portadas de vídeo más nítidas (maxres con fallback) y a sangre en 16:9.
+- Menú Más / ⋮: miniatura de la canción otra vez (antes solo un cuadro vacío).
+- Me gusta / Descargar en canción-vídeo: guarda **audio y vídeo** para alternar sin internet.
 
-## 📦 Exportar a MP3
+## 📚 Biblioteca
 
-- Menú de playlists locales (Interfaz nueva): **Exportar a MP3** (todas o seleccionar).
-- Tags ID3 más completos: álbum, artista del álbum, género, pista, letras y portada cuando existen.
+- Me gusta, Descargados, En caché, Mi Top…: **sin** título flotante + lupa sticky.
+- Solo atrás flotante; la lupa va en la cabecera que hace scroll.
 
-## ▶️ Reproductor (Interfaz nueva)
+## 🎚️ Audio
 
-- Accesos rápidos: **biblioteca** y **lupa** (búsqueda sin salir del reproductor).
-- Desde un resultado: reproducir ahora, a continuación, al final de la cola o añadir a playlist (las tres últimas sin cambiar lo que suena).
+- Con Volumen seguro, el preamp alto ya no empuja la voz al rasposo (reserva de headroom).
 
-## 🎚️ Ecualizador
+## 📦 Del 0.6.155
 
-- Presets de fábrica en **rejilla** (orden fijo; el activo se marca, no salta al principio).
-- Medidor **FFT** en vivo (verde → ámbar → cian al saturar); ON por defecto en equipos capaces.
-- Indicador de saturación en el preamp cuando el medidor está activo. Solo aspecto visual — el motor de audio no cambia.
-
-## 🚗 Vídeo, Auto y Xiaomi
-
-- Prefetch de vídeo más amplio + calentamiento de red antes de activar vídeo (menos trabón al inicio).
-- Keep-alive más firme con Android Auto y pantalla apagada.
-- Si HyperOS mata Aura (ScreenOffCPU / limpiar), el aviso de batería **vuelve a aparecer** con pasos claros (China / Autostart).
-
-## 📦 Del 0.6.154
-
-- Crossfade sin bajones de Safe Volume; cola inteligente más asertiva al gusto.
+- Letras alineadas al crossfade, Me gusta = biblioteca, export MP3, búsqueda rápida en el reproductor, EQ FFT.

@@ -103,6 +103,7 @@ constructor(
      */
     fun invalidateSongUrl(songId: String) {
         songUrlCache.remove(songId)
+        songUrlCache.remove(videoDownloadMediaId(songId))
     }
 
     val downloads = MutableStateFlow<Map<String, Download>>(emptyMap())
@@ -139,6 +140,24 @@ constructor(
             ),
         ) { dataSpec ->
             val mediaId = dataSpec.key ?: error("No media id")
+
+            if (isVideoDownloadId(mediaId)) {
+                val songId = baseSongIdFromVideoDownload(mediaId)
+                songUrlCache[mediaId]?.takeIf { it.second > System.currentTimeMillis() }?.let {
+                    return@Factory dataSpec.withUri(it.first.toUri())
+                }
+                val videoUrl = runBlocking(Dispatchers.IO) {
+                    var url = YTPlayerUtils.videoStreamUrlDiag(songId, connectivityManager, null).getOrNull()
+                    if (url.isNullOrEmpty()) {
+                        url = runCatching {
+                            YTPlayerUtils.videoStreamUrl(songId, connectivityManager, null)
+                        }.getOrNull()
+                    }
+                    url
+                } ?: error("No video stream for $songId")
+                songUrlCache[mediaId] = videoUrl to (5 * 60 * 1000L)
+                return@Factory dataSpec.withUri(videoUrl.toUri())
+            }
 
             songUrlCache[mediaId]?.takeIf { it.second > System.currentTimeMillis() }?.let {
                 return@Factory dataSpec.withUri(it.first.toUri())

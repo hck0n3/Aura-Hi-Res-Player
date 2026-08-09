@@ -8,8 +8,10 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -25,6 +27,9 @@ import iad1tya.echo.music.playback.PlayerConnection
  * so it composes cleanly inside Compose overlays (z-order, clipping, rounded corners). The view
  * attaches to the player on enter and detaches on leave; show it only while video mode is on.
  *
+ * [videoUrl]: when this becomes non-null after the surface was first composed (resolve finished),
+ * re-bind the TextureView so the first frame is not stuck on a blank/frozen frame.
+ *
  * [fillCrop]: when true the video COVERS the whole area (fills both width and height, cropping the
  * overflow) instead of fitting with letterbox bars — used for true fullscreen in landscape.
  */
@@ -33,8 +38,10 @@ fun PlayerVideoSurface(
     playerConnection: PlayerConnection,
     modifier: Modifier = Modifier,
     fillCrop: Boolean = false,
+    videoUrl: String? = null,
 ) {
     var videoAspectRatio by remember { mutableFloatStateOf(16f / 9f) }
+    var surfaceRef by remember { mutableStateOf<TextureView?>(null) }
 
     DisposableEffect(playerConnection.player) {
         val listener = object : Player.Listener {
@@ -74,8 +81,17 @@ fun PlayerVideoSurface(
         }
     }
 
+    LaunchedEffect(videoUrl, playerConnection.player) {
+        if (videoUrl.isNullOrEmpty()) return@LaunchedEffect
+        val textureView = surfaceRef
+        if (textureView != null && textureView.isAvailable) {
+            runCatching { playerConnection.player.setVideoTextureView(textureView) }
+        }
+    }
+
     val factory = { ctx: android.content.Context ->
         TextureView(ctx).also { tv ->
+            surfaceRef = tv
             runCatching { playerConnection.player.setVideoTextureView(tv) }
         }
     }
@@ -96,12 +112,14 @@ fun PlayerVideoSurface(
     // SurfaceTextureListener at factory() time, which handles the not-available -> available transition.
     val update = { tv: android.view.View ->
         val textureView = tv as TextureView
+        surfaceRef = textureView
         if (textureView.isAvailable) {
             runCatching { playerConnection.player.setVideoTextureView(textureView) }
         }
         Unit
     }
     val onRelease = { tv: android.view.View ->
+        if (surfaceRef === tv) surfaceRef = null
         runCatching { playerConnection.player.clearVideoTextureView(tv as TextureView) }
         Unit
     }

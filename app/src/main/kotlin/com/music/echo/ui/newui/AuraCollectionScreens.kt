@@ -275,6 +275,7 @@ internal fun AuraSongCollectionScaffold(
                         aboutTitleRes = aboutTitleRes,
                         aboutText = aboutText,
                         onMenu = onHeaderMenu,
+                        onSearch = { isSearching = true },
                         modifier = Modifier.animateItem(),
                     )
                 }
@@ -450,53 +451,27 @@ internal fun AuraSongCollectionScaffold(
             )
         }
 
-        // ── Barra superior ────────────────────────────────────────────────────────────────────────
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Top))
-                .background(AuraPalette.Ground.copy(alpha = 0.82f))
-                .padding(horizontal = 6.dp, vertical = 4.dp),
-        ) {
-            AuraIconButton(
-                icon = if (inSelectMode) AuraIcons.Plus else AuraIcons.ChevronRight,
-                contentDescription = stringResource(
-                    if (inSelectMode) R.string.cd_exit_selection else R.string.cd_back,
-                ),
-                onClick = {
-                    when {
-                        isSearching -> {
-                            isSearching = false
-                            query = ""
-                            focusManager.clearFocus()
-                        }
-
-                        inSelectMode -> onExitSelectionMode()
-                        else -> onBack()
+        // Sticky chrome: back only (owner: no floating title + lupa on liked/downloads/cache/top).
+        // Search lives in the scrolling [AuraCollectionHeader], same as local/online playlists.
+        AuraDetailTopBar(
+            listState = listState,
+            title = title,
+            onBack = {
+                when {
+                    isSearching -> {
+                        isSearching = false
+                        query = ""
+                        focusManager.clearFocus()
                     }
-                },
-                size = 22.dp,
-                // A "+" turned 45° is the render's close glyph; the back arrow is a chevron mirrored.
-                modifier = Modifier.graphicsLayer {
-                    rotationZ = if (inSelectMode) 45f else 180f
-                },
-            )
-            Text(
-                text = if (inSelectMode) {
-                    pluralStringResource(R.plurals.n_song, selection.size, selection.size)
-                } else {
-                    title
-                },
-                style = AuraType.SheetTitle,
-                color = AuraPalette.OnGround,
-                maxLines = 1,
-                overflow = AuraDefaultOverflow,
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(horizontal = 6.dp),
-            )
-            if (inSelectMode) {
+                    inSelectMode -> onExitSelectionMode()
+                    else -> onBack()
+                }
+            },
+            inSelectMode = inSelectMode,
+            selectionCount = selection.size,
+            forceOpaque = isSearching,
+            pinTitleOnScroll = false,
+            selectionActions = {
                 Checkbox(
                     checked = selection.size == filteredSongs.size && selection.isNotEmpty(),
                     onCheckedChange = {
@@ -528,15 +503,8 @@ internal fun AuraSongCollectionScaffold(
                     },
                     size = 20.dp,
                 )
-            } else if (!isSearching) {
-                AuraIconButton(
-                    icon = AuraIcons.Search,
-                    contentDescription = stringResource(R.string.search),
-                    onClick = { isSearching = true },
-                    size = 20.dp,
-                )
-            }
-        }
+            },
+        )
     }
 }
 
@@ -560,6 +528,7 @@ internal fun AuraCollectionHeader(
     aboutTitleRes: Int,
     aboutText: String,
     onMenu: () -> Unit,
+    onSearch: () -> Unit,
     modifier: Modifier = Modifier,
     queueTitle: String = name,
 ) {
@@ -682,6 +651,24 @@ internal fun AuraCollectionHeader(
                 },
                 accent = true,
                 modifier = Modifier.weight(1f).tvFocusable(isTvOrCar, scaleFocused = 1f),
+            )
+        }
+
+        Spacer(Modifier.height(12.dp))
+
+        // Search · Más — in the scrolling header (owner: no sticky title + lupa plate).
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = AuraSpacing.Gutter),
+            horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            AuraHeaderCircleButton(
+                icon = AuraIcons.Search,
+                contentDescription = stringResource(R.string.search),
+                onClick = onSearch,
+                modifier = Modifier.tvFocusable(isTvOrCar, scaleFocused = 1f),
             )
             AuraHeaderCircleButton(
                 icon = AuraIcons.More,

@@ -63,7 +63,8 @@ import iad1tya.echo.music.extensions.toggleRepeatMode
 import iad1tya.echo.music.listentogether.RoomRole
 import iad1tya.echo.music.models.MediaMetadata
 import iad1tya.echo.music.models.rememberResolvedAlbum
-import iad1tya.echo.music.playback.ExoDownloadService
+import iad1tya.echo.music.playback.enqueueSongDownloads
+import iad1tya.echo.music.playback.removeSongDownloads
 import iad1tya.echo.music.ui.component.BottomSheetState
 import iad1tya.echo.music.ui.component.ListDialog
 import iad1tya.echo.music.ui.component.VolumeSlider
@@ -263,7 +264,14 @@ fun AuraPlayerMenu(
                     .fillMaxWidth()
                     .padding(horizontal = AuraSpacing.Gutter, vertical = 12.dp),
             ) {
-                AuraArtwork(size = 48.dp, placeholderSeed = mediaMetadata.id)
+                // Must pass the URL — AuraArtwork alone is only the placeholder plate (empty square).
+                AuraCover(
+                    thumbnailUrl = mediaMetadata.thumbnailUrl,
+                    size = 48.dp,
+                    seed = mediaMetadata.id,
+                    fillBleed = true,
+                    ratio = if (mediaMetadata.isVideoSong) 16f / 9f else 1f,
+                )
                 Column(Modifier.weight(1f)) {
                     Text(
                         text = mediaMetadata.title,
@@ -484,8 +492,10 @@ fun AuraPlayerMenu(
                     label = stringResource(R.string.remove_download),
                     iconTint = AuraPalette.Teal,
                     onClick = {
-                        DownloadService.sendRemoveDownload(
-                            context, ExoDownloadService::class.java, mediaMetadata.id, false,
+                        removeSongDownloads(
+                            context,
+                            mediaMetadata.id,
+                            mediaMetadata.isVideoSong,
                         )
                         onDismiss()
                     },
@@ -494,8 +504,10 @@ fun AuraPlayerMenu(
                     icon = AuraIcons.Download,
                     label = stringResource(R.string.downloading),
                     onClick = {
-                        DownloadService.sendRemoveDownload(
-                            context, ExoDownloadService::class.java, mediaMetadata.id, false,
+                        removeSongDownloads(
+                            context,
+                            mediaMetadata.id,
+                            mediaMetadata.isVideoSong,
                         )
                         onDismiss()
                     },
@@ -512,14 +524,11 @@ fun AuraPlayerMenu(
                     label = stringResource(R.string.action_download),
                     onClick = {
                         database.transaction { insert(mediaMetadata) }
-                        DownloadService.sendAddDownload(
+                        enqueueSongDownloads(
                             context,
-                            ExoDownloadService::class.java,
-                            DownloadRequest.Builder(mediaMetadata.id, mediaMetadata.id.toUri())
-                                .setCustomCacheKey(mediaMetadata.id)
-                                .setData(mediaMetadata.title.toByteArray())
-                                .build(),
-                            false,
+                            mediaMetadata.id,
+                            mediaMetadata.title,
+                            mediaMetadata.isVideoSong,
                         )
                         onDismiss()
                     },

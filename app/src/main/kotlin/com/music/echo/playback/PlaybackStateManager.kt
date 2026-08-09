@@ -16,6 +16,8 @@ class PlaybackStateManager {
     @Volatile var videoModeOriginalUri: String? = null
     @Volatile var videoModeIsMuxedPodcast = false
     @Volatile var userHasUsedVideo = false
+    /** Set when the user toggles video off; blocks sticky re-arm until the next manual video-song tap. */
+    @Volatile var userExplicitlyExitedVideo = false
     // Mirrors whether the full-screen player sheet is currently EXPANDED (driven by the UI via
     // PlayerConnection.setPlayerSheetExpanded). Same pattern as userHasUsedVideo: a cheap @Volatile
     // signal the service can read from any thread to gate speculative work (e.g. the video-connection
