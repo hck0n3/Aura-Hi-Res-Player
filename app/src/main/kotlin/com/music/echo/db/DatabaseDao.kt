@@ -1911,11 +1911,23 @@ interface DatabaseDao {
         song: Song,
         mediaMetadata: MediaMetadata,
     ) {
+        // Keep localaudioart: (exported/scanned MP3 APIC) — a later stream play must not stomp it
+        // with the remote YouTube thumb and hide the cover the file actually carries.
+        val incomingThumb = mediaMetadata.thumbnailUrl
+        val existingThumb = song.song.thumbnailUrl
+        val thumbnailUrl =
+            if (existingThumb?.startsWith(iad1tya.echo.music.utils.coil.LocalAudioArtFetcher.SCHEME_PREFIX) == true &&
+                incomingThumb?.startsWith(iad1tya.echo.music.utils.coil.LocalAudioArtFetcher.SCHEME_PREFIX) != true
+            ) {
+                existingThumb
+            } else {
+                incomingThumb
+            }
         update(
             song.song.copy(
                 title = mediaMetadata.title,
                 duration = mediaMetadata.duration,
-                thumbnailUrl = mediaMetadata.thumbnailUrl,
+                thumbnailUrl = thumbnailUrl,
                 albumId = mediaMetadata.album?.id,
                 albumName = mediaMetadata.album?.title,
                 libraryAddToken = mediaMetadata.libraryAddToken,

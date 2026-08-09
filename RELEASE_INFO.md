@@ -1,28 +1,15 @@
-# Aura Hi-Res Player 0.6.159
+# Aura Hi-Res Player 0.6.160
 
-Artista sin “Tu biblioteca” duplicada, lupa in-sheet, FFT que no muere al cambiar de pista, volumen de descargas/MP3 más parejo al stream, y portadas MP3.
+Aura ya lee la portada embebida de los MP3 locales/exportados (antes prefería una miniatura vacía de MediaStore).
 
 ---
 
-## 🎨 Artista / Inicio
+## 🖼 Portadas MP3 / música local
 
-- Página de artista (New UI): una sola **Tu biblioteca** arriba; se omite la shelf YTM “De tu biblioteca / From your library” y títulos de sección repetidos. Espaciado de secciones unificado vía cabeceras Aura.
-- Título **Para ti**: mismo color que el resto de secciones (OnGround), sin Teal forzado.
+- Al mostrar carátulas de archivos locales, Aura lee primero el **APIC/ID3** del propio audio; `loadThumbnail` de MediaStore solo es respaldo (antes devolvía éxito con un glifo vacío y nunca llegaba al cover real).
+- Tras exportar a MP3, la fila de la canción apunta al archivo exportado para que **Exportadas** / el reproductor usen esa portada.
+- Una limpieza one-shot de la caché de imágenes de Coil evita seguir viendo miniaturas en blanco cacheadas de versiones anteriores.
 
-## 📱 Reproductor
+## 📦 Del 0.6.159
 
-- Lupa: artista / álbum / playlist se exploran **dentro** de la hoja frost (pila local); ya no colapsa el player.
-- FFT (Axion): reengancha al cambiar de canción + watchdog; semáforo según preamp + headroom de bandas (no solo el slider). Un Visualizer compartido con el ritmo del suelo.
-
-## 🔊 Audio / archivos
-
-- Descargas: conservan el loudnessDb del stream (no lo pisa el fetch de descarga).
-- Export MP3: portada JPEG real + `loudnorm` para acercar el nivel al stream nivelado; reintento sin cover/loudnorm si FFmpeg falla; MediaScanner.
-
-## 🎚 EQ
-
-- Presets audiófilos: rejilla ordenada por longitud de nombre (selección sigue el enum).
-
-## 📦 Del 0.6.158
-
-- Personalizar roles de color, chrome por portada, mini Liquid Glass clásico, scroll Copia/Spotify.
+- Artista sin “Tu biblioteca” duplicada, lupa in-sheet, FFT estable, volumen de descargas/MP3 más parejo, export con JPEG + loudnorm.

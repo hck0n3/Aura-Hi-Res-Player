@@ -360,6 +360,19 @@ class App : Application(), SingletonImageLoader.Factory, androidx.work.Configura
         // user's configured size limit. Seeding it here (and the missing-key fallback in songCacheSizeMb) makes
         // the SimpleCache honor the configured limit from this session on.
         updateSongCacheSizeMirror(this@App, settings[MaxSongCacheSizeKey] ?: DEFAULT_SONG_CACHE_SIZE_MB)
+        // 0.6.160: LocalAudioArtFetcher used to return MediaStore loadThumbnail BEFORE reading ID3 APIC,
+        // so Coil disk-cached blank/generic glyphs for localaudioart: URIs. Drop those entries once so
+        // upgraded installs re-decode the real embedded cover (same URI, different bytes).
+        if (settings[iad1tya.echo.music.constants.LocalAudioArtApicV1AppliedKey] != true) {
+            runCatching {
+                val loader = SingletonImageLoader.get(this@App)
+                loader.memoryCache?.clear()
+                loader.diskCache?.clear()
+            }
+            runCatching {
+                dataStore.edit { it[iad1tya.echo.music.constants.LocalAudioArtApicV1AppliedKey] = true }
+            }.onFailure { reportException(it) }
+        }
         // ── One-time default seeds & migrations ──────────────────────────────────────────────────────────────
         // Previously ~13 helpers each ran their own dataStore.edit{} (a startup write-storm that serialized behind
         // the DataStore actor and blocked main-thread reads; migratePlaybackDefaults even wrote on EVERY launch).

@@ -276,13 +276,29 @@ class AudioExportService : Service() {
             }
 
             // Help Files / media apps pick up ID3 + cover after SAF write.
+            // scanFile needs a filesystem path — a SAF content:// string is ignored by MediaScanner.
             runCatching {
-                MediaScannerConnection.scanFile(
-                    this,
-                    arrayOf(outputFile.uri.toString()),
-                    arrayOf("audio/mpeg"),
-                    null,
+                val scanPath = outputFile.uri.path?.takeIf { it.startsWith("/") && java.io.File(it).exists() }
+                if (scanPath != null) {
+                    MediaScannerConnection.scanFile(
+                        this,
+                        arrayOf(scanPath),
+                        arrayOf("audio/mpeg"),
+                        null,
+                    )
+                }
+            }
+
+            // Point the in-app song row at the exported file so Biblioteca ▸ Exportadas / player
+            // read the MP3's embedded cover via LocalAudioArtFetcher (not only the remote YT URL).
+            runCatching {
+                val artModel = iad1tya.echo.music.utils.coil.LocalAudioArtFetcher.uriFor(
+                    outputFile.uri.toString(),
                 )
+                val entity = database.getSongById(songId)?.song
+                if (entity != null) {
+                    database.update(entity.copy(thumbnailUrl = artModel))
+                }
             }
 
             addExportedSongId(songId)

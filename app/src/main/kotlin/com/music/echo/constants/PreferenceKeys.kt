@@ -411,6 +411,11 @@ val ExportedSongIdsKey = stringPreferencesKey("exportedSongIds")
 val EnableExportAsMp3Key = booleanPreferencesKey("enableExportAsMp3")
 /** One-shot: seed Export as MP3 ON for installs that never wrote the key. */
 val EnableExportAsMp3DefaultOnV1AppliedKey = booleanPreferencesKey("enable_export_as_mp3_default_on_v1_applied")
+/**
+ * One-shot (0.6.160): clear Coil memory+disk cache after LocalAudioArtFetcher started preferring
+ * ID3 APIC over MediaStore loadThumbnail (which had cached blank/generic thumbs for the same URIs).
+ */
+val LocalAudioArtApicV1AppliedKey = booleanPreferencesKey("local_audio_art_apic_v1_applied")
 
 val PauseListenHistoryKey = booleanPreferencesKey("pauseListenHistory")
 val PauseSearchHistoryKey = booleanPreferencesKey("pauseSearchHistory")
