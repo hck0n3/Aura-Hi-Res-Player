@@ -9857,6 +9857,16 @@ class MusicService :
         // was a mid-tail pause, not the end of the music — keep the detector armed and bail (a LATER
         // episode in the window can still fire).
         if (!silentNow && !quietNow) return
+        // INTRO SILENCE ≠ TAIL. Whole-track arming means opening dead air also accumulates. After ≥7s the
+        // far-from-end path used to fire a "tail" crossfade and SKIP the song (owner log 0.6.163:
+        // OjMLBY2cVPk / "A Man You Would Write About" — tier=silence remaining≈291s ~7s after start).
+        // leadingSilenceUs is finalized only at the FIRST loud frame: while it is still negative we have
+        // never heard music on this arm, so this silence cannot be a trailing tail. Stay armed; do NOT
+        // schedule the 7s recheck (that recheck was the skip). After music starts, notifiedThisSilence
+        // resets and a real end-of-song silence can fire normally.
+        if (silentNow && proc.leadingSilenceUsOrNegative() < 0L) {
+            return
+        }
         // TIER 1 distance scaling — far from the end, TRUE silence must persist LONGER (7s vs 3.5s)
         // before firing: with the 30s arm window a ≥3.5s noise-gated pause (album skit, grand pause,
         // live-set gap) at remaining≈27s would otherwise fade+advance and skip real music. A genuine
