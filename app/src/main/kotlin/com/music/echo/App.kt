@@ -363,7 +363,20 @@ class App : Application(), SingletonImageLoader.Factory, androidx.work.Configura
         // 0.6.160: LocalAudioArtFetcher used to return MediaStore loadThumbnail BEFORE reading ID3 APIC,
         // so Coil disk-cached blank/generic glyphs for localaudioart: URIs. Drop those entries once so
         // upgraded installs re-decode the real embedded cover (same URI, different bytes).
-        if (settings[iad1tya.echo.music.constants.LocalAudioArtApicV1AppliedKey] != true) {
+        // 0.6.164: also bust caches after switching to encoded localaudioart://a/… models (#apic2).
+        if (settings[iad1tya.echo.music.constants.LocalAudioArtApicV2AppliedKey] != true) {
+            runCatching {
+                val loader = SingletonImageLoader.get(this@App)
+                loader.memoryCache?.clear()
+                loader.diskCache?.clear()
+            }
+            runCatching {
+                dataStore.edit {
+                    it[iad1tya.echo.music.constants.LocalAudioArtApicV1AppliedKey] = true
+                    it[iad1tya.echo.music.constants.LocalAudioArtApicV2AppliedKey] = true
+                }
+            }.onFailure { reportException(it) }
+        } else if (settings[iad1tya.echo.music.constants.LocalAudioArtApicV1AppliedKey] != true) {
             runCatching {
                 val loader = SingletonImageLoader.get(this@App)
                 loader.memoryCache?.clear()
@@ -1641,8 +1654,13 @@ class App : Application(), SingletonImageLoader.Factory, androidx.work.Configura
 
             components {
                 // Render embedded cover art for local audio files (content://media/.../audio/media/{id}).
-                // Higher priority than Coil's default ContentUriFetcher; returns null for non-audio URIs so
-                // remote/http and other content URIs fall through to the built-in fetchers unchanged.
+                // Local MP3/FLAC covers: map private-scheme strings to LocalAudioArtModel BEFORE Coil's
+                // String→Uri mapper can mangle nested content:// URIs, then fetch APIC/folder art.
+                // (share_log: FileNotFoundException "No content provider: localaudioart:content://…")
+                add(iad1tya.echo.music.utils.coil.LocalAudioArtFetcher.StringMapper())
+                add(iad1tya.echo.music.utils.coil.LocalAudioArtFetcher.CoilUriMapper())
+                add(iad1tya.echo.music.utils.coil.LocalAudioArtFetcher.ModelKeyer())
+                add(iad1tya.echo.music.utils.coil.LocalAudioArtFetcher.ModelFetcherFactory())
                 add(iad1tya.echo.music.utils.coil.LocalAudioArtFetcher.Factory())
             }
 

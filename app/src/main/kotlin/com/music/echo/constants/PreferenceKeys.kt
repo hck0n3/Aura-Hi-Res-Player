@@ -417,6 +417,12 @@ val EnableExportAsMp3DefaultOnV1AppliedKey = booleanPreferencesKey("enable_expor
  */
 val LocalAudioArtApicV1AppliedKey = booleanPreferencesKey("local_audio_art_apic_v1_applied")
 
+/**
+ * One-shot (0.6.164): clear Coil caches after localaudioart models switched to encoded
+ * `localaudioart://a/…#apic2` (nested content:// strings were failing Coil/ContentResolver).
+ */
+val LocalAudioArtApicV2AppliedKey = booleanPreferencesKey("local_audio_art_apic_v2_applied")
+
 val PauseListenHistoryKey = booleanPreferencesKey("pauseListenHistory")
 val PauseSearchHistoryKey = booleanPreferencesKey("pauseSearchHistory")
 val DisableScreenshotKey = booleanPreferencesKey("disableScreenshot")

@@ -1,14 +1,19 @@
-# Aura Hi-Res Player 0.6.163
+# Aura Hi-Res Player 0.6.164
 
-Hotfix: ya no se cierra la app al pasar de canción con el fundido (crossfade) encendido.
+Portadas de MP3 locales restauradas y recuperación cuando un stream/vídeo llega como archivo inválido.
 
 ---
 
-## 🛠️ Estabilidad
+## 📂 Música local
 
-- Corregido un cierre al reproducir playlists con **crossfade ON**: el player saliente ya no muta su cola a mitad del fundido (eso chocaba con media3 y lanzaba un `IllegalStateException` sin mensaje). Ahora se estaciona al final del tema sin tocar la lista.
-- También se quitaron mutaciones equivalentes en el swap rápido de vídeo.
+- Las portadas embebidas (APIC/ID3) y las de carpeta (`cover.jpg`, etc.) vuelven a mostrarse en la app, notificación y Android Auto.
+- Corregido el fallo `localaudioart:…` que el sistema trataba como ContentProvider inexistente.
+- Tras actualizar: **vuelve a escanear** tu música local si alguna portada o etiqueta sigue en blanco.
 
-## 📦 Del 0.6.162
+## 🎬 Vídeo / streaming
 
-- Abrir audio local desde otras apps, mejores etiquetas/portadas ID3 y streaming de vídeo más fiable.
+- Si el stream llega vacío o no es un contenedor válido (error 3003 / “Source error”), se descarta la URL mala y se vuelve a resolver en lugar de quedarse sin audio.
+
+## 📦 Del 0.6.163
+
+- Hotfix del cierre con crossfade al pasar de canción en playlists.

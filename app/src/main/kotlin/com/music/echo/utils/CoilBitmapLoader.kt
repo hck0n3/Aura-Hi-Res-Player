@@ -123,9 +123,16 @@ class CoilBitmapLoader(
             //     point, so a coroutine deadline cannot interrupt it regardless.
             //  3. Throwing TimeoutException does NOT restore the previous cover in media3 1.10.1 — it leaves
             //     a null artwork until a later success. Prefer a real fallback plate over empty.
+            val raw = uri.toString()
+            val localMediaUri = iad1tya.echo.music.utils.coil.LocalAudioArtFetcher.parseModelUri(raw)
+            // Pass the STRING model for localaudioart so Coil's LocalAudioArtMapper runs — never hand
+            // android.net.Uri("localaudioart:…") to ContentResolver (log: FileNotFoundException
+            // "No content provider: localaudioart:content://…").
+            val coilData: Any =
+                if (localMediaUri != null) raw else smallArtworkUri(uri)
             val coilResult = runCatching {
                 val request = ImageRequest.Builder(context)
-                    .data(smallArtworkUri(uri))
+                    .data(coilData)
                     .size(MAX_ARTWORK_PX, MAX_ARTWORK_PX)
                     .allowHardware(false)
                     .build()
@@ -139,28 +146,33 @@ class CoilBitmapLoader(
             }
             if (coilResult != null) return@future coilResult
 
-            // Direct HTTP fallback when Coil cannot run in the media-session / service context
-            // (singleton imageLoader / network component not ready), which left
-            // the media notification with no large icon — only the app icon showed. A plain
-            // HTTP fetch makes the cover load reliably for the notification.
+            // Direct fallback when Coil cannot run in the media-session / service context.
             val direct = runCatching {
-                when (uri.scheme?.lowercase()) {
-                    "http", "https" -> {
-                        // Small URL here too — same reason as the Coil phase above.
-                        val conn = (java.net.URL(smallArtworkUri(uri).toString()).openConnection()
-                                as java.net.HttpURLConnection).apply {
-                            connectTimeout = 10_000
-                            readTimeout = 10_000
-                            doInput = true
+                if (localMediaUri != null) {
+                    iad1tya.echo.music.utils.coil.LocalAudioArtFetcher(
+                        context.applicationContext,
+                        localMediaUri,
+                    ).decodeBitmap()?.copyIfNeeded()
+                } else {
+                    when (uri.scheme?.lowercase()) {
+                        "http", "https" -> {
+                            val conn = (java.net.URL(smallArtworkUri(uri).toString()).openConnection()
+                                    as java.net.HttpURLConnection).apply {
+                                connectTimeout = 10_000
+                                readTimeout = 10_000
+                                doInput = true
+                            }
+                            try {
+                                conn.inputStream.use { BitmapFactory.decodeStream(it) }?.copyIfNeeded()
+                            } finally {
+                                conn.disconnect()
+                            }
                         }
-                        try {
-                            conn.inputStream.use { BitmapFactory.decodeStream(it) }?.copyIfNeeded()
-                        } finally {
-                            conn.disconnect()
-                        }
+                        "content", "file", "android.resource" ->
+                            context.contentResolver.openInputStream(uri)
+                                ?.use { BitmapFactory.decodeStream(it) }?.copyIfNeeded()
+                        else -> null
                     }
-                    else -> context.contentResolver.openInputStream(uri)
-                        ?.use { BitmapFactory.decodeStream(it) }?.copyIfNeeded()
                 }
             }.getOrElse {
                 Timber.tag("CoilBitmapLoader").w(it, "Direct artwork fetch failed")

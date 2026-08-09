@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
+import android.net.Uri
 import android.os.Build
 import android.util.Size
 import coil3.ImageLoader
@@ -12,27 +13,36 @@ import coil3.decode.DataSource
 import coil3.fetch.FetchResult
 import coil3.fetch.Fetcher
 import coil3.fetch.ImageFetchResult
+import coil3.key.Keyer
+import coil3.map.Mapper
 import coil3.request.Options
 import coil3.Uri as CoilUri
 
 /**
+ * Coil model for local embedded/folder art. Using a dedicated type (not a nested
+ * `localaudioart:content://…` string) avoids Coil3 Uri parsing mangling the inner MediaStore URI
+ * and avoids ContentResolver treating the private scheme as a content provider.
+ */
+data class LocalAudioArtModel(
+    val mediaUri: Uri,
+    /** Stable Coil memory/disk cache key (includes optional cache-bust fragment). */
+    val cacheKey: String,
+)
+
+/**
  * Coil fetcher that renders the EMBEDDED cover art of a local audio file.
  *
- * Local songs set their `thumbnailUrl` to [uriFor]`(mediaContentUri)` — a private `localaudioart:` scheme
- * wrapping the song's MediaStore / SAF content URI (or a `file://` path). We use a DEDICATED scheme
- * (instead of pointing Coil straight at `content://…`) so this fetcher is the ONLY component that can
- * claim it — Coil's built-in ContentUriFetcher matches all `content://` URIs and would otherwise try to
- * decode audio bytes as an image.
+ * Local songs set their `thumbnailUrl` to [uriFor]`(mediaContentUri)`. Prefer the encoded form
+ * `localaudioart://a/<urlencoded>#apic2` so Coil never sees a nested `content://` inside the scheme-specific
+ * part. Legacy `localaudioart:content://…` models from older scans remain accepted by [unwrapModel].
  *
  * **APIC first.** On API 29+, `ContentResolver.loadThumbnail` often returns a generic / empty MediaStore
- * glyph for newly scanned MP3s even when the file has a real ID3 cover. Returning that success early
- * (pre-0.6.160) meant Aura never read the embedded picture that other apps showed. We decode
- * `MediaMetadataRetriever.embeddedPicture` first and only fall back to `loadThumbnail` when there is
- * no APIC (folder art / album-level MediaStore thumb).
+ * glyph for newly scanned MP3s even when the file has a real ID3 cover. We decode
+ * `MediaMetadataRetriever.embeddedPicture` first and only fall back to `loadThumbnail` / folder art.
  */
 class LocalAudioArtFetcher(
     private val context: Context,
-    private val uri: android.net.Uri,
+    private val uri: Uri,
 ) : Fetcher {
 
     override suspend fun fetch(): FetchResult? {
@@ -44,6 +54,9 @@ class LocalAudioArtFetcher(
         )
     }
 
+    /** Blocking decode for media-session / notification loaders that are not on Coil's pipeline. */
+    fun decodeBitmap(): Bitmap? = loadEmbeddedArt()
+
     private fun loadEmbeddedArt(): Bitmap? {
         decodeEmbeddedPicture(uri)?.let { return it }
 
@@ -53,13 +66,12 @@ class LocalAudioArtFetcher(
             }.getOrNull()?.takeIf { it.width > 1 && it.height > 1 }?.let { return it }
         }
 
-        // Fallback: check for folder art in the same directory if this is a file or file-backed content URI
         findFolderArt(uri)?.let { return it }
 
         return null
     }
 
-    private fun decodeEmbeddedPicture(uri: android.net.Uri): Bitmap? {
+    private fun decodeEmbeddedPicture(uri: Uri): Bitmap? {
         val retriever = MediaMetadataRetriever()
         var pfd: android.os.ParcelFileDescriptor? = null
         return try {
@@ -98,11 +110,10 @@ class LocalAudioArtFetcher(
         }
     }
 
-    private fun findFolderArt(uri: android.net.Uri): Bitmap? {
+    private fun findFolderArt(uri: Uri): Bitmap? {
         val filePath = when (uri.scheme) {
             "file" -> uri.path
             "content" -> {
-                // Try querying DATA column for direct file path on legacy/file-backed URIs
                 runCatching {
                     context.contentResolver.query(
                         uri,
@@ -123,7 +134,10 @@ class LocalAudioArtFetcher(
         val parentDir = java.io.File(filePath).parentFile ?: return null
         if (!parentDir.exists() || !parentDir.isDirectory) return null
 
-        val artNames = listOf("cover.jpg", "cover.png", "folder.jpg", "folder.png", "album.jpg", "album.png", "front.jpg", "front.png")
+        val artNames = listOf(
+            "cover.jpg", "cover.png", "folder.jpg", "folder.png",
+            "album.jpg", "album.png", "front.jpg", "front.png",
+        )
         for (name in artNames) {
             val artFile = java.io.File(parentDir, name)
             if (artFile.exists() && artFile.canRead()) {
@@ -136,11 +150,37 @@ class LocalAudioArtFetcher(
         return null
     }
 
+    class ModelFetcherFactory : Fetcher.Factory<LocalAudioArtModel> {
+        override fun create(data: LocalAudioArtModel, options: Options, imageLoader: ImageLoader): Fetcher {
+            return LocalAudioArtFetcher(options.context.applicationContext, data.mediaUri)
+        }
+    }
+
+    /** Legacy CoilUri factory — maps mangled/legacy private-scheme URIs into this fetcher. */
     class Factory : Fetcher.Factory<CoilUri> {
         override fun create(data: CoilUri, options: Options, imageLoader: ImageLoader): Fetcher? {
             val realUri = parseModelUri(data.toString()) ?: return null
             return LocalAudioArtFetcher(options.context.applicationContext, realUri)
         }
+    }
+
+    class StringMapper : Mapper<String, LocalAudioArtModel> {
+        override fun map(data: String, options: Options): LocalAudioArtModel? {
+            val media = parseModelUri(data) ?: return null
+            return LocalAudioArtModel(media, data)
+        }
+    }
+
+    class CoilUriMapper : Mapper<CoilUri, LocalAudioArtModel> {
+        override fun map(data: CoilUri, options: Options): LocalAudioArtModel? {
+            val raw = data.toString()
+            val media = parseModelUri(raw) ?: return null
+            return LocalAudioArtModel(media, raw)
+        }
+    }
+
+    class ModelKeyer : Keyer<LocalAudioArtModel> {
+        override fun key(data: LocalAudioArtModel, options: Options): String = data.cacheKey
     }
 
     companion object {
@@ -149,29 +189,36 @@ class LocalAudioArtFetcher(
 
         /**
          * Wrap a local audio content/file URI as a thumbnail model this fetcher will handle.
-         * Optional `#apic1` busts Coil disk entries that cached pre-0.6.160 MediaStore blanks for the
-         * same media URI (one-shot cache clear in App also covers upgrades).
+         *
+         * Encoded form (`localaudioart://a/<urlencoded>#apic2`) avoids Coil3 / Android Uri parsers
+         * treating the nested `content://` as a second scheme. `#apic2` busts Coil disk entries that
+         * cached blanks or failed loads for older model strings.
          */
-        fun uriFor(mediaContentUri: String): String = SCHEME_PREFIX + mediaContentUri + "#apic1"
+        fun uriFor(mediaContentUri: String): String =
+            SCHEME_PREFIX + "//a/" + Uri.encode(mediaContentUri) + "#apic2"
 
         /**
-         * Strip the private scheme (+ optional `#apic1` cache bust) and return the inner URI string,
-         * or null if [raw] is not a local-audio-art model / not a content|file URI.
+         * Strip the private scheme (+ optional fragment) and return the inner media URI string,
+         * or null if [raw] is not a local-audio-art model.
          */
         fun unwrapModel(raw: String): String? {
             if (!raw.startsWith(SCHEME_PREFIX)) return null
-            val inner = raw.removePrefix(SCHEME_PREFIX).substringBefore('#')
-            if (!inner.startsWith("content:") && !inner.startsWith("file:")) return null
-            return inner
+            val body = raw.removePrefix(SCHEME_PREFIX).substringBefore('#')
+            when {
+                body.startsWith("//a/") -> {
+                    val decoded = Uri.decode(body.removePrefix("//a/"))
+                    if (decoded.startsWith("content:") || decoded.startsWith("file:")) return decoded
+                    return null
+                }
+                // Legacy pre-0.6.164: `localaudioart:content://…` / `localaudioart:file://…`
+                body.startsWith("content:") || body.startsWith("file:") -> return body
+                else -> return null
+            }
         }
 
-        /**
-         * Parse `localaudioart:<uri>[#fragment]` into the underlying media URI.
-         * Accepts legacy models without `#apic1` so DB rows from older scans still resolve.
-         */
-        fun parseModelUri(raw: String): android.net.Uri? {
+        fun parseModelUri(raw: String): Uri? {
             val inner = unwrapModel(raw) ?: return null
-            return runCatching { android.net.Uri.parse(inner) }.getOrNull()
+            return runCatching { Uri.parse(inner) }.getOrNull()
         }
     }
 }

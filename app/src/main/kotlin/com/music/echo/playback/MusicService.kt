@@ -6826,7 +6826,11 @@ class MusicService :
         // instead of handleGenericIOError — but both do the same purge + re-prepare, so the only real effect
         // was moving a SimpleCache file-unlink onto the main looper inside onPlayerError (the exact cost
         // registry #74 flagged). No behaviour gained, a main-thread cost added.
+        // CONTAINER_UNSUPPORTED (3003) + NoDeclaredBrand: googlevideo often returns HTML/empty when the
+        // URL is dead or n-transform failed — not a playable container. Treat like a bad stream so we
+        // drop the cached URL and re-resolve (owner log 0.6.162: Source error / extractors could not read).
         return error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED ||
+                error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED ||
                 error.errorCode == PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE
     }
 
