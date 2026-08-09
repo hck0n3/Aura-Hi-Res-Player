@@ -1,14 +1,28 @@
 package iad1tya.echo.music.ui.screens.equalizer.axion
 
 import androidx.compose.animation.*
+import android.content.Context
+import android.media.audiofx.Visualizer
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.drag
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.State
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.media3.common.C
+import androidx.media3.common.Player
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -58,10 +72,25 @@ import iad1tya.echo.music.eq.data.ParametricEQBand
 import iad1tya.echo.music.eq.data.SavedEQProfile
 import iad1tya.echo.music.ui.component.Material3SettingsGroup
 import iad1tya.echo.music.ui.component.Material3SettingsItem
+import iad1tya.echo.music.LocalPlayerConnection
+import iad1tya.echo.music.constants.EqFftMeterEnabledKey
+import iad1tya.echo.music.constants.HighPerformanceModeKey
+import iad1tya.echo.music.ui.newui.AuraDialogWindowEffects
+import iad1tya.echo.music.ui.newui.AuraFloatingSurface
 import iad1tya.echo.music.ui.newui.AuraPalette
+import iad1tya.echo.music.ui.newui.AuraPanelSkin
+import iad1tya.echo.music.ui.newui.AuraShapes
+import iad1tya.echo.music.ui.newui.LocalAuraFloatingChrome
 import iad1tya.echo.music.ui.newui.rememberAuraPanelSkin
 import iad1tya.echo.music.ui.utils.rememberIsWideLayout
+import iad1tya.echo.music.utils.DeviceCapabilities
+import iad1tya.echo.music.utils.DeviceTier
 import iad1tya.echo.music.utils.rememberPreference
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.setValue
+import kotlinx.coroutines.isActive
+import kotlin.math.min
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.hypot
@@ -184,6 +213,7 @@ fun AxionEqScreen(
             ) {
                 EngineUnavailableBanner()
                 EqMainContent(
+                    skin = skin,
                     viewModel = viewModel,
                     enabled = enabled,
                     graphicEnabled = graphicEnabled,
@@ -258,6 +288,222 @@ private val BAND_SLIDER_SPACING = 2.dp
 /** Inner horizontal padding of the band row. */
 private val BAND_ROW_HORIZONTAL_PADDING = 12.dp
 
+/** Bars drawn in the live FFT meter. */
+private const val EQ_FFT_BAR_COUNT = 24
+
+/** Normalized level at which the traffic-light meter turns amber. */
+private const val EQ_FFT_AMBER_THRESHOLD = 0.55f
+
+/** Normalized level at which the traffic-light meter turns cyan (saturation). */
+private const val EQ_FFT_SATURATE_THRESHOLD = 0.82f
+
+private val EqFftGreen = Color(0xFF5AD68A)
+private val EqFftAmber = Color(0xFFFFB74D)
+
+private fun eqFftMeterDefaultEnabled(context: Context, highPerf: Boolean): Boolean =
+    !highPerf && DeviceCapabilities.tier(context) != DeviceTier.LOW
+
+private fun eqFftTrafficColor(level: Float, saturateColor: Color): Color = when {
+    level >= EQ_FFT_SATURATE_THRESHOLD -> saturateColor
+    level >= EQ_FFT_AMBER_THRESHOLD -> EqFftAmber
+    else -> EqFftGreen
+}
+
+private data class EqFftSnapshot(
+    val bars: FloatArray = FloatArray(EQ_FFT_BAR_COUNT),
+    val peak: Float = 0f,
+) {
+    companion object {
+        val Zero = EqFftSnapshot()
+    }
+}
+
+/**
+ * Live FFT spectrum for the EQ screen — Android [Visualizer] tap only; does not touch Superpowered or
+ * the gain path. Smoothed once per frame like [rememberAuraRhythmLevel], but with FFT capture enabled.
+ */
+@Composable
+private fun rememberEqFftMeter(
+    audioSessionId: Int,
+    enabled: Boolean,
+    playing: Boolean,
+): State<EqFftSnapshot> {
+    val snapshot = remember { mutableStateOf(EqFftSnapshot.Zero) }
+    var rawBars by remember { mutableStateOf(FloatArray(EQ_FFT_BAR_COUNT)) }
+    var rawPeak by remember { mutableFloatStateOf(0f) }
+
+    DisposableEffect(audioSessionId, enabled) {
+        if (!enabled || audioSessionId == C.AUDIO_SESSION_ID_UNSET || audioSessionId <= 0) {
+            rawBars = FloatArray(EQ_FFT_BAR_COUNT)
+            rawPeak = 0f
+            onDispose { }
+        } else {
+            val visualizer = runCatching {
+                Visualizer(audioSessionId).apply {
+                    val range = Visualizer.getCaptureSizeRange()
+                    captureSize = range[1].coerceAtLeast(range[0])
+                    val target = min(20_000, Visualizer.getMaxCaptureRate() / 4)
+                    setDataCaptureListener(
+                        object : Visualizer.OnDataCaptureListener {
+                            override fun onWaveFormDataCapture(
+                                visualizer: Visualizer?,
+                                waveform: ByteArray?,
+                                samplingRate: Int,
+                            ) = Unit
+
+                            override fun onFftDataCapture(
+                                visualizer: Visualizer?,
+                                fft: ByteArray?,
+                                samplingRate: Int,
+                            ) {
+                                if (fft == null || fft.size < 4) return
+                                val binCount = fft.size / 2
+                                var peak = 0f
+                                val bars = FloatArray(EQ_FFT_BAR_COUNT)
+                                for (b in 0 until EQ_FFT_BAR_COUNT) {
+                                    val t0 = b.toDouble() / EQ_FFT_BAR_COUNT
+                                    val t1 = (b + 1).toDouble() / EQ_FFT_BAR_COUNT
+                                    val start = (1 + t0 * t0 * (binCount - 2)).toInt().coerceIn(1, binCount - 1)
+                                    val end = (1 + t1 * t1 * (binCount - 2)).toInt().coerceIn(start + 1, binCount)
+                                    var sum = 0.0
+                                    var count = 0
+                                    for (i in start until end) {
+                                        val re = fft[i * 2].toInt()
+                                        val im = fft[i * 2 + 1].toInt()
+                                        val mag = hypot(re.toDouble(), im.toDouble()).toFloat()
+                                        sum += mag
+                                        count++
+                                        if (mag > peak) peak = mag
+                                    }
+                                    bars[b] = if (count > 0) (sum / count / 128.0).toFloat().coerceIn(0f, 1f) else 0f
+                                }
+                                rawBars = bars
+                                rawPeak = (peak / 128f).coerceIn(0f, 1f)
+                            }
+                        },
+                        target,
+                        false,
+                        true,
+                    )
+                    setEnabled(true)
+                }
+            }.getOrNull()
+            onDispose {
+                runCatching {
+                    visualizer?.setEnabled(false)
+                    visualizer?.release()
+                }
+                rawBars = FloatArray(EQ_FFT_BAR_COUNT)
+                rawPeak = 0f
+            }
+        }
+    }
+
+    val latestBars = rememberUpdatedState(rawBars)
+    val latestPeak = rememberUpdatedState(rawPeak)
+
+    LaunchedEffect(enabled, playing) {
+        if (!enabled) {
+            snapshot.value = EqFftSnapshot.Zero
+            return@LaunchedEffect
+        }
+        val smoothed = FloatArray(EQ_FFT_BAR_COUNT)
+        var smoothedPeak = 0f
+        while (isActive) {
+            withFrameNanos {
+                val targetPeak = if (playing) latestPeak.value else 0f
+                smoothedPeak += (targetPeak - smoothedPeak) * if (targetPeak > smoothedPeak) 0.4f else 0.15f
+                val targets = if (playing) latestBars.value else FloatArray(EQ_FFT_BAR_COUNT)
+                for (i in smoothed.indices) {
+                    val t = targets.getOrElse(i) { 0f }
+                    smoothed[i] += (t - smoothed[i]) * if (t > smoothed[i]) 0.45f else 0.18f
+                }
+                snapshot.value = EqFftSnapshot(smoothed.copyOf(), smoothedPeak.coerceIn(0f, 1f))
+            }
+        }
+    }
+
+    return snapshot
+}
+
+@Composable
+private fun EqFftMeter(
+    snapshot: EqFftSnapshot,
+    skin: AuraPanelSkin,
+    modifier: Modifier = Modifier,
+) {
+    val accent = if (skin.enabled) skin.accent else MaterialTheme.colorScheme.primary
+    val plate = if (skin.enabled) skin.fill else MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.45f)
+    val line = if (skin.enabled) skin.line else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(AbsoluteSmoothCornerShape(20.dp, 60))
+            .background(plate)
+            .border(1.dp, line, AbsoluteSmoothCornerShape(20.dp, 60))
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "Medidor FFT en vivo",
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = if (skin.enabled) skin.ink else MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = when {
+                    snapshot.peak >= EQ_FFT_SATURATE_THRESHOLD -> "Saturación"
+                    snapshot.peak >= EQ_FFT_AMBER_THRESHOLD -> "Cerca del límite"
+                    else -> "OK"
+                },
+                style = MaterialTheme.typography.labelSmall,
+                color = eqFftTrafficColor(snapshot.peak, accent),
+            )
+        }
+        Canvas(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(72.dp),
+        ) {
+            val barGap = 3.dp.toPx()
+            val barWidth = ((size.width - barGap * (EQ_FFT_BAR_COUNT - 1)) / EQ_FFT_BAR_COUNT).coerceAtLeast(2f)
+            val h = size.height
+            snapshot.bars.forEachIndexed { i, level ->
+                val x = i * (barWidth + barGap)
+                val barH = (level * h * 0.92f).coerceAtLeast(if (level > 0.02f) 2.dp.toPx() else 0f)
+                val color = eqFftTrafficColor(level, accent)
+                drawRoundRect(
+                    color = line.copy(alpha = 0.35f),
+                    topLeft = Offset(x, 0f),
+                    size = androidx.compose.ui.geometry.Size(barWidth, h),
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(2.dp.toPx()),
+                )
+                if (barH > 0f) {
+                    drawRoundRect(
+                        color = color,
+                        topLeft = Offset(x, h - barH),
+                        size = androidx.compose.ui.geometry.Size(barWidth, barH),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(2.dp.toPx()),
+                    )
+                }
+            }
+            val satY = h * (1f - EQ_FFT_SATURATE_THRESHOLD * 0.92f)
+            drawLine(
+                accent.copy(alpha = 0.45f),
+                Offset(0f, satY),
+                Offset(size.width, satY),
+                1.dp.toPx(),
+            )
+        }
+    }
+}
+
 /** Slider throw at phone width. Grown by [eqVerticalScale] when the pane is wider. */
 private val BAND_SLIDER_TRAVEL = 200.dp
 
@@ -297,6 +543,7 @@ private fun eqVerticalScale(available: Dp, base: Dp): Float =
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ColumnScope.EqMainContent(
+    skin: AuraPanelSkin,
     viewModel: AxionEqViewModel,
     enabled: Boolean,
     graphicEnabled: Boolean,
@@ -311,6 +558,36 @@ private fun ColumnScope.EqMainContent(
     onManageClick: () -> Unit,
     onDeviceClick: () -> Unit,
 ) {
+    val context = LocalContext.current
+    val highPerf by rememberPreference(HighPerformanceModeKey, false)
+    val fftDefault = remember(highPerf, context) { eqFftMeterDefaultEnabled(context, highPerf) }
+    val (fftMeterEnabled, onFftMeterChange) = rememberPreference(EqFftMeterEnabledKey, fftDefault)
+
+    val playerConnection = LocalPlayerConnection.current
+    val audioSessionId = playerConnection?.player?.audioSessionId ?: C.AUDIO_SESSION_ID_UNSET
+    var isPlaying by remember { mutableStateOf(false) }
+    DisposableEffect(playerConnection) {
+        val player = playerConnection?.player
+        if (player == null) {
+            isPlaying = false
+            onDispose { }
+        } else {
+            val listener = object : Player.Listener {
+                override fun onIsPlayingChanged(playing: Boolean) {
+                    isPlaying = playing
+                }
+            }
+            player.addListener(listener)
+            isPlaying = player.isPlaying
+            onDispose { player.removeListener(listener) }
+        }
+    }
+    val fftSnapshot by rememberEqFftMeter(
+        audioSessionId = audioSessionId,
+        enabled = fftMeterEnabled,
+        playing = isPlaying,
+    )
+
     Material3SettingsGroup(
         items = listOf(
             Material3SettingsItem(
@@ -332,19 +609,51 @@ private fun ColumnScope.EqMainContent(
                 },
                 onClick = { viewModel.setEnabled(!enabled) },
             ),
+            Material3SettingsItem(
+                icon = painterResource(R.drawable.graphic_eq),
+                title = { Text("Medidor FFT en vivo") },
+                description = {
+                    Text(
+                        if (highPerf || DeviceCapabilities.tier(context) == DeviceTier.LOW) {
+                            "Visualiza el espectro en tiempo real. Desactivado por defecto en Modo Rendimiento o gama baja."
+                        } else {
+                            "Visualiza el espectro en tiempo real con semáforo verde / ámbar / cian."
+                        },
+                    )
+                },
+                trailingContent = {
+                    Switch(
+                        checked = fftMeterEnabled,
+                        onCheckedChange = onFftMeterChange,
+                    )
+                },
+                onClick = { onFftMeterChange(!fftMeterEnabled) },
+            ),
         ),
     )
 
     // Preamp applies to both modes (graphic + parametric) so it stays visible always.
-    PreampCard(preamp = preamp, enabled = enabled, onPreampChange = { viewModel.setPreampLive(it) }, onCommit = { viewModel.commit() })
+    PreampCard(
+        skin = skin,
+        preamp = preamp,
+        enabled = enabled,
+        fftPeak = if (fftMeterEnabled) fftSnapshot.peak else null,
+        onPreampChange = { viewModel.setPreampLive(it) },
+        onCommit = { viewModel.commit() },
+    )
+
+    if (fftMeterEnabled) {
+        EqFftMeter(snapshot = fftSnapshot, skin = skin)
+    }
 
     // Curve preview + factory presets drive/show the 10-band (EqConstants.BAND_COUNT) GRAPHIC curve
     // only — hidden in PARAMETRIC mode where they'd be inaudible and misleading.
     if (eqMode == EqMode.GRAPHIC) {
         // Live preview of the overall EQ curve — easier to read the shape than 10 separate sliders.
-        EqCurvePreview(bandGains = bandGains, enabled = enabled)
+        EqCurvePreview(bandGains = bandGains, enabled = enabled, skin = skin)
 
-        FactoryPresetRow(
+        FactoryPresetGrid(
+            skin = skin,
             bandGains = bandGains,
             enabled = graphicEnabled,
             onPresetClick = { viewModel.applyPreset(it) },
@@ -383,6 +692,7 @@ private fun ColumnScope.EqMainContent(
 
     when (eqMode) {
         EqMode.GRAPHIC -> BandEqCard(
+            skin = skin,
             bandGains = bandGains,
             enabled = graphicEnabled,
             onBandChange = { i, v -> viewModel.setBandGainLive(i, v) },
@@ -464,10 +774,12 @@ private fun ColumnScope.EqMainContent(
 
 
 @Composable
-private fun EqCurvePreview(bandGains: FloatArray, enabled: Boolean) {
-    val base = MaterialTheme.colorScheme.primary
-    val curveColor = if (enabled) base else base.copy(alpha = 0.35f)
-    val gridColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+private fun EqCurvePreview(bandGains: FloatArray, enabled: Boolean, skin: AuraPanelSkin) {
+    val accent = if (skin.enabled) skin.accent else MaterialTheme.colorScheme.primary
+    val curveColor = if (enabled) accent else accent.copy(alpha = 0.35f)
+    val gridColor = if (skin.enabled) skin.hairline else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+    val plate = if (skin.enabled) skin.fill else MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.4f)
+    val line = if (skin.enabled) skin.line else Color.Transparent
     val maxGain = iad1tya.echo.music.eq.data.EqConstants.GAIN_MAX
     
     // Animate color based on enablement
@@ -485,7 +797,8 @@ private fun EqCurvePreview(bandGains: FloatArray, enabled: Boolean) {
             .fillMaxWidth()
             .height(curveHeight)
             .clip(racra.compose.smooth_corner_rect_library.AbsoluteSmoothCornerShape(24.dp, 60))
-            .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.4f))
+            .background(plate)
+            .then(if (skin.enabled) Modifier.border(1.dp, line, AbsoluteSmoothCornerShape(24.dp, 60)) else Modifier)
             .padding(horizontal = 12.dp, vertical = 12.dp),
     ) {
         val w = size.width
@@ -556,6 +869,53 @@ private fun EqCurvePreview(bandGains: FloatArray, enabled: Boolean) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun EqOverlayDialog(
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    val skin = rememberAuraPanelSkin()
+    val premium = skin.enabled && skin.darkGround
+    if (premium) {
+        Dialog(
+            onDismissRequest = onDismiss,
+            properties = DialogProperties(usePlatformDefaultWidth = false),
+        ) {
+            AuraDialogWindowEffects(enabled = true)
+            CompositionLocalProvider(LocalAuraFloatingChrome provides true) {
+                AuraFloatingSurface(
+                    modifier = modifier
+                        .padding(horizontal = 24.dp)
+                        .widthIn(max = 360.dp)
+                        .fillMaxWidth(),
+                    shape = AuraShapes.Card,
+                ) {
+                    Box(modifier = Modifier.padding(18.dp)) {
+                        content()
+                    }
+                }
+            }
+        }
+    } else {
+        BasicAlertDialog(onDismissRequest = onDismiss) {
+            Surface(
+                modifier = modifier
+                    .padding(horizontal = 24.dp)
+                    .widthIn(max = 320.dp),
+                shape = AbsoluteSmoothCornerShape(30.dp, 60),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                tonalElevation = 8.dp,
+            ) {
+                Box(modifier = Modifier.padding(18.dp)) {
+                    content()
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun DeviceEqDialog(
     customProfiles: List<iad1tya.echo.music.eq.data.SavedEQProfile>,
@@ -570,18 +930,25 @@ private fun DeviceEqDialog(
             }
         }
     }
-    androidx.compose.material3.AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("EQ por dispositivo") },
-        text = {
+    val skin = rememberAuraPanelSkin()
+    val ink = if (skin.enabled) skin.ink else MaterialTheme.colorScheme.onSurface
+    val inkMuted = if (skin.enabled) skin.inkMuted else MaterialTheme.colorScheme.onSurfaceVariant
+    EqOverlayDialog(onDismiss = onDismiss) {
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Text(
+                text = "EQ por dispositivo",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = ink,
+            )
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
                     "Asigna un perfil de EQ a cada salida. Se aplicará solo cuando se conecte ese dispositivo.",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = inkMuted,
                 )
                 if (customProfiles.isEmpty()) {
-                    Text("Primero guarda al menos un perfil de EQ.", style = MaterialTheme.typography.bodyMedium)
+                    Text("Primero guarda al menos un perfil de EQ.", style = MaterialTheme.typography.bodyMedium, color = ink)
                 }
                 outputs.forEach { out ->
                     var expanded by remember { mutableStateOf(false) }
@@ -590,20 +957,21 @@ private fun DeviceEqDialog(
                         Text(
                             out.name,
                             style = MaterialTheme.typography.titleSmall,
-                            fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+                            fontWeight = FontWeight.SemiBold,
+                            color = ink,
                         )
-                        androidx.compose.foundation.layout.Box {
+                        Box {
                             OutlinedButton(
                                 onClick = { expanded = true },
                                 enabled = customProfiles.isNotEmpty(),
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = MaterialTheme.shapes.small,
                             ) { Text(selectedName) }
-                            androidx.compose.material3.DropdownMenu(
+                            DropdownMenu(
                                 expanded = expanded,
                                 onDismissRequest = { expanded = false },
                             ) {
-                                androidx.compose.material3.DropdownMenuItem(
+                                DropdownMenuItem(
                                     text = { Text("Ninguno") },
                                     onClick = {
                                         assignments[out.key] = null
@@ -612,7 +980,7 @@ private fun DeviceEqDialog(
                                     },
                                 )
                                 customProfiles.forEach { p ->
-                                    androidx.compose.material3.DropdownMenuItem(
+                                    DropdownMenuItem(
                                         text = { Text(p.name) },
                                         onClick = {
                                             assignments[out.key] = p.id
@@ -626,47 +994,76 @@ private fun DeviceEqDialog(
                     }
                 }
             }
-        },
-        confirmButton = {
-            androidx.compose.material3.TextButton(onClick = onDismiss) { Text("Listo") }
-        },
-    )
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                TextButton(onClick = onDismiss) { Text("Listo") }
+            }
+        }
+    }
 }
 
 @Composable
-private fun PreampCard(preamp: Float, enabled: Boolean, onPreampChange: (Float) -> Unit, onCommit: () -> Unit) {
-    val cardColor = if (enabled) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceContainerLow
-    
+private fun PreampCard(
+    skin: AuraPanelSkin,
+    preamp: Float,
+    enabled: Boolean,
+    fftPeak: Float?,
+    onPreampChange: (Float) -> Unit,
+    onCommit: () -> Unit,
+) {
+    val accent = if (skin.enabled) skin.accent else MaterialTheme.colorScheme.primary
+    val cardColor = if (enabled) {
+        if (skin.enabled) accent.copy(alpha = 0.10f) else MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f)
+    } else {
+        if (skin.enabled) skin.fill else MaterialTheme.colorScheme.surfaceContainerLow
+    }
+    val saturated = fftPeak != null && fftPeak >= EQ_FFT_SATURATE_THRESHOLD
+    val nearSat = fftPeak != null && !saturated && fftPeak >= EQ_FFT_AMBER_THRESHOLD
+    val badgeColor = when {
+        saturated -> accent
+        nearSat -> EqFftAmber
+        else -> if (enabled) accent else MaterialTheme.colorScheme.onSurfaceVariant
+    }
+
     val animatedBg by androidx.compose.animation.animateColorAsState(targetValue = cardColor)
-    
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(racra.compose.smooth_corner_rect_library.AbsoluteSmoothCornerShape(20.dp, 60))
             .background(animatedBg)
+            .then(if (skin.enabled) Modifier.border(1.dp, skin.line, AbsoluteSmoothCornerShape(20.dp, 60)) else Modifier)
             .padding(horizontal = 20.dp, vertical = 18.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text(
-                text = "Preamplificador", 
-                style = MaterialTheme.typography.titleMedium, 
+                text = "Preamplificador",
+                style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
-                color = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                color = if (enabled) accent else if (skin.enabled) skin.inkMuted else MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            
-            // Premium Badge for dB
-            Box(
-                modifier = Modifier
-                    .clip(androidx.compose.foundation.shape.CircleShape)
-                    .background(if (enabled) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
-                    .padding(horizontal = 10.dp, vertical = 4.dp)
-            ) {
-                Text(
-                    text = "%+.1f dB".format(preamp),
-                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                    color = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (fftPeak != null) {
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .clip(androidx.compose.foundation.shape.CircleShape)
+                            .background(eqFftTrafficColor(fftPeak, accent)),
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .clip(androidx.compose.foundation.shape.CircleShape)
+                        .background(badgeColor.copy(alpha = if (enabled) 0.15f else 0.05f))
+                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                ) {
+                    Text(
+                        text = "%+.1f dB".format(preamp),
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                        color = badgeColor,
+                    )
+                }
             }
         }
         Slider(
@@ -676,105 +1073,109 @@ private fun PreampCard(preamp: Float, enabled: Boolean, onPreampChange: (Float) 
             valueRange = EqConstants.PREAMP_MIN..EqConstants.PREAMP_MAX,
             enabled = enabled,
             colors = SliderDefaults.colors(
-                thumbColor = MaterialTheme.colorScheme.primary,
-                activeTrackColor = MaterialTheme.colorScheme.primary,
-                inactiveTrackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
-            )
+                thumbColor = accent,
+                activeTrackColor = accent,
+                inactiveTrackColor = accent.copy(alpha = 0.2f),
+            ),
         )
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-private fun FactoryPresetRow(
+private fun FactoryPresetGrid(
+    skin: AuraPanelSkin,
     bandGains: FloatArray,
     enabled: Boolean,
     onPresetClick: (FactoryPreset) -> Unit,
 ) {
+    val accent = if (skin.enabled) skin.accent else MaterialTheme.colorScheme.primary
+    val fill = if (skin.enabled) skin.fill else MaterialTheme.colorScheme.surfaceContainerLow
+    val line = if (skin.enabled) skin.line else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
+    val ink = if (skin.enabled) skin.ink else MaterialTheme.colorScheme.onSurface
+    val inkMuted = if (skin.enabled) skin.inkMuted else MaterialTheme.colorScheme.onSurfaceVariant
+
     // Derived from the CANONICAL enum order on purpose: several curves can match within the 0.5 dB
-    // tolerance (FLAT matches anything near zero), so the winner must not depend on display order —
-    // otherwise the reorder below would change WHICH preset is considered active.
+    // tolerance (FLAT matches anything near zero), so the winner must not depend on display order.
     val selectedPreset = FactoryPreset.entries.firstOrNull { preset ->
         bandGains.size == preset.gains.size &&
-        bandGains.indices.all { kotlin.math.abs(bandGains[it] - preset.gains[it]) < 0.5f }
-    }
-
-    // SELECTED FIRST (owner: "que no ande buscando cuál perfil está seleccionado"). Display-only: the
-    // chip's onClick passes the FactoryPreset object itself, so what gets APPLIED never depends on
-    // position. The rest keep their canonical order behind it.
-    val displayPresets = remember(selectedPreset) {
-        if (selectedPreset == null) FactoryPreset.entries.toList()
-        else listOf(selectedPreset) + FactoryPreset.entries.filter { it != selectedPreset }
-    }
-    val presetScrollState = rememberScrollState()
-    // Bring the (now first) selected chip into view: after a reorder the row would otherwise stay
-    // scrolled where the user was, showing late chips instead of the one he just picked.
-    LaunchedEffect(selectedPreset) {
-        if (selectedPreset != null) presetScrollState.animateScrollTo(0)
+            bandGains.indices.all { kotlin.math.abs(bandGains[it] - preset.gains[it]) < 0.5f }
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text(
             text = "PREAJUSTES AUDIÓFILOS",
             style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.5.sp, fontWeight = FontWeight.Bold),
-            color = MaterialTheme.colorScheme.primary,
+            color = accent,
             modifier = Modifier.padding(start = 4.dp, top = 8.dp),
         )
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(presetScrollState),
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            maxItemsInEachRow = 3,
         ) {
-            displayPresets.forEach { preset ->
-                // key() pins each chip's animation state to ITS preset: without it the state lives in the
-                // positional slot, so after a reorder the scale animation would play on the wrong chip.
+            FactoryPreset.entries.forEach { preset ->
                 key(preset) {
                     val isSelected = selectedPreset == preset
-                    val animatedScale by androidx.compose.animation.core.animateFloatAsState(targetValue = if (isSelected) 1.05f else 1f)
-
-                    FilterChip(
-                        selected = isSelected,
-                        onClick = { if (enabled) onPresetClick(preset) },
-                        enabled = enabled,
-                        label = {
+                    val shape = RoundedCornerShape(14.dp)
+                    Box(
+                        modifier = Modifier
+                            .weight(1f, fill = true)
+                            .clip(shape)
+                            .background(if (isSelected) accent.copy(alpha = 0.12f) else fill)
+                            .border(
+                                width = if (isSelected) 2.dp else 1.dp,
+                                color = if (isSelected) accent else line,
+                                shape = shape,
+                            )
+                            .clickable(enabled = enabled) { onPresetClick(preset) }
+                            .padding(horizontal = 10.dp, vertical = 10.dp),
+                        contentAlignment = Alignment.CenterStart,
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            if (isSelected) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Check,
+                                    contentDescription = null,
+                                    tint = accent,
+                                    modifier = Modifier.size(14.dp),
+                                )
+                            }
                             Text(
                                 text = preset.displayName,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                color = if (enabled) ink else inkMuted,
+                                maxLines = 2,
                             )
-                        },
-                        modifier = Modifier.graphicsLayer {
-                            scaleX = animatedScale
-                            scaleY = animatedScale
-                        },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = MaterialTheme.colorScheme.primary,
-                            selectedLabelColor = MaterialTheme.colorScheme.onPrimary
-                        ),
-                        shape = androidx.compose.foundation.shape.CircleShape,
-                        border = if (isSelected) null else FilterChipDefaults.filterChipBorder(enabled, false)
-                    )
+                        }
+                    }
                 }
             }
         }
-        
+
         AnimatedVisibility(
             visible = selectedPreset != null,
             enter = expandVertically() + fadeIn(),
-            exit = shrinkVertically() + fadeOut()
+            exit = shrinkVertically() + fadeOut(),
         ) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 4.dp, vertical = 2.dp)
-                    .clip(racra.compose.smooth_corner_rect_library.AbsoluteSmoothCornerShape(12.dp, 60))
-                    .background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f))
-                    .padding(12.dp)
+                    .clip(AbsoluteSmoothCornerShape(12.dp, 60))
+                    .background(if (skin.enabled) accent.copy(alpha = 0.08f) else MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f))
+                    .then(if (skin.enabled) Modifier.border(1.dp, line, AbsoluteSmoothCornerShape(12.dp, 60)) else Modifier)
+                    .padding(12.dp),
             ) {
                 Text(
                     text = selectedPreset?.description ?: "",
                     style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
-                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    color = if (skin.enabled) skin.inkMuted else MaterialTheme.colorScheme.onSecondaryContainer,
                 )
             }
         }
@@ -783,18 +1184,22 @@ private fun FactoryPresetRow(
 
 @Composable
 private fun BandEqCard(
+    skin: AuraPanelSkin,
     bandGains: FloatArray,
     enabled: Boolean,
     onBandChange: (Int, Float) -> Unit,
     onBandCommit: () -> Unit,
     onReset: () -> Unit,
 ) {
+    val plate = if (skin.enabled) skin.fill else MaterialTheme.colorScheme.surfaceContainerLow
+    val line = if (skin.enabled) skin.line else Color.Transparent
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(MaterialTheme.shapes.extraLarge)
-                .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                .background(plate)
+                .then(if (skin.enabled) Modifier.border(1.dp, line, MaterialTheme.shapes.extraLarge) else Modifier)
                 .padding(vertical = 16.dp),
         ) {
             // #49(b) — the band row used to be a fixed-width `horizontalScroll` Row: every band was a hard
@@ -828,6 +1233,7 @@ private fun BandEqCard(
                         label = EqConstants.FREQUENCY_LABELS[band],
                         value = bandGains.getOrElse(band) { 0f },
                         enabled = enabled,
+                        accent = if (skin.enabled) skin.accent else MaterialTheme.colorScheme.primary,
                         onValueChange = { onBandChange(band, it) },
                         onValueChangeFinished = onBandCommit,
                         travel = travel,
@@ -1363,6 +1769,7 @@ private fun EqBandSlider(
     label: String,
     value: Float,
     enabled: Boolean,
+    accent: Color,
     onValueChange: (Float) -> Unit,
     onValueChangeFinished: () -> Unit,
     modifier: Modifier = Modifier.width(BAND_SLIDER_MIN_WIDTH),
@@ -1375,7 +1782,7 @@ private fun EqBandSlider(
         Text(
             text = "%+d".format(value.roundToInt()),
             style = MaterialTheme.typography.labelSmall,
-            color = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+            color = if (enabled) accent else MaterialTheme.colorScheme.outline,
             textAlign = TextAlign.Center,
         )
         Spacer(modifier = Modifier.height(4.dp))
@@ -1388,6 +1795,11 @@ private fun EqBandSlider(
                 onValueChangeFinished = onValueChangeFinished,
                 valueRange = EqConstants.GAIN_MIN..EqConstants.GAIN_MAX,
                 enabled = enabled,
+                colors = SliderDefaults.colors(
+                    thumbColor = accent,
+                    activeTrackColor = accent,
+                    inactiveTrackColor = accent.copy(alpha = 0.2f),
+                ),
                 modifier = Modifier
                     .width(travel)
                     .layout { measurable, constraints ->
@@ -1479,67 +1891,60 @@ private fun SavePresetDialog(
 ) {
     var name by remember { mutableStateOf("") }
 
-    val cardShape = AbsoluteSmoothCornerShape(30.dp, 60)
+    val skin = rememberAuraPanelSkin()
+    val ink = if (skin.enabled) skin.ink else MaterialTheme.colorScheme.onSurface
+    val accent = if (skin.enabled) skin.accent else MaterialTheme.colorScheme.primary
     val blockShape = AbsoluteSmoothCornerShape(22.dp, 60)
     val actionShape = AbsoluteSmoothCornerShape(18.dp, 60)
 
-    BasicAlertDialog(onDismissRequest = onDismiss) {
-        Surface(
-            modifier = Modifier
-                .padding(horizontal = 24.dp)
-                .widthIn(max = 320.dp),
-            shape = cardShape,
-            color = MaterialTheme.colorScheme.surfaceContainerHigh,
-            tonalElevation = 8.dp,
-        ) {
+    EqOverlayDialog(onDismiss = onDismiss) {
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Column(
-                modifier = Modifier.padding(18.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(blockShape)
+                    .then(
+                        if (skin.enabled && skin.darkGround) Modifier.background(Color.Transparent)
+                        else Modifier.background(MaterialTheme.colorScheme.surfaceContainer),
+                    )
+                    .padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Surface(
-                    shape = blockShape,
-                    color = MaterialTheme.colorScheme.surfaceContainer,
-                ) {
-                    Column(
-                        modifier = Modifier.padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        Text(
-                            text = stringResource(R.string.eq_save_dialog_title),
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(top = 4.dp),
-                        )
-                        OutlinedTextField(
-                            value = name,
-                            onValueChange = { name = it },
-                            placeholder = { Text(stringResource(R.string.eq_save_name_hint)) },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = MaterialTheme.shapes.medium,
-                            textStyle = MaterialTheme.typography.bodyMedium,
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                                unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
-                            ),
-                        )
-                    }
-                }
-
-                Row(
+                Text(
+                    text = stringResource(R.string.eq_save_dialog_title),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = ink,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    placeholder = { Text(stringResource(R.string.eq_save_name_hint)) },
+                    singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                    shape = MaterialTheme.shapes.medium,
+                    textStyle = MaterialTheme.typography.bodyMedium,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = accent,
+                        unfocusedBorderColor = if (skin.enabled) skin.line else MaterialTheme.colorScheme.outlineVariant,
+                    ),
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+            ) {
+                TextButton(onClick = onDismiss, shape = actionShape) {
+                    Text(text = stringResource(R.string.cancel))
+                }
+                OutlinedButton(
+                    onClick = { if (name.isNotBlank()) onSave(name) },
+                    enabled = name.isNotBlank(),
+                    shape = actionShape,
                 ) {
-                    TextButton(onClick = onDismiss, shape = actionShape) {
-                        Text(text = stringResource(R.string.cancel))
-                    }
-                    OutlinedButton(
-                        onClick = { if (name.isNotBlank()) onSave(name) },
-                        enabled = name.isNotBlank(),
-                        shape = actionShape,
-                    ) {
-                        Text(text = stringResource(R.string.eq_save))
-                    }
+                    Text(text = stringResource(R.string.eq_save))
                 }
             }
         }
@@ -1554,107 +1959,100 @@ private fun ManagePresetsDialog(
     onDeleteSelected: (List<String>) -> Unit,
 ) {
     val selectedIds = remember { mutableStateListOf<String>() }
-
-    val cardShape = AbsoluteSmoothCornerShape(30.dp, 60)
+    val skin = rememberAuraPanelSkin()
+    val ink = if (skin.enabled) skin.ink else MaterialTheme.colorScheme.onSurface
+    val inkMuted = if (skin.enabled) skin.inkMuted else MaterialTheme.colorScheme.onSurfaceVariant
+    val hairline = if (skin.enabled) skin.hairline else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
     val blockShape = AbsoluteSmoothCornerShape(22.dp, 60)
     val actionShape = AbsoluteSmoothCornerShape(18.dp, 60)
 
-    BasicAlertDialog(onDismissRequest = onDismiss) {
-        Surface(
-            modifier = Modifier
-                .padding(horizontal = 24.dp)
-                .widthIn(max = 320.dp),
-            shape = cardShape,
-            color = MaterialTheme.colorScheme.surfaceContainerHigh,
-            tonalElevation = 8.dp,
-        ) {
+    EqOverlayDialog(onDismiss = onDismiss) {
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Column(
-                modifier = Modifier.padding(18.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(blockShape)
+                    .then(
+                        if (skin.enabled && skin.darkGround) Modifier.background(Color.Transparent)
+                        else Modifier.background(MaterialTheme.colorScheme.surfaceContainer),
+                    )
+                    .padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Surface(
-                    shape = blockShape,
-                    color = MaterialTheme.colorScheme.surfaceContainer,
-                ) {
-                    Column(
-                        modifier = Modifier.padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                Text(
+                    text = stringResource(R.string.eq_manage_presets),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = ink,
+                )
+                HorizontalDivider(
+                    modifier = Modifier.padding(vertical = 4.dp),
+                    color = hairline,
+                )
+                if (customProfiles.isEmpty()) {
+                    Text(
+                        text = stringResource(R.string.eq_no_custom_presets),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = inkMuted,
+                    )
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.heightIn(max = 300.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
-                        Text(
-                            text = stringResource(R.string.eq_manage_presets),
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                        )
-                        HorizontalDivider(
-                            modifier = Modifier.padding(vertical = 4.dp),
-                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
-                        )
-                        if (customProfiles.isEmpty()) {
-                            Text(
-                                text = stringResource(R.string.eq_no_custom_presets),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        } else {
-                            LazyColumn(
-                                modifier = Modifier.heightIn(max = 300.dp),
-                                verticalArrangement = Arrangement.spacedBy(4.dp),
-                            ) {
-                                items(customProfiles) { profile ->
-                                    val isSelected = selectedIds.contains(profile.id)
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clip(MaterialTheme.shapes.small)
-                                            .clickable {
-                                                if (isSelected) selectedIds.remove(profile.id)
-                                                else selectedIds.add(profile.id)
-                                            }
-                                            .padding(vertical = 4.dp),
-                                    ) {
-                                        Checkbox(
-                                            checked = isSelected,
-                                            onCheckedChange = {
-                                                if (it == true) selectedIds.add(profile.id)
-                                                else selectedIds.remove(profile.id)
-                                            },
-                                        )
-                                        Spacer(Modifier.width(8.dp))
-                                        Text(
-                                            text = profile.name,
-                                            style = MaterialTheme.typography.bodyLarge,
-                                            color = MaterialTheme.colorScheme.onSurface,
-                                        )
+                        items(customProfiles) { profile ->
+                            val isSelected = selectedIds.contains(profile.id)
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(MaterialTheme.shapes.small)
+                                    .clickable {
+                                        if (isSelected) selectedIds.remove(profile.id)
+                                        else selectedIds.add(profile.id)
                                     }
-                                }
+                                    .padding(vertical = 4.dp),
+                            ) {
+                                Checkbox(
+                                    checked = isSelected,
+                                    onCheckedChange = {
+                                        if (it == true) selectedIds.add(profile.id)
+                                        else selectedIds.remove(profile.id)
+                                    },
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    text = profile.name,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = ink,
+                                )
                             }
                         }
                     }
                 }
+            }
 
-                HorizontalDivider(
-                    modifier = Modifier.padding(bottom = 4.dp),
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
-                )
+            HorizontalDivider(
+                modifier = Modifier.padding(bottom = 4.dp),
+                color = hairline,
+            )
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
-                ) {
-                    TextButton(onClick = onDismiss, shape = actionShape) {
-                        Text(text = stringResource(R.string.cancel))
-                    }
-                    if (selectedIds.isNotEmpty()) {
-                        OutlinedButton(
-                            onClick = { onDeleteSelected(selectedIds.toList()) },
-                            shape = actionShape,
-                            colors = ButtonDefaults.outlinedButtonColors(
-                                contentColor = MaterialTheme.colorScheme.error,
-                            ),
-                        ) {
-                            Text(text = stringResource(R.string.eq_delete_selected))
-                        }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+            ) {
+                TextButton(onClick = onDismiss, shape = actionShape) {
+                    Text(text = stringResource(R.string.cancel))
+                }
+                if (selectedIds.isNotEmpty()) {
+                    OutlinedButton(
+                        onClick = { onDeleteSelected(selectedIds.toList()) },
+                        shape = actionShape,
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = MaterialTheme.colorScheme.error,
+                        ),
+                    ) {
+                        Text(text = stringResource(R.string.eq_delete_selected))
                     }
                 }
             }

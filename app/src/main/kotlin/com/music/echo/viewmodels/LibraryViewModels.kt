@@ -351,18 +351,30 @@ constructor(
             .stateIn(viewModelScope, SharingStarted.Lazily, null)
 
     val songs =
-        context.dataStore.data
-            .map {
-                Triple(
-                    it[ArtistSongSortTypeKey].toEnum(ArtistSongSortType.CREATE_DATE) to (it[ArtistSongSortDescendingKey]
-                        ?: true),
-                    it[HideExplicitKey] ?: false,
-                    it[HideVideoSongsKey] ?: false
-                )
-            }.distinctUntilChanged()
-            .flatMapLatest { (sortDesc, hideExplicit, hideVideoSongs) ->
+        combine(
+            artist.map { it?.artist?.name.orEmpty() }.distinctUntilChanged(),
+            context.dataStore.data
+                .map {
+                    Triple(
+                        it[ArtistSongSortTypeKey].toEnum(ArtistSongSortType.CREATE_DATE) to (it[ArtistSongSortDescendingKey]
+                            ?: true),
+                        it[HideExplicitKey] ?: false,
+                        it[HideVideoSongsKey] ?: false
+                    )
+                }.distinctUntilChanged(),
+        ) { name, prefs -> name to prefs }
+            .flatMapLatest { (name, prefs) ->
+                val (sortDesc, hideExplicit, hideVideoSongs) = prefs
                 val (sortType, descending) = sortDesc
-                database.artistSongs(artistId, sortType, descending).map { it.filterExplicit(hideExplicit).filterVideoSongs(hideVideoSongs) }
+                // Liked-only + same-name artist ids (YTM channel vs LA########).
+                database.artistLibraryOrLikedSongs(artistId, name).map { list ->
+                    val sorted = when (sortType) {
+                        ArtistSongSortType.CREATE_DATE -> list
+                        ArtistSongSortType.NAME -> list.sortedBy { it.song.title.lowercase() }
+                        ArtistSongSortType.PLAY_TIME -> list.sortedBy { it.song.totalPlayTime }
+                    }.let { if (descending) it.asReversed() else it }
+                    sorted.filterExplicit(hideExplicit).filterVideoSongs(hideVideoSongs)
+                }
             }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 }
 

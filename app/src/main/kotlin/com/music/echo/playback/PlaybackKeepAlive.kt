@@ -31,6 +31,8 @@ class PlaybackKeepAlive(context: Context) {
     private var wakeLock: PowerManager.WakeLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
     @Volatile private var held = false
+    /** Android Auto / car projection — longer release debounce; short focus blips are common. */
+    @Volatile private var androidAutoConnected = false
     private val mainHandler = Handler(Looper.getMainLooper())
     private var pendingRelease: Runnable? = null
 
@@ -38,9 +40,21 @@ class PlaybackKeepAlive(context: Context) {
     fun setPlaying(playing: Boolean) {
         if (playing) {
             cancelPendingRelease()
-            acquire(reason = "playing")
+            acquire(reason = if (androidAutoConnected) "playing (Auto)" else "playing")
         } else {
             scheduleRelease()
+        }
+    }
+
+    /**
+     * Mirror Auto/car controller presence. Does not acquire by itself; [setPlaying] / [refreshIfPlaying]
+     * use the flag for debounce length and log reasons.
+     */
+    @Synchronized
+    fun setAndroidAutoConnected(connected: Boolean) {
+        androidAutoConnected = connected
+        if (connected && held) {
+            Timber.tag(TAG).i("keep-alive Auto latch on")
         }
     }
 
@@ -53,7 +67,7 @@ class PlaybackKeepAlive(context: Context) {
             // Drop and re-take so a half-held OEM lock cannot leave us “held=true” with nothing.
             releaseInternal()
         }
-        acquire(reason = "screen-off refresh")
+        acquire(reason = if (androidAutoConnected) "screen-off refresh (Auto)" else "screen-off refresh")
     }
 
     @Synchronized
@@ -64,6 +78,7 @@ class PlaybackKeepAlive(context: Context) {
 
     private fun scheduleRelease() {
         cancelPendingRelease()
+        val delay = if (androidAutoConnected) RELEASE_DEBOUNCE_AUTO_MS else RELEASE_DEBOUNCE_MS
         val r = Runnable {
             synchronized(this) {
                 pendingRelease = null
@@ -71,7 +86,7 @@ class PlaybackKeepAlive(context: Context) {
             }
         }
         pendingRelease = r
-        mainHandler.postDelayed(r, RELEASE_DEBOUNCE_MS)
+        mainHandler.postDelayed(r, delay)
     }
 
     private fun cancelPendingRelease() {
@@ -133,5 +148,7 @@ class PlaybackKeepAlive(context: Context) {
         const val TAG = "PlaybackKeepAlive"
         /** Cover Auto/BT focus blips + crossfade swap gaps without holding locks after a real pause. */
         const val RELEASE_DEBOUNCE_MS = 12_000L
+        /** Auto/car: focus + route renegotiation often spans 15–30s; keep Wifi/CPU awake through that. */
+        const val RELEASE_DEBOUNCE_AUTO_MS = 45_000L
     }
 }

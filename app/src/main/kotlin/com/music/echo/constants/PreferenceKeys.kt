@@ -1069,6 +1069,10 @@ val SuggestionRegionSlugToName =
         "il" to "Israel"
     )
 
+// EQ screen real-time FFT level meter (Android Visualizer — observation-only, no DSP). Default ON on capable
+// devices; default OFF under High-Performance Mode or on LOW-tier hardware. User can override either way.
+val EqFftMeterEnabledKey = booleanPreferencesKey("eq_fft_meter_enabled")
+
 // High-Performance Mode: master toggle for low-end devices (Android car head units, cheap tablets, <=4GB RAM,
 // Android TV). When ON, all heavy VISUALS + video decode + memory are cut (canvas/visualizer/artist-video off,
 // video decode capped to 1280p, next-song preload off, video mode disabled, smaller buffers/image cache) while

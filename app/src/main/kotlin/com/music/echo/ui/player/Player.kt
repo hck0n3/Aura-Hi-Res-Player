@@ -3566,17 +3566,18 @@ fun InlineLyricsView(
 ) {
     val playerConnection = LocalPlayerConnection.current ?: return
     val rawCurrentLyrics by playerConnection.currentLyrics.collectAsState(initial = null)
-    // Wrong-song guard: ignore a lyrics row that belongs to a previously-playing song (the
-    // flatMapLatest DB flow lags a track change by a frame), so the previous song's lyrics can
-    // never flash onto the current one — during that gap we correctly stay in the LOADING state.
-    val currentLyrics = rawCurrentLyrics?.takeIf { it.id == mediaMetadata?.id }
+    // Audible song during crossfade (outgoing pin), not the already-published incoming metadata.
+    val lyricsMeta by playerConnection.lyricsMediaMetadata.collectAsState()
+    // Wrong-song guard: ignore a lyrics row that belongs to a different song (flatMapLatest lag).
+    val currentLyrics = rawCurrentLyrics?.takeIf { it.id == lyricsMeta?.id }
     val lyrics = remember(currentLyrics) { currentLyrics?.lyrics?.trim() }
     val context = LocalContext.current
     val database = LocalDatabase.current
     val coroutineScope = rememberCoroutineScope()
 
-    LaunchedEffect(mediaMetadata?.id, currentLyrics) {
-        if (mediaMetadata != null && currentLyrics == null) {
+    LaunchedEffect(lyricsMeta?.id, currentLyrics) {
+        val meta = lyricsMeta
+        if (meta != null && currentLyrics == null) {
             delay(500)
             withContext(Dispatchers.IO) {
                 try {
@@ -3585,9 +3586,9 @@ fun InlineLyricsView(
                         iad1tya.echo.music.di.LyricsHelperEntryPoint::class.java
                     )
                     val lyricsHelper = entryPoint.lyricsHelper()
-                    val fetchedLyricsWithProvider = lyricsHelper.getLyrics(mediaMetadata)
+                    val fetchedLyricsWithProvider = lyricsHelper.getLyrics(meta)
                     database.query {
-                        upsert(LyricsEntity(mediaMetadata.id, fetchedLyricsWithProvider.lyrics, fetchedLyricsWithProvider.provider))
+                        upsert(LyricsEntity(meta.id, fetchedLyricsWithProvider.lyrics, fetchedLyricsWithProvider.provider))
                     }
                 } catch (e: Exception) {
                     timber.log.Timber.e(e, "Lyrics fetch/save failed")

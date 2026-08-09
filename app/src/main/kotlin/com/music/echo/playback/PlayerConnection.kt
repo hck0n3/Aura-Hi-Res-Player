@@ -125,8 +125,16 @@ class PlayerConnection(
         mediaMetadata.flatMapLatest {
             database.song(it?.id)
         }
-    val currentLyrics = mediaMetadata.flatMapLatest { mediaMetadata ->
-        database.lyrics(mediaMetadata?.id)
+    /**
+     * Lyrics must follow the AUDIBLE song during a crossfade (outgoing pin), not the already-published
+     * incoming [mediaMetadata]. Otherwise the panel shows the next track's lyrics while the previous
+     * song is still hearing — the exact "la letra no coincide" report.
+     */
+    val lyricsMediaMetadata = combine(mediaMetadata, service.crossfadeOutgoingMetadata) { live, outgoing ->
+        outgoing ?: live
+    }.stateIn(scope, SharingStarted.Eagerly, player.currentMetadata)
+    val currentLyrics = lyricsMediaMetadata.flatMapLatest { meta ->
+        database.lyrics(meta?.id)
     }
     val currentFormat =
         mediaMetadata.flatMapLatest { mediaMetadata ->

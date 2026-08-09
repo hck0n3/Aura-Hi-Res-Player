@@ -176,6 +176,7 @@ import iad1tya.echo.music.utils.rememberDeviceThrottle
 import iad1tya.echo.music.utils.rememberEnumPreference
 import iad1tya.echo.music.utils.rememberPreference
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.isActive
 import androidx.core.net.toUri
 import androidx.core.view.WindowCompat
@@ -354,6 +355,19 @@ private fun AuraPlayerShape(
     val currentFormatEntity by database.format(mediaMetadata?.id).collectAsState(initial = null)
     val download by LocalDownloadUtil.current.getDownload(mediaMetadata?.id ?: "")
         .collectAsState(initial = null)
+    val librarySongFlow = remember(mediaMetadata?.id) {
+        val meta = mediaMetadata
+        if (meta != null) {
+            database.songWithEquivalent(
+                meta.id,
+                meta.title,
+                meta.artists.firstOrNull()?.name,
+            )
+        } else {
+            flowOf(null)
+        }
+    }
+    val librarySong by librarySongFlow.collectAsState(initial = null)
 
     val listenTogetherManager = LocalListenTogetherManager.current
     val listenTogetherRoleState = listenTogetherManager?.role?.collectAsState(initial = RoomRole.NONE)
@@ -1185,23 +1199,22 @@ private fun AuraPlayerShape(
                 // expanded — speaker → the same [AudioDeviceBottomSheet], letra → the same
                 // `showInlineLyrics` toggle (it is literally passed down as `onToggleLyrics`), cola → the
                 // same `queueSheetState.expandSoft()`. Those three now live ONLY in the queue bar. What is
-                // left here is what nothing else on this screen owns: like, descarga.
+                // left here is what nothing else on this screen owns: like, descarga, biblioteca, búsqueda.
                 //
-                // ── ONE ROW OF FOUR, BY OWNER REQUEST ("no me gusta", "añadir a playlist") ────────────
-                // Compartir / Ecualizador / Vídeo used to share this row (two rows of four); the owner
-                // asked for exactly one row up here and moved those three down into [AuraQueueBar]'s own
-                // bottom row instead — see that file for their (unchanged) actions: the same
-                // `toggleDislikeCurrentSong`, the same `settings/equalizer` route, the same ACTION_SEND
-                // over [ShareLinks.song]. Nothing below duplicates logic that now lives there.
+                // ── ONE ROW OF SIX, BY OWNER REQUEST ───────────────────────────────────────────────
+                // Original four: like, no me gusta, añadir a playlist, descargar — kept verbatim.
+                // Extended with biblioteca (toggle inLibrary, same path as AuraPlayerMenu / SongMenu)
+                // and quick-search (frost sheet, no navigation). Compartir / Ecualizador / Vídeo live
+                // in [AuraQueueBar]'s bottom row instead.
                 //
-                // Measured: 4 × 48 + 3 × 12 = 228 dp, centred, so 66 dp of clear margin each side at
-                // 360 dp and 46 dp at 320 dp — comfortably clears every phone width without wrapping.
+                // Six controls use SpaceEvenly so 320 dp phones still fit without wrapping.
                 Spacer(Modifier.height(if (dense) 2.dp else 6.dp))
                 val liked = currentSong?.song?.liked == true
+                val isInLibrary = librarySong?.song?.inLibrary != null
                 val quickAccessGlyph = if (dense) 20.dp else 22.dp
                 val isLocalTrack = meta.id.isLocalMediaId() || currentSong?.song?.isLocal == true
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     AuraIconButton(
@@ -1244,7 +1257,7 @@ private fun AuraPlayerShape(
                         tint = AuraPalette.OnGround.copy(alpha = 0.7f),
                         modifier = Modifier.tvFocusable(isTvOrCar, CircleShape),
                     )
-                    // Local files are already on-device — hide download and keep the other three centred.
+                    // Local files are already on-device — hide download; SpaceEvenly keeps spacing even.
                     if (!isLocalTrack) {
                     Box(contentAlignment = Alignment.Center) {
                         AuraIconButton(
@@ -1287,6 +1300,38 @@ private fun AuraPlayerShape(
                         }
                     }
                     }
+                    AuraIconButton(
+                        icon = AuraIcons.Library,
+                        contentDescription = stringResource(
+                            if (isInLibrary) R.string.remove_from_library else R.string.add_to_library,
+                        ),
+                        onClick = { playerConnection.toggleLibrary() },
+                        size = quickAccessGlyph,
+                        tint = if (isInLibrary) transportAccent else AuraPalette.OnGround.copy(alpha = 0.7f),
+                        modifier = Modifier
+                            .tvFocusable(isTvOrCar, CircleShape)
+                            .then(
+                                if (isInLibrary) Modifier.background(
+                                    transportAccent.copy(alpha = 0.16f),
+                                    CircleShape,
+                                ) else Modifier,
+                            ),
+                    )
+                    AuraIconButton(
+                        icon = AuraIcons.Search,
+                        contentDescription = stringResource(R.string.search),
+                        onClick = {
+                            bottomSheetPageState.show {
+                                AuraPlayerQuickSearchContent(
+                                    onDismiss = bottomSheetPageState::dismiss,
+                                    isListenTogetherGuest = isListenTogetherGuest,
+                                )
+                            }
+                        },
+                        size = quickAccessGlyph,
+                        tint = AuraPalette.OnGround.copy(alpha = 0.7f),
+                        modifier = Modifier.tvFocusable(isTvOrCar, CircleShape),
+                    )
                 }
             }
         }

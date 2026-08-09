@@ -1272,12 +1272,11 @@ class MainActivity : ComponentActivity() {
                 }
 
                 LaunchedEffect(Unit) {
-                    // First-use only (BatteryReliabilityPromptShownKey). Never re-nag on every launch
-                    // for battery saver / mid-session play — the owner asked for one shot after that.
-                    // OEM kill evidence still shapes the COPY when we do show, but does not bypass the flag.
+                    // Generic prompt is one-shot (BatteryReliabilityPromptShownKey). NEW OEM kills
+                    // (ScreenOffCPU / OneKeyClean) or system battery-saver ON must re-prompt even after
+                    // that first dismiss — HyperOS China keeps killing despite exemption alone.
                     kotlinx.coroutines.delay(1500)
                     if (welcomeWillShow || showWelcomeDialog) return@LaunchedEffect
-                    if (batteryReliabilityPromptShown) return@LaunchedEffect
                     val threatTs = withContext(Dispatchers.IO) {
                         iad1tya.echo.music.utils.ExitReasonReporter
                             .latestOemPlaybackThreatTimestamp(this@MainActivity)
@@ -1291,7 +1290,7 @@ class MainActivity : ComponentActivity() {
                             batteryReliabilityOemEvidence = true
                             showBatteryReliabilityDialog = true
                         }
-                        notExempt -> {
+                        !batteryReliabilityPromptShown && notExempt -> {
                             batteryReliabilityOemEvidence = false
                             showBatteryReliabilityDialog = true
                         }

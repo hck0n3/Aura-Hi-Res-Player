@@ -47,12 +47,13 @@ fun BackgroundReliabilityDialog(
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
                     if (oemKillEvidence) {
-                        "Con el Ahorro de batería del sistema ENCENDIDO, HyperOS ahoga la red y corta " +
-                            "Bluetooth / Android Auto aunque Aura esté exenta de optimización.\n\n" +
+                        "HyperOS (Xiaomi/China) ha matado Aura en segundo plano " +
+                            "(ScreenOffCPU / limpiar / Ahorro de batería). Eso corta Bluetooth y Android Auto " +
+                            "aunque la app esté «sin restricciones».\n\n" +
                             "Haz esto YA (lo más importante primero):\n" +
                             "• Apaga el Ahorro de batería del teléfono mientras escuchas en el coche\n" +
-                            "• En Ajustes de Aura: sin restricciones + inicio automático\n" +
-                            "• En recientes: bloquea Aura (candado) y no la limpies con «limpiar»"
+                            "• Ajustes de Aura: sin restricciones + Inicio automático / Autostart\n" +
+                            "• En recientes: bloquea Aura (candado) y no uses «limpiar» / OneKeyClean"
                     } else {
                         "En muchas marcas el teléfono duerme la red o cierra Aura con la pantalla bloqueada. " +
                             "Eso deja segundos de silencio hasta que desbloqueas, o corta Bluetooth / Android Auto.\n\n" +

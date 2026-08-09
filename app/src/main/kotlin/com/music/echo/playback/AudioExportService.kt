@@ -20,28 +20,38 @@ import androidx.documentfile.provider.DocumentFile
 import com.arthenica.ffmpegkit.FFmpegKit
 import com.arthenica.ffmpegkit.ReturnCode
 import com.music.innertube.YouTube
+import dagger.hilt.android.AndroidEntryPoint
 import iad1tya.echo.music.R
 import iad1tya.echo.music.constants.AudioQuality
 import iad1tya.echo.music.constants.ExportingSongIdsKey
 import iad1tya.echo.music.constants.ExportedSongIdsKey
+import iad1tya.echo.music.db.MusicDatabase
+import iad1tya.echo.music.db.entities.LyricsEntity
+import iad1tya.echo.music.reco.GenreCache
 import iad1tya.echo.music.utils.YTPlayerUtils
 import iad1tya.echo.music.utils.dataStore
 import androidx.datastore.preferences.core.edit
+import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
 
+@AndroidEntryPoint
 class AudioExportService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val httpClient = OkHttpClient()
+
+    @Inject
+    lateinit var database: MusicDatabase
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         // P11: promote to a foreground dataSync service for the whole export so the OS does not
@@ -109,6 +119,36 @@ class AudioExportService : Service() {
                         ?.value
                         ?.toIntOrNull()
                 }
+            val dbSong = runCatching { database.getSongById(songId) }.getOrNull()
+            val albumId = dbSong?.song?.albumId
+            val albumArtist = albumId
+                ?.let { id -> runCatching { database.album(id).first() }.getOrNull() }
+                ?.artists
+                ?.joinToString(", ") { it.name }
+                ?.takeIf { it.isNotBlank() }
+            val trackNumber = albumId?.let { id ->
+                runCatching {
+                    database.openHelper.readableDatabase.query(
+                        "SELECT `index` FROM song_album_map WHERE songId = ? AND albumId = ? LIMIT 1",
+                        arrayOf(songId, id),
+                    ).use { cursor ->
+                        if (cursor.moveToFirst() && !cursor.isNull(0)) {
+                            cursor.getInt(0) + 1
+                        } else {
+                            null
+                        }
+                    }
+                }.getOrNull()
+            }
+            val genre = dbSong?.artists
+                ?.firstOrNull()
+                ?.name
+                ?.lowercase()
+                ?.let { key -> GenreCache.snapshot(this@AudioExportService)[key] }
+                ?.takeIf { it.isNotBlank() }
+            val lyrics = runCatching { database.lyrics(songId).first() }.getOrNull()
+                ?.lyrics
+                ?.takeIf { it.isNotBlank() && it != LyricsEntity.LYRICS_NOT_FOUND }
             val rangedStreamUrl = playbackData.streamUrl.let { baseUrl ->
                 val totalLength = playbackData.format.contentLength ?: 10_000_000L
                 "$baseUrl&range=0-$totalLength"
@@ -168,6 +208,10 @@ class AudioExportService : Service() {
                 title = songTitle,
                 artist = songArtist,
                 album = songAlbum,
+                albumArtist = albumArtist,
+                genre = genre,
+                track = trackNumber,
+                lyrics = lyrics,
                 year = year,
                 coverPath = if (artworkDownloaded) tempArtworkFile.absolutePath else null,
             )
@@ -350,6 +394,10 @@ class AudioExportService : Service() {
             title: String,
             artist: String,
             album: String,
+            albumArtist: String?,
+            genre: String?,
+            track: Int?,
+            lyrics: String?,
             year: Int?,
             coverPath: String?,
         ): String {
@@ -359,12 +407,22 @@ class AudioExportService : Service() {
             val artistMeta = artist.ffmpegEscape()
             val albumMeta = album.ffmpegEscape()
             val yearMeta = year?.toString()?.ffmpegEscape()
+            val albumArtistMeta = albumArtist?.takeIf { it.isNotBlank() }?.ffmpegEscape()
+            val genreMeta = genre?.takeIf { it.isNotBlank() }?.ffmpegEscape()
+            val trackMeta = track?.takeIf { it > 0 }?.toString()?.ffmpegEscape()
+            val lyricsMeta = lyrics?.takeIf { it.isNotBlank() }?.ffmpegEscape()
             val dateFlags = if (yearMeta != null) " -metadata date='$yearMeta' -metadata year='$yearMeta'" else ""
+            val albumArtistFlag =
+                if (albumArtistMeta != null) " -metadata album_artist='$albumArtistMeta'" else ""
+            val genreFlag = if (genreMeta != null) " -metadata genre='$genreMeta'" else ""
+            val trackFlag = if (trackMeta != null) " -metadata track='$trackMeta'" else ""
+            val lyricsFlag = if (lyricsMeta != null) " -metadata lyrics='$lyricsMeta'" else ""
+            val extraMeta = "$dateFlags$albumArtistFlag$genreFlag$trackFlag$lyricsFlag"
             return if (coverPath != null) {
                 val escapedCover = coverPath.ffmpegEscape()
-                "-y -i '$escapedInput' -i '$escapedCover' -map 0:a -map 1:v -c:v mjpeg -disposition:v attached_pic -c:a libmp3lame -b:a 320k -id3v2_version 3 -metadata title='$titleMeta' -metadata artist='$artistMeta' -metadata album='$albumMeta'$dateFlags -metadata:s:v title='Album cover' -metadata:s:v comment='Cover (front)' '$escapedOutput'"
+                "-y -i '$escapedInput' -i '$escapedCover' -map 0:a -map 1:v -c:v mjpeg -disposition:v attached_pic -c:a libmp3lame -b:a 320k -id3v2_version 3 -metadata title='$titleMeta' -metadata artist='$artistMeta' -metadata album='$albumMeta'$extraMeta -metadata:s:v title='Album cover' -metadata:s:v comment='Cover (front)' '$escapedOutput'"
             } else {
-                "-y -i '$escapedInput' -c:a libmp3lame -b:a 320k -id3v2_version 3 -metadata title='$titleMeta' -metadata artist='$artistMeta' -metadata album='$albumMeta'$dateFlags '$escapedOutput'"
+                "-y -i '$escapedInput' -c:a libmp3lame -b:a 320k -id3v2_version 3 -metadata title='$titleMeta' -metadata artist='$artistMeta' -metadata album='$albumMeta'$extraMeta '$escapedOutput'"
             }
         }
 

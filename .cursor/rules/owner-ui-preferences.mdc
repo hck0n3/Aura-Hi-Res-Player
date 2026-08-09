@@ -1,0 +1,68 @@
+---
+description: Preferencias persistentes del dueño de Aura Hi-Res — no re-preguntar ni revertir
+alwaysApply: true
+---
+
+# Preferencias del dueño (no olvidar / no revertir)
+
+El dueño es el beta tester. Si algo de esta lista desaparece en un cambio, **es un bug**, no un “rediseño”.
+
+## Reproductor (interfaz nueva)
+
+- Fila inferior (junto a Letras / cola / altavoz): debe haber un control **Más / Ajustes** (icono o texto) que abre el menú de opciones del reproductor. **No** dejar solo los tres puntos arriba como única puerta.
+- **Cast** fijo arriba a la derecha (ya existe; no ocultarlo ni empujarlo fuera).
+- Bajo la portada animada (canvas): **sin** badge/aviso tipo `CANVAS ▸ EN MOVIMIENTO`. Solo animar.
+- Mini-reproductor: estilo por defecto = **Brillo animado (GLOW_ANIMATED)**.
+- Interfaz nueva: **ON por defecto** (instalación nueva / clave sin escribir). Quien la apagó a mano se respeta. Tour de bienvenida explica dónde está todo y cómo desactivarla.
+- Estilo Apple Music: en New UI solo afecta la **portada**, nunca los botones/controles.
+- Temporizador de apagado: **eliminado** (botón + motor). No reintroducirlo.
+
+## Listas / álbum / EP / canciones (New UI)
+
+- Debe verse **cuáles ya se reproducieron** (marca/check o estado claro), no solo en shuffle de biblioteca.
+- Carruseles y resultados (Inicio, búsqueda, artista): identidad **Apple Music + YouTube Music** — tamaños tipados (`AuraContentType`: álbum ~156, vídeo ~268 16:9, artista círculo), títulos de sección grandes (no mono caps), portadas full-bleed, badges limpios (texto en vídeo/EP/Single; icono en álbum). Estantería 2 filas para discos; vídeos en fila héroe; canciones en lista. “Ver todos” en 2 columnas con poster.
+- **Fijar playlist al inicio** (sustituye “marcación rápida”): menú de playlist → fijar/quitar; sección “Fijadas en inicio” con esas playlists reales (sin relleno de canciones).
+
+## Artista (New UI)
+
+- Sección **Tu biblioteca** visible en la página de YouTube (el FAB local↔online está muerto).
+- Tocar una canción de biblioteca o top → cola con el resto de esa lista (`allLibrarySongs` / sección completa).
+- Flecha “ver todos” del encabezado de sección: clickable en toda la fila.
+
+## Audio
+
+- **No resetear el ecualizador** del usuario en cada actualización. Migraciones one-shot solo si el flag aún no se aplicó; nunca re-sembrar Audiophile/JR Tuning encima de un perfil activo del usuario.
+- Cola inteligente infinita: priorizar asertividad (contexto/artista/género) sobre exploración genérica; sin placebos de DSP Opus.
+- Safe Volume + Audio Normalization son el camino de volumen; no inventar “mejoras Opus” con EQ inventado.
+- No tocar Superpowered/EQ DSP salvo petición explícita de mejorar EQ.
+- **Recomendado para ti (IA)**: asertivo al gusto (artistas/géneros ancla); sin deriva de género.
+- **Modo sin conexión**: interruptor para apagarlo en la MISMA pantalla offline; solo descargas reales; **cero** red para reproducir (ni radio ni stream).
+- Presets EQ: se pueden añadir curvas audiófilas de fábrica; sin tocar el motor nativo.
+- **Xiaomi/HyperOS cortes BT/Auto**: el dueño tiene muertes reales `ScreenOffCPUCheckKill` / `OneKeyClean` / ahorro de batería ON. No inventar bugs de crossfade sin evidencia. Aviso de fiabilidad debe reaparecer tras esos kills. Mitigación cross-OEM: `PlaybackKeepAlive` (PARTIAL_WAKE_LOCK + WifiLock) mientras suena + prompt de batería en **todas** las marcas si aún está optimizada; no se puede impedir un kill duro del OEM solo con código.
+
+
+## Apariencia premium (regla de oro)
+
+- Pantallas Aura: misma piel (Ground, tipografía, hairlines, teal).
+- Lo que **no** puede ser pantalla Aura completa (diálogos, hojas, menús ⋮, crear/agregar playlist, Lista IA, dispositivos de audio): placa **translúcida esmerilada** (`FrostFill` con alpha real + blur de ventana cuando el equipo lo permite) para que se vea lo de atrás. Nunca tarjeta Material plana ni agujero vacío.
+- Menú **Más** del reproductor (`AuraPlayerMenu` dentro de `BottomSheetMenu`): el contenido no pinta `GroundRaised` opaco encima del frost (fondo transparente con `LocalAuraFloatingChrome`).
+- Hojas hermanas (comentarios, añadir música, historial de actividad, región de sugerencias, tempo/pitch, sort/chips): misma placa frost cuando Interfaz nueva está ON.
+- Hoja de **cuenta** (avatar / `SettingDialoge`): misma placa **frost** (`AuraFloatingSurface`) que el resto de diálogos premium — el dueño lo pidió explícitamente al lanzamiento (antes era opaca).
+- Filas dentro de esos overlays: sin relleno `Ground` opaco que tape el cristal.
+- Portadas en exploración (shelves, posters, filas tipadas, vídeos 16:9): **siempre full-bleed** (`ContentScale.Crop` / `fillBleed`) — nunca barras de gradiente a los lados. El interruptor “Recortar las portadas” sigue valiendo en reproductor / cola / héroe.
+- Cola: la canción actual solo en **SONANDO** (no repetir debajo como REPRODUCIENDO).
+- Indicador de reproducción: barras animadas (como la apariencia anterior); glifo play mientras bufferiza.
+- Iniciar sesión YTM: WebView **dentro** de la app; al terminar **no** reiniciar con ProcessPhoenix — volver atrás y sincronizar.
+- Música local: filtro de carpetas = **incluir** (solo escanear las elegidas). Vacío = todo el dispositivo. No reinterpretar como excluir.
+
+## Cosas que el dueño ya pidió y se revirtieron/perdieron — vigiladas
+
+- Botones del reproductor: fila arriba like/dislike/playlist/download **+ biblioteca + lupa** (búsqueda rápida frost: reproducir / a continuación / cola / playlist); share/EQ/vídeo en la barra inferior. Cast y Más inferiores intactos.
+- EQ (Axion): presets de fábrica en **rejilla** con orden fijo (no reordenar el activo al frente); medidor **FFT** semáforo (cian = saturando), ON por defecto salvo High Performance / gama baja; indicador de saturación en preamp cuando FFT ON. Solo UI — no tocar Superpowered/DSP.
+- Cabecera de playlist (New UI): híbrido — **Aleatorio / Reproducir** con nombre; buscar / más / guardar / descargar / compartir solo icono.
+- Búsqueda: sin hueco doble de insets; voz inline (no diálogo grande de Google si hay SpeechRecognizer).
+- Playlist: búsqueda no en barra sticky permanente; en cabecera que hace scroll. Sin placa negra sticky con el nombre al hacer scroll (solo atrás flotante; `pinTitleOnScroll = false`).
+- Grids de álbumes favoritos / “ver todos” del artista: piel Aura (`AuraFavoriteAlbumsScreen` / `AuraArtistSectionGridScreen`), no Material TopAppBar clásico.
+- Ritmo visual del suelo (AuraRhythm): solo cuando el reproductor está expandido y no hay modo alto rendimiento / Cast.
+- Volumen / calidad en New UI: ciclo de calidad en el menú Aura; hoja de dispositivos con piel frost.
+---

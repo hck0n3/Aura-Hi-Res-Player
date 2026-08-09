@@ -82,8 +82,9 @@ fun ArtistMenu(
         coroutineScope.launch {
             val songs = withContext(Dispatchers.IO) {
                 val all = database
-                    .artistSongs(artist.id, ArtistSongSortType.CREATE_DATE, true)
+                    .artistLibraryOrLikedSongs(artist.id, artist.artist.name)
                     .first()
+                    .asReversed()
                 // UNPLAYED-FIRST start: the opener is guaranteed to be an unheard song while any
                 // remain. After a reset the memory is empty, so a plain shuffle already is that order.
                 if (resetMemory) {
@@ -150,8 +151,9 @@ fun ArtistMenu(
                                         coroutineScope.launch {
                                             val songs = withContext(Dispatchers.IO) {
                                                 database
-                                                    .artistSongs(artist.id, ArtistSongSortType.CREATE_DATE, true)
+                                                    .artistLibraryOrLikedSongs(artist.id, artist.artist.name)
                                                     .first()
+                                                    .asReversed()
                                                     .map { it.toMediaItem() }
                                             }
                                             playerConnection.playQueue(
