@@ -1,5 +1,6 @@
 package iad1tya.echo.music.ui.newui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -9,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -16,161 +18,188 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
-import androidx.media3.common.MediaItem
+import androidx.navigation.NavController
+import com.music.innertube.models.AlbumItem
+import com.music.innertube.models.ArtistItem
+import com.music.innertube.models.PlaylistItem
 import com.music.innertube.models.SongItem
+import com.music.innertube.models.WatchEndpoint
+import com.music.innertube.models.YTItem
 import iad1tya.echo.music.LocalDatabase
 import iad1tya.echo.music.LocalPlayerConnection
 import iad1tya.echo.music.R
-import iad1tya.echo.music.db.entities.Song
+import iad1tya.echo.music.constants.HideVideoSongsKey
+import iad1tya.echo.music.constants.OfflineModeKey
+import iad1tya.echo.music.constants.SearchSource
+import iad1tya.echo.music.constants.SearchSourceKey
+import iad1tya.echo.music.db.entities.SearchHistory
 import iad1tya.echo.music.extensions.toMediaItem
 import iad1tya.echo.music.models.toMediaMetadata
 import iad1tya.echo.music.playback.queues.ListQueue
 import iad1tya.echo.music.playback.queues.YouTubeQueue
 import iad1tya.echo.music.ui.component.LocalMenuState
 import iad1tya.echo.music.ui.menu.AddToPlaylistDialog
-import iad1tya.echo.music.viewmodels.LocalFilter
-import iad1tya.echo.music.viewmodels.LocalSearchViewModel
+import iad1tya.echo.music.ui.menu.YouTubeAlbumMenu
+import iad1tya.echo.music.ui.menu.YouTubeArtistMenu
+import iad1tya.echo.music.ui.menu.YouTubePlaylistMenu
+import iad1tya.echo.music.ui.menu.YouTubeSongMenu
+import iad1tya.echo.music.utils.rememberEnumPreference
+import iad1tya.echo.music.utils.rememberPreference
 import iad1tya.echo.music.viewmodels.OnlineSearchSuggestionViewModel
+import iad1tya.echo.music.viewmodels.PlayerOnlineSearchViewModel
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.launch
 
 /**
- * Frost quick-search sheet opened from the expanded player. Stays on the player — no navigation.
- * Local library songs + online song hits; tap a row for play / next / queue / playlist actions.
+ * Player quick-search: same sources as Buscar (biblioteca ↔ YouTube Music), full YTM summary results,
+ * and the sheet stays open until the user closes it (back / leading chevron). Queue actions never
+ * dismiss the sheet for them.
  */
 @Composable
 fun AuraPlayerQuickSearchContent(
+    navController: NavController,
     onDismiss: () -> Unit,
     isListenTogetherGuest: Boolean = false,
     modifier: Modifier = Modifier,
-    localViewModel: LocalSearchViewModel = hiltViewModel(),
-    onlineViewModel: OnlineSearchSuggestionViewModel = hiltViewModel(),
+    suggestionViewModel: OnlineSearchSuggestionViewModel = hiltViewModel(),
+    onlineResultsViewModel: PlayerOnlineSearchViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
     val database = LocalDatabase.current
     val playerConnection = LocalPlayerConnection.current ?: return
     val menuState = LocalMenuState.current
     val keyboardController = LocalSoftwareKeyboardController.current
+    val haptic = LocalHapticFeedback.current
+    val scope = rememberCoroutineScope()
+
+    val offlineMode by rememberPreference(OfflineModeKey, false)
+    var searchSource by rememberEnumPreference(SearchSourceKey, SearchSource.ONLINE)
+    val effectiveSource = if (offlineMode) SearchSource.LOCAL else searchSource
 
     val isPlaying by playerConnection.isEffectivelyPlaying.collectAsState()
     val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
+    val hideVideoSongs by rememberPreference(HideVideoSongsKey, false)
 
     var query by rememberSaveable(stateSaver = TextFieldValue.Saver) {
         mutableStateOf(TextFieldValue())
     }
     var showChoosePlaylistDialog by rememberSaveable { mutableStateOf(false) }
-    var pendingPlaylistHit by remember { mutableStateOf<QuickSearchSong?>(null) }
+    var pendingPlaylistSong by remember { mutableStateOf<SongItem?>(null) }
 
     val focusRequester = remember { FocusRequester() }
     LaunchedEffect(Unit) {
         runCatching { focusRequester.requestFocus() }
     }
 
-    val localResult by localViewModel.result.collectAsState()
-    val onlineState by onlineViewModel.viewState.collectAsState()
+    // Only the user closes this sheet (leading back / system back). Never auto-dismiss on play.
+    BackHandler(onBack = onDismiss)
 
-    LaunchedEffect(query.text) {
-        localViewModel.query.value = query.text
-        onlineViewModel.query.value = query.text
-    }
+    val suggestionState by suggestionViewModel.viewState.collectAsState()
+    val summaryPage = onlineResultsViewModel.summaryPage
+    val onlineLoading = onlineResultsViewModel.loading
+    val committedOnline = onlineResultsViewModel.committedQuery
 
-    val localSongs = remember(localResult, query.text) {
-        if (query.text.isBlank()) emptyList()
-        else localResult.map
-            .getOrDefault(LocalFilter.SONG, emptyList())
-            .filterIsInstance<Song>()
-            .distinctBy { it.id }
-    }
-    val onlineSongs = remember(onlineState.items, query.text) {
-        if (query.text.isBlank()) emptyList()
-        else onlineState.items.filterIsInstance<SongItem>().distinctBy { it.id }
+    LaunchedEffect(query.text, effectiveSource) {
+        if (effectiveSource == SearchSource.ONLINE && !offlineMode) {
+            suggestionViewModel.query.value = query.text
+            // Typing a new query invalidates a previous committed summary until they submit again.
+            if (committedOnline != null && query.text.trim() != committedOnline) {
+                onlineResultsViewModel.clearCommitted()
+            }
+        }
     }
 
     AddToPlaylistDialog(
         isVisible = showChoosePlaylistDialog,
         onGetSong = {
-            when (val hit = pendingPlaylistHit) {
-                is QuickSearchSong.Local -> {
-                    val meta = hit.song.toMediaMetadata()
-                    database.withTransaction { insert(meta) }
-                    listOf(meta.id)
-                }
-                is QuickSearchSong.Online -> {
-                    val meta = hit.item.toMediaMetadata()
-                    database.withTransaction { insert(meta) }
-                    listOf(meta.id)
-                }
-                null -> emptyList()
-            }
+            val item = pendingPlaylistSong ?: return@AddToPlaylistDialog emptyList()
+            val meta = item.toMediaMetadata()
+            database.withTransaction { insert(meta) }
+            listOf(meta.id)
         },
         onDismiss = {
             showChoosePlaylistDialog = false
-            pendingPlaylistHit = null
+            pendingPlaylistSong = null
         },
     )
 
     val voice = rememberAuraVoiceSearch(
         onPartial = { spoken -> query = TextFieldValue(spoken, TextRange(spoken.length)) },
-        onResult = { spoken -> query = TextFieldValue(spoken, TextRange(spoken.length)) },
+        onResult = { spoken ->
+            query = TextFieldValue(spoken, TextRange(spoken.length))
+            if (effectiveSource == SearchSource.ONLINE && !offlineMode) {
+                onlineResultsViewModel.search(spoken)
+            }
+        },
     )
 
-    val openSongMenu: (QuickSearchSong) -> Unit = { hit ->
+    val openSongActions: (SongItem) -> Unit = { song ->
         menuState.show {
             AuraPlayerQuickSearchSongMenu(
-                hit = hit,
+                title = song.title,
                 isGuest = isListenTogetherGuest,
                 onDismiss = menuState::dismiss,
                 onPlayNow = {
                     menuState.dismiss()
-                    onDismiss()
-                    when (hit) {
-                        is QuickSearchSong.Local ->
-                            playerConnection.playQueue(
-                                ListQueue(
-                                    title = context.getString(R.string.queue_searched_songs),
-                                    items = listOf(hit.song.toMediaItem()),
-                                ),
-                            )
-                        is QuickSearchSong.Online ->
-                            playerConnection.playQueue(
-                                YouTubeQueue.radio(hit.item.toMediaMetadata()),
-                            )
-                    }
+                    playerConnection.playQueue(
+                        YouTubeQueue(WatchEndpoint(videoId = song.id), song.toMediaMetadata()),
+                    )
+                    // Sheet stays open — user closes when they want.
                 },
                 onPlayNext = {
                     menuState.dismiss()
-                    val item = hit.mediaItem
-                    playerConnection.playNext(item)
+                    playerConnection.playNext(song.toMediaItem())
                 },
                 onAddToQueue = {
                     menuState.dismiss()
-                    playerConnection.addToQueue(hit.mediaItem)
+                    playerConnection.addToQueue(song.toMediaItem())
                 },
                 onAddToPlaylist = {
                     menuState.dismiss()
-                    pendingPlaylistHit = hit
+                    pendingPlaylistSong = song
                     showChoosePlaylistDialog = true
                 },
             )
         }
     }
 
-    val lazyListState = rememberLazyListState()
-    LaunchedEffect(Unit) {
-        snapshotFlow { lazyListState.firstVisibleItemScrollOffset }
-            .drop(1)
-            .collect { if (lazyListState.isScrollInProgress) keyboardController?.hide() }
+    val openYtMenu: (YTItem) -> Unit = { item ->
+        menuState.show {
+            when (item) {
+                is SongItem -> YouTubeSongMenu(
+                    song = item,
+                    navController = navController,
+                    onDismiss = menuState::dismiss,
+                )
+                is AlbumItem -> YouTubeAlbumMenu(
+                    albumItem = item,
+                    navController = navController,
+                    onDismiss = menuState::dismiss,
+                )
+                is ArtistItem -> YouTubeArtistMenu(artist = item, onDismiss = menuState::dismiss)
+                is PlaylistItem -> YouTubePlaylistMenu(
+                    playlist = item,
+                    coroutineScope = scope,
+                    onDismiss = menuState::dismiss,
+                )
+            }
+        }
     }
 
     Column(modifier = modifier.fillMaxSize()) {
@@ -184,109 +213,369 @@ fun AuraPlayerQuickSearchContent(
         AuraSearchInputBar(
             value = query,
             onValueChange = { query = it },
-            placeholder = stringResource(R.string.search_yt_music),
+            placeholder = stringResource(
+                when (effectiveSource) {
+                    SearchSource.LOCAL -> R.string.search_library
+                    SearchSource.ONLINE -> R.string.search_yt_music
+                },
+            ),
             active = true,
             onLeadingClick = onDismiss,
-            onSubmit = { keyboardController?.hide() },
-            onClear = { query = TextFieldValue("") },
+            onSubmit = {
+                keyboardController?.hide()
+                if (effectiveSource == SearchSource.ONLINE && !offlineMode) {
+                    onlineResultsViewModel.search(query.text)
+                }
+            },
+            onClear = {
+                query = TextFieldValue("")
+                onlineResultsViewModel.clearCommitted()
+            },
             onVoice = voice,
             focusRequester = focusRequester,
             onFieldTap = {},
-            showSource = false,
+            showSource = !offlineMode,
+            offlineMode = offlineMode,
+            sourceIsLocal = effectiveSource == SearchSource.LOCAL,
+            onToggleSource = { searchSource = searchSource.toggle() },
         )
 
-        LazyColumn(
-            state = lazyListState,
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f),
-        ) {
-            if (query.text.isNotBlank() && localSongs.isEmpty() && onlineSongs.isEmpty()) {
-                item(key = "quick_search_empty") {
-                    Text(
-                        text = stringResource(R.string.no_results_found),
-                        style = AuraType.RowSubtitle,
-                        color = AuraPalette.OnGroundGhost,
-                        modifier = Modifier.padding(
-                            horizontal = AuraSpacing.Gutter,
-                            vertical = 16.dp,
-                        ),
-                    )
-                }
+        when (effectiveSource) {
+            SearchSource.LOCAL -> {
+                // Same library search as Buscar ▸ Biblioteca. onDismiss is a no-op so playing a hit
+                // never closes the player sheet; only the leading back / BackHandler does.
+                AuraLocalSearchResults(
+                    query = query.text,
+                    navController = navController,
+                    onDismiss = {},
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                )
             }
 
-            if (localSongs.isNotEmpty()) {
-                item(key = "quick_search_local_header") {
-                    AuraSectionHeader(
-                        title = stringResource(R.string.filter_local),
-                        modifier = Modifier.padding(top = 4.dp),
-                    )
-                }
-                items(localSongs, key = { "quick_local_${it.id}" }) { song ->
-                    AuraSongRow(
-                        title = song.song.title,
-                        subtitle = song.artists.joinToString { it.name },
-                        thumbnailUrl = song.song.thumbnailUrl,
-                        seed = song.id,
-                        isActive = song.id == mediaMetadata?.id,
+            SearchSource.ONLINE -> {
+                val showCommitted = committedOnline != null &&
+                    query.text.trim() == committedOnline &&
+                    (summaryPage != null || onlineLoading)
+
+                if (showCommitted) {
+                    PlayerOnlineSummaryResults(
+                        summaryPage = summaryPage,
+                        loading = onlineLoading,
+                        hideVideoSongs = hideVideoSongs,
                         isPlaying = isPlaying,
-                        liked = song.song.liked,
-                        explicit = song.song.explicit,
-                        inLibrary = song.song.inLibrary != null,
-                        downloadId = song.id,
-                        format = song.format,
-                        onClick = { openSongMenu(QuickSearchSong.Local(song)) },
-                        modifier = Modifier.padding(horizontal = AuraSpacing.Gutter),
+                        mediaId = mediaMetadata?.id,
+                        albumId = mediaMetadata?.album?.id,
+                        onSongClick = { song ->
+                            if (song.id == mediaMetadata?.id) {
+                                playerConnection.togglePlayPause()
+                            } else {
+                                openSongActions(song)
+                            }
+                        },
+                        onSongLongClick = { song ->
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            openSongActions(song)
+                        },
+                        onItemClick = { item ->
+                            when (item) {
+                                is SongItem -> openSongActions(item)
+                                is AlbumItem -> navController.navigate("album/${item.id}")
+                                is ArtistItem -> navController.navigate("artist/${item.id}")
+                                is PlaylistItem -> navController.navigate("online_playlist/${item.id}")
+                            }
+                        },
+                        onItemMenu = openYtMenu,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
                     )
-                }
-            }
-
-            if (onlineSongs.isNotEmpty()) {
-                item(key = "quick_search_online_header") {
-                    AuraSectionHeader(
-                        title = stringResource(R.string.search_online),
-                        modifier = Modifier.padding(top = if (localSongs.isNotEmpty()) 8.dp else 4.dp),
-                    )
-                }
-                items(onlineSongs, key = { "quick_online_${it.id}" }) { item ->
-                    AuraYtItemRow(
-                        item = item,
-                        isActive = mediaMetadata?.id == item.id,
+                } else {
+                    // Suggestions / history / top hits while typing — same VM as Buscar online panel.
+                    PlayerOnlineSuggestionPanel(
+                        query = query.text,
+                        viewState = suggestionState,
                         isPlaying = isPlaying,
-                        onClick = { openSongMenu(QuickSearchSong.Online(item)) },
-                        onLongClick = { openSongMenu(QuickSearchSong.Online(item)) },
-                        onMenuClick = { openSongMenu(QuickSearchSong.Online(item)) },
+                        mediaId = mediaMetadata?.id,
+                        albumId = mediaMetadata?.album?.id,
+                        onRunSearch = { picked ->
+                            query = TextFieldValue(picked, TextRange(picked.length))
+                            onlineResultsViewModel.search(picked)
+                        },
+                        onFillQuery = { filled ->
+                            query = TextFieldValue(filled, TextRange(filled.length))
+                        },
+                        onDeleteHistory = { history ->
+                            database.query { delete(history) }
+                        },
+                        onSongClick = openSongActions,
+                        onItemClick = { item ->
+                            when (item) {
+                                is SongItem -> openSongActions(item)
+                                is AlbumItem -> navController.navigate("album/${item.id}")
+                                is ArtistItem -> navController.navigate("artist/${item.id}")
+                                is PlaylistItem -> navController.navigate("online_playlist/${item.id}")
+                            }
+                        },
+                        onItemMenu = openYtMenu,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
                     )
                 }
-            }
-
-            item(key = "quick_search_bottom_spacer") {
-                Spacer(Modifier.height(24.dp))
             }
         }
     }
 }
 
-/** A song hit from quick search — local DB row or online suggestion item. */
-internal sealed class QuickSearchSong {
-    abstract val mediaItem: MediaItem
-
-    data class Local(val song: Song) : QuickSearchSong() {
-        override val mediaItem: MediaItem get() = song.toMediaItem()
+@Composable
+private fun PlayerOnlineSuggestionPanel(
+    query: String,
+    viewState: iad1tya.echo.music.viewmodels.SearchSuggestionViewState,
+    isPlaying: Boolean,
+    mediaId: String?,
+    albumId: String?,
+    onRunSearch: (String) -> Unit,
+    onFillQuery: (String) -> Unit,
+    onDeleteHistory: (SearchHistory) -> Unit,
+    onSongClick: (SongItem) -> Unit,
+    onItemClick: (YTItem) -> Unit,
+    onItemMenu: (YTItem) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val lazyListState = rememberLazyListState()
+    LaunchedEffect(Unit) {
+        snapshotFlow { lazyListState.firstVisibleItemScrollOffset }
+            .drop(1)
+            .collect { if (lazyListState.isScrollInProgress) keyboardController?.hide() }
     }
 
-    data class Online(val item: SongItem) : QuickSearchSong() {
-        override val mediaItem: MediaItem get() = item.toMediaItem()
+    LazyColumn(state = lazyListState, modifier = modifier) {
+        if (viewState.history.isNotEmpty()) {
+            item(key = "pq_history_header") {
+                AuraSectionHeader(title = stringResource(R.string.search_history))
+            }
+            items(viewState.history, key = { "pq_hist_${it.query}" }) { history ->
+                AuraPlayerQueryRow(
+                    text = history.query,
+                    fromHistory = true,
+                    onClick = { onRunSearch(history.query) },
+                    onDelete = { onDeleteHistory(history) },
+                    onFill = { onFillQuery(history.query) },
+                )
+            }
+        }
+
+        if (viewState.suggestions.isNotEmpty()) {
+            item(key = "pq_sug_header") {
+                AuraSectionHeader(title = stringResource(R.string.suggestions))
+            }
+            items(viewState.suggestions, key = { "pq_sug_$it" }) { suggestion ->
+                AuraPlayerQueryRow(
+                    text = suggestion,
+                    fromHistory = false,
+                    onClick = { onRunSearch(suggestion) },
+                    onDelete = null,
+                    onFill = { onFillQuery(suggestion) },
+                )
+            }
+        }
+
+        if (viewState.items.isNotEmpty()) {
+            item(key = "pq_top_header") {
+                AuraSectionHeader(
+                    title = stringResource(
+                        if (viewState.isFromLink) R.string.parsed_from_link else R.string.top_result,
+                    ),
+                    accent = AuraPalette.Teal,
+                )
+            }
+            items(viewState.items, key = { "pq_item_${it.id}" }) { item ->
+                AuraYtItemRow(
+                    item = item,
+                    isActive = when (item) {
+                        is SongItem -> mediaId == item.id
+                        is AlbumItem -> albumId == item.id
+                        else -> false
+                    },
+                    isPlaying = isPlaying,
+                    onClick = {
+                        if (item is SongItem) onSongClick(item) else onItemClick(item)
+                    },
+                    onLongClick = { onItemMenu(item) },
+                    onMenuClick = { onItemMenu(item) },
+                )
+            }
+        }
+
+        if (query.isNotBlank() &&
+            viewState.history.isEmpty() &&
+            viewState.suggestions.isEmpty() &&
+            viewState.items.isEmpty()
+        ) {
+            item(key = "pq_hint") {
+                Text(
+                    text = stringResource(R.string.search_yt_music),
+                    style = AuraType.RowSubtitle,
+                    color = AuraPalette.OnGroundGhost,
+                    modifier = Modifier.padding(
+                        horizontal = AuraSpacing.Gutter,
+                        vertical = 16.dp,
+                    ),
+                )
+            }
+        }
+
+        item(key = "pq_sug_spacer") { Spacer(Modifier.height(24.dp)) }
     }
 }
 
-/**
- * Frost action sheet for a quick-search song. Play-next / queue / playlist do not interrupt playback;
- * play-now replaces the queue (caller dismisses the search sheet).
- */
+@Composable
+private fun PlayerOnlineSummaryResults(
+    summaryPage: com.music.innertube.pages.SearchSummaryPage?,
+    loading: Boolean,
+    hideVideoSongs: Boolean,
+    isPlaying: Boolean,
+    mediaId: String?,
+    albumId: String?,
+    onSongClick: (SongItem) -> Unit,
+    onSongLongClick: (SongItem) -> Unit,
+    onItemClick: (YTItem) -> Unit,
+    onItemMenu: (YTItem) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val lazyListState = rememberLazyListState()
+
+    LazyColumn(state = lazyListState, modifier = modifier) {
+        if (loading && summaryPage == null) {
+            item(key = "pq_loading") {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(32.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    CircularProgressIndicator(color = AuraPalette.Teal)
+                }
+            }
+        }
+
+        summaryPage?.summaries
+            ?.sortedBy { summary ->
+                when (summary.items.firstOrNull()) {
+                    is ArtistItem -> 0
+                    is SongItem -> 1
+                    is AlbumItem -> 2
+                    is PlaylistItem -> 3
+                    else -> 4
+                }
+            }
+            ?.forEach { summary ->
+                val musicItems = summary.items.filterNot {
+                    hideVideoSongs && it is SongItem && it.isVideoSong
+                }
+                if (musicItems.isEmpty()) return@forEach
+
+                item(key = "pq_sum_h_${summary.title}") {
+                    AuraSectionHeader(title = summary.title)
+                }
+                items(musicItems, key = { "pq_sum_${summary.title}_${it.id}" }) { item ->
+                    AuraYtItemRow(
+                        item = item,
+                        isActive = when (item) {
+                            is SongItem -> mediaId == item.id
+                            is AlbumItem -> albumId == item.id
+                            else -> false
+                        },
+                        isPlaying = isPlaying,
+                        onClick = {
+                            when (item) {
+                                is SongItem -> onSongClick(item)
+                                else -> onItemClick(item)
+                            }
+                        },
+                        onLongClick = {
+                            if (item is SongItem) onSongLongClick(item) else onItemMenu(item)
+                        },
+                        onMenuClick = { onItemMenu(item) },
+                    )
+                }
+            }
+
+        if (!loading && summaryPage != null &&
+            summaryPage.summaries.all { s ->
+                s.items.none { !(hideVideoSongs && it is SongItem && it.isVideoSong) }
+            }
+        ) {
+            item(key = "pq_empty") {
+                Text(
+                    text = stringResource(R.string.no_results_found),
+                    style = AuraType.RowSubtitle,
+                    color = AuraPalette.OnGroundGhost,
+                    modifier = Modifier.padding(
+                        horizontal = AuraSpacing.Gutter,
+                        vertical = 16.dp,
+                    ),
+                )
+            }
+        }
+
+        item(key = "pq_sum_spacer") { Spacer(Modifier.height(24.dp)) }
+    }
+}
+
+@Composable
+private fun AuraPlayerQueryRow(
+    text: String,
+    fromHistory: Boolean,
+    onClick: () -> Unit,
+    onDelete: (() -> Unit)?,
+    onFill: () -> Unit,
+) {
+    AuraRow(
+        title = text,
+        onClick = onClick,
+        contentDescription = text,
+        leading = {
+            AuraIconGlyph(
+                icon = if (fromHistory) AuraIcons.History else AuraIcons.Search,
+                contentDescription = null,
+                size = 17.dp,
+                tint = AuraPalette.OnGroundDisabled,
+            )
+        },
+        trailing = {
+            androidx.compose.foundation.layout.Row(
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (onDelete != null) {
+                    AuraIconButton(
+                        icon = AuraIcons.Plus,
+                        contentDescription = stringResource(R.string.search_history_remove),
+                        onClick = onDelete,
+                        size = 15.dp,
+                        tint = AuraPalette.OnGroundDisabled,
+                        modifier = Modifier.padding(end = 2.dp),
+                    )
+                }
+                AuraIconButton(
+                    icon = AuraIcons.ChevronRight,
+                    contentDescription = stringResource(R.string.search_use_suggestion),
+                    onClick = onFill,
+                    size = 16.dp,
+                    tint = AuraPalette.OnGroundDisabled,
+                )
+            }
+        },
+        modifier = Modifier.padding(horizontal = AuraSpacing.Gutter),
+    )
+}
+
 @Composable
 internal fun AuraPlayerQuickSearchSongMenu(
-    hit: QuickSearchSong,
+    title: String,
     isGuest: Boolean,
     onDismiss: () -> Unit,
     onPlayNow: () -> Unit,
@@ -295,10 +584,6 @@ internal fun AuraPlayerQuickSearchSongMenu(
     onAddToPlaylist: () -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
-        val title = when (hit) {
-            is QuickSearchSong.Local -> hit.song.song.title
-            is QuickSearchSong.Online -> hit.item.title
-        }
         Text(
             text = title,
             style = AuraType.RowTitle,
@@ -314,38 +599,26 @@ internal fun AuraPlayerQuickSearchSongMenu(
         AuraMenuRow(
             icon = AuraIcons.Play,
             label = stringResource(R.string.play),
-            onClick = {
-                onPlayNow()
-                onDismiss()
-            },
+            onClick = onPlayNow,
         )
 
         if (!isGuest) {
             AuraMenuRow(
                 icon = AuraIcons.SkipNext,
                 label = stringResource(R.string.play_next),
-                onClick = {
-                    onPlayNext()
-                    onDismiss()
-                },
+                onClick = onPlayNext,
             )
             AuraMenuRow(
                 icon = AuraIcons.Queue,
                 label = stringResource(R.string.add_to_queue),
-                onClick = {
-                    onAddToQueue()
-                    onDismiss()
-                },
+                onClick = onAddToQueue,
             )
         }
 
         AuraMenuRow(
             icon = AuraIcons.PlaylistAdd,
             label = stringResource(R.string.add_to_playlist),
-            onClick = {
-                onAddToPlaylist()
-                onDismiss()
-            },
+            onClick = onAddToPlaylist,
         )
 
         Spacer(Modifier.height(12.dp))

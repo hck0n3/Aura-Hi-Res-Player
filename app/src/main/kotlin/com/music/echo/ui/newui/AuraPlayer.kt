@@ -1316,6 +1316,7 @@ private fun AuraPlayerShape(
                         onClick = {
                             bottomSheetPageState.show {
                                 AuraPlayerQuickSearchContent(
+                                    navController = navController,
                                     onDismiss = bottomSheetPageState::dismiss,
                                     isListenTogetherGuest = isListenTogetherGuest,
                                 )

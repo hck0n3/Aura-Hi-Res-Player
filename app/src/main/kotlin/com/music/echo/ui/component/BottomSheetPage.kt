@@ -63,7 +63,7 @@ fun BottomSheetPage(
     background: Color = MaterialTheme.colorScheme.surfaceColorAtElevation(NavigationBarDefaults.Elevation),
 ) {
     val focusManager = LocalFocusManager.current
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val skin = rememberAuraPanelSkin()
     val premium = skin.enabled && skin.darkGround
     val sheetColor = if (premium) auraFloatingContainerColor() else background

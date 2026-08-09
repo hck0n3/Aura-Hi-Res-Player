@@ -9672,16 +9672,6 @@ class MusicService :
         // falls through to the unchanged 9s equal-power crossfade path below. The cleanup above still ran, so
         // any incoming player preloaded before perf mode toggled on is released rather than leaked.
         if (highPerformanceModeHint) return
-        // Owner share_log (Xiaomi + Android Auto): battery saver skips next-track preload while
-        // crossfade stays ON → CROSSFADE_TRACE cut-not-ready ~4s silence. Force hard cuts here.
-        if (isPowerSaveModeActive()) {
-            traceCrossfade("skip-power-save", "battery saver ON — hard cut (avoids cut-not-ready)")
-            return
-        }
-        if (isAndroidAutoControllerConnected()) {
-            traceCrossfade("skip-android-auto", "Android Auto connected — hard cut (avoids AA micro-cuts)")
-            return
-        }
         if (!crossfadeEnabled || player.duration == C.TIME_UNSET) return
         if (player.duration <= crossfadeDuration) {
             traceCrossfade("skip-short", "dur=${player.duration}ms <= fade window — no blend possible")
@@ -9901,7 +9891,6 @@ class MusicService :
         }
         proc.tailDetectEnabled = false
         if (isCrossfading || !crossfadeEnabled || highPerformanceModeHint || _videoMode.value) return
-        if (isPowerSaveModeActive() || isAndroidAutoControllerConnected()) return
         if (!player.isPlaying) return
         if (crossfadeGapless && isNextItemGapless()) {
             traceCrossfade("gapless-bypass", "same-album pair -> deliberate gapless advance (Ajustes)")
@@ -9987,7 +9976,7 @@ class MusicService :
             while (isActive && secPlayer.playbackState != Player.STATE_READY) {
                 val dur = player.duration
                 val remaining = if (dur == C.TIME_UNSET) 0L else dur - player.currentPosition
-                if (remaining <= 1200L) break
+                if (remaining <= 800L) break
                 if (!player.isPlaying || player.currentMediaItem?.mediaId != targetMediaId) break
                 delay(50)
                 waited += 50
@@ -10002,32 +9991,7 @@ class MusicService :
             } else {
                 // Single-player path will hard-cut — make the failure VISIBLE in the shareable log.
                 traceCrossfade("cut-not-ready", "waited=${waited}ms incoming never READY (slow resolve/buffer)")
-                // Don't leave a half-buffered secondary (volume 0) or a ducked Exo volume behind the cut:
-                // the hard advance must sound at the user's single volume target.
-                runCatching {
-                    if (::playerVolume.isInitialized) {
-                        player.volume = if (isMuted.value) 0f else playerVolume.value
-                    }
-                }
-                releaseCrossfadeSecondary("cut-not-ready")
             }
-        }
-    }
-
-    /** Tear down a preloaded secondary that will not be used for a blend (cut-not-ready, cancel, etc.). */
-    private fun releaseCrossfadeSecondary(reason: String) {
-        val sec = secondaryPlayer ?: return
-        secondaryPlayer = null
-        secondaryTimelineVersion = -1L
-        runCatching {
-            playerSilenceProcessors.remove(sec)
-            playerNormProcessors.remove(sec)
-            playerLimiterProcessors.remove(sec)
-            playerEqProcessors.remove(sec)?.let { eq -> equalizerService.removeAudioProcessor(eq) }
-            sec.stop()
-            sec.release()
-        }.onFailure { e ->
-            Timber.tag(TAG).w(e, "crossfade: release secondary failed ($reason)")
         }
     }
 
@@ -10287,9 +10251,7 @@ class MusicService :
                 // MUST be the SAME full gain (attenuation x makeup) the main path applies when this track
                 // becomes current — priming only the attenuate half would make a quiet track fade in lower
                 // than it plays a moment later, i.e. an audible jump at the swap. No fade timing/curve here.
-                if (safeVolumeEnabledHint) {
-                    playerEqProcessors[sec]?.applySafeVolume(true, safeVolumeAppliedGain(mult * makeup))
-                }
+                if (safeVolumeEnabledHint) playerEqProcessors[sec]?.applySafeVolume(true, mult * makeup)
                 primedSyncGain = true
                 Timber.tag(TAG).d("Crossfade: pre-leveled incoming $incomingId from cache (loudnessDb=$loudnessDb)")
             }
@@ -10324,9 +10286,7 @@ class MusicService :
                         playerNormProcessors[sec]?.instanceGain = mult
                         playerLimiterProcessors[sec]?.setInstanceMakeup(makeup, null)
                         // Full gain, same as the sync prime above — never only the attenuate half.
-                        if (safeVolumeEnabledHint) {
-                    playerEqProcessors[sec]?.applySafeVolume(true, safeVolumeAppliedGain(mult * makeup))
-                }
+                        if (safeVolumeEnabledHint) playerEqProcessors[sec]?.applySafeVolume(true, mult * makeup)
                     }
                 }
             }
@@ -10371,13 +10331,10 @@ class MusicService :
         }
 
         fadingPlayer = currentPlayer
-        // Observation-only, for the lyrics view: this is the track the user KEEPS HEARING while the fade
-        // runs even though the incoming one was published above. Recorded here so the lyrics can stay on it
-        // (and on its clock) for exactly as long as it is AUDIBLE — the fade loop below drops the pin as soon
-        // as the gain it writes for this player is inaudible or its silence detector says there is nothing
-        // left, onMediaItemTransition drops it if the user skips away, and cleanupCrossfade is only the last
-        // resort. Null metadata simply leaves the override off, i.e. the lyrics behave exactly as they did
-        // before. Nothing below this line changes.
+        // Observation-only, for the lyrics view: this is the track the user KEEPS HEARING for the length of
+        // the fade even though the incoming one was published above. Recorded here so the lyrics can stay on
+        // it (and on its clock) until cleanupCrossfade commits. Null metadata simply leaves the override off,
+        // i.e. the lyrics behave exactly as they did before. Nothing below this line changes.
         _crossfadeOutgoingMetadata.value = currentPlayer.currentMetadata
         // Pin the OUTGOING player to its current normalization (the companion statics still hold its
         // values right now) so when setupLoudnessEnhancer re-writes them for the incoming track, the
@@ -10422,6 +10379,7 @@ class MusicService :
         nextPlayer.removeListener(secondaryPlayerListener)
         nextPlayer.addListener(this)
 
+
         try {
             (mediaSession as MediaSession).player = player
         } catch (e: Exception) {
@@ -10441,15 +10399,7 @@ class MusicService :
             val durOut = minOf(configured, (fpRemaining - 250L).coerceAtLeast(600L))
             val durIn = configured
             val curve = try { dataStore.get(CrossfadeCurveKey, 4) } catch (e: Exception) { 4 }
-            // Single volume reference: the user's in-app level (playerVolume), never whatever Exo
-            // happened to hold (a ducked focus, a cancelled fade-in, or a stomped secondary). Both
-            // ramps and the finally-restore use the same target so the blend can't land quieter/louder
-            // than the rest of the session.
-            val startVolume = when {
-                !::playerVolume.isInitialized -> 1f
-                isMuted.value -> 0f
-                else -> playerVolume.value.coerceIn(0f, 1f)
-            }
+            val startVolume = try { fadingPlayer?.volume ?: 1f } catch(e:Exception) { 1f }
             // Because LUFS Normalization is fixed and active, tracks play at roughly -14 LUFS,
             // leaving massive natural headroom. Thus, two tracks summing during an equal-power crossfade
             // will NEVER clip the Android mixer (they'll sum to ~-11 LUFS). We can safely remove the
@@ -10484,32 +10434,6 @@ class MusicService :
                     val inP = (inElapsed / durIn.toFloat()).coerceAtMost(1f)
                     val fadeIn = crossfadeGains(curve, inP).first
                     val fadeOut = crossfadeGains(curve, outP).second
-
-                    // LYRICS PIN RELEASE — observation only. Reads the values the audio path has ALREADY
-                    // computed and writes nothing back: no fade math, curve, duration, swap order or volume
-                    // is touched by this block, and deleting it would leave the transition bit-identical.
-                    //
-                    // The pin used to survive until cleanupCrossfade, i.e. until the loop exits on
-                    // `inP >= 1f && outP >= 1f` — which waits for the INCOMING ramp. That is why users see
-                    // the previous song's lyrics over the new one: durOut is capped to the fading track's
-                    // remaining life (as little as 600ms) while durIn is the full configured duration, and
-                    // inElapsed only advances while the incoming player actually renders, so a buffering
-                    // start or a pause freezes it for seconds. The outgoing is long inaudible by then.
-                    //
-                    // So release on AUDIBILITY instead: fadeOut is the gain relative to the outgoing's own
-                    // level (with the default curve 4 it is exactly 0 from 85% of ITS ramp), and the silence
-                    // detector covers the tail-fire case where the outgoing was never audible at all. Both
-                    // can only make the lyrics return to the live song EARLIER than before, never later.
-                    if (CrossfadeLyricsPin.shouldRelease(
-                            pinned = _crossfadeOutgoingMetadata.value != null,
-                            outgoingGone = outDone,
-                            outgoingCurveGain = fadeOut,
-                            outgoingDetectedSilent =
-                                fp?.let { playerSilenceProcessors[it]?.isCurrentlySilent() } == true,
-                        )
-                    ) {
-                        _crossfadeOutgoingMetadata.value = null
-                    }
 
                     try {
                         // Both players smoothly fade without needing to dynamically duck their headroom
@@ -10551,16 +10475,13 @@ class MusicService :
 
 
     private fun cleanupCrossfade() {
-        // Clear per-instance overrides so the surviving player follows shared companions again.
-        // Do NOT wipe lastNormalizedId when it already matches the live track: that forced a second
-        // loudness pass at fade-end and was heard as a click/cut right after a clean blend.
+        // The crossfade is over: clear the surviving player's per-instance normalization overrides so it
+        // resumes following the shared companion statics, and reset the de-dup guard so the next track
+        // (re)normalizes normally via setupLoudnessEnhancer.
         playerNormProcessors[player]?.instanceGain = null
         playerLimiterProcessors[player]?.setInstanceMakeup(null, null)
-        val liveId = player.currentMediaItem?.mediaId
-        if (liveId == null || liveId != lastNormalizedId) {
-            lastNormalizedId = null
-            lastNormalizedHadLoudness = false
-        }
+        lastNormalizedId = null
+        lastNormalizedHadLoudness = false
         // Refine the per-song tail memory with the EXACT end-of-stream measurement when the decoder
         // reached EOS (it runs ahead of the playback clock, so this is usually available even though the
         // silent tail itself never audibly played). Read BEFORE stop() — duration/item may reset after.
@@ -10589,10 +10510,7 @@ class MusicService :
         isCrossfading = false
         _isCrossfading.value = false // observation-only mirror for the UI; does not alter the swap
         // The fade committed: the incoming track is now the audible one, so the lyrics view stops following
-        // the outgoing song and returns to the live one. Observation-only, like the mirror above. LAST RESORT
-        // only — the audibility check inside the fade loop normally released this seconds earlier; this line
-        // still matters for the paths that never tick the loop (cancelled job, an exception on the first
-        // volume write, the pathological-stall bail).
+        // the outgoing song and returns to the live one. Observation-only, like the mirror above.
         _crossfadeOutgoingMetadata.value = null
         // Collect the quality-change survivor here rather than at the swap: the fade is over and fadingPlayer is
         // already stopped/cleared/released above, so dropping its URL entry cannot trigger a re-open. Needed

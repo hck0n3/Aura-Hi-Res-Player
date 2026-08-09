@@ -57,7 +57,7 @@ El dueño es el beta tester. Si algo de esta lista desaparece en un cambio, **es
 
 ## Cosas que el dueño ya pidió y se revirtieron/perdieron — vigiladas
 
-- Botones del reproductor: fila arriba like/dislike/playlist/download **+ biblioteca + lupa** (búsqueda rápida frost: reproducir / a continuación / cola / playlist); share/EQ/vídeo en la barra inferior. Cast y Más inferiores intactos.
+- Botones del reproductor: fila arriba like/dislike/playlist/download **+ biblioteca + lupa** (búsqueda rápida frost: misma lógica que Buscar — biblioteca ↔ YouTube Music completo con Enter; **no** se cierra sola al reproducir / cola / playlist; solo atrás o el gesto del usuario); share/EQ/vídeo en la barra inferior. Cast y Más inferiores intactos.
 - EQ (Axion): presets de fábrica en **rejilla** con orden fijo (no reordenar el activo al frente); medidor **FFT** semáforo (cian = saturando), ON por defecto salvo High Performance / gama baja; indicador de saturación en preamp cuando FFT ON. Solo UI — no tocar Superpowered/DSP.
 - Cabecera de playlist (New UI): híbrido — **Aleatorio / Reproducir** con nombre; buscar / más / guardar / descargar / compartir solo icono.
 - Búsqueda: sin hueco doble de insets; voz inline (no diálogo grande de Google si hay SpeechRecognizer).
