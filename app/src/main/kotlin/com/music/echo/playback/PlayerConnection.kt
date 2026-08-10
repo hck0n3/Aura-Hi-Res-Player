@@ -236,6 +236,8 @@ class PlayerConnection(
 
     fun toggleVideoMode() = service.toggleVideoMode()
     fun exitVideoMode() = service.exitVideoMode()
+    /** Enter sticky video mode if not already on (e.g. play from Exported videos). */
+    fun enterVideoModeIfNeeded() = service.enterVideoModeIfNeeded()
 
     /**
      * Reload the currently-playing track forcing the Opus (WebM/Opus) audio format, continuing playback at

@@ -789,8 +789,9 @@ fun AuraHomeScreen(
                                             label = accountName,
                                             onClick = { navController.navigate("account") },
                                         )
+                                        val playlistW = auraTypeVisual(AuraContentKind.Playlist).shelfWidth * cardScale
                                         AuraDoubleRowShelf(
-                                            rowHeight = auraShelfCardStackHeight(136.dp * cardScale),
+                                            rowHeight = auraShelfCardStackHeight(playlistW),
                                         ) {
                                             lazyGridItems(playlists.distinctBy { it.id }, key = { it.id }) { item ->
                                                 AuraTypedYtCoverCard(
@@ -810,9 +811,13 @@ fun AuraHomeScreen(
                             newFromArtists?.takeIf { it.isNotEmpty() }?.let { albums ->
                                 item(key = "aura_new_from_artists") {
                                     Column(Modifier.animateItem()) {
-                                        AuraSectionHeader(title = stringResource(R.string.home_new_from_artists))
+                                        AuraSectionHeader(
+                                            title = stringResource(R.string.home_new_from_artists),
+                                            onClick = { navController.navigate("release_radar") },
+                                        )
+                                        val albumW = auraTypeVisual(AuraContentKind.Album).shelfWidth * cardScale
                                         AuraDoubleRowShelf(
-                                            rowHeight = auraShelfCardStackHeight(136.dp * cardScale),
+                                            rowHeight = auraShelfCardStackHeight(albumW),
                                         ) {
                                             lazyGridItems(albums.distinctBy { it.id }, key = { it.id }) { item ->
                                                 AuraTypedYtCoverCard(
@@ -835,8 +840,9 @@ fun AuraHomeScreen(
                                 item(key = "aura_new_releases") {
                                     Column(Modifier.animateItem()) {
                                         AuraSectionHeader(title = stringResource(R.string.new_release_albums))
+                                        val albumW = auraTypeVisual(AuraContentKind.Album).shelfWidth * cardScale
                                         AuraDoubleRowShelf(
-                                            rowHeight = auraShelfCardStackHeight(136.dp * cardScale),
+                                            rowHeight = auraShelfCardStackHeight(albumW),
                                         ) {
                                             lazyGridItems(albums.distinctBy { it.id }, key = { it.id }) { item ->
                                                 AuraTypedYtCoverCard(

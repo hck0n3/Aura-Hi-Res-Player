@@ -21,6 +21,8 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import iad1tya.echo.music.R
+import iad1tya.echo.music.utils.ImportFailureRow
+import iad1tya.echo.music.utils.ImportFailuresCsv
 import iad1tya.echo.music.constants.SpotifyAccessTokenExpiresAtKey
 import iad1tya.echo.music.constants.SpotifyAccessTokenKey
 import iad1tya.echo.music.constants.SpotifyAccountAvatarUrlKey
@@ -689,18 +691,16 @@ class SpotifyImportRepository @Inject constructor(
      * (`Title`,`Artists`) plus Album/SpotifyId/Reason for debugging.
      */
     fun writeFailuresCsv(failures: List<SpotifyImportFailureUi>): File {
-        val file = File(context.cacheDir, "spotify_import_failures_${System.currentTimeMillis()}.csv")
-        val esc = { v: String -> "\"" + v.replace("\"", "\"\"") + "\"" }
-        val sb = StringBuilder("Title,Artists,Album,SpotifyId,Reason\n")
-        failures.forEach { f ->
-            sb.append(esc(f.title)).append(',')
-                .append(esc(f.artists)).append(',')
-                .append(esc(f.album)).append(',')
-                .append(esc(f.spotifyId)).append(',')
-                .append(esc(f.reason.name)).append('\n')
+        val rows = failures.map { f ->
+            ImportFailureRow(
+                title = f.title,
+                artists = f.artists,
+                album = f.album,
+                source = "Spotify",
+                reason = f.reason.name,
+            )
         }
-        file.writeText(sb.toString())
-        return file
+        return ImportFailuresCsv.write(context.cacheDir, rows, "spotify_import_failures")
     }
 
     private suspend fun insertMatchedIntoLibrary(tracks: List<MediaMetadata>) {

@@ -17,7 +17,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.core.content.FileProvider
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -39,6 +41,7 @@ fun MigrationScreen(
     viewModel: MigrationViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
     var showDeezerDialog by remember { mutableStateOf(false) }
@@ -55,6 +58,51 @@ fun MigrationScreen(
 
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) viewModel.prepareFileImport(uri)
+    }
+
+    val saveFailuresCsvLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("text/csv"),
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val file = viewModel.exportFailuresCsv()
+        if (file == null) {
+            android.widget.Toast.makeText(
+                context,
+                context.getString(R.string.spotify_import_failures_csv_save_failed),
+                android.widget.Toast.LENGTH_SHORT,
+            ).show()
+            return@rememberLauncherForActivityResult
+        }
+        val ok = runCatching {
+            context.contentResolver.openOutputStream(uri)?.use { out ->
+                file.inputStream().use { input -> input.copyTo(out) }
+            } != null
+        }.getOrDefault(false)
+        android.widget.Toast.makeText(
+            context,
+            context.getString(
+                if (ok) R.string.spotify_import_failures_csv_saved
+                else R.string.spotify_import_failures_csv_save_failed,
+            ),
+            android.widget.Toast.LENGTH_LONG,
+        ).show()
+    }
+
+    fun shareFailuresCsv() {
+        val file = viewModel.exportFailuresCsv() ?: return
+        runCatching {
+            val uri = FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.FileProvider",
+                file,
+            )
+            val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                type = "text/csv"
+                putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            context.startActivity(android.content.Intent.createChooser(intent, null))
+        }
     }
 
     Scaffold(
@@ -139,6 +187,10 @@ fun MigrationScreen(
                             state.localPlaylistId?.let { navController.navigate("local_playlist/$it") }
                         },
                         onMigrateAnother = { viewModel.reset() },
+                        onSaveFailuresCsv = {
+                            saveFailuresCsvLauncher.launch("migration_failures_${System.currentTimeMillis()}.csv")
+                        },
+                        onShareFailuresCsv = ::shareFailuresCsv,
                     )
 
                     MigrationPhase.ERROR -> Unit // handled by the dialog below
@@ -523,6 +575,8 @@ private fun androidx.compose.foundation.lazy.LazyListScope.doneContent(
     onReview: () -> Unit,
     onOpenLibrary: () -> Unit,
     onMigrateAnother: () -> Unit,
+    onSaveFailuresCsv: () -> Unit,
+    onShareFailuresCsv: () -> Unit,
 ) {
     item {
         Card(
@@ -592,6 +646,25 @@ private fun androidx.compose.foundation.lazy.LazyListScope.doneContent(
                 shape = RoundedCornerShape(16.dp),
             ) {
                 Text(stringResource(R.string.migrate_review_ambiguous, state.ambiguousPending))
+            }
+        }
+    }
+    if (state.importFailures.isNotEmpty()) {
+        item {
+            OutlinedButton(
+                onClick = onSaveFailuresCsv,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
+                shape = RoundedCornerShape(16.dp),
+            ) {
+                Text(stringResource(R.string.migrate_export_failures_csv))
+            }
+        }
+        item {
+            TextButton(
+                onClick = onShareFailuresCsv,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(stringResource(R.string.spotify_import_share_failures_csv))
             }
         }
     }

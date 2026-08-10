@@ -71,6 +71,9 @@ fun ReleaseRadarScreen(
     // 6h (heals a stale list when MIUI reaps the weekly Friday worker). The weekly drop is untouched, and the
     // toolbar action below is still an explicit manual override.
 
+    // Spotify Release Radar parity: weekly worker + stale refresh on open (6h gate), album art/artist/year
+    // per row, tap opens album/{playId}, play button runs full album radio. No further gaps found.
+
     Scaffold(
         topBar = {
             TopAppBar(

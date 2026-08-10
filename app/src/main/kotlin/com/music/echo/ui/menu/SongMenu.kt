@@ -11,11 +11,13 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -126,6 +128,10 @@ fun SongMenu(
     playlistBrowseId: String? = null,
     onDismiss: () -> Unit,
     isFromCache: Boolean = false,
+    /**
+     * When true (Vídeos exportados), only show Share file + Export as MP3 — no download/radio/etc.
+     */
+    exportedVideoActionsOnly: Boolean = false,
 ) {
     val context = LocalContext.current
     val database = LocalDatabase.current
@@ -388,6 +394,90 @@ fun SongMenu(
         }
     }
 
+    val bottomSheetPageState = LocalBottomSheetPageState.current
+    val configuration = LocalConfiguration.current
+    val isPortrait = configuration.orientation == Configuration.ORIENTATION_PORTRAIT
+
+    val isGuest = listenTogetherManager?.isInRoom == true && !listenTogetherManager.isHost
+
+    if (exportedVideoActionsOnly) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 8.dp + WindowInsets.systemBars.asPaddingValues().calculateBottomPadding()),
+        ) {
+            Material3MenuGroup(
+                items = listOf(
+                    Material3MenuItemData(
+                        title = { Text(text = stringResource(R.string.action_share)) },
+                        description = { Text(text = stringResource(R.string.share_local_desc)) },
+                        icon = {
+                            Icon(
+                                painter = painterResource(R.drawable.share),
+                                contentDescription = null,
+                            )
+                        },
+                        onClick = {
+                            coroutineScope.launch {
+                                val uri = lookupExportedFileUri(context, song.id)
+                                if (uri != null &&
+                                    shareContentUri(context, uri, "video/mp4")
+                                ) {
+                                    onDismiss()
+                                    return@launch
+                                }
+                                android.widget.Toast.makeText(
+                                    context,
+                                    context.getString(R.string.export_directory_not_set),
+                                    android.widget.Toast.LENGTH_SHORT,
+                                ).show()
+                                onDismiss()
+                            }
+                        },
+                    ),
+                    when {
+                        isExporting -> Material3MenuItemData(
+                            title = { Text(text = stringResource(R.string.exporting)) },
+                            icon = {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(24.dp),
+                                    strokeWidth = 2.dp,
+                                )
+                            },
+                            onClick = {},
+                        )
+                        else -> Material3MenuItemData(
+                            title = { Text(text = stringResource(R.string.export_as_mp3)) },
+                            description = { Text(text = stringResource(R.string.export_as_mp3_desc)) },
+                            icon = {
+                                Icon(
+                                    painter = painterResource(R.drawable.file_export),
+                                    contentDescription = null,
+                                )
+                            },
+                            onClick = {
+                                ensureMp3Folder { directoryUri ->
+                                    onDismiss()
+                                    AudioExportService.start(
+                                        context = context,
+                                        songId = song.id,
+                                        songTitle = song.song.title,
+                                        songArtist = song.artists.joinToString(", ") { it.name },
+                                        songAlbum = song.song.albumName ?: "",
+                                        artworkUrl = song.song.thumbnailUrl ?: "",
+                                        targetDirectoryUri = directoryUri,
+                                        exportAsVideo = false,
+                                    )
+                                }
+                            },
+                        )
+                    },
+                ),
+            )
+        }
+        return
+    }
+
     SongListItem(
         song = song,
         badges = {},
@@ -415,12 +505,6 @@ fun SongMenu(
     HorizontalDivider()
 
     Spacer(modifier = Modifier.height(12.dp))
-
-    val bottomSheetPageState = LocalBottomSheetPageState.current
-    val configuration = LocalConfiguration.current
-    val isPortrait = configuration.orientation == Configuration.ORIENTATION_PORTRAIT
-
-    val isGuest = listenTogetherManager?.isInRoom == true && !listenTogetherManager.isHost
 
     LazyColumn(
         contentPadding = PaddingValues(

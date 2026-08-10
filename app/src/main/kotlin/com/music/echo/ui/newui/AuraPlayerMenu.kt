@@ -389,31 +389,7 @@ fun AuraPlayerMenu(
             }
         }
 
-        item {
-            val (audioQuality, onAudioQualityChange) = rememberEnumPreference(
-                iad1tya.echo.music.constants.AudioQualityKey,
-                defaultValue = iad1tya.echo.music.constants.AudioQuality.OPUS,
-            )
-            AuraMenuRow(
-                icon = AuraIcons.Equalizer,
-                label = stringResource(R.string.audio_quality),
-                onClick = {
-                    val values = iad1tya.echo.music.constants.AudioQuality.entries
-                    val next = values[(values.indexOf(audioQuality) + 1) % values.size]
-                    onAudioQualityChange(next)
-                },
-                trailing = {
-                    AuraTechnicalText(
-                        text = when (audioQuality) {
-                            iad1tya.echo.music.constants.AudioQuality.OPUS -> "OPUS"
-                            iad1tya.echo.music.constants.AudioQuality.SAAVN -> "SAAVN"
-                            iad1tya.echo.music.constants.AudioQuality.LOSSLESS -> "QOBUZ"
-                        },
-                        color = AuraPalette.Teal,
-                    )
-                },
-            )
-        }
+        // Streaming quality cycling (Opus / Saavn / Qobuz) removed — Opus is the only stream path.
         item { Spacer(Modifier.height(6.dp)); AuraDivider() }
 
         // ── REPRODUCCIÓN (abierta por defecto) ─────────────────────────────────────────────────────

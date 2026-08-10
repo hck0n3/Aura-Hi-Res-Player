@@ -1,33 +1,28 @@
-# Aura Hi-Res Player 0.6.170
+# Aura Hi-Res Player 0.6.171
 
-Descargar o exportar desde el reproductor, export más rápido con progreso real, Vídeos exportados como posters, menú Más compacto, vídeos de artista completos, y bienvenida/Acerca de al día.
+Vídeos exportados siempre en modo vídeo, menú solo compartir/MP3, menos trabón al empezar el stream, letras alineadas arriba, EQ estable, y limpieza de calidad Saavn/Qobuz en streaming.
 
 ---
 
-## Descargar o exportar
+## Vídeos exportados
 
-- El botón de descarga del reproductor pregunta: **solo sin conexión**, **exportar MP3** o **exportar vídeo**.
-- Notificación de descarga de vídeo lo indica claramente; el icono se llena con el %.
-- Export: barra de progreso en tiempo real; al terminar **no** abre compartir solo — tú decides desde la lista.
-- Share desde Exportadas / Vídeos exportados envía el **archivo** (MP3 o MP4), no solo el enlace.
+- Al tocar un vídeo exportado se abre el reproductor en **modo vídeo** (solo cambias a audio si tú lo decides).
+- El menú ⋮ de esa lista solo ofrece **compartir el archivo MP4** o **exportar a MP3**.
+- Buffer de arranque A/V más generoso para reducir el atasco de los primeros segundos.
 
-## Export más rápido
+## Letras, EQ e identificar
 
-- Descarga multi-rango en paralelo; vídeo intenta mux por copia (sin re-encode) y sin loudnorm pesado en la ruta rápida.
-- MP3 usa el mismo motor de descarga acelerada.
+- Letras sincronizadas anclan la línea activa **arriba → abajo** (karaoke legible).
+- Barras del ecualizador: el layout ya no “salta” al arrastrar; subir bandas **no baja el volumen** por headroom automático.
+- Resultado de Identificar canción con piel premium Aura (frost / Ground).
 
-## Vídeos exportados y artista
+## Streaming y producto
 
-- Lista con portada 16:9 y posters grandes (no filas de canción); contador “N vídeos”.
-- En artista, Ver todos de vídeos pagina de verdad (ya no se corta en 12).
+- Eliminado el cambio de calidad de streaming Opus/Saavn/Qobuz (y selectores huérfanos en dispositivos).
+- Playlists en inicio: estantería de **2 filas** a tamaño playlist; Novedades con tamaño álbum y acceso a Release Radar.
+- Importaciones: CSV de lo que **no** migró (migración + Spotify).
+- Batería/térmica: keep-alive y throttle ya conservadores; sin cambios agresivos.
 
-## Reproductor y producto
+## Del 0.6.170
 
-- Menú Más / ⋮: secciones desplegables, sin funciones repetidas con la barra.
-- Cambio audio↔vídeo más fluido (pre-prepare más pronto; portada hasta el primer frame).
-- Acerca de y bienvenida actualizados (sin placebos); Términos con piel Aura.
-- Inicio vacío hasta la primera canción; luego recomendaciones inteligentes.
-
-## Del 0.6.169
-
-- Export vídeo fiable, descargas offline que no pelean con el vídeo en vivo, menos trabones al ver.
+- Chooser Offline/MP3/Vídeo, export multi-rango, posters 16:9, menú Más compacto, vídeos de artista completos.

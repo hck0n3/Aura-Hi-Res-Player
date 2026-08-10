@@ -693,6 +693,7 @@
     <string name="migrate_review_ambiguous">Review %d ambiguous</string>
     <string name="migrate_open_in_library">Open in Library</string>
     <string name="migrate_another">Migrate another</string>
+    <string name="migrate_export_failures_csv">Export unmatched (CSV)</string>
     <string name="migrate_review_desc">Pick the right match for each song, or skip it.</string>
     <string name="migrate_review_add">Add selected</string>
     <string name="migrate_review_you_searched">You searched: %1$s - %2$s</string>

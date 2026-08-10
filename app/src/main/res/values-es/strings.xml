@@ -632,6 +632,7 @@
     <string name="migrate_review_ambiguous">Revisar %d ambiguas</string>
     <string name="migrate_open_in_library">Abrir en Biblioteca</string>
     <string name="migrate_another">Migrar otra</string>
+    <string name="migrate_export_failures_csv">Exportar no migrados (CSV)</string>
     <string name="migrate_review_desc">Elige la coincidencia correcta de cada canción, u omítela.</string>
     <string name="migrate_review_add">Añadir seleccionadas</string>
     <string name="migrate_review_you_searched">Buscaste: %1$s - %2$s</string>

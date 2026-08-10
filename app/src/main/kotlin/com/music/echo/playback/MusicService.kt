@@ -2727,15 +2727,13 @@ class MusicService :
                         // "trabones"/cuts on playback and at the crossfade swap, which the secondary player
                         // inherited). Reconciled below. (High-Performance Mode uses 60s.)
                         maxBufferMs,
-                        // bufferForPlaybackMs: ~750ms buffered before playback (re)starts — a fast start
-                        // without risking an immediate re-stall on hi-res/low-end (upstream 97787ed value).
-                        // Applies in BOTH buffer profiles; the min/max duration tier split (maxBufferMs) above
-                        // is untouched.
-                        750,
-                        // bufferForPlaybackAfterRebufferMs: video mode merges TWO streams (video-only +
-                        // audio). 2.5s was thin for that dual fetch and ping-ponged STATE_BUFFERING
-                        // hitching. 5s (Exo default) rides out short stalls; small/perf profile keeps
-                        // 3.5s so low-RAM devices don't wait forever to resume.
+                        // bufferForPlaybackMs: video mode merges TWO streams. 750ms was enough for
+                        // audio-only starts but too thin for the A/V merge — playback began then
+                        // immediately rebuffered ("trabón" in the first seconds). 2.5s (1.8s on
+                        // small/perf) waits for a real dual-stream cushion before the first frame.
+                        if (useSmallBuffer) 1_800 else 2_500,
+                        // bufferForPlaybackAfterRebufferMs: after a stall, wait even longer before
+                        // resuming so the dual fetch does not ping-pong STATE_BUFFERING.
                         if (useSmallBuffer) 3_500 else 5_000,
                     )
                     // 64MB byte ceiling guards against OOM with multiple pre-loaded/crossfade players,
@@ -7402,29 +7400,40 @@ class MusicService :
         if (_videoMode.value) {
             exitVideoMode()
         } else {
-            userExplicitlyExitedVideo = false
-            userHasUsedVideo = true
-            videoSwapMeasureStart() // debug-only latency probe: T0 = the audio→video toggle
-            // INSTANT FAST PATH: publish the pre-prepared dual player if (and only if) it is healthy —
-            // tryInstantVideoSwap sets _videoMode/_videoUrl itself on success. On ANY doubt it returns
-            // false having released the pre-player, and the EXISTING path below runs byte-identically.
-            if (!tryInstantVideoSwap()) {
-                // Entering video via the NORMAL path → any leftover speculative player must not coexist
-                // with the in-place rebuild (teardown rule: video-on via normal path releases it).
-                teardownInstantVideoSwap("video mode on via normal path")
-                _videoMode.value = true
-                pauseOfflineDownloadsForVideoPlayback()
-                applyVideoToCurrent()
-            } else {
-                pauseOfflineDownloadsForVideoPlayback()
-            }
-            // Also pre-build the NEXT item now so the FIRST auto-advance is already seamless (no track change
-            // fires on a plain toggle, so onMediaItemTransition wouldn't otherwise get a chance to pre-build).
-            val nextIdx = player.nextMediaItemIndex
-            if (nextIdx != C.INDEX_UNSET) {
-                runCatching { player.getMediaItemAt(nextIdx).mediaId }.getOrNull()
-                    ?.let { prebuildNextVideoItem(nextIdx, it) }
-            }
+            enterVideoModeInternal()
+        }
+    }
+
+    /**
+     * Force video mode ON for the current item (no-op if already on). Used when opening from
+     * Vídeos exportados — playback should start in video; the user can still exit later.
+     */
+    fun enterVideoModeIfNeeded() {
+        if (iad1tya.echo.music.utils.PerformanceMode.isOn(this) &&
+            !iad1tya.echo.music.utils.DeviceForm.isTvOrCar(this)
+        ) {
+            return
+        }
+        if (_videoMode.value) return
+        enterVideoModeInternal()
+    }
+
+    private fun enterVideoModeInternal() {
+        userExplicitlyExitedVideo = false
+        userHasUsedVideo = true
+        videoSwapMeasureStart()
+        if (!tryInstantVideoSwap()) {
+            teardownInstantVideoSwap("video mode on via normal path")
+            _videoMode.value = true
+            pauseOfflineDownloadsForVideoPlayback()
+            applyVideoToCurrent()
+        } else {
+            pauseOfflineDownloadsForVideoPlayback()
+        }
+        val nextIdx = player.nextMediaItemIndex
+        if (nextIdx != C.INDEX_UNSET) {
+            runCatching { player.getMediaItemAt(nextIdx).mediaId }.getOrNull()
+                ?.let { prebuildNextVideoItem(nextIdx, it) }
         }
     }
 

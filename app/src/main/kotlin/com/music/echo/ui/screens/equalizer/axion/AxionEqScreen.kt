@@ -18,6 +18,7 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -1908,7 +1909,15 @@ private fun EqBandSlider(
         Spacer(modifier = Modifier.height(4.dp))
         // The vertical slider is a HORIZONTAL Slider rotated -90°, so the Box height and the Slider width are
         // the SAME dimension (the travel) and must stay in lockstep — hence one `travel` value driving both.
-        Box(modifier = Modifier.height(travel), contentAlignment = Alignment.Center) {
+        // Fixed box + clip: rotated Slider must not expand the parent while dragging
+        // (owner: "el diseño se mueve conmigo").
+        Box(
+            modifier = Modifier
+                .height(travel)
+                .width(BAND_SLIDER_MIN_WIDTH)
+                .clip(RectangleShape),
+            contentAlignment = Alignment.Center,
+        ) {
             Slider(
                 value = value,
                 onValueChange = onValueChange,

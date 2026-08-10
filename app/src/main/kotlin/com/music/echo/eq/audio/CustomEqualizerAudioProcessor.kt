@@ -44,14 +44,6 @@ enum class SuperpoweredEngineStatus {
 }
 
 /**
- * Positive EQ boost (dB) the gentle -3 dBFS limiter can absorb transparently before we trim the preamp.
- * 1.5 dB: keeps every preset's composite peak in the limiter's ~≤2.5 dB gain-reduction (transparent) band
- * on a worst-case 0 dBFS brickwall master — including the adjacent-band summation the single-band max()
- * under-estimates by ~0.9 dB — while costing ~0 loudness on ≤2 dB presets and only ~0.5 dB on bass presets.
- */
-private const val EQ_LIMITER_HEADROOM_MARGIN_DB = 1.5
-
-/**
  * @param context any Context; only the application context is retained, and only so the Superpowered
  *   licence key can be resolved lazily on the playback thread (see [SuperpoweredLicense]). The key
  *   used to be a hardcoded default parameter here, which put a paid commercial credential in the
@@ -254,18 +246,11 @@ class CustomEqualizerAudioProcessor(context: Context) : BaseAudioProcessor() {
             try {
                 disableAllBands(ptr)
 
-                val enabledGains = allBands.filter { bandActive(it) }.map { it.gain }
-                // AUTO-HEADROOM with a limiter margin. Only trim the preamp by the positive EQ boost that
-                // EXCEEDS what the gentle -3 dBFS limiter can absorb transparently (~2 dB). So small/moderate
-                // boosts (most presets) get NO trim → full loudness, the limiter just cleanly rounds their peaks;
-                // only large boosts (big bass shelves) are trimmed, and only by the excess — presets stay full
-                // AND clip-free (no heavy limiting / pumping). Better than a full -(maxBoost) trim, which wasted
-                // the limiter and made boost-heavy presets too quiet. The user's own preamp is preserved when the
-                // EQ is flat (maxBoost 0 → no trim).
-                val maxBoost = (enabledGains.maxOrNull() ?: 0.0).coerceAtLeast(0.0)
-                val trim = (maxBoost - EQ_LIMITER_HEADROOM_MARGIN_DB).coerceAtLeast(0.0)
-                val effectivePreamp = profile.preamp - trim
-                setPreamp(ptr, effectivePreamp.toFloat())
+                // Do NOT auto-trim preamp when bands boost. That trim made the whole mix quieter while
+                // the user dragged EQ sliders (owner: "muevo las barras y cambia el volumen"). Peaks are
+                // caught by the gentle -3 dBFS limiter + true-peak path instead — perceived loudness stays
+                // with the user's preamp; only the shape changes.
+                setPreamp(ptr, profile.preamp.toFloat())
 
                 allBands.forEachIndexed { index, band ->
                     if (bandActive(band)) {

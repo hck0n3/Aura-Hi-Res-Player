@@ -913,12 +913,13 @@ fun Lyrics(
         val itemInfo = lazyListState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == lookUpIndex }
         if (itemInfo != null) {
             val viewportHeight = lazyListState.layoutInfo.viewportEndOffset - lazyListState.layoutInfo.viewportStartOffset
-            val center = lazyListState.layoutInfo.viewportStartOffset + (viewportHeight / 2)
-            val itemCenter = itemInfo.offset + itemInfo.size / 2
-            val offset = itemCenter - center
+            // Karaoke: keep the active line near the top (~18%), not the vertical center.
+            val anchor = lazyListState.layoutInfo.viewportStartOffset + (viewportHeight * 0.18f)
+            val itemTop = itemInfo.offset.toFloat()
+            val offset = itemTop - anchor
             if (kotlin.math.abs(offset) > 8) {
                 lazyListState.animateScrollBy(
-                    value = offset.toFloat(),
+                    value = offset,
                     animationSpec = tween(
                         durationMillis = duration,
                         easing = FastOutSlowInEasing,
@@ -926,13 +927,12 @@ fun Lyrics(
                 )
             }
         } else {
-            // Jumping with scrollToItem desynced the highlight; animate into place instead.
             val viewportHeight = lazyListState.layoutInfo.viewportEndOffset -
                 lazyListState.layoutInfo.viewportStartOffset
-            val centerOffset = -(viewportHeight / 2)
+            val topBiasOffset = -(viewportHeight * 0.18f).toInt()
             lazyListState.animateScrollToItem(
                 index = lookUpIndex.coerceAtLeast(0),
-                scrollOffset = centerOffset,
+                scrollOffset = topBiasOffset,
             )
         }
     }
@@ -1096,9 +1096,11 @@ fun Lyrics(
         } else {
             LazyColumn(
             state = lazyListState,
+            // Keep the active line near the TOP of the viewport (karaoke-style, top→bottom), not
+            // centered/low where the sync was hard to follow (owner report).
             contentPadding = WindowInsets.systemBars
                 .only(WindowInsetsSides.Top)
-                .add(WindowInsets(top = maxHeight / 3, bottom = maxHeight / 2))
+                .add(WindowInsets(top = maxHeight / 10, bottom = maxHeight / 2))
                 .asPaddingValues(),
             modifier = Modifier
                 // #46/#10 — on a wide screen the lines used to run the FULL window width and, with the

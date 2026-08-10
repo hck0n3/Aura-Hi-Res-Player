@@ -336,15 +336,22 @@ internal fun AuraSongCollectionScaffold(
                 val playFromFiltered = {
                     when {
                         inSelectMode -> onCheckedChange(!selected)
-                        song.song.id == mediaMetadata?.id -> playerConnection.togglePlayPause()
-                        else -> playerConnection.playQueue(
-                            ListQueue(
-                                title = queueTitle,
-                                items = filteredSongs.map { it.toMediaItem() },
-                                startIndex = filteredSongs.indexOfFirst { it.id == song.id },
-                                contextId = contextId,
-                            ),
-                        )
+                        song.song.id == mediaMetadata?.id -> {
+                            playerConnection.togglePlayPause()
+                            if (videoPosterLayout) playerConnection.enterVideoModeIfNeeded()
+                        }
+                        else -> {
+                            playerConnection.playQueue(
+                                ListQueue(
+                                    title = queueTitle,
+                                    items = filteredSongs.map { it.toMediaItem() },
+                                    startIndex = filteredSongs.indexOfFirst { it.id == song.id },
+                                    contextId = contextId,
+                                ),
+                            )
+                            // Exported videos: always open in video mode; user can switch to audio later.
+                            if (videoPosterLayout) playerConnection.enterVideoModeIfNeeded()
+                        }
                     }
                 }
 

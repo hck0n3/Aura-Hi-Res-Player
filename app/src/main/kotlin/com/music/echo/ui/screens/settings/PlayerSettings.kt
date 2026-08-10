@@ -40,6 +40,8 @@ import iad1tya.echo.music.R
 import iad1tya.echo.music.constants.AudioOffload
 import iad1tya.echo.music.constants.AudioQuality
 import iad1tya.echo.music.constants.AudioQualityKey
+import iad1tya.echo.music.constants.DownloadQuality
+import iad1tya.echo.music.constants.DownloadQualityKey
 import iad1tya.echo.music.constants.CrossfadeCurveKey
 import iad1tya.echo.music.constants.CrossfadeDurationKey
 import iad1tya.echo.music.constants.CrossfadeEnabledKey
@@ -92,6 +94,17 @@ fun PlayerSettings(
         AudioQualityKey,
         defaultValue = AudioQuality.OPUS
     )
+    val (downloadQuality, onDownloadQualityChange) = rememberEnumPreference(
+        DownloadQualityKey,
+        defaultValue = DownloadQuality.YOUTUBE,
+    )
+
+    // Streaming/download Saavn/Qobuz pickers removed — lock legacy prefs back to YouTube/Opus.
+    LaunchedEffect(audioQuality, downloadQuality) {
+        if (audioQuality != AudioQuality.OPUS) onAudioQualityChange(AudioQuality.OPUS)
+        if (downloadQuality != DownloadQuality.YOUTUBE) onDownloadQualityChange(DownloadQuality.YOUTUBE)
+    }
+
     val (showAudioFallbackToast, onShowAudioFallbackToastChange) = rememberPreference(
         ShowAudioFallbackToastKey,
         defaultValue = true
@@ -283,70 +296,8 @@ fun PlayerSettings(
         if (historyDuration != historyDurationShown) onHistoryDurationChange(historyDurationShown)
     }
 
-    var showAudioQualityDialog by remember {
-        mutableStateOf(false)
-    }
-
-    var showDownloadQualityDialog by remember {
-        mutableStateOf(false)
-    }
-
     var showCrossfadeCurveDialog by remember {
         mutableStateOf(false)
-    }
-
-    val (downloadQuality, onDownloadQualityChange) = rememberEnumPreference(
-        iad1tya.echo.music.constants.DownloadQualityKey,
-        defaultValue = iad1tya.echo.music.constants.DownloadQuality.YOUTUBE
-    )
-
-    var showSaavnAudioWarning by remember { mutableStateOf(false) }
-    var showLosslessAudioWarning by remember { mutableStateOf(false) }
-
-    if (showAudioQualityDialog) {
-        EnumDialog(
-            onDismiss = { showAudioQualityDialog = false },
-            onSelect = {
-                if (it == AudioQuality.SAAVN) {
-                    showSaavnAudioWarning = true
-                } else if (it == AudioQuality.LOSSLESS) {
-                    showLosslessAudioWarning = true
-                } else {
-                    onAudioQualityChange(it)
-                }
-                showAudioQualityDialog = false
-            },
-            title = stringResource(R.string.audio_quality),
-            current = audioQuality,
-            values = AudioQuality.values().toList(),
-            valueText = {
-                when (it) {
-                    AudioQuality.OPUS -> "Opus"
-                    AudioQuality.SAAVN -> "Saavn (320kbps)"
-                    AudioQuality.LOSSLESS -> "Qobuz (Lossless)"
-                }
-            }
-        )
-    }
-
-    if (showDownloadQualityDialog) {
-        EnumDialog(
-            onDismiss = { showDownloadQualityDialog = false },
-            onSelect = {
-                onDownloadQualityChange(it)
-                showDownloadQualityDialog = false
-            },
-            title = stringResource(R.string.download_quality_title),
-            current = downloadQuality,
-            values = iad1tya.echo.music.constants.DownloadQuality.values().toList(),
-            valueText = {
-                when (it) {
-                    iad1tya.echo.music.constants.DownloadQuality.YOUTUBE -> "Aura Hi-Res (AAC/Predeterminado)"
-                    iad1tya.echo.music.constants.DownloadQuality.SAAVN -> "Saavn (320kbps)"
-                    iad1tya.echo.music.constants.DownloadQuality.LOSSLESS -> "Qobuz (Lossless)"
-                }
-            }
-        )
     }
 
     val crossfadeCurveName: (Int) -> String = {
@@ -411,53 +362,6 @@ fun PlayerSettings(
             }
         }
 
-        if (showSaavnAudioWarning) {
-            DefaultDialog(
-                onDismiss = { showSaavnAudioWarning = false },
-                title = { Text("¿Activar Saavn (320 kbps)?") },
-                buttons = {
-                    TextButton(onClick = { showSaavnAudioWarning = false }) {
-                        Text(stringResource(R.string.cancel))
-                    }
-                    TextButton(onClick = {
-                        showSaavnAudioWarning = false
-                        onAudioQualityChange(AudioQuality.SAAVN)
-                    }) {
-                        Text(stringResource(R.string.enable))
-                    }
-                }
-            ) {
-                Text("This feature uses JioSaavn and may not always work. If Saavn playback fails, the app will automatically fall back to the default Aura Hi-Res Opus stream.")
-            }
-        }
-
-        if (showLosslessAudioWarning) {
-            DefaultDialog(
-                onDismiss = { showLosslessAudioWarning = false },
-                title = { Text(stringResource(R.string.enable_lossless_audio)) },
-                buttons = {
-                    TextButton(onClick = { showLosslessAudioWarning = false }) {
-                        Text(stringResource(R.string.cancel))
-                    }
-                    TextButton(onClick = {
-                        showLosslessAudioWarning = false
-                        onAudioQualityChange(AudioQuality.LOSSLESS)
-                        if (crossfadeEnabled) {
-                            onCrossfadeEnabledChange(false)
-                            android.widget.Toast.makeText(context, "Se desactivó el crossfade para la reproducción sin pérdida", android.widget.Toast.LENGTH_SHORT).show()
-                        }
-                    }) {
-                        Text(stringResource(R.string.enable))
-                    }
-                }
-            ) {
-                Text(stringResource(R.string.lossless_audio_warning))
-            }
-        }
-
-
-
-
         Spacer(
             Modifier.windowInsetsPadding(
                 LocalPlayerAwareWindowInsets.current.only(
@@ -496,21 +400,6 @@ fun PlayerSettings(
             title = stringResource(R.string.player),
             items = buildList {
                 add(Material3SettingsItem(
-                    icon = painterResource(R.drawable.graphic_eq),
-                    title = { Text(stringResource(R.string.audio_quality)) },
-                    description = {
-                        Text(
-                            when (audioQuality) {
-                                AudioQuality.OPUS -> "Opus"
-                                AudioQuality.SAAVN -> "Saavn (320kbps)"
-                                AudioQuality.LOSSLESS -> "Qobuz (Lossless)"
-                            }
-                        )
-                    },
-                    onClick = { showAudioQualityDialog = true }
-                ))
-                
-                add(Material3SettingsItem(
                     icon = painterResource(R.drawable.notification),
                     title = { Text("Mostrar notificaciones de audio de respaldo") },
                     description = {
@@ -532,50 +421,24 @@ fun PlayerSettings(
                 ))
 
                 add(Material3SettingsItem(
-                    icon = painterResource(R.drawable.download),
-                    title = { Text(stringResource(R.string.download_quality_title)) },
-                    description = {
-                        Text(
-                            when (downloadQuality) {
-                                iad1tya.echo.music.constants.DownloadQuality.YOUTUBE -> "Aura Hi-Res (AAC/Predeterminado)"
-                                iad1tya.echo.music.constants.DownloadQuality.SAAVN -> "Saavn (320kbps)"
-                                iad1tya.echo.music.constants.DownloadQuality.LOSSLESS -> "Qobuz (Lossless)"
-                            }
-                        )
-                    },
-                    onClick = { showDownloadQualityDialog = true }
-                ))
-
-
-                val isLosslessSelected = audioQuality == AudioQuality.LOSSLESS
-                add(Material3SettingsItem(
                     icon = painterResource(R.drawable.linear_scale),
                     title = { Text(stringResource(R.string.crossfade)) },
-                    description = { 
-                        if (isLosslessSelected) {
-                            Text("El crossfade está desactivado al usar Qobuz (sin pérdida)")
-                        } else {
-                            Text(stringResource(R.string.crossfade_desc)) 
-                        }
-                    },
+                    description = { Text(stringResource(R.string.crossfade_desc)) },
                     showBadge = true,
                     trailingContent = {
                         Switch(
-                            checked = if (isLosslessSelected) false else crossfadeEnabled,
-                            enabled = !isLosslessSelected,
+                            checked = crossfadeEnabled,
                             onCheckedChange = {
-                                if (!isLosslessSelected) {
-                                    if (!crossfadeEnabled) {
-                                        showCrossfadeBetaDialog = true
-                                    } else {
-                                        onCrossfadeEnabledChange(false)
-                                    }
+                                if (!crossfadeEnabled) {
+                                    showCrossfadeBetaDialog = true
+                                } else {
+                                    onCrossfadeEnabledChange(false)
                                 }
                             },
                             thumbContent = {
                                 Icon(
                                     painter = painterResource(
-                                        id = if (!isLosslessSelected && crossfadeEnabled) R.drawable.check else R.drawable.close
+                                        id = if (crossfadeEnabled) R.drawable.check else R.drawable.close
                                     ),
                                     contentDescription = null,
                                     modifier = Modifier.size(SwitchDefaults.IconSize)
@@ -584,16 +447,14 @@ fun PlayerSettings(
                         )
                     },
                     onClick = {
-                        if (isLosslessSelected) {
-                            android.widget.Toast.makeText(context, "El crossfade no está disponible con audio sin pérdida", android.widget.Toast.LENGTH_SHORT).show()
-                        } else if (!crossfadeEnabled) {
+                        if (!crossfadeEnabled) {
                             showCrossfadeBetaDialog = true
                         } else {
                             onCrossfadeEnabledChange(false)
                         }
                     }
                 ))
-                if (crossfadeEnabled && !isLosslessSelected) {
+                if (crossfadeEnabled) {
                     add(Material3SettingsItem(
                         icon = painterResource(R.drawable.timer),
                         title = { Text(stringResource(R.string.crossfade_duration)) },

@@ -33,6 +33,8 @@ import iad1tya.echo.music.migration.TidalTokenStore
 import iad1tya.echo.music.models.MediaMetadata
 import iad1tya.echo.music.models.toMediaMetadata
 import iad1tya.echo.music.spotifyimport.ArtistNameMatching
+import iad1tya.echo.music.utils.ImportFailureRow
+import iad1tya.echo.music.utils.ImportFailuresCsv
 import iad1tya.echo.music.utils.SyncUtils
 import iad1tya.echo.music.utils.dataStore
 import kotlinx.coroutines.Dispatchers
@@ -86,6 +88,8 @@ data class MigrationUiState(
     val ytmPlaylistId: String? = null,
     val localPlaylistId: String? = null,
     val ambiguous: List<AmbiguousItem> = emptyList(),
+    /** Tracks/artists that could not be matched — exportable as CSV. */
+    val importFailures: List<ImportFailureRow> = emptyList(),
     val appendingResolved: Boolean = false,
     // ERROR
     val errorMessage: String? = null,
@@ -177,6 +181,26 @@ class MigrationViewModel @Inject constructor(
             )
         }
     }
+
+    /** Writes unmatched import rows to cache for share/save. */
+    fun exportFailuresCsv(): java.io.File? {
+        val failures = _uiState.value.importFailures
+        if (failures.isEmpty()) return null
+        return runCatching {
+            ImportFailuresCsv.write(context.cacheDir, failures, "migration_failures")
+        }.getOrNull()
+    }
+
+    private fun failuresFromReport(report: ImportReport): List<ImportFailureRow> =
+        report.notFound.map { row ->
+            ImportFailureRow(
+                title = row.source.title,
+                artists = row.source.artists.joinToString("; "),
+                album = row.source.album.orEmpty(),
+                source = sourceDisplayName.ifBlank { "import" },
+                reason = row.reason,
+            )
+        }
 
     // ── ARCHIVO ──────────────────────────────────────────────────────────
 
@@ -594,6 +618,7 @@ class MigrationViewModel @Inject constructor(
             ytmPlaylistId = ytmPlaylistId,
             localPlaylistId = localId,
             ambiguous = report.ambiguous.map { AmbiguousItem(it.source, it.candidates) },
+            importFailures = failuresFromReport(report),
         )
     }
 
@@ -733,6 +758,8 @@ class MigrationViewModel @Inject constructor(
             )
 
             var added = 0
+            val failures = mutableListOf<ImportFailureRow>()
+            val sourceLabel = sourceDisplayName.ifBlank { p.source.displayName }
             artists.forEachIndexed { index, artist ->
                 _uiState.value = _uiState.value.copy(
                     progressDone = index + 1,
@@ -741,7 +768,17 @@ class MigrationViewModel @Inject constructor(
                 )
                 // One artist that fails to match NEVER sinks the rest — the engine's non-negotiable
                 // principle, applied to this path too.
-                if (runCatching { bookmarkArtist(artist) }.getOrDefault(false)) added++
+                if (runCatching { bookmarkArtist(artist) }.getOrDefault(false)) {
+                    added++
+                } else if (artist.name.isNotBlank()) {
+                    failures += ImportFailureRow(
+                        title = artist.name,
+                        artists = artist.name,
+                        album = "",
+                        source = sourceLabel,
+                        reason = "sin resultados",
+                    )
+                }
                 delay(TRACK_THROTTLE_MS)
             }
 
@@ -767,6 +804,7 @@ class MigrationViewModel @Inject constructor(
                 ytmPlaylistId = null,
                 localPlaylistId = null,
                 ambiguous = emptyList(),
+                importFailures = failures,
             )
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e

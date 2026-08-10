@@ -289,6 +289,7 @@ fun AuraAutoPlaylistScreen(
                     originalSong = song,
                     navController = navController,
                     onDismiss = menuState::dismiss,
+                    exportedVideoActionsOnly = isExportedVideos,
                 )
             }
         },

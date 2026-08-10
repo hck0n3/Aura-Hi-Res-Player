@@ -122,9 +122,6 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import iad1tya.echo.music.R
 import iad1tya.echo.music.LocalPlayerConnection
-import iad1tya.echo.music.constants.AudioQuality
-import iad1tya.echo.music.constants.AudioQualityKey
-import iad1tya.echo.music.utils.rememberEnumPreference
 
 data class AudioDevice(
     val name: String,
@@ -576,14 +573,6 @@ fun AudioDeviceBottomSheet(onDismiss: () -> Unit, modifier: Modifier = Modifier)
 
                     Spacer(modifier = Modifier.height(24.dp))
 
-                    AudioQualitySelector()
-
-                    Spacer(modifier = Modifier.height(24.dp))
-                    
-                    DownloadQualitySelector()
-
-                    Spacer(modifier = Modifier.height(24.dp))
-
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -756,146 +745,6 @@ fun VolumeControlRow(
                             shape = CircleShape
                         )
                 )
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
-@Composable
-fun AudioQualitySelector() {
-    val (audioQuality, onAudioQualityChange) = rememberEnumPreference(
-        key = AudioQualityKey,
-        defaultValue = AudioQuality.OPUS
-    )
-
-    Column(
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Text(
-            text = stringResource(R.string.audio_quality_title),
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier
-                .padding(bottom = 12.dp)
-                .fillMaxWidth()
-        )
-
-        val options = listOf(
-            "Opus",
-            "320 kbps",
-            "Lossless"
-        )
-        val selectedIndex = when (audioQuality) {
-            AudioQuality.SAAVN -> 1
-            AudioQuality.LOSSLESS -> 2
-            else -> 0
-        }
-
-        androidx.compose.foundation.layout.FlowRow(
-            modifier = Modifier
-                .padding(horizontal = 16.dp)
-                .padding(vertical = 8.dp)
-                .fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            options.forEachIndexed { index, label ->
-                ToggleButton(
-                    checked = selectedIndex == index,
-                    onCheckedChange = {
-                        val newQuality = when (index) {
-                            1 -> AudioQuality.SAAVN
-                            2 -> AudioQuality.LOSSLESS
-                            else -> AudioQuality.OPUS
-                        }
-                        onAudioQualityChange(newQuality)
-                    },
-                    shapes = when (index) {
-                        0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
-                        options.lastIndex -> ButtonGroupDefaults.connectedTrailingButtonShapes()
-                        else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
-                    },
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(48.dp)
-                        .semantics { role = Role.RadioButton }
-                ) {
-                    Text(
-                        text = label,
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                }
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
-@Composable
-fun DownloadQualitySelector() {
-    val (downloadQuality, onDownloadQualityChange) = rememberEnumPreference(
-        key = iad1tya.echo.music.constants.DownloadQualityKey,
-        defaultValue = iad1tya.echo.music.constants.DownloadQuality.YOUTUBE
-    )
-
-    Column(
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Text(
-            text = stringResource(R.string.download_quality_title),
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier
-                .padding(bottom = 12.dp)
-                .fillMaxWidth()
-        )
-
-        val options = listOf(
-            "Opus",
-            "320 kbps",
-            "Lossless"
-        )
-        val selectedIndex = when (downloadQuality) {
-            iad1tya.echo.music.constants.DownloadQuality.SAAVN -> 1
-            iad1tya.echo.music.constants.DownloadQuality.LOSSLESS -> 2
-            else -> 0
-        }
-
-        androidx.compose.foundation.layout.FlowRow(
-            modifier = Modifier
-                .padding(horizontal = 16.dp)
-                .padding(vertical = 8.dp)
-                .fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            options.forEachIndexed { index, label ->
-                ToggleButton(
-                    checked = selectedIndex == index,
-                    onCheckedChange = {
-                        val newQuality = when (index) {
-                            1 -> iad1tya.echo.music.constants.DownloadQuality.SAAVN
-                            2 -> iad1tya.echo.music.constants.DownloadQuality.LOSSLESS
-                            else -> iad1tya.echo.music.constants.DownloadQuality.YOUTUBE
-                        }
-                        onDownloadQualityChange(newQuality)
-                    },
-                    shapes = when (index) {
-                        0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
-                        options.lastIndex -> ButtonGroupDefaults.connectedTrailingButtonShapes()
-                        else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
-                    },
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(48.dp)
-                        .semantics { role = Role.RadioButton }
-                ) {
-                    Text(
-                        text = label,
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                }
             }
         }
     }

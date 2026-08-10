@@ -37,9 +37,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
@@ -49,6 +48,7 @@ import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -345,11 +345,9 @@ fun RecognitionScreen(
     // ONE flag read for the whole screen. The recognition PIPELINE below is untouched — this is the
     // chrome only: ground, glyph colours, type, radii.
     val skin = rememberAuraPanelSkin()
-    val auraDark = skin.enabled && skin.darkGround
 
     Scaffold(
-        // `MaterialTheme.colorScheme.background` IS the `Scaffold` default.
-        containerColor = if (auraDark) AuraPalette.Ground else MaterialTheme.colorScheme.background,
+        containerColor = if (skin.enabled) AuraPalette.Ground else MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.recognize_music)) },
@@ -372,7 +370,7 @@ fun RecognitionScreen(
                         )
                     }
                 },
-                colors = if (auraDark) {
+                colors = if (skin.enabled) {
                     androidx.compose.material3.TopAppBarDefaults.topAppBarColors(
                         containerColor = AuraPalette.Ground,
                         titleContentColor = skin.ink,
@@ -380,7 +378,6 @@ fun RecognitionScreen(
                         actionIconContentColor = skin.ink,
                     )
                 } else {
-                    // The `TopAppBar` default, spelled out so the classic bar is unchanged.
                     androidx.compose.material3.TopAppBarDefaults.topAppBarColors()
                 }
             )
@@ -774,164 +771,187 @@ private fun SuccessState(
     onTryAgain: () -> Unit,
     onClose: () -> Unit
 ) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-        modifier = Modifier.padding(horizontal = 16.dp)
-    ) {
-        
-        Card(
-            modifier = Modifier
-                .size(180.dp)
-                .aspectRatio(1f),
-            // The render's player artwork radius; and it is a FLAT sheet, so the 8 dp lift goes.
-            shape = if (skin.enabled) AuraShapes.PlayerArtwork
-            else RoundedCornerShape(iad1tya.echo.music.constants.ThumbnailCornerRadius),
-            elevation = CardDefaults.cardElevation(defaultElevation = if (skin.enabled) 0.dp else 8.dp)
+    val resultBody: @Composable () -> Unit = {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            AsyncImage(
-                model = result.coverArtHqUrl ?: result.coverArtUrl,
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop
-            )
-        }
+            val artworkShape = if (skin.enabled) AuraShapes.PlayerArtwork
+            else RoundedCornerShape(iad1tya.echo.music.constants.ThumbnailCornerRadius)
+            Box(
+                modifier = Modifier
+                    .size(180.dp)
+                    .aspectRatio(1f)
+                    .clip(artworkShape)
+                    .then(
+                        if (skin.enabled) {
+                            Modifier.border(1.dp, AuraPalette.SurfaceLine, artworkShape)
+                        } else {
+                            Modifier
+                        },
+                    ),
+            ) {
+                AsyncImage(
+                    model = result.coverArtHqUrl ?: result.coverArtUrl,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
+                )
+            }
 
-        Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
-
-        Text(
-            text = result.title,
-            style = if (skin.enabled) AuraType.PlayerTitle else MaterialTheme.typography.headlineSmall,
-            fontWeight = if (skin.enabled) FontWeight.SemiBold else FontWeight.Bold,
-            color = if (skin.enabled) skin.ink else Color.Unspecified,
-            textAlign = TextAlign.Center,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis
-        )
-
-        Text(
-            text = result.artist,
-            style = if (skin.enabled) AuraType.PlayerArtist else MaterialTheme.typography.titleMedium,
-            color = if (skin.enabled) skin.inkMuted else MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-
-        result.album?.let { album ->
             Text(
-                text = album,
-                style = if (skin.enabled) AuraType.CalloutSubtitle else MaterialTheme.typography.bodyMedium,
-                color = if (skin.enabled) skin.inkFaint
-                else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                text = result.title,
+                style = if (skin.enabled) AuraType.PlayerTitle else MaterialTheme.typography.headlineSmall,
+                fontWeight = if (skin.enabled) FontWeight.SemiBold else FontWeight.Bold,
+                color = if (skin.enabled) skin.ink else Color.Unspecified,
+                textAlign = TextAlign.Center,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+
+            Text(
+                text = result.artist,
+                style = if (skin.enabled) AuraType.PlayerArtist else MaterialTheme.typography.titleMedium,
+                color = if (skin.enabled) skin.inkMuted else MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                overflow = TextOverflow.Ellipsis,
             )
+
+            result.album?.let { album ->
+                Text(
+                    text = album,
+                    style = if (skin.enabled) AuraType.CalloutSubtitle else MaterialTheme.typography.bodyMedium,
+                    color = if (skin.enabled) skin.inkFaint
+                    else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Column(
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Button(
+                    onClick = { onPlayOnApp(result) },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = if (skin.enabled) AuraShapes.Pill else androidx.compose.material3.ButtonDefaults.shape,
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.play),
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(stringResource(R.string.play_on_app))
+                }
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    FilledTonalButton(
+                        onClick = onToggleLike,
+                        enabled = isResolved,
+                        modifier = Modifier.weight(1f),
+                        shape = if (skin.enabled) AuraShapes.Pill else androidx.compose.material3.ButtonDefaults.filledTonalShape,
+                    ) {
+                        if (isResolving) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                            )
+                        } else {
+                            Icon(
+                                painter = painterResource(
+                                    if (isLiked) R.drawable.favorite else R.drawable.favorite_border,
+                                ),
+                                contentDescription = stringResource(R.string.action_like),
+                                modifier = Modifier.size(18.dp),
+                                tint = if (isLiked) MaterialTheme.colorScheme.error else LocalContentColor.current,
+                            )
+                        }
+                    }
+
+                    FilledTonalButton(
+                        onClick = onAddToPlaylist,
+                        enabled = isResolved,
+                        modifier = Modifier.weight(1f),
+                        shape = if (skin.enabled) AuraShapes.Pill else androidx.compose.material3.ButtonDefaults.filledTonalShape,
+                    ) {
+                        if (isResolving) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                            )
+                        } else {
+                            Icon(
+                                painter = painterResource(R.drawable.playlist_add),
+                                contentDescription = stringResource(R.string.add_to_playlist),
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
+                    }
+                }
+
+                FilledTonalButton(
+                    onClick = onTryAgain,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = if (skin.enabled) AuraShapes.Pill else androidx.compose.material3.ButtonDefaults.filledTonalShape,
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.mic),
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(stringResource(R.string.re_listen))
+                }
+
+                OutlinedButton(
+                    onClick = onClose,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = if (skin.enabled) AuraShapes.Pill else androidx.compose.material3.ButtonDefaults.outlinedShape,
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.close),
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(stringResource(R.string.close))
+                }
+            }
         }
-        
-        Spacer(modifier = Modifier.height(16.dp))
-        
-        
-        Column(
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            modifier = Modifier.fillMaxWidth()
+    }
+
+    if (skin.enabled) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp),
+            shape = AuraShapes.PlayerArtwork,
+            color = AuraPalette.FrostFill,
+            border = BorderStroke(1.dp, AuraPalette.SurfaceLine),
+            tonalElevation = 0.dp,
+            shadowElevation = 0.dp,
         ) {
-            Button(
-                onClick = { onPlayOnApp(result) },
-                modifier = Modifier.fillMaxWidth(),
-                // The render's actions are pills. Colours stay the theme's, so the button keeps
-                // following the user's accent.
-                shape = if (skin.enabled) AuraShapes.Pill else androidx.compose.material3.ButtonDefaults.shape,
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.play),
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(stringResource(R.string.play_on_app))
+            Box(Modifier.padding(20.dp)) {
+                resultBody()
             }
-
-            // Like + Add-to-playlist: enabled once the recognized track has been resolved to a real
-            // YouTube Music song; a brief spinner shows while that one-shot resolve is in flight.
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                FilledTonalButton(
-                    onClick = onToggleLike,
-                    enabled = isResolved,
-                    modifier = Modifier.weight(1f),
-                    shape = if (skin.enabled) AuraShapes.Pill else androidx.compose.material3.ButtonDefaults.filledTonalShape,
-                ) {
-                    if (isResolving) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(18.dp),
-                            strokeWidth = 2.dp
-                        )
-                    } else {
-                        Icon(
-                            painter = painterResource(
-                                if (isLiked) R.drawable.favorite else R.drawable.favorite_border
-                            ),
-                            contentDescription = stringResource(R.string.action_like),
-                            modifier = Modifier.size(18.dp),
-                            tint = if (isLiked) MaterialTheme.colorScheme.error else LocalContentColor.current
-                        )
-                    }
-                }
-
-                FilledTonalButton(
-                    onClick = onAddToPlaylist,
-                    enabled = isResolved,
-                    modifier = Modifier.weight(1f),
-                    shape = if (skin.enabled) AuraShapes.Pill else androidx.compose.material3.ButtonDefaults.filledTonalShape,
-                ) {
-                    if (isResolving) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(18.dp),
-                            strokeWidth = 2.dp
-                        )
-                    } else {
-                        Icon(
-                            painter = painterResource(R.drawable.playlist_add),
-                            contentDescription = stringResource(R.string.add_to_playlist),
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                }
-            }
-
-            FilledTonalButton(
-                onClick = onTryAgain,
-                modifier = Modifier.fillMaxWidth(),
-                shape = if (skin.enabled) AuraShapes.Pill else androidx.compose.material3.ButtonDefaults.filledTonalShape,
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.mic),
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(stringResource(R.string.re_listen))
-            }
-            
-            
-            OutlinedButton(
-                onClick = onClose,
-                modifier = Modifier.fillMaxWidth(),
-                shape = if (skin.enabled) AuraShapes.Pill else androidx.compose.material3.ButtonDefaults.outlinedShape,
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.close),
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(stringResource(R.string.close))
-            }
+        }
+    } else {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.padding(horizontal = 16.dp),
+        ) {
+            resultBody()
         }
     }
 }

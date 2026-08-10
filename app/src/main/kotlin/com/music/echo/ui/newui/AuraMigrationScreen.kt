@@ -51,6 +51,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.core.content.FileProvider
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -111,6 +112,7 @@ fun AuraMigrationScreen(
     viewModel: MigrationViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
 
     var showDeezerDialog by remember { mutableStateOf(false) }
     var deezerInput by rememberSaveable { mutableStateOf("") }
@@ -126,6 +128,51 @@ fun AuraMigrationScreen(
 
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) viewModel.prepareFileImport(uri)
+    }
+
+    val saveFailuresCsvLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("text/csv"),
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val file = viewModel.exportFailuresCsv()
+        if (file == null) {
+            android.widget.Toast.makeText(
+                context,
+                context.getString(R.string.spotify_import_failures_csv_save_failed),
+                android.widget.Toast.LENGTH_SHORT,
+            ).show()
+            return@rememberLauncherForActivityResult
+        }
+        val ok = runCatching {
+            context.contentResolver.openOutputStream(uri)?.use { out ->
+                file.inputStream().use { input -> input.copyTo(out) }
+            } != null
+        }.getOrDefault(false)
+        android.widget.Toast.makeText(
+            context,
+            context.getString(
+                if (ok) R.string.spotify_import_failures_csv_saved
+                else R.string.spotify_import_failures_csv_save_failed,
+            ),
+            android.widget.Toast.LENGTH_LONG,
+        ).show()
+    }
+
+    fun shareFailuresCsv() {
+        val file = viewModel.exportFailuresCsv() ?: return
+        runCatching {
+            val uri = FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.FileProvider",
+                file,
+            )
+            val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                type = "text/csv"
+                putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            context.startActivity(android.content.Intent.createChooser(intent, null))
+        }
     }
 
     val bloom = rememberAuraBloom(mediaId = null)
@@ -211,6 +258,10 @@ fun AuraMigrationScreen(
                                 state.localPlaylistId?.let { navController.navigate("local_playlist/$it") }
                             },
                             onMigrateAnother = { viewModel.reset() },
+                            onSaveFailuresCsv = {
+                                saveFailuresCsvLauncher.launch("migration_failures_${System.currentTimeMillis()}.csv")
+                            },
+                            onShareFailuresCsv = ::shareFailuresCsv,
                         )
 
                         // Reported by the dialog below, exactly as on the classic screen.
@@ -613,6 +664,8 @@ private fun androidx.compose.foundation.lazy.LazyListScope.auraDoneContent(
     onReview: () -> Unit,
     onOpenLibrary: () -> Unit,
     onMigrateAnother: () -> Unit,
+    onSaveFailuresCsv: () -> Unit,
+    onShareFailuresCsv: () -> Unit,
 ) {
     item(key = "aura_migrate_done") {
         AuraCardSurface(modifier = Modifier.animateItem()) {
@@ -678,6 +731,26 @@ private fun androidx.compose.foundation.lazy.LazyListScope.auraDoneContent(
             AuraActionButton(
                 text = stringResource(R.string.migrate_review_ambiguous, state.ambiguousPending),
                 onClick = onReview,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .animateItem(),
+            )
+        }
+    }
+    if (state.importFailures.isNotEmpty()) {
+        item(key = "aura_migrate_export_csv") {
+            AuraQuietButton(
+                text = stringResource(R.string.migrate_export_failures_csv),
+                onClick = onSaveFailuresCsv,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .animateItem(),
+            )
+        }
+        item(key = "aura_migrate_share_csv") {
+            AuraLinkButton(
+                text = stringResource(R.string.spotify_import_share_failures_csv),
+                onClick = onShareFailuresCsv,
                 modifier = Modifier
                     .fillMaxWidth()
                     .animateItem(),
