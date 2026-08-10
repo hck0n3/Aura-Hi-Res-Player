@@ -1,36 +1,27 @@
-# Aura Hi-Res Player 0.6.168
+# Aura Hi-Res Player 0.6.169
 
-Biblioteca reorganizada (Vídeos exportados en el hub, Descargados/Caché en Local, sin Subidas), CSV de Spotify a tu almacenamiento, búsqueda sin título que tapa, vídeos más estables, y **Para ti / Recomendado IA que ya no se congelan**.
+Exportar vídeo fiable, descarga offline que no pelea con el vídeo en vivo, export MP3/vídeo más rápido, y menos trabones al ver vídeo.
 
 ---
 
-## 🎯 Para ti / recomendaciones
+## 🎬 Vídeo: descargar vs exportar
 
-- **Para ti** (Inicio): ya no se queda en las mismas 20 canciones locales — mezcla del día + relacionadas reales de YouTube (antes el enriquecimiento solo aceptaba canciones ya en tu BD = cero descubrimiento).
-- El snapshot de Inicio caduca al cambiar de día (si el proceso sigue vivo varios días, vuelve a cargar solo).
-- **Recomendado para ti (IA)**: no re-publica el lote anterior; si la IA falla hay fallback por radio/relacionados; “Refrescar ahora” ya no se queda bloqueado; al abrir la app, si lleva >20 h sin actualizar se dispara un refresco.
+- **Exportar → Como vídeo** sondea el stream real (no solo el flag “es vídeo”). Si no hay, mensaje claro.
+- El MP4 exportado entra en **Vídeos exportados** (Descargar no llena esa lista).
+- **Descargar** mientras ves el vídeo: se aplaza audio y vídeo hasta salir del modo vídeo (antes el audio seguía bajando y provocaba trabones/403).
+- En modo vídeo se **pausan** las descargas offline de Exo; al salir se reanudan.
+- Textos + empty state del tile aclaran Descargar vs Exportar.
 
-## 📚 Biblioteca (Interfaz nueva)
+## ⚡ Export más rápido
 
-- Nuevo tile **Vídeos exportados** junto a Me gusta / Exportado / Álbumes favoritos.
-- **Descargados** y **En caché** viven dentro de **Local** (ya no en el hub).
-- **Subidas** eliminado del hub, Apariencia y filtros Canciones/Álbumes.
-- Al buscar en una lista: solo barra y resultados — **sin** título sticky del nombre encima.
+- OkHttp con buffer grande y keep-alive; portada MP3 en paralelo con el audio.
+- Export vídeo: baja audio+vídeo a la vez; intenta mux con `-c:v copy` (sin re-encode) y si falla usa `ultrafast`.
 
-## 📥 Spotify
+## 📺 Menos trabones al ver
 
-- Exportar fallos: **Guardar CSV en el dispositivo** (elige carpeta) o **Compartir** (Migrar).
+- Tras un stall, el player espera más buffer antes de reanudar (5 s / 3,5 s en modo rendimiento) — el merge audio+vídeo necesita más margen.
+- Sin descargas offline compitiendo con el stream en vivo.
 
-## 🎬 Vídeos
+## 📦 Del 0.6.168
 
-- Al tocar un vídeo (incl. exportados) el reproductor se abre en modo vídeo para verlo.
-- Menos trabones buffering↔play al cambiar a vídeo (ya no se reinicia el pipeline en BUFFERING).
-- Dar **Me gusta** (o Descargar) mientras ves un vídeo ya no lo tumba a “no disponible” / solo audio.
-
-## 🛡️ Pantalla bloqueada / logs
-
-- Tu diagnóstico 0.6.167 solo muestra salidas por **instalación de updates** (`PACKAGE_UPDATED`), no kills OEM. El keep-alive al apagar pantalla sigue activo; si un microcorte vuelve, envía un log nuevo con la hora exacta.
-
-## 📦 Del 0.6.167
-
-- Import Spotify con CSV/reintento, loudnorm de export, share de artista, multi-artista, lupa sin tirón, refresh de biblioteca, publicar solo con CI verde.
+- Biblioteca reorganizada, Para ti / IA que rotan, CSV Spotify a disco.

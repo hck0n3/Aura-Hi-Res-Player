@@ -48,10 +48,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.net.toUri
 import androidx.media3.exoplayer.offline.Download
-import androidx.media3.exoplayer.offline.DownloadRequest
-import androidx.media3.exoplayer.offline.DownloadService
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
 import com.music.innertube.YouTube
@@ -70,6 +67,8 @@ import iad1tya.echo.music.constants.ExportingSongIdsKey
 import iad1tya.echo.music.constants.ListItemHeight
 import iad1tya.echo.music.constants.ListThumbnailSize
 import iad1tya.echo.music.playback.AudioExportService
+import iad1tya.echo.music.playback.enqueueSongDownloads
+import iad1tya.echo.music.playback.removeSongDownloads
 import iad1tya.echo.music.ui.utils.ExportFormat
 import iad1tya.echo.music.ui.utils.ExportFormatChooserDialog
 import iad1tya.echo.music.constants.ThumbnailCornerRadius
@@ -79,7 +78,6 @@ import iad1tya.echo.music.extensions.toMediaItem
 import iad1tya.echo.music.models.MediaMetadata
 import iad1tya.echo.music.models.rememberResolvedAlbum
 import iad1tya.echo.music.models.toMediaMetadata
-import iad1tya.echo.music.playback.ExoDownloadService
 import iad1tya.echo.music.playback.queues.YouTubeQueue
 import iad1tya.echo.music.ui.component.ListDialog
 import iad1tya.echo.music.ui.component.LocalBottomSheetPageState
@@ -170,7 +168,7 @@ fun YouTubeSongMenu(
 
     if (showExportFormatDialog) {
         ExportFormatChooserDialog(
-            videoAvailable = song.isVideoSong,
+            songId = song.id,
             onDismiss = { showExportFormatDialog = false },
             onChoose = { format ->
                 ensureMp3Folder { directoryUri ->
@@ -554,12 +552,7 @@ fun YouTubeSongMenu(
                                     )
                                 },
                                 onClick = {
-                                    DownloadService.sendRemoveDownload(
-                                        context,
-                                        ExoDownloadService::class.java,
-                                        song.id,
-                                        false,
-                                    )
+                                    removeSongDownloads(context, song.id, song.isVideoSong)
                                 }
                             )
                         }
@@ -573,12 +566,7 @@ fun YouTubeSongMenu(
                                     )
                                 },
                                 onClick = {
-                                    DownloadService.sendRemoveDownload(
-                                        context,
-                                        ExoDownloadService::class.java,
-                                        song.id,
-                                        false,
-                                    )
+                                    removeSongDownloads(context, song.id, song.isVideoSong)
                                 }
                             )
                         }
@@ -596,16 +584,11 @@ fun YouTubeSongMenu(
                                     database.transaction {
                                         insert(song.toMediaMetadata())
                                     }
-                                    val downloadRequest = DownloadRequest
-                                        .Builder(song.id, song.id.toUri())
-                                        .setCustomCacheKey(song.id)
-                                        .setData(song.title.toByteArray())
-                                        .build()
-                                    DownloadService.sendAddDownload(
+                                    enqueueSongDownloads(
                                         context,
-                                        ExoDownloadService::class.java,
-                                        downloadRequest,
-                                        false,
+                                        song.id,
+                                        song.title,
+                                        isVideoSong = song.isVideoSong,
                                     )
                                 }
                             )

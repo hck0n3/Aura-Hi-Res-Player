@@ -195,7 +195,7 @@ fun OldPlayerMenu(
 
     if (showExportFormatDialog) {
         ExportFormatChooserDialog(
-            videoAvailable = mediaMetadata.isVideoSong,
+            songId = mediaMetadata.id,
             onDismiss = { showExportFormatDialog = false },
             onChoose = { format ->
                 ensureMp3Folder { directoryUri ->

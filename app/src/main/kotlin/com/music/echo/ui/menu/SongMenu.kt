@@ -302,7 +302,7 @@ fun SongMenu(
 
     if (showExportFormatDialog) {
         ExportFormatChooserDialog(
-            videoAvailable = song.song.isVideo,
+            songId = song.id,
             onDismiss = { showExportFormatDialog = false },
             onChoose = { format ->
                 ensureMp3Folder { directoryUri ->

@@ -218,6 +218,11 @@ fun AuraAutoPlaylistScreen(
     val downloadProgress by rememberAuraDownloadProgress(enabled = isDownloadsScreen)
 
     val currentSongs = songs
+    val emptyText = if (playlistType == PlaylistType.EXPORTED_VIDEO) {
+        stringResource(R.string.exported_videos_empty)
+    } else {
+        null
+    }
     AuraSongCollectionScaffold(
         title = playlist,
         songs = currentSongs,
@@ -225,6 +230,7 @@ fun AuraAutoPlaylistScreen(
         aboutTitleRes = R.string.about_album,
         aboutText = stringResource(R.string.aura_auto_playlist_about, playlist),
         onBack = { navController.navigateUp() },
+        emptyText = emptyText,
         onHeaderMenu = {
             menuState.show {
                 AutoPlaylistMenu(

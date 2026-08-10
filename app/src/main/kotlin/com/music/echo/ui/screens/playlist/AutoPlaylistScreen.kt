@@ -332,7 +332,11 @@ fun AutoPlaylistScreen(
                     item(key = "empty_placeholder") {
                         EmptyPlaceholder(
                             icon = R.drawable.music_note,
-                            text = stringResource(R.string.playlist_is_empty),
+                            text = if (playlistType == PlaylistType.EXPORTED_VIDEO) {
+                                stringResource(R.string.exported_videos_empty)
+                            } else {
+                                stringResource(R.string.playlist_is_empty)
+                            },
                         )
                     }
                 } else {

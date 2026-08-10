@@ -171,6 +171,8 @@ internal fun AuraSongCollectionScaffold(
     sortItem: (@Composable (List<Song>) -> Unit)? = null,
     extraItemsPresent: Boolean = false,
     extraItems: (LazyListScope.(isSearching: Boolean) -> Unit)? = null,
+    /** Overrides the default "playlist is empty" copy (e.g. Exported videos CTA). */
+    emptyText: String? = null,
 ) {
     val menuState = LocalMenuState.current
     val haptic = LocalHapticFeedback.current
@@ -257,7 +259,7 @@ internal fun AuraSongCollectionScaffold(
             if (list.isEmpty() && !extraItemsPresent) {
                 item(key = "aura_coll_empty") {
                     AuraEmpty(
-                        text = stringResource(R.string.playlist_is_empty),
+                        text = emptyText ?: stringResource(R.string.playlist_is_empty),
                         modifier = Modifier.animateItem(),
                     )
                 }

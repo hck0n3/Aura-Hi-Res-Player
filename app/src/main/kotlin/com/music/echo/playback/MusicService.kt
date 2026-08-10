@@ -141,6 +141,7 @@ import okhttp3.Dns
 import java.net.InetAddress
 import java.net.Inet4Address
 import java.net.Inet6Address
+import androidx.media3.exoplayer.offline.DownloadService
 import iad1tya.echo.music.db.MusicDatabase
 import iad1tya.echo.music.db.entities.EnhancedShuffleContextEntity
 import iad1tya.echo.music.db.entities.EnhancedShufflePlayedEntity
@@ -2731,9 +2732,11 @@ class MusicService :
                         // Applies in BOTH buffer profiles; the min/max duration tier split (maxBufferMs) above
                         // is untouched.
                         750,
-                        // bufferForPlaybackAfterRebufferMs: ~2.5s to resume after a stall — faster than the 5s
-                        // default but not so thin it ping-pongs stalls on weak/hi-res streams. Profile-independent.
-                        2500,
+                        // bufferForPlaybackAfterRebufferMs: video mode merges TWO streams (video-only +
+                        // audio). 2.5s was thin for that dual fetch and ping-ponged STATE_BUFFERING
+                        // hitching. 5s (Exo default) rides out short stalls; small/perf profile keeps
+                        // 3.5s so low-RAM devices don't wait forever to resume.
+                        if (useSmallBuffer) 3_500 else 5_000,
                     )
                     // 64MB byte ceiling guards against OOM with multiple pre-loaded/crossfade players,
                     // but prioritizeTimeOverSizeThresholds(true) lets the TIME buffer win so the min/max
@@ -4694,9 +4697,9 @@ class MusicService :
                     // here would abort the whole query block — rolling back the like. Never let the optional
                     // download break the like itself.
                     //
-                    // While THIS track is in video mode, do NOT enqueue the companion VIDEO download:
-                    // ExoDownload racing the live muxed stream 403s/evicts the playing source →
-                    // onPlayerError → exitVideoMode → "Video no disponible — volviendo a audio".
+                    // While THIS track is in video mode, defer the WHOLE offline download
+                    // (audio+video). Audio-only enqueue still races the live mux → hitch/403.
+                    // Flushed in exitVideoMode.
                     val watchingThisInVideo =
                         _videoMode.value && player.currentMediaItem?.mediaId == toggledFinal.id
                     try {
@@ -4704,7 +4707,8 @@ class MusicService :
                             this@MusicService,
                             toggledFinal.id,
                             toggledFinal.title,
-                            isVideoSong = meta.isVideoSong && !watchingThisInVideo,
+                            isVideoSong = meta.isVideoSong,
+                            deferWhileLiveVideo = watchingThisInVideo,
                         )
                     } catch (e: Exception) {
                         Timber.tag(TAG).e(e, "auto-download on like failed (non-fatal)")
@@ -7409,7 +7413,10 @@ class MusicService :
                 // with the in-place rebuild (teardown rule: video-on via normal path releases it).
                 teardownInstantVideoSwap("video mode on via normal path")
                 _videoMode.value = true
+                pauseOfflineDownloadsForVideoPlayback()
                 applyVideoToCurrent()
+            } else {
+                pauseOfflineDownloadsForVideoPlayback()
             }
             // Also pre-build the NEXT item now so the FIRST auto-advance is already seamless (no track change
             // fires on a plain toggle, so onMediaItemTransition wouldn't otherwise get a chance to pre-build).
@@ -7494,7 +7501,10 @@ class MusicService :
         // YouTube resolution (the id here is an http audio URL, which YTPlayerUtils can't resolve anyway).
         val podcastVideo = player.currentMetadata?.podcastVideoUrl
         if (!podcastVideo.isNullOrEmpty()) {
-            if (armModeWhenReady) _videoMode.value = true
+            if (armModeWhenReady) {
+                _videoMode.value = true
+                pauseOfflineDownloadsForVideoPlayback()
+            }
             swapToVideo(id, podcastVideo, isMuxed = true)
             return
         }
@@ -7531,8 +7541,10 @@ class MusicService :
                 _videoUrl.value = null
                 return
             }
-            if (armModeWhenReady) _videoMode.value = true
-            else if (!_videoMode.value) return
+            if (armModeWhenReady) {
+                _videoMode.value = true
+                pauseOfflineDownloadsForVideoPlayback()
+            } else if (!_videoMode.value) return
             swapToVideo(id, offlineVideoCacheUri(id))
             return
         }
@@ -7541,8 +7553,10 @@ class MusicService :
         val cached = videoUrlCache[id]?.takeIf { it.second > System.currentTimeMillis() }?.first
         if (!cached.isNullOrEmpty()) {
             videoSwapMark("applyVideoToCurrent: URL cache HIT")
-            if (armModeWhenReady) _videoMode.value = true
-            else if (!_videoMode.value) return
+            if (armModeWhenReady) {
+                _videoMode.value = true
+                pauseOfflineDownloadsForVideoPlayback()
+            } else if (!_videoMode.value) return
             swapToVideo(id, cached)
             return
         }
@@ -7577,6 +7591,7 @@ class MusicService :
                 videoUrlCache[id] = url to (System.currentTimeMillis() + 5 * 60 * 1000L)
                 if (armModeWhenReady) {
                     _videoMode.value = true
+                    pauseOfflineDownloadsForVideoPlayback()
                 } else if (!_videoMode.value) {
                     return@withContext
                 }
@@ -7837,13 +7852,34 @@ class MusicService :
         userExplicitlyExitedVideo = true
         videoStuckRecoveryJob?.cancel()
         teardownInstantVideoSwap("exit video mode")
+        val leavingId = player.currentMediaItem?.mediaId
         _videoMode.value = false
         _videoUrl.value = null
         prebuildingIds.clear()
         restoreVideoTracksExcept(null)   // restore ALL tracked video items (current + any pre-built) to audio
+        // Resume offline pipeline + flush any download deferred while watching.
+        resumeOfflineDownloadsAfterVideoPlayback()
+        runCatching { flushPendingSongDownload(this, leavingId) }
+            .onFailure { Timber.tag(TAG).w(it, "flush pending song download failed") }
         // Re-arm the instant-swap pre-prepare (fully re-gated inside) so toggling video back on soon after
         // is instant again; delayed so it never competes with the audio restore's own re-prepare.
         if (playerSheetExpanded) scheduleInstantVideoPrepare(INSTANT_VIDEO_PREPARE_DELAY_MS)
+    }
+
+    /**
+     * Offline Exo downloads share the same network as the live video+audio merge. Pause them for the
+     * whole video session so they cannot 403/bandwidth-fight the playing mux (owner hitch reports).
+     */
+    private fun pauseOfflineDownloadsForVideoPlayback() {
+        runCatching {
+            DownloadService.sendPauseDownloads(this, ExoDownloadService::class.java, false)
+        }.onFailure { Timber.tag(TAG).w(it, "pause downloads for video failed") }
+    }
+
+    private fun resumeOfflineDownloadsAfterVideoPlayback() {
+        runCatching {
+            DownloadService.sendResumeDownloads(this, ExoDownloadService::class.java, false)
+        }.onFailure { Timber.tag(TAG).w(it, "resume downloads after video failed") }
     }
 
     private fun createDataSourceFactory(): DataSource.Factory {
@@ -8544,6 +8580,7 @@ class MusicService :
             pre.volume = if (isMuted.value) 0f else playerVolume.value
             pre.playWhenReady = playing
             _videoMode.value = true
+            pauseOfflineDownloadsForVideoPlayback()
             _videoUrl.value = url
             // Old player: silence, detach its surface, full release (mirrors cleanupCrossfade's teardown).
             // NO clearMediaItems: redundant before release() and races media3 transition eval (CRASH_REPORTS #2/#5).

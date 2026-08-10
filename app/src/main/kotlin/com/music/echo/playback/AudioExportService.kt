@@ -42,7 +42,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -50,10 +52,41 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
 import java.io.FileOutputStream
+import java.util.concurrent.TimeUnit
 @AndroidEntryPoint
 class AudioExportService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val httpClient = OkHttpClient()
+    // Tuned for large googlevideo pulls: keep-alive pool, longer read, bigger sink buffer.
+    // Not aria2/multi-CDN (Seal) — that path is GPL + often throttled by YouTube.
+    private val httpClient = OkHttpClient.Builder()
+        .connectTimeout(20, TimeUnit.SECONDS)
+        .readTimeout(120, TimeUnit.SECONDS)
+        .writeTimeout(60, TimeUnit.SECONDS)
+        .callTimeout(0, TimeUnit.SECONDS)
+        .retryOnConnectionFailure(true)
+        .build()
+
+    private fun downloadUrlToFile(url: String, dest: File) {
+        httpClient.newCall(Request.Builder().url(url).build()).execute().use { response ->
+            if (!response.isSuccessful) {
+                error("Stream request failed with ${response.code}")
+            }
+            val body = response.body ?: error("No response body")
+            val buffer = ByteArray(EXPORT_IO_BUFFER_BYTES)
+            body.byteStream().use { input ->
+                dest.outputStream().use { output ->
+                    var read: Int
+                    while (input.read(buffer).also { read = it } != -1) {
+                        output.write(buffer, 0, read)
+                    }
+                    output.flush()
+                }
+            }
+        }
+        if (!dest.exists() || dest.length() <= 0L) {
+            error("Downloaded stream is empty")
+        }
+    }
 
     @Inject
     lateinit var database: MusicDatabase
@@ -133,37 +166,38 @@ class AudioExportService : Service() {
             val tempAudioFile = File.createTempFile("export_audio_", ".m4a", cacheDir).also { audioFileRef = it }
             val tempMp4File = File.createTempFile("export_result_", ".mp4", cacheDir).also { mp4FileRef = it }
 
-            fun downloadTo(url: String, dest: File) {
-                httpClient.newCall(Request.Builder().url(url).build()).execute().use { response ->
-                    if (!response.isSuccessful) {
-                        error("Stream request failed with ${response.code}")
-                    }
-                    val body = response.body ?: error("No response body")
-                    body.byteStream().use { input ->
-                        dest.outputStream().use { output ->
-                            input.copyTo(output)
-                            output.flush()
-                        }
-                    }
-                }
-                if (!dest.exists() || dest.length() <= 0L) {
-                    error("Downloaded stream is empty")
-                }
+            // Parallel A/V fetch — biggest wall-clock win vs sequential OkHttp pulls.
+            updateExportProgress(10, getString(R.string.export_processing_audio))
+            coroutineScope {
+                val videoJob = async(Dispatchers.IO) { downloadUrlToFile(videoStreamUrl, tempVideoFile) }
+                val audioJob = async(Dispatchers.IO) { downloadUrlToFile(rangedAudioUrl, tempAudioFile) }
+                videoJob.await()
+                updateExportProgress(40, getString(R.string.export_processing_audio))
+                audioJob.await()
             }
-
-            updateExportProgress(15, getString(R.string.export_processing_audio))
-            downloadTo(videoStreamUrl, tempVideoFile)
-            updateExportProgress(45, getString(R.string.export_processing_audio))
-            downloadTo(rangedAudioUrl, tempAudioFile)
             updateExportProgress(65, getString(R.string.export_processing_tags))
 
-            val ffmpegCommand = buildVideoFfmpegCommand(
+            // Prefer stream-copy of video when already H.264 (skips slow libx264). Fall back to encode.
+            val copyCmd = buildVideoFfmpegCommand(
                 videoPath = tempVideoFile.absolutePath,
                 audioPath = tempAudioFile.absolutePath,
                 outputPath = tempMp4File.absolutePath,
+                copyVideo = true,
             )
-            val session = FFmpegKit.execute(ffmpegCommand)
-            val returnCode = session.returnCode
+            var session = FFmpegKit.execute(copyCmd)
+            var returnCode = session.returnCode
+            if (returnCode == null || !ReturnCode.isSuccess(returnCode)) {
+                Log.i(TAG, "Video export copy-mux failed; re-encoding")
+                tempMp4File.delete()
+                val encodeCmd = buildVideoFfmpegCommand(
+                    videoPath = tempVideoFile.absolutePath,
+                    audioPath = tempAudioFile.absolutePath,
+                    outputPath = tempMp4File.absolutePath,
+                    copyVideo = false,
+                )
+                session = FFmpegKit.execute(encodeCmd)
+                returnCode = session.returnCode
+            }
             if (returnCode == null || !ReturnCode.isSuccess(returnCode)) {
                 Log.e(TAG, "FFmpeg video export failed: ${session.output?.take(400)}")
                 error("FFmpeg failed")
@@ -221,14 +255,22 @@ class AudioExportService : Service() {
                 Log.w(TAG, "Video export cancelled for $songId")
             } else {
                 Log.e(TAG, "Video export failed for $songId", throwable)
+                val reason = when {
+                    throwable.message?.contains("No video stream", ignoreCase = true) == true ->
+                        getString(R.string.export_video_unavailable)
+                    throwable.message?.contains("FFmpeg", ignoreCase = true) == true ->
+                        getString(R.string.export_video_ffmpeg_failed)
+                    else -> getString(R.string.export_video_failed)
+                }
                 runCatching {
                     withContext(NonCancellable + Dispatchers.Main) {
                         Toast.makeText(
                             this@AudioExportService,
-                            "Export failed: $safeTitle",
+                            "$reason ($safeTitle)",
                             Toast.LENGTH_LONG,
                         ).show()
                     }
+                    updateExportProgress(0, reason)
                 }
             }
         }
@@ -315,48 +357,56 @@ class AudioExportService : Service() {
             val tempArtworkFile = File.createTempFile("export_cover_", ".jpg", cacheDir).also { artworkFileRef = it }
             val tempMp3File = File.createTempFile("export_result_", ".mp3", cacheDir).also { mp3FileRef = it }
 
-            val streamRequest = Request.Builder().url(rangedStreamUrl).build()
-            var totalBytes = -1L
-            var bytesWritten = 0L
-            httpClient.newCall(streamRequest).execute().use { response ->
-                if (!response.isSuccessful) {
-                    error("Stream request failed with ${response.code}")
-                }
-                val body = response.body ?: error("No response body")
-                totalBytes = body.contentLength()
-                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-                body.byteStream().use { input ->
-                    tempSourceFile.outputStream().use { output ->
-                        var read: Int
-                        var lastProgress = -1
-                        while (input.read(buffer).also { read = it } != -1) {
-                            output.write(buffer, 0, read)
-                            bytesWritten += read
-                            if (totalBytes > 0) {
-                                val progress = ((bytesWritten * 55L) / totalBytes).toInt().coerceIn(0, 55)
-                                if (progress > lastProgress) {
-                                    lastProgress = progress
-                                    updateExportProgress(progress, getString(R.string.export_processing_audio))
-                                }
-                            }
-                        }
-                        output.flush()
-                    }
-                }
-            }
-            if (totalBytes > 0 && bytesWritten < totalBytes) {
-                error("Incomplete export source: wrote $bytesWritten of $totalBytes bytes")
-            }
-
             val resolvedArtworkUrl = artworkUrl.takeIf { it.isNotBlank() }
                 ?: dbSong?.song?.thumbnailUrl?.takeIf { it.isNotBlank() }
                 ?: playbackData.videoDetails?.thumbnail?.thumbnails?.lastOrNull()?.url
                 ?: ""
 
-            val artworkDownloaded = prepareJpegCover(
-                artworkUrl = resolvedArtworkUrl,
-                destFile = tempArtworkFile,
-            )
+            // Overlap artwork fetch with the main audio download (independent HTTP).
+            var totalBytes = -1L
+            var bytesWritten = 0L
+            val artworkDownloaded = coroutineScope {
+                val artJob = async(Dispatchers.IO) {
+                    prepareJpegCover(
+                        artworkUrl = resolvedArtworkUrl,
+                        destFile = tempArtworkFile,
+                    )
+                }
+                val audioJob = async(Dispatchers.IO) {
+                    val streamRequest = Request.Builder().url(rangedStreamUrl).build()
+                    httpClient.newCall(streamRequest).execute().use { response ->
+                        if (!response.isSuccessful) {
+                            error("Stream request failed with ${response.code}")
+                        }
+                        val body = response.body ?: error("No response body")
+                        totalBytes = body.contentLength()
+                        val buffer = ByteArray(EXPORT_IO_BUFFER_BYTES)
+                        body.byteStream().use { input ->
+                            tempSourceFile.outputStream().use { output ->
+                                var read: Int
+                                var lastProgress = -1
+                                while (input.read(buffer).also { read = it } != -1) {
+                                    output.write(buffer, 0, read)
+                                    bytesWritten += read
+                                    if (totalBytes > 0) {
+                                        val progress = ((bytesWritten * 55L) / totalBytes).toInt().coerceIn(0, 55)
+                                        if (progress > lastProgress) {
+                                            lastProgress = progress
+                                            updateExportProgress(progress, getString(R.string.export_processing_audio))
+                                        }
+                                    }
+                                }
+                                output.flush()
+                            }
+                        }
+                    }
+                    if (totalBytes > 0 && bytesWritten < totalBytes) {
+                        error("Incomplete export source: wrote $bytesWritten of $totalBytes bytes")
+                    }
+                }
+                audioJob.await()
+                artJob.await()
+            }
             Log.i(
                 TAG,
                 "export artwork=${if (artworkDownloaded) "ok" else "fail"} " +
@@ -720,13 +770,23 @@ class AudioExportService : Service() {
             videoPath: String,
             audioPath: String,
             outputPath: String,
+            copyVideo: Boolean = false,
         ): String {
             val escapedVideo = videoPath.ffmpegEscape()
             val escapedAudio = audioPath.ffmpegEscape()
             val escapedOutput = outputPath.ffmpegEscape()
+            val videoArgs = if (copyVideo) {
+                // Skip libx264 when the adaptive stream is already H.264/AVC (huge wall-clock win).
+                "-c:v copy"
+            } else {
+                "-vf scale='min(1920,iw)':-2 -c:v libx264 -pix_fmt yuv420p -preset ultrafast -crf 22"
+            }
             return "-y -i '$escapedVideo' -i '$escapedAudio' -map 0:v:0 -map 1:a:0 " +
-                "-vf scale='min(1920,iw)':-2 -c:v libx264 -pix_fmt yuv420p -preset veryfast -crf 20 " +
-                "-af loudnorm=I=-11:TP=-1.5:LRA=11 -c:a aac -b:a 192k -movflags +faststart '$escapedOutput'"
+                "$videoArgs -af loudnorm=I=-11:TP=-1.5:LRA=11 -c:a aac -b:a 192k " +
+                "-movflags +faststart '$escapedOutput'"
         }
+
+        /** Larger than DEFAULT_BUFFER_SIZE — fewer syscalls on multi‑MB googlevideo bodies. */
+        private const val EXPORT_IO_BUFFER_BYTES = 256 * 1024
     }
 }

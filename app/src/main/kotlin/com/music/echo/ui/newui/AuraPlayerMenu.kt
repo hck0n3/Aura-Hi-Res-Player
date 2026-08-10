@@ -222,7 +222,7 @@ fun AuraPlayerMenu(
 
     if (showExportFormatDialog) {
         ExportFormatChooserDialog(
-            videoAvailable = mediaMetadata.isVideoSong,
+            songId = mediaMetadata.id,
             onDismiss = { showExportFormatDialog = false },
             onChoose = { format ->
                 ensureMp3Folder { directoryUri ->
@@ -572,11 +572,14 @@ fun AuraPlayerMenu(
                     label = stringResource(R.string.action_download),
                     onClick = {
                         database.transaction { insert(mediaMetadata) }
+                        val watching =
+                            videoMode && playerConnection.mediaMetadata.value?.id == mediaMetadata.id
                         enqueueSongDownloads(
                             context,
                             mediaMetadata.id,
                             mediaMetadata.title,
-                            mediaMetadata.isVideoSong,
+                            isVideoSong = mediaMetadata.isVideoSong,
+                            deferWhileLiveVideo = watching,
                         )
                         onDismiss()
                     },
