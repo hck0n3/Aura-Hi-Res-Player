@@ -218,7 +218,8 @@ fun AuraAutoPlaylistScreen(
     val downloadProgress by rememberAuraDownloadProgress(enabled = isDownloadsScreen)
 
     val currentSongs = songs
-    val emptyText = if (playlistType == PlaylistType.EXPORTED_VIDEO) {
+    val isExportedVideos = playlistType == PlaylistType.EXPORTED_VIDEO
+    val emptyText = if (isExportedVideos) {
         stringResource(R.string.exported_videos_empty)
     } else {
         null
@@ -231,6 +232,8 @@ fun AuraAutoPlaylistScreen(
         aboutText = stringResource(R.string.aura_auto_playlist_about, playlist),
         onBack = { navController.navigateUp() },
         emptyText = emptyText,
+        useVideoCount = isExportedVideos,
+        videoPosterLayout = isExportedVideos,
         onHeaderMenu = {
             menuState.show {
                 AutoPlaylistMenu(
@@ -307,7 +310,7 @@ fun AuraAutoPlaylistScreen(
                 ),
                 onSortTypeChange = onSortTypeChange,
                 onSortDescendingChange = onSortDescendingChange,
-                trailing = { AuraSongCountLabel(filtered.size) },
+                trailing = { AuraSongCountLabel(filtered.size, useVideoCount = isExportedVideos) },
             )
         },
         extraItemsPresent = activeDownloads.isNotEmpty(),

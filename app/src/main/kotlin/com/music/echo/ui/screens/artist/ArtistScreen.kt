@@ -913,8 +913,10 @@ fun ArtistScreen(
                                                 "artist/${viewModel.artistId}/items?browseId=${more.browseId}&params=${more.params}",
                                             )
                                         } else {
-                                            ArtistSectionBuffer.title = section.title
-                                            ArtistSectionBuffer.items = section.items.distinctBy { it.id }
+                                            ArtistSectionBuffer.open(
+                                                section.title,
+                                                section.items.distinctBy { it.id },
+                                            )
                                             navController.navigate("artist_section_buffer")
                                         }
                                     },

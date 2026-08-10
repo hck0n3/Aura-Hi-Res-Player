@@ -187,6 +187,7 @@ fun AuraHomeScreen(
 
     val isLoading by viewModel.isLoading.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
+    val hasPlayHistory by viewModel.hasPlayHistory.collectAsState()
 
     val perfOn by rememberPreference(HighPerformanceModeKey, false)
     var offlineMode by rememberPreference(OfflineModeKey, false)
@@ -488,6 +489,37 @@ fun AuraHomeScreen(
                                     )
                                 }
                             }
+                        }
+                    }
+                }
+
+                // Cold home: onboarding/import done but never played — taste shelves stay empty on purpose.
+                val tasteShelvesEmpty = quickPicks.isNullOrEmpty() &&
+                    dailyMixes.isNullOrEmpty() &&
+                    similarRecommendations.isNullOrEmpty() &&
+                    recentlyPlayed.isNullOrEmpty() &&
+                    keepListening.isNullOrEmpty() &&
+                    forgottenFavorites.isNullOrEmpty()
+                if (!isLoading && !hasPlayHistory && tasteShelvesEmpty) {
+                    item(key = "aura_home_cold_empty") {
+                        Column(
+                            modifier = Modifier
+                                .animateItem()
+                                .fillMaxWidth()
+                                .padding(horizontal = AuraSpacing.Gutter, vertical = 48.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            Text(
+                                text = stringResource(R.string.home_cold_empty_title),
+                                style = AuraType.RowTitle,
+                                color = AuraPalette.OnGround,
+                            )
+                            Text(
+                                text = stringResource(R.string.home_cold_empty_hint),
+                                style = AuraType.RowSubtitle,
+                                color = AuraPalette.OnGroundMuted,
+                            )
                         }
                     }
                 }

@@ -410,6 +410,11 @@ val ExportingSongIdsKey = stringPreferencesKey("exportingSongIds")
 val ExportedSongIdsKey = stringPreferencesKey("exportedSongIds")
 /** Song ids exported as social MP4 (Biblioteca ▸ Vídeos exportados). */
 val ExportedVideoIdsKey = stringPreferencesKey("exportedVideoIds")
+/**
+ * SAF content URIs for exported files: `songId\u001Furi\u001EsongId\u001Furi…`
+ * Used to share / reopen the file the user exported (not the YouTube stream).
+ */
+val ExportedFileUrisKey = stringPreferencesKey("exportedFileUris")
 val EnableExportAsMp3Key = booleanPreferencesKey("enableExportAsMp3")
 /** One-shot: seed Export as MP3 ON for installs that never wrote the key. */
 val EnableExportAsMp3DefaultOnV1AppliedKey = booleanPreferencesKey("enable_export_as_mp3_default_on_v1_applied")

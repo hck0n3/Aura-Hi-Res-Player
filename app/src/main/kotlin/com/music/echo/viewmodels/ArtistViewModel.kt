@@ -387,20 +387,32 @@ class ArtistViewModel @Inject constructor(
                     // "Videos oficiales": the artist's official music videos from YouTube, playable via the
                     // integrated video mode. (iTunes only exposes ~30s previews + Apple links, not playable
                     // streams, so YouTube is the playable source for this section.)
+                    // Prefer native YTM Videos/Videoclips shelves that already expose moreEndpoint —
+                    // those paginate via AuraArtistItemsScreen. Only synthesize when missing.
                     launch(Dispatchers.IO) {
                         val artistName = page.artist?.title ?: return@launch
-                        val videos = YouTube.search(artistName, YouTube.SearchFilter.FILTER_VIDEO)
-                            .getOrNull()?.items
-                            ?.filterIsInstance<com.music.innertube.models.SongItem>()
-                            ?.filter { v -> v.isVideoSong && v.artists.any { it.name.contains(artistName, ignoreCase = true) } }
-                            ?.filter { !hideExplicit || !it.explicit }
-                            ?.distinctBy { it.id }
-                            ?.take(12)
-                            .orEmpty()
+                        if (page.sections.any { isNativeOrOfficialVideosSection(it) }) return@launch
+                        val searchResult = YouTube.search(artistName, YouTube.SearchFilter.FILTER_VIDEO)
+                            .getOrNull() ?: return@launch
+                        val videos = searchResult.items
+                            .filterIsInstance<com.music.innertube.models.SongItem>()
+                            .filter { v ->
+                                v.isVideoSong && v.artists.any { it.name.contains(artistName, ignoreCase = true) }
+                            }
+                            .filter { !hideExplicit || !it.explicit }
+                            .distinctBy { it.id }
+                            .take(20)
                         if (videos.isEmpty()) return@launch
                         withContext(Dispatchers.Main) {
                             val current = artistPage ?: return@withContext
-                            if (current.sections.any { it.title.equals("Videos oficiales", ignoreCase = true) }) return@withContext
+                            if (current.sections.any { isNativeOrOfficialVideosSection(it) }) return@withContext
+                            // Stash search continuation so "Ver todos" can paginate (shelf stays ~20).
+                            iad1tya.echo.music.ui.screens.artist.ArtistSectionBuffer.videoSearchContinuation =
+                                searchResult.continuation
+                            iad1tya.echo.music.ui.screens.artist.ArtistSectionBuffer.videoSearchQuery =
+                                artistName
+                            iad1tya.echo.music.ui.screens.artist.ArtistSectionBuffer.videoSearchArtistFilter =
+                                artistName
                             artistPage = current.copy(
                                 sections = current.sections + com.music.innertube.pages.ArtistSection(
                                     title = "Videos oficiales",
@@ -430,5 +442,19 @@ class ArtistViewModel @Inject constructor(
                 _hasFailed.value = true
             }
         }
+    }
+
+    /**
+     * True when the page already has a usable Videos shelf — either native YTM Videos/Videoclips
+     * with a browse moreEndpoint (paginates via ArtistItems), or our synthetic Videos oficiales.
+     */
+    private fun isNativeOrOfficialVideosSection(section: com.music.innertube.pages.ArtistSection): Boolean {
+        val title = section.title.trim()
+        if (title.equals("Videos oficiales", ignoreCase = true)) return true
+        val looksLikeVideos =
+            title.contains("video", ignoreCase = true) ||
+                title.contains("vídeo", ignoreCase = true) ||
+                title.contains("videoclips", ignoreCase = true)
+        return looksLikeVideos && section.moreEndpoint != null
     }
 }

@@ -104,7 +104,9 @@ import iad1tya.echo.music.ui.component.VolumeSlider
 import iad1tya.echo.music.ui.utils.ExportFormat
 import iad1tya.echo.music.ui.utils.ExportFormatChooserDialog
 import iad1tya.echo.music.utils.isLocalMediaId
+import iad1tya.echo.music.utils.lookupExportedFileUri
 import iad1tya.echo.music.utils.rememberPreference
+import iad1tya.echo.music.utils.shareContentUri
 import iad1tya.echo.music.utils.shareLocalAudio
 import kotlinx.coroutines.launch
 import kotlin.math.log2
@@ -178,10 +180,12 @@ fun PlayerMenu(
     )
 
     val isExporting = remember(exportingSongIds, mediaMetadata.id) { exportingSongIds.split(",").contains(mediaMetadata.id) }
-    @Suppress("UNUSED_VARIABLE")
     val isExported = remember(exportedSongIds, exportedVideoIds, mediaMetadata.id) {
         val id = mediaMetadata.id
         exportedSongIds.split(",").contains(id) || exportedVideoIds.split(",").contains(id)
+    }
+    val isExportedVideo = remember(exportedVideoIds, mediaMetadata.id) {
+        exportedVideoIds.split(",").contains(mediaMetadata.id)
     }
     val isLocalTrack = mediaMetadata.id.isLocalMediaId() || librarySong?.song?.isLocal == true
     var showExportFormatDialog by rememberSaveable { mutableStateOf(false) }
@@ -233,6 +237,7 @@ fun PlayerMenu(
             songId = mediaMetadata.id,
             onDismiss = { showExportFormatDialog = false },
             onChoose = { format ->
+                if (format == ExportFormat.Offline) return@ExportFormatChooserDialog
                 ensureMp3Folder { directoryUri ->
                     onDismiss()
                     AudioExportService.start(
@@ -411,16 +416,31 @@ fun PlayerMenu(
                         },
                         text = stringResource(R.string.share),
                         onClick = {
-                            val intent = android.content.Intent().apply {
-                                action = android.content.Intent.ACTION_SEND
-                                type = "text/plain"
-                                putExtra(
-                                    android.content.Intent.EXTRA_TEXT,
-                                    ShareLinks.song(mediaMetadata.id)
-                                )
+                            coroutineScope.launch {
+                                if (isExported) {
+                                    val uri = lookupExportedFileUri(context, mediaMetadata.id)
+                                    if (uri != null &&
+                                        shareContentUri(
+                                            context,
+                                            uri,
+                                            if (isExportedVideo) "video/mp4" else "audio/mpeg",
+                                        )
+                                    ) {
+                                        onDismiss()
+                                        return@launch
+                                    }
+                                }
+                                val intent = android.content.Intent().apply {
+                                    action = android.content.Intent.ACTION_SEND
+                                    type = "text/plain"
+                                    putExtra(
+                                        android.content.Intent.EXTRA_TEXT,
+                                        ShareLinks.song(mediaMetadata.id)
+                                    )
+                                }
+                                context.startActivity(android.content.Intent.createChooser(intent, null))
+                                onDismiss()
                             }
-                            context.startActivity(android.content.Intent.createChooser(intent, null))
-                            onDismiss()
                         }
                     )
                 ),

@@ -350,6 +350,7 @@ fun AutoPlaylistScreen(
                                 onShowRemoveDownloadDialog = { showRemoveDownloadDialog = true },
                                 menuState = menuState,
                                 contextId = "AP:" + playlistId,
+                                useVideoCount = playlistType == PlaylistType.EXPORTED_VIDEO,
                                 // C1: only the Liked / Uploaded auto-playlists can sync from YT Music, and only
                                 // when signed in. syncLikedSongs/syncUploadedSongs are fire-and-forget on SyncUtils.
                                 onSync = if (isLoggedIn && playlistType == PlaylistType.LIKE) {
@@ -626,10 +627,12 @@ private fun AutoPlaylistHeader(
     // playlists' "PL:") keeps these virtual ids out of the PL:%-orphan prune, so their no-repeat memory persists
     // forever (liked/downloaded/uploaded/exported are never deleted). null = classic shuffle.
     contextId: String? = null,
+    useVideoCount: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val playerConnection = LocalPlayerConnection.current ?: return
     val context = LocalContext.current
+    val countPlural = if (useVideoCount) R.plurals.n_video else R.plurals.n_song
     val isTvOrCar = rememberIsTvOrCar()
 
     Column(
@@ -869,7 +872,7 @@ private fun AutoPlaylistHeader(
         
         Text(
             text = buildString {
-                append(pluralStringResource(R.plurals.n_song, songs.size, songs.size))
+                append(pluralStringResource(countPlural, songs.size, songs.size))
                 if (likeLength > 0) {
                     append(" • ")
                     append(makeTimeString(likeLength * 1000L))
@@ -890,10 +893,10 @@ private fun AutoPlaylistHeader(
             )
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(modifier.height(16.dp))
 
-        val staticDescription = remember(name, songs.size, likeLength) {
-            val trackCountText = context.resources.getQuantityString(R.plurals.n_song, songs.size, songs.size)
+        val staticDescription = remember(name, songs.size, likeLength, useVideoCount) {
+            val trackCountText = context.resources.getQuantityString(countPlural, songs.size, songs.size)
             "$name is a personalized collection featuring $trackCountText.${
                 if (likeLength > 0) " Total listening time is ${makeTimeString(likeLength * 1000L)}." else ""
             } This playlist is automatically curated for your musical enjoyment."

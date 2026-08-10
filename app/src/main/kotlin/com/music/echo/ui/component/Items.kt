@@ -2094,8 +2094,13 @@ object Icon {
     }
 
     @Composable
-    fun Download(state: Int?) {
+    fun Download(
+        state: Int?,
+        /** 0–100 from Exo [Download.percentDownloaded]; null / negative = indeterminate. */
+        percent: Float? = null,
+    ) {
         val skin = LocalAuraItemSkin.current
+        val progressFraction = percent?.takeIf { it >= 0f }?.let { (it / 100f).coerceIn(0f, 1f) }
         when (state) {
             // Render, Biblioteca: "Marca de verificación = descargada".
             STATE_COMPLETED -> if (skin.enabled) {
@@ -2117,20 +2122,41 @@ object Icon {
                 )
             }
             STATE_QUEUED, STATE_DOWNLOADING -> if (skin.enabled) {
-                CircularProgressIndicator(
-                    color = skin.accent,
-                    strokeWidth = 2.dp,
-                    modifier = Modifier
-                        .size(16.dp)
-                        .padding(end = 2.dp)
-                )
+                if (progressFraction != null) {
+                    CircularProgressIndicator(
+                        progress = { progressFraction },
+                        color = skin.accent,
+                        strokeWidth = 2.dp,
+                        modifier = Modifier
+                            .size(16.dp)
+                            .padding(end = 2.dp)
+                    )
+                } else {
+                    CircularProgressIndicator(
+                        color = skin.accent,
+                        strokeWidth = 2.dp,
+                        modifier = Modifier
+                            .size(16.dp)
+                            .padding(end = 2.dp)
+                    )
+                }
             } else {
-                CircularProgressIndicator(
-                    strokeWidth = 2.dp,
-                    modifier = Modifier
-                        .size(16.dp)
-                        .padding(end = 2.dp)
-                )
+                if (progressFraction != null) {
+                    CircularProgressIndicator(
+                        progress = { progressFraction },
+                        strokeWidth = 2.dp,
+                        modifier = Modifier
+                            .size(16.dp)
+                            .padding(end = 2.dp)
+                    )
+                } else {
+                    CircularProgressIndicator(
+                        strokeWidth = 2.dp,
+                        modifier = Modifier
+                            .size(16.dp)
+                            .padding(end = 2.dp)
+                    )
+                }
             }
             else -> {  }
         }

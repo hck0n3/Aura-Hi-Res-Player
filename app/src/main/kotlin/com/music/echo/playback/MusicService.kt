@@ -7646,7 +7646,11 @@ class MusicService :
         player.seekTo(idx, pos)
         player.setSeekParameters(androidx.media3.exoplayer.SeekParameters.DEFAULT)
         player.playWhenReady = playing
-        player.prepare()
+        // Only prepare from IDLE. BUFFERING/READY already have a live pipeline — prepare() restarts it
+        // and looks like a hitch (same class of bug as maybeRecoverStuckVideo / same-URI path above).
+        if (player.playbackState == Player.STATE_IDLE) {
+            player.prepare()
+        }
         if (playing) player.playWhenReady = true
         _videoUrl.value = url
         scheduleVideoStuckRecoveryCheck()
@@ -10700,8 +10704,9 @@ class MusicService :
         @Volatile
         var INSTANT_VIDEO_SWAP_ENABLED = false
         // Delay before pre-preparing after a track transition / video exit, so the speculative player never
-        // competes with the running track's own startup buffering (750 ms floor + rebuffer window).
-        private const val INSTANT_VIDEO_PREPARE_DELAY_MS = 2500L
+        // competes with the running track's own startup buffering. 1200 ms is enough once the URL is warm
+        // without waiting a full 2.5 s of dead air before the speculative path can help.
+        private const val INSTANT_VIDEO_PREPARE_DELAY_MS = 1200L
         // Never pre-prepare inside this margin of the crossfade preload moment (preload lead + margin):
         // guarantees the video pre-player and the crossfade secondary never race to exist at once.
         private const val INSTANT_VIDEO_CROSSFADE_MARGIN_MS = 3000L

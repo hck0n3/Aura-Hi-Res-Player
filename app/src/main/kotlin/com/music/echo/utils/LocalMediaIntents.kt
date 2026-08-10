@@ -11,7 +11,9 @@ import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import androidx.core.net.toUri
+import iad1tya.echo.music.constants.ExportedFileUrisKey
 import java.util.Locale
+import kotlinx.coroutines.flow.first
 
 fun String.isLocalMediaId(): Boolean {
     return runCatching {
@@ -39,4 +41,45 @@ fun shareLocalAudio(
     }
     context.startActivity(Intent.createChooser(shareIntent, null))
     return true
+}
+
+/** Share an already-resolved content/file URI (e.g. from [lookupExportedFileUri]). */
+fun shareContentUri(
+    context: Context,
+    uriString: String,
+    mimeType: String? = null,
+): Boolean {
+    if (uriString.isBlank()) return false
+    val uri = uriString.toUri()
+    val scheme = uri.scheme?.lowercase(Locale.US)
+    if (scheme != "content" && scheme != "file" && scheme != "android.resource") return false
+
+    val shareIntent = Intent(Intent.ACTION_SEND).apply {
+        type = mimeType?.takeIf(String::isNotBlank) ?: "*/*"
+        putExtra(Intent.EXTRA_STREAM, uri)
+        clipData = ClipData.newUri(context.contentResolver, null, uri)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    context.startActivity(Intent.createChooser(shareIntent, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    return true
+}
+
+/**
+ * Looks up the SAF URI persisted after a successful export for [songId].
+ * Encoding: `id\u001Furi\u001Eid\u001Furi` (see [ExportedFileUrisKey]).
+ */
+suspend fun lookupExportedFileUri(context: Context, songId: String): String? {
+    if (songId.isBlank()) return null
+    val raw = context.dataStore.data.first()[ExportedFileUrisKey].orEmpty()
+    if (raw.isBlank()) return null
+    return raw.split('\u001E')
+        .asSequence()
+        .mapNotNull { entry ->
+            val sep = entry.indexOf('\u001F')
+            if (sep <= 0) null
+            else entry.substring(0, sep) to entry.substring(sep + 1)
+        }
+        .firstOrNull { it.first == songId }
+        ?.second
+        ?.takeIf { it.isNotBlank() }
 }

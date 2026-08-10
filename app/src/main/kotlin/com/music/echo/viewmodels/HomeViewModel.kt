@@ -106,6 +106,11 @@ class HomeViewModel @Inject constructor(
     val isRefreshing = MutableStateFlow(false)
     val isLoading = MutableStateFlow(false)
     val isRandomizing = MutableStateFlow(false)
+    /**
+     * True once the user has at least one play event. Cold home (onboarding done, never played)
+     * keeps taste shelves empty until the first listen — gate on history only, not license.
+     */
+    val hasPlayHistory = MutableStateFlow(true)
 
     private val quickPicksEnum = context.dataStore.data.map {
         it[QuickPicksKey].toEnum(QuickPicks.QUICK_PICKS)
@@ -838,10 +843,8 @@ class HomeViewModel @Inject constructor(
         val fromTimeStamp = System.currentTimeMillis() - 86400000L * 7 * 2
 
         coroutineScope {
-            // Seed the home from the user's taste: most-played artists PLUS the artists they chose in
-            // onboarding / follow (bookmarked). A fresh user with no play history still gets a
-            // taste-based home built from YouTube's per-artist recommendations (the artist page's
-            // "fans might also like" + their music = YouTube's algorithm).
+            // Seed from most-played artists PLUS followed/bookmarked. Callers with no play history
+            // never reach here (load() cold-home gate) — onboarding-only artists must not fill Home.
             val playedArtists = database.mostPlayedArtists(fromTimeStamp, limit = 15).first()
             val bookmarkedArtists = database.artistsBookmarkedByCreateDateAsc().first()
             val artistDeferreds = (playedArtists + bookmarkedArtists)
@@ -1014,6 +1017,24 @@ class HomeViewModel @Inject constructor(
 
     private suspend fun load() {
         isLoading.value = true
+        val hasHistory = database.lastEvent().first() != null
+        hasPlayHistory.value = hasHistory
+
+        // Cold home: user finished onboarding (or imported library) but never played. Do NOT seed
+        // quickPicks / similar / daily mixes / community from onboarding-only follows — Inicio stays
+        // empty until the first play event (see lastEvent drop(1) reload below). License is irrelevant.
+        if (!hasHistory) {
+            clearTasteShelvesForColdHome()
+            isLoading.value = false
+            // Account playlists (logged-in library) and pinned speed-dial are fine — they are not
+            // fabricated taste. Skip YouTube home/explore so generic shelves don't fake a filled Home.
+            if (YouTube.cookie != null) {
+                runCatching { loadAccountPlaylists() }.onFailure { reportException(it) }
+            }
+            allYtItems.value = emptyList()
+            saveSnapshot()
+            return
+        }
 
         // Guard EACH phase independently: a throw in the local phase must never skip the network phase (that
         // would drop the Similar/Community/Daily Discover/YouTube carousels — a regression). reportException
@@ -1028,6 +1049,24 @@ class HomeViewModel @Inject constructor(
         runCatching { getGenreMix() }.onFailure { reportException(it) }
 
         saveSnapshot()
+    }
+
+    /** Empty every shelf that would otherwise be filled from onboarding/follows without play history. */
+    private fun clearTasteShelvesForColdHome() {
+        quickPicks.value = emptyList()
+        dailyMixes.value = emptyList()
+        recentlyPlayed.value = emptyList()
+        timeOfDayMix.value = null
+        forgottenFavorites.value = emptyList()
+        keepListening.value = emptyList()
+        similarRecommendations.value = emptyList()
+        communityPlaylists.value = emptyList()
+        homePage.value = null
+        explorePage.value = null
+        newFromArtists.value = emptyList()
+        genreMix.value = null
+        allLocalItems.value = emptyList()
+        allYtItems.value = emptyList()
     }
 
     /** Cache the loaded home at process level so returning to Home / resuming restores it instantly. */
@@ -1200,6 +1239,33 @@ class HomeViewModel @Inject constructor(
             genreMix.value = restored.genreMix
             allLocalItems.value = restored.allLocalItems
             allYtItems.value = restored.allYtItems
+            // Stale process snapshot may still hold onboarding-seeded taste from before cold-home.
+            // Re-check lastEvent: no history → wipe taste shelves (keep account/speed-dial bits).
+            viewModelScope.launch(Dispatchers.IO) {
+                val hasHistory = database.lastEvent().first() != null
+                hasPlayHistory.value = hasHistory
+                if (!hasHistory) {
+                    clearTasteShelvesForColdHome()
+                    snapshot = HomeSnapshot(
+                        savedAtMs = System.currentTimeMillis(),
+                        quickPicks = quickPicks.value,
+                        dailyMixes = dailyMixes.value,
+                        recentlyPlayed = recentlyPlayed.value,
+                        timeOfDayMix = timeOfDayMix.value,
+                        forgottenFavorites = forgottenFavorites.value,
+                        keepListening = keepListening.value,
+                        similarRecommendations = similarRecommendations.value,
+                        accountPlaylists = accountPlaylists.value,
+                        homePage = homePage.value,
+                        explorePage = explorePage.value,
+                        communityPlaylists = communityPlaylists.value,
+                        newFromArtists = newFromArtists.value,
+                        genreMix = genreMix.value,
+                        allLocalItems = allLocalItems.value,
+                        allYtItems = allYtItems.value,
+                    )
+                }
+            }
             // The snapshot can carry a stale time-of-day bucket ("Mix de la mañana" restored at 22:00
             // and kept indefinitely, since restore skips the auto-reload). Recompute bucket + seed for
             // the current hour/day from the pools just restored above — pure in-memory reshuffle, no
@@ -1219,10 +1285,9 @@ class HomeViewModel @Inject constructor(
             }
         }
 
-        // First-run onboarding finishes AFTER this ViewModel already ran its initial home load (with an
-        // empty library) and cached an empty snapshot — so returning to Home just restored that blank
-        // snapshot and the home stayed empty until the app was restarted. Reload once when onboarding
-        // completes so the artists the user just picked seed the home immediately.
+        // Onboarding completing used to reload so picked artists seeded Home immediately. That was a
+        // placebo for users who never played: taste shelves now require play history (see load()).
+        // Still reload once so cold-home empties / account bits settle after onboarding writes bookmarks.
         viewModelScope.launch(Dispatchers.IO) {
             context.dataStore.data
                 .map { it[OnboardingArtistsDoneKey] ?: false }
@@ -1235,30 +1300,24 @@ class HomeViewModel @Inject constructor(
                 }
         }
 
-        // Rebuild Home in REAL TIME when the user's followed/subscribed artists change (e.g. they subscribe
-        // to artists after skipping onboarding). Previously following an artist only wrote bookmarkedAt and
-        // nothing re-read it, so Home stayed empty/stale until a pull-to-refresh or cold restart. React to
-        // the followed-artist id SET (distinctUntilChanged = only real follow/unfollow, not row re-emits);
-        // drop(1) skips the current value (the cold-start load already ran); collectLatest + delay debounces
-        // a burst of subscriptions into a single rebuild.
+        // Rebuild Home when followed/subscribed artists change — but only once there is play history.
+        // Without history, load() would no-op taste shelves; skip the network churn until the first play.
         viewModelScope.launch(Dispatchers.IO) {
             database.artistsBookmarkedByCreateDateAsc()
                 .map { artists -> artists.map { it.id }.toSet() }
                 .distinctUntilChanged()
                 .drop(1)
                 .collectLatest {
+                    if (database.lastEvent().first() == null) return@collectLatest
                     delay(600)
                     snapshot = null
                     runCatching { load() }.onFailure { reportException(it) }
                 }
         }
 
-
-        // On a FRESH install the home is empty until there's listening history — and the first playback seeds
-        // that history, but nothing re-read it, so the home stayed blank until a cold restart. Reload ONCE, in
-        // real time, when the first play event lands while the home is still empty (guarded on quickPicks being
-        // empty so it does NOT reload on every subsequent song, and skipping the initial value so a returning
-        // user with existing history is unaffected). No account/subscription needed.
+        // First play event: reload once so taste shelves fill in real time (drop(1) skips the current
+        // value so returning users with history are unaffected). Guarded on quickPicks still empty so
+        // it does NOT reload on every subsequent song.
         viewModelScope.launch(Dispatchers.IO) {
             database.lastEvent()
                 .map { it != null }
@@ -1266,6 +1325,7 @@ class HomeViewModel @Inject constructor(
                 .drop(1)
                 .filter { it }
                 .collect {
+                    hasPlayHistory.value = true
                     if (quickPicks.value.isNullOrEmpty()) {
                         delay(600)
                         snapshot = null

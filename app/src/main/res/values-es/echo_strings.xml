@@ -233,6 +233,8 @@
     <string name="home_offline_no_internet">Parece que no tienes conexión a internet.</string>
     <string name="home_offline_downloads_hint">Puedes seguir escuchando tu música descargada sin conexión.</string>
     <string name="home_offline_continue">Continuar sin conexión</string>
+    <string name="home_cold_empty_title">Reproduce algo para personalizar Inicio</string>
+    <string name="home_cold_empty_hint">Busca una canción, álbum o artista — Inicio aprende de lo que reproduces.</string>
     <string name="export_directory_picker_unavailable">Este dispositivo no tiene selector de carpetas</string>
     <string name="sponsorblock_title">Saltar segmentos sin música</string>
     <string name="sponsorblock_description">Salta patrocinios, autopromoción y partes sin música usando la base comunitaria SponsorBlock. Nunca corta el audio real de la canción.</string>
@@ -712,6 +714,15 @@
     <string name="action_export">Exportar MP3 o vídeo</string>
     <string name="export_desc">Guarda MP3 o MP4 en una carpeta — el vídeo va a Vídeos exportados</string>
     <string name="export_choose_format_title">¿Cómo quieres exportar?</string>
+    <string name="download_or_export_title">¿Descargar o exportar?</string>
+    <string name="download_or_export">Descargar o exportar…</string>
+    <string name="download_offline_only">Descargar sin conexión</string>
+    <string name="download_offline_only_desc">Guárdala dentro de la app para reproducir sin red</string>
+    <string name="downloading_video">Descargando vídeo: %1$s</string>
+    <string name="exporting_video">Exportando vídeo…</string>
+    <string name="exporting_audio">Exportando audio…</string>
+    <string name="export_done_video">Vídeo exportado: %1$s</string>
+    <string name="export_done_audio">Audio exportado: %1$s</string>
     <string name="export_as_mp3">Como MP3</string>
     <string name="export_as_mp3_desc">Archivo de audio con etiquetas y portada</string>
     <string name="export_vs_download_hint">Exportar escribe un archivo en tu carpeta. Descargar solo lo deja offline dentro de la app.</string>
@@ -744,7 +755,7 @@
     <string name="export_complete">Exportado: %1$s</string>
     <string name="export_completed">Exportación completada</string>
     <string name="export_failed">Error al exportar: %1$s</string>
-    <string name="export_channel_name">Exportación de música</string>
+    <string name="export_channel_name">Exportar</string>
     <string name="filter_exported">Exportadas</string>
     <string name="miniplayer_background_style">Estilo de fondo del minirreproductor</string>
     <string name="apple_music_style_letter">Apple Music V2 (letra por letra)</string>

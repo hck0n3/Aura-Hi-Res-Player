@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.core.net.toUri
 import androidx.media3.exoplayer.offline.DownloadRequest
 import androidx.media3.exoplayer.offline.DownloadService
+import iad1tya.echo.music.R
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -60,7 +61,7 @@ fun enqueueVideoCompanionDownload(
     val vidId = videoDownloadMediaId(songId)
     val video = DownloadRequest.Builder(vidId, vidId.toUri())
         .setCustomCacheKey(vidId)
-        .setData(title.toByteArray())
+        .setData(context.getString(R.string.downloading_video, title).toByteArray())
         .build()
     DownloadService.sendAddDownload(context, ExoDownloadService::class.java, video, false)
 }

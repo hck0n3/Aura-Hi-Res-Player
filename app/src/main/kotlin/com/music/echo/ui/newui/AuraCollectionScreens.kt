@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -173,6 +174,10 @@ internal fun AuraSongCollectionScaffold(
     extraItems: (LazyListScope.(isSearching: Boolean) -> Unit)? = null,
     /** Overrides the default "playlist is empty" copy (e.g. Exported videos CTA). */
     emptyText: String? = null,
+    /** Use [R.plurals.n_video] in the header count (exported videos). */
+    useVideoCount: Boolean = false,
+    /** 16:9 header cover + full-width [AuraPosterCard] rows (exported videos). */
+    videoPosterLayout: Boolean = false,
 ) {
     val menuState = LocalMenuState.current
     val haptic = LocalHapticFeedback.current
@@ -278,6 +283,8 @@ internal fun AuraSongCollectionScaffold(
                         aboutText = aboutText,
                         onMenu = onHeaderMenu,
                         onSearch = { isSearching = true },
+                        useVideoCount = useVideoCount,
+                        videoPosterLayout = videoPosterLayout,
                         modifier = Modifier.animateItem(),
                     )
                 }
@@ -326,108 +333,152 @@ internal fun AuraSongCollectionScaffold(
                     if (checked) selection.add(song.id) else selection.remove(song.id)
                 }
                 val dimmed = song.id in shufflePlayedSet && song.id != mediaMetadata?.id
+                val playFromFiltered = {
+                    when {
+                        inSelectMode -> onCheckedChange(!selected)
+                        song.song.id == mediaMetadata?.id -> playerConnection.togglePlayPause()
+                        else -> playerConnection.playQueue(
+                            ListQueue(
+                                title = queueTitle,
+                                items = filteredSongs.map { it.toMediaItem() },
+                                startIndex = filteredSongs.indexOfFirst { it.id == song.id },
+                                contextId = contextId,
+                            ),
+                        )
+                    }
+                }
 
-                AuraRow(
-                    title = song.song.title,
-                    subtitle = song.artists.joinToString { it.name },
-                    highlighted = song.id == mediaMetadata?.id,
-                    dimmed = dimmed,
-                    contentDescription = song.song.title,
-                    onClick = {
-                        when {
-                            inSelectMode -> onCheckedChange(!selected)
-                            song.song.id == mediaMetadata?.id -> playerConnection.togglePlayPause()
-                            else -> playerConnection.playQueue(
-                                ListQueue(
-                                    title = queueTitle,
-                                    items = list.map { it.toMediaItem() },
-                                    startIndex = list.indexOfFirst { it.id == song.id },
-                                    contextId = contextId,
-                                ),
-                            )
-                        }
-                    },
-                    onLongClick = {
-                        if (!inSelectMode) {
+                if (videoPosterLayout) {
+                    val videoLabel = auraTypeLabel(AuraContentKind.Video)
+                    AuraPosterCard(
+                        title = song.song.title,
+                        subtitle = song.artists.joinToString { it.name }.takeIf { it.isNotBlank() },
+                        thumbnailUrl = song.song.thumbnailUrl,
+                        seed = song.id,
+                        ratio = 16f / 9f,
+                        shape = AuraShapes.Card,
+                        isActive = song.id == mediaMetadata?.id,
+                        isPlaying = song.id == mediaMetadata?.id && isPlaying,
+                        typeIcon = AuraIcons.Video,
+                        typeLabel = videoLabel,
+                        contentDescription = song.song.title,
+                        onClick = playFromFiltered,
+                        onLongClick = {
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            inSelectMode = true
-                            onCheckedChange(true)
-                        }
-                    },
-                    artwork = {
-                        AuraCover(
-                            thumbnailUrl = song.song.thumbnailUrl,
-                            size = 50.dp,
-                            seed = song.id,
-                        ) {
-                            if (song.id == mediaMetadata?.id && isPlaying) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .background(AuraPalette.Ground.copy(alpha = 0.55f)),
-                                    contentAlignment = Alignment.Center,
-                                ) { AuraPlayingBars() }
-                            }
-                        }
-                    },
-                    trailing = {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(7.dp),
-                        ) {
-                            if (dimmed) {
-                                AuraIconGlyph(
-                                    icon = AuraIcons.Check,
-                                    contentDescription = stringResource(R.string.cd_shuffle_already_played),
-                                    size = 16.dp,
-                                    tint = AuraPalette.Teal,
-                                )
-                            }
-                            if (song.song.explicit) {
-                                AuraTechnicalText(
-                                    text = "E",
-                                    color = AuraPalette.OnGroundDisabled,
-                                    style = AuraType.QualityBadge,
-                                )
-                            }
-                            if (song.song.liked) {
-                                AuraIconGlyph(
-                                    icon = AuraIcons.HeartFilled,
-                                    contentDescription = null,
-                                    size = 15.dp,
-                                    tint = AuraPalette.Teal,
-                                )
-                            }
-                            if (showDownloadTick) {
-                                AuraDownloadTick(songId = song.id)
-                            }
-                            AuraQualityBadge(format = song.format)
                             if (inSelectMode) {
-                                Checkbox(
-                                    checked = selected,
-                                    onCheckedChange = onCheckedChange,
-                                    colors = CheckboxDefaults.colors(
-                                        checkedColor = AuraPalette.Teal,
-                                        uncheckedColor = AuraPalette.OnGroundDisabled,
-                                        checkmarkColor = AuraPalette.OnAccent,
+                                onCheckedChange(!selected)
+                            } else {
+                                onSongMenu(song)
+                            }
+                        },
+                        modifier = Modifier
+                            .animateItem()
+                            .padding(horizontal = AuraSpacing.Gutter, vertical = 6.dp)
+                            .tvFocusable(isTvOrCar, AuraShapes.Highlight, scaleFocused = 1f),
+                    )
+                } else {
+                    AuraRow(
+                        title = song.song.title,
+                        subtitle = song.artists.joinToString { it.name },
+                        highlighted = song.id == mediaMetadata?.id,
+                        dimmed = dimmed,
+                        contentDescription = song.song.title,
+                        onClick = {
+                            when {
+                                inSelectMode -> onCheckedChange(!selected)
+                                song.song.id == mediaMetadata?.id -> playerConnection.togglePlayPause()
+                                else -> playerConnection.playQueue(
+                                    ListQueue(
+                                        title = queueTitle,
+                                        items = list.map { it.toMediaItem() },
+                                        startIndex = list.indexOfFirst { it.id == song.id },
+                                        contextId = contextId,
                                     ),
                                 )
-                            } else {
-                                AuraIconButton(
-                                    icon = AuraIcons.More,
-                                    contentDescription = song.song.title,
-                                    onClick = { onSongMenu(song) },
-                                    size = 18.dp,
-                                    tint = AuraPalette.OnGroundDisabled,
-                                )
                             }
-                        }
-                    },
-                    modifier = Modifier
-                        .animateItem()
-                        .padding(horizontal = AuraSpacing.Gutter)
-                        .tvFocusable(isTvOrCar, AuraShapes.Highlight, scaleFocused = 1f),
-                )
+                        },
+                        onLongClick = {
+                            if (!inSelectMode) {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                inSelectMode = true
+                                onCheckedChange(true)
+                            }
+                        },
+                        artwork = {
+                            AuraCover(
+                                thumbnailUrl = song.song.thumbnailUrl,
+                                size = 50.dp,
+                                seed = song.id,
+                            ) {
+                                if (song.id == mediaMetadata?.id && isPlaying) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .background(AuraPalette.Ground.copy(alpha = 0.55f)),
+                                        contentAlignment = Alignment.Center,
+                                    ) { AuraPlayingBars() }
+                                }
+                            }
+                        },
+                        trailing = {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(7.dp),
+                            ) {
+                                if (dimmed) {
+                                    AuraIconGlyph(
+                                        icon = AuraIcons.Check,
+                                        contentDescription = stringResource(R.string.cd_shuffle_already_played),
+                                        size = 16.dp,
+                                        tint = AuraPalette.Teal,
+                                    )
+                                }
+                                if (song.song.explicit) {
+                                    AuraTechnicalText(
+                                        text = "E",
+                                        color = AuraPalette.OnGroundDisabled,
+                                        style = AuraType.QualityBadge,
+                                    )
+                                }
+                                if (song.song.liked) {
+                                    AuraIconGlyph(
+                                        icon = AuraIcons.HeartFilled,
+                                        contentDescription = null,
+                                        size = 15.dp,
+                                        tint = AuraPalette.Teal,
+                                    )
+                                }
+                                if (showDownloadTick) {
+                                    AuraDownloadTick(songId = song.id)
+                                }
+                                AuraQualityBadge(format = song.format)
+                                if (inSelectMode) {
+                                    Checkbox(
+                                        checked = selected,
+                                        onCheckedChange = onCheckedChange,
+                                        colors = CheckboxDefaults.colors(
+                                            checkedColor = AuraPalette.Teal,
+                                            uncheckedColor = AuraPalette.OnGroundDisabled,
+                                            checkmarkColor = AuraPalette.OnAccent,
+                                        ),
+                                    )
+                                } else {
+                                    AuraIconButton(
+                                        icon = AuraIcons.More,
+                                        contentDescription = song.song.title,
+                                        onClick = { onSongMenu(song) },
+                                        size = 18.dp,
+                                        tint = AuraPalette.OnGroundDisabled,
+                                    )
+                                }
+                            }
+                        },
+                        modifier = Modifier
+                            .animateItem()
+                            .padding(horizontal = AuraSpacing.Gutter)
+                            .tvFocusable(isTvOrCar, AuraShapes.Highlight, scaleFocused = 1f),
+                    )
+                }
             }
 
             item(key = "aura_coll_tail") { Spacer(Modifier.height(50.dp)) }
@@ -535,10 +586,13 @@ internal fun AuraCollectionHeader(
     onSearch: () -> Unit,
     modifier: Modifier = Modifier,
     queueTitle: String = name,
+    useVideoCount: Boolean = false,
+    videoPosterLayout: Boolean = false,
 ) {
     val playerConnection = LocalPlayerConnection.current ?: return
     val isTvOrCar = rememberIsTvOrCar()
     val isWideLayout = rememberIsWideLayout()
+    val countPlural = if (useVideoCount) R.plurals.n_video else R.plurals.n_song
 
     Column(
         modifier = modifier
@@ -546,25 +600,31 @@ internal fun AuraCollectionHeader(
             .padding(bottom = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Spacer(Modifier.height(56.dp))
+        Spacer(modifier.height(56.dp))
 
-        Box(
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 48.dp),
+                .padding(horizontal = if (videoPosterLayout) 20.dp else 48.dp),
             contentAlignment = Alignment.Center,
         ) {
+            val coverWidth = when {
+                videoPosterLayout -> maxWidth
+                isWideLayout -> 320.dp
+                else -> 260.dp
+            }
             AuraCover(
                 thumbnailUrl = coverUrl,
-                // Wide screens cap the cover, exactly as the classic headers do.
-                size = if (isWideLayout) 320.dp else 260.dp,
+                size = coverWidth,
                 seed = contextId ?: name,
-                shape = AuraShapes.PlayerArtwork,
+                shape = if (videoPosterLayout) AuraShapes.Card else AuraShapes.PlayerArtwork,
                 decodeTo = 512,
+                ratio = if (videoPosterLayout) 16f / 9f else 1f,
+                fillBleed = videoPosterLayout,
             )
         }
 
-        Spacer(Modifier.height(26.dp))
+        Spacer(modifier.height(26.dp))
 
         Text(
             text = name,
@@ -575,11 +635,11 @@ internal fun AuraCollectionHeader(
             modifier = Modifier.padding(horizontal = 32.dp),
         )
 
-        Spacer(Modifier.height(6.dp))
+        Spacer(modifier.height(6.dp))
 
         Text(
             text = buildString {
-                append(pluralStringResource(R.plurals.n_song, songs.size, songs.size))
+                append(pluralStringResource(countPlural, songs.size, songs.size))
                 if (likeLength > 0) {
                     append(" • ")
                     append(makeTimeString(likeLength * 1000L))
@@ -992,11 +1052,12 @@ internal fun <T : Enum<T>> AuraInlineSortControl(
     }
 }
 
-/** "N CANCIONES" at the right of a sort row. */
+/** "N CANCIONES" / "N VÍDEOS" at the right of a sort row. */
 @Composable
-internal fun AuraSongCountLabel(count: Int) {
+internal fun AuraSongCountLabel(count: Int, useVideoCount: Boolean = false) {
+    val plural = if (useVideoCount) R.plurals.n_video else R.plurals.n_song
     AuraTechnicalText(
-        text = pluralStringResource(R.plurals.n_song, count, count).uppercase(Locale.ROOT),
+        text = pluralStringResource(plural, count, count).uppercase(Locale.ROOT),
         color = AuraPalette.OnGroundGhost,
         modifier = Modifier.padding(end = 12.dp),
     )

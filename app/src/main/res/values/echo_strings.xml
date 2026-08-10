@@ -365,6 +365,8 @@
     <string name="home_offline_no_internet">Looks like you don\'t have an internet connection.</string>
     <string name="home_offline_downloads_hint">You can keep listening to your downloaded music offline.</string>
     <string name="home_offline_continue">Continue offline</string>
+    <string name="home_cold_empty_title">Play something to personalize Home</string>
+    <string name="home_cold_empty_hint">Search for a song, album, or artist — Home learns from what you play.</string>
     <string name="export_directory_picker_unavailable">This device has no folder picker available</string>
     <string name="sponsorblock_title">Skip non-music segments</string>
     <string name="sponsorblock_description">Auto-skip sponsors, self-promo and non-music parts using the community SponsorBlock database. Never cuts real song audio.</string>
@@ -412,6 +414,15 @@
     <string name="action_export">Export MP3 or video</string>
     <string name="export_desc">Save as MP3 audio or MP4 video to a folder — video goes to Exported videos</string>
     <string name="export_choose_format_title">How do you want to export?</string>
+    <string name="download_or_export_title">Download or export?</string>
+    <string name="download_or_export">Download or export…</string>
+    <string name="download_offline_only">Download offline</string>
+    <string name="download_offline_only_desc">Keep it inside the app for offline playback</string>
+    <string name="downloading_video">Downloading video: %1$s</string>
+    <string name="exporting_video">Exporting video…</string>
+    <string name="exporting_audio">Exporting audio…</string>
+    <string name="export_done_video">Video exported: %1$s</string>
+    <string name="export_done_audio">Audio exported: %1$s</string>
     <string name="export_vs_download_hint">Export writes a file to your folder. Download keeps it offline inside the app only.</string>
     <string name="export_as_mp3">As MP3</string>
     <string name="export_as_mp3_desc">Audio file with tags and cover</string>
@@ -444,7 +455,7 @@
     <string name="export_complete">Exported: %1$s</string>
     <string name="export_completed">Export completed</string>
     <string name="export_failed">Export failed: %1$s</string>
-    <string name="export_channel_name">Music export</string>
+    <string name="export_channel_name">Export</string>
     <string name="filter_exported">Exported</string>
     <string name="add_to_playlist_desc">Add to one of your playlists</string>
     <string name="refetch_desc">Fetch the latest metadata from Aura Hi-Res</string>

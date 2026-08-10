@@ -13,12 +13,12 @@ import android.net.ConnectivityManager
 import android.net.Uri
 import android.os.Build
 import android.os.IBinder
+import android.os.SystemClock
 import android.util.Log
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
-import androidx.core.content.FileProvider
 import androidx.core.content.getSystemService
 import androidx.documentfile.provider.DocumentFile
 import com.arthenica.ffmpegkit.FFmpegKit
@@ -28,6 +28,7 @@ import dagger.hilt.android.AndroidEntryPoint
 import iad1tya.echo.music.R
 import iad1tya.echo.music.constants.AudioQuality
 import iad1tya.echo.music.constants.ExportingSongIdsKey
+import iad1tya.echo.music.constants.ExportedFileUrisKey
 import iad1tya.echo.music.constants.ExportedSongIdsKey
 import iad1tya.echo.music.constants.ExportedVideoIdsKey
 import iad1tya.echo.music.db.MusicDatabase
@@ -47,40 +48,208 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import okhttp3.ConnectionPool
+import okhttp3.Dispatcher
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
 import java.io.FileOutputStream
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 @AndroidEntryPoint
 class AudioExportService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     // Tuned for large googlevideo pulls: keep-alive pool, longer read, bigger sink buffer.
-    // Not aria2/multi-CDN (Seal) — that path is GPL + often throttled by YouTube.
+    // Multi-range uses concurrent calls on the same client (pool + dispatcher sized for 3 segments × A/V).
     private val httpClient = OkHttpClient.Builder()
         .connectTimeout(20, TimeUnit.SECONDS)
         .readTimeout(120, TimeUnit.SECONDS)
         .writeTimeout(60, TimeUnit.SECONDS)
         .callTimeout(0, TimeUnit.SECONDS)
         .retryOnConnectionFailure(true)
+        .connectionPool(ConnectionPool(8, 5, TimeUnit.MINUTES))
+        .dispatcher(
+            Dispatcher().apply {
+                maxRequests = 16
+                maxRequestsPerHost = 8
+            },
+        )
         .build()
 
-    private fun downloadUrlToFile(url: String, dest: File) {
+    /**
+     * Download [url] into [dest]. When Content-Length is known and ≥ 2MB, tries 3 parallel Range
+     * segments; falls back to a single GET if the ranged path fails.
+     */
+    private fun downloadUrlToFile(
+        url: String,
+        dest: File,
+        onProgress: ((bytesRead: Long, totalBytes: Long) -> Unit)? = null,
+    ) {
+        val rangeUrl = stripYoutubeRangeParam(url)
+        val totalBytes = probeContentLength(rangeUrl)
+        if (totalBytes != null && totalBytes >= MULTI_RANGE_MIN_BYTES) {
+            val multiOk = runCatching {
+                downloadMultiRange(rangeUrl, dest, totalBytes, onProgress)
+            }.onFailure { e ->
+                Log.i(TAG, "Multi-range download failed; falling back to single GET: ${e.message}")
+            }.isSuccess
+            if (multiOk && dest.exists() && dest.length() > 0L) return
+            dest.delete()
+        }
+        downloadSingleGet(url, dest, onProgress)
+        if (!dest.exists() || dest.length() <= 0L) {
+            error("Downloaded stream is empty")
+        }
+    }
+
+    private fun probeContentLength(url: String): Long? {
+        runCatching {
+            httpClient.newCall(Request.Builder().url(url).head().build()).execute().use { response ->
+                if (response.isSuccessful) {
+                    val cl = response.header("Content-Length")?.toLongOrNull()
+                    if (cl != null && cl > 0L) return cl
+                }
+            }
+        }
+        runCatching {
+            httpClient.newCall(
+                Request.Builder().url(url).header("Range", "bytes=0-0").build(),
+            ).execute().use { response ->
+                val contentRange = response.header("Content-Range")
+                val total = contentRange?.substringAfter('/')?.toLongOrNull()
+                if (total != null && total > 0L) return total
+                val cl = response.header("Content-Length")?.toLongOrNull()
+                if (response.code == 206 && cl != null && cl > 1L) return cl
+            }
+        }
+        return null
+    }
+
+    private fun downloadMultiRange(
+        url: String,
+        dest: File,
+        totalBytes: Long,
+        onProgress: ((bytesRead: Long, totalBytes: Long) -> Unit)?,
+    ) {
+        val segmentCount = 3
+        val segmentSize = totalBytes / segmentCount
+        val ranges = (0 until segmentCount).map { i ->
+            val start = i * segmentSize
+            val end = if (i == segmentCount - 1) totalBytes - 1 else start + segmentSize - 1
+            start to end
+        }
+        val partFiles = ranges.mapIndexed { i, _ ->
+            File(dest.parentFile, "${dest.name}.part$i")
+        }
+        val bytesReadTotal = AtomicLong(0L)
+        val lastCallbackElapsed = AtomicLong(0L)
+        fun emitProgress(force: Boolean = false) {
+            val cb = onProgress ?: return
+            val now = SystemClock.elapsedRealtime()
+            val last = lastCallbackElapsed.get()
+            if (!force && now - last < PROGRESS_THROTTLE_MS) return
+            lastCallbackElapsed.set(now)
+            cb(bytesReadTotal.get().coerceAtMost(totalBytes), totalBytes)
+        }
+        try {
+            runBlocking {
+                coroutineScope {
+                    ranges.mapIndexed { i, (start, end) ->
+                        async(Dispatchers.IO) {
+                            downloadRangeToPart(url, partFiles[i], start, end) { delta ->
+                                bytesReadTotal.addAndGet(delta)
+                                emitProgress(force = false)
+                            }
+                        }
+                    }.forEach { it.await() }
+                }
+            }
+            dest.outputStream().use { out ->
+                partFiles.forEach { part ->
+                    part.inputStream().use { input -> input.copyTo(out) }
+                }
+                out.flush()
+            }
+            emitProgress(force = true)
+            if (!dest.exists() || dest.length() != totalBytes) {
+                error("Multi-range incomplete: got ${dest.length()} of $totalBytes")
+            }
+        } finally {
+            partFiles.forEach { it.delete() }
+        }
+    }
+
+    private fun downloadRangeToPart(
+        url: String,
+        partFile: File,
+        start: Long,
+        end: Long,
+        onDelta: (Long) -> Unit,
+    ) {
+        val request = Request.Builder()
+            .url(url)
+            .header("Range", "bytes=$start-$end")
+            .build()
+        httpClient.newCall(request).execute().use { response ->
+            if (!response.isSuccessful && response.code != 206) {
+                error("Range request failed with ${response.code} for $start-$end")
+            }
+            val body = response.body ?: error("No response body for range $start-$end")
+            val buffer = ByteArray(EXPORT_IO_BUFFER_BYTES)
+            body.byteStream().use { input ->
+                partFile.outputStream().use { output ->
+                    var read: Int
+                    while (input.read(buffer).also { read = it } != -1) {
+                        output.write(buffer, 0, read)
+                        onDelta(read.toLong())
+                    }
+                    output.flush()
+                }
+            }
+        }
+        val expected = end - start + 1
+        if (partFile.length() != expected) {
+            error("Range part incomplete: got ${partFile.length()} of $expected for $start-$end")
+        }
+    }
+
+    private fun downloadSingleGet(
+        url: String,
+        dest: File,
+        onProgress: ((bytesRead: Long, totalBytes: Long) -> Unit)?,
+    ) {
         httpClient.newCall(Request.Builder().url(url).build()).execute().use { response ->
             if (!response.isSuccessful) {
                 error("Stream request failed with ${response.code}")
             }
             val body = response.body ?: error("No response body")
+            val totalBytes = body.contentLength().takeIf { it > 0L } ?: -1L
             val buffer = ByteArray(EXPORT_IO_BUFFER_BYTES)
+            var bytesRead = 0L
+            var lastCallbackElapsed = 0L
             body.byteStream().use { input ->
                 dest.outputStream().use { output ->
                     var read: Int
                     while (input.read(buffer).also { read = it } != -1) {
                         output.write(buffer, 0, read)
+                        bytesRead += read
+                        val cb = onProgress
+                        if (cb != null && totalBytes > 0L) {
+                            val now = SystemClock.elapsedRealtime()
+                            if (now - lastCallbackElapsed >= PROGRESS_THROTTLE_MS) {
+                                lastCallbackElapsed = now
+                                cb(bytesRead, totalBytes)
+                            }
+                        }
                     }
                     output.flush()
                 }
+            }
+            if (totalBytes > 0L) {
+                onProgress?.invoke(bytesRead.coerceAtMost(totalBytes), totalBytes)
             }
         }
         if (!dest.exists() || dest.length() <= 0L) {
@@ -166,37 +335,91 @@ class AudioExportService : Service() {
             val tempAudioFile = File.createTempFile("export_audio_", ".m4a", cacheDir).also { audioFileRef = it }
             val tempMp4File = File.createTempFile("export_result_", ".mp4", cacheDir).also { mp4FileRef = it }
 
-            // Parallel A/V fetch — biggest wall-clock win vs sequential OkHttp pulls.
-            updateExportProgress(10, getString(R.string.export_processing_audio))
+            updateExportProgress(5, getString(R.string.export_processing_audio))
+            val videoBytes = AtomicLong(0L)
+            val audioBytes = AtomicLong(0L)
+            val videoTotal = AtomicLong(-1L)
+            val audioTotal = AtomicLong(-1L)
+            val lastPct = AtomicInteger(-1)
+            fun reportAvProgress() {
+                val vt = videoTotal.get()
+                val at = audioTotal.get()
+                if (vt <= 0L || at <= 0L) return
+                val frac = (videoBytes.get() + audioBytes.get()).toDouble() / (vt + at).toDouble()
+                val pct = (5 + (frac * 65.0)).toInt().coerceIn(5, 70)
+                val prev = lastPct.get()
+                if (pct > prev && lastPct.compareAndSet(prev, pct)) {
+                    updateExportProgress(pct, getString(R.string.export_processing_audio))
+                }
+            }
             coroutineScope {
-                val videoJob = async(Dispatchers.IO) { downloadUrlToFile(videoStreamUrl, tempVideoFile) }
-                val audioJob = async(Dispatchers.IO) { downloadUrlToFile(rangedAudioUrl, tempAudioFile) }
+                val videoJob = async(Dispatchers.IO) {
+                    downloadUrlToFile(videoStreamUrl, tempVideoFile) { read, total ->
+                        videoTotal.set(total)
+                        videoBytes.set(read)
+                        reportAvProgress()
+                    }
+                    if (videoTotal.get() <= 0L) {
+                        videoTotal.set(tempVideoFile.length().coerceAtLeast(1L))
+                        videoBytes.set(tempVideoFile.length())
+                        reportAvProgress()
+                    }
+                }
+                val audioJob = async(Dispatchers.IO) {
+                    downloadUrlToFile(rangedAudioUrl, tempAudioFile) { read, total ->
+                        audioTotal.set(total)
+                        audioBytes.set(read)
+                        reportAvProgress()
+                    }
+                    if (audioTotal.get() <= 0L) {
+                        audioTotal.set(tempAudioFile.length().coerceAtLeast(1L))
+                        audioBytes.set(tempAudioFile.length())
+                        reportAvProgress()
+                    }
+                }
                 videoJob.await()
-                updateExportProgress(40, getString(R.string.export_processing_audio))
                 audioJob.await()
             }
-            updateExportProgress(65, getString(R.string.export_processing_tags))
+            updateExportProgress(70, getString(R.string.export_processing_tags))
 
-            // Prefer stream-copy of video when already H.264 (skips slow libx264). Fall back to encode.
+            // Fast path: stream-copy video + AAC audio, no loudnorm.
             val copyCmd = buildVideoFfmpegCommand(
                 videoPath = tempVideoFile.absolutePath,
                 audioPath = tempAudioFile.absolutePath,
                 outputPath = tempMp4File.absolutePath,
                 copyVideo = true,
+                useLoudnorm = false,
             )
             var session = FFmpegKit.execute(copyCmd)
             var returnCode = session.returnCode
-            if (returnCode == null || !ReturnCode.isSuccess(returnCode)) {
-                Log.i(TAG, "Video export copy-mux failed; re-encoding")
+            if (returnCode != null && ReturnCode.isSuccess(returnCode)) {
+                Log.i(TAG, "Video export mux: copy-ok")
+            } else {
+                Log.i(TAG, "Video export mux: copy-fail → encode")
                 tempMp4File.delete()
+                updateExportProgress(78, getString(R.string.export_processing_tags))
                 val encodeCmd = buildVideoFfmpegCommand(
                     videoPath = tempVideoFile.absolutePath,
                     audioPath = tempAudioFile.absolutePath,
                     outputPath = tempMp4File.absolutePath,
                     copyVideo = false,
+                    useLoudnorm = false,
                 )
                 session = FFmpegKit.execute(encodeCmd)
                 returnCode = session.returnCode
+                if (returnCode == null || !ReturnCode.isSuccess(returnCode)) {
+                    Log.i(TAG, "Video export mux: encode-fail → loudnorm last resort")
+                    tempMp4File.delete()
+                    val loudnormCmd = buildVideoFfmpegCommand(
+                        videoPath = tempVideoFile.absolutePath,
+                        audioPath = tempAudioFile.absolutePath,
+                        outputPath = tempMp4File.absolutePath,
+                        copyVideo = false,
+                        useLoudnorm = true,
+                    )
+                    session = FFmpegKit.execute(loudnormCmd)
+                    returnCode = session.returnCode
+                }
             }
             if (returnCode == null || !ReturnCode.isSuccess(returnCode)) {
                 Log.e(TAG, "FFmpeg video export failed: ${session.output?.take(400)}")
@@ -218,37 +441,17 @@ class AudioExportService : Service() {
                     output.flush()
                 } ?: error("Unable to open output stream")
             }
+            updateExportProgress(100, getString(R.string.export_writing_file))
 
             addExportedVideoId(songId)
+            persistExportedFileUri(songId, outputFile.uri.toString())
 
-            val shared = runCatching {
-                val shareCopy = File(cacheDir, "share_export_$safeTitle.mp4")
-                tempMp4File.copyTo(shareCopy, overwrite = true)
-                withContext(Dispatchers.Main) {
-                    val uri = FileProvider.getUriForFile(
-                        this@AudioExportService,
-                        "${packageName}.FileProvider",
-                        shareCopy,
-                    )
-                    val send = Intent(Intent.ACTION_SEND).apply {
-                        type = "video/mp4"
-                        putExtra(Intent.EXTRA_STREAM, uri)
-                        clipData = android.content.ClipData.newRawUri(shareCopy.name, uri)
-                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    }
-                    startActivity(
-                        Intent.createChooser(send, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                    )
-                }
-            }.isSuccess
-            if (!shared) {
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(
-                        this@AudioExportService,
-                        "Exported: $safeTitle.mp4",
-                        Toast.LENGTH_LONG,
-                    ).show()
-                }
+            withContext(Dispatchers.Main) {
+                Toast.makeText(
+                    this@AudioExportService,
+                    getString(R.string.export_complete, "$safeTitle.mp4"),
+                    Toast.LENGTH_LONG,
+                ).show()
             }
         }.onFailure { throwable ->
             if (throwable is CancellationException) {
@@ -363,8 +566,7 @@ class AudioExportService : Service() {
                 ?: ""
 
             // Overlap artwork fetch with the main audio download (independent HTTP).
-            var totalBytes = -1L
-            var bytesWritten = 0L
+            var lastProgress = -1
             val artworkDownloaded = coroutineScope {
                 val artJob = async(Dispatchers.IO) {
                     prepareJpegCover(
@@ -373,35 +575,14 @@ class AudioExportService : Service() {
                     )
                 }
                 val audioJob = async(Dispatchers.IO) {
-                    val streamRequest = Request.Builder().url(rangedStreamUrl).build()
-                    httpClient.newCall(streamRequest).execute().use { response ->
-                        if (!response.isSuccessful) {
-                            error("Stream request failed with ${response.code}")
-                        }
-                        val body = response.body ?: error("No response body")
-                        totalBytes = body.contentLength()
-                        val buffer = ByteArray(EXPORT_IO_BUFFER_BYTES)
-                        body.byteStream().use { input ->
-                            tempSourceFile.outputStream().use { output ->
-                                var read: Int
-                                var lastProgress = -1
-                                while (input.read(buffer).also { read = it } != -1) {
-                                    output.write(buffer, 0, read)
-                                    bytesWritten += read
-                                    if (totalBytes > 0) {
-                                        val progress = ((bytesWritten * 55L) / totalBytes).toInt().coerceIn(0, 55)
-                                        if (progress > lastProgress) {
-                                            lastProgress = progress
-                                            updateExportProgress(progress, getString(R.string.export_processing_audio))
-                                        }
-                                    }
-                                }
-                                output.flush()
+                    downloadUrlToFile(rangedStreamUrl, tempSourceFile) { bytesWritten, totalBytes ->
+                        if (totalBytes > 0L) {
+                            val progress = ((bytesWritten * 55L) / totalBytes).toInt().coerceIn(0, 55)
+                            if (progress > lastProgress) {
+                                lastProgress = progress
+                                updateExportProgress(progress, getString(R.string.export_processing_audio))
                             }
                         }
-                    }
-                    if (totalBytes > 0 && bytesWritten < totalBytes) {
-                        error("Incomplete export source: wrote $bytesWritten of $totalBytes bytes")
                     }
                 }
                 audioJob.await()
@@ -509,6 +690,7 @@ class AudioExportService : Service() {
             }
 
             addExportedSongId(songId)
+            persistExportedFileUri(songId, outputFile.uri.toString())
         }.onFailure { throwable ->
             // P7: never swallow the failure silently. Cancellation (e.g. the service being
             // destroyed) is expected teardown, not an export error, so don't alarm the user for it.
@@ -565,7 +747,7 @@ class AudioExportService : Service() {
                 nm?.createNotificationChannel(
                     NotificationChannel(
                         CHANNEL_ID,
-                        "Audio export",
+                        getString(R.string.export_channel_name),
                         NotificationManager.IMPORTANCE_LOW,
                     ).apply { setShowBadge(false) },
                 )
@@ -633,6 +815,34 @@ class AudioExportService : Service() {
         }
     }
 
+    /** Persist songId → SAF content URI (`id\u001Furi\u001E…`). */
+    private suspend fun persistExportedFileUri(songId: String, uri: String) {
+        if (songId.isBlank() || uri.isBlank()) return
+        dataStore.edit { preferences ->
+            val current = preferences[ExportedFileUrisKey].orEmpty()
+            val map = linkedMapOf<String, String>()
+            if (current.isNotBlank()) {
+                current.split('\u001E').forEach { entry ->
+                    val sep = entry.indexOf('\u001F')
+                    if (sep > 0) {
+                        val id = entry.substring(0, sep)
+                        val value = entry.substring(sep + 1)
+                        if (id.isNotBlank() && value.isNotBlank()) {
+                            map[id] = value
+                        }
+                    }
+                }
+            }
+            map.remove(songId)
+            // Newest first; cap entries.
+            val ordered = linkedMapOf(songId to uri)
+            map.entries.take(999).forEach { (k, v) -> ordered[k] = v }
+            preferences[ExportedFileUrisKey] = ordered.entries.joinToString("\u001E") { (id, u) ->
+                "$id\u001F$u"
+            }
+        }
+    }
+
     private suspend fun addExportingSongId(songId: String) {
         dataStore.edit { preferences ->
             val current = preferences[ExportingSongIdsKey].orEmpty()
@@ -680,8 +890,10 @@ class AudioExportService : Service() {
 
     companion object {
         private const val TAG = "AudioExportService"
-        private const val CHANNEL_ID = "audio_export"
+        private const val CHANNEL_ID = "export"
         private const val NOTIFICATION_ID = 0xE5A0
+        private const val MULTI_RANGE_MIN_BYTES = 2L * 1024L * 1024L
+        private const val PROGRESS_THROTTLE_MS = 150L
 
         private const val EXTRA_SONG_ID = "extra_song_id"
         private const val EXTRA_SONG_TITLE = "extra_song_title"
@@ -721,6 +933,16 @@ class AudioExportService : Service() {
                 .replace(Regex("\\s+"), " ")
                 .trim()
                 .ifBlank { "song_${System.currentTimeMillis()}" }
+
+        /** Drop googlevideo `range=` so HTTP Range headers can select segments. */
+        private fun stripYoutubeRangeParam(url: String): String {
+            var result = url.replace(Regex("([?&])range=[^&]*"), "$1")
+            result = result.replace("&&", "&").replace("?&", "?")
+            if (result.endsWith('?') || result.endsWith('&')) {
+                result = result.dropLast(1)
+            }
+            return result
+        }
 
         private fun buildFfmpegCommand(
             inputPath: String,
@@ -771,6 +993,7 @@ class AudioExportService : Service() {
             audioPath: String,
             outputPath: String,
             copyVideo: Boolean = false,
+            useLoudnorm: Boolean = false,
         ): String {
             val escapedVideo = videoPath.ffmpegEscape()
             val escapedAudio = audioPath.ffmpegEscape()
@@ -781,8 +1004,9 @@ class AudioExportService : Service() {
             } else {
                 "-vf scale='min(1920,iw)':-2 -c:v libx264 -pix_fmt yuv420p -preset ultrafast -crf 22"
             }
+            val audioFilter = if (useLoudnorm) " -af loudnorm=I=-11:TP=-1.5:LRA=11" else ""
             return "-y -i '$escapedVideo' -i '$escapedAudio' -map 0:v:0 -map 1:a:0 " +
-                "$videoArgs -af loudnorm=I=-11:TP=-1.5:LRA=11 -c:a aac -b:a 192k " +
+                "$videoArgs$audioFilter -c:a aac -b:a 192k " +
                 "-movflags +faststart '$escapedOutput'"
         }
 

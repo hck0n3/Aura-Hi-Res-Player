@@ -35,6 +35,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
 enum class ExportFormat {
+    Offline,
     Mp3,
     Video,
 }
@@ -46,15 +47,18 @@ private sealed class VideoProbe {
 }
 
 /**
- * Frost chooser: MP3 vs video. Video is enabled only after a live stream probe succeeds
- * (not merely [iad1tya.echo.music.models.MediaMetadata.isVideoSong], which is often false for YTM
- * catalog rows that still have a video stream).
+ * Frost chooser: optional offline download, then MP3 vs video. Video is enabled only after a live
+ * stream probe succeeds (not merely [iad1tya.echo.music.models.MediaMetadata.isVideoSong], which is
+ * often false for YTM catalog rows that still have a video stream).
+ *
+ * When [includeOfflineDownload] is false (menus), behaviour matches the former MP3/Video-only dialog.
  */
 @Composable
 fun ExportFormatChooserDialog(
     songId: String,
     onDismiss: () -> Unit,
     onChoose: (ExportFormat) -> Unit,
+    includeOfflineDownload: Boolean = false,
 ) {
     val context = LocalContext.current
     var videoProbe by remember(songId) { mutableStateOf<VideoProbe>(VideoProbe.Loading) }
@@ -97,7 +101,14 @@ fun ExportFormatChooserDialog(
 
     DefaultDialog(
         onDismiss = onDismiss,
-        title = { Text(text = stringResource(R.string.export_choose_format_title)) },
+        title = {
+            Text(
+                text = stringResource(
+                    if (includeOfflineDownload) R.string.download_or_export_title
+                    else R.string.export_choose_format_title,
+                ),
+            )
+        },
         buttons = {
             TextButton(onClick = onDismiss) {
                 Text(text = stringResource(android.R.string.cancel))
@@ -111,6 +122,19 @@ fun ExportFormatChooserDialog(
                 color = AuraPalette.OnGroundFaint,
                 modifier = Modifier.padding(bottom = 12.dp),
             )
+            if (includeOfflineDownload) {
+                ExportFormatRow(
+                    title = stringResource(R.string.download_offline_only),
+                    description = stringResource(R.string.download_offline_only_desc),
+                    enabled = true,
+                    trailing = null,
+                    onClick = {
+                        onChoose(ExportFormat.Offline)
+                        onDismiss()
+                    },
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+            }
             ExportFormatRow(
                 title = stringResource(R.string.export_as_mp3),
                 description = stringResource(R.string.export_as_mp3_desc),

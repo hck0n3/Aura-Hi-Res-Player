@@ -130,6 +130,7 @@ import iad1tya.echo.music.LocalListenTogetherManager
 import iad1tya.echo.music.LocalPlayerConnection
 import iad1tya.echo.music.R
 import iad1tya.echo.music.constants.EnableLyricsThumbnailPlayPauseKey
+import iad1tya.echo.music.constants.ExportDirectoryUriKey
 import iad1tya.echo.music.constants.HighPerformanceModeKey
 import iad1tya.echo.music.constants.PlayerBackgroundStyle
 import iad1tya.echo.music.constants.PlayerBackgroundStyleKey
@@ -142,8 +143,10 @@ import iad1tya.echo.music.extensions.togglePlayPause
 import iad1tya.echo.music.extensions.toggleRepeatMode
 import iad1tya.echo.music.listentogether.RoomRole
 import iad1tya.echo.music.models.rememberResolvedAlbum
+import iad1tya.echo.music.playback.AudioExportService
 import iad1tya.echo.music.playback.enqueueSongDownloads
 import iad1tya.echo.music.playback.removeSongDownloads
+import iad1tya.echo.music.playback.videoDownloadMediaId
 import iad1tya.echo.music.ui.component.BottomSheet
 import iad1tya.echo.music.ui.component.BottomSheetState
 import iad1tya.echo.music.ui.component.CastButton
@@ -169,10 +172,13 @@ import iad1tya.echo.music.ui.player.rememberSwipeLyricsEnabled
 import iad1tya.echo.music.ui.player.swipeLyricsGestureArmed
 import iad1tya.echo.music.ui.player.swipeLyricsToChangeSong
 import iad1tya.echo.music.ui.screens.equalizer.axion.AxionEqViewModel
+import iad1tya.echo.music.ui.utils.ExportFormat
+import iad1tya.echo.music.ui.utils.ExportFormatChooserDialog
 import iad1tya.echo.music.ui.utils.ShowMediaInfo
 import iad1tya.echo.music.ui.utils.ShowOffsetDialog
 import iad1tya.echo.music.ui.utils.rememberIsTvOrCar
 import iad1tya.echo.music.ui.utils.rememberIsWideLayout
+import iad1tya.echo.music.ui.utils.rememberMp3ExportFolderAccess
 import iad1tya.echo.music.ui.utils.tvFocusable
 import iad1tya.echo.music.utils.DeviceCapabilities
 import iad1tya.echo.music.utils.DeviceTier
@@ -366,7 +372,11 @@ private fun AuraPlayerShape(
     val disliked by playerConnection.currentSongDisliked.collectAsState()
     val automix by playerConnection.service.automixItems.collectAsState()
     val currentFormatEntity by database.format(mediaMetadata?.id).collectAsState(initial = null)
-    val download by LocalDownloadUtil.current.getDownload(mediaMetadata?.id ?: "")
+    val downloadUtil = LocalDownloadUtil.current
+    val download by downloadUtil.getDownload(mediaMetadata?.id ?: "")
+        .collectAsState(initial = null)
+    val videoCompanionDownload by downloadUtil
+        .getDownload(mediaMetadata?.id?.let { videoDownloadMediaId(it) } ?: "")
         .collectAsState(initial = null)
 
     val listenTogetherManager = LocalListenTogetherManager.current
@@ -639,6 +649,48 @@ private fun AuraPlayerShape(
     // be destroyed and recreated by a rotation and the open dialog would vanish mid-gesture.
     var showChoosePlaylistDialog by rememberSaveable { mutableStateOf(false) }
     var showSelectArtistDialog by rememberSaveable { mutableStateOf(false) }
+    var showDownloadOrExportDialog by rememberSaveable { mutableStateOf(false) }
+    val (exportDirectoryUri, onExportDirectoryUriChange) = rememberPreference(ExportDirectoryUriKey, "")
+    val ensureMp3Folder = rememberMp3ExportFolderAccess(
+        exportDirectoryUri = exportDirectoryUri,
+        onExportDirectoryUriChange = onExportDirectoryUriChange,
+    )
+    val downloadChooserMeta = mediaMetadata
+    if (showDownloadOrExportDialog && downloadChooserMeta != null) {
+        ExportFormatChooserDialog(
+            songId = downloadChooserMeta.id,
+            includeOfflineDownload = true,
+            onDismiss = { showDownloadOrExportDialog = false },
+            onChoose = { format ->
+                when (format) {
+                    ExportFormat.Offline -> {
+                        database.transaction { insert(downloadChooserMeta) }
+                        enqueueSongDownloads(
+                            context,
+                            downloadChooserMeta.id,
+                            downloadChooserMeta.title,
+                            isVideoSong = downloadChooserMeta.isVideoSong,
+                            deferWhileLiveVideo = videoMode,
+                        )
+                    }
+                    ExportFormat.Mp3, ExportFormat.Video -> {
+                        ensureMp3Folder { directoryUri ->
+                            AudioExportService.start(
+                                context = context,
+                                songId = downloadChooserMeta.id,
+                                songTitle = downloadChooserMeta.title,
+                                songArtist = downloadChooserMeta.artists.joinToString(", ") { it.name },
+                                songAlbum = downloadChooserMeta.album?.title ?: "",
+                                artworkUrl = downloadChooserMeta.thumbnailUrl ?: "",
+                                targetDirectoryUri = directoryUri,
+                                exportAsVideo = format == ExportFormat.Video,
+                            )
+                        }
+                    }
+                }
+            },
+        )
+    }
     if (showSelectArtistDialog) {
         val artists = mediaMetadata?.artists.orEmpty().filter { it.name.isNotBlank() }.distinctBy { it.id to it.name }
         ListDialog(onDismiss = { showSelectArtistDialog = false }) {
@@ -950,6 +1002,19 @@ private fun AuraPlayerShape(
                     // below and lit teal — not a second copy pinned to this corner. Two toggles for one
                     // preference, both on screen at once, is the complaint this round is about.
                     if (!inPipMode) {
+                        // Keep the cover over the TextureView until the first decoded frame so A/V
+                        // swap does not flash black while the muxed stream is still preparing.
+                        var hasFirstVideoFrame by remember(videoUrl) { mutableStateOf(false) }
+                        DisposableEffect(playerConnection.player, videoUrl) {
+                            hasFirstVideoFrame = false
+                            val listener = object : Player.Listener {
+                                override fun onRenderedFirstFrame() {
+                                    hasFirstVideoFrame = true
+                                }
+                            }
+                            playerConnection.player.addListener(listener)
+                            onDispose { playerConnection.player.removeListener(listener) }
+                        }
                         Box(
                             modifier = Modifier.fillMaxSize(),
                             contentAlignment = Alignment.Center,
@@ -959,6 +1024,14 @@ private fun AuraPlayerShape(
                                 modifier = Modifier.fillMaxWidth(),
                                 videoUrl = videoUrl,
                             )
+                            if (!hasFirstVideoFrame) {
+                                AsyncImage(
+                                    model = mediaMetadata?.thumbnailUrl,
+                                    contentDescription = null,
+                                    contentScale = if (cropAlbumArt) ContentScale.Crop else ContentScale.Fit,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                            }
                         }
                     }
                 } else {
@@ -1360,27 +1433,37 @@ private fun AuraPlayerShape(
                     // Local files are already on-device — hide download; SpaceEvenly keeps spacing even.
                     if (!isLocalTrack) {
                     Box(contentAlignment = Alignment.Center) {
+                        val isVideo = meta.isVideoSong
+                        val downloadBusy = download?.state == Download.STATE_QUEUED ||
+                            download?.state == Download.STATE_DOWNLOADING ||
+                            (isVideo && (
+                                videoCompanionDownload?.state == Download.STATE_QUEUED ||
+                                    videoCompanionDownload?.state == Download.STATE_DOWNLOADING
+                                ))
+                        val downloadProgressFraction = run {
+                            val audioPct = download?.percentDownloaded ?: -1f
+                            val videoPct = if (isVideo) {
+                                videoCompanionDownload?.percentDownloaded ?: -1f
+                            } else {
+                                -1f
+                            }
+                            when {
+                                isVideo && audioPct >= 0f && videoPct >= 0f ->
+                                    ((audioPct + videoPct) / 2f / 100f).coerceIn(0f, 1f)
+                                audioPct >= 0f -> (audioPct / 100f).coerceIn(0f, 1f)
+                                isVideo && videoPct >= 0f -> (videoPct / 100f).coerceIn(0f, 1f)
+                                else -> null
+                            }
+                        }
                         AuraIconButton(
                             icon = if (download?.state == Download.STATE_COMPLETED) AuraIcons.Check
                             else AuraIcons.Download,
                             contentDescription = stringResource(R.string.action_download),
                             onClick = {
-                                val isVideo = meta.isVideoSong
                                 when (download?.state) {
                                     Download.STATE_COMPLETED, Download.STATE_QUEUED, Download.STATE_DOWNLOADING ->
                                         removeSongDownloads(context, meta.id, isVideo)
-                                    else -> {
-                                        database.transaction { insert(meta) }
-                                        // Defer ALL offline download while live in video mode
-                                        // (audio+video race the mux → hitch); flushed on exit.
-                                        enqueueSongDownloads(
-                                            context,
-                                            meta.id,
-                                            meta.title,
-                                            isVideoSong = isVideo,
-                                            deferWhileLiveVideo = videoMode,
-                                        )
-                                    }
+                                    else -> showDownloadOrExportDialog = true
                                 }
                             },
                             size = quickAccessGlyph,
@@ -1388,14 +1471,21 @@ private fun AuraPlayerShape(
                             else AuraPalette.OnGround.copy(alpha = 0.7f),
                             modifier = Modifier.tvFocusable(isTvOrCar, CircleShape),
                         )
-                        if (download?.state == Download.STATE_QUEUED ||
-                            download?.state == Download.STATE_DOWNLOADING
-                        ) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(quickAccessGlyph),
-                                strokeWidth = 2.dp,
-                                color = AuraPalette.Teal,
-                            )
+                        if (downloadBusy) {
+                            if (downloadProgressFraction != null) {
+                                CircularProgressIndicator(
+                                    progress = { downloadProgressFraction },
+                                    modifier = Modifier.size(quickAccessGlyph),
+                                    strokeWidth = 2.dp,
+                                    color = AuraPalette.Teal,
+                                )
+                            } else {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(quickAccessGlyph),
+                                    strokeWidth = 2.dp,
+                                    color = AuraPalette.Teal,
+                                )
+                            }
                         }
                     }
                     }

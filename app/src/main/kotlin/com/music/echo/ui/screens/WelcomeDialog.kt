@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -43,7 +44,14 @@ import iad1tya.echo.music.ui.theme.BrandAccent
 private data class WelcomeTourPage(
     val iconRes: Int,
     val title: String,
-    val body: String,
+    val body: String? = null,
+    /** Optional scrollable bullet groups (capabilities summary). */
+    val bulletGroups: List<WelcomeBulletGroup> = emptyList(),
+)
+
+private data class WelcomeBulletGroup(
+    val heading: String,
+    val bullets: List<String>,
 )
 
 /**
@@ -62,7 +70,8 @@ fun WelcomeDialog(
                 iconRes = R.drawable.music_note,
                 title = "Nueva interfaz Aura",
                 body = "Esta versión estrena la apariencia premium: Inicio, Biblioteca, Buscar y el " +
-                    "reproductor comparten la misma piel oscura con tipografía y portadas más claras.",
+                    "reproductor comparten la misma piel oscura con tipografía y portadas más claras. " +
+                    "Viene activada de fábrica; puedes desactivarla cuando quieras.",
             ),
             WelcomeTourPage(
                 iconRes = R.drawable.home_outlined,
@@ -74,7 +83,58 @@ fun WelcomeDialog(
                 iconRes = R.drawable.play,
                 title = "Reproductor",
                 body = "Toca el mini para expandir. Abajo: Letras, cola, dispositivos y Más. " +
-                    "Los vídeos se abren en modo vídeo al tocarlos. Cast sigue arriba a la derecha.",
+                    "Los vídeos se abren en modo vídeo al tocarlos. Cast sigue arriba a la derecha " +
+                    "(se oculta con letras en línea para no tapar el texto).",
+            ),
+            WelcomeTourPage(
+                iconRes = R.drawable.info,
+                title = "Qué puede hacer Aura",
+                bulletGroups = listOf(
+                    WelcomeBulletGroup(
+                        "Reproducción",
+                        listOf(
+                            "Gapless y fundido entre canciones (ajustable); Qobuz hi-res solo con tu cuenta",
+                            "Vídeo musical, PiP y Modo Ambiente; Cast solo audio (versión con Google)",
+                            "Tempo/tono, SponsorBlock y recargar Opus desde el menú del reproductor",
+                        ),
+                    ),
+                    WelcomeBulletGroup(
+                        "Sonido",
+                        listOf(
+                            "EQ de 10 bandas + paramétrico, Auto-EQ de auriculares y Volumen Seguro",
+                            "Limitador con margen automático; sin «mejoras» inventadas sobre Opus",
+                        ),
+                    ),
+                    WelcomeBulletGroup(
+                        "Descubrir",
+                        listOf(
+                            "Inicio se personaliza con lo que reproduces (vacío hasta la primera escucha)",
+                            "Cola infinita, aleatorio anti-repetición, listas con IA y radar de novedades",
+                            "Fijar playlists reales al inicio",
+                        ),
+                    ),
+                    WelcomeBulletGroup(
+                        "Biblioteca",
+                        listOf(
+                            "Sincronizar YouTube Music; importar Spotify, CSV/M3U y más",
+                            "Podcasts RSS, medios locales y scrobbling opcional (Last.fm / ListenBrainz)",
+                        ),
+                    ),
+                    WelcomeBulletGroup(
+                        "Export / offline",
+                        listOf(
+                            "Descargar ≠ exportar: descarga queda en la app; exportar escribe MP3 o MP4",
+                            "Lista «Vídeos exportados»; Modo sin conexión = cero red para reproducir",
+                        ),
+                    ),
+                    WelcomeBulletGroup(
+                        "Plataforma",
+                        listOf(
+                            "Android Auto / TV; widgets; Escuchar juntos",
+                            "Aviso de batería OEM (vuelve tras kills HyperOS) + PlaybackKeepAlive al sonar",
+                        ),
+                    ),
+                ),
             ),
             WelcomeTourPage(
                 iconRes = R.drawable.tune,
@@ -150,11 +210,15 @@ private fun WelcomeTourBody(
     val titleColor = if (premium) AuraPalette.OnGround else MaterialTheme.colorScheme.onSurface
     val muted = if (premium) AuraPalette.OnGroundMuted else MaterialTheme.colorScheme.onSurfaceVariant
     val accent = if (premium) AuraPalette.Teal else BrandAccent
+    val hasBullets = current.bulletGroups.isNotEmpty()
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .verticalScroll(rememberScrollState())
+            .then(
+                if (hasBullets) Modifier
+                else Modifier.verticalScroll(rememberScrollState()),
+            )
             .padding(horizontal = 20.dp, vertical = 22.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(14.dp),
@@ -187,13 +251,53 @@ private fun WelcomeTourBody(
             fontWeight = FontWeight.SemiBold,
             textAlign = TextAlign.Center,
         )
-        Text(
-            text = current.body,
-            style = if (premium) AuraType.CalloutSubtitle else MaterialTheme.typography.bodyMedium,
-            color = muted,
-            textAlign = TextAlign.Center,
-            lineHeight = 20.sp,
-        )
+
+        if (hasBullets) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 320.dp)
+                    .verticalScroll(rememberScrollState()),
+                horizontalAlignment = Alignment.Start,
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                current.bulletGroups.forEach { group ->
+                    Text(
+                        text = group.heading,
+                        style = if (premium) AuraType.MenuGroupLabel else MaterialTheme.typography.labelMedium,
+                        color = accent,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    group.bullets.forEach { line ->
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(
+                                text = "•",
+                                style = if (premium) AuraType.CalloutSubtitle else MaterialTheme.typography.bodyMedium,
+                                color = muted,
+                            )
+                            Text(
+                                text = line,
+                                style = if (premium) AuraType.CalloutSubtitle else MaterialTheme.typography.bodyMedium,
+                                color = muted,
+                                lineHeight = 18.sp,
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                    }
+                }
+            }
+        } else {
+            Text(
+                text = current.body.orEmpty(),
+                style = if (premium) AuraType.CalloutSubtitle else MaterialTheme.typography.bodyMedium,
+                color = muted,
+                textAlign = TextAlign.Center,
+                lineHeight = 20.sp,
+            )
+        }
 
         Text(
             text = "${page + 1} / $pageCount",

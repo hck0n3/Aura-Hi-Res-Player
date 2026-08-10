@@ -2,6 +2,7 @@ package iad1tya.echo.music.legal
 
 import android.app.Activity
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -21,6 +22,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -41,6 +43,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.key.Key
@@ -70,6 +73,7 @@ import iad1tya.echo.music.constants.TermsAcceptedAppVersionKey
 import iad1tya.echo.music.constants.TermsAcceptedAtKey
 import iad1tya.echo.music.constants.TermsAcceptedVersionKey
 import iad1tya.echo.music.ui.newui.AuraPalette
+import iad1tya.echo.music.ui.newui.AuraShapes
 import iad1tya.echo.music.ui.newui.AuraType
 import iad1tya.echo.music.ui.theme.BrandAccent
 import iad1tya.echo.music.ui.utils.rememberIsTvOrCar
@@ -98,6 +102,8 @@ private val TermsAuraScheme = darkColorScheme(
     outline = AuraPalette.OnGroundDisabled,
     outlineVariant = AuraPalette.SurfaceLine,
 )
+
+private val TermsPanelShape = RoundedCornerShape(20.dp)
 
 /**
  * BLOCKING Terms & Conditions gate. Wraps the WHOLE app (OUTSIDE LicenseGate): until the user has
@@ -163,7 +169,7 @@ private fun TermsAcceptanceScreen() {
                     withStyle(SpanStyle(color = AuraPalette.OnGround, fontWeight = FontWeight.Light)) {
                         append("AURA ")
                     }
-                    withStyle(SpanStyle(color = BrandAccent, fontWeight = FontWeight.SemiBold)) {
+                    withStyle(SpanStyle(color = AuraPalette.Teal, fontWeight = FontWeight.SemiBold)) {
                         append("HI-RES")
                     }
                 },
@@ -177,6 +183,8 @@ private fun TermsAcceptanceScreen() {
                 style = AuraType.SheetTitle,
                 color = AuraPalette.OnGround,
             )
+            Spacer(Modifier.height(8.dp))
+            HorizontalDivider(color = AuraPalette.SurfaceLine, thickness = 0.5.dp)
             Spacer(Modifier.height(12.dp))
 
             TermsDocumentBody(
@@ -184,9 +192,15 @@ private fun TermsAcceptanceScreen() {
                 listState = listState,
                 modifier = Modifier
                     .weight(1f)
-                    .fillMaxWidth(),
+                    .fillMaxWidth()
+                    .clip(TermsPanelShape)
+                    .background(AuraPalette.GroundRaised)
+                    .border(0.5.dp, AuraPalette.SurfaceLine, TermsPanelShape)
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
             )
 
+            Spacer(Modifier.height(12.dp))
+            HorizontalDivider(color = AuraPalette.SurfaceLine, thickness = 0.5.dp)
             Spacer(Modifier.height(12.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -218,6 +232,7 @@ private fun TermsAcceptanceScreen() {
                     modifier = Modifier
                         .focusRequester(acceptFocus)
                         .tvFocusable(isTvOrCar, scaleFocused = 1f),
+                    shape = AuraShapes.Pill,
                     colors = ButtonDefaults.buttonColors(
                         containerColor = AuraPalette.Teal,
                         contentColor = AuraPalette.OnAccent,
@@ -305,12 +320,17 @@ fun TermsScreen(
                         LocalPlayerAwareWindowInsets.current.only(
                             WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
                         ),
-                    ),
+                    )
+                    .padding(horizontal = 16.dp)
+                    .padding(top = innerPadding.calculateTopPadding() + 8.dp, bottom = 16.dp)
+                    .clip(TermsPanelShape)
+                    .background(AuraPalette.GroundRaised)
+                    .border(0.5.dp, AuraPalette.SurfaceLine, TermsPanelShape),
                 contentPadding = PaddingValues(
-                    start = 20.dp,
-                    top = innerPadding.calculateTopPadding() + 8.dp,
-                    end = 20.dp,
-                    bottom = 32.dp,
+                    start = 16.dp,
+                    top = 12.dp,
+                    end = 16.dp,
+                    bottom = 24.dp,
                 ),
                 footer = if (acceptedAt > 0L) {
                     stringResource(
@@ -365,7 +385,7 @@ private fun TermsDocumentBody(
         footer?.let {
             item(key = "footer") {
                 Spacer(Modifier.height(20.dp))
-                HorizontalDivider(color = AuraPalette.Divider)
+                HorizontalDivider(color = AuraPalette.SurfaceLine, thickness = 0.5.dp)
                 Spacer(Modifier.height(12.dp))
                 Text(
                     text = it,
@@ -410,7 +430,8 @@ private fun TermsLine(raw: String) {
         )
         line.startsWith("---") -> HorizontalDivider(
             modifier = Modifier.padding(vertical = 8.dp),
-            color = AuraPalette.Divider,
+            thickness = 0.5.dp,
+            color = AuraPalette.SurfaceLine,
         )
         line.startsWith("> ") -> Text(
             text = parseInlineBold(line.removePrefix("> ")),

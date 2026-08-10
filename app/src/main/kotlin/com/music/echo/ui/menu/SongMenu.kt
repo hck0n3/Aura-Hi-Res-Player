@@ -103,11 +103,13 @@ import iad1tya.echo.music.ui.utils.ExportFormatChooserDialog
 import iad1tya.echo.music.ui.utils.ShowMediaInfo
 import iad1tya.echo.music.utils.isLocalMediaId
 import iad1tya.echo.music.utils.listItemShape
+import iad1tya.echo.music.utils.lookupExportedFileUri
 import iad1tya.echo.music.utils.needsOnlineBrowseResolution
 import iad1tya.echo.music.utils.refetchSongAudio
 import iad1tya.echo.music.utils.rememberPreference
 import iad1tya.echo.music.utils.resolveOnlineAlbumBrowseId
 import iad1tya.echo.music.utils.resolveOnlineArtistBrowseId
+import iad1tya.echo.music.utils.shareContentUri
 import iad1tya.echo.music.utils.shareLocalAudio
 import iad1tya.echo.music.viewmodels.CachePlaylistViewModel
 import kotlinx.coroutines.Dispatchers
@@ -158,9 +160,11 @@ fun SongMenu(
     )
 
     val isExporting = remember(exportingSongIds, song.id) { exportingSongIds.split(",").contains(song.id) }
-    @Suppress("UNUSED_VARIABLE")
     val isExported = remember(exportedSongIds, exportedVideoIds, song.id) {
         exportedSongIds.split(",").contains(song.id) || exportedVideoIds.split(",").contains(song.id)
+    }
+    val isExportedVideo = remember(exportedVideoIds, song.id) {
+        exportedVideoIds.split(",").contains(song.id)
     }
     val isLocalTrack = song.song.isLocal || song.id.isLocalMediaId()
     var showExportFormatDialog by rememberSaveable { mutableStateOf(false) }
@@ -305,6 +309,7 @@ fun SongMenu(
             songId = song.id,
             onDismiss = { showExportFormatDialog = false },
             onChoose = { format ->
+                if (format == ExportFormat.Offline) return@ExportFormatChooserDialog
                 ensureMp3Folder { directoryUri ->
                     onDismiss()
                     AudioExportService.start(
@@ -468,13 +473,28 @@ fun SongMenu(
                         },
                         text = stringResource(R.string.share),
                         onClick = {
-                            onDismiss()
-                            val intent = Intent().apply {
-                                action = Intent.ACTION_SEND
-                                type = "text/plain"
-                                putExtra(Intent.EXTRA_TEXT, ShareLinks.song(song.id))
+                            coroutineScope.launch {
+                                if (isExported) {
+                                    val uri = lookupExportedFileUri(context, song.id)
+                                    if (uri != null &&
+                                        shareContentUri(
+                                            context,
+                                            uri,
+                                            if (isExportedVideo) "video/mp4" else "audio/mpeg",
+                                        )
+                                    ) {
+                                        onDismiss()
+                                        return@launch
+                                    }
+                                }
+                                onDismiss()
+                                val intent = Intent().apply {
+                                    action = Intent.ACTION_SEND
+                                    type = "text/plain"
+                                    putExtra(Intent.EXTRA_TEXT, ShareLinks.song(song.id))
+                                }
+                                context.startActivity(Intent.createChooser(intent, null))
                             }
-                            context.startActivity(Intent.createChooser(intent, null))
                         }
                     )
                 ),

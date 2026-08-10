@@ -781,8 +781,7 @@ fun AuraArtistScreen(
                                                 "?browseId=${more.browseId}&params=${more.params}",
                                         )
                                     } else {
-                                        ArtistSectionBuffer.title = section.title
-                                        ArtistSectionBuffer.items = sectionItems
+                                        ArtistSectionBuffer.open(section.title, sectionItems)
                                         navController.navigate("artist_section_buffer")
                                     }
                                 },

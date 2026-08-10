@@ -796,6 +796,7 @@ fun HomeScreen(
     val selectedChip by viewModel.selectedChip.collectAsState()
 
     val isLoading: Boolean by viewModel.isLoading.collectAsState()
+    val hasPlayHistory by viewModel.hasPlayHistory.collectAsState()
     val isMoodAndGenresLoading = isLoading && explorePage?.moodAndGenres == null
     // High-Performance Mode: on low-end / TV / car-box GPUs the heavy animated carousels (masked hero + the
     // experimental multi-browse carousel with big images) + the never-ending bottom shimmer are what freeze the
@@ -1291,6 +1292,37 @@ fun HomeScreen(
                     }
                 }
 
+
+                // Cold home: never played — taste shelves empty until first listen.
+                val tasteShelvesEmpty = quickPicks.isNullOrEmpty() &&
+                    dailyMixes.isNullOrEmpty() &&
+                    similarRecommendations.isNullOrEmpty() &&
+                    recentlyPlayed.isNullOrEmpty() &&
+                    keepListening.isNullOrEmpty() &&
+                    forgottenFavorites.isNullOrEmpty()
+                if (!isLoading && !hasPlayHistory && tasteShelvesEmpty) {
+                    item(key = "home_cold_empty") {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 32.dp, vertical = 48.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            Text(
+                                text = stringResource(R.string.home_cold_empty_title),
+                                style = MaterialTheme.typography.titleMedium,
+                                textAlign = TextAlign.Center,
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = stringResource(R.string.home_cold_empty_hint),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center,
+                            )
+                        }
+                    }
+                }
 
                 homeSections.forEach { section ->
                     when (section) {

@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
@@ -15,9 +16,14 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -34,6 +40,7 @@ import com.music.innertube.models.WatchEndpoint
 import iad1tya.echo.music.LocalPlayerAwareWindowInsets
 import iad1tya.echo.music.LocalPlayerConnection
 import iad1tya.echo.music.R
+import iad1tya.echo.music.constants.HideExplicitKey
 import iad1tya.echo.music.models.toMediaMetadata
 import iad1tya.echo.music.playback.queues.YouTubeQueue
 import iad1tya.echo.music.ui.component.LocalMenuState
@@ -43,9 +50,11 @@ import iad1tya.echo.music.ui.menu.YouTubeArtistMenu
 import iad1tya.echo.music.ui.menu.YouTubePlaylistMenu
 import iad1tya.echo.music.ui.menu.YouTubeSongMenu
 import iad1tya.echo.music.ui.screens.artist.ArtistSectionBuffer
+import iad1tya.echo.music.ui.screens.artist.loadArtistVideoSearchContinuation
 import iad1tya.echo.music.ui.utils.rememberIsTvOrCar
 import iad1tya.echo.music.ui.utils.tvFocusRestorer
 import iad1tya.echo.music.ui.utils.tvFocusable
+import iad1tya.echo.music.utils.rememberPreference
 import iad1tya.echo.music.viewmodels.FavoriteAlbumsViewModel
 
 /**
@@ -162,14 +171,47 @@ fun AuraArtistSectionGridScreen(
     val coroutineScope = rememberCoroutineScope()
     val bloom = rememberAuraBloom(mediaMetadata?.id)
     val isTvOrCar = rememberIsTvOrCar()
+    val hideExplicit by rememberPreference(HideExplicitKey, false)
     val title = ArtistSectionBuffer.title
-    val items = ArtistSectionBuffer.items
+    var items by remember { mutableStateOf(ArtistSectionBuffer.items) }
+    var continuation by remember { mutableStateOf(ArtistSectionBuffer.continuation) }
+    val artistNameFilter = remember { ArtistSectionBuffer.artistNameFilter }
+    var loadingMore by remember { mutableStateOf(false) }
+    val gridState = rememberLazyGridState()
     val bottomPad = LocalPlayerAwareWindowInsets.current
         .only(WindowInsetsSides.Bottom)
         .asPaddingValues()
         .calculateBottomPadding() + 24.dp
     val topPad = auraStatusBarPadding() + 8.dp
     val videoHeavy = items.any { it is SongItem && it.isVideoSong }
+
+    LaunchedEffect(gridState) {
+        snapshotFlow {
+            val nearEnd = gridState.layoutInfo.visibleItemsInfo.any { it.key == "loading" }
+            Triple(nearEnd, continuation, loadingMore)
+        }.collect { (shouldLoadMore, token, busy) ->
+            if (!shouldLoadMore || token == null || busy ||
+                items.size >= ArtistSectionBuffer.MAX_SEARCH_ITEMS
+            ) {
+                return@collect
+            }
+            loadingMore = true
+            try {
+                val (merged, next) = loadArtistVideoSearchContinuation(
+                    currentItems = items,
+                    continuation = token,
+                    artistNameFilter = artistNameFilter,
+                    hideExplicit = hideExplicit,
+                )
+                items = merged
+                ArtistSectionBuffer.items = merged
+                continuation = next
+                ArtistSectionBuffer.continuation = next
+            } finally {
+                loadingMore = false
+            }
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -179,6 +221,7 @@ fun AuraArtistSectionGridScreen(
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val columns = if (videoHeavy) 1 else 2
             LazyVerticalGrid(
+                state = gridState,
                 columns = GridCells.Fixed(columns),
                 contentPadding = PaddingValues(
                     start = AuraSpacing.Gutter,
@@ -264,6 +307,11 @@ fun AuraArtistSectionGridScreen(
                                     .tvFocusable(isTvOrCar, AuraShapes.Highlight, scaleFocused = 1f),
                             )
                         }
+                    }
+                }
+                if (continuation != null) {
+                    item(span = { GridItemSpan(maxLineSpan) }, key = "loading") {
+                        Box(Modifier.height(72.dp))
                     }
                 }
             }

@@ -47,14 +47,19 @@ class ExoDownloadService : DownloadService(
     override fun getForegroundNotification(
         downloads: MutableList<Download>,
         notMetRequirements: Int
-    ): Notification =
-        Notification.Builder.recoverBuilder(
+    ): Notification {
+        val anyVideo = downloads.any { isVideoDownloadId(it.request.id) }
+        val contentText = when {
+            downloads.size == 1 -> Util.fromUtf8Bytes(downloads[0].request.data)
+            anyVideo -> resources.getQuantityString(R.plurals.n_video, downloads.size, downloads.size)
+            else -> resources.getQuantityString(R.plurals.n_song, downloads.size, downloads.size)
+        }
+        return Notification.Builder.recoverBuilder(
             this, downloadUtil.downloadNotificationHelper.buildProgressNotification(
                 this,
                 R.drawable.download,
                 null,
-                if (downloads.size == 1) Util.fromUtf8Bytes(downloads[0].request.data)
-                else resources.getQuantityString(R.plurals.n_song, downloads.size, downloads.size),
+                contentText,
                 downloads,
                 notMetRequirements
             )
@@ -72,9 +77,8 @@ class ExoDownloadService : DownloadService(
                 )
             ).build()
         ).build()
+    }
 
-
-    
     class TerminalStateNotificationHelper(
         private val context: Context,
         private val notificationHelper: DownloadNotificationHelper,
