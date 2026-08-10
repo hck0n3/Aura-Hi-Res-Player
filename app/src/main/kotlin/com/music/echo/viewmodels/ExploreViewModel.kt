@@ -12,13 +12,14 @@ import com.music.innertube.pages.ExplorePage
 import iad1tya.echo.music.constants.HideExplicitKey
 import iad1tya.echo.music.db.MusicDatabase
 import iad1tya.echo.music.utils.dataStore
+import iad1tya.echo.music.utils.filterToSubscribedArtists
 import iad1tya.echo.music.utils.get
 import iad1tya.echo.music.utils.reportException
+import iad1tya.echo.music.utils.subscribedArtistKeys
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -77,31 +78,14 @@ constructor(
         }
 
         run {
-            val artists: MutableMap<Int, String> = mutableMapOf()
-            val favouriteArtists: MutableMap<Int, String> = mutableMapOf()
-            database.allArtistsByPlayTime().first().let { list ->
-                var favIndex = 0
-                for ((artistsIndex, artist) in list.withIndex()) {
-                    artists[artistsIndex] = artist.id
-                    if (artist.artist.bookmarkedAt != null) {
-                        favouriteArtists[favIndex] = artist.id
-                        favIndex++
-                    }
-                }
-            }
-            val sortedAlbums = albums
-                .sortedBy { album ->
-                    val artistIds = album.artists.orEmpty().mapNotNull { it.id }
-                    artistIds.firstNotNullOfOrNull { artistId ->
-                        if (artistId in favouriteArtists.values) {
-                            favouriteArtists.entries.firstOrNull { it.value == artistId }?.key
-                        } else {
-                            artists.entries.firstOrNull { it.value == artistId }?.key
-                        }
-                    } ?: Int.MAX_VALUE
-                }.filterExplicit(context.dataStore.get(HideExplicitKey, false))
+            // Only albums from artists the user follows / has subscribed — not a global dump
+            // sorted by taste. Empty subscribed set ⇒ empty shelf (honest, not "everyone's new").
+            val subscribed = database.subscribedArtistKeys()
+            val fromSubscribed = albums
+                .filterExplicit(context.dataStore.get(HideExplicitKey, false))
+                .filterToSubscribedArtists(subscribed)
             explorePage.value = ExplorePage(
-                newReleaseAlbums = sortedAlbums,
+                newReleaseAlbums = fromSubscribed,
                 moodAndGenres = page?.moodAndGenres ?: emptyList(),
             )
         }

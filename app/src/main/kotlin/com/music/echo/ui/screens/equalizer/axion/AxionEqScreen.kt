@@ -9,6 +9,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import android.os.Build
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -19,11 +20,16 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.media3.common.C
 import androidx.media3.common.Player
+import java.util.concurrent.atomic.AtomicReference
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -209,12 +215,16 @@ fun AxionEqScreen(
             // Cap the readable measure so a ~900dp+ window doesn't stretch every row edge to edge (#50,
             // "todo lo pone gigante"). Below the cap this is the full width — i.e. phones are unchanged.
             val contentWidth = if (isWideLayout) maxWidth.coerceAtMost(EQ_MAX_CONTENT_WIDTH) else maxWidth
+            // While a band/preamp slider is dragged, freeze page scroll so the chrome does not ride
+            // with the finger (owner: "la interfaz se mueve con la barra").
+            var sliderDragActive by remember { mutableStateOf(false) }
+            val pageScroll = rememberScrollState()
             Column(
                 modifier = Modifier
                     .width(contentWidth)
                     .align(Alignment.TopCenter)
                     .fillMaxHeight()
-                    .verticalScroll(rememberScrollState())
+                    .verticalScroll(pageScroll, enabled = !sliderDragActive)
                     .padding(innerPadding)
                     .padding(horizontal = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -236,6 +246,7 @@ fun AxionEqScreen(
                     onManageClick = { showManageDialog = true },
                     onDeviceClick = { showDeviceDialog = true },
                     onAutoEqClick = onAutoEqClick,
+                    onSliderDragActiveChange = { sliderDragActive = it },
                 )
             }
         }
@@ -366,80 +377,101 @@ private fun rememberEqFftMeter(
             onDispose { }
         } else {
             val attachScope = CoroutineScope(Dispatchers.Main.immediate)
-            var visualizer: Visualizer? = null
-            val attachJob = attachScope.launch {
-                // Track transitions often reuse the session id — give ExoPlayer a beat to settle.
-                delay(400)
-                fun attach(): Visualizer? = runCatching {
-                    Visualizer(audioSessionId).apply {
-                        val range = Visualizer.getCaptureSizeRange()
-                        captureSize = range[1].coerceAtLeast(range[0])
-                        val target = min(20_000, Visualizer.getMaxCaptureRate() / 4)
-                        setDataCaptureListener(
-                            object : Visualizer.OnDataCaptureListener {
-                                override fun onWaveFormDataCapture(
-                                    visualizer: Visualizer?,
-                                    waveform: ByteArray?,
-                                    samplingRate: Int,
-                                ) = Unit
-
-                                override fun onFftDataCapture(
-                                    visualizer: Visualizer?,
-                                    fft: ByteArray?,
-                                    samplingRate: Int,
-                                ) {
-                                    if (fft == null || fft.size < 4) return
-                                    lastFftAtMs = System.currentTimeMillis()
-                                    val binCount = fft.size / 2
-                                    var peak = 0f
-                                    val bars = FloatArray(EQ_FFT_BAR_COUNT)
-                                    for (b in 0 until EQ_FFT_BAR_COUNT) {
-                                        val t0 = b.toDouble() / EQ_FFT_BAR_COUNT
-                                        val t1 = (b + 1).toDouble() / EQ_FFT_BAR_COUNT
-                                        val start = (1 + t0 * t0 * (binCount - 2)).toInt().coerceIn(1, binCount - 1)
-                                        val end = (1 + t1 * t1 * (binCount - 2)).toInt().coerceIn(start + 1, binCount)
-                                        var sum = 0.0
-                                        var count = 0
-                                        for (i in start until end) {
-                                            val re = fft[i * 2].toInt()
-                                            val im = fft[i * 2 + 1].toInt()
-                                            val mag = hypot(re.toDouble(), im.toDouble()).toFloat()
-                                            sum += mag
-                                            count++
-                                            if (mag > peak) peak = mag
-                                        }
-                                        bars[b] = if (count > 0) (sum / count / 128.0).toFloat().coerceIn(0f, 1f) else 0f
-                                    }
-                                    rawBars = bars
-                                    rawPeak = (peak / 128f).coerceIn(0f, 1f)
-                                }
-                            },
-                            target,
-                            false,
-                            true,
-                        )
-                        setEnabled(true)
+            // Atomic hold so a cancel mid-attach never leaks a live Visualizer (Android allows only
+            // one per session — a leak is the usual reason the meter stays on "Sin señal").
+            val held = AtomicReference<Visualizer?>(null)
+            fun releaseHeld() {
+                held.getAndSet(null)?.let { v ->
+                    runCatching {
+                        v.setEnabled(false)
+                        v.release()
                     }
-                }.getOrNull()
+                }
+            }
+            fun attachTo(session: Int): Visualizer? = runCatching {
+                Visualizer(session).apply {
+                    val range = Visualizer.getCaptureSizeRange()
+                    captureSize = range[1].coerceAtLeast(range[0])
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+                        runCatching { setScalingMode(Visualizer.SCALING_MODE_NORMALIZED) }
+                    }
+                    val maxRate = Visualizer.getMaxCaptureRate()
+                    val target = min(20_000, (maxRate / 2).coerceAtLeast(4_000))
+                    setDataCaptureListener(
+                        object : Visualizer.OnDataCaptureListener {
+                            override fun onWaveFormDataCapture(
+                                visualizer: Visualizer?,
+                                waveform: ByteArray?,
+                                samplingRate: Int,
+                            ) = Unit
 
-                visualizer = attach()
-                if (visualizer == null) {
-                    delay(250)
-                    visualizer = attach()
+                            override fun onFftDataCapture(
+                                visualizer: Visualizer?,
+                                fft: ByteArray?,
+                                samplingRate: Int,
+                            ) {
+                                if (fft == null || fft.size < 4) return
+                                lastFftAtMs = System.currentTimeMillis()
+                                val binCount = fft.size / 2
+                                var peak = 0f
+                                val bars = FloatArray(EQ_FFT_BAR_COUNT)
+                                for (b in 0 until EQ_FFT_BAR_COUNT) {
+                                    val t0 = b.toDouble() / EQ_FFT_BAR_COUNT
+                                    val t1 = (b + 1).toDouble() / EQ_FFT_BAR_COUNT
+                                    // Log-ish spacing across bins (skip DC at 0).
+                                    val start = (1 + t0 * t0 * (binCount - 2)).toInt().coerceIn(1, binCount - 1)
+                                    val end = (1 + t1 * t1 * (binCount - 2)).toInt().coerceIn(start + 1, binCount)
+                                    var sum = 0.0
+                                    var count = 0
+                                    for (i in start until end) {
+                                        val re = fft.getOrNull(i * 2)?.toInt() ?: continue
+                                        val im = fft.getOrNull(i * 2 + 1)?.toInt() ?: 0
+                                        val mag = hypot(re.toDouble(), im.toDouble()).toFloat()
+                                        sum += mag
+                                        count++
+                                        if (mag > peak) peak = mag
+                                    }
+                                    // Visualizer FFT mags are typically well below 128 on real content —
+                                    // boost so the traffic-light meter actually moves.
+                                    val avg = if (count > 0) (sum / count).toFloat() else 0f
+                                    bars[b] = (avg / 48f).coerceIn(0f, 1f)
+                                }
+                                rawBars = bars
+                                rawPeak = (peak / 48f).coerceIn(0f, 1f)
+                            }
+                        },
+                        target,
+                        false,
+                        true,
+                    )
+                    setEnabled(true)
                 }
-                if (visualizer == null) {
-                    delay(250)
-                    visualizer = attach()
+            }.getOrNull()
+
+            val attachJob = attachScope.launch {
+                // Let AuraRhythm release its Visualizer after setEqFftActive(true), then settle ExoPlayer.
+                delay(350)
+                if (!isActive) return@launch
+                val sessions = linkedSetOf(audioSessionId, 0).filter { it >= 0 }
+                var ok = false
+                for (attempt in 0 until 5) {
+                    if (!isActive) return@launch
+                    for (session in sessions) {
+                        releaseHeld()
+                        val v = attachTo(session) ?: continue
+                        held.set(v)
+                        ok = true
+                        break
+                    }
+                    if (ok) break
+                    delay(200L * (attempt + 1))
                 }
-                captureOk = visualizer != null
+                captureOk = ok
                 lastFftAtMs = System.currentTimeMillis()
             }
             onDispose {
                 attachJob.cancel()
-                runCatching {
-                    visualizer?.setEnabled(false)
-                    visualizer?.release()
-                }
+                releaseHeld()
                 rawBars = FloatArray(EQ_FFT_BAR_COUNT)
                 rawPeak = 0f
                 captureOk = false
@@ -493,7 +525,7 @@ private fun rememberEqFftMeter(
                     bars = smoothed.copyOf(),
                     peak = smoothedPeak.coerceIn(0f, 1f),
                     hasSignal = latestCaptureOk.value &&
-                        (System.currentTimeMillis() - latestLastFft.value) < 2_000L,
+                        (System.currentTimeMillis() - latestLastFft.value) < 2_500L,
                 )
             }
         }
@@ -635,6 +667,7 @@ private fun ColumnScope.EqMainContent(
     onManageClick: () -> Unit,
     onDeviceClick: () -> Unit,
     onAutoEqClick: () -> Unit,
+    onSliderDragActiveChange: (Boolean) -> Unit = {},
 ) {
     val context = LocalContext.current
     val highPerf by rememberPreference(HighPerformanceModeKey, false)
@@ -776,6 +809,7 @@ private fun ColumnScope.EqMainContent(
         fftPeak = if (fftMeterEnabled) displayPeak else null,
         onPreampChange = { viewModel.setPreampLive(it) },
         onCommit = { viewModel.commit() },
+        onDragActiveChange = onSliderDragActiveChange,
     )
 
     if (fftMeterEnabled) {
@@ -844,6 +878,7 @@ private fun ColumnScope.EqMainContent(
             onBandChange = { i, v -> viewModel.setBandGainLive(i, v) },
             onBandCommit = { viewModel.commit() },
             onReset = { viewModel.reset() },
+            onDragActiveChange = onSliderDragActiveChange,
         )
         EqMode.PARAMETRIC -> PeqGraphEditor(
             bands = peqBands,
@@ -1068,11 +1103,15 @@ private fun DeviceEqDialog(
     onDismiss: () -> Unit,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    val outputs = remember { iad1tya.echo.music.eq.data.EqDeviceProfileStore.connectedOutputs(context) }
+    val store = iad1tya.echo.music.eq.data.EqDeviceProfileStore
+    val outputs = remember { store.connectedOutputs(context) }
+    var autoApply by remember {
+        mutableStateOf(store.isAutoApplyEnabled(context))
+    }
     val assignments = remember {
         androidx.compose.runtime.mutableStateMapOf<String, String?>().apply {
             outputs.forEach {
-                put(it.key, iad1tya.echo.music.eq.data.EqDeviceProfileStore.assignedProfileId(context, it.key))
+                put(it.key, store.assignedProfileId(context, it.key))
             }
         }
     }
@@ -1093,6 +1132,33 @@ private fun DeviceEqDialog(
                     style = MaterialTheme.typography.bodySmall,
                     color = inkMuted,
                 )
+                // Master feature switch — turning this OFF must NOT disable the equalizer itself.
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            "Aplicar automáticamente",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = ink,
+                        )
+                        Text(
+                            "Si lo apagas, el EQ sigue igual; solo deja de cambiar al conectar un dispositivo.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = inkMuted,
+                        )
+                    }
+                    Switch(
+                        checked = autoApply,
+                        onCheckedChange = {
+                            autoApply = it
+                            store.setAutoApplyEnabled(context, it)
+                        },
+                    )
+                }
                 if (customProfiles.isEmpty()) {
                     Text("Primero guarda al menos un perfil de EQ.", style = MaterialTheme.typography.bodyMedium, color = ink)
                 }
@@ -1120,8 +1186,9 @@ private fun DeviceEqDialog(
                                 DropdownMenuItem(
                                     text = { Text("Ninguno") },
                                     onClick = {
+                                        // Clear mapping only — never touches master EQ enable.
                                         assignments[out.key] = null
-                                        iad1tya.echo.music.eq.data.EqDeviceProfileStore.assign(context, out.key, null)
+                                        store.assign(context, out.key, null)
                                         expanded = false
                                     },
                                 )
@@ -1130,7 +1197,7 @@ private fun DeviceEqDialog(
                                         text = { Text(p.name) },
                                         onClick = {
                                             assignments[out.key] = p.id
-                                            iad1tya.echo.music.eq.data.EqDeviceProfileStore.assign(context, out.key, p.id)
+                                            store.assign(context, out.key, p.id)
                                             expanded = false
                                         },
                                     )
@@ -1155,6 +1222,7 @@ private fun PreampCard(
     fftPeak: Float?,
     onPreampChange: (Float) -> Unit,
     onCommit: () -> Unit,
+    onDragActiveChange: (Boolean) -> Unit = {},
 ) {
     val accent = if (skin.enabled) skin.accent else MaterialTheme.colorScheme.primary
     val cardColor = if (enabled) {
@@ -1214,8 +1282,14 @@ private fun PreampCard(
         }
         Slider(
             value = preamp,
-            onValueChange = onPreampChange,
-            onValueChangeFinished = onCommit,
+            onValueChange = {
+                onDragActiveChange(true)
+                onPreampChange(it)
+            },
+            onValueChangeFinished = {
+                onDragActiveChange(false)
+                onCommit()
+            },
             valueRange = EqConstants.PREAMP_MIN..EqConstants.PREAMP_MAX,
             enabled = enabled,
             colors = SliderDefaults.colors(
@@ -1343,6 +1417,7 @@ private fun BandEqCard(
     onBandChange: (Int, Float) -> Unit,
     onBandCommit: () -> Unit,
     onReset: () -> Unit,
+    onDragActiveChange: (Boolean) -> Unit = {},
 ) {
     val plate = if (skin.enabled) skin.fill else MaterialTheme.colorScheme.surfaceContainerLow
     val line = if (skin.enabled) skin.line else Color.Transparent
@@ -1390,6 +1465,7 @@ private fun BandEqCard(
                         onValueChange = { onBandChange(band, it) },
                         onValueChangeFinished = onBandCommit,
                         travel = travel,
+                        onDragActiveChange = onDragActiveChange,
                         modifier = if (canExpand) Modifier.weight(1f) else Modifier.width(BAND_SLIDER_MIN_WIDTH),
                     )
                 }
@@ -1927,7 +2003,19 @@ private fun EqBandSlider(
     onValueChangeFinished: () -> Unit,
     modifier: Modifier = Modifier.width(BAND_SLIDER_MIN_WIDTH),
     travel: Dp = BAND_SLIDER_TRAVEL,
+    onDragActiveChange: (Boolean) -> Unit = {},
 ) {
+    var fingerDown by remember { mutableStateOf(false) }
+    val latestDrag = rememberUpdatedState(onDragActiveChange)
+    // Rotated slider: finger moves vertically on screen → parent verticalScroll steals the gesture
+    // unless we consume nested scroll while the finger is down.
+    val blockParentScroll = remember {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                return if (fingerDown) Offset(0f, available.y) else Offset.Zero
+            }
+        }
+    }
     Column(
         modifier = modifier,
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -1947,13 +2035,36 @@ private fun EqBandSlider(
             modifier = Modifier
                 .height(travel)
                 .width(BAND_SLIDER_MIN_WIDTH)
-                .clip(RectangleShape),
+                .clip(RectangleShape)
+                .nestedScroll(blockParentScroll)
+                .pointerInput(Unit) {
+                    awaitEachGesture {
+                        awaitFirstDown(requireUnconsumed = false)
+                        fingerDown = true
+                        latestDrag.value(true)
+                        try {
+                            while (true) {
+                                val event = awaitPointerEvent(PointerEventPass.Final)
+                                if (event.changes.all { !it.pressed }) break
+                            }
+                        } finally {
+                            fingerDown = false
+                            latestDrag.value(false)
+                        }
+                    }
+                },
             contentAlignment = Alignment.Center,
         ) {
             Slider(
                 value = value,
-                onValueChange = onValueChange,
-                onValueChangeFinished = onValueChangeFinished,
+                onValueChange = {
+                    latestDrag.value(true)
+                    onValueChange(it)
+                },
+                onValueChangeFinished = {
+                    latestDrag.value(false)
+                    onValueChangeFinished()
+                },
                 valueRange = EqConstants.GAIN_MIN..EqConstants.GAIN_MAX,
                 enabled = enabled,
                 colors = SliderDefaults.colors(

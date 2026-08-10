@@ -28,7 +28,6 @@ import androidx.compose.foundation.lazy.grid.items as lazyGridItems
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -94,6 +93,7 @@ import iad1tya.echo.music.playback.queues.ListQueue
 import iad1tya.echo.music.playback.queues.YouTubeQueue
 import iad1tya.echo.music.reco.AutoRecoPlaylistWorker
 import iad1tya.echo.music.ui.component.LocalMenuState
+import iad1tya.echo.music.ui.component.shimmer.ShimmerHost
 import iad1tya.echo.music.ui.menu.AlbumMenu
 import iad1tya.echo.music.ui.menu.ArtistMenu
 import iad1tya.echo.music.ui.menu.PlaylistMenu
@@ -221,6 +221,7 @@ fun AuraHomeScreen(
     val pullRefreshState = rememberPullToRefreshState()
     val listState = rememberLazyListState()
     var randomSeed by rememberSaveable { mutableLongStateOf(System.currentTimeMillis()) }
+    var forgottenExpanded by rememberSaveable { mutableStateOf(false) }
 
     // The ambient bloom is resolved ONCE PER TRACK (AuraBloomCache), never per frame — thermal gate.
     val bloom = rememberAuraBloom(mediaMetadata?.id)
@@ -446,14 +447,9 @@ fun AuraHomeScreen(
                 if (selectedChip != null) {
                     if (isChipLoading) {
                         item(key = "aura_home_chip_loading") {
-                            Box(
-                                modifier = Modifier
-                                    .animateItem()
-                                    .fillMaxWidth()
-                                    .padding(vertical = 48.dp),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                CircularProgressIndicator(color = AuraPalette.Teal)
+                            ShimmerHost(modifier = Modifier.animateItem()) {
+                                AuraHomeShelfSkeleton(cardScale = cardScale)
+                                repeat(4) { AuraDetailSkeletonRow() }
                             }
                         }
                     }
@@ -503,6 +499,7 @@ fun AuraHomeScreen(
                                         ),
                                     ) {
                                         sectionSongs.distinctBy { it.id }.take(8).forEach { song ->
+                                            val dbSong by database.song(song.id).collectAsState(initial = null)
                                             AuraSongRow(
                                                 title = song.title,
                                                 subtitle = song.artists.joinToString { it.name },
@@ -511,6 +508,7 @@ fun AuraHomeScreen(
                                                 isActive = song.id == mediaMetadata?.id,
                                                 isPlaying = isPlaying,
                                                 explicit = song.explicit,
+                                                playedInShuffle = (dbSong?.song?.totalPlayTime ?: 0L) > 0L,
                                                 onClick = {
                                                     if (song.id == mediaMetadata?.id) {
                                                         playerConnection.togglePlayPause()
@@ -607,13 +605,28 @@ fun AuraHomeScreen(
                             modifier = Modifier
                                 .animateItem()
                                 .fillMaxWidth()
-                                .padding(horizontal = AuraSpacing.Gutter, vertical = 48.dp),
+                                .padding(horizontal = AuraSpacing.Gutter, vertical = 56.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(64.dp)
+                                    .clip(CircleShape)
+                                    .background(AuraPalette.SurfaceFill)
+                                    .border(1.dp, AuraPalette.SurfaceLine, CircleShape),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                AuraIconGlyph(
+                                    icon = AuraIcons.Music,
+                                    contentDescription = null,
+                                    size = 28.dp,
+                                    tint = AuraPalette.Teal,
+                                )
+                            }
                             Text(
                                 text = stringResource(R.string.home_cold_empty_title),
-                                style = AuraType.RowTitle,
+                                style = AuraType.ContentSection,
                                 color = AuraPalette.OnGround,
                             )
                             Text(
@@ -631,7 +644,18 @@ fun AuraHomeScreen(
                             speedDialItems.takeIf { it.isNotEmpty() }?.let { items ->
                                 item(key = "aura_speed_dial") {
                                     Column(Modifier.animateItem()) {
-                                        AuraSectionHeader(title = stringResource(R.string.speed_dial))
+                                        AuraSectionHeader(
+                                            title = stringResource(R.string.speed_dial),
+                                            accent = AuraPalette.Teal,
+                                            leading = {
+                                                AuraIconGlyph(
+                                                    icon = AuraIcons.Pin,
+                                                    contentDescription = null,
+                                                    size = 18.dp,
+                                                    tint = AuraPalette.Teal,
+                                                )
+                                            },
+                                        )
                                         // Playlists the user pinned to Home — no song backfill, no random tile.
                                         val pinW = auraTypeVisual(AuraContentKind.Playlist).shelfWidth * cardScale
                                         AuraDoubleRowShelf(
@@ -660,8 +684,11 @@ fun AuraHomeScreen(
                                     val forYouTitle = stringResource(R.string.home_for_you)
                                     val distinctQuickPicks = remember(picks) { picks.distinctBy { it.id } }
                                     Column(Modifier.animateItem()) {
+                                        Spacer(Modifier.height(AuraSpacing.SectionGap))
                                         AuraSectionHeader(
                                             title = forYouTitle,
+                                            label = stringResource(R.string.quick_picks),
+                                            accent = AuraPalette.Teal,
                                             onPlayAll = { playAllSongs(forYouTitle, picks) },
                                         )
                                         if (perfOn) {
@@ -940,7 +967,10 @@ fun AuraHomeScreen(
                             explorePage?.newReleaseAlbums?.takeIf { it.isNotEmpty() }?.let { albums ->
                                 item(key = "aura_new_releases") {
                                     Column(Modifier.animateItem()) {
-                                        AuraSectionHeader(title = stringResource(R.string.new_release_albums))
+                                        AuraSectionHeader(
+                                            title = stringResource(R.string.new_release_albums),
+                                            onClick = { navController.navigate("new_release") },
+                                        )
                                         val albumW = auraTypeVisual(AuraContentKind.Album).shelfWidth * cardScale
                                         AuraDoubleRowShelf(
                                             rowHeight = auraShelfCardStackHeight(albumW),
@@ -1039,6 +1069,7 @@ fun AuraHomeScreen(
                                                     explicit = song.song.explicit,
                                                     downloadId = song.id,
                                                     format = song.format,
+                                                    playedInShuffle = song.song.totalPlayTime > 0L,
                                                     swipeMediaItem = song.toMediaItem(),
                                                     onClick = { playSong(song) },
                                                     onLongClick = { songMenu(song) },
@@ -1081,9 +1112,20 @@ fun AuraHomeScreen(
                             forgottenFavorites?.takeIf { it.isNotEmpty() }?.let { favorites ->
                                 item(key = "aura_forgotten_favorites") {
                                     val title = stringResource(R.string.forgotten_favorites)
+                                    val distinctFavorites = remember(favorites) { favorites.distinctBy { it.id } }
+                                    val visibleFavorites = if (forgottenExpanded) {
+                                        distinctFavorites
+                                    } else {
+                                        distinctFavorites.take(8)
+                                    }
                                     Column(Modifier.animateItem()) {
                                         AuraSectionHeader(
                                             title = title,
+                                            onClick = if (distinctFavorites.size > 8) {
+                                                { forgottenExpanded = !forgottenExpanded }
+                                            } else {
+                                                null
+                                            },
                                             onPlayAll = { playAllSongs(title, favorites) },
                                         )
                                         Column(
@@ -1093,7 +1135,7 @@ fun AuraHomeScreen(
                                                 vertical = AuraSpacing.SectionGap,
                                             ),
                                         ) {
-                                            favorites.distinctBy { it.id }.take(8).forEach { originalSong ->
+                                            visibleFavorites.forEach { originalSong ->
                                                 val song by database.song(originalSong.id)
                                                     .collectAsState(initial = originalSong)
                                                 val current = song ?: originalSong
@@ -1109,6 +1151,7 @@ fun AuraHomeScreen(
                                                     inLibrary = current.song.inLibrary != null,
                                                     downloadId = current.id,
                                                     format = current.format,
+                                                    playedInShuffle = current.song.totalPlayTime > 0L,
                                                     swipeMediaItem = current.toMediaItem(),
                                                     onClick = { playSong(current) },
                                                     onLongClick = { songMenu(current) },
@@ -1226,6 +1269,7 @@ fun AuraHomeScreen(
                                                 ),
                                             ) {
                                                 sectionSongs.distinctBy { it.id }.take(8).forEach { song ->
+                                                    val dbSong by database.song(song.id).collectAsState(initial = null)
                                                     AuraSongRow(
                                                         title = song.title,
                                                         subtitle = song.artists.joinToString { it.name },
@@ -1234,6 +1278,7 @@ fun AuraHomeScreen(
                                                         isActive = song.id == mediaMetadata?.id,
                                                         isPlaying = isPlaying,
                                                         explicit = song.explicit,
+                                                        playedInShuffle = (dbSong?.song?.totalPlayTime ?: 0L) > 0L,
                                                         onClick = {
                                                             if (song.id == mediaMetadata?.id) {
                                                                 playerConnection.togglePlayPause()
@@ -1300,18 +1345,15 @@ fun AuraHomeScreen(
                     }
                 }
 
-                if (isLoading) {
-                    item(key = "aura_home_loading") {
-                        AuraTechnicalText(
-                            text = "CARGANDO…",
-                            color = AuraPalette.OnGroundGhost,
-                            modifier = Modifier
-                                .animateItem()
-                                .padding(
-                                    horizontal = AuraSpacing.Gutter,
-                                    vertical = 24.dp,
-                                ),
-                        )
+                // Initial load: shimmer shelves instead of a bare "CARGANDO…" label. Once any
+                // section is on screen, pull-to-refresh covers further loads — no cheap footer.
+                if (isLoading && homeSections.isEmpty()) {
+                    item(key = "aura_home_skeleton") {
+                        ShimmerHost(modifier = Modifier.animateItem()) {
+                            AuraHomeShelfSkeleton(cardScale = cardScale)
+                            AuraHomeShelfSkeleton(cardScale = cardScale)
+                            repeat(5) { AuraDetailSkeletonRow() }
+                        }
                     }
                 }
 
@@ -1844,4 +1886,54 @@ private fun auraLocalThumbnail(item: LocalItem): String? = when (item) {
     is Album -> item.album.thumbnailUrl
     is Artist -> item.artist.thumbnailUrl
     is Playlist -> item.playlist.thumbnailUrl
+}
+
+/** Initial / mood-chip loading: cover shelf placeholders matching typed album width. */
+@Composable
+private fun AuraHomeShelfSkeleton(cardScale: Float) {
+    val cover = 156.dp * cardScale
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = AuraSpacing.SectionTop),
+    ) {
+        Spacer(
+            Modifier
+                .padding(horizontal = AuraSpacing.Gutter)
+                .width(160.dp)
+                .height(22.dp)
+                .clip(AuraShapes.Pill)
+                .background(AuraPalette.SurfaceFill),
+        )
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(AuraSpacing.ShelfItemGap),
+            modifier = Modifier
+                .padding(horizontal = AuraSpacing.Gutter, vertical = AuraSpacing.SectionGap),
+        ) {
+            repeat(3) {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Spacer(
+                        Modifier
+                            .size(cover)
+                            .clip(AuraShapes.Artwork)
+                            .background(AuraPalette.SurfaceFill),
+                    )
+                    Spacer(
+                        Modifier
+                            .width(cover * 0.85f)
+                            .height(13.dp)
+                            .clip(AuraShapes.Pill)
+                            .background(AuraPalette.SurfaceFill),
+                    )
+                    Spacer(
+                        Modifier
+                            .width(cover * 0.55f)
+                            .height(11.dp)
+                            .clip(AuraShapes.Pill)
+                            .background(AuraPalette.SurfaceFill),
+                    )
+                }
+            }
+        }
+    }
 }

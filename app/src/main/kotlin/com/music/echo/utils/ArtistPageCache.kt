@@ -22,8 +22,10 @@ object ArtistPageCache {
     // pruned) so a very stale page is never shown. The live fetch refreshes it on every entry anyway.
     private const val TTL_MS = 30L * 24 * 60 * 60 * 1000 // 30 days
 
+    // v2: "Aparece en" now merges iTunes songs + multi-storefront + YT feat. searches. Bumping the
+    // folder invalidates pages that cached the older, thinner guest shelf for up to 30 days.
     private fun dir(context: Context): File =
-        File(context.cacheDir, "artist_pages").apply { mkdirs() }
+        File(context.cacheDir, "artist_pages_v2").apply { mkdirs() }
 
     private fun fileFor(context: Context, artistId: String): File =
         File(dir(context), artistId.replace(Regex("[^A-Za-z0-9_-]"), "_") + ".json")

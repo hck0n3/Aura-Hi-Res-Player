@@ -50,6 +50,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
@@ -545,21 +546,35 @@ fun AuraCoverCard(
             badge?.invoke(this)
         }
         Spacer(Modifier.height(10.dp))
+        // Fixed 2-line title + 1-line subtitle so every shelf card shares the same baseline
+        // (short titles used to collapse the stack and make double-row grids look uneven).
+        val density = LocalDensity.current
+        val titleBlockHeight = with(density) { (AuraType.CoverTitle.lineHeight * 2).toDp() }
+        val subtitleBlockHeight = with(density) { AuraType.RowSubtitle.lineHeight.toDp() }
         Text(
             text = title,
             style = AuraType.CoverTitle,
             color = AuraPalette.OnGround,
             maxLines = 2,
             overflow = AuraDefaultOverflow,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(titleBlockHeight),
         )
-        if (!subtitle.isNullOrBlank()) {
-            Text(
-                text = subtitle,
-                style = AuraType.RowSubtitle,
-                color = AuraPalette.OnGroundMuted,
-                maxLines = 1,
-                overflow = AuraDefaultOverflow,
-            )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(subtitleBlockHeight),
+        ) {
+            if (!subtitle.isNullOrBlank()) {
+                Text(
+                    text = subtitle,
+                    style = AuraType.RowSubtitle,
+                    color = AuraPalette.OnGroundMuted,
+                    maxLines = 1,
+                    overflow = AuraDefaultOverflow,
+                )
+            }
         }
     }
 }

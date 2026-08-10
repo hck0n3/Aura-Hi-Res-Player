@@ -1,30 +1,34 @@
-# Aura Hi-Res Player 0.6.174
+# Aura Hi-Res Player 0.6.175
 
-Avisos en la cuenta, Auto-EQ dentro del ecualizador, menú Más más claro, Inicio que se rellena al reproducir o suscribirte, y arreglos de vídeos exportados/streaming.
+Inicio New UI más premium, novedades solo de artistas que sigues, colaboraciones del artista más completas, y arreglos del ecualizador y de Ajustes.
 
 ---
 
-## Avisos y comunicados
+## Inicio (Interfaz nueva)
 
-- En la ventana de cuenta (avatar / engranaje) hay acceso directo a **Avisos**.
-- Si hay avisos sin leer, verás un **punto rojo** en el avatar/engranaje y en la fila de Avisos.
-- Para avisar a todos sin sacar APK: edita `announcements.json` en la rama `main` del repo. La app lo descarga y muestra en la bandeja.
+- Carga con shimmer (ya no el texto “CARGANDO…”).
+- **Fijadas en inicio** con identidad propia (pin teal).
+- **Para ti** con más peso visual.
+- Filas de canciones marcan las ya reproducidas.
+- Portadas de estantería alineadas (título/subtítulo a la misma altura).
+- Novedades: **Ver todos** abre la pantalla completa.
+- Favoritos olvidados: se pueden expandir si hay más de ocho.
+- Vacío en frío más claro (icono + mensaje).
 
-## Ecualizador y menú Más
+## Personalización y contenido
 
-- **Auto-EQ (por auricular)** está dentro del ecualizador Axion (ya no en Sonido).
-- En el menú Más del reproductor quedan visibles: Ver artista, Ver álbum, Ecualizador, Detalles y Configuración; el resto va en secciones contraídas.
+- Álbumes nuevos / novedades filtrados por artistas a los que te suscribiste o sigues.
+- En el artista, **Aparece en** incluye más colaboraciones y featuring.
+- Estilo Apple Music (Interfaz nueva) solo cambia la **portada**, no los botones.
 
-## Inicio
+## Ecualizador
 
-- Tras la primera reproducción (o al suscribirte a un artista), Inicio se rellena con recomendaciones reales.
-- Si el último tema era local, se usan seeds de YouTube del historial para no dejar las estanterías vacías.
+- Medidor FFT más fiable (menos fallos al abrir).
+- Elegir “Ninguno” en Auto-EQ del dispositivo **no** apaga el ecualizador maestro.
+- Interruptor para aplicar Auto-EQ automáticamente al cambiar de salida.
+- Al arrastrar bandas, la pantalla ya no hace scroll a la vez.
 
-## Vídeos exportados y streaming
+## Ajustes
 
-- Menú ⋮ de un vídeo exportado: **Eliminar del dispositivo** (lo quita de Aura y borra el archivo cuando Android lo permite).
-- Menos trabón al empezar vídeo en streaming (más buffer y espera de colchón A/V).
-
-## Del 0.6.173
-
-- Vídeos exportados: modo vídeo offline con el MP4 local.
+- En la interfaz clásica, los ajustes anidados ya no quedan debajo de la barra (el título no tapa el contenido).
+- Con Interfaz nueva, Apariencia / tema usan el suelo Aura.

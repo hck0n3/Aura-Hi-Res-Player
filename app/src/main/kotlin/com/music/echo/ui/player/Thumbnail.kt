@@ -98,6 +98,7 @@ import iad1tya.echo.music.constants.RotatingThumbnailKey
 import iad1tya.echo.music.constants.SeekExtraSeconds
 import iad1tya.echo.music.constants.SwipeThumbnailKey
 import iad1tya.echo.music.constants.ThumbnailCornerRadiusKey
+import iad1tya.echo.music.constants.UseNewPlayerDesignKey
 import iad1tya.echo.music.constants.ThumbnailCornerRadius
 import iad1tya.echo.music.listentogether.RoomRole
 // The motion grammar of the redesigned interface. Imported by the ONE host-gated animation below; the
@@ -368,8 +369,12 @@ fun Thumbnail(
         defaultValue = PlayerBackgroundStyle.GRADIENT
     )
     val thumbnailCornerRadius by rememberPreference(ThumbnailCornerRadiusKey, defaultValue = 3f)
-    
-    
+    // "Inspirado en Apple Music" (UseNewPlayerDesignKey == false). In the classic player this flips the
+    // whole layout; in the new UI (OPAQUE_DARK host) it must ONLY restyle the cover — never buttons —
+    // per owner rule. See [appleMusicCoverStyle] below.
+    val useNewPlayerDesign by rememberPreference(UseNewPlayerDesignKey, defaultValue = true)
+    val appleMusicCoverStyle = host == ThumbnailHost.OPAQUE_DARK && !useNewPlayerDesign
+
     // The host owns BOTH of these; see [ThumbnailHost].
     val classicTextColor = getTextColor(playerBackground)
     val textBackgroundColor = when (host) {
@@ -581,7 +586,10 @@ fun Thumbnail(
                     }
                 ) {
                     
-                    val dimensions = remember(maxWidth, maxHeight, isLandscape, thumbnailCornerRadius, isWideLayout, host) {
+                    val dimensions = remember(
+                        maxWidth, maxHeight, isLandscape, thumbnailCornerRadius, isWideLayout, host,
+                        appleMusicCoverStyle,
+                    ) {
                         calculateThumbnailDimensions(
                             containerWidth = maxWidth,
                             containerHeight = maxHeight,
@@ -613,9 +621,9 @@ fun Thumbnail(
                             // what it was and the classic player is untouched. `maxHeight` is Dp.Infinity
                             // if a caller is ever unbounded, and `coerceAtMost(Dp.Infinity)` is a no-op.
                             maxThumbnailSize = run {
-                                val slotCap = if (host == ThumbnailHost.OPAQUE_DARK) {
-                                    // That host keeps its breathing room so the elevation has somewhere
-                                    // to fall; classic has no elevation and takes the raw height.
+                                val slotCap = if (host == ThumbnailHost.OPAQUE_DARK && !appleMusicCoverStyle) {
+                                    // Card look keeps breathing room for elevation. Apple Music cover
+                                    // style in New UI fills the slot (cover-only effect, no button change).
                                     (maxHeight - OPAQUE_DARK_COVER_INSET * 2).coerceAtLeast(0.dp)
                                 } else {
                                     maxHeight
@@ -661,7 +669,7 @@ fun Thumbnail(
                                 itemKey = thumbnailItemKey(index, item),
                                 dimensions = dimensions,
                                 hidePlayerThumbnail = hidePlayerThumbnail,
-                                cropAlbumArt = cropAlbumArt,
+                                cropAlbumArt = cropAlbumArt || appleMusicCoverStyle,
                                 textBackgroundColor = textBackgroundColor,
                                 layoutDirection = layoutDirection,
                                 onSeek = onSeekCallback,
@@ -674,6 +682,7 @@ fun Thumbnail(
                                 currentMediaThumbnail = mediaMetadata?.thumbnailUrl,
                                 playerBackground = playerBackground,
                                 host = host,
+                                appleMusicCoverStyle = appleMusicCoverStyle,
                                 suppressCoverSettle = suppressCoverSettle,
                                 onCoverSettleSuppressed = { suppressCoverSettle = false },
                             )
@@ -817,6 +826,11 @@ private fun ThumbnailItem(
     playerBackground: PlayerBackgroundStyle = PlayerBackgroundStyle.DEFAULT,
     /** See [ThumbnailHost]. The default keeps every classic call site unchanged. */
     host: ThumbnailHost = ThumbnailHost.CLASSIC,
+    /**
+     * New UI only: "Inspirado en Apple Music" restyles the cover (fuller, no card chrome) and must
+     * not change transport/buttons. Classic hosts ignore this.
+     */
+    appleMusicCoverStyle: Boolean = false,
     suppressCoverSettle: Boolean = false,
     onCoverSettleSuppressed: () -> Unit = {},
     modifier: Modifier = Modifier,
@@ -825,6 +839,7 @@ private fun ThumbnailItem(
     val isPlaying by playerConnection.isPlaying.collectAsState()
     val isCurrentItem = item.mediaId == currentMediaId
     val isOpaqueDark = host == ThumbnailHost.OPAQUE_DARK
+    val useCardChrome = isOpaqueDark && !appleMusicCoverStyle
     
     val infiniteTransition = rememberInfiniteTransition(label = "ThumbnailRotation")
     val rotation by infiniteTransition.animateFloat(
@@ -879,7 +894,7 @@ private fun ThumbnailItem(
                         .fillMaxSize()
                 }
             )
-            .padding(horizontal = PlayerHorizontalPadding)
+            .padding(horizontal = if (appleMusicCoverStyle) 4.dp else PlayerHorizontalPadding)
             .graphicsLayer {
                 // Apple-Music style: the further a cover is from the viewport center, the more it shrinks and
                 // fades — so as songs change (grid scrolls the new cover to center) the artwork zooms in +
@@ -973,7 +988,7 @@ private fun ThumbnailItem(
                 // ("Radio de las esquinas de la portada", presets 0/8/16/24/32/40 → doubled), and
                 // overriding it here would make that control dead in the new player.
                 .then(
-                    if (isOpaqueDark) {
+                    if (useCardChrome) {
                         Modifier
                             .shadow(OPAQUE_DARK_COVER_ELEVATION, coverShape, clip = false)
                             .border(1.dp, Color.White.copy(alpha = 0.07f), coverShape)

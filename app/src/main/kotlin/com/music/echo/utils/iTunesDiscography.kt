@@ -93,11 +93,29 @@ object iTunesDiscography {
         }.getOrDefault(emptyList())
 
     /**
-     * Releases where the artist only APPEARS (is a guest/feature, not the primary credit) — for an
-     * "Appears on" section like Spotify's. Returns (albumTitle, primaryArtist) so each can be found on
-     * YouTube. Skips "Various Artists" compilations and tributes.
+     * Releases where the artist only APPEARS (guest/feature, not the primary credit) — for an
+     * "Appears on" section like Spotify's. Returns (title, primaryArtist) so each can be found on
+     * YouTube. Merges album credits AND song-level featuring across several storefronts so
+     * collaborations that iTunes US alone omits still surface. Skips "Various Artists" / tributes.
      */
-    suspend fun fetchAppearsOn(artistName: String, country: String = "us"): List<Pair<String, String>> =
+    suspend fun fetchAppearsOn(artistName: String, country: String = "us"): List<Pair<String, String>> {
+        // Owner listens mostly Latin/ES — US alone misses a lot of feat./colaboraciones. Query a few
+        // storefronts and merge; each call is capped and failures are swallowed per-country.
+        val countries = listOf(country, "mx", "es", "us", "ar", "co").distinct()
+        val merged = LinkedHashMap<String, Pair<String, String>>()
+        for (store in countries) {
+            for (hit in fetchAppearsOnAlbums(artistName, store) + fetchAppearsOnSongs(artistName, store)) {
+                val key = normalizeTitle(hit.first)
+                if (key.isNotBlank()) merged.putIfAbsent(key, hit)
+            }
+        }
+        return merged.values.toList()
+    }
+
+    private suspend fun fetchAppearsOnAlbums(
+        artistName: String,
+        country: String,
+    ): List<Pair<String, String>> =
         runCatching {
             val text = client.get("https://itunes.apple.com/search") {
                 parameter("term", artistName)
@@ -112,19 +130,82 @@ object iTunesDiscography {
                     val o = el.jsonObject
                     val resultArtist = o["artistName"]?.jsonPrimitive?.contentOrNull ?: ""
                     val title = o["collectionName"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
-                    val isGuest = resultArtist.contains(artistName, ignoreCase = true) &&
-                        !resultArtist.startsWith(artistName, ignoreCase = true) &&
-                        !artistName.startsWith(resultArtist, ignoreCase = true) &&
-                        !resultArtist.equals("Various Artists", ignoreCase = true) &&
-                        !title.contains("homenaje", ignoreCase = true) &&
-                        !title.contains("tribut", ignoreCase = true)
-                    if (isGuest) title to resultArtist else null
+                    if (isGuestCredit(artistName, resultArtist, title)) title to resultArtist else null
                 }
-                ?.distinctBy { normalizeTitle(it.first) }
                 .orEmpty()
         }.onFailure {
-            Timber.w("iTunes appears-on fetch failed for $artistName: ${it.message}")
+            Timber.w("iTunes appears-on albums failed for $artistName/$country: ${it.message}")
         }.getOrDefault(emptyList())
+
+    /**
+     * Song-level featuring credits ("Song (feat. X)", "A & B"). Primary artist is the track's
+     * `artistName` when our artist is only a guest; otherwise the collection artist.
+     */
+    private suspend fun fetchAppearsOnSongs(
+        artistName: String,
+        country: String,
+    ): List<Pair<String, String>> =
+        runCatching {
+            val text = client.get("https://itunes.apple.com/search") {
+                parameter("term", artistName)
+                parameter("entity", "song")
+                parameter("attribute", "artistTerm")
+                parameter("limit", "200")
+                parameter("country", country)
+            }.bodyAsText()
+
+            json.parseToJsonElement(text).jsonObject["results"]?.jsonArray
+                ?.mapNotNull { el ->
+                    val o = el.jsonObject
+                    val trackArtist = o["artistName"]?.jsonPrimitive?.contentOrNull ?: ""
+                    val collectionArtist = o["collectionArtistName"]?.jsonPrimitive?.contentOrNull
+                        ?: trackArtist
+                    val title = o["trackName"]?.jsonPrimitive?.contentOrNull
+                        ?: o["collectionName"]?.jsonPrimitive?.contentOrNull
+                        ?: return@mapNotNull null
+                    val featuredInTitle = title.contains(artistName, ignoreCase = true) &&
+                        (title.contains("feat", ignoreCase = true) ||
+                            title.contains("ft.", ignoreCase = true) ||
+                            title.contains("with ", ignoreCase = true))
+                    val guestOnTrack = isGuestCredit(artistName, trackArtist, title) ||
+                        (featuredInTitle && !trackArtist.equals(artistName, ignoreCase = true))
+                    if (!guestOnTrack) return@mapNotNull null
+                    if (collectionArtist.equals("Various Artists", ignoreCase = true)) return@mapNotNull null
+                    // Prefer the OTHER credited name as the YouTube search primary.
+                    val primary = when {
+                        !trackArtist.equals(artistName, ignoreCase = true) &&
+                            !trackArtist.contains(artistName, ignoreCase = true) -> trackArtist
+                        !collectionArtist.equals(artistName, ignoreCase = true) -> collectionArtist
+                        else -> trackArtist
+                    }
+                    title to primary
+                }
+                .orEmpty()
+        }.onFailure {
+            Timber.w("iTunes appears-on songs failed for $artistName/$country: ${it.message}")
+        }.getOrDefault(emptyList())
+
+    private fun isGuestCredit(artistName: String, creditedArtist: String, title: String): Boolean {
+        if (creditedArtist.equals("Various Artists", ignoreCase = true)) return false
+        if (title.contains("homenaje", ignoreCase = true) || title.contains("tribut", ignoreCase = true)) {
+            return false
+        }
+        val credited = creditedArtist.trim()
+        if (credited.isEmpty()) return false
+        // Primary credit for this artist (own release) — not "appears on".
+        if (credited.equals(artistName, ignoreCase = true) ||
+            credited.startsWith("$artistName ", ignoreCase = true) ||
+            credited.startsWith("$artistName,", ignoreCase = true) ||
+            credited.startsWith("$artistName &", ignoreCase = true) ||
+            credited.startsWith("$artistName feat", ignoreCase = true) ||
+            credited.startsWith("$artistName ft", ignoreCase = true)
+        ) {
+            return false
+        }
+        // Guest forms: "Host & Artist", "Host feat. Artist", artist name in the credit string but
+        // not as the leading primary name.
+        return credited.contains(artistName, ignoreCase = true)
+    }
 
     /**
      * Primary genre for [artistName] per iTunes (e.g. "Christian & Gospel", "Latin", "Rock", "Hip-Hop/Rap"),

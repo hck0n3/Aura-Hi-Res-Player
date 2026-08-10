@@ -113,8 +113,13 @@ import iad1tya.echo.music.ui.theme.withAccent
 import iad1tya.echo.music.ui.utils.rememberIsTvOrCar
 import iad1tya.echo.music.ui.utils.tvFocusable
 import iad1tya.echo.music.LocalPlayerAwareWindowInsets
+import iad1tya.echo.music.LocalPlayerConnection
+import iad1tya.echo.music.ui.newui.auraScreenBackground
+import iad1tya.echo.music.ui.newui.rememberAuraBloom
+import iad1tya.echo.music.ui.newui.rememberNewUiEnabled
 import iad1tya.echo.music.utils.rememberEnumPreference
 import iad1tya.echo.music.utils.rememberPreference
+import androidx.compose.runtime.collectAsState
 
 data class ThemePalette(
     val nameRes: Int,
@@ -313,7 +318,19 @@ fun ThemeScreen(
         onPureBlackChange(false)
     }
 
+    val newUiEnabled = rememberNewUiEnabled()
+    val playerConnection = LocalPlayerConnection.current
+    val mediaMetadata by playerConnection?.mediaMetadata?.collectAsState()
+        ?: remember { mutableStateOf(null) }
+    val bloom = rememberAuraBloom(mediaMetadata?.id)
+
     Scaffold(
+        modifier = if (newUiEnabled) {
+            Modifier.fillMaxSize().auraScreenBackground(bloom, intensity = 0.32f)
+        } else {
+            Modifier
+        },
+        containerColor = if (newUiEnabled) Color.Transparent else MaterialTheme.colorScheme.surface,
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.theme_colors), fontWeight = FontWeight.Bold) },
@@ -324,7 +341,7 @@ fun ThemeScreen(
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = Color.Transparent,
-                    scrolledContainerColor = MaterialTheme.colorScheme.surface
+                    scrolledContainerColor = if (newUiEnabled) Color.Transparent else MaterialTheme.colorScheme.surface
                 )
             )
         }
@@ -332,11 +349,14 @@ fun ThemeScreen(
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.1f),
-                            MaterialTheme.colorScheme.surface
+                .then(
+                    if (newUiEnabled) Modifier
+                    else Modifier.background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.1f),
+                                MaterialTheme.colorScheme.surface
+                            )
                         )
                     )
                 )

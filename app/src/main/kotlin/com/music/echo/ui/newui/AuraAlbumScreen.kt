@@ -1099,9 +1099,10 @@ internal fun AuraDoubleRowShelf(
     )
 }
 
-/** Stack height for [AuraTypedYtCoverCard] / [AuraCoverCard] (cover + 2-line title + subtitle). */
+/** Stack height for [AuraTypedYtCoverCard] / [AuraCoverCard] (cover + fixed 2-line title + subtitle). */
 internal fun auraShelfCardStackHeight(cardWidth: Dp, ratio: Float = 1f): Dp =
-    cardWidth / ratio + 58.dp
+    // 10 spacer + ~36 title (2×18sp) + ~18 subtitle + 8 column vertical padding — matches AuraCoverCard.
+    cardWidth / ratio + 72.dp
 
 /** Reproducir / Pausar. [accent] draws the gradient — the one full-colour element on a screen. */
 @Composable

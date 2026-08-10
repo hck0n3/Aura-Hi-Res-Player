@@ -361,7 +361,7 @@
     <string name="hide_player_volume_desc">Oculta el control de volumen del reproductor</string>
     <string name="apple_music_inspired">Inspirado en Apple Music</string>
     <string name="apple_music_inspired_desc">Usa el diseño de reproductor al estilo Apple Music</string>
-    <string name="apple_music_inspired_desc_new_ui">Con la interfaz nueva activada no cambia nada en pantalla: elige qué reproductor clásico vuelve cuando apagues la beta</string>
+    <string name="apple_music_inspired_desc_new_ui">Con la interfaz nueva, solo cambia la portada (más a pantalla). Los botones y controles no cambian. También elige qué reproductor clásico vuelve cuando apagues la beta</string>
     <string name="player_background_style_desc_new_ui">Con la interfaz nueva activada repinta el fondo del reproductor y de la cola. Lo que va encima —la portada, el título, los controles— mantiene el diseño nuevo. «Predeterminado» es el fondo ambiental. El minirreproductor tiene su propio estilo, en el grupo Minirreproductor</string>
     <string name="miniplayer_background_style_desc_new_ui">Con la interfaz nueva activada repinta el fondo de la píldora del minirreproductor, aparte del reproductor. Aquí «Liquid Glass» es una portada esmerilada fija, no el cristal en vivo de la interfaz clásica</string>
     <string name="liquid_glass_classic_only_desc">Se aplica a la interfaz clásica: toma una muestra de la pantalla que hay detrás en cada fotograma, así que la interfaz nueva no lo usa. Para un aspecto esmerilado ahí, elige «Liquid Glass» en Fondo del reproductor</string>

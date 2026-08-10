@@ -13,6 +13,8 @@ import androidx.core.content.getSystemService
 object EqDeviceProfileStore {
 
     private const val PREFS = "eq_device_profiles"
+    /** Master switch for auto-applying assigned profiles on output change. Off = leave EQ alone. */
+    private const val KEY_AUTO_APPLY = "__auto_apply_enabled__"
 
     /** Stable key for the phone's own speaker (so it survives across sessions / devices). */
     const val PHONE_KEY = "__phone__"
@@ -22,9 +24,24 @@ object EqDeviceProfileStore {
     private fun prefs(context: Context) =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
+    /**
+     * When false, [iad1tya.echo.music.playback.MusicService] must not touch EQ on device connect /
+     * disconnect. Clearing this flag or a per-device assignment must NEVER disable the master EQ.
+     */
+    fun isAutoApplyEnabled(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_AUTO_APPLY, true)
+
+    fun setAutoApplyEnabled(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(KEY_AUTO_APPLY, enabled).apply()
+    }
+
     fun assignedProfileId(context: Context, deviceKey: String): String? =
         prefs(context).getString(deviceKey, null)
 
+    /**
+     * Bind or clear a profile for [deviceKey]. Passing null only removes the mapping — it does not
+     * flip `echo_eq_prefs["enabled"]` or call [iad1tya.echo.music.eq.EqualizerService.disable].
+     */
     fun assign(context: Context, deviceKey: String, profileId: String?) {
         prefs(context).edit().apply {
             if (profileId == null) remove(deviceKey) else putString(deviceKey, profileId)

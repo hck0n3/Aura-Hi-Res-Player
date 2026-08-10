@@ -1736,9 +1736,12 @@ class MusicService :
     private fun applyEqForCurrentOutput() {
         if (!::eqProfileRepository.isInitialized || !::equalizerService.isInitialized) return
         scope.launch {
-            val key = iad1tya.echo.music.eq.data.EqDeviceProfileStore.currentOutputKey(this@MusicService)
-            val profileId = iad1tya.echo.music.eq.data.EqDeviceProfileStore
-                .assignedProfileId(this@MusicService, key) ?: return@launch
+            val store = iad1tya.echo.music.eq.data.EqDeviceProfileStore
+            // Feature off or no assignment → leave the live EQ exactly as the user left it.
+            // Never call equalizerService.disable() / putBoolean("enabled", false) from this path.
+            if (!store.isAutoApplyEnabled(this@MusicService)) return@launch
+            val key = store.currentOutputKey(this@MusicService)
+            val profileId = store.assignedProfileId(this@MusicService, key) ?: return@launch
             val profile = eqProfileRepository.getAllProfiles().firstOrNull { it.id == profileId } ?: return@launch
             getSharedPreferences("echo_eq_prefs", Context.MODE_PRIVATE).edit().apply {
                 profile.bands.forEachIndexed { i, b -> putFloat("band24_$i", b.gain.toFloat()) }

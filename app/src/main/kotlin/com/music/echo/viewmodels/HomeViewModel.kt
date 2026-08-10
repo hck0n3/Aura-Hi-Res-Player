@@ -42,8 +42,10 @@ import iad1tya.echo.music.models.SimilarRecommendation
 import iad1tya.echo.music.models.toMediaMetadata
 import iad1tya.echo.music.utils.SyncUtils
 import iad1tya.echo.music.utils.dataStore
+import iad1tya.echo.music.utils.filterToSubscribedArtists
 import iad1tya.echo.music.utils.get
 import iad1tya.echo.music.utils.reportException
+import iad1tya.echo.music.utils.subscribedArtistKeys
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -1052,8 +1054,13 @@ class HomeViewModel @Inject constructor(
             }
             launch(Dispatchers.IO) {
                 YouTube.explore().onSuccess { page ->
+                    // Owner: "Álbumes recién lanzados" must only show releases from subscribed /
+                    // followed artists — not the global YTM explore dump.
+                    val subscribed = database.subscribedArtistKeys()
                     explorePage.value = page.copy(
-                        newReleaseAlbums = page.newReleaseAlbums.filterExplicit(hideExplicit)
+                        newReleaseAlbums = page.newReleaseAlbums
+                            .filterExplicit(hideExplicit)
+                            .filterToSubscribedArtists(subscribed),
                     )
                 }.onFailure { reportException(it) }
             }

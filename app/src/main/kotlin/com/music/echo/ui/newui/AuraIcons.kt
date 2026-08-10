@@ -479,6 +479,15 @@ object AuraIcons {
         }
     }
 
+    /** Push-pin — "Fijadas en inicio" section leading. */
+    val Pin: ImageVector by lazy {
+        stroked("Pin", join = StrokeJoin.Miter) {
+            circle(12f, 8f, 4.2f)
+            moveTo(9f, 11.2f); horizontalLineTo(15f)
+            moveTo(12f, 11.2f); verticalLineTo(20.5f)
+        }
+    }
+
     /** `#i-cast` — "Transmitir" (the audio-output / Cast picker). */
     val Cast: ImageVector by lazy {
         stroked("Cast", join = StrokeJoin.Miter) {

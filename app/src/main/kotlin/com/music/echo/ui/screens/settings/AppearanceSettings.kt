@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -27,6 +28,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.collectAsState
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -54,7 +56,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import iad1tya.echo.music.LocalPlayerAwareWindowInsets
+import iad1tya.echo.music.LocalPlayerConnection
 import iad1tya.echo.music.ui.component.isGlassEligible
+import iad1tya.echo.music.ui.newui.auraScreenBackground
+import iad1tya.echo.music.ui.newui.rememberAuraBloom
 import iad1tya.echo.music.R
 import iad1tya.echo.music.constants.AlbumCanvasEnabledKey
 import iad1tya.echo.music.constants.CanvasThumbnailAnimationKey
@@ -961,16 +966,26 @@ fun AppearanceSettings(
         }
     }
 
-    Column(
-        Modifier
-            .windowInsetsPadding(
-                LocalPlayerAwareWindowInsets.current.only(
-                    WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom
-                )
+    // With "Interfaz nueva" on, paint the same Aura ground the Ajustes index uses so Tema / Apariencia
+    // personalization sits on the redesign instead of a flat Material page.
+    val playerConnection = LocalPlayerConnection.current
+    val mediaMetadata by playerConnection?.mediaMetadata?.collectAsState()
+        ?: remember { mutableStateOf(null) }
+    val bloom = rememberAuraBloom(mediaMetadata?.id)
+    val contentModifier = Modifier
+        .then(
+            if (newUiEnabled) Modifier.fillMaxSize().auraScreenBackground(bloom, intensity = 0.32f)
+            else Modifier,
+        )
+        .windowInsetsPadding(
+            LocalPlayerAwareWindowInsets.current.only(
+                WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom
             )
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp),
-    ) {
+        )
+        .verticalScroll(rememberScrollState())
+        .padding(horizontal = 16.dp)
+
+    Column(contentModifier) {
         Spacer(
             Modifier.windowInsetsPadding(
                 LocalPlayerAwareWindowInsets.current.only(
@@ -1149,15 +1164,11 @@ fun AppearanceSettings(
         Material3SettingsGroup(
             title = stringResource(R.string.player),
             items = listOfNotNull(
-                // "Inspirado en Apple Music" (UseNewPlayerDesignKey). KEPT VISIBLE with the new UI on,
-                // but for a DIFFERENT reason than it used to be: the redesign no longer delegates ANY
-                // shape to the classic player (AuraPlayer.kt now owns portrait, landscape, wide/TV and
-                // fullscreen video), so with the flag on this switch changes nothing on screen. It stays
-                // because it still decides WHICH classic player comes back when the beta is switched off
-                // — NewUiHosts.kt picks classic vs Aura on the flag alone — and because the live
-                // "Ocultar control de volumen" row below is gated on it, so hiding this one would make
-                // that dependency invisible. The description string says exactly this rather than leaving
-                // the user to discover it by toggling.
+                // "Inspirado en Apple Music" (UseNewPlayerDesignKey). With the new UI on this ONLY
+                // restyles the cover (Thumbnail.kt appleMusicCoverStyle) — never buttons/controls
+                // (owner rule). It also still decides WHICH classic player comes back when the beta
+                // is switched off. The APPLE_MUSIC background side-write stays classic-only so the
+                // row does not half-mutate the ground style under the redesign.
                 Material3SettingsItem(
                     icon = painterResource(R.drawable.palette),
                     title = { Text(stringResource(R.string.apple_music_inspired)) },
@@ -1172,12 +1183,6 @@ fun AppearanceSettings(
                     trailingContent = {
                         Switch(
                             checked = !useNewPlayerDesign,
-                            // The APPLE_MUSIC side-write is skipped while the new interface is on. It is
-                            // what made this row read as LIVE there: the new player DOES honour the
-                            // background key, so flipping the switch visibly repainted the ground while
-                            // the switch's own effect (which classic player shape to restore) stayed
-                            // invisible — and flipping it back changed nothing at all. A row that half
-                            // works is worse than one that plainly does not: it proves itself to the user.
                             onCheckedChange = { isChecked ->
                                 onUseNewPlayerDesignChange(!isChecked)
                                 if (isChecked && !newUiEnabled) {
@@ -1198,7 +1203,6 @@ fun AppearanceSettings(
                     onClick = {
                         val newAppleMusicInspired = useNewPlayerDesign
                         onUseNewPlayerDesignChange(!newAppleMusicInspired)
-                        // Same reason as the switch above: no side-write while the new interface is on.
                         if (newAppleMusicInspired && !newUiEnabled) {
                             onPlayerBackgroundChange(PlayerBackgroundStyle.APPLE_MUSIC)
                         }

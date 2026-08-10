@@ -1052,14 +1052,21 @@ class MainActivity : ComponentActivity() {
                                 // Only reserve classic TopAppBar height when that bar is actually drawn.
                                 // Search / online playlists / albums were keeping 64 dp of dead black
                                 // above their own Aura chrome (same class of bug as Settings before).
-                                // Nested Ajustes screens (`settings/update`, `settings/player`, …) still
-                                // draw a Material TopAppBar as a sibling overlay — without this reserve
-                                // their first group title paints UNDER the bar (owner screenshot:
-                                // garbled white under "Aura Hi-Res Update").
+                                //
+                                // Nested Ajustes (`settings/update`, `settings/player`, …) draw a Material
+                                // TopAppBar as a sibling OVERLAY in BOTH shells — without this reserve the
+                                // first group title paints UNDER the bar (owner: garbled white under the
+                                // title; classic interface hit the same bug because the reserve used to be
+                                // gated on `newUiShell` only).
+                                //
+                                // Settings INDEX:
+                                //  · New UI (`auraOwnsHeader`) → 0: AuraSettingsScreen owns the header.
+                                //  · Classic → AppBarHeight: SettingsScreen still overlays a TopAppBar
+                                //    (back + collapsing title) and needs the same clearance.
                                 top = when {
-                                    auraOwnsHeader || currentRoute == "settings" -> 0.dp
-                                    newUiShell &&
-                                        currentRoute?.startsWith("settings/") == true -> AppBarHeight
+                                    auraOwnsHeader -> 0.dp
+                                    currentRoute == "settings" -> AppBarHeight
+                                    currentRoute?.startsWith("settings/") == true -> AppBarHeight
                                     currentRoute !in topLevelScreens -> 0.dp
                                     else -> AppBarHeight
                                 },

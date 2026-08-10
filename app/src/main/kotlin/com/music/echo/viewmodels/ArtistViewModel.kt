@@ -314,68 +314,118 @@ class ArtistViewModel @Inject constructor(
                     // anyway — net-negative. Removed: albums now load cleanly on open (AlbumViewModel)
                     // and are cached for instant re-open, with no background storm starving that open.
 
-                    // "Aparece en" (Appears on), like Spotify: albums where this artist is a guest. Built
-                    // from iTunes guest credits + a parallel YouTube lookup, appended as its own section.
-                    // Cache-first: once resolved, the section is written back into pageCache + disk, so a
-                    // later visit (this session, or a cold restart within the cache TTL) reuses it and skips
-                    // the ~80 guest YouTube searches entirely. Those searches run at most ONCE per artist —
-                    // not on every revisit, which was cooking battery/network and risking throttling.
+                    // "Aparece en" (Appears on), like Spotify: guest albums + featuring collabs. Built from
+                    // (1) native YTM shelves titled Appears/Featuring/Colaboraciones, (2) iTunes guest
+                    // album+song credits across storefronts, (3) YouTube "feat./ft." searches — then
+                    // resolved to playable YT items. Cache-first: once written to pageCache + disk,
+                    // revisits skip the fan-out entirely.
                     launch(Dispatchers.IO) {
                         val artistName = page.artist?.title ?: return@launch
                         val items: List<com.music.innertube.models.YTItem> = if (cachedAppearsOn != null) {
-                            // Already resolved on a previous visit — reuse verbatim, zero new searches.
-                            // (Re-apply the hide-explicit filter in case the preference changed since.)
                             cachedAppearsOn.items.filter { !hideExplicit || !it.explicit }
                         } else {
+                            val nativeSeed = page.sections
+                                .filter { isAppearsOnSectionTitle(it.title) }
+                                .flatMap { it.items }
                             val norm = iad1tya.echo.music.utils.iTunesDiscography::normalizeTitle
-                            // Cap at 80 (covers virtually all real collaborations) with moderate concurrency.
                             val guest = iad1tya.echo.music.utils.iTunesDiscography
                                 .fetchAppearsOn(artistName, "us")
-                                .take(80)
-                            if (guest.isEmpty()) return@launch
+                                .take(120)
                             val sem = Semaphore(2)
-                            val found = coroutineScope {
-                                guest.map { (title, primary) ->
+                            val fromItunes = if (guest.isEmpty()) {
+                                emptyList()
+                            } else {
+                                coroutineScope {
+                                    guest.map { (title, primary) ->
+                                        async {
+                                            sem.withPermit {
+                                                val target = norm(title)
+                                                fun matches(t: String) =
+                                                    t == target ||
+                                                        (target.length >= 4 &&
+                                                            (t.contains(target) || target.contains(t)))
+                                                val album = YouTube.search(
+                                                    "$primary $title",
+                                                    YouTube.SearchFilter.FILTER_ALBUM,
+                                                ).getOrNull()?.items
+                                                    ?.filterIsInstance<com.music.innertube.models.AlbumItem>()
+                                                    ?.firstOrNull { matches(norm(it.title)) }
+                                                if (album != null) {
+                                                    return@withPermit album as com.music.innertube.models.YTItem
+                                                }
+                                                val song = YouTube.search(
+                                                    "$primary $title",
+                                                    YouTube.SearchFilter.FILTER_SONG,
+                                                ).getOrNull()?.items
+                                                    ?.filterIsInstance<com.music.innertube.models.SongItem>()
+                                                    ?.firstOrNull { s ->
+                                                        matches(norm(s.title)) &&
+                                                            s.artists.any {
+                                                                it.name.contains(artistName, ignoreCase = true)
+                                                            }
+                                                    }
+                                                song as? com.music.innertube.models.YTItem
+                                            }
+                                        }
+                                    }.awaitAll().filterNotNull()
+                                }
+                            }
+                            // Direct featuring search fills gaps iTunes storefronts miss (esp. Latin collabs).
+                            val fromFeatSearch = coroutineScope {
+                                listOf(
+                                    "feat. $artistName",
+                                    "ft. $artistName",
+                                    "featuring $artistName",
+                                ).map { q ->
                                     async {
                                         sem.withPermit {
-                                            val target = norm(title)
-                                            fun matches(t: String) =
-                                                t == target || (target.length >= 4 && (t.contains(target) || target.contains(t)))
-                                            // As a full album/collection...
-                                            val album = YouTube.search("$primary $title", YouTube.SearchFilter.FILTER_ALBUM)
-                                                .getOrNull()?.items
-                                                ?.filterIsInstance<com.music.innertube.models.AlbumItem>()
-                                                ?.firstOrNull { matches(norm(it.title)) }
-                                            if (album != null) return@withPermit album as com.music.innertube.models.YTItem
-                                            // ...otherwise as a collab/feat single (most collaborations are songs).
-                                            val song = YouTube.search("$primary $title", YouTube.SearchFilter.FILTER_SONG)
+                                            YouTube.search(q, YouTube.SearchFilter.FILTER_SONG)
                                                 .getOrNull()?.items
                                                 ?.filterIsInstance<com.music.innertube.models.SongItem>()
-                                                ?.firstOrNull { s ->
-                                                    matches(norm(s.title)) &&
-                                                        s.artists.any { it.name.contains(artistName, ignoreCase = true) }
+                                                ?.filter { s ->
+                                                    val credited = s.artists.any {
+                                                        it.name.contains(artistName, ignoreCase = true)
+                                                    }
+                                                    val inTitle = s.title.contains(artistName, ignoreCase = true) &&
+                                                        (s.title.contains("feat", ignoreCase = true) ||
+                                                            s.title.contains("ft.", ignoreCase = true) ||
+                                                            s.title.contains("with ", ignoreCase = true))
+                                                    // Guest: credited OR titled feat, but not solo primary-only.
+                                                    (credited || inTitle) &&
+                                                        s.artists.firstOrNull()
+                                                            ?.name
+                                                            ?.equals(artistName, ignoreCase = true) != true
                                                 }
-                                            song as? com.music.innertube.models.YTItem
+                                                ?.take(25)
+                                                .orEmpty()
                                         }
                                     }
-                                }.awaitAll().filterNotNull()
+                                }.awaitAll().flatten()
                             }
-                            found.distinctBy { it.id }.filter { !hideExplicit || !it.explicit }
+                            (nativeSeed + fromItunes + fromFeatSearch)
+                                .distinctBy { it.id }
+                                .filter { !hideExplicit || !it.explicit }
+                                .take(120)
                         }
                         if (items.isEmpty()) return@launch
                         withContext(Dispatchers.Main) {
                             val current = artistPage ?: return@withContext
-                            if (current.sections.any { it.title.equals("Aparece en", ignoreCase = true) }) return@withContext
+                            if (current.sections.any { it.title.equals("Aparece en", ignoreCase = true) }) {
+                                return@withContext
+                            }
+                            // Drop native Appears/Featuring shelves we already merged into "Aparece en"
+                            // so the page does not show the same collaborations twice under two titles.
+                            val withoutNativeAppears = current.sections.filterNot {
+                                isAppearsOnSectionTitle(it.title)
+                            }
                             val updated = current.copy(
-                                sections = current.sections + com.music.innertube.pages.ArtistSection(
+                                sections = withoutNativeAppears + com.music.innertube.pages.ArtistSection(
                                     title = "Aparece en",
                                     items = items,
                                     moreEndpoint = null,
                                 ),
                             )
                             artistPage = updated
-                            // Write the resolved page back so revisits reuse the appears-on section instantly:
-                            // pageCache for this session, disk (ArtistPageCache) for cold restarts within TTL.
                             pageCache[artistId] = updated
                             launch { ArtistPageCache.save(context, artistId, updated) }
                         }
@@ -453,5 +503,15 @@ class ArtistViewModel @Inject constructor(
                 title.contains("vídeo", ignoreCase = true) ||
                 title.contains("videoclips", ignoreCase = true)
         return looksLikeVideos && section.moreEndpoint != null
+    }
+
+    /** YTM shelves that already list guest/featuring credits — merge into our "Aparece en". */
+    private fun isAppearsOnSectionTitle(title: String): Boolean {
+        val t = title.trim()
+        if (t.equals("Aparece en", ignoreCase = true)) return true
+        return t.contains("appear", ignoreCase = true) ||
+            t.contains("featuring", ignoreCase = true) ||
+            t.contains("colabor", ignoreCase = true) ||
+            t.contains("appears on", ignoreCase = true)
     }
 }
