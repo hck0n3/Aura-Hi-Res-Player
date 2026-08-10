@@ -469,7 +469,9 @@ internal fun AuraSongCollectionScaffold(
             },
             inSelectMode = inSelectMode,
             selectionCount = selection.size,
-            forceOpaque = isSearching,
+            // Never force the sticky title plate while searching — it covers the search field
+            // and results (owner: New UI playlists / liked / downloads / cache / exported).
+            forceOpaque = false,
             pinTitleOnScroll = false,
             selectionActions = {
                 Checkbox(

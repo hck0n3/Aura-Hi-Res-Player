@@ -115,13 +115,15 @@ fun LibrarySongsScreen(
     val searchQuery by viewModel.searchQuery.collectAsState()
 
     var filter by rememberEnumPreference(SongFilterKey, SongFilter.LIKED)
+    LaunchedEffect(filter) {
+        if (filter == SongFilter.UPLOADED) filter = SongFilter.LIBRARY
+    }
 
     LaunchedEffect(Unit) {
         if (ytmSync) {
             when (filter) {
                 SongFilter.LIKED -> viewModel.syncLikedSongs()
                 SongFilter.LIBRARY -> viewModel.syncLibrarySongs()
-                SongFilter.UPLOADED -> viewModel.syncUploadedSongs()
                 else -> return@LaunchedEffect
             }
         }
@@ -167,7 +169,7 @@ fun LibrarySongsScreen(
     val canonicalCollectionId = when (filter) {
         SongFilter.LIKED -> "AP:liked"
         SongFilter.DOWNLOADED -> "AP:downloaded"
-        SongFilter.UPLOADED -> "AP:uploaded"
+        SongFilter.UPLOADED -> "LIB:LIBRARY"
         SongFilter.EXPORTED -> "AP:exported"
         SongFilter.LIBRARY -> "LIB:LIBRARY"
     }
@@ -208,7 +210,6 @@ fun LibrarySongsScreen(
                 listOf(
                     SongFilter.LIKED to stringResource(R.string.filter_liked),
                     SongFilter.LIBRARY to stringResource(R.string.filter_library),
-                    SongFilter.UPLOADED to stringResource(R.string.filter_uploaded),
                     SongFilter.DOWNLOADED to stringResource(R.string.filter_downloaded),
                     SongFilter.EXPORTED to stringResource(R.string.action_exported),
                 ),

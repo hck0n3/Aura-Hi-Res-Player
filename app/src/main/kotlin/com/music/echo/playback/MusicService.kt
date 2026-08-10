@@ -4676,21 +4676,35 @@ class MusicService :
                     insert(meta)
                     base = getSongByIdBlocking(meta.id)?.song
                 }
+                // Playing as a music video but DB row was audio-only → keep the video flag so later
+                // taps still open video mode (and sync doesn't demote the track).
+                if (base != null && meta.isVideoSong && !base.isVideo) {
+                    base = base.copy(isVideo = true)
+                    upsert(base)
+                }
                 val toggled = base?.toggleLike() ?: return@query
-                upsert(toggled) // insert-or-update so the like always persists
-                syncUtils.likeSong(toggled)
+                val toggledFinal =
+                    if (meta.isVideoSong && !toggled.isVideo) toggled.copy(isVideo = true) else toggled
+                upsert(toggledFinal) // insert-or-update so the like always persists
+                syncUtils.likeSong(toggledFinal)
 
-                if (dataStore.get(AutoDownloadOnLikeKey, true) && toggled.liked) {
+                if (dataStore.get(AutoDownloadOnLikeKey, true) && toggledFinal.liked) {
                     // Guard the auto-download: DownloadService.sendAddDownload(foreground=false) throws
                     // IllegalStateException on Android 8+ when started from the background, and an uncaught throw
                     // here would abort the whole query block — rolling back the like. Never let the optional
                     // download break the like itself.
+                    //
+                    // While THIS track is in video mode, do NOT enqueue the companion VIDEO download:
+                    // ExoDownload racing the live muxed stream 403s/evicts the playing source →
+                    // onPlayerError → exitVideoMode → "Video no disponible — volviendo a audio".
+                    val watchingThisInVideo =
+                        _videoMode.value && player.currentMediaItem?.mediaId == toggledFinal.id
                     try {
                         enqueueSongDownloads(
                             this@MusicService,
-                            toggled.id,
-                            toggled.title,
-                            meta.isVideoSong,
+                            toggledFinal.id,
+                            toggledFinal.title,
+                            isVideoSong = meta.isVideoSong && !watchingThisInVideo,
                         )
                     } catch (e: Exception) {
                         Timber.tag(TAG).e(e, "auto-download on like failed (non-fatal)")
@@ -7596,9 +7610,9 @@ class MusicService :
         if (item.localConfiguration?.uri?.toString() == url) {
             _videoUrl.value = url
             if (playing) player.playWhenReady = true
-            if (playing &&
-                (player.playbackState == Player.STATE_IDLE || player.playbackState == Player.STATE_BUFFERING)
-            ) {
+            // Only re-prepare from IDLE. Calling prepare() while BUFFERING restarts the pipeline and
+            // looks like "se traba / buffering y al rato sigue" (same class of bug as maybeRecoverStuckVideo).
+            if (playing && player.playbackState == Player.STATE_IDLE) {
                 player.prepare()
                 player.playWhenReady = true
             }

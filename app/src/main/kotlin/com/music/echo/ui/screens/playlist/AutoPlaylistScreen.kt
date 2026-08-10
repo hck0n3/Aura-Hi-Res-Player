@@ -138,8 +138,8 @@ fun AutoPlaylistScreen(
     val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
     val playlist = when (viewModel.playlist) {
         "liked" -> stringResource(R.string.liked)
-        "uploaded" -> stringResource(R.string.uploaded_playlist)
         "exported" -> stringResource(R.string.action_exported)
+        "exported_videos" -> stringResource(R.string.exported_videos_playlist)
         else -> stringResource(R.string.offline)
     }
 
@@ -176,8 +176,8 @@ fun AutoPlaylistScreen(
     val playlistType = when (playlistId) {
         "liked" -> PlaylistType.LIKE
         "downloaded" -> PlaylistType.DOWNLOAD
-        "uploaded" -> PlaylistType.UPLOADED
         "exported" -> PlaylistType.EXPORTED
+        "exported_videos" -> PlaylistType.EXPORTED_VIDEO
         else -> PlaylistType.OTHER
     }
 
@@ -218,9 +218,6 @@ fun AutoPlaylistScreen(
             withContext(Dispatchers.IO) {
                 if (playlistType == PlaylistType.LIKE) {
                     viewModel.syncLikedSongs()
-                }
-                if (playlistType == PlaylistType.UPLOADED) {
-                    viewModel.syncUploadedSongs()
                 }
             }
         }
@@ -309,7 +306,7 @@ fun AutoPlaylistScreen(
 
     val isRefreshing by viewModel.isRefreshing.collectAsState()
     val pullRefreshState = rememberPullToRefreshState()
-    val canRefresh = playlistType == PlaylistType.LIKE || playlistType == PlaylistType.UPLOADED
+    val canRefresh = playlistType == PlaylistType.LIKE
 
     Box(
         modifier = Modifier
@@ -351,12 +348,9 @@ fun AutoPlaylistScreen(
                                 contextId = "AP:" + playlistId,
                                 // C1: only the Liked / Uploaded auto-playlists can sync from YT Music, and only
                                 // when signed in. syncLikedSongs/syncUploadedSongs are fire-and-forget on SyncUtils.
-                                onSync = if (isLoggedIn &&
-                                    (playlistType == PlaylistType.LIKE || playlistType == PlaylistType.UPLOADED)
-                                ) {
+                                onSync = if (isLoggedIn && playlistType == PlaylistType.LIKE) {
                                     {
-                                        if (playlistType == PlaylistType.LIKE) viewModel.syncLikedSongs()
-                                        else viewModel.syncUploadedSongs()
+                                        viewModel.syncLikedSongs()
                                         Toast.makeText(
                                             context,
                                             "Sincronizando con YouTube Music…",
@@ -925,5 +919,5 @@ private fun AutoPlaylistHeader(
 
 
 enum class PlaylistType {
-    LIKE, DOWNLOAD, UPLOADED, EXPORTED, OTHER
+    LIKE, DOWNLOAD, UPLOADED, EXPORTED, EXPORTED_VIDEO, OTHER
 }

@@ -7,6 +7,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import iad1tya.echo.music.constants.ExportedSongIdsKey
+import iad1tya.echo.music.constants.ExportedVideoIdsKey
 import iad1tya.echo.music.constants.HideExplicitKey
 import iad1tya.echo.music.constants.HideVideoSongsKey
 import iad1tya.echo.music.constants.SongSortDescendingKey
@@ -59,11 +60,11 @@ constructor(
                         it[HideVideoSongsKey] ?: false
                     ),
                     it[ExportedSongIdsKey] ?: "",
-                    Unit
+                    it[ExportedVideoIdsKey] ?: "",
                 )
             }
             .distinctUntilChanged()
-            .flatMapLatest { (triple, exportedSongIds, _) ->
+            .flatMapLatest { (triple, exportedSongIds, exportedVideoIds) ->
                 val (sortDesc, hideExplicit, hideVideoSongs) = triple
                 val (sortType, descending) = sortDesc
                 when (playlist) {
@@ -73,8 +74,8 @@ constructor(
                     "downloaded" -> database.downloadedSongs(sortType, descending)
                         .map { it.filterExplicit(hideExplicit).filterVideoSongs(hideVideoSongs) }
 
-                    "uploaded" -> database.uploadedSongs(sortType, descending)
-                        .map { it.filterExplicit(hideExplicit).filterVideoSongs(hideVideoSongs) }
+                    // Uploaded playlist removed from product UI; keep empty for legacy deep links.
+                    "uploaded" -> flowOf(emptyList())
 
                     "exported" -> {
                         val ids = exportedSongIds.split(",").filter { it.isNotBlank() }
@@ -83,6 +84,21 @@ constructor(
                             .map {
                                 it.filterExplicit(hideExplicit)
                                     .filterVideoSongs(hideVideoSongs)
+                                    .sortedAsExported(ids, sortType, descending)
+                            }
+                    }
+
+                    "exported_videos" -> {
+                        val ids = exportedVideoIds.split(",").filter { it.isNotBlank() }
+                        if (ids.isEmpty()) return@flatMapLatest flowOf(emptyList())
+                        database.getSongsByIdsFlow(ids)
+                            .map { songs ->
+                                // Force isVideo so tap → auto video mode + expanded player.
+                                songs.filterExplicit(hideExplicit)
+                                    .map { song ->
+                                        if (song.song.isVideo) song
+                                        else song.copy(song = song.song.copy(isVideo = true))
+                                    }
                                     .sortedAsExported(ids, sortType, descending)
                             }
                     }
@@ -106,7 +122,6 @@ constructor(
             try {
                 when (playlist) {
                     "liked" -> syncUtils.syncLikedSongsSuspend()
-                    "uploaded" -> syncUtils.syncUploadedSongsSuspend()
                 }
             } finally {
                 _isRefreshing.value = false

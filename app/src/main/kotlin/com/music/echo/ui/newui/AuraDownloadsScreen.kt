@@ -123,16 +123,16 @@ fun AuraAutoPlaylistScreen(
     // Same title mapping as the classic screen (AutoPlaylistScreen.kt:139-145).
     val playlist = when (viewModel.playlist) {
         "liked" -> stringResource(R.string.liked)
-        "uploaded" -> stringResource(R.string.uploaded_playlist)
         "exported" -> stringResource(R.string.action_exported)
+        "exported_videos" -> stringResource(R.string.exported_videos_playlist)
         else -> stringResource(R.string.offline)
     }
     val playlistId = viewModel.playlist
     val playlistType = when (playlistId) {
         "liked" -> PlaylistType.LIKE
         "downloaded" -> PlaylistType.DOWNLOAD
-        "uploaded" -> PlaylistType.UPLOADED
         "exported" -> PlaylistType.EXPORTED
+        "exported_videos" -> PlaylistType.EXPORTED_VIDEO
         else -> PlaylistType.OTHER
     }
     val contextId = "AP:$playlistId"
@@ -203,13 +203,12 @@ fun AuraAutoPlaylistScreen(
     }
 
     val isRefreshing by viewModel.isRefreshing.collectAsState()
-    val canRefresh = playlistType == PlaylistType.LIKE || playlistType == PlaylistType.UPLOADED
+    val canRefresh = playlistType == PlaylistType.LIKE
 
     LaunchedEffect(Unit) {
         if (ytmSync) {
             withContext(Dispatchers.IO) {
                 if (playlistType == PlaylistType.LIKE) viewModel.syncLikedSongs()
-                if (playlistType == PlaylistType.UPLOADED) viewModel.syncUploadedSongs()
             }
         }
     }
@@ -230,13 +229,10 @@ fun AuraAutoPlaylistScreen(
             menuState.show {
                 AutoPlaylistMenu(
                     downloadState = downloadState,
-                    // Only Liked / Uploaded can sync, and only when signed in — the classic gate.
-                    onSync = if (isLoggedIn &&
-                        (playlistType == PlaylistType.LIKE || playlistType == PlaylistType.UPLOADED)
-                    ) {
+                    // Only Liked can sync, and only when signed in — the classic gate.
+                    onSync = if (isLoggedIn && playlistType == PlaylistType.LIKE) {
                         {
-                            if (playlistType == PlaylistType.LIKE) viewModel.syncLikedSongs()
-                            else viewModel.syncUploadedSongs()
+                            viewModel.syncLikedSongs()
                             Toast.makeText(
                                 context,
                                 "Sincronizando con YouTube Music…",

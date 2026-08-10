@@ -1,39 +1,36 @@
-# Aura Hi-Res Player 0.6.167
+# Aura Hi-Res Player 0.6.168
 
-Import Spotify más completo (CSV de fallos), Local con Música y Vídeos, MP3 exportados más fuertes, share de artista y menos tirones al abrir la lupa.
+Biblioteca reorganizada (Vídeos exportados en el hub, Descargados/Caché en Local, sin Subidas), CSV de Spotify a tu almacenamiento, búsqueda sin título que tapa, vídeos más estables, y **Para ti / Recomendado IA que ya no se congelan**.
 
 ---
 
+## 🎯 Para ti / recomendaciones
+
+- **Para ti** (Inicio): ya no se queda en las mismas 20 canciones locales — mezcla del día + relacionadas reales de YouTube (antes el enriquecimiento solo aceptaba canciones ya en tu BD = cero descubrimiento).
+- El snapshot de Inicio caduca al cambiar de día (si el proceso sigue vivo varios días, vuelve a cargar solo).
+- **Recomendado para ti (IA)**: no re-publica el lote anterior; si la IA falla hay fallback por radio/relacionados; “Refrescar ahora” ya no se queda bloqueado; al abrir la app, si lleva >20 h sin actualizar se dispara un refresco.
+
+## 📚 Biblioteca (Interfaz nueva)
+
+- Nuevo tile **Vídeos exportados** junto a Me gusta / Exportado / Álbumes favoritos.
+- **Descargados** y **En caché** viven dentro de **Local** (ya no en el hub).
+- **Subidas** eliminado del hub, Apariencia y filtros Canciones/Álbumes.
+- Al buscar en una lista: solo barra y resultados — **sin** título sticky del nombre encima.
+
 ## 📥 Spotify
 
-- La importación registra **por qué** falla cada canción y avisa si la biblioteca no quedó completa.
-- Puedes **exportar un CSV** de lo que no entró (compatible con Migrar) y **reintentar** esos fallos.
-- Búsqueda alternativa de título/artista cuando el primer match no basta.
+- Exportar fallos: **Guardar CSV en el dispositivo** (elige carpeta) o **Compartir** (Migrar).
 
-## 📁 Biblioteca Local
+## 🎬 Vídeos
 
-- Dentro de **Local**: secciones **Música** y **Vídeos** (vídeos exportados ya no viven en Exportados).
-- Exportados = solo audio MP3.
+- Al tocar un vídeo (incl. exportados) el reproductor se abre en modo vídeo para verlo.
+- Menos trabones buffering↔play al cambiar a vídeo (ya no se reinicia el pipeline en BUFFERING).
+- Dar **Me gusta** (o Descargar) mientras ves un vídeo ya no lo tumba a “no disponible” / solo audio.
 
-## 🔊 Volumen y exportación
+## 🛡️ Pantalla bloqueada / logs
 
-- MP3/MP4 exportados usan loudnorm más cercano al volumen de la app (menos “bajitos”).
-- La notificación de exportar muestra **barra de progreso %**.
+- Tu diagnóstico 0.6.167 solo muestra salidas por **instalación de updates** (`PACKAGE_UPDATED`), no kills OEM. El keep-alive al apagar pantalla sigue activo; si un microcorte vuelve, envía un log nuevo con la hora exacta.
 
-## 🎵 Reproductor y artista
+## 📦 Del 0.6.167
 
-- Si una canción tiene **varios artistas**, al tocarlos aparece un popup para elegir a cuál ir.
-- **Compartir** en la página de artista abre el chooser de apps (ya no se queda en silencio).
-- Abrir la lupa del reproductor: menos tirón a mitad de la animación.
-
-## 📚 Biblioteca
-
-- Tirar para actualizar ya no se queda cargando para siempre.
-
-## 🛡️ Publicación
-
-- Las updates estables solo se publican si GitHub (Build + CodeQL) está todo en verde.
-
-## 📦 Del 0.6.166
-
-- Exportar MP3 o vídeo, búsqueda/Cast/local→online y Exportados (ahora Vídeos en Local).
+- Import Spotify con CSV/reintento, loudnorm de export, share de artista, multi-artista, lupa sin tirón, refresh de biblioteca, publicar solo con CI verde.

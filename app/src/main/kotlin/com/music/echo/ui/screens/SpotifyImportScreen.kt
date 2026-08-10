@@ -54,6 +54,7 @@ import iad1tya.echo.music.ui.newui.AuraPalette
 import iad1tya.echo.music.ui.newui.rememberAuraPanelSkin
 import iad1tya.echo.music.utils.rememberPreference
 import android.net.Uri
+import androidx.activity.result.contract.ActivityResultContracts
 import kotlinx.coroutines.flow.first
 
 @Composable
@@ -376,11 +377,43 @@ fun SpotifyImportScreen(
         )
     }
 
+    val saveFailuresCsvLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("text/csv"),
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val file = spotifyImportViewModel.exportFailuresCsv()
+        if (file == null) {
+            android.widget.Toast.makeText(
+                context,
+                context.getString(R.string.spotify_import_failures_csv_save_failed),
+                android.widget.Toast.LENGTH_SHORT,
+            ).show()
+            return@rememberLauncherForActivityResult
+        }
+        val ok = runCatching {
+            context.contentResolver.openOutputStream(uri)?.use { out ->
+                file.inputStream().use { input -> input.copyTo(out) }
+            } != null
+        }.getOrDefault(false)
+        android.widget.Toast.makeText(
+            context,
+            context.getString(
+                if (ok) R.string.spotify_import_failures_csv_saved
+                else R.string.spotify_import_failures_csv_save_failed,
+            ),
+            android.widget.Toast.LENGTH_LONG,
+        ).show()
+    }
+
     state.summary?.let { summary ->
         SpotifyImportSummaryDialog(
             summary = summary,
             onDismiss = { spotifyImportViewModel.dismissSummary() },
-            onExportFailuresCsv = {
+            onSaveFailuresCsv = {
+                val suggested = "spotify_import_failures_${System.currentTimeMillis()}.csv"
+                saveFailuresCsvLauncher.launch(suggested)
+            },
+            onShareFailuresCsv = {
                 val file = spotifyImportViewModel.exportFailuresCsv()
                 if (file != null) {
                     runCatching {
@@ -857,7 +890,8 @@ private fun SpotifyErrorDialog(
 private fun SpotifyImportSummaryDialog(
     summary: SpotifyImportSummaryUi,
     onDismiss: () -> Unit,
-    onExportFailuresCsv: () -> Unit = {},
+    onSaveFailuresCsv: () -> Unit = {},
+    onShareFailuresCsv: () -> Unit = {},
     onRetryFailures: () -> Unit = {},
 ) {
     val hasFailures = summary.allFailures.isNotEmpty()
@@ -866,8 +900,11 @@ private fun SpotifyImportSummaryDialog(
         title = { Text(stringResource(R.string.spotify_import_complete)) },
         buttons = {
             if (hasFailures) {
-                TextButton(onClick = onExportFailuresCsv) {
-                    Text(stringResource(R.string.spotify_import_export_failures_csv))
+                TextButton(onClick = onSaveFailuresCsv) {
+                    Text(stringResource(R.string.spotify_import_save_failures_csv))
+                }
+                TextButton(onClick = onShareFailuresCsv) {
+                    Text(stringResource(R.string.spotify_import_share_failures_csv))
                 }
                 TextButton(onClick = onRetryFailures) {
                     Text(stringResource(R.string.spotify_import_retry_failures))

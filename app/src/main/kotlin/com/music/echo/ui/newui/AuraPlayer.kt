@@ -1371,7 +1371,14 @@ private fun AuraPlayerShape(
                                         removeSongDownloads(context, meta.id, isVideo)
                                     else -> {
                                         database.transaction { insert(meta) }
-                                        enqueueSongDownloads(context, meta.id, meta.title, isVideo)
+                                        // Same race as like-while-watching: don't pull a companion
+                                        // video download while this track is live in video mode.
+                                        enqueueSongDownloads(
+                                            context,
+                                            meta.id,
+                                            meta.title,
+                                            isVideoSong = isVideo && !videoMode,
+                                        )
                                     }
                                 }
                             },

@@ -39,6 +39,7 @@ import iad1tya.echo.music.extensions.filterVideoSongs
 import iad1tya.echo.music.extensions.toEnum
 import iad1tya.echo.music.models.GenreMix
 import iad1tya.echo.music.models.SimilarRecommendation
+import iad1tya.echo.music.models.toMediaMetadata
 import iad1tya.echo.music.utils.SyncUtils
 import iad1tya.echo.music.utils.dataStore
 import iad1tya.echo.music.utils.get
@@ -64,6 +65,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.launch
 import java.time.LocalDate
+import java.time.ZoneId
 import javax.inject.Inject
 import kotlin.random.Random
 
@@ -531,6 +533,7 @@ class HomeViewModel @Inject constructor(
 
     private suspend fun getQuickPicks() {
         val hideVideoSongs = context.dataStore.get(HideVideoSongsKey, false)
+        val hideExplicit = context.dataStore.get(HideExplicitKey, false)
         when (quickPicksEnum.first()) {
             QuickPicks.QUICK_PICKS -> {
                 val relatedSongs = database.quickPicks().first().filterVideoSongs(hideVideoSongs)
@@ -539,34 +542,66 @@ class HomeViewModel @Inject constructor(
                 // Paint quick picks from LOCAL data immediately so the home appears fast — don't block the
                 // first paint on a YouTube "related" network call. Guard against blanking a populated
                 // shelf on a transient empty read (the "home went empty" bug); empty only on first load.
-                val localQuick = (relatedSongs + forgotten).distinctBy { it.id }.rankedByTaste().take(20)
+                // Day-stable rotate over a wider taste pool so "Para ti" changes across days even when
+                // the underlying history barely moved (was: same ranked top-20 for days/weeks).
+                val daySeed = LocalDate.now().toEpochDay()
+                val localPool = (relatedSongs + forgotten).distinctBy { it.id }.rankedByTaste().take(48)
+                val localQuick = if (localPool.size <= 20) {
+                    localPool
+                } else {
+                    localPool.shuffled(Random(daySeed)).take(20)
+                }
                 if (localQuick.isNotEmpty() || quickPicks.value == null) quickPicks.value = localQuick
 
-                // Enrich with YouTube "related to your last play" in the background and update once it
-                // returns — this no longer delays the home from appearing.
+                // Enrich with YouTube related songs. IMPORTANT: persist + resolve SongItems — previously
+                // we only kept related ids that were ALREADY in the local DB, so the enrich path was a
+                // silent no-op for discovery and "Para ti" froze on the same local top forever.
                 val recentSong = database.lastEvent().first()?.song
-                if (recentSong != null) {
+                val seedCandidates = (
+                    listOfNotNull(recentSong) + relatedSongs.take(12) + forgotten
+                    ).distinctBy { it.id }
+                if (seedCandidates.isNotEmpty()) {
                     viewModelScope.launch(Dispatchers.IO) {
-                        val endpoint = YouTube.next(WatchEndpoint(videoId = recentSong.id))
-                            .getOrNull()?.relatedEndpoint ?: return@launch
-                        YouTube.related(endpoint).onSuccess { page ->
-                            val ytSimilarSongs = mutableListOf<Song>()
-                            page.songs.take(10).forEach { ytSong ->
-                                database.song(ytSong.id).first()?.let { localSong ->
-                                    if (!hideVideoSongs || !localSong.song.isVideo) ytSimilarSongs.add(localSong)
-                                }
+                        val seeds = seedCandidates.shuffled(Random(daySeed)).take(3)
+                        val ytSimilarSongs = ArrayList<Song>(24)
+                        val seen = HashSet<String>()
+                        for (seed in seeds) {
+                            val endpoint = YouTube.next(WatchEndpoint(videoId = seed.id))
+                                .getOrNull()?.relatedEndpoint ?: continue
+                            val page = YouTube.related(endpoint).getOrNull() ?: continue
+                            for (ytSong in page.songs.take(10)) {
+                                if (!seen.add(ytSong.id)) continue
+                                if (hideExplicit && ytSong.explicit) continue
+                                if (hideVideoSongs && ytSong.isVideoSong) continue
+                                // IGNORE-on-conflict insert: never clobbers liked/library flags.
+                                runCatching { database.insert(ytSong.toMediaMetadata()) }
+                                val resolved = database.song(ytSong.id).first() ?: continue
+                                if (hideVideoSongs && resolved.song.isVideo) continue
+                                ytSimilarSongs += resolved
+                                if (ytSimilarSongs.size >= 18) break
                             }
-                            val combined = (relatedSongs + forgotten + ytSimilarSongs)
-                                .distinctBy { it.id }.rankedByTaste().take(20)
-                            if (combined.isNotEmpty()) quickPicks.value = combined
+                            if (ytSimilarSongs.size >= 18) break
                         }
+                        if (ytSimilarSongs.isEmpty()) return@launch
+                        val combinedPool = (relatedSongs + forgotten + ytSimilarSongs)
+                            .distinctBy { it.id }.rankedByTaste().take(48)
+                        val combined = if (combinedPool.size <= 20) {
+                            combinedPool
+                        } else {
+                            combinedPool.shuffled(Random(daySeed * 31L + 17L)).take(20)
+                        }
+                        if (combined.isNotEmpty()) quickPicks.value = combined
                     }
                 }
             }
             QuickPicks.LAST_LISTEN -> {
                 val song = database.lastEvent().first()?.song
                 if (song != null && database.hasRelatedSongs(song.id)) {
-                    quickPicks.value = database.getRelatedSongs(song.id).first().filterVideoSongs(hideVideoSongs).shuffled().take(20)
+                    val daySeed = LocalDate.now().toEpochDay()
+                    quickPicks.value = database.getRelatedSongs(song.id).first()
+                        .filterVideoSongs(hideVideoSongs)
+                        .shuffled(Random(daySeed))
+                        .take(20)
                 }
             }
         }
@@ -998,6 +1033,7 @@ class HomeViewModel @Inject constructor(
     /** Cache the loaded home at process level so returning to Home / resuming restores it instantly. */
     private fun saveSnapshot() {
         snapshot = HomeSnapshot(
+            savedAtMs = System.currentTimeMillis(),
             quickPicks = quickPicks.value,
             dailyMixes = dailyMixes.value,
             recentlyPlayed = recentlyPlayed.value,
@@ -1024,11 +1060,14 @@ class HomeViewModel @Inject constructor(
         // Process-level snapshot of the loaded home. A recreated ViewModel (returning to the Home tab
         // or resuming the app from the background) restores from this INSTANTLY and does NOT auto-reload
         // — after that, refreshing is manual (pull to refresh). Only a cold app start (fresh process =
-        // null snapshot) loads from scratch.
+        // null snapshot) loads from scratch. Exception: if the snapshot is from a PREVIOUS calendar
+        // day, treat it as missing so "Para ti" / mixes rotate without requiring pull-to-refresh
+        // (Xiaomi/etc. keep the process alive for days with a frozen snapshot).
         @Volatile
         private var snapshot: HomeSnapshot? = null
 
         private class HomeSnapshot(
+            val savedAtMs: Long,
             val quickPicks: List<Song>?,
             val dailyMixes: List<DailyMix>?,
             val recentlyPlayed: List<Song>?,
@@ -1044,7 +1083,14 @@ class HomeViewModel @Inject constructor(
             val genreMix: GenreMix?,
             val allLocalItems: List<LocalItem>,
             val allYtItems: List<YTItem>,
-        )
+        ) {
+            fun isSameLocalDay(nowMs: Long = System.currentTimeMillis()): Boolean {
+                val zone = ZoneId.systemDefault()
+                val savedDay = java.time.Instant.ofEpochMilli(savedAtMs).atZone(zone).toLocalDate()
+                val today = java.time.Instant.ofEpochMilli(nowMs).atZone(zone).toLocalDate()
+                return savedDay == today
+            }
+        }
     }
 
     private val _isLoadingMore = MutableStateFlow(false)
@@ -1134,10 +1180,11 @@ class HomeViewModel @Inject constructor(
         // on which way the home came up.
         refreshSpeedDialThumbnails()
 
-        val restored = snapshot
+        val restored = snapshot?.takeIf { it.isSameLocalDay() }
         if (restored != null) {
             // Returning to Home / resuming the app: restore the already-loaded home instantly and DON'T
-            // auto-reload (the user refreshes manually). Only a cold app start loads from scratch.
+            // auto-reload (the user refreshes manually). Only a cold app start — or a snapshot from a
+            // previous calendar day — loads from scratch so recommendations actually rotate.
             quickPicks.value = restored.quickPicks
             dailyMixes.value = restored.dailyMixes
             recentlyPlayed.value = restored.recentlyPlayed
@@ -1159,6 +1206,7 @@ class HomeViewModel @Inject constructor(
             // queries/network. If the restored pool is too small, the guard inside keeps the old mix.
             buildTimeOfDayMix()
         } else {
+            if (snapshot != null && restored == null) snapshot = null
             viewModelScope.launch(Dispatchers.IO) {
                 context.dataStore.data
                     .map { it[InnerTubeCookieKey] }

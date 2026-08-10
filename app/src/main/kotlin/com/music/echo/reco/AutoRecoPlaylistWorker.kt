@@ -11,6 +11,8 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import com.music.innertube.YouTube
+import com.music.innertube.models.WatchEndpoint
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
@@ -26,6 +28,7 @@ import iad1tya.echo.music.db.MusicDatabase
 import iad1tya.echo.music.db.entities.PlaylistEntity
 import iad1tya.echo.music.db.entities.PlaylistSongMap
 import iad1tya.echo.music.models.MediaMetadata
+import iad1tya.echo.music.models.toMediaMetadata
 import iad1tya.echo.music.playlistimport.AiPlaylistGenerator
 import iad1tya.echo.music.playlistimport.SongResolver
 import iad1tya.echo.music.utils.dataStore
@@ -46,8 +49,8 @@ import java.util.concurrent.TimeUnit
  * The AI ask goes through the exact same keyless chain as "Lista AI" ([AiPlaylistService]: user key →
  * Aura Worker /ai → Pollinations), bounded by [AiPlaylistGenerator.AI_BUDGET_MS] so a stuck cascade can
  * never hold the modem for minutes (battery/heat rule). If the whole chain fails — or nothing resolves —
- * the LAST GOOD playlist is kept untouched, silently: this feature never surfaces an error and never
- * deletes the user's previous recommendations.
+ * we fall back to YouTube related/radio from taste seeds (same spirit as [AiPlaylistGenerator]'s non-AI
+ * path) so the shelf still rotates; only if THAT also fails do we keep the last good playlist.
  *
  * Persistence invariants (learned the hard way — see the regression registry):
  *  - The playlist has a FIXED id ([PLAYLIST_ID]) and is always found BY ID, never by name (a rename
@@ -58,6 +61,8 @@ import java.util.concurrent.TimeUnit
  *    so without it the playlist would be invisible.
  *  - The database comes from the Hilt singleton via an EntryPoint — NEVER `newInstance` (that dead
  *    second-instance path has no migrations and caused the 0.6.117 universal crash).
+ *  - Previous playlist song ids are EXCLUDED from the next generation so assertive "same artists"
+ *    prompts cannot republish an identical batch for days.
  */
 class AutoRecoPlaylistWorker(
     private val context: Context,
@@ -83,14 +88,14 @@ class AutoRecoPlaylistWorker(
             refresh(database, prefs)
             Result.success()
         } catch (e: Exception) {
-            // Best-effort refresh: a failure must never crash, retry-storm, or touch the last good
+            // Best-effort refresh: a failure must never crash, retry-storm, or wipe the last good
             // playlist (the daily run retries by itself tomorrow).
             Timber.tag(TAG).w(e, "AI recommended playlist refresh failed")
             Result.success()
         }
     }
 
-    /** One full refresh: taste → AI → resolve → persist. Keeps the last good playlist on any failure. */
+    /** One full refresh: taste → AI (or YT fallback) → resolve → persist. Keeps last good on total failure. */
     private suspend fun refresh(
         database: MusicDatabase,
         prefs: Preferences,
@@ -108,6 +113,15 @@ class AutoRecoPlaylistWorker(
         val tasteSongs = (mostPlayed + liked).distinctBy { it.id }
         if (tasteSongs.isEmpty()) return // Nothing to learn from yet — keep whatever exists.
         val tasteIds = tasteSongs.map { it.id }.toSet()
+        // Exclude the CURRENT playlist so a refresh cannot republish the same 20 songs when AI
+        // sticks to the same assertive artist circle (the "3 days same recommendations" bug).
+        val previousSongs = runCatching {
+            database.playlistSongs(PLAYLIST_ID).first()
+        }.getOrDefault(emptyList())
+        val previousIds = previousSongs.map { it.song.id }.toSet()
+        val previousTitles = previousSongs.take(24).joinToString(", ") { it.song.title }
+        val excludeIds = tasteIds + previousIds
+
         val tasteLines = tasteSongs.map { song ->
             "${song.song.title} — ${song.artists.joinToString(", ") { it.name }}"
         }
@@ -145,6 +159,11 @@ class AutoRecoPlaylistWorker(
             append(". Reglas duras: mismo idioma y energía dominante; prioriza colaboradores y artistas ")
             append("del mismo estilo que los ancla; NO mezcles géneros ajenos; NO incluyas las canciones ")
             append("listadas ni covers/regrabaciones de ellas; variedad de artistas SIN salir del estilo.")
+            if (previousTitles.isNotBlank()) {
+                append(" PROHIBIDO repetir este lote anterior (elige otras del mismo círculo): ")
+                append(previousTitles)
+                append(".")
+            }
         }
         val requestCount = (TARGET_SONGS * 3 + 1) / 2
         val spec = withTimeoutOrNull(AiPlaylistGenerator.AI_BUDGET_MS) {
@@ -156,17 +175,18 @@ class AutoRecoPlaylistWorker(
                 baseUrl = prefs[OpenRouterBaseUrlKey] ?: "",
                 model = prefs[OpenRouterModelKey] ?: "",
             ).getOrNull()
-        } ?: return
+        }
 
-        // 3. RESOLVE — same shared resolver; exclude already-played taste ids; prefer anchor artists.
+        // 3. RESOLVE — same shared resolver; exclude taste + previous playlist ids; prefer anchor artists.
         val topArtistLower = topArtists.map { it.lowercase() }.toSet()
-        val resolved = ArrayList<MediaMetadata>(TARGET_SONGS)
         val candidates = ArrayList<MediaMetadata>()
-        for (track in spec.tracks) {
-            val metadata = SongResolver.resolve(database, track.title, track.artist) ?: continue
-            if (metadata.id in tasteIds) continue
-            if (candidates.any { it.id == metadata.id }) continue
-            candidates += metadata
+        if (spec != null) {
+            for (track in spec.tracks) {
+                val metadata = SongResolver.resolve(database, track.title, track.artist) ?: continue
+                if (metadata.id in excludeIds) continue
+                if (candidates.any { it.id == metadata.id }) continue
+                candidates += metadata
+            }
         }
         candidates.sortByDescending { meta ->
             val name = meta.artists.firstOrNull()?.name?.lowercase().orEmpty()
@@ -178,13 +198,25 @@ class AutoRecoPlaylistWorker(
                 else -> 0
             }
         }
+        val resolved = ArrayList<MediaMetadata>(TARGET_SONGS)
         for (metadata in candidates) {
             if (resolved.size >= TARGET_SONGS) break
             resolved += metadata
         }
-        if (resolved.isEmpty()) return // AI answered but nothing usable — keep the last good playlist.
 
-        // 4. PERSIST — one transaction: upsert the fixed-id playlist entity (ALWAYS bumping
+        // 4. NON-AI FALLBACK — AI timeout / empty resolve used to `return` and leave the SAME playlist
+        //    for days. Fill from YouTube related/radio of shuffled taste seeds instead (still assertive
+        //    to the user's circle; no genre-drift placebo).
+        if (resolved.size < TARGET_SONGS) {
+            for (meta in buildTasteFallback(tasteSongs, excludeIds + resolved.map { it.id }.toSet(), TARGET_SONGS - resolved.size)) {
+                if (resolved.any { it.id == meta.id }) continue
+                resolved += meta
+                if (resolved.size >= TARGET_SONGS) break
+            }
+        }
+        if (resolved.isEmpty()) return // Total failure — keep the last good playlist.
+
+        // 5. PERSIST — one transaction: upsert the fixed-id playlist entity (ALWAYS bumping
         //    lastUpdateTime), wipe the old mapping, insert the new songs in order.
         val now = LocalDateTime.now()
         val existing = database.getPlaylistById(PLAYLIST_ID)?.playlist
@@ -224,6 +256,30 @@ class AutoRecoPlaylistWorker(
         Timber.tag(TAG).d("AI recommended playlist refreshed with ${resolved.size} songs")
     }
 
+    /**
+     * YouTube related/radio from taste seeds. Used when AI is unavailable OR resolved fewer than
+     * [TARGET_SONGS] after excluding the previous batch. Never logs titles/ids (user data).
+     */
+    private suspend fun buildTasteFallback(
+        tasteSongs: List<iad1tya.echo.music.db.entities.Song>,
+        excludeIds: Set<String>,
+        target: Int,
+    ): List<MediaMetadata> {
+        if (target <= 0) return emptyList()
+        val out = LinkedHashMap<String, MediaMetadata>()
+        for (seed in tasteSongs.shuffled().take(8)) {
+            val related = runCatching {
+                YouTube.next(WatchEndpoint(videoId = seed.id)).getOrNull()?.items
+            }.getOrNull().orEmpty()
+            for (item in related) {
+                if (item.id in excludeIds) continue
+                out.putIfAbsent(item.id, item.toMediaMetadata())
+                if (out.size >= target) return out.values.toList()
+            }
+        }
+        return out.values.toList()
+    }
+
     companion object {
         private const val TAG = "AutoRecoPlaylistWorker"
         private const val WORK_NAME = "ai_reco_playlist_daily"
@@ -241,9 +297,12 @@ class AutoRecoPlaylistWorker(
         /** How many songs each taste source (most-played / liked) contributes to the prompt. */
         private const val TASTE_SONGS_PER_SOURCE = 20
 
+        /** Stale threshold for cold-start kick (slightly under 1 day so Doze delay still refreshes). */
+        private const val STALE_HOURS = 20L
+
         /**
          * Schedules the daily run (network required). Safe to call on every app start:
-         * [ExistingPeriodicWorkPolicy.UPDATE] keeps a single unique work item.
+         * [ExistingPeriodicWorkPolicy.UPDATE] keeps the unique work and refreshes constraints/class.
          */
         fun schedule(context: Context) {
             val constraints = Constraints.Builder()
@@ -264,7 +323,8 @@ class AutoRecoPlaylistWorker(
         /**
          * Enqueues a one-time run immediately (network required). Used when the user flips the toggle
          * ON (so the playlist appears without waiting a day) and by the "Refrescar ahora" settings row.
-         * Safe alongside the periodic work — a distinct unique work name keeps the two from interfering.
+         * [ExistingWorkPolicy.REPLACE] so a stuck/failed prior one-shot cannot block "Refrescar ahora"
+         * forever ([ExistingWorkPolicy.KEEP] was the silent stall).
          */
         fun runNow(context: Context) {
             val constraints = Constraints.Builder()
@@ -277,9 +337,24 @@ class AutoRecoPlaylistWorker(
 
             WorkManager.getInstance(context).enqueueUniqueWork(
                 WORK_NAME_NOW,
-                ExistingWorkPolicy.KEEP,
+                ExistingWorkPolicy.REPLACE,
                 request,
             )
+        }
+
+        /**
+         * Cold-start kick: if the opt-in is ON and the playlist is missing or older than [STALE_HOURS],
+         * enqueue [runNow]. Best-effort; never throws. Call from [iad1tya.echo.music.App] on IO.
+         */
+        suspend fun enqueueIfStale(context: Context) {
+            val prefs = context.dataStore.data.first()
+            if (prefs[AiRecommendedPlaylistKey] != true) return
+            val database = EntryPointAccessors
+                .fromApplication(context.applicationContext, AutoRecoEntryPoint::class.java)
+                .database()
+            val last = database.getPlaylistById(PLAYLIST_ID)?.playlist?.lastUpdateTime
+            val stale = last == null || last.isBefore(LocalDateTime.now().minusHours(STALE_HOURS))
+            if (stale) runNow(context)
         }
     }
 }

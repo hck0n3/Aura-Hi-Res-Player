@@ -65,12 +65,10 @@ import iad1tya.echo.music.constants.LibraryViewType
 import iad1tya.echo.music.constants.MixSortDescendingKey
 import iad1tya.echo.music.constants.MixSortType
 import iad1tya.echo.music.constants.MixSortTypeKey
-import iad1tya.echo.music.constants.ShowCachedPlaylistKey
 import iad1tya.echo.music.constants.ShowExportedPlaylistKey
-import iad1tya.echo.music.constants.ShowDownloadedPlaylistKey
+import iad1tya.echo.music.constants.ShowExportedVideosPlaylistKey
 import iad1tya.echo.music.constants.ShowLikedPlaylistKey
 import iad1tya.echo.music.constants.ShowTopPlaylistKey
-import iad1tya.echo.music.constants.ShowUploadedPlaylistKey
 import iad1tya.echo.music.constants.YtmSyncKey
 import iad1tya.echo.music.db.entities.Album
 import iad1tya.echo.music.db.entities.Artist
@@ -177,11 +175,9 @@ fun LibraryMixScreen(
         )
 
     val (showLiked) = rememberPreference(ShowLikedPlaylistKey, true)
-    val (showDownloaded) = rememberPreference(ShowDownloadedPlaylistKey, true)
     val (showExported) = rememberPreference(ShowExportedPlaylistKey, true)
+    val (showExportedVideos) = rememberPreference(ShowExportedVideosPlaylistKey, true)
     val (showTop) = rememberPreference(ShowTopPlaylistKey, true)
-    val (showCached) = rememberPreference(ShowCachedPlaylistKey, true)
-    val (showUploaded) = rememberPreference(ShowUploadedPlaylistKey, true)
 
     val albums = viewModel.albums.collectAsState()
     val artist = viewModel.artists.collectAsState()
@@ -338,15 +334,6 @@ fun LibraryMixScreen(
                                     modifier = itemModifier
                                 )
                             }
-                            if (showDownloaded) {
-                                AutoPlaylistButton(
-                                    title = stringResource(R.string.offline),
-                                    icon = R.drawable.offline,
-                                    iconTint = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
-                                    onClick = { navController.navigate("auto_playlist/downloaded") },
-                                    modifier = itemModifier
-                                )
-                            }
                             if (showExported) {
                                 AutoPlaylistButton(
                                     title = stringResource(R.string.action_exported),
@@ -356,21 +343,12 @@ fun LibraryMixScreen(
                                     modifier = itemModifier
                                 )
                             }
-                            if (showCached) {
+                            if (showExportedVideos) {
                                 AutoPlaylistButton(
-                                    title = stringResource(R.string.cached_playlist),
-                                    icon = R.drawable.cached,
+                                    title = stringResource(R.string.exported_videos_playlist),
+                                    icon = R.drawable.videocam,
                                     iconTint = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
-                                    onClick = { navController.navigate("cache_playlist/cached") },
-                                    modifier = itemModifier
-                                )
-                            }
-                            if (showUploaded) {
-                                AutoPlaylistButton(
-                                    title = stringResource(R.string.uploaded_playlist),
-                                    icon = R.drawable.storage,
-                                    iconTint = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
-                                    onClick = { navController.navigate("auto_playlist/uploaded") },
+                                    onClick = { navController.navigate("auto_playlist/exported_videos") },
                                     modifier = itemModifier
                                 )
                             }
@@ -660,15 +638,6 @@ fun LibraryMixScreen(
                                     modifier = itemModifier
                                 )
                             }
-                            if (showDownloaded) {
-                                AutoPlaylistButton(
-                                    title = stringResource(R.string.offline),
-                                    icon = R.drawable.offline,
-                                    iconTint = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
-                                    onClick = { navController.navigate("auto_playlist/downloaded") },
-                                    modifier = itemModifier
-                                )
-                            }
                             if (showExported) {
                                 AutoPlaylistButton(
                                     title = stringResource(R.string.action_exported),
@@ -678,21 +647,12 @@ fun LibraryMixScreen(
                                     modifier = itemModifier
                                 )
                             }
-                            if (showCached) {
+                            if (showExportedVideos) {
                                 AutoPlaylistButton(
-                                    title = stringResource(R.string.cached_playlist),
-                                    icon = R.drawable.cached,
+                                    title = stringResource(R.string.exported_videos_playlist),
+                                    icon = R.drawable.videocam,
                                     iconTint = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
-                                    onClick = { navController.navigate("cache_playlist/cached") },
-                                    modifier = itemModifier
-                                )
-                            }
-                            if (showUploaded) {
-                                AutoPlaylistButton(
-                                    title = stringResource(R.string.uploaded_playlist),
-                                    icon = R.drawable.storage,
-                                    iconTint = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
-                                    onClick = { navController.navigate("auto_playlist/uploaded") },
+                                    onClick = { navController.navigate("auto_playlist/exported_videos") },
                                     modifier = itemModifier
                                 )
                             }

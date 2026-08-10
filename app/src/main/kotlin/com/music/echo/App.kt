@@ -268,6 +268,13 @@ class App : Application(), SingletonImageLoader.Factory, androidx.work.Configura
         // its toggle is ON). Idempotent unique periodic work with UPDATE policy — safe every start.
         runCatching { iad1tya.echo.music.reco.AutoRecoPlaylistWorker.schedule(this) }
             .onFailure { onScheduleFailed(it, "Failed to schedule AI recommended playlist worker") }
+        // If the opt-in is ON and the playlist is stale/missing (OEM Doze often delays the daily
+        // PeriodicWork), kick a one-shot now so recommendations don't freeze for days.
+        applicationScope.launch(Dispatchers.IO) {
+            runCatching {
+                iad1tya.echo.music.reco.AutoRecoPlaylistWorker.enqueueIfStale(this@App)
+            }.onFailure { onScheduleFailed(it, "Failed to refresh stale AI recommended playlist") }
+        }
 
         // Schedule the weekly app-update check (notifies once per new version when one is found).
         runCatching { iad1tya.echo.music.echomusic.updater.UpdateCheckWorker.schedule(this) }

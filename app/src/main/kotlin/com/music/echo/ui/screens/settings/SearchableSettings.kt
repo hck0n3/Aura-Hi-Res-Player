@@ -236,7 +236,7 @@ fun getAllSearchableSettings(): List<Triple<String, String, String>> {
             Triple(stringResource(R.string.action_exported), "Apariencia", "settings/appearance"),
             Triple(stringResource(R.string.show_top_playlist), "Apariencia", "settings/appearance"),
             Triple(stringResource(R.string.show_cached_playlist), "Apariencia", "settings/appearance"),
-            Triple(stringResource(R.string.show_uploaded_playlist), "Apariencia", "settings/appearance"),
+            Triple(stringResource(R.string.show_exported_videos_playlist), "Apariencia", "settings/appearance"),
             // --- Tema (settings/appearance/theme) : 28 ---
             Triple(stringResource(R.string.palette_dynamic), "Tema", "settings/appearance/theme"),
             Triple(stringResource(R.string.palette_crimson), "Tema", "settings/appearance/theme"),

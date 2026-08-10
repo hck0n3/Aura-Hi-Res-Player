@@ -77,12 +77,10 @@ import iad1tya.echo.music.constants.MixSortTypeKey
 import iad1tya.echo.music.constants.PlaylistSortDescendingKey
 import iad1tya.echo.music.constants.PlaylistSortType
 import iad1tya.echo.music.constants.PlaylistSortTypeKey
-import iad1tya.echo.music.constants.ShowCachedPlaylistKey
-import iad1tya.echo.music.constants.ShowDownloadedPlaylistKey
 import iad1tya.echo.music.constants.ShowExportedPlaylistKey
+import iad1tya.echo.music.constants.ShowExportedVideosPlaylistKey
 import iad1tya.echo.music.constants.ShowLikedPlaylistKey
 import iad1tya.echo.music.constants.ShowTopPlaylistKey
-import iad1tya.echo.music.constants.ShowUploadedPlaylistKey
 import iad1tya.echo.music.constants.SongFilter
 import iad1tya.echo.music.constants.SongFilterKey
 import iad1tya.echo.music.constants.SongSortDescendingKey
@@ -334,11 +332,9 @@ fun AuraLibraryHub(
     val topSize by viewModel.topValue.collectAsState(initial = 50)
 
     val (showLiked) = rememberPreference(ShowLikedPlaylistKey, true)
-    val (showDownloaded) = rememberPreference(ShowDownloadedPlaylistKey, true)
     val (showExported) = rememberPreference(ShowExportedPlaylistKey, true)
+    val (showExportedVideos) = rememberPreference(ShowExportedVideosPlaylistKey, true)
     val (showTop) = rememberPreference(ShowTopPlaylistKey, true)
-    val (showCached) = rememberPreference(ShowCachedPlaylistKey, true)
-    val (showUploaded) = rememberPreference(ShowUploadedPlaylistKey, true)
 
     val albums by viewModel.albums.collectAsState()
     val artists by viewModel.artists.collectAsState()
@@ -434,21 +430,13 @@ fun AuraLibraryHub(
                         AuraTile(AuraIcons.HeartFilled, stringResource(R.string.liked),
                             { navController.navigate("auto_playlist/liked") }, tile)
                     }
-                    if (showDownloaded) {
-                        AuraTile(AuraIcons.Download, stringResource(R.string.offline),
-                            { navController.navigate("auto_playlist/downloaded") }, tile)
-                    }
                     if (showExported) {
                         AuraTile(AuraIcons.Export, stringResource(R.string.action_exported),
                             { navController.navigate("auto_playlist/exported") }, tile)
                     }
-                    if (showCached) {
-                        AuraTile(AuraIcons.Queue, stringResource(R.string.cached_playlist),
-                            { navController.navigate("cache_playlist/cached") }, tile)
-                    }
-                    if (showUploaded) {
-                        AuraTile(AuraIcons.Export, stringResource(R.string.uploaded_playlist),
-                            { navController.navigate("auto_playlist/uploaded") }, tile)
+                    if (showExportedVideos) {
+                        AuraTile(AuraIcons.Video, stringResource(R.string.exported_videos_playlist),
+                            { navController.navigate("auto_playlist/exported_videos") }, tile)
                     }
                     if (showTop) {
                         AuraTile(AuraIcons.Speed, stringResource(R.string.my_top) + " $topSize",
@@ -460,8 +448,6 @@ fun AuraLibraryHub(
                         { navController.navigate("release_radar") }, tile)
                     AuraTile(AuraIcons.Lyrics, stringResource(R.string.podcasts),
                         { navController.navigate("podcasts") }, tile)
-                    AuraTile(AuraIcons.Library, stringResource(R.string.filter_local),
-                        { navController.navigate("local_songs") }, tile)
                 }
             }
 
@@ -593,6 +579,10 @@ fun AuraLibrarySongsTab(
     val (ytmSync) = rememberPreference(YtmSyncKey, true)
     val hideExplicit by rememberPreference(HideExplicitKey, false)
     var filter by rememberEnumPreference(SongFilterKey, SongFilter.LIKED)
+    // Uploaded filter removed from product — migrate stale prefs.
+    LaunchedEffect(filter) {
+        if (filter == SongFilter.UPLOADED) filter = SongFilter.LIBRARY
+    }
 
     val songs by viewModel.allSongs.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
@@ -602,7 +592,6 @@ fun AuraLibrarySongsTab(
             when (filter) {
                 SongFilter.LIKED -> viewModel.syncLikedSongs()
                 SongFilter.LIBRARY -> viewModel.syncLibrarySongs()
-                SongFilter.UPLOADED -> viewModel.syncUploadedSongs()
                 else -> return@LaunchedEffect
             }
         }
@@ -619,7 +608,7 @@ fun AuraLibrarySongsTab(
     val canonicalCollectionId = when (filter) {
         SongFilter.LIKED -> "AP:liked"
         SongFilter.DOWNLOADED -> "AP:downloaded"
-        SongFilter.UPLOADED -> "AP:uploaded"
+        SongFilter.UPLOADED -> "LIB:LIBRARY"
         SongFilter.EXPORTED -> "AP:exported"
         SongFilter.LIBRARY -> "LIB:LIBRARY"
     }
@@ -643,7 +632,6 @@ fun AuraLibrarySongsTab(
                     options = listOf(
                         SongFilter.LIKED to R.string.filter_liked,
                         SongFilter.LIBRARY to R.string.filter_library,
-                        SongFilter.UPLOADED to R.string.filter_uploaded,
                         SongFilter.DOWNLOADED to R.string.filter_downloaded,
                         SongFilter.EXPORTED to R.string.action_exported,
                     ),
@@ -823,6 +811,9 @@ fun AuraLibraryAlbumsTab(
     val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
 
     var filter by rememberEnumPreference(AlbumFilterKey, AlbumFilter.LIKED)
+    LaunchedEffect(filter) {
+        if (filter == AlbumFilter.UPLOADED) filter = AlbumFilter.LIBRARY
+    }
     val (sortType, onSortTypeChange) = rememberEnumPreference(AlbumSortTypeKey, AlbumSortType.CREATE_DATE)
     val (sortDescending, onSortDescendingChange) = rememberPreference(AlbumSortDescendingKey, true)
     val (ytmSync) = rememberPreference(YtmSyncKey, true)
@@ -843,7 +834,6 @@ fun AuraLibraryAlbumsTab(
                 options = listOf(
                     AlbumFilter.LIKED to R.string.filter_liked,
                     AlbumFilter.LIBRARY to R.string.filter_library,
-                    AlbumFilter.UPLOADED to R.string.filter_uploaded,
                 ),
                 selected = filter,
                 onSelect = { filter = it },
@@ -1033,11 +1023,9 @@ fun AuraLibraryPlaylistsTab(
     val topSize by viewModel.topValue.collectAsState(initial = 50)
 
     val (showLiked) = rememberPreference(ShowLikedPlaylistKey, true)
-    val (showDownloaded) = rememberPreference(ShowDownloadedPlaylistKey, true)
     val (showExported) = rememberPreference(ShowExportedPlaylistKey, true)
+    val (showExportedVideos) = rememberPreference(ShowExportedVideosPlaylistKey, true)
     val (showTop) = rememberPreference(ShowTopPlaylistKey, true)
-    val (showCached) = rememberPreference(ShowCachedPlaylistKey, true)
-    val (showUploaded) = rememberPreference(ShowUploadedPlaylistKey, true)
 
     val playlists by viewModel.allPlaylists.collectAsState()
     var playlistSearchQuery by rememberSaveable { mutableStateOf("") }
@@ -1133,21 +1121,13 @@ fun AuraLibraryPlaylistsTab(
                     AuraTile(AuraIcons.HeartFilled, stringResource(R.string.liked),
                         { navController.navigate("auto_playlist/liked") }, tile)
                 }
-                if (showDownloaded) {
-                    AuraTile(AuraIcons.Download, stringResource(R.string.offline),
-                        { navController.navigate("auto_playlist/downloaded") }, tile)
-                }
                 if (showExported) {
                     AuraTile(AuraIcons.Export, stringResource(R.string.action_exported),
                         { navController.navigate("auto_playlist/exported") }, tile)
                 }
-                if (showCached) {
-                    AuraTile(AuraIcons.Queue, stringResource(R.string.cached_playlist),
-                        { navController.navigate("cache_playlist/cached") }, tile)
-                }
-                if (showUploaded) {
-                    AuraTile(AuraIcons.Export, stringResource(R.string.uploaded_playlist),
-                        { navController.navigate("auto_playlist/uploaded") }, tile)
+                if (showExportedVideos) {
+                    AuraTile(AuraIcons.Video, stringResource(R.string.exported_videos_playlist),
+                        { navController.navigate("auto_playlist/exported_videos") }, tile)
                 }
                 if (showTop) {
                     AuraTile(AuraIcons.Speed, stringResource(R.string.my_top) + " $topSize",

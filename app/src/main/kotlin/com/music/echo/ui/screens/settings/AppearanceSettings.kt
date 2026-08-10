@@ -85,10 +85,10 @@ import iad1tya.echo.music.constants.RotatingThumbnailKey
 import iad1tya.echo.music.constants.SelectedThemeColorKey
 import iad1tya.echo.music.constants.ShowCachedPlaylistKey
 import iad1tya.echo.music.constants.ShowExportedPlaylistKey
+import iad1tya.echo.music.constants.ShowExportedVideosPlaylistKey
 import iad1tya.echo.music.constants.ShowDownloadedPlaylistKey
 import iad1tya.echo.music.constants.ShowLikedPlaylistKey
 import iad1tya.echo.music.constants.ShowTopPlaylistKey
-import iad1tya.echo.music.constants.ShowUploadedPlaylistKey
 import iad1tya.echo.music.constants.SliderStyle
 import iad1tya.echo.music.constants.SliderStyleKey
 import iad1tya.echo.music.constants.SquigglySliderKey
@@ -295,16 +295,16 @@ fun AppearanceSettings(
         ShowExportedPlaylistKey,
         defaultValue = true
     )
+    val (showExportedVideosPlaylist, onShowExportedVideosPlaylistChange) = rememberPreference(
+        ShowExportedVideosPlaylistKey,
+        defaultValue = true
+    )
     val (showTopPlaylist, onShowTopPlaylistChange) = rememberPreference(
         ShowTopPlaylistKey,
         defaultValue = true
     )
     val (showCachedPlaylist, onShowCachedPlaylistChange) = rememberPreference(
         ShowCachedPlaylistKey,
-        defaultValue = true
-    )
-    val (showUploadedPlaylist, onShowUploadedPlaylistChange) = rememberPreference(
-        ShowUploadedPlaylistKey,
         defaultValue = true
     )
     val (showCommentButton, onShowCommentButtonChange) = rememberPreference(
@@ -2064,6 +2064,26 @@ fun AppearanceSettings(
                     onClick = { onShowExportedPlaylistChange(!showExportedPlaylist) }
                 ),
                 Material3SettingsItem(
+                    icon = painterResource(R.drawable.videocam),
+                    title = { Text(stringResource(R.string.show_exported_videos_playlist)) },
+                    trailingContent = {
+                        Switch(
+                            checked = showExportedVideosPlaylist,
+                            onCheckedChange = onShowExportedVideosPlaylistChange,
+                            thumbContent = {
+                                Icon(
+                                    painter = painterResource(
+                                        id = if (showExportedVideosPlaylist) R.drawable.check else R.drawable.close
+                                    ),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(SwitchDefaults.IconSize)
+                                )
+                            }
+                        )
+                    },
+                    onClick = { onShowExportedVideosPlaylistChange(!showExportedVideosPlaylist) }
+                ),
+                Material3SettingsItem(
                     icon = painterResource(R.drawable.trending_up),
                     title = { Text(stringResource(R.string.show_top_playlist)) },
                     trailingContent = {
@@ -2103,26 +2123,6 @@ fun AppearanceSettings(
                     },
                     onClick = { onShowCachedPlaylistChange(!showCachedPlaylist) }
                 ),
-                Material3SettingsItem(
-                    icon = painterResource(R.drawable.backup),
-                    title = { Text(stringResource(R.string.show_uploaded_playlist)) },
-                    trailingContent = {
-                        Switch(
-                            checked = showUploadedPlaylist,
-                            onCheckedChange = onShowUploadedPlaylistChange,
-                            thumbContent = {
-                                Icon(
-                                    painter = painterResource(
-                                        id = if (showUploadedPlaylist) R.drawable.check else R.drawable.close
-                                    ),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(SwitchDefaults.IconSize)
-                                )
-                            }
-                        )
-                    },
-                    onClick = { onShowUploadedPlaylistChange(!showUploadedPlaylist) }
-                )
             )
         )
         Spacer(modifier = Modifier.height(16.dp))

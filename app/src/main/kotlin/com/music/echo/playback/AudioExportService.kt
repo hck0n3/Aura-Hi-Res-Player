@@ -574,6 +574,13 @@ class AudioExportService : Service() {
             val updated = listOf(songId) + current.filterNot { it == songId }
             preferences[ExportedVideoIdsKey] = updated.take(1000).joinToString(",")
         }
+        // So Biblioteca ▸ Vídeos exportados / tap-to-watch arms video mode + expands the player.
+        runCatching {
+            val entity = database.getSongById(songId)?.song
+            if (entity != null && !entity.isVideo) {
+                database.update(entity.copy(isVideo = true))
+            }
+        }
     }
 
     private suspend fun addExportingSongId(songId: String) {

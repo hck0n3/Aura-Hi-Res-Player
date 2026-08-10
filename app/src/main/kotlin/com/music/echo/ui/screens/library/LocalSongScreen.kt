@@ -110,6 +110,8 @@ import iad1tya.echo.music.constants.LocalSongsIncludedFoldersKey
 import iad1tya.echo.music.constants.LocalSongsMinDurationSecondsKey
 import iad1tya.echo.music.constants.LocalSongsSortDescendingKey
 import iad1tya.echo.music.constants.LocalSongsSortTypeKey
+import iad1tya.echo.music.constants.ShowCachedPlaylistKey
+import iad1tya.echo.music.constants.ShowDownloadedPlaylistKey
 import iad1tya.echo.music.constants.ThumbnailCornerRadius
 import iad1tya.echo.music.db.entities.Song
 import iad1tya.echo.music.extensions.toMediaItem
@@ -176,8 +178,9 @@ fun LocalSongScreen(
     val isPlaying by playerConnection.isPlaying.collectAsState()
     val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
     val songs by viewModel.songs.collectAsState()
-    val exportedVideos by viewModel.exportedVideos.collectAsState()
     val scanState by viewModel.scanState.collectAsState()
+    val (showDownloaded) = rememberPreference(ShowDownloadedPlaylistKey, true)
+    val (showCached) = rememberPreference(ShowCachedPlaylistKey, true)
     val listState = rememberLazyListState()
     val scanSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var showScanSheet by rememberSaveable { mutableStateOf(false) }
@@ -275,25 +278,7 @@ fun LocalSongScreen(
         }
     }
 
-    val visibleVideos by remember(exportedVideos, query) {
-        derivedStateOf {
-            val normalizedQuery = query.trim()
-            if (normalizedQuery.isBlank()) {
-                exportedVideos
-            } else {
-                exportedVideos.filter { song ->
-                    song.song.title.contains(normalizedQuery, ignoreCase = true) ||
-                        song.artists.any { artist -> artist.name.contains(normalizedQuery, ignoreCase = true) }
-                }
-            }
-        }
-    }
-
     val queueItems = remember(visibleSongs) { visibleSongs.map { it.toMediaItem() } }
-    val videoQueueItems = remember(visibleVideos) { visibleVideos.map { it.toMediaItem() } }
-    val showSectionLabels = visibleVideos.isNotEmpty()
-    val videosSectionTitle = stringResource(R.string.local_videos_section)
-    val musicSectionTitle = stringResource(R.string.local_music_section)
 
     if (showScanSheet) {
         LocalSongScanSheet(
@@ -485,65 +470,42 @@ fun LocalSongScreen(
                 )
             }
 
-            if (showSectionLabels) {
+            if (showDownloaded || showCached) {
                 item(
-                    key = "local_videos_section",
+                    key = "local_library_tiles",
                     contentType = CONTENT_TYPE_HEADER,
                 ) {
-                    LocalLibrarySectionLabel(
-                        text = videosSectionTitle,
-                        auraStyle = hideChrome,
-                    )
-                }
-                items(
-                    items = visibleVideos,
-                    key = { "local_vid_" + it.id },
-                    contentType = { CONTENT_TYPE_SONG },
-                ) { song ->
-                    LocalExportedVideoRow(
-                        song = song,
-                        isActive = song.id == mediaMetadata?.id,
-                        isPlaying = isPlaying,
-                        auraStyle = hideChrome,
-                        onClick = {
-                            if (song.id == mediaMetadata?.id) {
-                                playerConnection.player.togglePlayPause()
-                            } else {
-                                playerConnection.playQueue(
-                                    ListQueue(
-                                        title = videosSectionTitle,
-                                        items = videoQueueItems,
-                                        startIndex = visibleVideos.indexOfFirst { it.id == song.id },
-                                        contextId = "local:videos",
-                                    ),
-                                )
-                            }
-                        },
-                        onLongClick = {
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            menuState.show {
-                                SongMenu(
-                                    originalSong = song,
-                                    navController = navController,
-                                    onDismiss = menuState::dismiss,
-                                )
-                            }
-                        },
-                        onMenuClick = {
-                            menuState.show {
-                                SongMenu(
-                                    originalSong = song,
-                                    navController = navController,
-                                    onDismiss = menuState::dismiss,
-                                )
-                            }
-                        },
-                        modifier = Modifier.animateItem(),
-                    )
+                    FlowRow(
+                        maxItemsInEachRow = 2,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp),
+                    ) {
+                        if (showDownloaded) {
+                            LocalLibraryShortcutTile(
+                                title = stringResource(R.string.offline),
+                                iconRes = R.drawable.offline,
+                                auraStyle = hideChrome,
+                                onClick = { navController.navigate("auto_playlist/downloaded") },
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                        if (showCached) {
+                            LocalLibraryShortcutTile(
+                                title = stringResource(R.string.cached_playlist),
+                                iconRes = R.drawable.cached,
+                                auraStyle = hideChrome,
+                                onClick = { navController.navigate("cache_playlist/cached") },
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                    }
                 }
             }
 
-            if (visibleSongs.isEmpty() && visibleVideos.isEmpty()) {
+            if (visibleSongs.isEmpty()) {
                 item(
                     key = "empty",
                     contentType = CONTENT_TYPE_HEADER,
@@ -553,24 +515,12 @@ fun LocalSongScreen(
                         onScanClick = { showScanSheet = true },
                     )
                 }
-            } else if (visibleSongs.isNotEmpty()) {
-                if (showSectionLabels) {
-                    item(
-                        key = "local_music_section",
-                        contentType = CONTENT_TYPE_HEADER,
-                    ) {
-                        LocalLibrarySectionLabel(
-                            text = musicSectionTitle,
-                            auraStyle = hideChrome,
-                        )
-                    }
-                } else {
-                    item(
-                        key = "divider",
-                        contentType = CONTENT_TYPE_HEADER,
-                    ) {
-                        HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-                    }
+            } else {
+                item(
+                    key = "divider",
+                    contentType = CONTENT_TYPE_HEADER,
+                ) {
+                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                 }
 
                 itemsIndexed(
@@ -644,103 +594,44 @@ fun LocalSongScreen(
 }
 
 @Composable
-private fun LocalLibrarySectionLabel(
-    text: String,
-    auraStyle: Boolean,
-) {
-    if (auraStyle) {
-        AuraSectionLabel(
-            text = text.uppercase(Locale.ROOT),
-            modifier = Modifier.padding(
-                start = AuraSpacing.Gutter,
-                end = AuraSpacing.Gutter,
-                top = AuraSpacing.SectionTop,
-                bottom = AuraSpacing.SectionGap,
-            ),
-        )
-    } else {
-        Text(
-            text = text,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-        )
-    }
-}
-
-@Composable
-private fun LocalExportedVideoRow(
-    song: Song,
-    isActive: Boolean,
-    isPlaying: Boolean,
+private fun LocalLibraryShortcutTile(
+    title: String,
+    iconRes: Int,
     auraStyle: Boolean,
     onClick: () -> Unit,
-    onLongClick: () -> Unit,
-    onMenuClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val thumbUrl = song.song.thumbnailUrl
-        ?: "https://i.ytimg.com/vi/${song.id}/hqdefault.jpg"
-    if (auraStyle) {
-        AuraRow(
-            title = song.song.title,
-            subtitle = song.artists.joinToString { it.name },
-            highlighted = isActive,
-            contentDescription = song.song.title,
-            onClick = onClick,
-            onLongClick = onLongClick,
-            artwork = {
-                AuraCover(
-                    thumbnailUrl = thumbUrl,
-                    size = 72.dp,
-                    seed = song.id,
-                    ratio = 16f / 9f,
-                    fillBleed = true,
-                )
-            },
-            trailing = {
-                AuraIconButton(
-                    icon = AuraIcons.More,
-                    contentDescription = stringResource(R.string.more_options),
-                    onClick = onMenuClick,
-                    size = 18.dp,
-                    tint = AuraPalette.OnGroundFaint,
-                )
-            },
-            modifier = modifier.padding(horizontal = AuraSpacing.Gutter),
-        )
+    val container = if (auraStyle) {
+        AuraPalette.SurfaceFill
     } else {
-        ListItem(
-            title = song.song.title,
-            subtitle = song.artists.joinToString { it.name },
-            isActive = isActive,
-            thumbnailContent = {
-                ItemThumbnail(
-                    thumbnailUrl = thumbUrl,
-                    isActive = isActive,
-                    isPlaying = isPlaying,
-                    thumbnailRatio = 16f / 9f,
-                    shape = RoundedCornerShape(ThumbnailCornerRadius),
-                    modifier = Modifier
-                        .height(ListThumbnailSize)
-                        .width(ListThumbnailSize * 16f / 9f),
-                )
-            },
-            trailingContent = {
-                IconButton(onClick = onMenuClick) {
-                    Icon(
-                        painter = painterResource(R.drawable.more_vert),
-                        contentDescription = null,
-                    )
-                }
-            },
-            modifier = modifier
-                .fillMaxWidth()
-                .combinedClickable(
-                    onClick = onClick,
-                    onLongClick = onLongClick,
-                ),
-        )
+        MaterialTheme.colorScheme.surfaceContainerHighest
+    }
+    val content = if (auraStyle) AuraPalette.OnGround else MaterialTheme.colorScheme.onSurface
+    Surface(
+        onClick = onClick,
+        shape = if (auraStyle) AuraShapes.Card else RoundedCornerShape(12.dp),
+        color = container,
+        modifier = modifier.heightIn(min = 52.dp),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+        ) {
+            Icon(
+                painter = painterResource(iconRes),
+                contentDescription = null,
+                tint = content,
+                modifier = Modifier.size(20.dp),
+            )
+            Text(
+                text = title,
+                style = MaterialTheme.typography.labelLarge,
+                color = content,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 
