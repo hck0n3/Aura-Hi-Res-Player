@@ -22,6 +22,8 @@ val DataSaverEnabledKey = booleanPreferencesKey("dataSaverEnabled")
 val OnboardingArtistsDoneKey = booleanPreferencesKey("onboardingArtistsDone")
 // Last release tag the weekly update-check worker already notified about (notify once per version).
 val LastUpdateNotifiedTagKey = stringPreferencesKey("lastUpdateNotifiedTag")
+/** Comma-separated announcement ids the user has opened in Ajustes ▸ Avisos. */
+val ReadAnnouncementIdsKey = stringPreferencesKey("readAnnouncementIds")
 // Home shows ONLY taste-based suggestions (followed artists / history / favourites + YouTube's
 // algorithm on those). When true, the generic "From the community" and "Mood & genres" browse
 // sections are hidden so nothing unrelated to the user's taste appears.

@@ -484,60 +484,6 @@ fun AuraPlayerMenu(
                     label = stringResource(R.string.add_to_playlist),
                     onClick = { showChoosePlaylistDialog = true },
                 )
-                if (!isLocalTrack) {
-                    when {
-                        download?.state == Download.STATE_COMPLETED -> AuraMenuRow(
-                            icon = AuraIcons.Check,
-                            label = stringResource(R.string.remove_download),
-                            iconTint = AuraPalette.Teal,
-                            onClick = {
-                                removeSongDownloads(
-                                    context,
-                                    mediaMetadata.id,
-                                    mediaMetadata.isVideoSong,
-                                )
-                                onDismiss()
-                            },
-                        )
-                        download?.state == Download.STATE_QUEUED ||
-                            download?.state == Download.STATE_DOWNLOADING -> AuraMenuRow(
-                            icon = AuraIcons.Download,
-                            label = stringResource(R.string.downloading),
-                            onClick = {
-                                removeSongDownloads(
-                                    context,
-                                    mediaMetadata.id,
-                                    mediaMetadata.isVideoSong,
-                                )
-                                onDismiss()
-                            },
-                            trailing = {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(20.dp),
-                                    strokeWidth = 2.dp,
-                                    color = AuraPalette.Teal,
-                                )
-                            },
-                        )
-                        isExporting -> AuraMenuRow(
-                            icon = AuraIcons.Export,
-                            label = stringResource(R.string.exporting),
-                            onClick = {},
-                            trailing = {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(20.dp),
-                                    strokeWidth = 2.dp,
-                                    color = AuraPalette.Teal,
-                                )
-                            },
-                        )
-                        else -> AuraMenuRow(
-                            icon = AuraIcons.Download,
-                            label = stringResource(R.string.download_or_export),
-                            onClick = { showExportFormatDialog = true },
-                        )
-                    }
-                }
                 AuraMenuRow(
                     icon = AuraIcons.Timer,
                     label = stringResource(R.string.set_as_ringtone),
@@ -825,9 +771,12 @@ private fun AuraMenuExpandableSection(
                 ),
         ) {
             Text(
-                text = title.uppercase(),
-                style = AuraType.MenuGroupLabel,
-                color = AuraPalette.OnGroundGhost,
+                text = title,
+                style = AuraType.MenuGroupLabel.copy(
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                ),
+                color = AuraPalette.OnGroundMuted,
                 maxLines = 1,
                 overflow = AuraDefaultOverflow,
                 modifier = Modifier.weight(1f),

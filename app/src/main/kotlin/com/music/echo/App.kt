@@ -33,6 +33,7 @@ import iad1tya.echo.music.extensions.toEnum
 import iad1tya.echo.music.extensions.toInetSocketAddress
 import iad1tya.echo.music.utils.CrashHandler
 import iad1tya.echo.music.utils.cipher.CipherDeobfuscator
+import iad1tya.echo.music.utils.SyncUtils
 import iad1tya.echo.music.utils.dataStore
 import iad1tya.echo.music.utils.localeAwareContext
 import iad1tya.echo.music.utils.reportException
@@ -41,6 +42,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -103,6 +105,9 @@ class App : Application(), SingletonImageLoader.Factory, androidx.work.Configura
     // so the resolver (an object, un-injectable) can read the linked session. Cheap to construct.
     @Inject
     lateinit var qobuzTokenStore: iad1tya.echo.music.qobuz.QobuzTokenStore
+
+    @Inject
+    lateinit var syncUtils: SyncUtils
 
     override fun onCreate() {
         super.onCreate()
@@ -195,6 +200,10 @@ class App : Application(), SingletonImageLoader.Factory, androidx.work.Configura
             // publishes shazam_recognition_config.json — cures a Shazam rotation with no app update.
             iad1tya.echo.music.recognition.RemoteRecognitionConfig.loadCache(applicationContext)
             iad1tya.echo.music.recognition.RemoteRecognitionConfig.refresh(applicationContext)
+
+            // Owner notices inbox (Ajustes ▸ Avisos) — cache first, then soft refresh.
+            iad1tya.echo.music.notices.OwnerAnnouncements.loadCache(applicationContext)
+            iad1tya.echo.music.notices.OwnerAnnouncements.refresh(applicationContext)
         }
 
         // Cold-start freeze fix: force the two @PlayerCache/@DownloadCache SimpleCache singletons (via DownloadUtil,
@@ -581,6 +590,12 @@ class App : Application(), SingletonImageLoader.Factory, androidx.work.Configura
         // so they keep working. Users can still turn it on in Settings.
         YouTube.useLoginForBrowse = settings[UseLoginForBrowse] ?: false
         YouTube.ipVersion = settings[IpVersionKey]?.toEnum(defaultValue = IpVersion.AUTO) ?: IpVersion.AUTO
+
+        // UseLoginForBrowse ON at cold start + signed in: run the same full sync path as manual
+        // "Sincronizar todo" (includes LibraryUploadSync when includeUpload=true).
+        if (YouTube.useLoginForBrowse && !settings[InnerTubeCookieKey].isNullOrBlank()) {
+            syncUtils.performFullSync()
+        }
 
         val channel = NotificationChannel(
             "updates",
@@ -1622,6 +1637,22 @@ class App : Application(), SingletonImageLoader.Factory, androidx.work.Configura
                             ?: effectiveAppLocale.language.takeIf { it in LanguageCodeToName }
                             ?: "en"
                     )
+                }
+        }
+
+        applicationScope.launch(Dispatchers.IO) {
+            dataStore.data
+                .map { prefs ->
+                    Pair(prefs[UseLoginForBrowse] ?: false, !prefs[InnerTubeCookieKey].isNullOrBlank())
+                }
+                .distinctUntilChanged()
+                .drop(1)
+                .collect { (enabled, loggedIn) ->
+                    YouTube.useLoginForBrowse = enabled
+                    if (enabled && loggedIn) {
+                        // Toggle ON while signed in: refresh account library (upload pass included).
+                        syncUtils.performFullSync()
+                    }
                 }
         }
 

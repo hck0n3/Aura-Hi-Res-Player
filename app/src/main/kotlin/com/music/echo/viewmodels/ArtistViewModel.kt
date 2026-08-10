@@ -328,15 +328,12 @@ class ArtistViewModel @Inject constructor(
                             cachedAppearsOn.items.filter { !hideExplicit || !it.explicit }
                         } else {
                             val norm = iad1tya.echo.music.utils.iTunesDiscography::normalizeTitle
-                            // Cap at 40 (covers virtually all real collaborations) with GENTLE concurrency:
-                            // resolving the full uncapped iTunes list (100+ items) with high concurrency flooded
-                            // YouTube and made the whole app's responses slower. 40 keeps it complete enough
-                            // without hammering the network.
+                            // Cap at 80 (covers virtually all real collaborations) with moderate concurrency.
                             val guest = iad1tya.echo.music.utils.iTunesDiscography
                                 .fetchAppearsOn(artistName, "us")
-                                .take(40)
+                                .take(80)
                             if (guest.isEmpty()) return@launch
-                            val sem = Semaphore(1)
+                            val sem = Semaphore(2)
                             val found = coroutineScope {
                                 guest.map { (title, primary) ->
                                     async {

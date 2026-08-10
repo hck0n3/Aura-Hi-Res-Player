@@ -200,7 +200,12 @@ import iad1tya.echo.music.widget.MusicWidgetReceiver
 import iad1tya.echo.music.widget.PlaylistWidgetReceiver
 import iad1tya.echo.music.widget.TurntableWidgetReceiver
 import dagger.hilt.android.AndroidEntryPoint
+import iad1tya.echo.music.utils.exportedFileUriExists
 import iad1tya.echo.music.utils.isLocalMediaId
+import iad1tya.echo.music.utils.parseExportedFileUriMap
+import iad1tya.echo.music.constants.ExportedFileUrisKey
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -7946,8 +7951,18 @@ class MusicService :
                 }
             }
 
-            // Strict offline: ONLY a full downloadCache hit may play. playerCache / songUrlCache / YT
-            // resolve all need the network (or a URL refresh) — refuse them while OfflineModeKey is ON.
+            // Exported SAF/file URI (AudioExportService) — playable with zero network, same as a download.
+            val exportedUri = runBlocking(Dispatchers.IO) {
+                val raw = dataStore.data.first()[ExportedFileUrisKey].orEmpty()
+                parseExportedFileUriMap(raw)[mediaId]
+            }
+            if (!exportedUri.isNullOrBlank() && exportedFileUriExists(this, exportedUri)) {
+                scope.launch(Dispatchers.IO) { recoverSong(mediaId, isOfflinePlayback = true) }
+                return@Factory dataSpec.withUri(exportedUri.toUri())
+            }
+
+            // Strict offline: ONLY a full downloadCache hit OR a valid exported URI may play.
+            // playerCache / songUrlCache / YT resolve all need the network — refuse them while OfflineModeKey is ON.
             if (dataStore.get(OfflineModeKey, false)) {
                 throw PlaybackException(
                     getString(R.string.error_offline_not_downloaded),

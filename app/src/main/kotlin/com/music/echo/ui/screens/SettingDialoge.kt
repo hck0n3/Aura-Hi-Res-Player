@@ -52,7 +52,9 @@ import iad1tya.echo.music.ui.newui.AuraShapes
 import iad1tya.echo.music.ui.newui.AuraType
 import iad1tya.echo.music.ui.newui.rememberAuraPanelSkin
 import iad1tya.echo.music.utils.rememberPreference
+import iad1tya.echo.music.viewmodels.AccountSettingsViewModel
 import iad1tya.echo.music.viewmodels.HomeViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 
 /**
  * Account flyout from the avatar / gear. With "Interfaz nueva" ON it uses the same frosted
@@ -76,6 +78,12 @@ fun SettingDialoge(
 
     val (useLoginForBrowse, onUseLoginForBrowseChange) = rememberPreference(UseLoginForBrowse, false)
     val (ytmSync, onYtmSyncChange) = rememberPreference(YtmSyncKey, true)
+    val accountSettingsViewModel: AccountSettingsViewModel = hiltViewModel()
+    val onBrowseLoginChange: (Boolean) -> Unit = { enabled ->
+        com.music.innertube.YouTube.useLoginForBrowse = enabled
+        onUseLoginForBrowseChange(enabled)
+        if (enabled && isLoggedIn) accountSettingsViewModel.syncAll()
+    }
 
     val skin = rememberAuraPanelSkin()
     val primaryColor = if (skin.enabled) skin.ink else MaterialTheme.colorScheme.onSurface
@@ -103,7 +111,7 @@ fun SettingDialoge(
                     mutedColor = mutedColor,
                     titleStyle = true,
                     useLoginForBrowse = useLoginForBrowse,
-                    onUseLoginForBrowseChange = onUseLoginForBrowseChange,
+                    onUseLoginForBrowseChange = onBrowseLoginChange,
                     ytmSync = ytmSync,
                     onYtmSyncChange = onYtmSyncChange,
                     onDismissRequest = onDismissRequest,
@@ -130,7 +138,7 @@ fun SettingDialoge(
                     mutedColor = mutedColor,
                     titleStyle = skin.enabled,
                     useLoginForBrowse = useLoginForBrowse,
-                    onUseLoginForBrowseChange = onUseLoginForBrowseChange,
+                    onUseLoginForBrowseChange = onBrowseLoginChange,
                     ytmSync = ytmSync,
                     onYtmSyncChange = onYtmSyncChange,
                     onDismissRequest = onDismissRequest,

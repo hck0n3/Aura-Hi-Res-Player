@@ -493,6 +493,8 @@ fun AuraCoverCard(
     onClick: (() -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
     badge: (@Composable BoxScope.() -> Unit)? = null,
+    fillBleed: Boolean = true,
+    decodeTo: Int = 512,
 ) {
     Column(
         modifier = modifier
@@ -514,9 +516,9 @@ fun AuraCoverCard(
             size = width,
             seed = seed ?: title,
             shape = shape,
-            decodeTo = 512,
+            decodeTo = decodeTo,
             ratio = ratio,
-            fillBleed = true,
+            fillBleed = fillBleed,
         ) {
             if (isActive) {
                 Box(

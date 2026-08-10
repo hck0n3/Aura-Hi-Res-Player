@@ -28,6 +28,7 @@ import androidx.compose.foundation.lazy.grid.items as lazyGridItems
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -183,6 +184,8 @@ fun AuraHomeScreen(
     val pinnedPodcasts by viewModel.pinnedPodcasts.collectAsState(initial = emptyList())
     val speedDialItems by viewModel.speedDialItems.collectAsState()
     val selectedChip by viewModel.selectedChip.collectAsState()
+    val isChipLoading by viewModel.isChipLoading.collectAsState()
+    val chipError by viewModel.chipError.collectAsState()
     val accountName by viewModel.accountName.collectAsState()
 
     val isLoading by viewModel.isLoading.collectAsState()
@@ -439,6 +442,104 @@ fun AuraHomeScreen(
                         }
                     }
                 }
+
+                if (selectedChip != null) {
+                    if (isChipLoading) {
+                        item(key = "aura_home_chip_loading") {
+                            Box(
+                                modifier = Modifier
+                                    .animateItem()
+                                    .fillMaxWidth()
+                                    .padding(vertical = 48.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                CircularProgressIndicator(color = AuraPalette.Teal)
+                            }
+                        }
+                    }
+                    chipError?.let { message ->
+                        item(key = "aura_home_chip_error") {
+                            AuraTechnicalText(
+                                text = message,
+                                color = AuraPalette.OnGroundMuted,
+                                modifier = Modifier
+                                    .animateItem()
+                                    .padding(
+                                        horizontal = AuraSpacing.Gutter,
+                                        vertical = 16.dp,
+                                    ),
+                            )
+                        }
+                    }
+                    homePage?.sections.orEmpty().forEachIndexed { index, sectionData ->
+                        item(key = "aura_mood_section_$index") {
+                            val sectionSongs = sectionData.items.filterIsInstance<SongItem>()
+                            val isSongsOnly = sectionData.items.isNotEmpty() &&
+                                sectionData.items.all { it is SongItem }
+                            val preferVideoShelf = sectionSongs.any { it.isVideoSong }
+                            Column(Modifier.animateItem()) {
+                                AuraSectionHeader(
+                                    title = sectionData.title,
+                                    label = sectionData.label,
+                                    onPlayAll = if (sectionSongs.isNotEmpty()) {
+                                        {
+                                            playerConnection.playQueue(
+                                                ListQueue(
+                                                    title = sectionData.title,
+                                                    items = sectionSongs.map {
+                                                        it.toMediaMetadata().toMediaItem()
+                                                    },
+                                                ),
+                                            )
+                                        }
+                                    } else null,
+                                )
+                                if (isSongsOnly && !preferVideoShelf) {
+                                    Column(
+                                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                                        modifier = Modifier.padding(
+                                            horizontal = AuraSpacing.Gutter,
+                                            vertical = AuraSpacing.SectionGap,
+                                        ),
+                                    ) {
+                                        sectionSongs.distinctBy { it.id }.take(8).forEach { song ->
+                                            AuraSongRow(
+                                                title = song.title,
+                                                subtitle = song.artists.joinToString { it.name },
+                                                thumbnailUrl = song.thumbnail,
+                                                seed = song.id,
+                                                isActive = song.id == mediaMetadata?.id,
+                                                isPlaying = isPlaying,
+                                                explicit = song.explicit,
+                                                onClick = {
+                                                    if (song.id == mediaMetadata?.id) {
+                                                        playerConnection.togglePlayPause()
+                                                    } else {
+                                                        playerConnection.playQueue(
+                                                            YouTubeQueue.radio(song.toMediaMetadata()),
+                                                        )
+                                                    }
+                                                },
+                                                onLongClick = { ytItemMenu(song) },
+                                                onMenuClick = { ytItemMenu(song) },
+                                            )
+                                        }
+                                    }
+                                } else {
+                                    AuraGroupedYtItemShelves(
+                                        items = sectionData.items,
+                                        cardScale = cardScale,
+                                        isPlaying = isPlaying,
+                                        activeId = mediaMetadata?.id,
+                                        activeAlbumId = mediaMetadata?.album?.id,
+                                        onClick = openYtItem,
+                                        onLongClick = ytItemMenu,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                } else {
 
                 // Tus podcasts (fijados)
                 if (pinnedPodcasts.isNotEmpty()) {
@@ -1214,6 +1315,8 @@ fun AuraHomeScreen(
                     }
                 }
 
+                } // selectedChip == null — normal home shelves
+
                 item(key = "aura_home_bottom_spacer") {
                     Spacer(
                         Modifier
@@ -1644,10 +1747,13 @@ internal fun AuraTypedYtCoverCard(
     isPlaying: Boolean = false,
     onLongClick: (() -> Unit)? = null,
     badge: (@Composable BoxScope.() -> Unit)? = null,
+    fillBleed: Boolean = true,
 ) {
     // Premium identity from [auraTypeVisual]: Apple release sizes + YTM 16:9 videos / soft playlists.
     val visual = auraTypeVisual(item)
     val width = visual.shelfWidth * cardScale
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val decodeTo = with(density) { (width.toPx() * 1.5f).toInt().coerceIn(128, 512) }
     AuraCoverCard(
         title = item.title,
         subtitle = auraYtSubtitle(item),
@@ -1661,6 +1767,8 @@ internal fun AuraTypedYtCoverCard(
         onClick = onClick,
         onLongClick = onLongClick,
         modifier = modifier,
+        fillBleed = fillBleed,
+        decodeTo = decodeTo,
         badge = {
             badge?.invoke(this)
             // Hybrid badge: videos/EP/Single show a YTM text pill; albums/playlists/artists

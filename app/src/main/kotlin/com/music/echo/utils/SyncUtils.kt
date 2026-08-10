@@ -1382,6 +1382,7 @@ class SyncUtils @Inject constructor(
     }
 
     private suspend fun executeSyncPlaylist(browseId: String, playlistId: String) = withContext(Dispatchers.IO) {
+        // Auto / scheduled sync never calls executeClearAllSyncedContent — only explicit logout reset does.
         Timber.d("syncPlaylist: Starting sync for browseId=$browseId, playlistId=$playlistId")
 
         withRetry {

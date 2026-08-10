@@ -138,6 +138,8 @@ class HomeViewModel @Inject constructor(
     val genreMix = MutableStateFlow<GenreMix?>(null)
     val selectedChip = MutableStateFlow<HomePage.Chip?>(null)
     private val previousHomePage = MutableStateFlow<HomePage?>(null)
+    val isChipLoading = MutableStateFlow(false)
+    val chipError = MutableStateFlow<String?>(null)
 
     // On-device taste model (see AffinityEngine). Rebuilt once per load/refresh and reused to RANK every
     // shelf by how much you'd actually like each candidate — instead of the old plain .shuffled().
@@ -1162,6 +1164,8 @@ class HomeViewModel @Inject constructor(
             homePage.value = previousHomePage.value
             previousHomePage.value = null
             selectedChip.value = null
+            chipError.value = null
+            isChipLoading.value = false
             return
         }
 
@@ -1170,18 +1174,30 @@ class HomeViewModel @Inject constructor(
         }
 
         viewModelScope.launch(Dispatchers.IO) {
-            val hideExplicit = context.dataStore.get(HideExplicitKey, false)
-            val hideVideoSongs = context.dataStore.get(HideVideoSongsKey, false)
-            val hideYoutubeShorts = context.dataStore.get(HideYoutubeShortsKey, false)
-            val nextSections = YouTube.home(params = chip.endpoint?.params).getOrNull() ?: return@launch
-
-            homePage.value = nextSections.copy(
-                chips = homePage.value?.chips,
-                sections = nextSections.sections.map { section ->
-                    section.copy(items = section.items.filterExplicit(hideExplicit).filterVideoSongs(hideVideoSongs).filterYoutubeShorts(hideYoutubeShorts))
+            isChipLoading.value = true
+            chipError.value = null
+            try {
+                val hideExplicit = context.dataStore.get(HideExplicitKey, false)
+                val hideVideoSongs = context.dataStore.get(HideVideoSongsKey, false)
+                val hideYoutubeShorts = context.dataStore.get(HideYoutubeShortsKey, false)
+                val result = YouTube.home(params = chip.endpoint?.params)
+                val nextSections = result.getOrNull()
+                if (nextSections == null) {
+                    chipError.value = result.exceptionOrNull()?.message ?: "Could not load mood"
+                    reportException(result.exceptionOrNull() ?: IllegalStateException("Mood home failed"))
+                    return@launch
                 }
-            )
-            selectedChip.value = chip
+
+                homePage.value = nextSections.copy(
+                    chips = homePage.value?.chips,
+                    sections = nextSections.sections.map { section ->
+                        section.copy(items = section.items.filterExplicit(hideExplicit).filterVideoSongs(hideVideoSongs).filterYoutubeShorts(hideYoutubeShorts))
+                    }
+                )
+                selectedChip.value = chip
+            } finally {
+                isChipLoading.value = false
+            }
         }
     }
 

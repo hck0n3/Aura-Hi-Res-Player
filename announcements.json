@@ -1,0 +1,12 @@
+{
+  "updatedAt": "2026-08-10T00:00:00Z",
+  "items": [
+    {
+      "id": "welcome-avisos-172",
+      "title": "Nueva bandeja de avisos",
+      "body": "Desde Ajustes ▸ Avisos puedes ver comunicados y novedades importantes del equipo de Aura sin esperar a una actualización de la app.",
+      "date": "2026-08-10",
+      "priority": "info"
+    }
+  ]
+}

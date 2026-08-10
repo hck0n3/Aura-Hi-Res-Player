@@ -62,6 +62,7 @@ class SpotifyAutoSyncWorker(
 
             val sources = runCatching { repository.loadSources() }.getOrDefault(emptyList())
             val toSync = sources.filter { it.id in ids }
+            // Non-destructive: only re-import the user-selected sources. Never deletes other SPOTIFY_* playlists.
             if (toSync.isNotEmpty()) {
                 importManager.start(toSync)
             }

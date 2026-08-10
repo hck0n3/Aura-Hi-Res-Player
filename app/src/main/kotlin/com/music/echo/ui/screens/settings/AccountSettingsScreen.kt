@@ -163,6 +163,7 @@ fun AccountSettingsScreen(
                                     onCheckedChange = {
                                         YouTube.useLoginForBrowse = it
                                         onUseLoginForBrowseChange(it)
+                                        if (it && isLoggedIn) accountSettingsViewModel.syncAll()
                                     },
                                     thumbContent = {
                                         Icon(
@@ -179,6 +180,7 @@ fun AccountSettingsScreen(
                                 val newValue = !useLoginForBrowse
                                 YouTube.useLoginForBrowse = newValue
                                 onUseLoginForBrowseChange(newValue)
+                                if (newValue && isLoggedIn) accountSettingsViewModel.syncAll()
                             }
                         ),
                         Material3SettingsItem(

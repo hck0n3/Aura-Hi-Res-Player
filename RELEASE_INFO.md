@@ -1,28 +1,36 @@
-# Aura Hi-Res Player 0.6.171
+# Aura Hi-Res Player 0.6.172
 
-Vídeos exportados siempre en modo vídeo, menú solo compartir/MP3, menos trabón al empezar el stream, letras alineadas arriba, EQ estable, y limpieza de calidad Saavn/Qobuz en streaming.
+Offline/export sin red, bandeja de avisos, FFT estable al cambiar de canción, moods de Inicio, sync sin borrar playlists, y portadas/listas de vídeo más claras.
 
 ---
 
-## Vídeos exportados
+## Avisos
 
-- Al tocar un vídeo exportado se abre el reproductor en **modo vídeo** (solo cambias a audio si tú lo decides).
-- El menú ⋮ de esa lista solo ofrece **compartir el archivo MP4** o **exportar a MP3**.
-- Buffer de arranque A/V más generoso para reducir el atasco de los primeros segundos.
+- Nueva sección **Ajustes ▸ Avisos**: comunicados y alertas del equipo (sin esperar APK).
+- Se actualiza desde `announcements.json` en GitHub.
 
-## Letras, EQ e identificar
+## Offline y export
 
-- Letras sincronizadas anclan la línea activa **arriba → abajo** (karaoke legible).
-- Barras del ecualizador: el layout ya no “salta” al arrastrar; subir bandas **no baja el volumen** por headroom automático.
-- Resultado de Identificar canción con piel premium Aura (frost / Ground).
+- Descargas offline y archivos exportados (MP3/MP4) se reproducen **sin internet** cuando el archivo está en el dispositivo.
+- Modo sin conexión acepta descarga completa o URI exportada.
 
-## Streaming y producto
+## Reproductor y EQ
 
-- Eliminado el cambio de calidad de streaming Opus/Saavn/Qobuz (y selectores huérfanos en dispositivos).
-- Playlists en inicio: estantería de **2 filas** a tamaño playlist; Novedades con tamaño álbum y acceso a Release Radar.
-- Importaciones: CSV de lo que **no** migró (migración + Spotify).
-- Batería/térmica: keep-alive y throttle ya conservadores; sin cambios agresivos.
+- FFT del ecualizador se reengancha al pasar de canción.
+- Menú Más: sin funciones duplicadas de la barra; tipografía más legible.
 
-## Del 0.6.170
+## Cuenta, sync e Inicio
 
-- Chooser Offline/MP3/Vídeo, export multi-rango, posters 16:9, menú Más compacto, vídeos de artista completos.
+- “Explorar con mi cuenta” dispara sync completa (likes, playlists, suscripciones, etc.).
+- Auto-sync Spotify/YTM **no borra** playlists que no estén en la selección.
+- Chips de estado de ánimo: el Inicio muestra solo ese mood (con carga/error visibles).
+
+## Artista, vídeos y portadas
+
+- Playlists mayormente de vídeo: posters 16:9 (como Vídeos exportados).
+- “Aparece en” más completo; shelves con pocos ítems sin hueco enorme.
+- Portadas de exploración full-bleed + carga más ágil.
+
+## Del 0.6.171
+
+- Vídeos exportados en modo vídeo, letras arriba→abajo, EQ sin bajar volumen, sin Saavn/Qobuz en streaming.

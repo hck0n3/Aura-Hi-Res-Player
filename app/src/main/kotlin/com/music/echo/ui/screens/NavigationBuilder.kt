@@ -587,6 +587,9 @@ fun NavGraphBuilder.navigationBuilder(
     composable("settings/changelog") {
         ChangelogScreen(navController,scrollBehavior)
     }
+    composable("settings/notices") {
+        iad1tya.echo.music.ui.newui.AuraNoticesScreen(navController)
+    }
     // IA hygiene: "settings/commits" (CommitScreen) removed — it had no navigate() caller AND it fetched
     // the commit list of the UPSTREAM repo (github.com/EchoMusicApp/Echo-Music), an Aura branding leak.
     // The live, Aura-owned equivalent is "settings/changelog" (ChangelogScreen) above.

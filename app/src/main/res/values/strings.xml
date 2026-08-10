@@ -694,6 +694,10 @@
     <string name="migrate_open_in_library">Open in Library</string>
     <string name="migrate_another">Migrate another</string>
     <string name="migrate_export_failures_csv">Export unmatched (CSV)</string>
+    <string name="owner_notices_title">Notices</string>
+    <string name="owner_notices_empty">No notices yet. When Aura has a message for you, it will show up here.</string>
+    <string name="owner_notices_mark_all_read">Mark all read</string>
+    <string name="owner_notices_settings_desc">Messages and alerts from Aura</string>
     <string name="migrate_review_desc">Pick the right match for each song, or skip it.</string>
     <string name="migrate_review_add">Add selected</string>
     <string name="migrate_review_you_searched">You searched: %1$s - %2$s</string>

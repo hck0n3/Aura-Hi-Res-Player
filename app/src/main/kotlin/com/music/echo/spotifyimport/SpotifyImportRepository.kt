@@ -1263,6 +1263,11 @@ class SpotifyImportRepository @Inject constructor(
                 }
             }
 
+            // NON-DESTRUCTIVE: wipe and rebuild ONLY this source's mirror playlist (SPOTIFY_* id).
+            // Auto-sync never calls a global Spotify wipe — other imported playlists stay intact.
+            check(source.localPlaylistId.startsWith("SPOTIFY_")) {
+                "Spotify import must only clear its own mirror playlist, never unrelated rows"
+            }
             clearPlaylist(source.localPlaylistId)
             tracks.forEachIndexed { index, metadata ->
                 insert(

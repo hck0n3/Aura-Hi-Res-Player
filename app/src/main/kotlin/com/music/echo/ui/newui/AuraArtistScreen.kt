@@ -898,6 +898,7 @@ fun AuraArtistScreen(
                                 // Albums / EPs / Singles / playlists: two sideways rows (Apple + YTM).
                                 AuraDoubleRowShelf(
                                     rowHeight = auraShelfCardStackHeight(cardW),
+                                    itemCount = sectionItems.size,
                                     modifier = Modifier.animateItem(),
                                 ) {
                                     items(

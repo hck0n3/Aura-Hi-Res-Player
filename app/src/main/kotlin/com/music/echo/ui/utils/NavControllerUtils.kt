@@ -32,3 +32,8 @@ fun NavController.navigateToReentryTarget(route: String) {
         }
     }
 }
+
+/** Long-press back: pop to the nav graph's start destination (main tab). */
+fun NavController.backToMain() {
+    popBackStack(graph.startDestinationId, inclusive = false)
+}

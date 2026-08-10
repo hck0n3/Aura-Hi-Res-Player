@@ -11,6 +11,7 @@ import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import androidx.core.net.toUri
+import androidx.documentfile.provider.DocumentFile
 import iad1tya.echo.music.constants.ExportedFileUrisKey
 import java.util.Locale
 import kotlinx.coroutines.flow.first
@@ -65,21 +66,46 @@ fun shareContentUri(
 }
 
 /**
+ * Parses the persisted export map (`id\u001Furi\u001E…`, see [ExportedFileUrisKey]).
+ */
+fun parseExportedFileUriMap(raw: String): Map<String, String> {
+    if (raw.isBlank()) return emptyMap()
+    return raw.split('\u001E')
+        .mapNotNull { entry ->
+            val sep = entry.indexOf('\u001F')
+            if (sep <= 0) null
+            else entry.substring(0, sep) to entry.substring(sep + 1)
+        }
+        .filter { it.first.isNotBlank() && it.second.isNotBlank() }
+        .toMap()
+}
+
+/** True when [uriString] is a readable content/file export the player can open offline. */
+fun exportedFileUriExists(context: Context, uriString: String): Boolean {
+    if (uriString.isBlank()) return false
+    val uri = uriString.toUri()
+    return when (uri.scheme?.lowercase(Locale.US)) {
+        "content" -> {
+            DocumentFile.fromSingleUri(context, uri)?.exists() == true ||
+                runCatching {
+                    context.contentResolver.openAssetFileDescriptor(uri, "r")?.use { }
+                    true
+                }.getOrDefault(false)
+        }
+        "file" -> {
+            DocumentFile.fromSingleUri(context, uri)?.exists() == true ||
+                runCatching { java.io.File(uri.path ?: return false).exists() }.getOrDefault(false)
+        }
+        else -> false
+    }
+}
+
+/**
  * Looks up the SAF URI persisted after a successful export for [songId].
  * Encoding: `id\u001Furi\u001Eid\u001Furi` (see [ExportedFileUrisKey]).
  */
 suspend fun lookupExportedFileUri(context: Context, songId: String): String? {
     if (songId.isBlank()) return null
     val raw = context.dataStore.data.first()[ExportedFileUrisKey].orEmpty()
-    if (raw.isBlank()) return null
-    return raw.split('\u001E')
-        .asSequence()
-        .mapNotNull { entry ->
-            val sep = entry.indexOf('\u001F')
-            if (sep <= 0) null
-            else entry.substring(0, sep) to entry.substring(sep + 1)
-        }
-        .firstOrNull { it.first == songId }
-        ?.second
-        ?.takeIf { it.isNotBlank() }
+    return parseExportedFileUriMap(raw)[songId]
 }

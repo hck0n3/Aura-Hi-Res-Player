@@ -68,6 +68,9 @@ import iad1tya.echo.music.eq.audio.SuperpoweredEngineStatus
 import iad1tya.echo.music.eq.audio.headroomPreampDb
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlin.math.min
 import kotlin.math.abs
 import kotlin.math.cos
@@ -360,66 +363,77 @@ private fun rememberEqFftMeter(
             captureOk = false
             onDispose { }
         } else {
-            fun attach(): Visualizer? = runCatching {
-                Visualizer(audioSessionId).apply {
-                    val range = Visualizer.getCaptureSizeRange()
-                    captureSize = range[1].coerceAtLeast(range[0])
-                    val target = min(20_000, Visualizer.getMaxCaptureRate() / 4)
-                    setDataCaptureListener(
-                        object : Visualizer.OnDataCaptureListener {
-                            override fun onWaveFormDataCapture(
-                                visualizer: Visualizer?,
-                                waveform: ByteArray?,
-                                samplingRate: Int,
-                            ) = Unit
+            val attachScope = CoroutineScope(Dispatchers.Main.immediate)
+            var visualizer: Visualizer? = null
+            val attachJob = attachScope.launch {
+                // Track transitions often reuse the session id — give ExoPlayer a beat to settle.
+                delay(400)
+                fun attach(): Visualizer? = runCatching {
+                    Visualizer(audioSessionId).apply {
+                        val range = Visualizer.getCaptureSizeRange()
+                        captureSize = range[1].coerceAtLeast(range[0])
+                        val target = min(20_000, Visualizer.getMaxCaptureRate() / 4)
+                        setDataCaptureListener(
+                            object : Visualizer.OnDataCaptureListener {
+                                override fun onWaveFormDataCapture(
+                                    visualizer: Visualizer?,
+                                    waveform: ByteArray?,
+                                    samplingRate: Int,
+                                ) = Unit
 
-                            override fun onFftDataCapture(
-                                visualizer: Visualizer?,
-                                fft: ByteArray?,
-                                samplingRate: Int,
-                            ) {
-                                if (fft == null || fft.size < 4) return
-                                lastFftAtMs = System.currentTimeMillis()
-                                val binCount = fft.size / 2
-                                var peak = 0f
-                                val bars = FloatArray(EQ_FFT_BAR_COUNT)
-                                for (b in 0 until EQ_FFT_BAR_COUNT) {
-                                    val t0 = b.toDouble() / EQ_FFT_BAR_COUNT
-                                    val t1 = (b + 1).toDouble() / EQ_FFT_BAR_COUNT
-                                    val start = (1 + t0 * t0 * (binCount - 2)).toInt().coerceIn(1, binCount - 1)
-                                    val end = (1 + t1 * t1 * (binCount - 2)).toInt().coerceIn(start + 1, binCount)
-                                    var sum = 0.0
-                                    var count = 0
-                                    for (i in start until end) {
-                                        val re = fft[i * 2].toInt()
-                                        val im = fft[i * 2 + 1].toInt()
-                                        val mag = hypot(re.toDouble(), im.toDouble()).toFloat()
-                                        sum += mag
-                                        count++
-                                        if (mag > peak) peak = mag
+                                override fun onFftDataCapture(
+                                    visualizer: Visualizer?,
+                                    fft: ByteArray?,
+                                    samplingRate: Int,
+                                ) {
+                                    if (fft == null || fft.size < 4) return
+                                    lastFftAtMs = System.currentTimeMillis()
+                                    val binCount = fft.size / 2
+                                    var peak = 0f
+                                    val bars = FloatArray(EQ_FFT_BAR_COUNT)
+                                    for (b in 0 until EQ_FFT_BAR_COUNT) {
+                                        val t0 = b.toDouble() / EQ_FFT_BAR_COUNT
+                                        val t1 = (b + 1).toDouble() / EQ_FFT_BAR_COUNT
+                                        val start = (1 + t0 * t0 * (binCount - 2)).toInt().coerceIn(1, binCount - 1)
+                                        val end = (1 + t1 * t1 * (binCount - 2)).toInt().coerceIn(start + 1, binCount)
+                                        var sum = 0.0
+                                        var count = 0
+                                        for (i in start until end) {
+                                            val re = fft[i * 2].toInt()
+                                            val im = fft[i * 2 + 1].toInt()
+                                            val mag = hypot(re.toDouble(), im.toDouble()).toFloat()
+                                            sum += mag
+                                            count++
+                                            if (mag > peak) peak = mag
+                                        }
+                                        bars[b] = if (count > 0) (sum / count / 128.0).toFloat().coerceIn(0f, 1f) else 0f
                                     }
-                                    bars[b] = if (count > 0) (sum / count / 128.0).toFloat().coerceIn(0f, 1f) else 0f
+                                    rawBars = bars
+                                    rawPeak = (peak / 128f).coerceIn(0f, 1f)
                                 }
-                                rawBars = bars
-                                rawPeak = (peak / 128f).coerceIn(0f, 1f)
-                            }
-                        },
-                        target,
-                        false,
-                        true,
-                    )
-                    setEnabled(true)
-                }
-            }.getOrNull()
+                            },
+                            target,
+                            false,
+                            true,
+                        )
+                        setEnabled(true)
+                    }
+                }.getOrNull()
 
-            var visualizer = attach()
-            captureOk = visualizer != null
-            if (visualizer == null) {
                 visualizer = attach()
+                if (visualizer == null) {
+                    delay(250)
+                    visualizer = attach()
+                }
+                if (visualizer == null) {
+                    delay(250)
+                    visualizer = attach()
+                }
                 captureOk = visualizer != null
+                lastFftAtMs = System.currentTimeMillis()
             }
-            lastFftAtMs = System.currentTimeMillis()
             onDispose {
+                attachJob.cancel()
                 runCatching {
                     visualizer?.setEnabled(false)
                     visualizer?.release()
@@ -438,14 +452,19 @@ private fun rememberEqFftMeter(
     val latestOnForceRebind = rememberUpdatedState(onForceRebind)
 
     // Watchdog: after a track change the Visualizer can go silent with the same session id.
+    var lastForcedRebindMs by remember { mutableLongStateOf(0L) }
     LaunchedEffect(enabled, playing, audioSessionId, generation) {
         if (!enabled) return@LaunchedEffect
         while (isActive) {
             delay(1_200)
             if (!playing) continue
             val silentFor = System.currentTimeMillis() - latestLastFft.value
-            if (silentFor > 1_400L) {
-                latestOnForceRebind.value()
+            if (silentFor > 2_000L) {
+                val now = System.currentTimeMillis()
+                if (now - lastForcedRebindMs >= 3_000L) {
+                    lastForcedRebindMs = now
+                    latestOnForceRebind.value()
+                }
             }
         }
     }

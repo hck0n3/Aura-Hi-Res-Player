@@ -1080,17 +1080,20 @@ internal fun AuraDetailShelf(
 internal fun AuraDoubleRowShelf(
     rowHeight: Dp,
     modifier: Modifier = Modifier,
+    /** When 1, use a single-row shelf so small sections (e.g. one "Aparece en" album) don't reserve double height. */
+    itemCount: Int? = null,
     content: LazyGridScope.() -> Unit,
 ) {
     val gap = AuraSpacing.ShelfItemGap
+    val rows = if (itemCount == 1) 1 else 2
     LazyHorizontalGrid(
-        rows = GridCells.Fixed(2),
+        rows = GridCells.Fixed(rows),
         contentPadding = PaddingValues(horizontal = AuraSpacing.Gutter),
         horizontalArrangement = Arrangement.spacedBy(AuraSpacing.ShelfItemGap),
         verticalArrangement = Arrangement.spacedBy(gap),
         modifier = modifier
             .padding(top = AuraSpacing.SectionGap)
-            .height(rowHeight * 2 + gap)
+            .height(rowHeight * rows + if (rows > 1) gap else 0.dp)
             .tvFocusRestorer(),
         content = content,
     )

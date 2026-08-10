@@ -180,6 +180,10 @@ fun AuraSettingsScreen(
                         title = updateText,
                         description = "Cambios de esta versión y nuevas actualizaciones",
                     ) { navController.navigate("settings/update") },
+                    AuraSettingsEntry(
+                        title = stringResource(R.string.owner_notices_title),
+                        description = stringResource(R.string.owner_notices_settings_desc),
+                    ) { navController.navigate("settings/notices") },
                 ),
             )
         )

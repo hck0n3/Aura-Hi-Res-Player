@@ -184,6 +184,9 @@ fun AuraOnlinePlaylistScreen(
                 it.second.artists.any { a -> a.name.contains(query, true) }
         }
     }
+    val videoPlaylist = remember(songs) {
+        songs.isNotEmpty() && songs.count { it.isVideoSong } * 2 >= songs.size
+    }
 
     var inSelectMode by rememberSaveable { mutableStateOf(false) }
     val selection = rememberSaveable(
@@ -295,6 +298,7 @@ fun AuraOnlinePlaylistScreen(
                             coroutineScope = coroutineScope,
                             continuation = viewModel.continuation,
                             onSearch = { isSearching = true },
+                            videoPlaylist = videoPlaylist,
                             modifier = Modifier.animateItem(),
                         )
                     }
@@ -319,6 +323,69 @@ fun AuraOnlinePlaylistScreen(
                 ) { _, entry ->
                     val index = entry.first
                     val songItem = entry.second
+                    if (videoPlaylist) {
+                        val selected = songItem.id in selection
+                        val onCheckedChange: (Boolean) -> Unit = { checked ->
+                            if (checked) selection.add(songItem.id) else selection.remove(songItem.id)
+                        }
+                        val isActive = mediaMetadata?.id == songItem.id
+                        val blocked = hideExplicit && songItem.explicit
+                        val videoLabel = auraTypeLabel(AuraContentKind.Video)
+                        val playFromFiltered = {
+                            when {
+                                inSelectMode -> onCheckedChange(!selected)
+                                isActive -> {
+                                    playerConnection.togglePlayPause()
+                                    playerConnection.enterVideoModeIfNeeded()
+                                }
+                                else -> {
+                                    playerConnection.playQueue(
+                                        YouTubePlaylistQueue(
+                                            playlistId = currentPlaylist.id,
+                                            playlistTitle = currentPlaylist.title,
+                                            initialSongs = songs,
+                                            initialContinuation = viewModel.continuation,
+                                            startIndex = index,
+                                        ),
+                                    )
+                                    playerConnection.enterVideoModeIfNeeded()
+                                }
+                            }
+                        }
+                        AuraPosterCard(
+                            title = songItem.title,
+                            subtitle = songItem.artists.joinToString { it.name }.takeIf { it.isNotBlank() },
+                            thumbnailUrl = songItem.thumbnail,
+                            seed = songItem.id,
+                            ratio = 16f / 9f,
+                            shape = AuraShapes.Card,
+                            isActive = isActive,
+                            isPlaying = isActive && isPlaying,
+                            typeIcon = AuraIcons.Video,
+                            typeLabel = videoLabel,
+                            contentDescription = songItem.title,
+                            onClick = if (blocked) null else playFromFiltered,
+                            onLongClick = if (blocked) null else {
+                                {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    if (inSelectMode) onCheckedChange(!selected)
+                                    else {
+                                        menuState.show {
+                                            YouTubeSongMenu(
+                                                songItem,
+                                                navController,
+                                                menuState::dismiss,
+                                            )
+                                        }
+                                    }
+                                }
+                            },
+                            modifier = Modifier
+                                .animateItem()
+                                .padding(horizontal = AuraSpacing.Gutter, vertical = 6.dp)
+                                .tvFocusable(isTvOrCar, AuraShapes.Highlight, scaleFocused = 1f),
+                        )
+                    } else {
                     val selected = songItem.id in selection
                     val onCheckedChange: (Boolean) -> Unit = { checked ->
                         if (checked) selection.add(songItem.id) else selection.remove(songItem.id)
@@ -451,6 +518,7 @@ fun AuraOnlinePlaylistScreen(
                             .padding(horizontal = AuraSpacing.Gutter)
                             .tvFocusable(isTvOrCar, AuraShapes.Highlight, scaleFocused = 1f),
                     )
+                    }
                 }
 
                 if (isLoadingMore) {
@@ -633,6 +701,7 @@ private fun AuraOnlinePlaylistHeader(
     coroutineScope: CoroutineScope,
     continuation: String?,
     onSearch: () -> Unit,
+    videoPlaylist: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -647,9 +716,6 @@ private fun AuraOnlinePlaylistHeader(
     val saved = dbPlaylist?.playlist?.bookmarkedAt != null
     val playingThisPlaylist = isPlaying && mediaMetadata?.album?.id == playlist.id
     val hasExplicitContent = remember(songs) { songs.any { it.explicit } }
-    val videoPlaylist = remember(songs) {
-        songs.isNotEmpty() && songs.count { it.isVideoSong } * 2 >= songs.size
-    }
     val totalDuration = remember(songs) { songs.sumOf { it.duration ?: 0 } }
 
     Column(
@@ -702,7 +768,13 @@ private fun AuraOnlinePlaylistHeader(
 
         Text(
             text = buildString {
-                append(pluralStringResource(R.plurals.n_song, songs.size, songs.size))
+                append(
+                    if (videoPlaylist) {
+                        pluralStringResource(R.plurals.n_video, songs.size, songs.size)
+                    } else {
+                        pluralStringResource(R.plurals.n_song, songs.size, songs.size)
+                    },
+                )
                 if (totalDuration > 0) {
                     append(" • ")
                     val hours = totalDuration / 3600

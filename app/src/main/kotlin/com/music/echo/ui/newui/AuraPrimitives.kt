@@ -44,6 +44,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.offset
 
 /**
@@ -428,6 +429,7 @@ fun AuraMenuRow(
     modifier: Modifier = Modifier,
     iconTint: Color = AuraPalette.OnGround.copy(alpha = 0.75f),
     enabled: Boolean = true,
+    labelStyle: androidx.compose.ui.text.TextStyle = AuraType.MenuLabel.copy(fontSize = 13.sp),
     trailing: (@Composable () -> Unit)? = null,
 ) {
     Row(
@@ -447,7 +449,7 @@ fun AuraMenuRow(
         )
         Text(
             text = label,
-            style = AuraType.MenuLabel,
+            style = labelStyle,
             color = AuraPalette.OnGround.copy(alpha = if (enabled) 1f else 0.4f),
             maxLines = 1,
             overflow = AuraDefaultOverflow,
