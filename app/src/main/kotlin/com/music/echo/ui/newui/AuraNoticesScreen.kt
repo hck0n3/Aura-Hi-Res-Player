@@ -39,11 +39,27 @@ import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import androidx.navigation.NavController
 import iad1tya.echo.music.R
+import iad1tya.echo.music.constants.ReadAnnouncementIdsKey
 import iad1tya.echo.music.notices.OwnerAnnouncement
 import iad1tya.echo.music.notices.OwnerAnnouncements
+import iad1tya.echo.music.notices.unreadOwnerNoticeCount
 import iad1tya.echo.music.ui.component.IconButton
 import iad1tya.echo.music.ui.utils.backToMain
+import iad1tya.echo.music.utils.rememberPreference
 import kotlinx.coroutines.launch
+
+/** Unread owner notices for avatar / account-sheet badges. Refreshes cache in the background. */
+@Composable
+fun rememberUnreadOwnerNoticesCount(): Int {
+    val context = LocalContext.current
+    val items by OwnerAnnouncements.items.collectAsState()
+    val (readIdsCsv) = rememberPreference(ReadAnnouncementIdsKey, "")
+    LaunchedEffect(Unit) {
+        OwnerAnnouncements.loadCache(context)
+        OwnerAnnouncements.refresh(context)
+    }
+    return remember(items, readIdsCsv) { unreadOwnerNoticeCount(items, readIdsCsv) }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

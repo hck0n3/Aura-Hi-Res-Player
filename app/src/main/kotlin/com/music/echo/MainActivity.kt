@@ -251,6 +251,7 @@ import iad1tya.echo.music.ui.newui.AuraNavigationBar
 import iad1tya.echo.music.ui.newui.BottomSheetPlayerHost
 import iad1tya.echo.music.ui.newui.LocalAuraTopActions
 import iad1tya.echo.music.ui.newui.rememberNewUiEnabled
+import iad1tya.echo.music.ui.newui.rememberUnreadOwnerNoticesCount
 import iad1tya.echo.music.ui.player.NowPlayingSidePanel
 import iad1tya.echo.music.ui.screens.Screens
 import iad1tya.echo.music.widget.PlaylistWidgetReceiver
@@ -1656,7 +1657,16 @@ class MainActivity : ComponentActivity() {
                                                 )
                                             }
                                              IconButton(onClick = { showSettingDialoge = true }) {
-                                                BadgedBox(badge = {}) {
+                                                val unreadNotices = rememberUnreadOwnerNoticesCount()
+                                                BadgedBox(
+                                                    badge = {
+                                                        if (unreadNotices > 0) {
+                                                            Badge(
+                                                                containerColor = MaterialTheme.colorScheme.error,
+                                                            )
+                                                        }
+                                                    },
+                                                ) {
                                                     if (accountImageUrl != null) {
                                                         AsyncImage(
                                                             model = accountImageUrl,

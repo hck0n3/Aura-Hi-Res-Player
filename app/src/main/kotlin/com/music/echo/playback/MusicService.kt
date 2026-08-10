@@ -1318,6 +1318,8 @@ class MusicService :
     /** One re-prepare per [mediaId] when video stalls in BUFFERING/IDLE (debounced). */
     private val videoStuckRecoveryAttemptedAt = java.util.concurrent.ConcurrentHashMap<String, Long>()
     private var videoStuckRecoveryJob: kotlinx.coroutines.Job? = null
+    /** Holds play until dual-stream buffer has a real cushion after audio→video swap. */
+    private var videoStartGateJob: kotlinx.coroutines.Job? = null
 
     // PLAYER-EXPANDED SIGNAL — mirrored from the UI (PlayerConnection.setPlayerSheetExpanded), same
     // pattern as userHasUsedVideo. Used ONLY to gate speculative, user-visible-moment work (the video
@@ -2733,14 +2735,13 @@ class MusicService :
                         // "trabones"/cuts on playback and at the crossfade swap, which the secondary player
                         // inherited). Reconciled below. (High-Performance Mode uses 60s.)
                         maxBufferMs,
-                        // bufferForPlaybackMs: video mode merges TWO streams. 750ms was enough for
-                        // audio-only starts but too thin for the A/V merge — playback began then
-                        // immediately rebuffered ("trabón" in the first seconds). 2.5s (1.8s on
-                        // small/perf) waits for a real dual-stream cushion before the first frame.
-                        if (useSmallBuffer) 1_800 else 2_500,
+                        // bufferForPlaybackMs: video mode merges TWO streams. 2.5s still rebuffered
+                        // on many networks in the first seconds of streaming video — raise the first
+                        // start cushion so A/V both have media before playWhenReady fires.
+                        if (useSmallBuffer) 2_500 else 4_000,
                         // bufferForPlaybackAfterRebufferMs: after a stall, wait even longer before
                         // resuming so the dual fetch does not ping-pong STATE_BUFFERING.
-                        if (useSmallBuffer) 3_500 else 5_000,
+                        if (useSmallBuffer) 4_500 else 7_000,
                     )
                     // 64MB byte ceiling guards against OOM with multiple pre-loaded/crossfade players,
                     // but prioritizeTimeOverSizeThresholds(true) lets the TIME buffer win so the min/max
@@ -7700,14 +7701,36 @@ class MusicService :
         player.setSeekParameters(androidx.media3.exoplayer.SeekParameters.CLOSEST_SYNC)
         player.seekTo(idx, pos)
         player.setSeekParameters(androidx.media3.exoplayer.SeekParameters.DEFAULT)
-        player.playWhenReady = playing
         // Muxed same-URI rebuild must prepare even from READY so ProgressiveMediaSource takes over.
         if (player.playbackState == Player.STATE_IDLE || (isMuxed && sameUri)) {
             player.prepare()
         }
-        if (playing) player.playWhenReady = true
         _videoUrl.value = url
         scheduleVideoStuckRecoveryCheck()
+        // Streaming (non-muxed) A/V merge: don't resume until there is ~2.5s buffered ahead, or the
+        // first seconds hitch (audio starts, video catch-up → STATE_BUFFERING). Muxed local/export
+        // is a single file and can resume immediately.
+        videoStartGateJob?.cancel()
+        if (playing && !isMuxed) {
+            player.playWhenReady = false
+            videoStartGateJob = scope.launch {
+                val deadline = android.os.SystemClock.elapsedRealtime() + 10_000L
+                while (android.os.SystemClock.elapsedRealtime() < deadline) {
+                    if (player.currentMediaItem?.mediaId != id) return@launch
+                    val ahead = player.bufferedPosition - player.currentPosition
+                    if (player.playbackState == Player.STATE_READY && ahead >= 2_500L) {
+                        player.playWhenReady = true
+                        return@launch
+                    }
+                    kotlinx.coroutines.delay(50)
+                }
+                if (player.currentMediaItem?.mediaId == id) {
+                    player.playWhenReady = true
+                }
+            }
+        } else if (playing) {
+            player.playWhenReady = true
+        }
     }
 
     /**
@@ -10793,7 +10816,7 @@ class MusicService :
         // time, or we fall back to the normal path instead of publishing a player about to rebuffer.
         private const val INSTANT_VIDEO_MIN_BUFFER_AHEAD_MS = 1500L
         /** Bounded init-segment warm before audio→video toggle (unmetered + capable only). */
-        private const val VIDEO_WARM_BYTES = 384L * 1024L
+        private const val VIDEO_WARM_BYTES = 768L * 1024L
 
         private const val MAX_GAIN_MB = 300 
         private const val MIN_GAIN_MB = -1500 

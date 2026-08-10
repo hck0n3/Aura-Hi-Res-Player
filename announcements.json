@@ -1,12 +1,12 @@
 {
-  "updatedAt": "2026-08-10T00:00:00Z",
-  "items": [
-    {
-      "id": "welcome-avisos-172",
-      "title": "Nueva bandeja de avisos",
-      "body": "Desde Ajustes ▸ Avisos puedes ver comunicados y novedades importantes del equipo de Aura sin esperar a una actualización de la app.",
-      "date": "2026-08-10",
-      "priority": "info"
-    }
-  ]
+    "updatedAt":  "2026-08-10T18:00:00Z",
+    "items":  [
+                  {
+                      "date":  "2026-08-10",
+                      "title":  "Avisos en tu cuenta",
+                      "body":  "Abre el avatar o el engranaje arriba a la derecha: ahi estan los Avisos con un punto rojo cuando hay algo nuevo. Tambien puedes enviar comunicados editando announcements.json en GitHub (main) sin publicar un APK nuevo.",
+                      "id":  "welcome-avisos-174",
+                      "priority":  "info"
+                  }
+              ]
 }

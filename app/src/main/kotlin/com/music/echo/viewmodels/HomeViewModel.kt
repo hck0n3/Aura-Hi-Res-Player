@@ -112,6 +112,38 @@ class HomeViewModel @Inject constructor(
      */
     val hasPlayHistory = MutableStateFlow(true)
 
+    /** Artist ids newly followed this session — pinned into similar-artist sampling. */
+    @Volatile
+    private var pinnedBookmarkArtistIds: Set<String> = emptySet()
+    @Volatile
+    private var previousBookmarkIds: Set<String> = emptySet()
+    @Volatile
+    private var bookmarkBaselineReady: Boolean = false
+
+    /**
+     * Seeds for YouTube next/related must be real video ids. Local content:// / file:// URIs
+     * (and isLocal rows) fail silently and leave Home taste shelves empty.
+     */
+    private fun Song.isYouTubeSeedable(): Boolean {
+        if (song.isLocal) return false
+        val id = id
+        if (id.isBlank()) return false
+        if (id.startsWith("content:", ignoreCase = true)) return false
+        if (id.startsWith("file:", ignoreCase = true)) return false
+        if (id.startsWith("android.resource:", ignoreCase = true)) return false
+        if (id.startsWith("http", ignoreCase = true)) return false
+        return !id.contains('/')
+    }
+
+    private fun Album.isYouTubeSeedable(): Boolean {
+        if (album.isLocal) return false
+        val id = id
+        if (id.isBlank()) return false
+        if (id.startsWith("content:", ignoreCase = true)) return false
+        if (id.startsWith("file:", ignoreCase = true)) return false
+        return !id.contains('/')
+    }
+
     private val quickPicksEnum = context.dataStore.data.map {
         it[QuickPicksKey].toEnum(QuickPicks.QUICK_PICKS)
     }.distinctUntilChanged()
@@ -485,7 +517,7 @@ class HomeViewModel @Inject constructor(
         // Fall back to their most-played songs (all-time) as seeds so discovery still works from real habits.
         val seedPool = likedSongs.ifEmpty {
             runCatching { database.mostPlayedSongs(0L, limit = 20).first() }.getOrDefault(emptyList())
-        }
+        }.filter { it.isYouTubeSeedable() }
         if (seedPool.isEmpty()) return
 
         val seeds = seedPool.distinctBy { it.id }.rankedByTaste().take(3)
@@ -564,9 +596,21 @@ class HomeViewModel @Inject constructor(
                 // we only kept related ids that were ALREADY in the local DB, so the enrich path was a
                 // silent no-op for discovery and "Para ti" froze on the same local top forever.
                 val recentSong = database.lastEvent().first()?.song
+                val recentYtFallback = if (recentSong?.isYouTubeSeedable() == true) {
+                    recentSong
+                } else {
+                    // Last play may be local — walk recent events for a YouTube-seedable id.
+                    runCatching {
+                        database.events().first()
+                            .asSequence()
+                            .map { it.song }
+                            .firstOrNull { it.isYouTubeSeedable() }
+                    }.getOrNull()
+                }
                 val seedCandidates = (
-                    listOfNotNull(recentSong) + relatedSongs.take(12) + forgotten
-                    ).distinctBy { it.id }
+                    listOfNotNull(recentYtFallback) + relatedSongs.take(12) + forgotten
+                    ).filter { it.isYouTubeSeedable() }
+                    .distinctBy { it.id }
                 if (seedCandidates.isNotEmpty()) {
                     viewModelScope.launch(Dispatchers.IO) {
                         val seeds = seedCandidates.shuffled(Random(daySeed)).take(3)
@@ -627,6 +671,7 @@ class HomeViewModel @Inject constructor(
             .filter { it.artist.isYouTubeArtist }
             .shuffled().take(3)
         val songSeeds = database.mostPlayedSongs(fromTimeStamp, limit = 5).first()
+            .filter { it.isYouTubeSeedable() }
             .shuffled().take(2)
 
         val candidatePlaylists = java.util.Collections.synchronizedList(mutableListOf<PlaylistItem>())
@@ -849,10 +894,15 @@ class HomeViewModel @Inject constructor(
             // never reach here (load() cold-home gate) — onboarding-only artists must not fill Home.
             val playedArtists = database.mostPlayedArtists(fromTimeStamp, limit = 15).first()
             val bookmarkedArtists = database.artistsBookmarkedByCreateDateAsc().first()
-            val artistDeferreds = (playedArtists + bookmarkedArtists)
+            val artistPool = (playedArtists + bookmarkedArtists)
                 .filter { it.artist.isYouTubeArtist }
                 .distinctBy { it.id }
-                .shuffled().take(6)
+            val pinned = pinnedBookmarkArtistIds
+            val artistOrdered = (
+                artistPool.filter { it.id in pinned } +
+                    artistPool.filter { it.id !in pinned }.shuffled()
+                ).take(6)
+            val artistDeferreds = artistOrdered
                 .map { artist ->
                     async(Dispatchers.IO) {
                         val items = mutableListOf<YTItem>()
@@ -878,6 +928,7 @@ class HomeViewModel @Inject constructor(
             val playedSongs = database.mostPlayedSongs(fromTimeStamp, limit = 15).first().filter { it.album != null }
             val likedSongs = database.likedSongsByCreateDateAsc().first()
             val songDeferreds = (playedSongs + likedSongs)
+                .filter { it.isYouTubeSeedable() }
                 .distinctBy { it.id }
                 .shuffled().take(5)
                 .map { song ->
@@ -905,7 +956,7 @@ class HomeViewModel @Inject constructor(
             val playedAlbums = database.mostPlayedAlbums(fromTimeStamp, limit = 10).first()
             val likedAlbums = database.albumsLikedByCreateDateAsc().first()
             val albumDeferreds = (playedAlbums + likedAlbums)
-                .filter { it.album.thumbnailUrl != null }
+                .filter { it.album.thumbnailUrl != null && it.isYouTubeSeedable() }
                 .distinctBy { it.id }
                 .shuffled().take(3)
                 .map { album ->
@@ -1022,18 +1073,24 @@ class HomeViewModel @Inject constructor(
         val hasHistory = database.lastEvent().first() != null
         hasPlayHistory.value = hasHistory
 
-        // Cold home: user finished onboarding (or imported library) but never played. Do NOT seed
-        // quickPicks / similar / daily mixes / community from onboarding-only follows — Inicio stays
-        // empty until the first play event (see lastEvent drop(1) reload below). License is irrelevant.
+        // Cold home: never played. Followed YouTube artists ARE a taste signal — seed similar shelves
+        // from those bookmarks instead of staying empty until the first play.
         if (!hasHistory) {
+            val bookmarkedYt = database.artistsBookmarkedByCreateDateAsc().first()
+                .filter { it.artist.isYouTubeArtist }
             clearTasteShelvesForColdHome()
             isLoading.value = false
-            // Account playlists (logged-in library) and pinned speed-dial are fine — they are not
-            // fabricated taste. Skip YouTube home/explore so generic shelves don't fake a filled Home.
             if (YouTube.cookie != null) {
                 runCatching { loadAccountPlaylists() }.onFailure { reportException(it) }
             }
-            allYtItems.value = emptyList()
+            if (bookmarkedYt.isNotEmpty()) {
+                // Prefer newly followed ids when the bookmark collector armed them.
+                runCatching { loadSimilarRecommendations() }.onFailure { reportException(it) }
+                runCatching { getNewFromArtists() }.onFailure { reportException(it) }
+                allYtItems.value = similarRecommendations.value?.flatMap { it.items }.orEmpty()
+            } else {
+                allYtItems.value = emptyList()
+            }
             saveSnapshot()
             return
         }
@@ -1073,6 +1130,14 @@ class HomeViewModel @Inject constructor(
 
     /** Cache the loaded home at process level so returning to Home / resuming restores it instantly. */
     private fun saveSnapshot() {
+        val tasteEmpty = quickPicks.value.isNullOrEmpty() &&
+            similarRecommendations.value.isNullOrEmpty() &&
+            dailyMixes.value.isNullOrEmpty()
+        // A failed enrichment with play history must not freeze an empty Home for the rest of the day.
+        if (hasPlayHistory.value && tasteEmpty) {
+            snapshot = null
+            return
+        }
         snapshot = HomeSnapshot(
             savedAtMs = System.currentTimeMillis(),
             quickPicks = quickPicks.value,
@@ -1261,25 +1326,32 @@ class HomeViewModel @Inject constructor(
                 val hasHistory = database.lastEvent().first() != null
                 hasPlayHistory.value = hasHistory
                 if (!hasHistory) {
-                    clearTasteShelvesForColdHome()
-                    snapshot = HomeSnapshot(
-                        savedAtMs = System.currentTimeMillis(),
-                        quickPicks = quickPicks.value,
-                        dailyMixes = dailyMixes.value,
-                        recentlyPlayed = recentlyPlayed.value,
-                        timeOfDayMix = timeOfDayMix.value,
-                        forgottenFavorites = forgottenFavorites.value,
-                        keepListening = keepListening.value,
-                        similarRecommendations = similarRecommendations.value,
-                        accountPlaylists = accountPlaylists.value,
-                        homePage = homePage.value,
-                        explorePage = explorePage.value,
-                        communityPlaylists = communityPlaylists.value,
-                        newFromArtists = newFromArtists.value,
-                        genreMix = genreMix.value,
-                        allLocalItems = allLocalItems.value,
-                        allYtItems = allYtItems.value,
-                    )
+                    val hasBookmarks = database.artistsBookmarkedByCreateDateAsc().first()
+                        .any { it.artist.isYouTubeArtist }
+                    if (!hasBookmarks) {
+                        clearTasteShelvesForColdHome()
+                        snapshot = HomeSnapshot(
+                            savedAtMs = System.currentTimeMillis(),
+                            quickPicks = quickPicks.value,
+                            dailyMixes = dailyMixes.value,
+                            recentlyPlayed = recentlyPlayed.value,
+                            timeOfDayMix = timeOfDayMix.value,
+                            forgottenFavorites = forgottenFavorites.value,
+                            keepListening = keepListening.value,
+                            similarRecommendations = similarRecommendations.value,
+                            accountPlaylists = accountPlaylists.value,
+                            homePage = homePage.value,
+                            explorePage = explorePage.value,
+                            communityPlaylists = communityPlaylists.value,
+                            newFromArtists = newFromArtists.value,
+                            genreMix = genreMix.value,
+                            allLocalItems = allLocalItems.value,
+                            allYtItems = allYtItems.value,
+                        )
+                    } else if (similarRecommendations.value.isNullOrEmpty()) {
+                        snapshot = null
+                        runCatching { load() }.onFailure { reportException(it) }
+                    }
                 }
             }
             // The snapshot can carry a stale time-of-day bucket ("Mix de la mañana" restored at 22:00
@@ -1316,37 +1388,48 @@ class HomeViewModel @Inject constructor(
                 }
         }
 
-        // Rebuild Home when followed/subscribed artists change — but only once there is play history.
-        // Without history, load() would no-op taste shelves; skip the network churn until the first play.
+        // Rebuild Home when followed/subscribed artists change (subscribe is a taste signal even
+        // before the first play). Pin newly added ids so similar shelves prefer them.
         viewModelScope.launch(Dispatchers.IO) {
             database.artistsBookmarkedByCreateDateAsc()
                 .map { artists -> artists.map { it.id }.toSet() }
                 .distinctUntilChanged()
-                .drop(1)
-                .collectLatest {
-                    if (database.lastEvent().first() == null) return@collectLatest
+                .collectLatest { newIds ->
+                    val prev = previousBookmarkIds
+                    val added = newIds - prev
+                    previousBookmarkIds = newIds
+                    // Baseline the first emission without a reload storm (even if empty).
+                    if (!bookmarkBaselineReady) {
+                        bookmarkBaselineReady = true
+                        return@collectLatest
+                    }
+                    if (added.isNotEmpty()) pinnedBookmarkArtistIds = added
                     delay(600)
                     snapshot = null
                     runCatching { load() }.onFailure { reportException(it) }
                 }
         }
 
-        // First play event: reload once so taste shelves fill in real time (drop(1) skips the current
-        // value so returning users with history are unaffected). Guarded on quickPicks still empty so
-        // it does NOT reload on every subsequent song.
+        // After the first play (and a few follow-ups while quickPicks stays empty), reload so taste
+        // shelves fill even when the first seed was local or the first network call failed.
         viewModelScope.launch(Dispatchers.IO) {
+            var emptyRetries = 0
             database.lastEvent()
-                .map { it != null }
+                .map { it?.song?.id }
                 .distinctUntilChanged()
                 .drop(1)
-                .filter { it }
-                .collect {
+                .collect { songId ->
+                    if (songId == null) return@collect
                     hasPlayHistory.value = true
-                    if (quickPicks.value.isNullOrEmpty()) {
-                        delay(600)
-                        snapshot = null
-                        runCatching { load() }.onFailure { reportException(it) }
+                    if (!quickPicks.value.isNullOrEmpty()) {
+                        emptyRetries = 0
+                        return@collect
                     }
+                    if (emptyRetries >= 3) return@collect
+                    emptyRetries++
+                    delay(600)
+                    snapshot = null
+                    runCatching { load() }.onFailure { reportException(it) }
                 }
         }
 

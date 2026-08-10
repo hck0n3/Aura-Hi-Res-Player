@@ -11,8 +11,11 @@ import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import androidx.core.net.toUri
+import androidx.datastore.preferences.core.edit
 import androidx.documentfile.provider.DocumentFile
 import iad1tya.echo.music.constants.ExportedFileUrisKey
+import iad1tya.echo.music.constants.ExportedSongIdsKey
+import iad1tya.echo.music.constants.ExportedVideoIdsKey
 import java.util.Locale
 import kotlinx.coroutines.flow.first
 
@@ -108,4 +111,54 @@ suspend fun lookupExportedFileUri(context: Context, songId: String): String? {
     if (songId.isBlank()) return null
     val raw = context.dataStore.data.first()[ExportedFileUrisKey].orEmpty()
     return parseExportedFileUriMap(raw)[songId]
+}
+
+/**
+ * Removes an exported video from Aura lists AND deletes the SAF/file on storage when possible.
+ * @return true if the library entry was removed (file delete is best-effort).
+ */
+suspend fun deleteExportedVideo(context: Context, songId: String): Boolean {
+    if (songId.isBlank()) return false
+    val uriString = lookupExportedFileUri(context, songId)
+    var fileDeleted = false
+    if (!uriString.isNullOrBlank()) {
+        val uri = uriString.toUri()
+        fileDeleted = runCatching {
+            when (uri.scheme?.lowercase(Locale.US)) {
+                "content" -> DocumentFile.fromSingleUri(context, uri)?.delete() == true
+                "file" -> {
+                    val path = uri.path ?: return@runCatching false
+                    java.io.File(path).takeIf { it.exists() }?.delete() == true
+                }
+                else -> false
+            }
+        }.getOrDefault(false)
+        if (!fileDeleted) {
+            // Last resort: open + truncate isn't reliable; try contentResolver.delete
+            fileDeleted = runCatching {
+                context.contentResolver.delete(uri, null, null) > 0
+            }.getOrDefault(false)
+        }
+    }
+    context.dataStore.edit { prefs ->
+        fun stripCsv(key: androidx.datastore.preferences.core.Preferences.Key<String>) {
+            val cur = prefs[key].orEmpty()
+                .split(',')
+                .map { it.trim() }
+                .filter { it.isNotEmpty() && it != songId }
+            if (cur.isEmpty()) prefs.remove(key) else prefs[key] = cur.joinToString(",")
+        }
+        stripCsv(ExportedVideoIdsKey)
+        stripCsv(ExportedSongIdsKey)
+        val map = parseExportedFileUriMap(prefs[ExportedFileUrisKey].orEmpty()).toMutableMap()
+        map.remove(songId)
+        if (map.isEmpty()) {
+            prefs.remove(ExportedFileUrisKey)
+        } else {
+            prefs[ExportedFileUrisKey] = map.entries.joinToString("\u001E") { (id, u) ->
+                "$id\u001F$u"
+            }
+        }
+    }
+    return true
 }

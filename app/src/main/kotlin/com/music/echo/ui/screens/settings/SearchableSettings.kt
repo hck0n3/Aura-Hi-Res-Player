@@ -133,7 +133,7 @@ fun getAllSearchableSettings(): List<Triple<String, String, String>> {
             Triple(stringResource(R.string.listenbrainz_scrobbling), "Scrobbling", "settings/lastfm"),
             Triple(stringResource(R.string.set_listenbrainz_token), "Scrobbling", "settings/lastfm"),
             // --- Sonido / Rendimiento extras (these screens use hardcoded Spanish titles) ---
-            Triple("Auto-EQ (por auricular)", "Sonido y ecualización", "settings/sound/autoeq"),
+            Triple("Auto-EQ (por auricular)", "Ecualizador", "settings/sound/autoeq"),
             Triple("Volumen seguro", "Sonido y ecualización", "settings/sound"),
             Triple("Modo alto rendimiento", "Rendimiento", "settings/performance"),
             Triple("Vista dividida estilo Spotify", "Rendimiento", "settings/performance"),

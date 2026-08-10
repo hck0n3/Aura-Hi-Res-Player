@@ -113,6 +113,7 @@ import racra.compose.smooth_corner_rect_library.AbsoluteSmoothCornerShape
 @Composable
 fun AxionEqScreen(
     onBackClick: () -> Unit,
+    onAutoEqClick: () -> Unit = {},
     viewModel: AxionEqViewModel = hiltViewModel(),
 ) {
     val enabled by viewModel.enabled.collectAsState()
@@ -234,6 +235,7 @@ fun AxionEqScreen(
                     onSaveClick = { showSaveDialog = true },
                     onManageClick = { showManageDialog = true },
                     onDeviceClick = { showDeviceDialog = true },
+                    onAutoEqClick = onAutoEqClick,
                 )
             }
         }
@@ -632,6 +634,7 @@ private fun ColumnScope.EqMainContent(
     onSaveClick: () -> Unit,
     onManageClick: () -> Unit,
     onDeviceClick: () -> Unit,
+    onAutoEqClick: () -> Unit,
 ) {
     val context = LocalContext.current
     val highPerf by rememberPreference(HighPerformanceModeKey, false)
@@ -793,8 +796,7 @@ private fun ColumnScope.EqMainContent(
         )
     }
 
-    // Auto-EQ no longer LOCKS the manual EQ — it runs as a separate correction stage your EQ stacks on
-    // top of. Show an informational chip + a button to remove the Auto-EQ stage (the manual EQ stays).
+    // Auto-EQ picker lives here (not under Sonido). Active = status chip + clear; inactive = entry button.
     if (autoEqActive) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
@@ -813,6 +815,17 @@ private fun ColumnScope.EqMainContent(
                 Text("Quitar Auto-EQ")
             }
         }
+        OutlinedButton(
+            onClick = onAutoEqClick,
+            modifier = Modifier.fillMaxWidth(),
+            shape = MaterialTheme.shapes.medium,
+        ) { Text("Cambiar Auto-EQ (por auricular)") }
+    } else {
+        OutlinedButton(
+            onClick = onAutoEqClick,
+            modifier = Modifier.fillMaxWidth(),
+            shape = MaterialTheme.shapes.medium,
+        ) { Text("Auto-EQ (por auricular)") }
     }
 
     // Mode toggle: Gráfico (10-band, EqConstants.BAND_COUNT, default) vs Paramétrico (5–8 free PEQ bands). Stays enabled while

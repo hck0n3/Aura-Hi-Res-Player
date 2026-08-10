@@ -103,6 +103,7 @@ import iad1tya.echo.music.ui.component.TextFieldDialog
 import iad1tya.echo.music.ui.utils.ExportFormat
 import iad1tya.echo.music.ui.utils.ExportFormatChooserDialog
 import iad1tya.echo.music.ui.utils.ShowMediaInfo
+import iad1tya.echo.music.utils.deleteExportedVideo
 import iad1tya.echo.music.utils.isLocalMediaId
 import iad1tya.echo.music.utils.listItemShape
 import iad1tya.echo.music.utils.lookupExportedFileUri
@@ -472,6 +473,27 @@ fun SongMenu(
                             },
                         )
                     },
+                    Material3MenuItemData(
+                        title = { Text(text = stringResource(R.string.delete_exported_video)) },
+                        description = { Text(text = stringResource(R.string.delete_exported_video_desc)) },
+                        icon = {
+                            Icon(
+                                painter = painterResource(R.drawable.delete),
+                                contentDescription = null,
+                            )
+                        },
+                        onClick = {
+                            coroutineScope.launch {
+                                deleteExportedVideo(context, song.id)
+                                android.widget.Toast.makeText(
+                                    context,
+                                    context.getString(R.string.delete_exported_video_done),
+                                    android.widget.Toast.LENGTH_SHORT,
+                                ).show()
+                                onDismiss()
+                            }
+                        },
+                    ),
                 ),
             )
         }

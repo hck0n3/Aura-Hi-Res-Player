@@ -62,7 +62,7 @@ fun SoundSettings(
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp)
     ) {
-        // ── Ecualizador y Auto-EQ ──
+        // ── Ecualizador (Auto-EQ lives inside AxionEqScreen) ──
         Material3SettingsGroup(
             title = "Ecualizador",
             items = listOf(
@@ -71,12 +71,6 @@ fun SoundSettings(
                     title = { Text(stringResource(R.string.echo_equalizer)) },
                     description = { Text(stringResource(R.string.echo_equalizer_desc)) },
                     onClick = { navController.navigate("settings/equalizer") },
-                ),
-                Material3SettingsItem(
-                    icon = painterResource(R.drawable.graphic_eq),
-                    title = { Text("Auto-EQ (por auricular)") },
-                    description = { Text("Busca tu modelo y aplica su perfil AutoEq") },
-                    onClick = { navController.navigate("settings/sound/autoeq") },
                 ),
             ),
         )

@@ -100,8 +100,6 @@ import java.net.URLEncoder
 
 private const val SECTION_PLAYBACK = "playback"
 private const val SECTION_LIBRARY = "library"
-private const val SECTION_GOTO = "goto"
-private const val SECTION_AUDIO = "audio"
 private const val SECTION_MORE = "more"
 
 /**
@@ -193,7 +191,8 @@ fun AuraPlayerMenu(
     var showPitchTempoDialog by rememberSaveable { mutableStateOf(false) }
     var showAudioDeviceSheet by rememberSaveable { mutableStateOf(false) }
     var showExportFormatDialog by rememberSaveable { mutableStateOf(false) }
-    var openSection by rememberSaveable { mutableStateOf(SECTION_PLAYBACK) }
+    // Start collapsed: pinned rows (artist/album/EQ/details/settings) are the only visible actions.
+    var openSection by rememberSaveable { mutableStateOf("") }
 
     fun toggleSection(key: String) {
         openSection = if (openSection == key) "" else key
@@ -392,9 +391,110 @@ fun AuraPlayerMenu(
         }
 
         // Streaming quality cycling (Opus / Saavn / Qobuz) removed — Opus is the only stream path.
-        item { Spacer(Modifier.height(6.dp)); AuraDivider() }
+        item {
+            Spacer(Modifier.height(6.dp))
+            AuraDivider()
+        }
 
-        // ── REPRODUCCIÓN (abierta por defecto) ─────────────────────────────────────────────────────
+        // ── Fijas (siempre visibles) ───────────────────────────────────────────────────────────────
+        item {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                if (artists.isNotEmpty()) {
+                    AuraMenuRow(
+                        icon = AuraIcons.Artist,
+                        label = stringResource(R.string.view_artist),
+                        onClick = {
+                            if (artists.size == 1) {
+                                val only = artists[0]
+                                coroutineScope.launch {
+                                    val browseId = if (needsOnlineBrowseResolution(only.id)) {
+                                        withContext(Dispatchers.IO) {
+                                            resolveOnlineArtistBrowseId(only.name)
+                                        }
+                                    } else {
+                                        only.id
+                                    }
+                                    if (!browseId.isNullOrBlank()) {
+                                        navController.navigate("artist/$browseId")
+                                    } else {
+                                        navController.navigate(
+                                            "search/${URLEncoder.encode(only.name, "UTF-8")}"
+                                        )
+                                    }
+                                    playerBottomSheetState.collapseSoft()
+                                    onDismiss()
+                                }
+                            } else {
+                                showSelectArtistDialog = true
+                            }
+                        },
+                    )
+                }
+                resolvedAlbum?.let { album ->
+                    AuraMenuRow(
+                        icon = AuraIcons.Album,
+                        label = stringResource(R.string.view_album),
+                        onClick = {
+                            coroutineScope.launch {
+                                val browseId = if (needsOnlineBrowseResolution(album.id)) {
+                                    val query = listOfNotNull(
+                                        album.title.takeIf { it.isNotBlank() },
+                                        artists.joinToString(" ") { it.name }.takeIf { it.isNotBlank() },
+                                    ).joinToString(" ")
+                                    withContext(Dispatchers.IO) {
+                                        resolveOnlineAlbumBrowseId(query)
+                                    }
+                                } else {
+                                    album.id
+                                }
+                                if (!browseId.isNullOrBlank()) {
+                                    navController.navigate("album/$browseId")
+                                } else if (album.title.isNotBlank()) {
+                                    navController.navigate(
+                                        "search/${URLEncoder.encode(album.title, "UTF-8")}"
+                                    )
+                                }
+                                playerBottomSheetState.collapseSoft()
+                                onDismiss()
+                            }
+                        },
+                    )
+                }
+                AuraMenuRow(
+                    icon = AuraIcons.Equalizer,
+                    label = stringResource(R.string.equalizer),
+                    onClick = {
+                        playerBottomSheetState.collapseSoft()
+                        navController.navigate("settings/equalizer") { launchSingleTop = true }
+                        onDismiss()
+                    },
+                )
+                AuraMenuRow(
+                    icon = AuraIcons.Search,
+                    label = stringResource(R.string.details),
+                    onClick = {
+                        onShowDetailsDialog()
+                        onDismiss()
+                    },
+                )
+                AuraMenuRow(
+                    icon = AuraIcons.Settings,
+                    label = stringResource(R.string.settings),
+                    onClick = {
+                        playerBottomSheetState.collapseSoft()
+                        navController.navigateAsTab("settings")
+                        onDismiss()
+                    },
+                )
+            }
+        }
+
+        item {
+            Spacer(Modifier.height(4.dp))
+            AuraDivider()
+        }
+
+        // ── REPRODUCCIÓN (contraída) ───────────────────────────────────────────────────────────────
         item {
             AuraMenuExpandableSection(
                 title = "Reproducción",
@@ -502,74 +602,13 @@ fun AuraPlayerMenu(
             }
         }
 
-        // ── IR A ──────────────────────────────────────────────────────────────────────────────────
+        // ── MÁS OPCIONES (resto contraído) ─────────────────────────────────────────────────────────
         item {
             AuraMenuExpandableSection(
-                title = "Ir a",
-                expanded = openSection == SECTION_GOTO,
-                onToggle = { toggleSection(SECTION_GOTO) },
+                title = "Más opciones",
+                expanded = openSection == SECTION_MORE,
+                onToggle = { toggleSection(SECTION_MORE) },
             ) {
-                if (artists.isNotEmpty()) {
-                    AuraMenuRow(
-                        icon = AuraIcons.Artist,
-                        label = stringResource(R.string.view_artist),
-                        onClick = {
-                            if (artists.size == 1) {
-                                val only = artists[0]
-                                coroutineScope.launch {
-                                    val browseId = if (needsOnlineBrowseResolution(only.id)) {
-                                        withContext(Dispatchers.IO) {
-                                            resolveOnlineArtistBrowseId(only.name)
-                                        }
-                                    } else {
-                                        only.id
-                                    }
-                                    if (!browseId.isNullOrBlank()) {
-                                        navController.navigate("artist/$browseId")
-                                    } else {
-                                        navController.navigate(
-                                            "search/${URLEncoder.encode(only.name, "UTF-8")}"
-                                        )
-                                    }
-                                    playerBottomSheetState.collapseSoft()
-                                    onDismiss()
-                                }
-                            } else {
-                                showSelectArtistDialog = true
-                            }
-                        },
-                    )
-                }
-                resolvedAlbum?.let { album ->
-                    AuraMenuRow(
-                        icon = AuraIcons.Album,
-                        label = stringResource(R.string.view_album),
-                        onClick = {
-                            coroutineScope.launch {
-                                val browseId = if (needsOnlineBrowseResolution(album.id)) {
-                                    val query = listOfNotNull(
-                                        album.title.takeIf { it.isNotBlank() },
-                                        artists.joinToString(" ") { it.name }.takeIf { it.isNotBlank() },
-                                    ).joinToString(" ")
-                                    withContext(Dispatchers.IO) {
-                                        resolveOnlineAlbumBrowseId(query)
-                                    }
-                                } else {
-                                    album.id
-                                }
-                                if (!browseId.isNullOrBlank()) {
-                                    navController.navigate("album/$browseId")
-                                } else if (album.title.isNotBlank()) {
-                                    navController.navigate(
-                                        "search/${URLEncoder.encode(album.title, "UTF-8")}"
-                                    )
-                                }
-                                playerBottomSheetState.collapseSoft()
-                                onDismiss()
-                            }
-                        },
-                    )
-                }
                 if (mediaMetadata.id.startsWith("http")) {
                     AuraMenuRow(
                         icon = AuraIcons.Queue,
@@ -590,16 +629,6 @@ fun AuraPlayerMenu(
                         },
                     )
                 }
-            }
-        }
-
-        // ── AUDIO Y VÍDEO ─────────────────────────────────────────────────────────────────────────
-        item {
-            AuraMenuExpandableSection(
-                title = "Audio y vídeo",
-                expanded = openSection == SECTION_AUDIO,
-                onToggle = { toggleSection(SECTION_AUDIO) },
-            ) {
                 if (hasVideo) {
                     AuraMenuRow(
                         icon = AuraIcons.Video,
@@ -614,15 +643,6 @@ fun AuraPlayerMenu(
                 }
                 AuraMenuRow(
                     icon = AuraIcons.Equalizer,
-                    label = stringResource(R.string.equalizer),
-                    onClick = {
-                        playerBottomSheetState.collapseSoft()
-                        navController.navigate("settings/equalizer") { launchSingleTop = true }
-                        onDismiss()
-                    },
-                )
-                AuraMenuRow(
-                    icon = AuraIcons.Equalizer,
                     label = "Sonido",
                     onClick = {
                         playerBottomSheetState.collapseSoft()
@@ -630,23 +650,11 @@ fun AuraPlayerMenu(
                         onDismiss()
                     },
                 )
-                // Kept: queue-bar speaker is only on the collapsed queue chrome; while that sheet is
-                // expanded this menu entry is the only door to local audio outputs.
                 AuraMenuRow(
                     icon = AuraIcons.Volume,
                     label = stringResource(R.string.audio_devices),
                     onClick = { showAudioDeviceSheet = true },
                 )
-            }
-        }
-
-        // ── MÁS ───────────────────────────────────────────────────────────────────────────────────
-        item {
-            AuraMenuExpandableSection(
-                title = "Más",
-                expanded = openSection == SECTION_MORE,
-                onToggle = { toggleSection(SECTION_MORE) },
-            ) {
                 AuraMenuRow(
                     icon = AuraIcons.People,
                     label = stringResource(R.string.listen_together),
@@ -688,23 +696,6 @@ fun AuraPlayerMenu(
                     },
                 )
                 AuraMenuRow(
-                    icon = AuraIcons.Search,
-                    label = stringResource(R.string.details),
-                    onClick = {
-                        onShowDetailsDialog()
-                        onDismiss()
-                    },
-                )
-                AuraMenuRow(
-                    icon = AuraIcons.Settings,
-                    label = stringResource(R.string.settings),
-                    onClick = {
-                        playerBottomSheetState.collapseSoft()
-                        navController.navigateAsTab("settings")
-                        onDismiss()
-                    },
-                )
-                AuraMenuRow(
                     icon = AuraIcons.Share,
                     label = stringResource(R.string.share),
                     onClick = {
@@ -740,6 +731,7 @@ fun AuraPlayerMenu(
             }
         }
     }
+
 }
 
 /**

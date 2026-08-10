@@ -459,7 +459,10 @@ fun NavGraphBuilder.navigationBuilder(
     }
 
     composable("settings/equalizer") {
-        AxionEqScreen(onBackClick = { navController.navigateUp() })
+        AxionEqScreen(
+            onBackClick = { navController.navigateUp() },
+            onAutoEqClick = { navController.navigate("settings/sound/autoeq") },
+        )
     }
 
     composable("settings/privacy") {

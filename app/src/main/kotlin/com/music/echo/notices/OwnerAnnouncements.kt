@@ -27,6 +27,13 @@ data class OwnerAnnouncement(
     val url: String? = null,
 )
 
+/** Unread count for badges (avatar / account sheet). Cache must be loaded first. */
+fun unreadOwnerNoticeCount(items: List<OwnerAnnouncement>, readIdsCsv: String): Int {
+    if (items.isEmpty()) return 0
+    val read = readIdsCsv.split(',').map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+    return items.count { it.id !in read }
+}
+
 /**
  * Owner → users notice inbox. Feed lives next to [player_configs.json] on main so a comunicado
  * can ship without an APK. Cache-first; failed fetch keeps last good cache.
