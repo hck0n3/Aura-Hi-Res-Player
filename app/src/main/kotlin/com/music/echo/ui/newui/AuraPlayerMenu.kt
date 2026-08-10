@@ -307,7 +307,9 @@ fun AuraPlayerMenu(
     }
 
     val isInLibrary = librarySong?.song?.inLibrary != null
-    val hasVideo = mediaMetadata.isVideoSong || !mediaMetadata.podcastVideoUrl.isNullOrEmpty()
+    val hasVideo = mediaMetadata.isVideoSong ||
+        isExportedVideo ||
+        !mediaMetadata.podcastVideoUrl.isNullOrEmpty()
     // Sheet already paints FrostFill ([BottomSheetMenu] + LocalAuraFloatingChrome).
     val floatingChrome = LocalAuraFloatingChrome.current
 

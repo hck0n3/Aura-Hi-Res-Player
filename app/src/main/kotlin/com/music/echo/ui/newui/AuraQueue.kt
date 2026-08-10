@@ -138,6 +138,7 @@ import iad1tya.echo.music.ui.utils.tvFocusRestorer
 import iad1tya.echo.music.ui.utils.tvFocusable
 import iad1tya.echo.music.ui.utils.tvFocusableItem
 import iad1tya.echo.music.utils.makeTimeString
+import iad1tya.echo.music.constants.ExportedVideoIdsKey
 import iad1tya.echo.music.constants.HighPerformanceModeKey
 import iad1tya.echo.music.utils.ShareLinks
 import iad1tya.echo.music.utils.isLocalMediaId
@@ -279,11 +280,13 @@ fun AuraQueue(
     // move — no second implementation, this is a relocation, not a rebuild.
     val videoMode by playerConnection.videoMode.collectAsState()
     val highPerfMode by rememberPreference(HighPerformanceModeKey, false)
+    val (exportedVideoIds) = rememberPreference(ExportedVideoIdsKey, "")
     val isTvOrCarBar = iad1tya.echo.music.ui.utils.rememberIsTvOrCar()
     val hasVideo = mediaMetadata?.let { meta ->
+        val exportedVideo = exportedVideoIds.split(',').any { it.trim() == meta.id }
         videoMode || (
             (!highPerfMode || isTvOrCarBar) &&
-                (meta.isVideoSong || !meta.podcastVideoUrl.isNullOrEmpty())
+                (meta.isVideoSong || exportedVideo || !meta.podcastVideoUrl.isNullOrEmpty())
             )
     } ?: false
     val shareableLink = mediaMetadata?.let { !it.id.isLocalMediaId() } ?: false

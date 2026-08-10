@@ -204,6 +204,7 @@ import iad1tya.echo.music.utils.exportedFileUriExists
 import iad1tya.echo.music.utils.isLocalMediaId
 import iad1tya.echo.music.utils.parseExportedFileUriMap
 import iad1tya.echo.music.constants.ExportedFileUrisKey
+import iad1tya.echo.music.constants.ExportedVideoIdsKey
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.CoroutineScope
@@ -7459,6 +7460,24 @@ class MusicService :
             downloadCache.isCached(vidKey, 0, cachedLength)
     }
 
+    /**
+     * Local MP4 from AudioExportService (Vídeos exportados). Muxed A+V — play offline with
+     * [swapToVideo] `isMuxed = true`, never YouTube resolve.
+     */
+    private fun exportedMuxedVideoUri(songId: String): String? {
+        if (songId.isBlank()) return null
+        val videoIds = dataStore.get(ExportedVideoIdsKey, "")
+            .split(',')
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+        if (songId !in videoIds) return null
+        val raw = runBlocking(Dispatchers.IO) {
+            dataStore.data.first()[ExportedFileUrisKey].orEmpty()
+        }
+        val uri = parseExportedFileUriMap(raw)[songId] ?: return null
+        return uri.takeIf { exportedFileUriExists(this, it) }
+    }
+
     private fun currentEqPreampDb(): Double {
         val prefsPreamp = getSharedPreferences("echo_eq_prefs", Context.MODE_PRIVATE)
             .getFloat("preampDb", 0f).toDouble()
@@ -7520,6 +7539,19 @@ class MusicService :
                 pauseOfflineDownloadsForVideoPlayback()
             }
             swapToVideo(id, podcastVideo, isMuxed = true)
+            return
+        }
+        // Exported MP4 (Vídeos exportados): local muxed file — offline video without YT resolve.
+        // Must run BEFORE the isVideoSong gate: library rows often lack that flag after export.
+        val exportedVideo = exportedMuxedVideoUri(id)
+        if (!exportedVideo.isNullOrEmpty()) {
+            if (armModeWhenReady) {
+                _videoMode.value = true
+                pauseOfflineDownloadsForVideoPlayback()
+            } else if (!_videoMode.value) {
+                return
+            }
+            swapToVideo(id, exportedVideo, isMuxed = true)
             return
         }
         // A direct/local track with no video stream (e.g. an audio-only podcast reached while sticky video
@@ -7635,8 +7667,12 @@ class MusicService :
         videoModeItems[id] = VideoTrackState(url, origUri, isMuxed)
 
         val playing = player.playWhenReady
+        val sameUri = item.localConfiguration?.uri?.toString() == url
 
-        if (item.localConfiguration?.uri?.toString() == url) {
+        // Muxed local/export: audio path often already points at this same file via ResolvingDataSource.
+        // Early-return without rebuild left videoModeItems set but the player still on the audio factory
+        // → surface stayed black / toggle looked like "needs internet". Always rebuild for muxed.
+        if (sameUri && !isMuxed) {
             _videoUrl.value = url
             if (playing) player.playWhenReady = true
             // Only re-prepare from IDLE. Calling prepare() while BUFFERING restarts the pipeline and
@@ -7650,7 +7686,12 @@ class MusicService :
         }
 
         val pos = player.currentPosition
-        player.replaceMediaItem(idx, item.buildUpon().setUri(url).build())
+        // Tag forces MediaItem inequality when URI is unchanged (muxed export already playing as audio).
+        val videoItem = item.buildUpon()
+            .setUri(url)
+            .setTag(if (isMuxed) "muxed-video-$id" else item.localConfiguration?.tag)
+            .build()
+        player.replaceMediaItem(idx, videoItem)
         // Video swap: seek keyframe-aligned (CLOSEST_SYNC) so the first video frame decodes sooner — an EXACT
         // seek must decode every frame from the previous keyframe up to pos before it can show anything.
         // Restored to DEFAULT (EXACT) immediately so ONLY this swap seek is keyframe-aligned; all audio seeks
@@ -7660,9 +7701,8 @@ class MusicService :
         player.seekTo(idx, pos)
         player.setSeekParameters(androidx.media3.exoplayer.SeekParameters.DEFAULT)
         player.playWhenReady = playing
-        // Only prepare from IDLE. BUFFERING/READY already have a live pipeline — prepare() restarts it
-        // and looks like a hitch (same class of bug as maybeRecoverStuckVideo / same-URI path above).
-        if (player.playbackState == Player.STATE_IDLE) {
+        // Muxed same-URI rebuild must prepare even from READY so ProgressiveMediaSource takes over.
+        if (player.playbackState == Player.STATE_IDLE || (isMuxed && sameUri)) {
             player.prepare()
         }
         if (playing) player.playWhenReady = true
@@ -7724,6 +7764,21 @@ class MusicService :
     private fun prebuildNextVideoItem(nextIdx: Int, nextId: String) {
         if (nextId.isEmpty() || nextId.isLocalMediaId() || nextId.startsWith("http", ignoreCase = true)) return
         if (videoModeItems.containsKey(nextId)) return // already pre-built as video
+        // Local exported MP4 — no network; register as muxed before the YT path.
+        val exportedNext = exportedMuxedVideoUri(nextId)
+        if (!exportedNext.isNullOrEmpty()) {
+            val item = runCatching { player.getMediaItemAt(nextIdx) }.getOrNull() ?: return
+            if (item.mediaId != nextId) return
+            val origUri = item.localConfiguration?.uri?.toString()
+            videoModeItems[nextId] = VideoTrackState(exportedNext, origUri, true)
+            if (origUri != exportedNext) {
+                player.replaceMediaItem(
+                    nextIdx,
+                    item.buildUpon().setUri(exportedNext).setTag("muxed-video-$nextId").build(),
+                )
+            }
+            return
+        }
         // Only genuine YouTube VIDEO songs can be shown as merged video-only + audio. Anything else
         // (audio-only song, podcast, non-video) falls back to the on-demand path at its own transition.
         val nextMeta = runCatching { player.getMediaItemAt(nextIdx).metadata }.getOrNull()
