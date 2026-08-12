@@ -1,12 +1,13 @@
-# Aura Hi-Res Player 0.6.179
+# Aura Hi-Res Player 0.6.180
 
-Avisos más al día: se buscan al abrir la app y cada hora en uso, caducan a las 24 horas, se borran al leerlos y pueden salir en un popup.
+Los avisos vuelven a verse bien: ya no desaparecen al tocar fuera del popup, la lista no se vacía sola y se descargan con más fiabilidad.
 
 ---
 
 ## Avisos
 
-- Al abrir o volver a la app se buscan avisos nuevos; mientras usas la app, otra vez cada hora.
-- Cada aviso dura como máximo **24 horas** en la app (y se oculta si ya tiene más de 24 h desde su publicación).
-- Al leerlo (o “Entendido” en el popup) desaparece del buzón.
-- Popup automático cuando hay un aviso nuevo sin leer.
+- Tocar fuera del popup o atrás solo lo pospone: el aviso sigue en Avisos y en el punto rojo.
+- Solo "Entendido" o "Marcar leído" lo quitan del buzón (sigue el límite de 24 horas).
+- Tocar un aviso en la lista ya no lo borra; hay botón "Marcar leído".
+- Descarga más fiable (caché completa + respaldo si GitHub raw falla).
+- Herramienta en Windows: `scripts/publish-announcement.ps1` para publicar avisos sin APK ni Firebase.

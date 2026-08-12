@@ -151,11 +151,7 @@ fun AuraNoticesScreen(navController: NavController) {
                         NoticeCard(
                             notice = notice,
                             unread = notice.id !in readIds,
-                            onOpen = {
-                                scope.launch {
-                                    OwnerAnnouncements.markRead(context, notice.id)
-                                    readIds = OwnerAnnouncements.readIds(context)
-                                }
+                            onOpenUrl = {
                                 notice.url?.let { url ->
                                     runCatching {
                                         context.startActivity(
@@ -163,6 +159,12 @@ fun AuraNoticesScreen(navController: NavController) {
                                                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
                                         )
                                     }
+                                }
+                            },
+                            onMarkRead = {
+                                scope.launch {
+                                    OwnerAnnouncements.markRead(context, notice.id)
+                                    readIds = OwnerAnnouncements.readIds(context)
                                 }
                             },
                         )
@@ -178,14 +180,20 @@ fun AuraNoticesScreen(navController: NavController) {
 private fun NoticeCard(
     notice: OwnerAnnouncement,
     unread: Boolean,
-    onOpen: () -> Unit,
+    onOpenUrl: () -> Unit,
+    onMarkRead: () -> Unit,
 ) {
     val warning = notice.priority.equals("warning", ignoreCase = true) ||
-        notice.priority.equals("alert", ignoreCase = true)
+        notice.priority.equals("alert", ignoreCase = true) ||
+        notice.priority.equals("important", ignoreCase = true) ||
+        notice.priority.equals("urgent", ignoreCase = true)
+    val hasUrl = !notice.url.isNullOrBlank()
     AuraFloatingSurface(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onOpen),
+            .then(
+                if (hasUrl) Modifier.clickable(onClick = onOpenUrl) else Modifier,
+            ),
     ) {
         Column(
             modifier = Modifier
@@ -222,6 +230,18 @@ private fun NoticeCard(
                 style = AuraType.RowSubtitle,
                 color = AuraPalette.OnGroundMuted,
             )
+            if (unread) {
+                TextButton(
+                    onClick = onMarkRead,
+                    modifier = Modifier.align(Alignment.End),
+                ) {
+                    Text(
+                        text = stringResource(R.string.owner_notices_mark_read),
+                        color = AuraPalette.Teal,
+                        style = AuraType.RowSubtitle,
+                    )
+                }
+            }
         }
     }
 }

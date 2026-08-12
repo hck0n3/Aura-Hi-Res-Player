@@ -26,25 +26,25 @@ import kotlinx.coroutines.launch
 
 /**
  * Frost popup for the newest unread owner notice. Shown when [OwnerAnnouncements.popupNotice]
- * is non-null (after open/resume refresh or hourly poll). Acknowledging marks read and removes it.
+ * is non-null (after open/resume refresh or hourly poll).
+ * Outside/back only snoozes; [R.string.owner_notices_popup_ok] marks read and removes it.
  */
 @Composable
 fun OwnerNoticePopupHost(
     enabled: Boolean = true,
 ) {
-    if (!enabled) return
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val notice by OwnerAnnouncements.popupNotice.collectAsState()
+    val newUi = rememberNewUiEnabled()
+
+    if (!enabled) return
     val current = notice ?: return
 
-    val newUi = rememberNewUiEnabled()
     if (newUi) AuraDialogWindowEffects(enabled = true)
 
     AlertDialog(
-        onDismissRequest = {
-            scope.launch { OwnerAnnouncements.acknowledgePopup(context) }
-        },
+        onDismissRequest = { OwnerAnnouncements.snoozePopup() },
         properties = DialogProperties(dismissOnClickOutside = true, dismissOnBackPress = true),
         confirmButton = {
             TextButton(

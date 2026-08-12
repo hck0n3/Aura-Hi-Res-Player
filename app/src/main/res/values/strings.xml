@@ -697,6 +697,7 @@
     <string name="owner_notices_title">Notices</string>
     <string name="owner_notices_empty">No active notices. Messages expire after 24 hours or when you mark them read.</string>
     <string name="owner_notices_mark_all_read">Mark all read</string>
+    <string name="owner_notices_mark_read">Mark read</string>
     <string name="owner_notices_settings_desc">Messages and alerts from Aura</string>
     <string name="owner_notices_popup_ok">Got it</string>
     <string name="owner_notices_popup_eyebrow">NOTICE FROM AURA</string>

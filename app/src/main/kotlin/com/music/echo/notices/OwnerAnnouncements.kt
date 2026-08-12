@@ -21,7 +21,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import org.json.JSONArray
 import org.json.JSONObject
 import timber.log.Timber
 
@@ -49,14 +48,18 @@ fun unreadOwnerNoticeCount(items: List<OwnerAnnouncement>, readIdsCsv: String): 
  * Lifetime rules (owner):
  *  - Refresh on every app open and about once per hour while the Activity is resumed.
  *  - A notice lives at most 24h in the app (from firstSeen, and never if published >24h ago).
- *  - Marking read removes it from the inbox immediately.
+ *  - Explicit mark-read removes it from the inbox; dismissing the popup only snoozes it.
  *  - Unread fresh notices surface via [popupNotice] for an in-app dialog.
  */
 object OwnerAnnouncements {
     private const val TAG = "OwnerAnnouncements"
     const val REMOTE_URL =
         "https://raw.githubusercontent.com/hck0n3/Aura-Hi-Res-Player/main/announcements.json"
-    private const val CACHE_FILE = "announcements_cache.json"
+    /** Fallback when raw.githubusercontent is slow/blocked (same file on main). */
+    private const val REMOTE_FALLBACK_URL =
+        "https://cdn.jsdelivr.net/gh/hck0n3/Aura-Hi-Res-Player@main/announcements.json"
+    /** Last successful FULL remote payload — never overwrite with a pruned inbox. */
+    private const val REMOTE_CACHE_FILE = "announcements_remote.json"
     private const val FIRST_SEEN_FILE = "announcements_first_seen.json"
     private const val MAX_BODY_BYTES = 256 * 1024
     val TTL_MS: Long = TimeUnit.HOURS.toMillis(24)
@@ -73,16 +76,17 @@ object OwnerAnnouncements {
     @Volatile
     private var lastRefreshAtMs: Long = 0L
 
+    /** User dismissed the popup without reading; stay quiet until the next forced refresh (app open). */
+    @Volatile
+    private var popupSnoozed: Boolean = false
+
     fun loadCache(context: Context) {
         runCatching {
-            val file = File(context.filesDir, CACHE_FILE)
-            if (!file.exists()) return
-            val parsed = parse(file.readText())
-            // Read ids need a coroutine; prune without read filter here, refresh() will re-prune.
+            val parsed = loadRemoteSnapshot(context)
+            if (parsed.isEmpty()) return
             val pruned = pruneExpiredOnly(context, parsed)
             _items.value = pruned
-            writeCache(context, pruned)
-            refreshPopup(pruned)
+            applyPopup(pruned, forced = false)
         }.onFailure { Timber.tag(TAG).w(it, "loadCache failed") }
     }
 
@@ -90,46 +94,34 @@ object OwnerAnnouncements {
         mutex.withLock {
             val since = System.currentTimeMillis() - lastRefreshAtMs
             if (!force && _items.value.isNotEmpty() && since in 0 until MIN_REFRESH_MS) {
-                val pruned = pruneSync(context, _items.value, readIds(context))
+                val pruned = pruneSync(context, mergeBase(context, null), readIds(context))
                 _items.value = pruned
-                writeCache(context, pruned)
-                refreshPopup(pruned)
+                applyPopup(pruned, forced = false)
                 return@withLock
             }
-            var remote: List<OwnerAnnouncement>? = null
-            runCatching {
-                val url = "$REMOTE_URL?t=${System.currentTimeMillis()}"
-                val conn = (URL(url).openConnection() as HttpURLConnection).apply {
-                    connectTimeout = 8_000
-                    readTimeout = 8_000
-                    requestMethod = "GET"
-                    setRequestProperty("Accept", "application/json")
-                    useCaches = false
-                }
-                try {
-                    if (conn.responseCode !in 200..299) {
-                        Timber.tag(TAG).w("HTTP %s", conn.responseCode)
-                        return@runCatching
-                    }
-                    val body = conn.inputStream.bufferedReader().use { it.readText() }
-                    if (body.length > MAX_BODY_BYTES) return@runCatching
-                    remote = parse(body)
-                } finally {
-                    conn.disconnect()
-                }
-            }.onFailure { Timber.tag(TAG).w(it, "refresh failed") }
 
-            val base = remote ?: _items.value.ifEmpty {
+            val remoteBody = fetchRemoteBody()
+            val remote = remoteBody?.let { parse(it) }
+            if (!remoteBody.isNullOrBlank() && !remote.isNullOrEmpty()) {
                 runCatching {
-                    val f = File(context.filesDir, CACHE_FILE)
-                    if (f.exists()) parse(f.readText()) else emptyList()
-                }.getOrDefault(emptyList())
+                    File(context.filesDir, REMOTE_CACHE_FILE).writeText(remoteBody)
+                }.onFailure { Timber.tag(TAG).w(it, "save remote cache failed") }
+                lastRefreshAtMs = System.currentTimeMillis()
+                Timber.tag(TAG).i("Fetched %d notice(s) from remote", remote.size)
+            } else {
+                Timber.tag(TAG).w(
+                    "Remote fetch empty (body=%s parsed=%s)",
+                    remoteBody?.length ?: -1,
+                    remote?.size ?: -1,
+                )
             }
+
+            val base = mergeBase(context, remote)
             val pruned = pruneSync(context, base, readIds(context))
             _items.value = pruned
-            writeCache(context, pruned)
-            if (remote != null) lastRefreshAtMs = System.currentTimeMillis()
-            refreshPopup(pruned)
+            // App open / force refresh re-shows popup even after a snooze.
+            applyPopup(pruned, forced = force)
+            Timber.tag(TAG).i("Active notices after prune: %d", pruned.size)
         }
     }
 
@@ -146,13 +138,11 @@ object OwnerAnnouncements {
             set.add(id)
             prefs[ReadAnnouncementIdsKey] = set.toList().takeLast(200).joinToString(",")
         }
-        // Owner: once read, drop from inbox immediately (same as TTL expiry).
         mutex.withLock {
             val next = _items.value.filterNot { it.id == id }
             _items.value = next
-            writeCache(context, next)
             removeFirstSeen(context, id)
-            refreshPopup(next)
+            applyPopup(next, forced = true)
         }
     }
 
@@ -164,13 +154,18 @@ object OwnerAnnouncements {
         }
         mutex.withLock {
             _items.value = emptyList()
-            writeCache(context, emptyList())
             clearFirstSeen(context)
             _popupNotice.value = null
         }
     }
 
-    /** Dismiss popup: mark read (removes notice) and advance to the next unread if any. */
+    /** Dismiss popup without consuming the notice (stays in inbox + badge). */
+    fun snoozePopup() {
+        popupSnoozed = true
+        _popupNotice.value = null
+    }
+
+    /** Confirm popup: mark read (removes notice) and advance to the next unread if any. */
     suspend fun acknowledgePopup(context: Context) {
         val current = _popupNotice.value ?: return
         markRead(context, current.id)
@@ -181,28 +176,80 @@ object OwnerAnnouncements {
         return raw.split(',').map { it.trim() }.filter { it.isNotEmpty() }.toSet()
     }
 
-    private fun refreshPopup(active: List<OwnerAnnouncement>) {
-        _popupNotice.value = active.firstOrNull()
+    private fun applyPopup(active: List<OwnerAnnouncement>, forced: Boolean) {
+        val head = active.firstOrNull()
+        if (head == null) {
+            _popupNotice.value = null
+            return
+        }
+        if (forced) {
+            popupSnoozed = false
+            _popupNotice.value = head
+            return
+        }
+        if (popupSnoozed) {
+            _popupNotice.value = null
+            return
+        }
+        _popupNotice.value = head
     }
 
-    private fun writeCache(context: Context, items: List<OwnerAnnouncement>) {
-        runCatching {
-            val arr = JSONArray()
-            items.forEach { n ->
-                arr.put(
-                    JSONObject().apply {
-                        put("id", n.id)
-                        put("title", n.title)
-                        put("body", n.body)
-                        put("date", n.date)
-                        put("priority", n.priority)
-                        if (!n.url.isNullOrBlank()) put("url", n.url)
-                        if (!n.publishedAt.isNullOrBlank()) put("publishedAt", n.publishedAt)
-                    },
-                )
+    private fun mergeBase(
+        context: Context,
+        remote: List<OwnerAnnouncement>?,
+    ): List<OwnerAnnouncement> {
+        if (!remote.isNullOrEmpty()) return remote
+        val snap = loadRemoteSnapshot(context)
+        if (snap.isNotEmpty()) return snap
+        return _items.value
+    }
+
+    private fun loadRemoteSnapshot(context: Context): List<OwnerAnnouncement> {
+        return runCatching {
+            val file = File(context.filesDir, REMOTE_CACHE_FILE)
+            val legacy = File(context.filesDir, "announcements_cache.json")
+            val src = when {
+                file.exists() -> file
+                legacy.exists() -> legacy
+                else -> return emptyList()
             }
-            File(context.filesDir, CACHE_FILE).writeText(JSONObject().put("items", arr).toString())
-        }.onFailure { Timber.tag(TAG).w(it, "writeCache failed") }
+            parse(src.readText())
+        }.getOrDefault(emptyList())
+    }
+
+    private fun fetchRemoteBody(): String? {
+        val urls = listOf(
+            "$REMOTE_URL?t=${System.currentTimeMillis()}",
+            "$REMOTE_FALLBACK_URL?t=${System.currentTimeMillis()}",
+        )
+        for (url in urls) {
+            val body = runCatching { httpGet(url) }.onFailure {
+                Timber.tag(TAG).w(it, "GET failed %s", url.substringBefore('?'))
+            }.getOrNull()
+            if (!body.isNullOrBlank()) return body
+        }
+        return null
+    }
+
+    private fun httpGet(url: String): String? {
+        val conn = (URL(url).openConnection() as HttpURLConnection).apply {
+            connectTimeout = 8_000
+            readTimeout = 8_000
+            requestMethod = "GET"
+            setRequestProperty("Accept", "application/json")
+            useCaches = false
+        }
+        try {
+            if (conn.responseCode !in 200..299) {
+                Timber.tag(TAG).w("HTTP %s for %s", conn.responseCode, url.substringBefore('?'))
+                return null
+            }
+            val body = conn.inputStream.bufferedReader().use { it.readText() }
+            if (body.length > MAX_BODY_BYTES) return null
+            return body
+        } finally {
+            conn.disconnect()
+        }
     }
 
     private fun pruneExpiredOnly(

@@ -636,6 +636,7 @@
     <string name="owner_notices_title">Avisos</string>
     <string name="owner_notices_empty">No hay avisos activos. Caducan a las 24 horas o al marcarlos como leídos.</string>
     <string name="owner_notices_mark_all_read">Marcar todo leído</string>
+    <string name="owner_notices_mark_read">Marcar leído</string>
     <string name="owner_notices_settings_desc">Mensajes y alertas de Aura</string>
     <string name="owner_notices_popup_ok">Entendido</string>
     <string name="owner_notices_popup_eyebrow">AVISO DE AURA</string>
