@@ -48,8 +48,11 @@ fun unreadOwnerNoticeCount(items: List<OwnerAnnouncement>, readIdsCsv: String): 
  * Lifetime rules (owner):
  *  - Refresh on every app open and about once per hour while the Activity is resumed.
  *  - A notice lives at most 24h in the app (from firstSeen, and never if published >24h ago).
- *  - Explicit mark-read removes it from the inbox; dismissing the popup only snoozes it.
+ *  - Explicit mark-read removes it from the inbox; dismissing the popup marks it read.
  *  - Unread fresh notices surface via [popupNotice] for an in-app dialog.
+ *  - First contact with the feed (fresh install / first open after this rule): only the NEWEST
+ *    notice is offered; older items still in the remote JSON are treated as historical backlog
+ *    so a new phone does not replay every announcement from the last 24h.
  */
 object OwnerAnnouncements {
     private const val TAG = "OwnerAnnouncements"
@@ -61,6 +64,8 @@ object OwnerAnnouncements {
     /** Last successful FULL remote payload — never overwrite with a pruned inbox. */
     private const val REMOTE_CACHE_FILE = "announcements_remote.json"
     private const val FIRST_SEEN_FILE = "announcements_first_seen.json"
+    /** One-shot: after this exists, backlog auto-consume will never run again on this install. */
+    private const val BOOTSTRAP_FILE = "announcements_inbox_bootstrapped"
     private const val MAX_BODY_BYTES = 256 * 1024
     val TTL_MS: Long = TimeUnit.HOURS.toMillis(24)
     /** Soft throttle only for non-forced callers; open/resume uses force=true. */
@@ -104,7 +109,9 @@ object OwnerAnnouncements {
 
             val since = System.currentTimeMillis() - lastRefreshAtMs
             if (!force && _items.value.isNotEmpty() && since in 0 until MIN_REFRESH_MS) {
-                val pruned = pruneSync(context, mergeBase(context, null), readIds(context))
+                val base = mergeBase(context, null)
+                val read = consumeHistoricalBacklogOnce(context, base, readIds(context))
+                val pruned = pruneSync(context, base, read)
                 _items.value = pruned
                 applyPopup(pruned, forced = false)
                 return@withLock
@@ -126,8 +133,9 @@ object OwnerAnnouncements {
                 )
             }
 
-            val read = readIds(context)
+            val read0 = readIds(context)
             val base = mergeBase(context, remote)
+            val read = consumeHistoricalBacklogOnce(context, base, read0)
             val pruned = pruneSync(context, base, read)
             _items.value = pruned
             // Only offer a popup after the read-filter prune. force=true re-arms after snooze for
@@ -135,6 +143,44 @@ object OwnerAnnouncements {
             applyPopup(pruned, forced = force)
             Timber.tag(TAG).i("Active notices after prune: %d (read=%d)", pruned.size, read.size)
         }
+    }
+
+    /**
+     * Fresh install (or first open of a build that introduced this rule): the remote feed may still
+     * list every notice from the last 24h. Replaying that backlog as "new" is wrong — the user only
+     * needs the latest one. Mark everything except the newest id as read, once.
+     */
+    private suspend fun consumeHistoricalBacklogOnce(
+        context: Context,
+        incoming: List<OwnerAnnouncement>,
+        read: Set<String>,
+    ): Set<String> {
+        if (incoming.isEmpty()) return read
+        val marker = File(context.filesDir, BOOTSTRAP_FILE)
+        if (marker.exists()) return read
+        val newestId = incoming
+            .maxWithOrNull(
+                compareBy<OwnerAnnouncement> { publishedEpochMs(it) ?: Long.MIN_VALUE }
+                    .thenBy { it.id },
+            )
+            ?.id
+            ?: return read.also {
+                runCatching { marker.writeText("1") }
+            }
+        val backlog = incoming.map { it.id }.filter { it != newestId && it !in read }
+        if (backlog.isNotEmpty()) {
+            context.dataStore.edit { prefs ->
+                val set = (read + backlog).toList().takeLast(200).toMutableSet()
+                prefs[ReadAnnouncementIdsKey] = set.joinToString(",")
+            }
+            Timber.tag(TAG).i(
+                "Inbox bootstrap: kept newest=%s, marked %d older notice(s) read",
+                newestId,
+                backlog.size,
+            )
+        }
+        runCatching { marker.writeText(newestId) }
+        return read + backlog.toSet()
     }
 
     suspend fun unreadCount(context: Context): Int {

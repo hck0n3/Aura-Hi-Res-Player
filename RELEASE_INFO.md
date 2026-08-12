@@ -1,11 +1,15 @@
-# Aura Hi-Res Player 0.6.182
+# Aura Hi-Res Player 0.6.183
 
-Reportar errores y sugerencias desde la app: llegan a aurahires@gmail.com.
+Correo de reportes sin menú de compartir, acceso rápido bajo Avisos, e instalación nueva sin reventar todos los avisos viejos.
 
 ---
 
 ## Reportar y sugerir
 
-- Nuevo apartado en Ajustes (y en Acerca de): elige **error** o **sugerencia**, escribe y continúa en tu correo.
-- Todo va a **aurahires@gmail.com** (puedes adjuntar registros de diagnóstico).
-- Ese correo figura ahora en los Términos y Condiciones (v2) y en la política de privacidad.
+- «Abrir app de correo» abre solo tu app de correo (predeterminada / Gmail), con el adjunto si lo pediste — sin WhatsApp ni otras apps.
+- Instrucciones claras en pantalla para no enviar esa información a otro sitio.
+- Acceso directo en Ajustes, justo debajo de Avisos.
+
+## Avisos
+
+- En un móvil nuevo (o la primera vez con esta regla) solo aparece el **último** aviso; no se reponen todos los de las últimas 24 h.

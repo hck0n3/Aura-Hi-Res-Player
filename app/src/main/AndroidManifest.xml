@@ -46,6 +46,11 @@
         <intent>
             <action android:name="android.media.action.DISPLAY_AUDIO_EFFECT_CONTROL_PANEL" />
         </intent>
+        <!-- Resolve the default / available mail apps for Report & suggest (no generic share sheet). -->
+        <intent>
+            <action android:name="android.intent.action.SENDTO" />
+            <data android:scheme="mailto" />
+        </intent>
     </queries>
     <application
         android:name="iad1tya.echo.music.App"

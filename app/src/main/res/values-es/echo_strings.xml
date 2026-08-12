@@ -834,12 +834,15 @@
     <string name="feedback_title">Reportar y sugerir</string>
     <string name="feedback_settings_desc">Envía reportes de errores e ideas a %1$s</string>
     <string name="feedback_intro">Tu mensaje se abre en tu app de correo, dirigido a %1$s. No se envía nada hasta que pulses Enviar allí.</string>
+    <string name="feedback_howto_title">Cómo usar este apartado</string>
+    <string name="feedback_howto_body">1. Elige Reporte de error o Sugerencia.\n2. Escribe con tus palabras qué pasó o qué te gustaría.\n3. Si es un error, deja activado «Adjuntar registros» para que veamos la versión y el dispositivo.\n4. Pulsa «Abrir app de correo». Aura abre tu app de correo predeterminada con el mensaje ya dirigido a %1$s y el archivo adjunto (si lo pediste).\n5. En la app de correo, pulsa Enviar. No compartas el borrador por WhatsApp, Drive u otras apps: esa información es solo para el soporte de Aura.</string>
     <string name="feedback_kind_bug">Reporte de error</string>
     <string name="feedback_kind_suggestion">Sugerencia</string>
     <string name="feedback_message_hint">Describe qué pasó o qué te gustaría…</string>
     <string name="feedback_attach_logs">Adjuntar registros de diagnóstico</string>
     <string name="feedback_attach_logs_desc">Incluye versión de la app, datos del dispositivo y registros recientes (sin títulos de canciones ni cookies de cuenta)</string>
-    <string name="feedback_send">Continuar en el correo</string>
+    <string name="feedback_send">Abrir app de correo</string>
+    <string name="feedback_send_hint">Abre solo tu app de correo, ya dirigida a %1$s. Confirma con Enviar allí.</string>
     <string name="feedback_no_mail_app">No hay app de correo. Instala Gmail u otra, o escribe a aurahires@gmail.com</string>
     <string name="terms_accepted_on">Aceptados el %1$s (términos v%2$d)</string>
     <string name="found_in_settings_content">Disponible en Ajustes &gt; Contenido</string>

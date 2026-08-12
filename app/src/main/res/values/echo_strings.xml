@@ -634,12 +634,15 @@
     <string name="feedback_title">Report &amp; suggest</string>
     <string name="feedback_settings_desc">Send error reports and ideas to %1$s</string>
     <string name="feedback_intro">Your message opens in your email app, addressed to %1$s. Nothing is sent until you tap Send there.</string>
+    <string name="feedback_howto_title">How to use this</string>
+    <string name="feedback_howto_body">1. Choose Error report or Suggestion.\n2. Describe what happened (or your idea) in your own words.\n3. For errors, leave “Attach diagnostic logs” ON so we can see the app version and device info.\n4. Tap “Open email app”. Aura opens your default mail app with the message already addressed to %1$s and the log file attached when enabled.\n5. In the mail app, tap Send. Do not share the draft to WhatsApp, Drive, or other apps — that data is only for Aura support.</string>
     <string name="feedback_kind_bug">Error report</string>
     <string name="feedback_kind_suggestion">Suggestion</string>
     <string name="feedback_message_hint">Describe what happened or what you would like…</string>
     <string name="feedback_attach_logs">Attach diagnostic logs</string>
     <string name="feedback_attach_logs_desc">Includes app version, device info, and recent logs (no song titles or account cookies)</string>
-    <string name="feedback_send">Continue in email</string>
+    <string name="feedback_send">Open email app</string>
+    <string name="feedback_send_hint">Opens only your mail app, already addressed to %1$s. Confirm with Send there.</string>
     <string name="feedback_no_mail_app">No email app found. Install Gmail or another mail app, or write to aurahires@gmail.com</string>
 
     <!-- Hardcoded strings -->

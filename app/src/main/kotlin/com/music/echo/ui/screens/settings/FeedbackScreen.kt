@@ -109,7 +109,14 @@ fun FeedbackScreen(
                 .padding(horizontal = 16.dp),
         ) {
             Text(
-                text = stringResource(R.string.feedback_intro, SupportContact.EMAIL),
+                text = stringResource(R.string.feedback_howto_title),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = ink,
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = stringResource(R.string.feedback_howto_body, SupportContact.EMAIL),
                 style = MaterialTheme.typography.bodyMedium,
                 color = ink.copy(alpha = 0.85f),
             )
@@ -185,6 +192,12 @@ fun FeedbackScreen(
             ) {
                 Text(stringResource(R.string.feedback_send))
             }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = stringResource(R.string.feedback_send_hint, SupportContact.EMAIL),
+                style = MaterialTheme.typography.bodySmall,
+                color = ink.copy(alpha = 0.7f),
+            )
             Spacer(Modifier.height(24.dp))
         }
     }
