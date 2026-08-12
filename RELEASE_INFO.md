@@ -1,32 +1,12 @@
-# Aura Hi-Res Player 0.6.178
+# Aura Hi-Res Player 0.6.179
 
-Arreglo urgente: los álbumes vuelven a reproducirse (regresión de 0.6.176). También Auto-EQ, biblioteca del artista, vídeo manual, canvas y más.
+Avisos más al día: se buscan al abrir la app y cada hora en uso, caducan a las 24 horas, se borran al leerlos y pueden salir en un popup.
 
 ---
 
-## Crítico — reproducción
+## Avisos
 
-- Tocar una canción de un álbum vuelve a sonar **esa** canción (el filtro “solo música” ya no vacía álbumes, playlists ni Me gusta).
-- La radio automática sigue filtrando tutoriales; las colas que tú eliges no.
-
-## Ecualizador
-
-- Desactivar Auto-EQ **solo** quita Auto-EQ; tu curva manual y EQ ON se quedan.
-- Los tres presets de nombre más largo van en la última fila.
-- Menos scroll de la pantalla al arrastrar bandas.
-
-## Artista / biblioteca
-
-- “Tu biblioteca” incluye Me gusta, temas en tus playlists, locales y descargas.
-
-## Vídeo y portadas
-
-- Toque manual de un vídeo entra en modo vídeo aunque el modo sea canción / alto rendimiento.
-- Al salir de Picture-in-Picture con vídeo, se abre el reproductor con el vídeo.
-- Si un álbum no tiene canvas animado pero el artista sí, la portada usa el motion del artista (Interfaz nueva y clásica).
-- FFT del EQ: rebind al cambiar a modo vídeo (menos “sin señal”).
-
-## Otros
-
-- Mejor recuperación ante error de contenedor 3003 / NoDeclaredBrand.
-- Avisos: se refrescan al volver a la app (edita `announcements.json` en GitHub main).
+- Al abrir o volver a la app se buscan avisos nuevos; mientras usas la app, otra vez cada hora.
+- Cada aviso dura como máximo **24 horas** en la app (y se oculta si ya tiene más de 24 h desde su publicación).
+- Al leerlo (o “Entendido” en el popup) desaparece del buzón.
+- Popup automático cuando hay un aviso nuevo sin leer.

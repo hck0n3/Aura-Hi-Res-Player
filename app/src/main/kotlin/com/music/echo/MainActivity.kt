@@ -347,6 +347,7 @@ class MainActivity : ComponentActivity() {
     // the key didn't change, so we need a separate signal).
     private var pipExitExpandTrigger by mutableStateOf(0)
     private var pipPlayPauseJob: kotlinx.coroutines.Job? = null
+    private var noticesPollJob: kotlinx.coroutines.Job? = null
     // Receives the PiP RemoteAction taps (play/pause, next, prev) and drives the player.
     private val pipReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -422,10 +423,18 @@ class MainActivity : ComponentActivity() {
         // external controls work normally (onServiceConnected covers the cold-start bind-after-onStart case).
         playerConnection?.service?.onAppForegrounded()
 
-        // Pull owner notices on resume so commits to announcements.json show without a cold process start.
-        lifecycleScope.launch(Dispatchers.IO) {
+        // Notices: force pull on every open/resume, then poll about once per hour while resumed.
+        noticesPollJob?.cancel()
+        noticesPollJob = lifecycleScope.launch(Dispatchers.IO) {
             runCatching {
-                iad1tya.echo.music.notices.OwnerAnnouncements.refresh(applicationContext)
+                iad1tya.echo.music.notices.OwnerAnnouncements.loadCache(applicationContext)
+                iad1tya.echo.music.notices.OwnerAnnouncements.refresh(applicationContext, force = true)
+            }
+            while (true) {
+                kotlinx.coroutines.delay(60L * 60L * 1_000L)
+                runCatching {
+                    iad1tya.echo.music.notices.OwnerAnnouncements.refresh(applicationContext, force = true)
+                }
             }
         }
 
@@ -447,6 +456,8 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onStop() {
+        noticesPollJob?.cancel()
+        noticesPollJob = null
         if (isServiceBound) {
             runCatching { unbindService(serviceConnection) }
             isServiceBound = false
@@ -2208,6 +2219,11 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
                         )
+                    }
+
+                    // Owner notices popup: after welcome so first-run tour stays first.
+                    if (!showWelcomeDialog) {
+                        iad1tya.echo.music.ui.newui.OwnerNoticePopupHost()
                     }
 
                     if (showBatteryReliabilityDialog) {

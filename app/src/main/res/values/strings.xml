@@ -695,9 +695,11 @@
     <string name="migrate_another">Migrate another</string>
     <string name="migrate_export_failures_csv">Export unmatched (CSV)</string>
     <string name="owner_notices_title">Notices</string>
-    <string name="owner_notices_empty">No notices yet. When Aura has a message for you, it will show up here.</string>
+    <string name="owner_notices_empty">No active notices. Messages expire after 24 hours or when you mark them read.</string>
     <string name="owner_notices_mark_all_read">Mark all read</string>
     <string name="owner_notices_settings_desc">Messages and alerts from Aura</string>
+    <string name="owner_notices_popup_ok">Got it</string>
+    <string name="owner_notices_popup_eyebrow">NOTICE FROM AURA</string>
     <string name="delete_exported_video">Delete from device</string>
     <string name="delete_exported_video_desc">Remove from Aura and delete the file from storage</string>
     <string name="delete_exported_video_done">Video deleted</string>
