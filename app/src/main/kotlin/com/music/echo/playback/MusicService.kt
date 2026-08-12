@@ -4741,6 +4741,9 @@ class MusicService :
     fun toggleLike() {
         scope.launch {
             val meta = player.currentMetadata ?: return@launch
+            // Read on Main BEFORE database.query — that block runs on Room's queryExecutor
+            // (pool-N-thread-M). Touching ExoPlayer there throws IllegalStateException.
+            val currentlyPlayingId = player.currentMediaItem?.mediaId
             // Insert (if needed) + read-back + toggle + update MUST happen inside ONE database.query
             // task. database.query runs its block asynchronously on the query executor, so the old code
             // used two separate query{} calls and raced: it read the song back BEFORE the insert had
@@ -4775,7 +4778,7 @@ class MusicService :
                     // (audio+video). Audio-only enqueue still races the live mux → hitch/403.
                     // Flushed in exitVideoMode.
                     val watchingThisInVideo =
-                        _videoMode.value && player.currentMediaItem?.mediaId == toggledFinal.id
+                        _videoMode.value && currentlyPlayingId == toggledFinal.id
                     try {
                         enqueueSongDownloads(
                             this@MusicService,

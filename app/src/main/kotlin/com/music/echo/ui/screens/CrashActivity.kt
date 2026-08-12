@@ -90,7 +90,15 @@ class CrashActivity : ComponentActivity() {
             val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
             val fileName = "aura_crash_$timestamp.txt"
             val crashFile = File(cacheDir, fileName)
-            crashFile.writeText(crashLog)
+            // Full bundle: crash text plus app log, system exits, and recent playback log so
+            // support never gets only the throwable without the surrounding session.
+            crashFile.writeText(
+                iad1tya.echo.music.utils.AppLogger.buildFullShareBundle(
+                    context = this,
+                    reason = "crash share",
+                    prepend = crashLog,
+                )
+            )
             
             
             val uri = FileProvider.getUriForFile(

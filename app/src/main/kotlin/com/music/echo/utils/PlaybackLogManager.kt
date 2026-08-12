@@ -70,6 +70,30 @@ object PlaybackLogManager {
         _logs.value = emptyList()
     }
 
+    /**
+     * Plain-text snapshot of the newest [limit] entries (all levels: INFO/WARNING/ERROR/DEBUG).
+     * Used by shareable diagnostic bundles — WARNING/ERROR are already mirrored to app.log, but
+     * successful resolves and timing lines stay RAM-only until a crash embeds them.
+     */
+    fun formatRecent(limit: Int = 80): String {
+        val entries = _logs.value.takeLast(limit.coerceAtLeast(0))
+        if (entries.isEmpty()) return ""
+        return buildString {
+            for (e in entries) {
+                append(e.timestamp)
+                append(" [")
+                append(e.level.name)
+                append("] ")
+                append(e.message)
+                if (!e.details.isNullOrBlank()) {
+                    append(' ')
+                    append(e.details)
+                }
+                appendLine()
+            }
+        }
+    }
+
     private fun detailed(message: String, details: String?): String =
         if (details.isNullOrBlank()) message else "$message — $details"
 }

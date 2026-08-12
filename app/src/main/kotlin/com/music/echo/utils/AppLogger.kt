@@ -77,6 +77,56 @@ object AppLogger {
     )
 
     /**
+     * Full shareable diagnostics: header + last crash + app log + system exits + recent playback
+     * log (in-memory). Used by feedback email, crash share, and Logs ▸ Share so every report
+     * carries every log type the owner needs to diagnose "si o no" without asking the user to
+     * open three tabs.
+     *
+     * Still redacted via [LogRedaction] on every section. Never includes song titles/artists or
+     * account cookies.
+     */
+    fun buildFullShareBundle(
+        context: Context,
+        reason: String = "shared diagnostics",
+        prepend: String? = null,
+    ): String = buildString {
+        if (!prepend.isNullOrBlank()) {
+            append(prepend.trimEnd())
+            appendLine()
+            appendLine()
+        }
+        append(DiagnosticHeader.build(context, reason))
+        appendLine()
+
+        val crash = readLastCrash(context)
+        if (crash.isNotBlank()) {
+            appendLine("--- LAST CRASH ---")
+            appendLine(crash)
+            appendLine()
+        }
+
+        val appLog = readRecentLog(context)
+        if (appLog.isNotBlank()) {
+            appendLine("--- APP LOG (recent) ---")
+            appendLine(appLog)
+            appendLine()
+        }
+
+        val exits = readExitReasons(context)
+        if (exits.isNotBlank()) {
+            appendLine("--- SYSTEM EXITS ---")
+            appendLine(exits)
+            appendLine()
+        }
+
+        val playback = PlaybackLogManager.formatRecent(80)
+        if (playback.isNotBlank()) {
+            appendLine("--- PLAYBACK LOG (recent, in-memory) ---")
+            append(playback)
+        }
+    }
+
+    /**
      * Writes the [DiagnosticHeader] block into `app.log` once per launch.
      *
      * Two jobs. It makes the log self-describing — build, flavor, device, battery saver and the

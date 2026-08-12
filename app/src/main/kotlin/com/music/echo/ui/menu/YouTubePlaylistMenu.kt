@@ -760,53 +760,74 @@ fun YouTubePlaylistMenu(
                             )
                         )
                     }
-                    if (songs.isNotEmpty()) {
-                        add(
-                            when (downloadState) {
-                                Download.STATE_COMPLETED -> {
-                                    Material3MenuItemData(
-                                        title = {
-                                            Text(
-                                                text = stringResource(R.string.remove_download)
-                                            )
-                                        },
-                                        icon = {
-                                            Icon(
-                                                painter = painterResource(R.drawable.offline),
-                                                contentDescription = null
-                                            )
-                                        },
-                                        onClick = {
-                                            showRemoveDownloadDialog = true
-                                        }
-                                    )
-                                }
-                                Download.STATE_QUEUED, Download.STATE_DOWNLOADING -> {
-                                    Material3MenuItemData(
-                                        title = { Text(text = stringResource(R.string.downloading)) },
-                                        icon = {
-                                            CircularProgressIndicator(
-                                                modifier = Modifier.size(24.dp),
-                                                strokeWidth = 2.dp
-                                            )
-                                        },
-                                        onClick = {
-                                            showRemoveDownloadDialog = true
-                                        }
-                                    )
-                                }
-                                else -> {
-                                    Material3MenuItemData(
-                                        title = { Text(text = stringResource(R.string.action_download)) },
-                                        description = { Text(text = stringResource(R.string.download_desc)) },
-                                        icon = {
-                                            Icon(
-                                                painter = painterResource(R.drawable.download),
-                                                contentDescription = null,
-                                            )
-                                        },
-                                        onClick = {
-                                            songs.forEach { song ->
+                    // Always show Download — callers from Home/Search/Artist/Library almost never pass
+                    // `songs`, so gating on songs.isNotEmpty() hid the action or made it a silent no-op.
+                    // Fetch on tap the same way Play Next / Add to Queue already do.
+                    add(
+                        when (downloadState) {
+                            Download.STATE_COMPLETED -> {
+                                Material3MenuItemData(
+                                    title = {
+                                        Text(
+                                            text = stringResource(R.string.remove_download)
+                                        )
+                                    },
+                                    icon = {
+                                        Icon(
+                                            painter = painterResource(R.drawable.offline),
+                                            contentDescription = null
+                                        )
+                                    },
+                                    onClick = {
+                                        showRemoveDownloadDialog = true
+                                    }
+                                )
+                            }
+                            Download.STATE_QUEUED, Download.STATE_DOWNLOADING -> {
+                                Material3MenuItemData(
+                                    title = { Text(text = stringResource(R.string.downloading)) },
+                                    icon = {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(24.dp),
+                                            strokeWidth = 2.dp
+                                        )
+                                    },
+                                    onClick = {
+                                        showRemoveDownloadDialog = true
+                                    }
+                                )
+                            }
+                            else -> {
+                                Material3MenuItemData(
+                                    title = { Text(text = stringResource(R.string.action_download)) },
+                                    description = { Text(text = stringResource(R.string.download_desc)) },
+                                    icon = {
+                                        Icon(
+                                            painter = painterResource(R.drawable.download),
+                                            contentDescription = null,
+                                        )
+                                    },
+                                    onClick = {
+                                        coroutineScope.launch {
+                                            val toDownload = songs.ifEmpty {
+                                                withContext(Dispatchers.IO) {
+                                                    YouTube
+                                                        .playlist(playlist.id)
+                                                        .completed()
+                                                        .getOrNull()
+                                                        ?.songs
+                                                        .orEmpty()
+                                                }
+                                            }
+                                            if (toDownload.isEmpty()) {
+                                                Toast.makeText(
+                                                    context,
+                                                    context.getString(R.string.playlist_download_empty),
+                                                    Toast.LENGTH_SHORT,
+                                                ).show()
+                                                return@launch
+                                            }
+                                            toDownload.forEach { song ->
                                                 val downloadRequest =
                                                     DownloadRequest.Builder(song.id, song.id.toUri())
                                                         .setCustomCacheKey(song.id)
@@ -820,11 +841,12 @@ fun YouTubePlaylistMenu(
                                                 )
                                             }
                                         }
-                                    )
-                                }
+                                        onDismiss()
+                                    }
+                                )
                             }
-                        )
-                    }
+                        }
+                    )
                     add(
                         Material3MenuItemData(
                             title = { Text(text = stringResource(R.string.share)) },

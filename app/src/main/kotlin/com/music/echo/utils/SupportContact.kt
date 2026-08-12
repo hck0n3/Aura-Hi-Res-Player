@@ -53,14 +53,33 @@ object SupportContact {
     }
 
     private fun openMailto(context: Context, subject: String, body: String): Boolean {
-        val intent = Intent(Intent.ACTION_SENDTO).apply {
-            data = Uri.parse("mailto:$EMAIL")
+        // Gmail / Samsung Email / Outlook ignore EXTRA_TEXT on ACTION_SENDTO mailto. Suggestions
+        // default to attachLogs=false and hit this path — the compose window opened empty. Prefer
+        // ACTION_SEND (message/rfc822) so EXTRA_TEXT actually fills the draft; still restricted to
+        // real mail packages via launchMailOnly.
+        val sendIntent = Intent(Intent.ACTION_SEND).apply {
+            type = "message/rfc822"
             putExtra(Intent.EXTRA_EMAIL, arrayOf(EMAIL))
             putExtra(Intent.EXTRA_SUBJECT, subject)
             putExtra(Intent.EXTRA_TEXT, body)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
-        return launchMailOnly(context, intent, attachmentUri = null)
+        if (launchMailOnly(context, sendIntent, attachmentUri = null)) return true
+
+        // Fallback: body embedded in the mailto URI (capped — some stacks reject huge URIs).
+        val uri = Uri.parse(
+            "mailto:$EMAIL" +
+                "?subject=${Uri.encode(subject)}" +
+                "&body=${Uri.encode(body.take(3500))}",
+        )
+        val mailtoIntent = Intent(Intent.ACTION_SENDTO).apply {
+            data = uri
+            putExtra(Intent.EXTRA_EMAIL, arrayOf(EMAIL))
+            putExtra(Intent.EXTRA_SUBJECT, subject)
+            putExtra(Intent.EXTRA_TEXT, body)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        return launchMailOnly(context, mailtoIntent, attachmentUri = null)
     }
 
     private fun openWithLogAttachment(
@@ -70,21 +89,12 @@ object SupportContact {
     ): Boolean {
         val attachment = runCatching {
             val dir = File(context.filesDir, "logs").apply { mkdirs() }
-            val crash = AppLogger.readLastCrash(context)
-            val appLog = AppLogger.readRecentLog(context)
-            val fileBody = buildString {
-                append(body)
-                appendLine()
-                if (crash.isNotBlank()) {
-                    appendLine("--- LAST CRASH ---")
-                    appendLine(crash)
-                    appendLine()
-                }
-                if (appLog.isNotBlank()) {
-                    appendLine("--- APP LOG (recent) ---")
-                    append(appLog)
-                }
-            }
+            // All log types in one file: crash + app.log + system exits + playback RAM log.
+            val fileBody = AppLogger.buildFullShareBundle(
+                context = context,
+                reason = "feedback",
+                prepend = body,
+            )
             File(dir, "aura_feedback.txt").also { it.writeText(fileBody) }
         }.getOrNull()
 

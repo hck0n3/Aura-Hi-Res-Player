@@ -5,6 +5,7 @@ package iad1tya.echo.music.ui.menu
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.content.res.Configuration
+import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -79,6 +80,7 @@ import iad1tya.echo.music.ui.component.YouTubeListItem
 import iad1tya.echo.music.utils.reportException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @SuppressLint("MutableCollectionMutableState")
@@ -504,19 +506,54 @@ fun YouTubeAlbumMenu(
                                     )
                                 },
                                 onClick = {
-                                    album?.songs?.forEach { song ->
-                                        val downloadRequest =
-                                            DownloadRequest
-                                                .Builder(song.id, song.id.toUri())
-                                                .setCustomCacheKey(song.id)
-                                                .setData(song.song.title.toByteArray())
-                                                .build()
-                                        DownloadService.sendAddDownload(
-                                            context,
-                                            ExoDownloadService::class.java,
-                                            downloadRequest,
-                                            false,
-                                        )
+                                    coroutineScope.launch {
+                                        val local = album?.songs.orEmpty()
+                                        if (local.isNotEmpty()) {
+                                            local.forEach { song ->
+                                                val downloadRequest =
+                                                    DownloadRequest
+                                                        .Builder(song.id, song.id.toUri())
+                                                        .setCustomCacheKey(song.id)
+                                                        .setData(song.song.title.toByteArray())
+                                                        .build()
+                                                DownloadService.sendAddDownload(
+                                                    context,
+                                                    ExoDownloadService::class.java,
+                                                    downloadRequest,
+                                                    false,
+                                                )
+                                            }
+                                            onDismiss()
+                                            return@launch
+                                        }
+                                        val page = withContext(Dispatchers.IO) {
+                                            YouTube.album(albumItem.id).getOrNull()
+                                        }
+                                        val remote = page?.songs.orEmpty()
+                                        if (page == null || remote.isEmpty()) {
+                                            Toast.makeText(
+                                                context,
+                                                context.getString(R.string.playlist_download_empty),
+                                                Toast.LENGTH_SHORT,
+                                            ).show()
+                                            return@launch
+                                        }
+                                        database.transaction { insert(page) }
+                                        remote.forEach { song ->
+                                            val downloadRequest =
+                                                DownloadRequest
+                                                    .Builder(song.id, song.id.toUri())
+                                                    .setCustomCacheKey(song.id)
+                                                    .setData(song.title.toByteArray())
+                                                    .build()
+                                            DownloadService.sendAddDownload(
+                                                context,
+                                                ExoDownloadService::class.java,
+                                                downloadRequest,
+                                                false,
+                                            )
+                                        }
+                                        onDismiss()
                                     }
                                 }
                             )

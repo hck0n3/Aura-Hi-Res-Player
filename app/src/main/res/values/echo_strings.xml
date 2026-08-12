@@ -631,16 +631,16 @@
     <string name="terms_accepted_on">Accepted on %1$s (terms v%2$d)</string>
 
     <!-- Feedback / support -->
-    <string name="feedback_title">Report &amp; suggest</string>
+    <string name="feedback_title">Error reports &amp; suggestions</string>
     <string name="feedback_settings_desc">Send error reports and ideas to %1$s</string>
     <string name="feedback_intro">Your message opens in your email app, addressed to %1$s. Nothing is sent until you tap Send there.</string>
     <string name="feedback_howto_title">How to use this</string>
-    <string name="feedback_howto_body">1. Choose Error report or Suggestion.\n2. Describe what happened (or your idea) in your own words.\n3. For errors, leave “Attach diagnostic logs” ON so we can see the app version and device info.\n4. Tap “Open email app”. Aura opens your default mail app with the message already addressed to %1$s and the log file attached when enabled.\n5. In the mail app, tap Send. Do not share the draft to WhatsApp, Drive, or other apps — that data is only for Aura support.</string>
+    <string name="feedback_howto_body">1. Choose Error report or Suggestion.\n2. Describe CLEARLY what you were doing RIGHT BEFORE it happened (screen, button, song/playlist action — be specific: e.g. “I liked a song while crossfade was on” or “I tapped Download on a YouTube playlist from Home”).\n3. Then say what went wrong and what you expected.\n4. For errors, leave “Attach diagnostic logs” ON — the attachment includes app log, last crash, system exits, and recent playback log (no song titles or account cookies).\n5. Tap “Open email app”. Aura opens your default mail app addressed to %1$s with the file attached when enabled.\n6. In the mail app, tap Send. Do not share the draft to WhatsApp, Drive, or other apps — that data is only for Aura support.</string>
     <string name="feedback_kind_bug">Error report</string>
     <string name="feedback_kind_suggestion">Suggestion</string>
-    <string name="feedback_message_hint">Describe what happened or what you would like…</string>
+    <string name="feedback_message_hint">What were you doing last? Which screen/button? What happened vs what you expected…</string>
     <string name="feedback_attach_logs">Attach diagnostic logs</string>
-    <string name="feedback_attach_logs_desc">Includes app version, device info, and recent logs (no song titles or account cookies)</string>
+    <string name="feedback_attach_logs_desc">Includes app version, device info, app log, last crash, system exits, and recent playback log (no song titles or account cookies)</string>
     <string name="feedback_send">Open email app</string>
     <string name="feedback_send_hint">Opens only your mail app, already addressed to %1$s. Confirm with Send there.</string>
     <string name="feedback_no_mail_app">No email app found. Install Gmail or another mail app, or write to aurahires@gmail.com</string>
@@ -831,7 +831,7 @@
 
     <!-- Crash Handler -->
     <string name="crash_title">App Crashed</string>
-    <string name="crash_description">An unexpected error occurred. Please share the crash report to help us fix the issue.</string>
+    <string name="crash_description">An unexpected error occurred. Before sharing: note what you were doing last (screen, button, playlist/like/download). Then share the report — it includes the crash plus app log, system exits, and recent playback log so we can fix it.</string>
     <string name="crash_share_logs">Share Logs</string>
     <string name="copy_logs">Copy Logs</string>
     <string name="crash_share_title">Share crash report</string>
@@ -1104,12 +1104,13 @@
     <string name="enable_lossless_audio">Enable Lossless Audio</string>
     <string name="lossless_audio_warning">Lossless audio requires a fast connection. It may consume more data and battery. Continue?</string>
     <string name="logs">Logs</string>
-    <string name="logs_desc">View, copy and share app logs and the last crash report</string>
+    <string name="logs_desc">View, copy, and share diagnostics. Share always sends every log type (app, crash, system exits, playback).</string>
     <string name="app_log">App log</string>
     <string name="last_crash">Last crash</string>
     <!-- Android's own record of why previous processes died (low memory, ANR, native crash…). -->
     <string name="system_exits">System exits</string>
     <string name="no_logs_yet">No logs yet</string>
+    <string name="playlist_download_empty">Could not load songs to download. Open the playlist and try again.</string>
 
     <!-- Improve low quality (declip + HF regeneration) -->
     <string name="audio_enhance_low_quality">Improve low quality</string>

@@ -550,7 +550,7 @@
     <string name="ai_deepl_formality_more">Más formal</string>
     <string name="ai_deepl_formality_less">Menos formal</string>
     <string name="crash_title">La aplicación se cerró</string>
-    <string name="crash_description">Se ha producido un error inesperado. Por favor, comparta el informe de errores para ayudarnos a solucionar el problema.</string>
+    <string name="crash_description">Se ha producido un error inesperado. Antes de compartir: anota qué estabas haciendo al final (pantalla, botón, playlist/me gusta/descarga). Luego comparte el informe: incluye el fallo más el registro de la app, salidas del sistema y reproducción reciente.</string>
     <string name="crash_share_logs">Compartir Registros</string>
     <string name="crash_share_title">Compartir informe de errores</string>
     <string name="crash_report_subject">Informe de errores de Aura Hi-Res Player</string>

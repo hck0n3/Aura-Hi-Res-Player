@@ -990,20 +990,41 @@ fun PlaylistMenu(
                                             )
                                         },
                                         onClick = {
-                                            songs.forEach { song ->
-                                                val downloadRequest =
-                                                    DownloadRequest
-                                                        .Builder(song.id, song.id.toUri())
-                                                        .setCustomCacheKey(song.id)
-                                                        .setData(song.song.title.toByteArray())
-                                                        .build()
-                                                DownloadService.sendAddDownload(
-                                                    context,
-                                                    ExoDownloadService::class.java,
-                                                    downloadRequest,
-                                                    false,
-                                                )
+                                            coroutineScope.launch {
+                                                var list = songs
+                                                if (list.isEmpty() && autoPlaylist != true) {
+                                                    // Menu can open before Room's first emit — same race the
+                                                    // online playlist header already guards against.
+                                                    list = withContext(Dispatchers.IO) {
+                                                        database.playlistSongs(playlist.id)
+                                                            .first()
+                                                            .map(PlaylistSong::song)
+                                                    }
+                                                }
+                                                if (list.isEmpty()) {
+                                                    Toast.makeText(
+                                                        context,
+                                                        context.getString(R.string.playlist_download_empty),
+                                                        Toast.LENGTH_SHORT,
+                                                    ).show()
+                                                    return@launch
+                                                }
+                                                list.forEach { song ->
+                                                    val downloadRequest =
+                                                        DownloadRequest
+                                                            .Builder(song.id, song.id.toUri())
+                                                            .setCustomCacheKey(song.id)
+                                                            .setData(song.song.title.toByteArray())
+                                                            .build()
+                                                    DownloadService.sendAddDownload(
+                                                        context,
+                                                        ExoDownloadService::class.java,
+                                                        downloadRequest,
+                                                        false,
+                                                    )
+                                                }
                                             }
+                                            onDismiss()
                                         }
                                     )
                                 }

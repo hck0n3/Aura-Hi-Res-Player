@@ -90,6 +90,9 @@ import iad1tya.echo.music.ui.component.rememberPlayedShuffleSet
 import iad1tya.echo.music.ui.component.rememberShuffleMemoryPrompt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.first
+import android.widget.Toast
 
 @SuppressLint("MutableCollectionMutableState")
 @Composable
@@ -536,19 +539,39 @@ fun AlbumMenu(
                                     )
                                 },
                                 onClick = {
-                                    songs.forEach { song ->
-                                        val downloadRequest =
-                                            DownloadRequest
-                                                .Builder(song.id, song.id.toUri())
-                                                .setCustomCacheKey(song.id)
-                                                .setData(song.song.title.toByteArray())
-                                                .build()
-                                        DownloadService.sendAddDownload(
-                                            context,
-                                            ExoDownloadService::class.java,
-                                            downloadRequest,
-                                            false,
-                                        )
+                                    coroutineScope.launch {
+                                        var list = songs
+                                        if (list.isEmpty()) {
+                                            // Menu can open before Room's first emit (same race the
+                                            // playlist header already guards against) — re-read once
+                                            // synchronously instead of silently downloading nothing.
+                                            list = withContext(Dispatchers.IO) {
+                                                database.albumSongs(album.id).first()
+                                            }
+                                        }
+                                        if (list.isEmpty()) {
+                                            Toast.makeText(
+                                                context,
+                                                context.getString(R.string.playlist_download_empty),
+                                                Toast.LENGTH_SHORT,
+                                            ).show()
+                                            return@launch
+                                        }
+                                        list.forEach { song ->
+                                            val downloadRequest =
+                                                DownloadRequest
+                                                    .Builder(song.id, song.id.toUri())
+                                                    .setCustomCacheKey(song.id)
+                                                    .setData(song.song.title.toByteArray())
+                                                    .build()
+                                            DownloadService.sendAddDownload(
+                                                context,
+                                                ExoDownloadService::class.java,
+                                                downloadRequest,
+                                                false,
+                                            )
+                                        }
+                                        onDismiss()
                                     }
                                 }
                             )

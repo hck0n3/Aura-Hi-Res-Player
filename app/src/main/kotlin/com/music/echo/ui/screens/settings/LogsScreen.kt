@@ -103,7 +103,7 @@ fun LogsScreen(
                     IconButton(onClick = { copyToClipboard(context, logText) }, onLongClick = null) {
                         Icon(painterResource(R.drawable.content_copy), contentDescription = stringResource(R.string.copy))
                     }
-                    IconButton(onClick = { shareLog(context, tab, logText) }, onLongClick = null) {
+                    IconButton(onClick = { shareAllLogs(context) }, onLongClick = null) {
                         Icon(painterResource(R.drawable.share), contentDescription = stringResource(R.string.share))
                     }
                     IconButton(onClick = { AppLogger.clear(context); reloadTrigger++ }, onLongClick = null) {
@@ -217,18 +217,16 @@ private fun copyToClipboard(context: Context, text: String) {
     cm.setPrimaryClip(ClipData.newPlainText("Aura Hi-Res Player logs", text))
 }
 
-private fun shareLog(context: Context, tab: LogTab, text: String) {
-    if (text.isBlank()) return
+/**
+ * Always shares EVERY log type (crash + app + system exits + playback), not just the active tab.
+ * Copy still follows the visible tab so the user can grab one section; Share is for support.
+ */
+private fun shareAllLogs(context: Context) {
     runCatching {
         val dir = File(context.filesDir, "logs").apply { mkdirs() }
-        val shareFile = File(
-            dir,
-            when (tab) {
-                LogTab.APP -> "share_log.txt"
-                LogTab.CRASH -> "share_crash.txt"
-                LogTab.SYSTEM_EXITS -> "share_exit_reasons.txt"
-            },
-        )
+        val shareFile = File(dir, "share_all_diagnostics.txt")
+        val text = AppLogger.buildFullShareBundle(context, reason = "shared log")
+        if (text.isBlank()) return
         shareFile.writeText(text)
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.FileProvider", shareFile)
         // Share the .txt as a FILE attachment. Including EXTRA_TEXT made most apps paste the whole log

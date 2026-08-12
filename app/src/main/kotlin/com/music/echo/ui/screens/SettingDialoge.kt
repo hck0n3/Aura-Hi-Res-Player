@@ -54,6 +54,7 @@ import iad1tya.echo.music.ui.newui.AuraShapes
 import iad1tya.echo.music.ui.newui.AuraType
 import iad1tya.echo.music.ui.newui.rememberAuraPanelSkin
 import iad1tya.echo.music.ui.newui.rememberUnreadOwnerNoticesCount
+import iad1tya.echo.music.utils.SupportContact
 import iad1tya.echo.music.utils.rememberPreference
 import iad1tya.echo.music.viewmodels.AccountSettingsViewModel
 import iad1tya.echo.music.viewmodels.HomeViewModel
@@ -332,6 +333,19 @@ private fun SettingDialogeBody(
                         }
                     },
                     onClick = { onNavigate("settings/notices") },
+                ),
+                Material3SettingsItem(
+                    title = { Text(stringResource(R.string.feedback_title)) },
+                    description = {
+                        Text(
+                            stringResource(
+                                R.string.feedback_settings_desc,
+                                SupportContact.EMAIL,
+                            )
+                        )
+                    },
+                    icon = painterResource(R.drawable.bug_report),
+                    onClick = { onNavigate("settings/feedback") },
                 ),
                 Material3SettingsItem(
                     title = { Text("Ajustes") },
