@@ -1,10 +1,11 @@
-# Aura Hi-Res Player 0.6.181
+# Aura Hi-Res Player 0.6.182
 
-Ya no parpadea el último aviso leído cada vez que abres la app.
+Reportar errores y sugerencias desde la app: llegan a aurahires@gmail.com.
 
 ---
 
-## Avisos
+## Reportar y sugerir
 
-- El popup solo aparece **después** de comprobar cuáles ya leíste (nada de flash al abrir).
-- Cerrar el aviso (Entendido o tocar fuera) lo marca leído y no vuelve a salir.
+- Nuevo apartado en Ajustes (y en Acerca de): elige **error** o **sugerencia**, escribe y continúa en tu correo.
+- Todo va a **aurahires@gmail.com** (puedes adjuntar registros de diagnóstico).
+- Ese correo figura ahora en los Términos y Condiciones (v2) y en la política de privacidad.

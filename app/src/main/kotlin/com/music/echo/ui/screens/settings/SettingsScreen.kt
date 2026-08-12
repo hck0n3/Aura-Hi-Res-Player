@@ -325,6 +325,23 @@ fun SettingsScreen(
                     )
                 )
             }
+            val feedbackText = stringResource(R.string.feedback_title)
+            if (feedbackText.lowercase().contains(searchLower) ||
+                searchLower.contains("report") ||
+                searchLower.contains("suger") ||
+                searchLower.contains("error")
+            ) {
+                add(
+                    Material3SettingsItem(
+                        icon = painterResource(R.drawable.bug_report),
+                        title = { Text(feedbackText) },
+                        description = {
+                            Text(stringResource(R.string.feedback_settings_desc, "aurahires@gmail.com"))
+                        },
+                        onClick = { navController.navigate("settings/feedback") }
+                    )
+                )
+            }
             if (aboutText.lowercase().contains(searchLower)) {
                 add(
                     Material3SettingsItem(

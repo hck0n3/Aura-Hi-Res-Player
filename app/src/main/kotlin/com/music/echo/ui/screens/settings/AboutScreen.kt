@@ -272,6 +272,14 @@ fun AboutScreen(
                 AboutSectionCard(title = "Información legal", skin = skin) {
                     LegalTermsRow(skin = skin, onClick = { navController.navigate("settings/terms") })
                     AboutDivider(skin)
+                    AboutFeatureRow(
+                        icon = painterResource(R.drawable.bug_report),
+                        title = stringResource(R.string.feedback_title),
+                        subtitle = stringResource(R.string.feedback_settings_desc, "aurahires@gmail.com"),
+                        skin = skin,
+                        onClick = { navController.navigate("settings/feedback") },
+                    )
+                    AboutDivider(skin)
                     SuperpoweredAttributionRow(skin)
                 }
             }

@@ -308,7 +308,13 @@ fun AuraSettingsScreen(
         AuraSettingsGroup(
             icon = AuraIcons.Album,
             title = aboutText,
-            entries = listOf(AuraSettingsEntry(aboutText) { navController.navigate("settings/about") }),
+            entries = listOf(
+                AuraSettingsEntry(aboutText) { navController.navigate("settings/about") },
+                AuraSettingsEntry(
+                    title = stringResource(R.string.feedback_title),
+                    description = stringResource(R.string.feedback_settings_desc, iad1tya.echo.music.utils.SupportContact.EMAIL),
+                ) { navController.navigate("settings/feedback") },
+            ),
         ),
     )
 

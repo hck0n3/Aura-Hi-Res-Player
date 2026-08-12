@@ -472,6 +472,9 @@ fun getAllSearchableSettings(): List<Triple<String, String, String>> {
             Triple(stringResource(R.string.disable_screenshot_desc), "Privacidad", "settings/privacy"),
             // --- Copia y restauracion (settings/backup_restore) : 2 ---
             // --- Acerca de (settings/about) : 1 ---
+            Triple(stringResource(R.string.feedback_title), "Reportar y sugerir", "settings/feedback"),
+            Triple(stringResource(R.string.feedback_kind_bug), "Reportar y sugerir", "settings/feedback"),
+            Triple(stringResource(R.string.feedback_kind_suggestion), "Reportar y sugerir", "settings/feedback"),
             // --- Registros (settings/logs) : 6 ---
             Triple(stringResource(R.string.copy), "Registros", "settings/logs"),
             Triple(stringResource(R.string.share), "Registros", "settings/logs"),

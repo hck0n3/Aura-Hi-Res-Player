@@ -31,6 +31,7 @@ import iad1tya.echo.music.ui.screens.search.OnlineSearchResult
 import iad1tya.echo.music.ui.screens.search.SearchScreen
 import iad1tya.echo.music.ui.screens.settings.AboutScreen
 import iad1tya.echo.music.ui.screens.settings.AccountsScreen
+import iad1tya.echo.music.ui.screens.settings.FeedbackScreen
 import iad1tya.echo.music.ui.screens.settings.LogsScreen
 import iad1tya.echo.music.ui.screens.settings.AppearanceSettings
 import iad1tya.echo.music.ui.screens.settings.BackupAndRestore
@@ -522,6 +523,10 @@ fun NavGraphBuilder.navigationBuilder(
 
     composable("settings/about") {
         AboutScreen(navController, scrollBehavior)
+    }
+
+    composable("settings/feedback") {
+        FeedbackScreen(navController, scrollBehavior)
     }
 
     composable("settings/terms") {

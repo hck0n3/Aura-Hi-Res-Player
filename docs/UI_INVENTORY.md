@@ -194,6 +194,7 @@ Todas en `app/src/main/kotlin/com/music/echo/ui/screens/NavigationBuilder.kt`.
 | 54 | `settings/ytm_sync?...` | `YtmSyncScreen` | `:463` | sí |
 | 55 | `settings/integrations/listen_together` | `ListenTogetherSettings` | `:474` | sí |
 | 56 | `settings/about` | `AboutScreen` | `:478` | sí |
+| 56b | `settings/feedback` | `FeedbackScreen` | NavigationBuilder | sí (Ajustes / Acerca de) |
 | 57 | `settings/terms` | `TermsScreen` | `:482` | sí (Acerca de) |
 | 58 | `settings/logs` | `LogsScreen` | `:486` | sí |
 | 59 | `update` | `UpdateScreen` | `:490` | sí |

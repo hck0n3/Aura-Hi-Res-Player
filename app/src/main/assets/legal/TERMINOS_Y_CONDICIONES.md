@@ -1,6 +1,6 @@
 # Términos y Condiciones de Uso — Aura Hi-Res Player
 
-**Versión de los Términos: 1** · **Fecha de entrada en vigor: 10 de julio de 2026**
+**Versión de los Términos: 2** · **Fecha de entrada en vigor: 12 de agosto de 2026**
 
 Estos Términos y Condiciones (los "Términos") regulan el uso de la aplicación **Aura Hi-Res Player** (la "Aplicación"), un reproductor de música para Android desarrollado y mantenido por un desarrollador independiente (el "Desarrollador"). Lea estos Términos con atención antes de usar la Aplicación. Si no está de acuerdo con ellos, no instale ni use la Aplicación.
 
@@ -209,9 +209,12 @@ Aclaración técnica, por transparencia (el código es público y menciona Fireb
 
 ## 20. Contacto
 
-Para consultas legales, avisos de propiedad intelectual (cláusula 9) o soporte:
+Para consultas legales, avisos de propiedad intelectual (cláusula 9), soporte, reportes de errores o sugerencias:
 
+- **Correo electrónico de la Aplicación:** aurahires@gmail.com
 - **Repositorio del proyecto:** https://github.com/hck0n3/Aura-Hi-Res-Player
+
+Los reportes de errores y las sugerencias de mejora enviados desde la Aplicación (o directamente a esa dirección) se reciben en el mismo buzón.
 
 ---
 
@@ -230,3 +233,4 @@ Este resumen es solo una ayuda de lectura. **No sustituye a las cláusulas anter
 - **Responsabilidad limitada.** Si algo sale mal, nuestra responsabilidad máxima es lo que pagaste en el último año (o 3.74 USD si no pagaste nada). Nunca respondemos por daños indirectos ni por sanciones de otras plataformas.
 - **Si incumples estas reglas**, podemos cancelar tu licencia o suscripción. Tus derechos sobre el código GPL no se tocan.
 - **Si cambiamos estos términos**, te lo mostraremos en la app y tendrás que aceptarlos de nuevo para seguir.
+- **Contacto:** aurahires@gmail.com (consultas legales, soporte, errores y sugerencias).

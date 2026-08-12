@@ -177,11 +177,14 @@ We may update this Privacy Policy from time to time. We will notify you of any c
 
 ## Contact Us
 
-If you have any questions about this Privacy Policy or our data practices, please contact us:
+If you have any questions about this Privacy Policy or our data practices, or to send error reports and suggestions, please contact us:
 
+- **Email**: aurahires@gmail.com
 - **GitHub**: [https://github.com/hck0n3/Aura-Hi-Res-Player](https://github.com/hck0n3/Aura-Hi-Res-Player)
 - **Issues**: [https://github.com/hck0n3/Aura-Hi-Res-Player/issues](https://github.com/hck0n3/Aura-Hi-Res-Player/issues)
 - **Discussions**: [https://github.com/hck0n3/Aura-Hi-Res-Player/discussions](https://github.com/hck0n3/Aura-Hi-Res-Player/discussions)
+
+When you use **Report & suggest** in the App, your device opens your own email app with a message addressed to aurahires@gmail.com. We receive only what you choose to send (and optional diagnostic logs you attach). Nothing is uploaded silently.
 
 ## Data Protection Compliance
 
