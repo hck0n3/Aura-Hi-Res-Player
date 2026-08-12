@@ -161,6 +161,13 @@ object YTPlayerUtils {
     private val poTokenGenerator = PoTokenGenerator()
 
     /**
+     * Speculative video-URL prefetch must not contend with a live audio resolve for cipher/PoToken
+     * WebViews — that contention starves the ExoPlayer loader thread and cuts mid-song on video tracks.
+     */
+    val isStreamResolveBusy: Boolean
+        get() = CipherDeobfuscator.isBusy || poTokenGenerator.isBusy
+
+    /**
      * Warm up the poToken WebView ahead of the first playback so the first song starts faster. Safe to
      * call any time (no-ops if the session isn't ready yet); never throws.
      *

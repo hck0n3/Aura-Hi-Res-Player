@@ -1,0 +1,15 @@
+---
+description: Al terminar un paquete de trabajo pedido por el dueño, commit + publicar estable para todos
+alwaysApply: true
+---
+
+# Commit y publicar estable (preferencia del dueño)
+
+Cuando el dueño pide un paquete de trabajo y lo deja listo (arreglos, features, plan cerrado), **no dejarlo solo en el working tree**:
+
+1. **Commit** en `main` con mensaje claro (sin junk `build-*.txt` / `_tmp_*.py`).
+2. **Publicar para TODOS los usuarios**: bump `versionName`/`versionCode`, `RELEASE_INFO.md` (título L1 + viñetas), `pre-publish-check` → **READY**.
+3. Push del commit a `main` → esperar **todos** los checks de GitHub en `success` (Android Build & Sign, CodeQL, etc.).
+4. Solo entonces tag estable `vX.Y.Z` **sin** `-beta`/`-test` y push del tag (actualizador = `releases/latest`).
+
+Sigue vigentes: no inventar secretos; no force-push; no taggear con CI rojo/en curso; no tocar Superpowered/EQ ni `license/` salvo petición explícita.

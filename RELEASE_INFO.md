@@ -1,34 +1,28 @@
-# Aura Hi-Res Player 0.6.175
+# Aura Hi-Res Player 0.6.176
 
-Inicio New UI más premium, novedades solo de artistas que sigues, colaboraciones del artista más completas, y arreglos del ecualizador y de Ajustes.
+Más fiabilidad al reproducir: menos cortes en canciones con vídeo, cola automática solo música, Android Auto inalámbrico que no se para, continuación tras reiniciar, y aleatorio con mejor memoria.
 
 ---
 
-## Inicio (Interfaz nueva)
+## Reproducción
 
-- Carga con shimmer (ya no el texto “CARGANDO…”).
-- **Fijadas en inicio** con identidad propia (pin teal).
-- **Para ti** con más peso visual.
-- Filas de canciones marcan las ya reproducidas.
-- Portadas de estantería alineadas (título/subtítulo a la misma altura).
-- Novedades: **Ver todos** abre la pantalla completa.
-- Favoritos olvidados: se pueden expandir si hay más de ocho.
-- Vacío en frío más claro (icono + mensaje).
+- Menos cortes en temas que tienen vídeo cuando escuchas solo audio (pantalla encendida o apagada).
+- Menos trabajo especulativo de vídeo → menos calor y batería en sesiones largas.
+- Cambio de formato a mitad de canción ya no corta el audio.
 
-## Personalización y contenido
+## Cola automática
 
-- Álbumes nuevos / novedades filtrados por artistas a los que te suscribiste o sigues.
-- En el artista, **Aparece en** incluye más colaboraciones y featuring.
-- Estilo Apple Music (Interfaz nueva) solo cambia la **portada**, no los botones.
+- Radio / relacionados / cola infinita: solo música y videoclips musicales (sin tutoriales ni how-to).
+- Ventana anti-repetición de radio ampliada.
 
-## Ecualizador
+## Android Auto
 
-- Medidor FFT más fiable (menos fallos al abrir).
-- Elegir “Ninguno” en Auto-EQ del dispositivo **no** apaga el ecualizador maestro.
-- Interruptor para aplicar Auto-EQ automáticamente al cambiar de salida.
-- Al arrastrar bandas, la pantalla ya no hace scroll a la vez.
+- En Auto inalámbrico, un corte breve de ruta ya no deja la música parada: reanuda al recuperar el audio (sin tocar tu ajuste de auriculares).
 
-## Ajustes
+## Continuación
 
-- En la interfaz clásica, los ajustes anidados ya no quedan debajo de la barra (el título no tapa el contenido).
-- Con Interfaz nueva, Apariencia / tema usan el suelo Aura.
+- Al apagar o reiniciar el móvil, cola y posición se guardan a tiempo para seguir donde ibas.
+
+## Aleatorio
+
+- Tras matar la app o restaurar cola, el aleatorio con memoria se vuelve a sembrar correctamente.

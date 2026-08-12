@@ -186,6 +186,7 @@ import iad1tya.echo.music.playback.queues.Queue
 import iad1tya.echo.music.playback.queues.YouTubeQueue
 import iad1tya.echo.music.playback.queues.filterExplicit
 import iad1tya.echo.music.playback.queues.filterVideoSongs
+import iad1tya.echo.music.playback.queues.filterNonMusicForAutoQueue
 import iad1tya.echo.music.utils.CoilBitmapLoader
 import iad1tya.echo.music.utils.DiscordRPC
 import iad1tya.echo.music.utils.NetworkConnectivityObserver
@@ -363,6 +364,9 @@ class MusicService :
     // Set true by stopOnError() immediately before its player.pause(), so the resulting onPlayWhenReadyChanged
     // can tell OUR error-pause (keep pausedByNetwork) from a real user/external pause (clear pausedByNetwork).
     private var expectingOwnStopPause = false
+    /** Auto wireless: media3 paused us via AUDIO_BECOMING_NOISY — resume when the car route returns. */
+    private var pausedByNoisy = false
+    private var pausedByNoisyAtMs = 0L
     // Single-shot, cancellable safety re-check armed at the dead-end: covers a STABLE network that never fires
     // a new connectivity event, so we don't wait forever paused. Not a loop; cancelled in triggerRetry()/READY.
     private var deadEndRecheckJob: Job? = null
@@ -871,7 +875,7 @@ class MusicService :
     @Volatile private var cachedCoRelAt: Long = 0L
 
     // Bounded, cached set of song ids the user has RECENTLY PLAYED (from the on-device event history), so the
-    // infinite radio doesn't re-append songs already heard days/weeks ago — the last ~60 in-session transitions
+    // infinite radio doesn't re-append songs already heard days/weeks ago — the last ~120 in-session transitions
     // in [recentRadioIds] can't see that far back. One DB read every few minutes; O(1) membership at append
     // time (no per-append DB hit, no heat). Refreshed on the same ~5-min TTL as [cachedTaste].
     @Volatile private var cachedPlayedIds: Set<String>? = null
@@ -1015,7 +1019,7 @@ class MusicService :
      *  JUST heard. A soft demotion (not a hard drop) — see [orderedByTaste] — so it can never dead-end the queue. */
     private val recentRadioIds = LinkedHashSet<String>()
     /** NO-REPEAT — SESSION-WIDE played/queued media ids. Every song we've PLAYED or APPENDED to the infinite
-     *  queue this session lands here (large bounded LRU, ~4000, thread-safe). Unlike [recentRadioIds] (last ~60)
+     *  queue this session lands here (large bounded LRU, ~4000, thread-safe). Unlike [recentRadioIds] (last ~120)
      *  it spans the WHOLE session, so the radio pagination (Path A) and the re-seed / [orderedByTaste] paths can
      *  HARD-DROP anything already heard/queued — the infinite queue never repeats a song. */
     private val sessionPlayedIds: MutableSet<String> = java.util.Collections.synchronizedSet(
@@ -1031,7 +1035,7 @@ class MusicService :
         synchronized(recentRadioIds) {
             recentRadioIds.remove(id) // move-to-most-recent
             recentRadioIds.add(id)
-            while (recentRadioIds.size > 60) {
+            while (recentRadioIds.size > 120) {
                 val it = recentRadioIds.iterator()
                 if (it.hasNext()) { it.next(); it.remove() } else break
             }
@@ -1343,14 +1347,14 @@ class MusicService :
     }
 
     /**
-     * Session cap for SPECULATIVE video-URL prefetches launched BEFORE the user has ever toggled video
-     * ([userHasUsedVideo] == false). Without a bound, capable devices would resolve on EVERY video-song
-     * transition — exactly the per-track-change resolving that once hammered YouTube, rate-limited the app
-     * and stalled normal AUDIO (see the onMediaItemTransition prebuild note). The first toggle is usually
-     * early in a session, so a cap of 8 still makes it instant for real video users while keeping
-     * audio-only listeners at <=8 extra resolves per session (in-memory, resets per process).
+     * Session cap for ALL speculative video-URL prefeches (audio-only mode). Always bounded — never
+     * uncapped after first video use — so cipher/PoToken contention cannot hammer every video-capable
+     * track transition and cut audible audio (heat/battery + stutter rule).
      */
-    private var preFirstUseVideoPrefetches = 0
+    private var speculativeVideoPrefetches = 0
+
+    /** Loader-thread audio resolves in flight — speculative video prefetch yields while > 0. */
+    private val audioStreamResolveInFlight = java.util.concurrent.atomic.AtomicInteger(0)
 
     // DATA SAVER: cached mirror of DataSaverEnabledKey (collector in onCreate). The speculative-video
     // gates below run on the main thread, where a blocking dataStore read is not acceptable; @Volatile
@@ -1560,16 +1564,31 @@ class MusicService :
     private val audioDeviceCallback = object : AudioDeviceCallback() {
         override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>?) {
             super.onAudioDevicesAdded(addedDevices)
-            val hasBluetooth = addedDevices?.any {
-                it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
-                it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO
+            val autoSession = isAndroidAutoControllerConnected()
+            val hasPlaybackRoute = addedDevices?.any {
+                when (it.type) {
+                    AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
+                    AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
+                    -> true
+                    // Wireless Auto / some head units renegotiate as bus/USB/dock rather than classic A2DP.
+                    AudioDeviceInfo.TYPE_BUS,
+                    AudioDeviceInfo.TYPE_USB_ACCESSORY,
+                    AudioDeviceInfo.TYPE_DOCK,
+                    -> autoSession
+                    else -> false
+                }
             } == true
 
-            if (hasBluetooth) {
-                if (dataStore.get(ResumeOnBluetoothConnectKey, false)) {
-                    if (player.playbackState == Player.STATE_READY && !player.isPlaying) {
-                        player.play()
-                    }
+            if (hasPlaybackRoute) {
+                val settingResume = dataStore.get(ResumeOnBluetoothConnectKey, false)
+                val autoNoisyResume = autoSession && pausedByNoisy &&
+                    System.currentTimeMillis() - pausedByNoisyAtMs <= 45_000L
+                if ((settingResume || autoNoisyResume) &&
+                    player.playbackState == Player.STATE_READY &&
+                    !player.isPlaying
+                ) {
+                    pausedByNoisy = false
+                    player.play()
                 }
             }
             applyEqForCurrentOutput()
@@ -1578,6 +1597,33 @@ class MusicService :
         override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>?) {
             super.onAudioDevicesRemoved(removedDevices)
             applyEqForCurrentOutput()
+        }
+    }
+
+    private val becomingNoisyReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action != AudioManager.ACTION_AUDIO_BECOMING_NOISY) return
+            // Only Auto: headphones "pause on disconnect" stays opt-in via ResumeOnBluetoothConnectKey.
+            if (!isAndroidAutoControllerConnected()) return
+            if (!::player.isInitialized) return
+            if (player.isPlaying || player.playWhenReady) {
+                pausedByNoisy = true
+                pausedByNoisyAtMs = System.currentTimeMillis()
+            }
+        }
+    }
+
+    private val shutdownSaveReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            when (intent.action) {
+                Intent.ACTION_SHUTDOWN,
+                Intent.ACTION_REBOOT,
+                -> {
+                    if (!dataStore.get(PersistentQueueKey, true)) return
+                    runCatching { saveQueueToDisk(synchronous = true) }
+                    runCatching { savePlaybackPositionToDiskSynchronous() }
+                }
+            }
         }
     }
 
@@ -1956,6 +2002,15 @@ class MusicService :
         registerReceiver(screenStateReceiver, screenStateFilter)
 
         audioManager.registerAudioDeviceCallback(audioDeviceCallback, null)
+        registerReceiver(
+            becomingNoisyReceiver,
+            IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY),
+        )
+        val shutdownFilter = IntentFilter().apply {
+            addAction(Intent.ACTION_SHUTDOWN)
+            addAction(Intent.ACTION_REBOOT)
+        }
+        registerReceiver(shutdownSaveReceiver, shutdownFilter)
 
         // DATA SAVER: the eager init must already reflect the forced-Opus effective quality — the
         // collector below re-asserts it, but a resolve racing the first emit must never go out Hi-Res.
@@ -3232,6 +3287,7 @@ class MusicService :
                     queue.getInitialStatus()
                         .filterExplicit(dataStore.get(HideExplicitKey, false))
                         .filterVideoSongs(dataStore.get(HideVideoSongsKey, false) || dataStore.get(iad1tya.echo.music.constants.DataSaverEnabledKey, false))
+                        .filterNonMusicForAutoQueue()
                 }
             // Duplicate ROWS of one mediaId (a playlist can hold the same song twice) defeat the id-keyed
             // no-repeat memory: both rows play, and the second reads as a repeat. Context queues dedupe at
@@ -3730,6 +3786,7 @@ class MusicService :
                     radioQueue.getInitialStatus()
                         .filterExplicit(dataStore.get(HideExplicitKey, false))
                         .filterVideoSongs(dataStore.get(HideVideoSongsKey, false) || dataStore.get(iad1tya.echo.music.constants.DataSaverEnabledKey, false))
+                        .filterNonMusicForAutoQueue()
                 }
                 if (initialStatus.title != null) queueTitle = initialStatus.title
                 val items = initialStatus.items.filter { it.mediaId != seed && it.mediaId != currentMediaId }
@@ -3752,6 +3809,7 @@ class MusicService :
                     .map { it.toMediaItem() }
                     .filterExplicit(dataStore.get(HideExplicitKey, false))
                     .filterVideoSongs(dataStore.get(HideVideoSongsKey, false) || dataStore.get(iad1tya.echo.music.constants.DataSaverEnabledKey, false))
+                    .filterNonMusicForAutoQueue()
                 val ok = appendSeed(items)
                 // CRITICAL for endlessness: the related page is FINITE. Re-point currentQueue at a radio seeded
                 // from the genuine last song AND PRIME it (getInitialStatus sets `continuation`, so hasNextPage()
@@ -3789,6 +3847,7 @@ class MusicService :
                     .map { it.toMediaItem() }
                     .filterExplicit(dataStore.get(HideExplicitKey, false))
                     .filterVideoSongs(dataStore.get(HideVideoSongsKey, false) || dataStore.get(iad1tya.echo.music.constants.DataSaverEnabledKey, false))
+                    .filterNonMusicForAutoQueue()
                 val ok = appendSeed(items)
                 if (ok) {
                     activeMoodTitle?.let { queueTitle = it }
@@ -3910,6 +3969,7 @@ class MusicService :
                 val items = merged
                     .filterExplicit(dataStore.get(HideExplicitKey, false))
                     .filterVideoSongs(dataStore.get(HideVideoSongsKey, false) || dataStore.get(iad1tya.echo.music.constants.DataSaverEnabledKey, false))
+                    .filterNonMusicForAutoQueue()
                 val ok = appendSeed(items) // appendSeed already runs orderedByTaste + records no-repeat + crossfade
                 if (ok) {
                     // Prime a radio from a seed so the Path A pagination keeps going after this merged batch.
@@ -4049,6 +4109,7 @@ class MusicService :
                         chipQueue.getInitialStatus()
                             .filterExplicit(dataStore.get(HideExplicitKey, false))
                             .filterVideoSongs(dataStore.get(HideVideoSongsKey, false) || dataStore.get(iad1tya.echo.music.constants.DataSaverEnabledKey, false))
+                            .filterNonMusicForAutoQueue()
                     }.getOrNull()
                 } ?: return@launch
                 val items = initialStatus.items.filter { it.mediaId != currentMediaId }
@@ -4194,7 +4255,7 @@ class MusicService :
     /**
      * Bounded, cached set of song ids the user has RECENTLY PLAYED (on-device event history). Used by
      * [orderedByTaste] to exclude already-heard songs from the primary radio pool so the infinite queue stops
-     * replaying songs heard days/weeks ago (which the last-~60 in-session [recentRadioIds] can't see). One DB
+     * replaying songs heard days/weeks ago (which the last-~120 in-session [recentRadioIds] can't see). One DB
      * read every ~5 min (same TTL as [tasteProfile]); membership is O(1) at append time — no per-append DB hit.
      */
     private suspend fun recentlyPlayedIds(): Set<String> {
@@ -4234,7 +4295,7 @@ class MusicService :
             m.id !in disliked.songs && m.artists.none { it.id != null && it.id in disliked.artists }
         }
         val p = tasteProfile() // may be null (no taste yet) → pure relatedness order, still recency/dislike-filtered
-        // "Already heard" now has TWO memories: the last ~60 in-session transitions ([recentRadioIds]) AND the
+        // "Already heard" now has TWO memories: the last ~120 in-session transitions ([recentRadioIds]) AND the
         // broader on-device listening history ([recentlyPlayedIds], cached ~5 min). A song in EITHER is excluded
         // from the primary radio pool and kept only as a fallback TAIL — so the infinite queue stops resurfacing
         // songs the user heard days/weeks ago, yet can never dead-end (heard items remain as a last resort, same
@@ -4322,7 +4383,7 @@ class MusicService :
             val sunk = if (m != null && m.id in deprioritized) 1000.0 else 0.0
             val key = index.toDouble() - pull + soft + jitter + ctx + sunk
             // NO-REPEAT: "heard" is now SESSION-WIDE ([sessionPlayedIds] — everything played OR appended this
-            // session), broadened beyond the last-~60 [recentSnapshot] and the ~5-min DB [playedHistory].
+            // session), broadened beyond the last-~120 [recentSnapshot] and the ~5-min DB [playedHistory].
             val heard = m != null && (m.id in sessionPlayedIds || m.id in recentSnapshot || m.id in playedHistory)
             Triple(mi, key, heard)
         }
@@ -5275,6 +5336,25 @@ class MusicService :
             }
         }
         rememberRecentRadioId(mediaItem?.mediaId ?: player.currentMetadata?.id)
+        // Automatic YouTube radio only: skip non-music uploads (tutorials/how-tos) with null musicVideoType.
+        // Library / explicit playlists are untouched — those can carry null types for plain audio rows.
+        run {
+            val autoMeta = player.currentMetadata
+            if (
+                currentQueue is YouTubeQueue &&
+                autoMeta != null &&
+                autoMeta.musicVideoType == null &&
+                !autoMeta.id.isLocalMediaId() &&
+                mediaItem != null
+            ) {
+                Timber.tag(TAG).i("NO_MUSIC skip automatic-radio id=${autoMeta.id.take(11)}")
+                val next = player.nextMediaItemIndex
+                if (next != C.INDEX_UNSET) {
+                    player.seekTo(next, 0)
+                    return
+                }
+            }
+        }
         // A per-track Opus override (refetchCurrentInOpus) only applies to the track it was set for; drop it
         // once a genuinely different (non-null) track becomes current so a later track isn't forced to Opus.
         if (forceOpusForMediaId != null && mediaItem != null && mediaItem.mediaId != forceOpusForMediaId) {
@@ -5582,6 +5662,7 @@ class MusicService :
                     var next = currentQueue.nextPage()
                         .filterExplicit(dataStore.get(HideExplicitKey, false))
                         .filterVideoSongs(dataStore.get(HideVideoSongsKey, false) || dataStore.get(iad1tya.echo.music.constants.DataSaverEnabledKey, false))
+                        .filterNonMusicForAutoQueue()
                     // ENRICH BEFORE SCORING (see [ENRICH_BEFORE_SCORE_MS]). This is the enrich run that
                     // used to fire AFTER the items were queued, moved AHEAD of the snapshot below so
                     // the lane filter and orderedByTaste's steer are decided with what we just learned
@@ -6042,14 +6123,16 @@ class MusicService :
             }
         } else {
             expectingOwnStopPause = false
+            pausedByNoisy = false
         }
 
         if (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST) {
             if (playWhenReady) {
                 isPausedByVolumeMute = false
-            }
-
-            if (!playWhenReady && !isPausedByVolumeMute) {
+                pausedByNoisy = false
+            } else if (!isPausedByVolumeMute) {
+                // Real user pause — never auto-resume on route reconnect.
+                pausedByNoisy = false
                 wasPlayingBeforeVolumeMute = false
             }
         }
@@ -7849,55 +7932,34 @@ class MusicService :
     }
 
     /**
-     * AUDIO→VIDEO TOGGLE LATENCY FIX. Proactively resolve the CURRENT (audio) track's video URL into
-     * [videoUrlCache] in the BACKGROUND so that when the user later flips the on-demand video toggle,
-     * [applyVideoToCurrent] hits the cache (line ~3783) and goes straight to [swapToVideo] with NO synchronous
-     * network round-trip (cipher / PoToken / format selection via [YTPlayerUtils.videoStreamUrlDiag] — the
-     * dominant, avoidable cost). The perceived toggle latency then drops to just the media3 buffer fill.
-     *
-     * Fire-and-forget on [Dispatchers.IO]; the ONLY main-thread work is the cheap gate reads below, and it
+     * Speculatively resolve the CURRENT track's video URL into [videoUrlCache] so the first toggle is instant.
      * NEVER touches the player/audio graph — a failed resolve is swallowed and the toggle still falls back to
-     * the live resolve exactly as today. Gated to avoid the documented rate-limit risk (resolving video for
-     * every track once hammered YouTube and stalled audio — see onMediaItemTransition prebuild note):
-     *   - video mode currently OFF (a toggle-to-video is only possible from audio; when ON the swap already ran),
-     *   - EITHER the user has used video once THIS session ([userHasUsedVideo], in-memory, resets per process)
-     *     — prefetch then runs on ANY device — OR, to cover the session's FIRST toggle, the device is CAPABLE
-     *     (not High-Performance Mode, not LOW/ULTRA tier) AND fewer than 8 speculative resolves have been
-     *     launched this session ([preFirstUseVideoPrefetches]); weak devices never pay the speculative cipher
-     *     cost, and audio-only listeners are bounded at <=8 extra resolves/session instead of one per
-     *     video-song transition (the fleet-wide traffic pattern behind the old rate-limit incident),
-     *   - a genuine YouTube VIDEO song (isVideoSong == true; skips local / http-podcast / audio-only ids), so
-     *     pure audio-only queues never trigger a speculative resolve.
-     * Idempotent: no-op if a fresh URL is already cached or a resolve for this id is already in flight
-     * (shared [prebuildingIds], keyed by a distinct id from the next-item prebuild so they never collide).
+     * the live resolve exactly as today. Gated to avoid rate-limit / mid-song stutter:
+     *   - video mode currently OFF
+     *   - at most 8 speculative resolves per session (ALWAYS — never uncapped after first video use)
+     *   - before first video use: capable devices only (not High-Performance / LOW / ULTRA)
+     *   - skip when audio stream resolve or cipher/PoToken is busy (mutex contention cuts audio)
+     *   - skip when [ThermalManager.isHot]
+     *   - a genuine YouTube VIDEO song (isVideoSong == true)
      */
     private fun prefetchCurrentVideoUrl() {
         // A toggle-to-video is only possible from audio; when already in video mode the swap has run.
         if (_videoMode.value) return
         // DATA SAVER: no speculative video-URL resolves — the toggle resolves on demand instead.
         if (dataSaverEnabled) return
+        // Heat: never start speculative cipher work on a thermally throttled device.
+        if (iad1tya.echo.music.utils.ThermalManager.isHot.value) return
+        // Do not contend with the live audio resolve (loader thread) for shared WebView mutexes.
+        if (audioStreamResolveInFlight.get() > 0 || YTPlayerUtils.isStreamResolveBusy) return
         // Cheap in-memory checks FIRST: bail on a non-video / local / direct-URL track BEFORE paying for the
         // PerformanceMode reads in the first-toggle gate below (those only matter for a genuine video song).
         val id = player.currentMediaItem?.mediaId ?: return
         if (id.isEmpty() || id.isLocalMediaId() || id.startsWith("http", ignoreCase = true)) return
         if (player.currentMetadata?.isVideoSong != true) return
-        // FIRST-TOGGLE COVERAGE (capable devices only, CAPPED at 3 resolves/session). Normally we speculatively
-        // resolve only AFTER the user has opened video once this session (userHasUsedVideo). That left the VERY
-        // FIRST toggle of a session paying the full synchronous resolve (applyVideoToCurrent cache-miss →
-        // cipher/PoToken/format, seconds) PLUS the swap re-buffer → the >5s the user reported. So ALSO
-        // pre-resolve BEFORE first use — but ONLY on a CAPABLE device (NOT High-Performance Mode and NOT
-        // LOW/ULTRA tier): a weak device must never pay the speculative cipher cost for a feature it may never
-        // open — and ONLY for the first 8 launched resolves of the session (preFirstUseVideoPrefetches).
-        // The first toggle is usually early in a session, so the cap keeps it instant for real video users
-        // while bounding audio-only listeners at <=8 extra resolves/session — WITHOUT the cap this would be
-        // one resolve per video-song transition, the exact fleet-wide traffic pattern that once rate-limited
-        // the app and stalled normal AUDIO (see the onMediaItemTransition prebuild note). This is a small
-        // metadata/cipher resolve (NOT the video bytes), so it runs on any network; on a capable device the
-        // URL is then ready the moment the user first taps video. Once userHasUsedVideo is true the existing
-        // path is preserved unchanged (prefetch on ANY device, per transition, uncapped).
-        val preFirstUse = !userHasUsedVideo
-        if (preFirstUse) {
-            if (preFirstUseVideoPrefetches >= 8) return
+        // ALWAYS cap speculative resolves for the session (audio-only listeners + post-first-use alike).
+        if (speculativeVideoPrefetches >= 8) return
+        // Before the user has opened video once: only capable devices pay the speculative cipher cost.
+        if (!userHasUsedVideo) {
             val perfMode = iad1tya.echo.music.utils.PerformanceMode.isOn(this)
             val tier = iad1tya.echo.music.utils.PerformanceMode.effectiveTier(this)
             val capable = !perfMode &&
@@ -7909,11 +7971,12 @@ class MusicService :
         val cached = videoUrlCache[id]?.takeIf { it.second > System.currentTimeMillis() }?.first
         if (!cached.isNullOrEmpty()) return
         if (!prebuildingIds.add(id)) return // a resolve for this id is already in flight (dedupe)
-        // Count only resolves actually LAUNCHED (past the cache/dedupe checks), so cache hits and in-flight
-        // dupes never burn the pre-first-use budget.
-        if (preFirstUse) preFirstUseVideoPrefetches++
+        speculativeVideoPrefetches++
         scope.launch(Dispatchers.IO) {
             try {
+                // Bail if audio resolve grabbed the locks while we were queued.
+                if (audioStreamResolveInFlight.get() > 0 || YTPlayerUtils.isStreamResolveBusy) return@launch
+                if (iad1tya.echo.music.utils.ThermalManager.isHot.value) return@launch
                 val maxH = videoModeMaxHeight
                 var url = runCatching { YTPlayerUtils.videoStreamUrl(id, connectivityManager, maxH) }.getOrNull()
                 // TV robustness: if 1080p came back empty, fall back to the default resolution (matches
@@ -8142,25 +8205,30 @@ class MusicService :
             }
 
             Timber.tag("MusicService").i("FETCHING STREAM: $mediaId | quality=$lockedQuality")
-            val playbackData = runBlocking(Dispatchers.IO) {
-                val dbSongReadStartMs = android.os.SystemClock.elapsedRealtime()
-                val dbSong = database.song(mediaId).firstOrNull()
-                val knownArtist = dbSong?.artists?.joinToString { it.name }?.replace(" - Topic", "")
-                val knownTitle = dbSong?.song?.title
-                val knownDuration = dbSong?.song?.duration?.let { if (it > 0) it * 1000L else null }
-                // Both loader-thread Room reads (format above + song here) reported as RESOLVE_TIMING db=.
-                val preResolveDbMs = dbFormatReadMs + (android.os.SystemClock.elapsedRealtime() - dbSongReadStartMs)
+            val playbackData = try {
+                audioStreamResolveInFlight.incrementAndGet()
+                runBlocking(Dispatchers.IO) {
+                    val dbSongReadStartMs = android.os.SystemClock.elapsedRealtime()
+                    val dbSong = database.song(mediaId).firstOrNull()
+                    val knownArtist = dbSong?.artists?.joinToString { it.name }?.replace(" - Topic", "")
+                    val knownTitle = dbSong?.song?.title
+                    val knownDuration = dbSong?.song?.duration?.let { if (it > 0) it * 1000L else null }
+                    // Both loader-thread Room reads (format above + song here) reported as RESOLVE_TIMING db=.
+                    val preResolveDbMs = dbFormatReadMs + (android.os.SystemClock.elapsedRealtime() - dbSongReadStartMs)
 
-                YTPlayerUtils.playerResponseForPlayback(
-                    mediaId,
-                    audioQuality = lockedQuality,
-                    connectivityManager = connectivityManager,
-                    context = this@MusicService,
-                    knownArtist = knownArtist,
-                    knownTitle = knownTitle,
-                    knownDurationMs = knownDuration,
-                    preResolveDbMs = preResolveDbMs
-                )
+                    YTPlayerUtils.playerResponseForPlayback(
+                        mediaId,
+                        audioQuality = lockedQuality,
+                        connectivityManager = connectivityManager,
+                        context = this@MusicService,
+                        knownArtist = knownArtist,
+                        knownTitle = knownTitle,
+                        knownDurationMs = knownDuration,
+                        preResolveDbMs = preResolveDbMs
+                    )
+                }
+            } finally {
+                audioStreamResolveInFlight.decrementAndGet()
             }.getOrElse { throwable ->
                 when (throwable) {
                     // UNRESOLVABLE SONG dead-end (fix #1): region-locked, premium/members-only,
@@ -8248,23 +8316,12 @@ class MusicService :
                         // here — the loop it guards against only existed because the throw pre-empted that
                         // upsert.
                         if (isCurrentlyPlaying && dataSpec.position != 0L) {
-                            // Arm the bypass BEFORE throwing, or this throw LOOPS: it fires ahead of the
-                            // FormatEntity upsert below, so the stale row survives, the next resolve sees the
-                            // same mismatch and throws again — error -> recovery -> re-resolve -> throw.
-                            // With the flag set, the next resolve skips this guard entirely (it is gated on
-                            // !shouldBypassCache), reaches the upsert, and writes the corrected row; :5476 then
-                            // clears the flag. Deliberately NOT deleting the format row instead: that would
-                            // re-run loudness normalization mid-song (registry: "like must not re-normalize").
-                            //
-                            // This path only became reachable for CROSSFADED tracks once performCrossfadeSwap
-                            // started writing currentPlayingMediaId (0.6.108). Before that the stale field made
-                            // isCurrentlyPlaying false here, so the mismatch was purged silently instead.
+                            // Registry #57: do NOT throw mid-song — that forced an audible cut/restart.
+                            // Cache bytes were already purged above; falling through upserts the corrected
+                            // FormatEntity so the next open uses the right container without a hard restart.
                             bypassCacheForQualityChange.add(mediaId)
-                            Timber.tag(TAG).e("Format changed mid-stream for $mediaId. Throwing to force player restart.")
-                            throw PlaybackException(
-                                "Container format changed mid-stream due to fallback",
-                                null,
-                                PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED
+                            Timber.tag(TAG).w(
+                                "Format changed mid-stream for $mediaId — purged cache and continuing without restart",
                             )
                         }
                     }
@@ -8431,6 +8488,10 @@ class MusicService :
         if (_videoMode.value) return
         if (isCrossfading) return
         if (!playerInitialized.value) return
+        // Screen off / thermal: no speculative CDN bytes while invisible or hot.
+        if ((getSystemService(POWER_SERVICE) as? android.os.PowerManager)?.isInteractive == false) return
+        if (iad1tya.echo.music.utils.ThermalManager.isHot.value) return
+        if (audioStreamResolveInFlight.get() > 0 || YTPlayerUtils.isStreamResolveBusy) return
         val id = player.currentMediaItem?.mediaId ?: return
         if (id.isEmpty() || id.isLocalMediaId() || id.startsWith("http", ignoreCase = true)) return
         if (player.currentMetadata?.isVideoSong != true) return
@@ -9170,28 +9231,40 @@ class MusicService :
      */
     private fun savePlaybackPositionToDisk() {
         if (player.mediaItemCount == 0) return
-        val state = PersistPlayerState(
+        val state = capturePersistPlayerState()
+        scope.launch(Dispatchers.IO) {
+            runCatching { writePersistPlayerState(state) }
+        }
+        checkpointEnhancedShuffleCursor()
+    }
+
+    /** Same payload as [savePlaybackPositionToDisk] but blocks — for ACTION_SHUTDOWN / REBOOT. */
+    private fun savePlaybackPositionToDiskSynchronous() {
+        if (!::player.isInitialized || player.mediaItemCount == 0) return
+        runCatching {
+            writePersistPlayerState(capturePersistPlayerState())
+        }
+        checkpointEnhancedShuffleCursor()
+    }
+
+    private fun capturePersistPlayerState(): PersistPlayerState =
+        PersistPlayerState(
             playWhenReady = player.playWhenReady,
             repeatMode = player.repeatMode,
             shuffleModeEnabled = player.shuffleModeEnabled,
-            // Persist the USER's intended volume, never the live player.volume (which is transiently
-            // lowered during a crossfade or audio-focus duck). Saving the transient value and restoring
-            // it later left playback permanently silent.
             volume = (if (::playerVolume.isInitialized) playerVolume.value else player.volume),
             currentPosition = player.currentPosition,
             currentMediaItemIndex = player.currentMediaItemIndex,
             playbackState = player.playbackState,
         )
-        scope.launch(Dispatchers.IO) {
-            runCatching {
-                filesDir.resolve(PERSISTENT_PLAYER_STATE_FILE).outputStream().use { fos ->
-                    ObjectOutputStream(fos).use { it.writeObject(state) }
-                }
-            }
+
+    private fun writePersistPlayerState(state: PersistPlayerState) {
+        filesDir.resolve(PERSISTENT_PLAYER_STATE_FILE).outputStream().use { fos ->
+            ObjectOutputStream(fos).use { it.writeObject(state) }
         }
-        // Enhanced Shuffle: opportunistically checkpoint the resume cursor (last song + position) for the
-        // current context, so coming back to a partially-heard playlist can resume near where it was left.
-        // Captured here on the Main thread; the write is off-thread. Best-effort, guarded, no-op otherwise.
+    }
+
+    private fun checkpointEnhancedShuffleCursor() {
         val ctx = shuffleContextId
         if (enhancedShuffleHint && ctx != null && player.shuffleModeEnabled) {
             val sid = player.currentMetadata?.id
@@ -9368,6 +9441,16 @@ class MusicService :
             unregisterReceiver(screenStateReceiver)
         } catch (e: Exception) {
             Timber.tag(TAG).d("screenStateReceiver was not registered: ${e.message}")
+        }
+        try {
+            unregisterReceiver(becomingNoisyReceiver)
+        } catch (e: Exception) {
+            Timber.tag(TAG).d("becomingNoisyReceiver was not registered: ${e.message}")
+        }
+        try {
+            unregisterReceiver(shutdownSaveReceiver)
+        } catch (e: Exception) {
+            Timber.tag(TAG).d("shutdownSaveReceiver was not registered: ${e.message}")
         }
         audioManager.unregisterAudioDeviceCallback(audioDeviceCallback)
         castConnectionHandler?.release()

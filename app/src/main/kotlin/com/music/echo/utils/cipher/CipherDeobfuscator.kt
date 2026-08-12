@@ -39,6 +39,9 @@ object CipherDeobfuscator {
 
     private val deobfuscateMutex = Mutex()
 
+    /** True while a cipher/n-param WebView job holds the process-wide lock — speculative video prefetch must yield. */
+    val isBusy: Boolean get() = deobfuscateMutex.isLocked
+
     @Volatile
     private var prewarmed = false
 

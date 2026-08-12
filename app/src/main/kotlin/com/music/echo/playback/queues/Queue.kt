@@ -88,6 +88,14 @@ interface Queue {
 
         fun filterVideoSongs(disableVideos: Boolean = false) =
             if (disableVideos) reanchor(items.filterVideoSongs(true)) else this
+
+        /**
+         * Automatic radio / related / mood appends: keep only items YouTube Music tagged with a
+         * [iad1tya.echo.music.models.MediaMetadata.musicVideoType] (ATV songs + official music videos).
+         * Drops tutorials / how-tos / non-music uploads that arrive with a null type.
+         */
+        fun filterNonMusicForAutoQueue(enabled: Boolean = true) =
+            if (enabled) reanchor(items.filterNonMusicForAutoQueue(true)) else this
     }
 }
 
@@ -103,6 +111,14 @@ fun List<MediaItem>.filterExplicit(enabled: Boolean = true) =
 fun List<MediaItem>.filterVideoSongs(disableVideos: Boolean = false) =
     if (disableVideos) {
         filterNot { it.metadata?.isVideoSong == true }
+    } else {
+        this
+    }
+
+/** See [Queue.Status.filterNonMusicForAutoQueue]. */
+fun List<MediaItem>.filterNonMusicForAutoQueue(enabled: Boolean = true) =
+    if (enabled) {
+        filter { it.metadata?.musicVideoType != null }
     } else {
         this
     }
