@@ -1,12 +1,19 @@
 {
-    "updatedAt":  "2026-08-10T18:00:00Z",
-    "items":  [
-                  {
-                      "date":  "2026-08-10",
-                      "title":  "Avisos en tu cuenta",
-                      "body":  "Abre el avatar o el engranaje arriba a la derecha: ahi estan los Avisos con un punto rojo cuando hay algo nuevo. Tambien puedes enviar comunicados editando announcements.json en GitHub (main) sin publicar un APK nuevo.",
-                      "id":  "welcome-avisos-174",
-                      "priority":  "info"
-                  }
-              ]
+  "updatedAt": "2026-08-12T17:38:00Z",
+  "items": [
+    {
+      "id": "aviso-20260812-173800",
+      "date": "2026-08-12",
+      "title": "app en mantenimiento",
+      "body": "hay un problema con los álbum al selccionar las canciones que hay dentro no funcionan eso y mucho mas ya se esta trabajando en la actualización para corregirlos lo antes posible pasiencia porfavor esten pendientes a la actualización de correccion.",
+      "priority": "important"
+    },
+    {
+      "date": "2026-08-10",
+      "title": "Avisos en tu cuenta",
+      "body": "Abre el avatar o el engranaje arriba a la derecha: ahi estan los Avisos con un punto rojo cuando hay algo nuevo. Tambien puedes enviar comunicados editando announcements.json en GitHub (main) sin publicar un APK nuevo.",
+      "id": "welcome-avisos-174",
+      "priority": "info"
+    }
+  ]
 }
