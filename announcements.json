@@ -1,6 +1,14 @@
 {
-  "updatedAt": "2026-08-12T18:41:38Z",
+  "updatedAt": "2026-08-12T19:02:30Z",
   "items": [
+    {
+      "id": "aviso-20260812-190230",
+      "date": "2026-08-12",
+      "publishedAt": "2026-08-12T19:02:30Z",
+      "title": "¡Hola, comunidad de Aura!",
+      "body": "Con el objetivo de brindarles la mejor experiencia, utilizaremos este espacio para compartirles al instante todas las novedades: desde nuevas características y mejoras de rendimiento, hasta correcciones rápidas.\n\nPensando en su comodidad y para mantener un historial despejado, los avisos desaparecerán 24 horas después de su lectura. Una vez que estén informados, el registro se eliminará para mantener su buzón rápido y organizado.",
+      "priority": "important"
+    },
     {
       "id": "aviso-20260812-184138",
       "date": "2026-08-12",
