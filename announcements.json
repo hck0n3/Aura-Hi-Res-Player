@@ -1,6 +1,13 @@
 {
-  "updatedAt": "2026-08-12T17:38:00Z",
+  "updatedAt": "2026-08-12T18:12:00Z",
   "items": [
+    {
+      "id": "aviso-20260812-181200",
+      "date": "2026-08-12",
+      "title": "actualización lista",
+      "body": "ya pueden instalar la nueva actualización con todas las correcciones de los errores mencionados anteriormente  en ajustes  Aura Update ya es encuentra disponible gracias por la paciencia y la preferencias.",
+      "priority": "important"
+    },
     {
       "id": "aviso-20260812-173800",
       "date": "2026-08-12",
