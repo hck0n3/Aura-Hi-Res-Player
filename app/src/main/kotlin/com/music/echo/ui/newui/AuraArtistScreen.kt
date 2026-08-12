@@ -894,7 +894,10 @@ fun AuraArtistScreen(
                                         }
                                     }
                                 } else {
-                                val cardW = AuraAlbumShelfWidth
+                                // Keep scale in ONE place: rowHeight must use the same scaled width as
+                                // AuraTypedYtCoverCard, or the year under the cover is clipped (owner report).
+                                val albumCardScale = 1.05f
+                                val cardW = AuraAlbumShelfWidth * albumCardScale
                                 // Albums / EPs / Singles / playlists: two sideways rows (Apple + YTM).
                                 AuraDoubleRowShelf(
                                     rowHeight = auraShelfCardStackHeight(cardW),
@@ -910,7 +913,7 @@ fun AuraArtistScreen(
                                         val item = sectionItems[position]
                                         AuraTypedYtCoverCard(
                                             item = item,
-                                            cardScale = 1.05f,
+                                            cardScale = albumCardScale,
                                             isActive = when (item) {
                                                 is SongItem -> mediaMetadata?.id == item.id
                                                 is AlbumItem -> mediaMetadata?.album?.id == item.id

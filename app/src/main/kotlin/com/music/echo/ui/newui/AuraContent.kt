@@ -549,8 +549,9 @@ fun AuraCoverCard(
         // Fixed 2-line title + 1-line subtitle so every shelf card shares the same baseline
         // (short titles used to collapse the stack and make double-row grids look uneven).
         val density = LocalDensity.current
-        val titleBlockHeight = with(density) { (AuraType.CoverTitle.lineHeight * 2).toDp() }
-        val subtitleBlockHeight = with(density) { AuraType.RowSubtitle.lineHeight.toDp() }
+        // +2.dp slack: a Box height equal to lineHeight alone clips glyph bottoms (album years).
+        val titleBlockHeight = with(density) { (AuraType.CoverTitle.lineHeight * 2).toDp() } + 2.dp
+        val subtitleBlockHeight = with(density) { AuraType.RowSubtitle.lineHeight.toDp() } + 2.dp
         Text(
             text = title,
             style = AuraType.CoverTitle,
