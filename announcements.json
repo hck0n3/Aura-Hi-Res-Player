@@ -1,6 +1,14 @@
 {
-  "updatedAt": "2026-08-12T19:38:34Z",
+  "updatedAt": "2026-08-12T20:10:57Z",
   "items": [
+    {
+      "id": "aviso-20260812-201057",
+      "date": "2026-08-12",
+      "publishedAt": "2026-08-12T20:10:57Z",
+      "title": "¡Actualización lista! 🎉 Correcciones y sorpresas en camino",
+      "body": "¡Hola, comunidad de Aura! Nos alegra informarles que el parche para solucionar el detalle de los avisos ya está disponible. Para instalarla ya mismo, solo vayan a Ajustes > Actualizaciones y sigan disfrutando de la mejor experiencia con correcciones al instante. ¡Y eso no es todo! Manténganse muy pendientes, porque pronto lanzaremos una nueva función donde podrán enviar sus sugerencias y reportar errores directamente al creador. ¡Gracias por ayudarnos a hacer de Aura una app increíble!",
+      "priority": "info"
+    },
     {
       "id": "aviso-20260812-193834",
       "date": "2026-08-12",
