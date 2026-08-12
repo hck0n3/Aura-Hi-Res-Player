@@ -230,7 +230,13 @@ interface DatabaseDao {
         SELECT DISTINCT song.* FROM song_artist_map
         JOIN song ON song_artist_map.songId = song.id
         JOIN artist ON artist.id = song_artist_map.artistId
-        WHERE (song.inLibrary IS NOT NULL OR song.liked = 1)
+        WHERE (
+            song.inLibrary IS NOT NULL
+            OR song.liked = 1
+            OR song.isDownloaded = 1
+            OR song.isLocal = 1
+            OR EXISTS (SELECT 1 FROM playlist_song_map WHERE playlist_song_map.songId = song.id)
+          )
           AND (
             song_artist_map.artistId = :artistId
             OR (:artistName != '' AND LOWER(artist.name) = LOWER(:artistName))
@@ -292,7 +298,17 @@ interface DatabaseDao {
 
     @Transaction
     @Query(
-        "SELECT song.* FROM song_artist_map JOIN song ON song_artist_map.songId = song.id WHERE artistId = :artistId AND (inLibrary IS NOT NULL OR liked = 1) LIMIT :previewSize",
+        """SELECT song.* FROM song_artist_map
+        JOIN song ON song_artist_map.songId = song.id
+        WHERE artistId = :artistId
+          AND (
+            song.inLibrary IS NOT NULL
+            OR song.liked = 1
+            OR song.isDownloaded = 1
+            OR song.isLocal = 1
+            OR EXISTS (SELECT 1 FROM playlist_song_map WHERE playlist_song_map.songId = song.id)
+          )
+        LIMIT :previewSize""",
     )
     fun artistSongsPreview(
         artistId: String,

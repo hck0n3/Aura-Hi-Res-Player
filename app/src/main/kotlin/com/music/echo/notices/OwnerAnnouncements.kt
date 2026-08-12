@@ -44,7 +44,8 @@ object OwnerAnnouncements {
         "https://raw.githubusercontent.com/hck0n3/Aura-Hi-Res-Player/main/announcements.json"
     private const val CACHE_FILE = "announcements_cache.json"
     private const val MAX_BODY_BYTES = 256 * 1024
-    private const val MIN_REFRESH_MS = 30L * 60L * 1_000L
+    /** Soft throttle on open/resume; Notices screen still uses force=true. */
+    private const val MIN_REFRESH_MS = 5L * 60L * 1_000L
 
     private val mutex = Mutex()
     private val _items = MutableStateFlow<List<OwnerAnnouncement>>(emptyList())
@@ -67,11 +68,14 @@ object OwnerAnnouncements {
             val since = System.currentTimeMillis() - lastRefreshAtMs
             if (!force && _items.value.isNotEmpty() && since in 0 until MIN_REFRESH_MS) return@withLock
             runCatching {
-                val conn = (URL(REMOTE_URL).openConnection() as HttpURLConnection).apply {
+                // Cache-bust so a fresh push to main is not stuck behind raw.githubusercontent CDN.
+                val url = "$REMOTE_URL?t=${System.currentTimeMillis()}"
+                val conn = (URL(url).openConnection() as HttpURLConnection).apply {
                     connectTimeout = 8_000
                     readTimeout = 8_000
                     requestMethod = "GET"
                     setRequestProperty("Accept", "application/json")
+                    useCaches = false
                 }
                 try {
                     if (conn.responseCode !in 200..299) {

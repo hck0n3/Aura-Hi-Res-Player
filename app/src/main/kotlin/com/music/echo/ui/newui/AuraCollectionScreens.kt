@@ -334,25 +334,25 @@ internal fun AuraSongCollectionScaffold(
                 }
                 val dimmed = song.id in shufflePlayedSet && song.id != mediaMetadata?.id
                 val playFromFiltered = {
-                    when {
-                        inSelectMode -> onCheckedChange(!selected)
-                        song.song.id == mediaMetadata?.id -> {
-                            playerConnection.togglePlayPause()
-                            if (videoPosterLayout) playerConnection.enterVideoModeIfNeeded()
+                        when {
+                            inSelectMode -> onCheckedChange(!selected)
+                            song.song.id == mediaMetadata?.id -> {
+                                playerConnection.togglePlayPause()
+                                if (videoPosterLayout) playerConnection.enterVideoModeIfNeeded(forceFromUserTap = true)
+                            }
+                            else -> {
+                                playerConnection.playQueue(
+                                    ListQueue(
+                                        title = queueTitle,
+                                        items = filteredSongs.map { it.toMediaItem() },
+                                        startIndex = filteredSongs.indexOfFirst { it.id == song.id },
+                                        contextId = contextId,
+                                    ),
+                                )
+                                // Exported videos: always open in video mode; user can switch to audio later.
+                                if (videoPosterLayout) playerConnection.enterVideoModeIfNeeded(forceFromUserTap = true)
+                            }
                         }
-                        else -> {
-                            playerConnection.playQueue(
-                                ListQueue(
-                                    title = queueTitle,
-                                    items = filteredSongs.map { it.toMediaItem() },
-                                    startIndex = filteredSongs.indexOfFirst { it.id == song.id },
-                                    contextId = contextId,
-                                ),
-                            )
-                            // Exported videos: always open in video mode; user can switch to audio later.
-                            if (videoPosterLayout) playerConnection.enterVideoModeIfNeeded()
-                        }
-                    }
                 }
 
                 if (videoPosterLayout) {

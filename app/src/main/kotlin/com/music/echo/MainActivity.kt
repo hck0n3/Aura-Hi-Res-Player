@@ -342,6 +342,10 @@ class MainActivity : ComponentActivity() {
     private var playerConnection by mutableStateOf<PlayerConnection?>(null)
     // True while the app is in Android Picture-in-Picture mode (video floating window).
     private var inPipMode by mutableStateOf(false)
+    // Incremented each time the user returns from PiP while video is active; read by Compose to
+    // re-expand the player sheet (videoModeOn LaunchedEffect already fired and won't re-fire because
+    // the key didn't change, so we need a separate signal).
+    private var pipExitExpandTrigger by mutableStateOf(0)
     private var pipPlayPauseJob: kotlinx.coroutines.Job? = null
     // Receives the PiP RemoteAction taps (play/pause, next, prev) and drives the player.
     private val pipReceiver = object : BroadcastReceiver() {
@@ -417,6 +421,13 @@ class MainActivity : ComponentActivity() {
         // #27: app coming to the foreground is genuine engagement → drop the cold-restore PLAY veto so all
         // external controls work normally (onServiceConnected covers the cold-start bind-after-onStart case).
         playerConnection?.service?.onAppForegrounded()
+
+        // Pull owner notices on resume so commits to announcements.json show without a cold process start.
+        lifecycleScope.launch(Dispatchers.IO) {
+            runCatching {
+                iad1tya.echo.music.notices.OwnerAnnouncements.refresh(applicationContext)
+            }
+        }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
@@ -510,6 +521,12 @@ class MainActivity : ComponentActivity() {
         } else {
             pipPlayPauseJob?.cancel()
             pipPlayPauseJob = null
+            // If the user dismissed the PiP window while video mode is still active, re-expand
+            // the player sheet so the video surface comes back into view. The videoModeOn
+            // LaunchedEffect won't re-fire because its key (videoModeOn) hasn't changed.
+            if (playerConnection?.videoMode?.value == true) {
+                pipExitExpandTrigger++
+            }
         }
     }
 
@@ -1159,6 +1176,12 @@ class MainActivity : ComponentActivity() {
                     if (videoModeOn) {
                         playerBottomSheetState.expandSoft()
                     }
+                }
+
+                // Re-expand after returning from PiP: the videoModeOn key hasn't changed so its
+                // LaunchedEffect won't re-fire — use the separate pip-exit trigger instead.
+                LaunchedEffect(pipExitExpandTrigger) {
+                    if (pipExitExpandTrigger > 0) playerBottomSheetState.expandSoft()
                 }
 
                 var shouldShowTopBar by rememberSaveable { mutableStateOf(false) }

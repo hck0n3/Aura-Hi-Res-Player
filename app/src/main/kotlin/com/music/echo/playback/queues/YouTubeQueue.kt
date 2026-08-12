@@ -13,6 +13,11 @@ import kotlinx.coroutines.withContext
 class YouTubeQueue(
     private var endpoint: WatchEndpoint,
     override val preloadItem: MediaMetadata? = null,
+    /**
+     * True when Aura seeded this queue as automatic radio/related (not a user tapping a single song /
+     * playlist endpoint). Gates NO_MUSIC skip + auto-append non-music filter.
+     */
+    val automaticRadio: Boolean = false,
 ) : Queue {
     private var continuation: String? = null
     private val maxRetries = 3
@@ -93,7 +98,8 @@ class YouTubeQueue(
         fun radio(song: MediaMetadata): YouTubeQueue {
             return YouTubeQueue(
                 WatchEndpoint(videoId = song.id),
-                song
+                song,
+                automaticRadio = true,
             )
         }
     }

@@ -118,6 +118,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.delay
 import iad1tya.echo.music.applecanvas.AppleMusicCanvasProvider
 import iad1tya.echo.music.echomusiccanvas.echomusicCanvasProvider
+import iad1tya.echo.music.canvas.AppleMusicArtistBackgroundProvider
 import java.util.Locale
 
 
@@ -1150,9 +1151,26 @@ private fun ThumbnailItem(
                         }
                     }
                     
-                    canvasArtwork = validated
-                    if (validated != null) {
-                        CanvasArtworkPlaybackCache.put(item.mediaId, validated)
+                    // Fallback: when no per-song/album canvas passed validation, use the artist's
+                    // motion backdrop (same logic as Player.kt ~747-755) so the player still shows
+                    // a moving background. Cached inside AppleMusicArtistBackgroundProvider (24 h).
+                    val finalArtwork = validated ?: run {
+                        val a = requestedArtist
+                        if (a.isNotBlank()) {
+                            val artistUrl = runCatching {
+                                withContext(Dispatchers.IO) {
+                                    AppleMusicArtistBackgroundProvider.getByArtistName(a, storefront)
+                                }
+                            }.getOrNull()
+                            if (!artistUrl.isNullOrBlank()) {
+                                CanvasArtwork(artist = a, animated = artistUrl, videoUrl = artistUrl)
+                            } else null
+                        } else null
+                    }
+
+                    canvasArtwork = finalArtwork
+                    if (finalArtwork != null) {
+                        CanvasArtworkPlaybackCache.put(item.mediaId, finalArtwork)
                     }
                     canvasFetchInFlight = false
                 }

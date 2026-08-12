@@ -336,7 +336,7 @@ fun AuraOnlinePlaylistScreen(
                                 inSelectMode -> onCheckedChange(!selected)
                                 isActive -> {
                                     playerConnection.togglePlayPause()
-                                    playerConnection.enterVideoModeIfNeeded()
+                                    playerConnection.enterVideoModeIfNeeded(forceFromUserTap = true)
                                 }
                                 else -> {
                                     playerConnection.playQueue(
@@ -348,7 +348,7 @@ fun AuraOnlinePlaylistScreen(
                                             startIndex = index,
                                         ),
                                     )
-                                    playerConnection.enterVideoModeIfNeeded()
+                                    playerConnection.enterVideoModeIfNeeded(forceFromUserTap = true)
                                 }
                             }
                         }

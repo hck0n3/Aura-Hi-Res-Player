@@ -721,6 +721,14 @@ private fun ColumnScope.EqMainContent(
             onDispose { player.removeListener(fullListener) }
         }
     }
+    // Video swap creates a new audio source and can silently kill the active Visualizer even when
+    // the session id stays the same. Collect videoMode changes and force a rebind each time.
+    LaunchedEffect(playerConnection) {
+        playerConnection?.videoMode?.collect {
+            visualizerGeneration++
+        }
+    }
+
     val fftSnapshot by rememberEqFftMeter(
         audioSessionId = audioSessionId,
         enabled = fftMeterEnabled,
@@ -1335,12 +1343,28 @@ private fun FactoryPresetGrid(
             verticalArrangement = Arrangement.spacedBy(8.dp),
             maxItemsInEachRow = 3,
         ) {
-            // Display order only: short names together so the FlowRow doesn't look jagged.
+            // Display order: short names first so FlowRow doesn't look jagged; last FULL row of 3
+            // always holds the 3 longest names (by char count, desc-alpha tie-break) so wide chips
+            // are grouped together instead of a long name appearing alone on the final row.
             // Selection still uses canonical enum order above (do not move the active chip to front).
             val displayPresets = remember {
-                FactoryPreset.entries.sortedWith(
+                val sorted = FactoryPreset.entries.sortedWith(
                     compareBy({ it.displayName.length }, { it.displayName }),
                 )
+                val orphanCount = sorted.size % 3
+                if (orphanCount == 0) {
+                    sorted
+                } else {
+                    // Isolate the last (3 + orphanCount) items; re-sort them desc so the 3 longest
+                    // occupy the last full row and the orphan(s) trail behind.
+                    val pivotIdx = sorted.size - (3 + orphanCount)
+                    val head = sorted.take(pivotIdx)
+                    val tail = sorted.drop(pivotIdx).sortedWith(
+                        compareByDescending<FactoryPreset> { it.displayName.length }
+                            .thenByDescending { it.displayName },
+                    )
+                    head + tail
+                }
             }
             displayPresets.forEach { preset ->
                 key(preset) {
@@ -1421,6 +1445,10 @@ private fun BandEqCard(
 ) {
     val plate = if (skin.enabled) skin.fill else MaterialTheme.colorScheme.surfaceContainerLow
     val line = if (skin.enabled) skin.line else Color.Transparent
+    // Track whether any band slider is being dragged so the band container's horizontal scroll
+    // can be disabled during the drag (prevents accidental sideways slip while adjusting a band).
+    var bandDragActive by remember { mutableStateOf(false) }
+    val bandScrollState = rememberScrollState()
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         BoxWithConstraints(
             modifier = Modifier
@@ -1451,7 +1479,9 @@ private fun BandEqCard(
                 modifier = Modifier
                     .then(
                         if (canExpand) Modifier.fillMaxWidth()
-                        else Modifier.horizontalScroll(rememberScrollState()),
+                        // Horizontal scroll is disabled while a band is being dragged to prevent
+                        // the container from sliding sideways during vertical slider adjustments.
+                        else Modifier.horizontalScroll(bandScrollState, enabled = !bandDragActive),
                     )
                     .padding(horizontal = BAND_ROW_HORIZONTAL_PADDING),
                 horizontalArrangement = Arrangement.spacedBy(BAND_SLIDER_SPACING),
@@ -1465,7 +1495,10 @@ private fun BandEqCard(
                         onValueChange = { onBandChange(band, it) },
                         onValueChangeFinished = onBandCommit,
                         travel = travel,
-                        onDragActiveChange = onDragActiveChange,
+                        onDragActiveChange = { active ->
+                            bandDragActive = active
+                            onDragActiveChange(active)
+                        },
                         modifier = if (canExpand) Modifier.weight(1f) else Modifier.width(BAND_SLIDER_MIN_WIDTH),
                     )
                 }

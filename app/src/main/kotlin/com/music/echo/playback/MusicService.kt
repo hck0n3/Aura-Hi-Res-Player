@@ -182,7 +182,9 @@ import iad1tya.echo.music.playback.audio.AudioOffloadGate
 import iad1tya.echo.music.playback.audio.SilenceDetectorAudioProcessor
 import iad1tya.echo.music.playback.queues.EmptyQueue
 import iad1tya.echo.music.playback.queues.ListQueue
+import iad1tya.echo.music.playback.queues.LocalAlbumRadio
 import iad1tya.echo.music.playback.queues.Queue
+import iad1tya.echo.music.playback.queues.YouTubeAlbumRadio
 import iad1tya.echo.music.playback.queues.YouTubeQueue
 import iad1tya.echo.music.playback.queues.filterExplicit
 import iad1tya.echo.music.playback.queues.filterVideoSongs
@@ -3284,10 +3286,13 @@ class MusicService :
         scope.launch(SilentHandler) {
             val rawStatus =
                 withContext(Dispatchers.IO) {
+                    // Do NOT apply filterNonMusicForAutoQueue here: user-chosen queues (LocalAlbumRadio,
+                    // ListQueue, playlists, liked) often have musicVideoType=null on plain audio rows from
+                    // the DB — filtering them emptied albums so taps silently no-op'd (0.6.176 regression).
+                    // Non-music filtering belongs only on automatic radio/related appends.
                     queue.getInitialStatus()
                         .filterExplicit(dataStore.get(HideExplicitKey, false))
                         .filterVideoSongs(dataStore.get(HideVideoSongsKey, false) || dataStore.get(iad1tya.echo.music.constants.DataSaverEnabledKey, false))
-                        .filterNonMusicForAutoQueue()
                 }
             // Duplicate ROWS of one mediaId (a playlist can hold the same song twice) defeat the id-keyed
             // no-repeat memory: both rows play, and the second reads as a repeat. Context queues dedupe at
@@ -3781,7 +3786,7 @@ class MusicService :
                 // Genre-aware continuation: an automatic last-song seed still continues the finished context,
                 // so steer its batches toward the context profile (no-op while the profile is null/inactive).
                 contextSteerActive = true
-                val radioQueue = YouTubeQueue(endpoint = WatchEndpoint(videoId = seed))
+                val radioQueue = YouTubeQueue(endpoint = WatchEndpoint(videoId = seed), automaticRadio = true)
                 val initialStatus = withContext(Dispatchers.IO) {
                     radioQueue.getInitialStatus()
                         .filterExplicit(dataStore.get(HideExplicitKey, false))
@@ -3817,7 +3822,7 @@ class MusicService :
                 // on a fresh un-loaded YouTubeQueue, so without priming pagination wouldn't fire. Best-effort: if
                 // priming fails, the always-on STATE_ENDED net still re-seeds when this finite batch ends.
                 if (ok) {
-                    val rq = YouTubeQueue(endpoint = WatchEndpoint(videoId = seed))
+                    val rq = YouTubeQueue(endpoint = WatchEndpoint(videoId = seed), automaticRadio = true)
                     runCatching { withContext(Dispatchers.IO) { rq.getInitialStatus() } }
                     currentQueue = rq
                 }
@@ -3976,7 +3981,7 @@ class MusicService :
                     // Prefer the TOP GENRE-CLUSTER representative (the context's dominant genre) so the
                     // crossfade-OFF pagination continues on that genre instead of a single-song radio of
                     // whatever happened to be first; without cluster info this is seeds.first() as before.
-                    val rq = YouTubeQueue(endpoint = WatchEndpoint(videoId = clusterReps.firstOrNull() ?: seeds.first()))
+                    val rq = YouTubeQueue(endpoint = WatchEndpoint(videoId = clusterReps.firstOrNull() ?: seeds.first()), automaticRadio = true)
                     runCatching { withContext(Dispatchers.IO) { rq.getInitialStatus() } }
                     currentQueue = rq
                 }
@@ -4103,7 +4108,7 @@ class MusicService :
             radioSeedInFlight = true
             var applied = false
             try {
-                val chipQueue = YouTubeQueue(endpoint = chip.endpoint)
+                val chipQueue = YouTubeQueue(endpoint = chip.endpoint, automaticRadio = true)
                 val initialStatus = withContext(Dispatchers.IO) {
                     runCatching {
                         chipQueue.getInitialStatus()
@@ -5337,11 +5342,13 @@ class MusicService :
         }
         rememberRecentRadioId(mediaItem?.mediaId ?: player.currentMetadata?.id)
         // Automatic YouTube radio only: skip non-music uploads (tutorials/how-tos) with null musicVideoType.
-        // Library / explicit playlists are untouched — those can carry null types for plain audio rows.
+        // Never skip user-tapped songs / playlists (YouTubeQueue without automaticRadio) — those often lack
+        // a type when hydrated from DB and must still play.
         run {
             val autoMeta = player.currentMetadata
+            val autoRadio = (currentQueue as? YouTubeQueue)?.automaticRadio == true
             if (
-                currentQueue is YouTubeQueue &&
+                autoRadio &&
                 autoMeta != null &&
                 autoMeta.musicVideoType == null &&
                 !autoMeta.id.isLocalMediaId() &&
@@ -5662,7 +5669,15 @@ class MusicService :
                     var next = currentQueue.nextPage()
                         .filterExplicit(dataStore.get(HideExplicitKey, false))
                         .filterVideoSongs(dataStore.get(HideVideoSongsKey, false) || dataStore.get(iad1tya.echo.music.constants.DataSaverEnabledKey, false))
-                        .filterNonMusicForAutoQueue()
+                    // Non-music filter only on automatic radio / album-radio continuation — never on
+                    // user playlist pagination (YouTubePlaylistQueue) where rows may lack a type.
+                    val filterAutoNonMusic =
+                        (currentQueue as? YouTubeQueue)?.automaticRadio == true ||
+                            currentQueue is LocalAlbumRadio ||
+                            currentQueue is YouTubeAlbumRadio
+                    if (filterAutoNonMusic) {
+                        next = next.filterNonMusicForAutoQueue()
+                    }
                     // ENRICH BEFORE SCORING (see [ENRICH_BEFORE_SCORE_MS]). This is the enrich run that
                     // used to fire AFTER the items were queued, moved AHEAD of the snapshot below so
                     // the lane filter and orderedByTaste's steer are decided with what we just learned
@@ -7043,8 +7058,29 @@ class MusicService :
                 // first; with that gone, the resolver's "ghost cache entry — keeping cached bytes" path
                 // would re-serve the SAME corrupt data on every retry, so a song that used to hiccup once
                 // and heal would stutter through its 3 retries and get skipped — on every single play.
-                Timber.tag(TAG).d("Cache/stream corruption — deleting the cached bytes and re-resolving")
-                if (mediaId != null) performAggressiveCacheClear(mediaId)
+                val noDeclaredBrand = error.message?.contains("NoDeclaredBrand", ignoreCase = true) == true ||
+                    generateSequence(error as Throwable?) { it.cause }
+                        .any { it.message?.contains("NoDeclaredBrand", ignoreCase = true) == true }
+                val attempts = if (mediaId != null) (currentMediaIdRetryCount[mediaId] ?: 0) + 1 else 0
+                Timber.tag(TAG).i(
+                    "CONTAINER_3003 id=${mediaId?.take(11)} attempts=$attempts noBrand=$noDeclaredBrand code=${error.errorCode}",
+                )
+                if (mediaId != null) {
+                    performAggressiveCacheClear(mediaId)
+                    // Stale FormatEntity can re-pin a dead container after HTML/empty googlevideo replies.
+                    bypassCacheForQualityChange.add(mediaId)
+                    scope.launch(Dispatchers.IO) {
+                        runCatching { database.deleteFormat(mediaId) }
+                    }
+                }
+                // After repeated NoDeclaredBrand (HTML/empty stream), stop retrying the same dead URL —
+                // surface final failure / skip instead of looping "Volver a intentar".
+                if (noDeclaredBrand && mediaId != null && hasExceededRetryLimit(mediaId)) {
+                    Timber.tag(TAG).w("CONTAINER_3003 giving up for ${mediaId.take(11)} after NoDeclaredBrand retries")
+                    markSongAsFailed(mediaId)
+                    handleFinalFailure()
+                    return
+                }
                 handleExpiredUrlError(mediaId)
                 return
             }
@@ -7500,9 +7536,13 @@ class MusicService :
     /**
      * Force video mode ON for the current item (no-op if already on). Used when opening from
      * Vídeos exportados — playback should start in video; the user can still exit later.
+     *
+     * [forceFromUserTap] bypasses the High-Performance Mode block: a deliberate tap on a video
+     * poster is an explicit user request and must always work, even on low-end devices.
      */
-    fun enterVideoModeIfNeeded() {
-        if (iad1tya.echo.music.utils.PerformanceMode.isOn(this) &&
+    fun enterVideoModeIfNeeded(forceFromUserTap: Boolean = false) {
+        if (!forceFromUserTap &&
+            iad1tya.echo.music.utils.PerformanceMode.isOn(this) &&
             !iad1tya.echo.music.utils.DeviceForm.isTvOrCar(this)
         ) {
             return

@@ -152,6 +152,16 @@ class AxionEqViewModel @Inject constructor(
         prefs.edit().putString("autoeq_bands", json).apply()
     }
 
+    /**
+     * Re-enable the Auto-EQ correction stage from the persisted bands. No-op when no profile has
+     * been stored yet (user must pick one from the Auto-EQ screen). Does NOT touch master [enabled].
+     */
+    fun reEnableAutoEq() {
+        if (_autoEqBands.value.isEmpty()) return
+        setAutoEqActive(true)
+        if (_enabled.value) applyToService()
+    }
+
     /** Remove the Auto-EQ correction stage entirely (manual EQ is untouched). Wired to "Quitar Auto-EQ". */
     fun clearAutoEq() {
         _autoEqBands.value = emptyList()

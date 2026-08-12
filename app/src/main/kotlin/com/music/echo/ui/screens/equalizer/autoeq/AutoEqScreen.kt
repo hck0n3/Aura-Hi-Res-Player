@@ -166,20 +166,27 @@ fun AutoEqScreen(navController: NavController) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
-        // Enable / disable Auto-EQ (mirrors the equalizer on/off).
+        // Toggle the Auto-EQ correction stage independently of the master EQ switch.
+        // OFF → clearAutoEq() removes the correction stage while keeping manual EQ untouched.
+        // ON  → reEnableAutoEq() restores the persisted profile (no-op if none stored yet).
         ListItem(
             headlineContent = { Text("Auto-EQ activado", fontWeight = FontWeight.Medium) },
             supportingContent = {
                 Text(
                     when {
-                        !eqEnabled -> "Desactivado"
                         autoEqActive -> "Perfil Auto-EQ aplicado (se suma a tu EQ, no lo reemplaza)"
-                        else -> "El ecualizador está aplicando la curva"
+                        eqEnabled -> "Ecualizador activo sin corrección Auto-EQ"
+                        else -> "Ecualizador desactivado"
                     },
                 )
             },
             trailingContent = {
-                Switch(checked = eqEnabled, onCheckedChange = { eqViewModel.setEnabled(it) })
+                Switch(
+                    checked = autoEqActive,
+                    onCheckedChange = { on ->
+                        if (on) eqViewModel.reEnableAutoEq() else eqViewModel.clearAutoEq()
+                    },
+                )
             },
         )
 
