@@ -82,16 +82,26 @@ object OwnerAnnouncements {
 
     fun loadCache(context: Context) {
         runCatching {
+            // Never drive the popup from cache: read-ids live in DataStore and are not available
+            // synchronously here. Showing first then pruning on refresh caused a flash of already-read
+            // notices on every app open (owner report).
+            _popupNotice.value = null
             val parsed = loadRemoteSnapshot(context)
-            if (parsed.isEmpty()) return
+            if (parsed.isEmpty()) {
+                _items.value = emptyList()
+                return
+            }
             val pruned = pruneExpiredOnly(context, parsed)
             _items.value = pruned
-            applyPopup(pruned, forced = false)
         }.onFailure { Timber.tag(TAG).w(it, "loadCache failed") }
     }
 
     suspend fun refresh(context: Context, force: Boolean = false) = withContext(Dispatchers.IO) {
         mutex.withLock {
+            // Clear any stale popup immediately on a forced open/resume pull so Compose never paints
+            // a previously-read notice for one frame while we wait on network/DataStore.
+            if (force) _popupNotice.value = null
+
             val since = System.currentTimeMillis() - lastRefreshAtMs
             if (!force && _items.value.isNotEmpty() && since in 0 until MIN_REFRESH_MS) {
                 val pruned = pruneSync(context, mergeBase(context, null), readIds(context))
@@ -116,12 +126,14 @@ object OwnerAnnouncements {
                 )
             }
 
+            val read = readIds(context)
             val base = mergeBase(context, remote)
-            val pruned = pruneSync(context, base, readIds(context))
+            val pruned = pruneSync(context, base, read)
             _items.value = pruned
-            // App open / force refresh re-shows popup even after a snooze.
+            // Only offer a popup after the read-filter prune. force=true re-arms after snooze for
+            // still-unread notices — never for already-read ones (they are gone from pruned).
             applyPopup(pruned, forced = force)
-            Timber.tag(TAG).i("Active notices after prune: %d", pruned.size)
+            Timber.tag(TAG).i("Active notices after prune: %d (read=%d)", pruned.size, read.size)
         }
     }
 
@@ -183,6 +195,7 @@ object OwnerAnnouncements {
             return
         }
         if (forced) {
+            // Re-arm after snooze only when there is still an unread notice.
             popupSnoozed = false
             _popupNotice.value = head
             return
@@ -191,6 +204,8 @@ object OwnerAnnouncements {
             _popupNotice.value = null
             return
         }
+        // Do not replace an already-visible popup with the same id (avoids recomposition flicker).
+        if (_popupNotice.value?.id == head.id) return
         _popupNotice.value = head
     }
 

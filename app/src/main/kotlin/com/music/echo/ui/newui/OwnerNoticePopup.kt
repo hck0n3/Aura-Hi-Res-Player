@@ -44,7 +44,10 @@ fun OwnerNoticePopupHost(
     if (newUi) AuraDialogWindowEffects(enabled = true)
 
     AlertDialog(
-        onDismissRequest = { OwnerAnnouncements.snoozePopup() },
+        onDismissRequest = {
+            // Outside/back = mark read too (owner: already-read must never flash again on next open).
+            scope.launch { OwnerAnnouncements.acknowledgePopup(context) }
+        },
         properties = DialogProperties(dismissOnClickOutside = true, dismissOnBackPress = true),
         confirmButton = {
             TextButton(
