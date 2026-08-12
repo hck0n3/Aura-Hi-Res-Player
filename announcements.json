@@ -1,6 +1,13 @@
 {
-  "updatedAt": "2026-08-12T18:18:21Z",
+  "updatedAt": "2026-08-12T18:41:38Z",
   "items": [
+    {
+      "id": "aviso-20260812-184138",
+      "date": "2026-08-12",
+      "title": "AVISOS MEJORADOS",
+      "body": "ya esta lista la actulaizacion para mejorar los avisos para que nunca te pierdas de nada ve  y actualiza enseguida para disfrutar de esta nueva actualización.",
+      "priority": "important"
+    },
     {
       "id": "aviso-20260812-181821",
       "date": "2026-08-12",
