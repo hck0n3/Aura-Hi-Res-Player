@@ -915,8 +915,7 @@ private fun AuraOnlinePlaylistHeader(
                 modifier = Modifier.tvFocusable(isTvOrCar, scaleFocused = 1f),
             )
             AuraHeaderCircleButton(
-                icon = if (downloadState == Download.STATE_COMPLETED) AuraIcons.Check
-                else AuraIcons.Download,
+                icon = AuraIcons.Download,
                 contentDescription = when (downloadState) {
                     Download.STATE_COMPLETED -> stringResource(R.string.remove_download)
                     Download.STATE_DOWNLOADING -> stringResource(R.string.downloading)

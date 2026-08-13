@@ -2138,10 +2138,10 @@ object Icon {
             ?: songId?.let { id -> liveMap[id] }
         val progressFraction = resolvedPercent?.takeIf { it >= 0f }?.let { (it / 100f).coerceIn(0f, 1f) }
         when (state) {
-            // Render, Biblioteca: "Marca de verificación = descargada".
+            // Apple-style: downloaded = download glyph (tray+arrow), NEVER a check — check = already played.
             STATE_COMPLETED -> if (skin.enabled) {
                 Icon(
-                    imageVector = AuraIcons.Check,
+                    imageVector = AuraIcons.Download,
                     contentDescription = null,
                     tint = skin.accent,
                     modifier = Modifier
@@ -2162,6 +2162,7 @@ object Icon {
                     CircularProgressIndicator(
                         progress = { progressFraction },
                         color = skin.accent,
+                        trackColor = skin.inkMuted.copy(alpha = 0.25f),
                         strokeWidth = 2.dp,
                         modifier = Modifier
                             .size(16.dp)
@@ -2170,6 +2171,7 @@ object Icon {
                 } else {
                     CircularProgressIndicator(
                         color = skin.accent,
+                        trackColor = skin.inkMuted.copy(alpha = 0.25f),
                         strokeWidth = 2.dp,
                         modifier = Modifier
                             .size(16.dp)

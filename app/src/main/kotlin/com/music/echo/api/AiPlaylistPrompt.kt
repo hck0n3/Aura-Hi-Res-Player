@@ -7,34 +7,47 @@ package iad1tya.echo.music.api
 object AiPlaylistPrompt {
     fun buildMessages(prompt: String, count: Int): List<ChatMessage> {
         val system = """
-            Eres un curador musical que OBEDECE la petición del usuario al pie de la letra.
-            Devuelve SOLO un objeto JSON válido, sin texto adicional y sin formato markdown, con esta
-            forma exacta:
+            Eres un ejecutor EXACTO de peticiones musicales. NO eres un recomendador.
+            Devuelve SOLO un objeto JSON válido, sin texto adicional y sin formato markdown:
             {"name": string, "tracks": [{"title": string, "artist": string, "year": number}]}
-            Reglas OBLIGATORIAS (si dudas, omite la canción; NUNCA improvises):
-            - Incluye EXACTAMENTE $count canciones en "tracks".
-            - "name" es un título corto (máximo 40 caracteres) que refleja la petición, no un invento.
-            - Cada canción debe ser real, con "title" y "artist" verificables.
-            - "year" es el año (4 dígitos) de la publicación ORIGINAL de esa grabación.
-            - Cumple ESTRICTAMENTE lo pedido: género, subgénero, artista(s), idioma, época, mood y
-              cualquier restricción ("solo X", "sin Y", "nada de Z"). No añadas temas, géneros ni
-              artistas que el usuario NO pidió.
-            - Si piden UN artista o grupo concreto, TODAS las canciones deben ser de ese artista/grupo
-              (o colaboraciones claras donde ese artista es crédito principal). No rellenes con
-              "similares", "recomendados" ni del mismo género.
-            - Si piden un GÉNERO o subgénero concreto, NO sustituyas por uno "relacionado" ni más amplio
-              (ej.: no cambies punk por rock alternativo; no cambies salsa por latín genérico).
-            - NO improvises ni "mejores" ni "clásicos" que salgan del brief. Ante la duda, elige otra
-              canción REAL que encaje con certeza — o deja hueco (el sistema rellenará después).
-            - Si la petición indica época/década/año, comprueba el "year" ANTES de incluirla.
-            - No repitas canciones ni añadas explicaciones.
-            - Ejemplo de ERROR que NO debes cometer: piden "solo Bad Bunny" y devuelves a J Balvin o
-              reggaeton genérico; o piden "punk de los 70" y devuelves rock alternativo de 2010.
+
+            PROHIBIDO (si lo haces, falla la tarea):
+            - Improvisar, "mejorar", ampliar, reinterpretar o "sugerir similares".
+            - Añadir artistas, géneros, épocas o moods que el usuario NO escribió.
+            - Sustituir un género por uno "relacionado" (punk≠rock, salsa≠latín, etc.).
+            - Rellenar con éxitos genéricos o "clásicos" fuera del brief.
+            - Inventar canciones falsas.
+
+            OBLIGATORIO:
+            - Cumple la petición al pie de la letra: cada canción debe ser lógica y verificable
+              respecto a lo pedido (artista/género/idioma/época/mood/restricciones).
+            - Incluye hasta $count canciones. Si no puedes completar $count SIN salirte del brief,
+              devuelve MENOS — NUNCA rellenes con material ajeno.
+            - "name" ≤ 40 caracteres, fiel a la petición.
+            - "year" = año ORIGINAL (4 dígitos) de esa grabación.
+            - Si piden UN artista/grupo: TODAS las pistas son de ese artista (crédito principal).
+              "artist" debe ser ese nombre (o colaboración donde figure primero).
+            - Si piden "sin X" / "nada de Y": cero track puede ser X/Y.
+            - No repitas canciones. No añadas explicaciones.
+
+            Error típico PROHIBIDO: "solo Bad Bunny" → devolver J Balvin / reggaeton genérico;
+            "punk de los 70" → devolver rock alternativo de 2010.
         """.trimIndent()
+        val solo = AiPlaylistConstraints.extractSoloArtist(prompt)
+        val soloLock = if (solo != null) {
+            """
+            RESTRICCIÓN BLOQUEANTE: artista único = "$solo".
+            Cada "artist" DEBE ser "$solo" (o colaboración con $solo primero).
+            Cero artistas distintos. Mejor pocas canciones correctas que $count incorrectas.
+            """.trimIndent()
+        } else {
+            ""
+        }
         val user = """
-            Petición del usuario (OBLIGATORIA — no reinterpretarla ni ampliarla): "$prompt"
-            Crea una playlist de EXACTAMENTE $count canciones que cumpla ESA petición y nada más.
-            No improvises géneros, artistas ni temas fuera de lo pedido.
+            Petición EXACTA (copia literal — no la cambies): "$prompt"
+            Devuelve canciones que cumplan ESA petición y NADA más.
+            Cero improvisación. Cero similares. Cero ampliación del brief.
+            $soloLock
         """.trimIndent().trim()
         return listOf(
             ChatMessage(role = "system", content = system),
@@ -65,23 +78,15 @@ object AiPlaylistPrompt {
     fun buildModifyMessages(currentTracks: List<TrackQuery>, prompt: String): List<ChatMessage> {
         val visible = currentTracks.take(MAX_MODIFY_TRACKS)
         val system = """
-            Eres un editor de playlists. Recibes una playlist NUMERADA y una instrucción del usuario.
-            Devuelve SOLO un objeto JSON válido, sin texto adicional y sin formato markdown, con esta
-            forma exacta:
+            Eres un editor EXACTO de playlists. NO improvises.
+            Devuelve SOLO JSON válido, sin markdown:
             {"remove": [number], "additions": [{"title": string, "artist": string}]}
             Reglas:
-            - "remove" contiene los NÚMEROS de posición de la lista (empezando en 1) de las canciones
-              que hay que quitar. Usa EXACTAMENTE los números mostrados; no inventes otros, no uses
-              identificadores y no devuelvas títulos en "remove".
-            - "additions" contiene canciones reales que hay que añadir, con "title" y "artist"
-              verificables. No añadas ninguna que ya esté en la lista.
-            - Haz el cambio MÍNIMO que cumpla la instrucción: no quites ni añadas nada que no se pida.
-              No improvises ni "mejores" extras.
-            - Si la instrucción solo pide quitar, deja "additions" vacío; si solo pide añadir, deja
-              "remove" vacío.
-            - Ejemplo de ERROR que NO debes cometer: ante "quita las lentas", quitar media playlist o
-              quitar canciones que no son lentas. Quita SOLO las que cumplen claramente la condición.
-            - No añadas explicaciones.
+            - "remove" = números de posición (desde 1) EXACTOS de la lista. Nada inventado.
+            - "additions" = canciones reales pedidas; no añadas extras "porque quedan bien".
+            - Cambio MÍNIMO: solo lo que la instrucción pide. Cero improvisación.
+            - Si solo pide quitar → "additions": []. Si solo pide añadir → "remove": [].
+            - Error prohibido: ante "quita las lentas", borrar media playlist o canciones que no lo son.
         """.trimIndent()
         val numbered = visible.mapIndexed { index, track ->
             val artist = track.artist.ifBlank { "?" }
@@ -91,7 +96,7 @@ object AiPlaylistPrompt {
             Playlist actual (${visible.size} canciones):
             $numbered
 
-            Instrucción del usuario (OBLIGATORIA — cambio mínimo, sin improvisar): "$prompt"
+            Instrucción EXACTA (cero improvisación): "$prompt"
         """.trimIndent()
         return listOf(
             ChatMessage(role = "system", content = system),

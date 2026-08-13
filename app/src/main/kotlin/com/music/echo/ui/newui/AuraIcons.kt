@@ -163,7 +163,7 @@ object AuraIcons {
         }
     }
 
-    /** `#i-check` — "descargada" tick in the library. */
+    /** `#i-check` — "ya reproducida" in shuffle/library rows. Not for downloads. */
     val Check: ImageVector by lazy {
         stroked("Check", width = 2.2f) {
             // M5 12.5l4.5 4.5L19 7

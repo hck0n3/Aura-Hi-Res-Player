@@ -35,7 +35,7 @@ data class OwnerAnnouncement(
     val publishedAt: String? = null,
 )
 
-/** Unread count for badges. Active list already excludes read + expired. */
+/** Unread count for badges. Active list keeps read notices until the 24h publish TTL. */
 fun unreadOwnerNoticeCount(items: List<OwnerAnnouncement>, readIdsCsv: String): Int {
     if (items.isEmpty()) return 0
     val read = readIdsCsv.split(',').map { it.trim() }.filter { it.isNotEmpty() }.toSet()
@@ -47,12 +47,13 @@ fun unreadOwnerNoticeCount(items: List<OwnerAnnouncement>, readIdsCsv: String): 
  *
  * Lifetime rules (owner):
  *  - Refresh on every app open and about once per hour while the Activity is resumed.
- *  - A notice lives at most 24h in the app (from firstSeen, and never if published >24h ago).
- *  - Explicit mark-read removes it from the inbox; dismissing the popup marks it read.
- *  - Unread fresh notices surface via [popupNotice] for an in-app dialog.
- *  - First contact with the feed (fresh install / first open after this rule): only the NEWEST
- *    notice is offered; older items still in the remote JSON are treated as historical backlog
- *    so a new phone does not replay every announcement from the last 24h.
+ *  - A notice stays in Avisos until 24h after its **launch** ([OwnerAnnouncement.publishedAt]);
+ *    then it disappears automatically. Marking read does NOT remove it from the list.
+ *  - Read state only drives the unread badge, card styling, and [popupNotice].
+ *  - Dismissing / acknowledging the popup marks it read (no more popup) but leaves it in Avisos.
+ *  - First contact with the feed (fresh install): older items in the remote JSON are marked read
+ *    once so only the newest pops up; they still appear in Avisos until their publish TTL ends.
+ *  - Fresh install with no notice published in the last 24h → empty inbox.
  */
 object OwnerAnnouncements {
     private const val TAG = "OwnerAnnouncements"
@@ -85,19 +86,24 @@ object OwnerAnnouncements {
     @Volatile
     private var popupSnoozed: Boolean = false
 
-    fun loadCache(context: Context) {
+    /**
+     * Hydrate the inbox from the on-disk remote snapshot, TTL-pruned and bootstrap-aware.
+     * Read-ids are applied only for [popupNotice] / badges — never to hide rows from Avisos.
+     * Never drives [popupNotice] from cache alone (registry #135 flash class).
+     */
+    suspend fun loadCache(context: Context) {
         runCatching {
-            // Never drive the popup from cache: read-ids live in DataStore and are not available
-            // synchronously here. Showing first then pruning on refresh caused a flash of already-read
-            // notices on every app open (owner report).
             _popupNotice.value = null
             val parsed = loadRemoteSnapshot(context)
             if (parsed.isEmpty()) {
                 _items.value = emptyList()
                 return
             }
-            val pruned = pruneExpiredOnly(context, parsed)
+            val read0 = readIds(context)
+            val read = consumeHistoricalBacklogOnce(context, parsed, read0)
+            val pruned = pruneByPublishTtl(context, parsed)
             _items.value = pruned
+            applyPopup(pruned, read, forced = false)
         }.onFailure { Timber.tag(TAG).w(it, "loadCache failed") }
     }
 
@@ -111,9 +117,9 @@ object OwnerAnnouncements {
             if (!force && _items.value.isNotEmpty() && since in 0 until MIN_REFRESH_MS) {
                 val base = mergeBase(context, null)
                 val read = consumeHistoricalBacklogOnce(context, base, readIds(context))
-                val pruned = pruneSync(context, base, read)
+                val pruned = pruneByPublishTtl(context, base)
                 _items.value = pruned
-                applyPopup(pruned, forced = false)
+                applyPopup(pruned, read, forced = false)
                 return@withLock
             }
 
@@ -136,19 +142,17 @@ object OwnerAnnouncements {
             val read0 = readIds(context)
             val base = mergeBase(context, remote)
             val read = consumeHistoricalBacklogOnce(context, base, read0)
-            val pruned = pruneSync(context, base, read)
+            val pruned = pruneByPublishTtl(context, base)
             _items.value = pruned
-            // Only offer a popup after the read-filter prune. force=true re-arms after snooze for
-            // still-unread notices — never for already-read ones (they are gone from pruned).
-            applyPopup(pruned, forced = force)
+            applyPopup(pruned, read, forced = force)
             Timber.tag(TAG).i("Active notices after prune: %d (read=%d)", pruned.size, read.size)
         }
     }
 
     /**
      * Fresh install (or first open of a build that introduced this rule): the remote feed may still
-     * list every notice from the last 24h. Replaying that backlog as "new" is wrong — the user only
-     * needs the latest one. Mark everything except the newest id as read, once.
+     * list every notice from the last 24h. Replaying that backlog as unread popups is wrong — mark
+     * everything except the newest id as read once. Rows still stay in Avisos until publish TTL.
      */
     private suspend fun consumeHistoricalBacklogOnce(
         context: Context,
@@ -197,10 +201,9 @@ object OwnerAnnouncements {
             prefs[ReadAnnouncementIdsKey] = set.toList().takeLast(200).joinToString(",")
         }
         mutex.withLock {
-            val next = _items.value.filterNot { it.id == id }
-            _items.value = next
-            removeFirstSeen(context, id)
-            applyPopup(next, forced = true)
+            // Keep the row in Avisos until the 24h publish TTL — only clear unread chrome / popup.
+            val read = readIds(context)
+            applyPopup(_items.value, read, forced = true)
         }
     }
 
@@ -208,12 +211,14 @@ object OwnerAnnouncements {
         val ids = _items.value.map { it.id }
         if (ids.isEmpty()) return
         context.dataStore.edit { prefs ->
-            prefs[ReadAnnouncementIdsKey] = ids.takeLast(200).joinToString(",")
+            val cur = prefs[ReadAnnouncementIdsKey].orEmpty()
+            val set = cur.split(',').map { it.trim() }.filter { it.isNotEmpty() }.toMutableSet()
+            set.addAll(ids)
+            prefs[ReadAnnouncementIdsKey] = set.toList().takeLast(200).joinToString(",")
         }
         mutex.withLock {
-            _items.value = emptyList()
-            clearFirstSeen(context)
             _popupNotice.value = null
+            popupSnoozed = true
         }
     }
 
@@ -223,7 +228,7 @@ object OwnerAnnouncements {
         _popupNotice.value = null
     }
 
-    /** Confirm popup: mark read (removes notice) and advance to the next unread if any. */
+    /** Confirm popup: mark read (badge/popup only) and advance to the next unread if any. */
     suspend fun acknowledgePopup(context: Context) {
         val current = _popupNotice.value ?: return
         markRead(context, current.id)
@@ -234,8 +239,12 @@ object OwnerAnnouncements {
         return raw.split(',').map { it.trim() }.filter { it.isNotEmpty() }.toSet()
     }
 
-    private fun applyPopup(active: List<OwnerAnnouncement>, forced: Boolean) {
-        val head = active.firstOrNull()
+    private fun applyPopup(
+        active: List<OwnerAnnouncement>,
+        read: Set<String>,
+        forced: Boolean,
+    ) {
+        val head = active.firstOrNull { it.id !in read }
         if (head == null) {
             _popupNotice.value = null
             return
@@ -313,7 +322,12 @@ object OwnerAnnouncements {
         }
     }
 
-    private fun pruneExpiredOnly(
+    /**
+     * Keep notices published within the last [TTL_MS]. Read state is ignored here — Avisos is a
+     * 24h bulletin board from launch time, not a clear-on-read inbox.
+     * Undated items use first-seen as a stand-in launch clock so they still expire.
+     */
+    private fun pruneByPublishTtl(
         context: Context,
         incoming: List<OwnerAnnouncement>,
     ): List<OwnerAnnouncement> {
@@ -322,44 +336,20 @@ object OwnerAnnouncements {
         val kept = ArrayList<OwnerAnnouncement>(incoming.size)
         for (n in incoming) {
             val published = publishedEpochMs(n)
-            if (published != null && now - published > TTL_MS) {
-                firstSeen.remove(n.id)
-                continue
+            if (published != null) {
+                if (now - published > TTL_MS) {
+                    firstSeen.remove(n.id)
+                    continue
+                }
+            } else {
+                val seen = firstSeen[n.id] ?: now.also { firstSeen[n.id] = it }
+                if (now - seen > TTL_MS) {
+                    firstSeen.remove(n.id)
+                    continue
+                }
             }
-            val seen = firstSeen[n.id] ?: now.also { firstSeen[n.id] = it }
-            if (now - seen > TTL_MS) {
-                firstSeen.remove(n.id)
-                continue
-            }
-            kept.add(n)
-        }
-        firstSeen.keys.retainAll(kept.map { it.id }.toSet())
-        saveFirstSeen(context, firstSeen)
-        return kept.sortedByDescending { publishedEpochMs(it) ?: 0L }
-    }
-
-    private fun pruneSync(
-        context: Context,
-        incoming: List<OwnerAnnouncement>,
-        read: Set<String>,
-    ): List<OwnerAnnouncement> {
-        val now = System.currentTimeMillis()
-        val firstSeen = loadFirstSeen(context).toMutableMap()
-        val kept = ArrayList<OwnerAnnouncement>(incoming.size)
-        for (n in incoming) {
-            if (n.id in read) {
-                firstSeen.remove(n.id)
-                continue
-            }
-            val published = publishedEpochMs(n)
-            if (published != null && now - published > TTL_MS) {
-                firstSeen.remove(n.id)
-                continue
-            }
-            val seen = firstSeen[n.id] ?: now.also { firstSeen[n.id] = it }
-            if (now - seen > TTL_MS) {
-                firstSeen.remove(n.id)
-                continue
+            if (published != null) {
+                firstSeen.putIfAbsent(n.id, published)
             }
             kept.add(n)
         }
@@ -385,16 +375,6 @@ object OwnerAnnouncements {
             map.forEach { (k, v) -> o.put(k, v) }
             File(context.filesDir, FIRST_SEEN_FILE).writeText(o.toString())
         }
-    }
-
-    private fun removeFirstSeen(context: Context, id: String) {
-        val map = loadFirstSeen(context).toMutableMap()
-        map.remove(id)
-        saveFirstSeen(context, map)
-    }
-
-    private fun clearFirstSeen(context: Context) {
-        runCatching { File(context.filesDir, FIRST_SEEN_FILE).delete() }
     }
 
     internal fun publishedEpochMs(n: OwnerAnnouncement): Long? {

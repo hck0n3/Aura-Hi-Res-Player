@@ -1,10 +1,24 @@
-# Aura Hi-Res Player 0.6.186
+# Aura Hi-Res Player 0.6.187
 
-Actualizaciones más a mano: desde la hoja de cuenta, sin buscarlas dentro de Ajustes.
+Avisos que duran 24 h, descargas con anillo estilo Apple (también en el reproductor), Lista IA más exacta y guía de iconos en Acerca de.
 
 ---
 
-## Actualizaciones
+## Avisos
 
-- Entrada **Actualizaciones** en la hoja del avatar (junto a Avisos y Reporte).
-- Quitada del índice de Ajustes (interfaz nueva y clásica); la pantalla de comprobar e instalar es la misma.
+- Marcar leído ya no borra el aviso: permanece en Avisos hasta 24 horas después de su publicación.
+- Sin flash de la lista completa al abrir.
+
+## Descargas
+
+- Icono de descarga (flecha): el check queda solo para «ya reproducida».
+- Anillo que se rellena mientras descarga offline o exporta MP3/vídeo — también en el botón del reproductor.
+
+## Lista IA
+
+- Obediencia estricta a lo pedido (temperatura 0, sin radio de «similares»).
+- Si pides un artista, no mete otros.
+
+## Acerca de
+
+- Nueva guía de iconografía: significado de cada botón e indicador (reproductor, navegación y estados).

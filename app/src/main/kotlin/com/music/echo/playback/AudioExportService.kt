@@ -46,7 +46,11 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
@@ -335,7 +339,7 @@ class AudioExportService : Service() {
             val tempAudioFile = File.createTempFile("export_audio_", ".m4a", cacheDir).also { audioFileRef = it }
             val tempMp4File = File.createTempFile("export_result_", ".mp4", cacheDir).also { mp4FileRef = it }
 
-            updateExportProgress(5, getString(R.string.export_processing_audio))
+            updateExportProgress(songId, 5, getString(R.string.export_processing_audio))
             val videoBytes = AtomicLong(0L)
             val audioBytes = AtomicLong(0L)
             val videoTotal = AtomicLong(-1L)
@@ -349,7 +353,7 @@ class AudioExportService : Service() {
                 val pct = (5 + (frac * 65.0)).toInt().coerceIn(5, 70)
                 val prev = lastPct.get()
                 if (pct > prev && lastPct.compareAndSet(prev, pct)) {
-                    updateExportProgress(pct, getString(R.string.export_processing_audio))
+                    updateExportProgress(songId, pct, getString(R.string.export_processing_audio))
                 }
             }
             coroutineScope {
@@ -380,7 +384,7 @@ class AudioExportService : Service() {
                 videoJob.await()
                 audioJob.await()
             }
-            updateExportProgress(70, getString(R.string.export_processing_tags))
+            updateExportProgress(songId, 70, getString(R.string.export_processing_tags))
 
             // Fast path: stream-copy video + AAC audio, no loudnorm.
             val copyCmd = buildVideoFfmpegCommand(
@@ -397,7 +401,7 @@ class AudioExportService : Service() {
             } else {
                 Log.i(TAG, "Video export mux: copy-fail → encode")
                 tempMp4File.delete()
-                updateExportProgress(78, getString(R.string.export_processing_tags))
+                updateExportProgress(songId, 78, getString(R.string.export_processing_tags))
                 val encodeCmd = buildVideoFfmpegCommand(
                     videoPath = tempVideoFile.absolutePath,
                     audioPath = tempAudioFile.absolutePath,
@@ -428,7 +432,7 @@ class AudioExportService : Service() {
             if (!tempMp4File.exists() || tempMp4File.length() <= 0L) {
                 error("Exported MP4 file is empty")
             }
-            updateExportProgress(90, getString(R.string.export_writing_file))
+            updateExportProgress(songId, 90, getString(R.string.export_writing_file))
 
             val destinationDir = DocumentFile.fromTreeUri(this, Uri.parse(targetDirectoryUri))
                 ?: error("Export directory unavailable")
@@ -441,7 +445,7 @@ class AudioExportService : Service() {
                     output.flush()
                 } ?: error("Unable to open output stream")
             }
-            updateExportProgress(100, getString(R.string.export_writing_file))
+            updateExportProgress(songId, 100, getString(R.string.export_writing_file))
 
             addExportedVideoId(songId)
             persistExportedFileUri(songId, outputFile.uri.toString())
@@ -473,7 +477,7 @@ class AudioExportService : Service() {
                             Toast.LENGTH_LONG,
                         ).show()
                     }
-                    updateExportProgress(0, reason)
+                    updateExportProgress(songId, 0, reason)
                 }
             }
         }
@@ -580,7 +584,7 @@ class AudioExportService : Service() {
                             val progress = ((bytesWritten * 55L) / totalBytes).toInt().coerceIn(0, 55)
                             if (progress > lastProgress) {
                                 lastProgress = progress
-                                updateExportProgress(progress, getString(R.string.export_processing_audio))
+                                updateExportProgress(songId, progress, getString(R.string.export_processing_audio))
                             }
                         }
                     }
@@ -622,7 +626,7 @@ class AudioExportService : Service() {
                 return ok
             }
 
-            updateExportProgress(60, getString(R.string.export_processing_tags))
+            updateExportProgress(songId, 60, getString(R.string.export_processing_tags))
             val coverPath = if (artworkDownloaded) tempArtworkFile.absolutePath else null
             var usedLoudnorm = true
             val ffmpegOk = run {
@@ -650,7 +654,7 @@ class AudioExportService : Service() {
                 TAG,
                 "export ffmpeg=ok loudnorm=${if (usedLoudnorm) "ok" else "skip"} size=${tempMp3File.length()}",
             )
-            updateExportProgress(90, getString(R.string.export_writing_file))
+            updateExportProgress(songId, 90, getString(R.string.export_writing_file))
             val destinationDir = DocumentFile.fromTreeUri(this, Uri.parse(targetDirectoryUri))
                 ?: error("Export directory unavailable")
             val outputFile = destinationDir.createFile("audio/mpeg", "$safeTitle.mp3")
@@ -724,14 +728,16 @@ class AudioExportService : Service() {
         stopSelf()
     }
 
-    private fun updateExportProgress(percent: Int, text: String) {
+    private fun updateExportProgress(songId: String, percent: Int, text: String) {
+        val pct = percent.coerceIn(0, 100)
+        _liveProgress.update { it + (songId to pct.toFloat()) }
         runCatching {
             val nm = getSystemService<NotificationManager>() ?: return
             val notification = NotificationCompat.Builder(this, CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_launcher_nobg)
                 .setContentTitle(getString(R.string.exporting))
                 .setContentText(text)
-                .setProgress(100, percent.coerceIn(0, 100), false)
+                .setProgress(100, pct, false)
                 .setOngoing(true)
                 .setOnlyAlertOnce(true)
                 .setPriority(NotificationCompat.PRIORITY_LOW)
@@ -844,6 +850,7 @@ class AudioExportService : Service() {
     }
 
     private suspend fun addExportingSongId(songId: String) {
+        _liveProgress.update { it + (songId to 0f) }
         dataStore.edit { preferences ->
             val current = preferences[ExportingSongIdsKey].orEmpty()
                 .split(',')
@@ -855,6 +862,7 @@ class AudioExportService : Service() {
     }
 
     private suspend fun removeExportingSongId(songId: String) {
+        _liveProgress.update { it - songId }
         dataStore.edit { preferences ->
             val current = preferences[ExportingSongIdsKey].orEmpty()
                 .split(',')
@@ -902,6 +910,10 @@ class AudioExportService : Service() {
         private const val EXTRA_ARTWORK_URL = "extra_artwork_url"
         private const val EXTRA_TARGET_DIRECTORY_URI = "extra_target_directory_uri"
         private const val EXTRA_EXPORT_AS_VIDEO = "extra_export_as_video"
+
+        /** songId → 0–100 while an MP3/video export is running (player Apple-style ring). */
+        private val _liveProgress = MutableStateFlow<Map<String, Float>>(emptyMap())
+        val liveProgress: StateFlow<Map<String, Float>> = _liveProgress.asStateFlow()
 
         fun start(
             context: Context,

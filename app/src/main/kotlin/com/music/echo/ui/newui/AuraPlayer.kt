@@ -131,6 +131,9 @@ import iad1tya.echo.music.LocalPlayerConnection
 import iad1tya.echo.music.R
 import iad1tya.echo.music.constants.EnableLyricsThumbnailPlayPauseKey
 import iad1tya.echo.music.constants.ExportDirectoryUriKey
+import iad1tya.echo.music.constants.ExportedSongIdsKey
+import iad1tya.echo.music.constants.ExportedVideoIdsKey
+import iad1tya.echo.music.constants.ExportingSongIdsKey
 import iad1tya.echo.music.constants.HighPerformanceModeKey
 import iad1tya.echo.music.constants.PlayerBackgroundStyle
 import iad1tya.echo.music.constants.PlayerBackgroundStyleKey
@@ -379,6 +382,10 @@ private fun AuraPlayerShape(
         .getDownload(mediaMetadata?.id?.let { videoDownloadMediaId(it) } ?: "")
         .collectAsState(initial = null)
     val liveDownloadProgress by downloadUtil.liveProgress.collectAsState()
+    val liveExportProgress by AudioExportService.liveProgress.collectAsState()
+    val (exportingSongIds) = rememberPreference(ExportingSongIdsKey, "")
+    val (exportedSongIds) = rememberPreference(ExportedSongIdsKey, "")
+    val (exportedVideoIds) = rememberPreference(ExportedVideoIdsKey, "")
 
     val listenTogetherManager = LocalListenTogetherManager.current
     val listenTogetherRoleState = listenTogetherManager?.role?.collectAsState(initial = RoomRole.NONE)
@@ -1435,21 +1442,28 @@ private fun AuraPlayerShape(
                     )
                     // Local files are already on-device — hide download; SpaceEvenly keeps spacing even.
                     if (!isLocalTrack) {
-                    Box(contentAlignment = Alignment.Center) {
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier.size(quickAccessGlyph + 10.dp),
+                    ) {
                         val isVideo = meta.isVideoSong
+                        val songId = meta.id
+                        val isExporting = exportingSongIds.split(',').any { it.trim() == songId }
+                        val isExported = exportedSongIds.split(',').any { it.trim() == songId } ||
+                            exportedVideoIds.split(',').any { it.trim() == songId }
                         val downloadBusy = download?.state == Download.STATE_QUEUED ||
                             download?.state == Download.STATE_DOWNLOADING ||
                             (isVideo && (
                                 videoCompanionDownload?.state == Download.STATE_QUEUED ||
                                     videoCompanionDownload?.state == Download.STATE_DOWNLOADING
                                 ))
+                        val downloadDone = download?.state == Download.STATE_COMPLETED
                         val downloadProgressFraction = run {
-                            val id = meta.id
-                            val audioPct = liveDownloadProgress[id]
+                            val audioPct = liveDownloadProgress[songId]
                                 ?: download?.percentDownloaded
                                 ?: -1f
                             val videoPct = if (isVideo) {
-                                liveDownloadProgress[videoDownloadMediaId(id)]
+                                liveDownloadProgress[videoDownloadMediaId(songId)]
                                     ?: videoCompanionDownload?.percentDownloaded
                                     ?: -1f
                             } else {
@@ -1463,35 +1477,47 @@ private fun AuraPlayerShape(
                                 else -> null
                             }
                         }
+                        val exportProgressFraction = liveExportProgress[songId]
+                            ?.takeIf { it >= 0f }
+                            ?.let { (it / 100f).coerceIn(0f, 1f) }
+                        val busy = downloadBusy || isExporting
+                        val progressFraction = when {
+                            isExporting -> exportProgressFraction
+                            downloadBusy -> downloadProgressFraction
+                            else -> null
+                        }
+                        val doneChrome = downloadDone || (isExported && !busy)
                         AuraIconButton(
-                            icon = if (download?.state == Download.STATE_COMPLETED) AuraIcons.Check
-                            else AuraIcons.Download,
+                            icon = AuraIcons.Download,
                             contentDescription = stringResource(R.string.action_download),
                             onClick = {
-                                when (download?.state) {
-                                    Download.STATE_COMPLETED, Download.STATE_QUEUED, Download.STATE_DOWNLOADING ->
-                                        removeSongDownloads(context, meta.id, isVideo)
+                                when {
+                                    downloadBusy || downloadDone ->
+                                        removeSongDownloads(context, songId, isVideo)
+                                    isExporting -> Unit // wait for export to finish
                                     else -> showDownloadOrExportDialog = true
                                 }
                             },
                             size = quickAccessGlyph,
-                            tint = if (download?.state == Download.STATE_COMPLETED) transportAccent
+                            tint = if (doneChrome) transportAccent
                             else AuraPalette.OnGround.copy(alpha = 0.7f),
                             modifier = Modifier.tvFocusable(isTvOrCar, CircleShape),
                         )
-                        if (downloadBusy) {
-                            if (downloadProgressFraction != null) {
+                        if (busy) {
+                            if (progressFraction != null) {
                                 CircularProgressIndicator(
-                                    progress = { downloadProgressFraction },
-                                    modifier = Modifier.size(quickAccessGlyph),
+                                    progress = { progressFraction },
+                                    modifier = Modifier.size(quickAccessGlyph + 10.dp),
                                     strokeWidth = 2.dp,
                                     color = AuraPalette.Teal,
+                                    trackColor = AuraPalette.OnGround.copy(alpha = 0.18f),
                                 )
                             } else {
                                 CircularProgressIndicator(
-                                    modifier = Modifier.size(quickAccessGlyph),
+                                    modifier = Modifier.size(quickAccessGlyph + 10.dp),
                                     strokeWidth = 2.dp,
                                     color = AuraPalette.Teal,
+                                    trackColor = AuraPalette.OnGround.copy(alpha = 0.18f),
                                 )
                             }
                         }

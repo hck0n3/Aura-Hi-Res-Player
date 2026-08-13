@@ -16,7 +16,7 @@ class AiPlaylistPromptTest {
     @Test fun userMessageContainsPromptAndCount() {
         val messages = AiPlaylistPrompt.buildMessages("rock para correr de noche", 20)
         assertTrue(messages[1].content.contains("rock para correr de noche"))
-        assertTrue(messages[1].content.contains("20"))
+        assertTrue(messages[0].content.contains("20") || messages[1].content.contains("20"))
     }
 
     @Test fun systemMessageAsksForJsonWithTheRequestedCount() {
@@ -28,13 +28,20 @@ class AiPlaylistPromptTest {
     @Test fun systemMessageAsksForAYearAndACounterExample() {
         val system = AiPlaylistPrompt.buildMessages("rock", 10)[0].content
         assertTrue(system.contains("\"year\": number"))
-        assertTrue(system.contains("ERROR que NO debes cometer"))
+        assertTrue(system.contains("PROHIBIDO") || system.contains("Bad Bunny"))
     }
 
     @Test fun systemMessageForbidsImprovisation() {
         val system = AiPlaylistPrompt.buildMessages("solo Bad Bunny", 10)[0].content
-        assertTrue(system.contains("NUNCA improvises") || system.contains("NO improvises"))
-        assertTrue(system.contains("OBEDECE") || system.contains("OBLIGATORIAS"))
+        assertTrue(system.contains("PROHIBIDO") || system.contains("improvis"))
+        assertTrue(system.contains("EXACTO") || system.contains("OBLIGATORIO"))
+    }
+
+    @Test fun soloArtistPromptLocksUserMessage() {
+        val user = AiPlaylistPrompt.buildMessages("solo Bad Bunny", 12)[1].content
+        assertTrue(user.contains("RESTRICCIÓN BLOQUEANTE"))
+        assertTrue(user.contains("Bad Bunny"))
+        assertTrue(user.contains("Cero improvisación") || user.contains("improvis"))
     }
 
     // --- modify -----------------------------------------------------------------------------

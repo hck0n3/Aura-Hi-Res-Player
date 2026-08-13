@@ -146,6 +146,57 @@ private val TRUST_FEATURES = listOf(
     Feature(R.drawable.auto_awesome, "Suscripción y demo", "Prueba gratis de 3 días y después suscripción mensual, que se contrata fuera de la app y se activa pegando tu clave. Funciona en un equipo a la vez y tolera unos días sin conexión antes de pedirte que vuelvas a validar"),
 )
 
+/**
+ * Icon legend for the controls the user actually sees. Kept as [Feature] rows so it reuses the same
+ * Acerca de chrome — no second visual language. Check ≠ download on purpose (owner request).
+ */
+private val ICON_LEGEND_PLAYER = listOf(
+    Feature(R.drawable.play, "Reproducir", "Inicia o reanuda la canción actual"),
+    Feature(R.drawable.pause, "Pausa", "Detiene la reproducción sin salir de la canción"),
+    Feature(R.drawable.skip_previous, "Anterior", "Vuelve al inicio o a la canción anterior"),
+    Feature(R.drawable.skip_next, "Siguiente", "Pasa a la siguiente canción de la cola"),
+    Feature(R.drawable.shuffle, "Aleatorio", "Reproduce en orden aleatorio. Con Aleatorio mejorado, no repite lo ya oído en esa lista"),
+    Feature(R.drawable.repeat, "Repetir", "Cicla: off → repetir toda la cola → repetir una canción"),
+    Feature(R.drawable.favorite, "Me gusta", "Marca la canción como favorita (corazón). Relleno = ya te gusta"),
+    Feature(R.drawable.thumb_down, "No me gusta / Menos de esto", "Señala que no quieres más de este estilo; afecta la cola inteligente"),
+    Feature(R.drawable.playlist_add, "Añadir a playlist", "Abre el selector para guardar la canción en una de tus listas"),
+    Feature(R.drawable.download, "Descargar / Exportar", "Flecha a bandeja: descarga offline o exporta MP3/vídeo. Mientras trabaja, un círculo se rellena con el progreso. Al terminar sigue siendo la flecha (en color de acento), nunca un check"),
+    Feature(R.drawable.search, "Búsqueda rápida", "En el reproductor: busca sin cerrar la sesión de escucha"),
+    Feature(R.drawable.lyrics, "Letras", "Muestra la letra sincronizada de la canción"),
+    Feature(R.drawable.queue_music, "Cola", "Lista de lo que suena y lo que viene después"),
+    Feature(R.drawable.volume_up, "Volumen / dispositivos", "Control de volumen o salida de audio según la pantalla"),
+    Feature(R.drawable.more_vert, "Más / Ajustes del reproductor", "Menú de opciones: EQ, compartir, tempo, biblioteca, etc."),
+    Feature(R.drawable.cast, "Cast", "Envía el audio a Chromecast / Google Cast (arriba a la derecha). Con letras en línea puede ocultarse para no tapar el texto"),
+    Feature(R.drawable.equalizer, "Ecualizador", "Abre el ecualizador Axion / ajustes de sonido"),
+    Feature(R.drawable.share, "Compartir", "Comparte un enlace de la canción, álbum, artista o playlist"),
+    Feature(R.drawable.videocam, "Vídeo", "Cambia a videoclip cuando hay vídeo musical disponible"),
+    Feature(R.drawable.speed, "Tempo y tono", "Cambia velocidad y pitch de forma independiente"),
+)
+
+private val ICON_LEGEND_LIBRARY = listOf(
+    Feature(R.drawable.home_outlined, "Inicio", "Pestaña principal con estanterías y recomendaciones"),
+    Feature(R.drawable.search, "Buscar", "Búsqueda en el catálogo (y por voz si está disponible)"),
+    Feature(R.drawable.library_music, "Biblioteca", "Tu música: me gusta, descargas, playlists, local…"),
+    Feature(R.drawable.settings, "Ajustes", "Preferencias de la app"),
+    Feature(R.drawable.account, "Cuenta / avatar", "Hoja de cuenta: sesión, avisos, actualizaciones, reporte y ajustes"),
+    Feature(R.drawable.notification, "Avisos", "Comunicados del creador. Permanecen 24 h desde su publicación"),
+    Feature(R.drawable.update, "Actualizaciones", "Comprobar e instalar la última versión de Aura"),
+    Feature(R.drawable.bug_report, "Reporte y sugerencias", "Envía errores o ideas por correo"),
+    Feature(R.drawable.ic_push_pin, "Fijar", "Fija una playlist en el inicio"),
+    Feature(R.drawable.mic, "Reconocer", "Identifica la canción que suena a tu alrededor"),
+    Feature(R.drawable.offline, "Sin conexión / descargada", "En la interfaz clásica: indica contenido disponible offline"),
+    Feature(R.drawable.auto_awesome, "IA", "Listas o recomendaciones generadas con inteligencia artificial"),
+    Feature(R.drawable.info, "Información", "Detalles, Acerca de, o ayuda contextual"),
+    Feature(R.drawable.arrow_back, "Atrás", "Vuelve a la pantalla anterior (mantener a veces lleva al inicio)"),
+)
+
+private val ICON_LEGEND_STATUS = listOf(
+    Feature(R.drawable.check, "Ya reproducida", "Check = esa canción ya sonó en Aleatorio mejorado / esa lista. NO significa «descargada»"),
+    Feature(R.drawable.download, "Descargada (interfaz nueva)", "Misma flecha de descarga en color de acento: la pista está completa offline. El anillo que se llena = progreso de descarga o de exportación MP3/vídeo"),
+    Feature(R.drawable.explicit, "Explícito", "La pista tiene letra o contenido marcado como explícito"),
+    Feature(R.drawable.favorite, "En Me gusta", "Corazón relleno en filas: está en tus favoritos"),
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AboutScreen(
@@ -212,6 +263,22 @@ fun AboutScreen(
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             item { AboutAppCard(skin) }
+
+            item {
+                AboutSectionCard(title = "Iconos del reproductor", skin = skin) {
+                    FeatureList(ICON_LEGEND_PLAYER, skin)
+                }
+            }
+            item {
+                AboutSectionCard(title = "Iconos de navegación y biblioteca", skin = skin) {
+                    FeatureList(ICON_LEGEND_LIBRARY, skin)
+                }
+            }
+            item {
+                AboutSectionCard(title = "Indicadores de estado", skin = skin) {
+                    FeatureList(ICON_LEGEND_STATUS, skin)
+                }
+            }
 
             item {
                 AboutSectionCard(title = "Reproducción y calidad de audio", skin = skin) {

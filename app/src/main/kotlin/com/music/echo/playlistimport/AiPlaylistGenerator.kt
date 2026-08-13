@@ -2,8 +2,9 @@ package iad1tya.echo.music.playlistimport
 
 import com.music.innertube.YouTube
 import com.music.innertube.models.SongItem
-import com.music.innertube.models.WatchEndpoint
+import iad1tya.echo.music.api.AiPlaylistConstraints
 import iad1tya.echo.music.api.AiPlaylistService
+import iad1tya.echo.music.api.TrackQuery
 import iad1tya.echo.music.db.MusicDatabase
 import iad1tya.echo.music.db.entities.PlaylistEntity
 import iad1tya.echo.music.db.entities.PlaylistSongMap
@@ -58,6 +59,7 @@ object AiPlaylistGenerator {
         onResolveProgress: (done: Int, total: Int) -> Unit = { _, _ -> },
     ): kotlin.Result<Result> {
         val target = count
+        val soloArtist = AiPlaylistConstraints.extractSoloArtist(prompt)
 
         // Ask the AI (user key → Aura Worker → several free Pollinations models). getOrNull() so a total
         // failure doesn't dead-end — we fall back to a non-AI playlist below instead of surfacing an error.
@@ -75,11 +77,15 @@ object AiPlaylistGenerator {
         var generatedWithoutAi = false
 
         if (spec != null) {
-            val resolvedSongs = ArrayList<MediaMetadata>(spec.tracks.size)
+            val proposed = filterTracksForSoloArtist(spec.tracks, soloArtist)
+            val resolvedSongs = ArrayList<MediaMetadata>(proposed.size)
             // Short-circuit: stop resolving as soon as we have `target` distinct songs so we don't waste
             // network calls resolving the rest of the padded list. Progress reflects the user's request.
-            for (track in spec.tracks) {
-                SongResolver.resolve(database, track.title, track.artist)?.let { resolvedSongs += it }
+            for (track in proposed) {
+                val resolveArtist = soloArtist?.takeIf { it.isNotBlank() } ?: track.artist
+                SongResolver.resolve(database, track.title, resolveArtist)?.let { mm ->
+                    if (acceptsResolved(mm, soloArtist)) resolvedSongs += mm
+                }
                 val resolvedCount = resolvedSongs.distinctBy { it.id }.size
                 onResolveProgress(resolvedCount.coerceAtMost(target), target)
                 if (resolvedCount >= target) break
@@ -91,11 +97,19 @@ object AiPlaylistGenerator {
             if (ordered.size < target) {
                 val missing = target - ordered.size
                 val exclude = ordered.joinToString(", ") { it.title }
-                val topUpPrompt = "$prompt. NO incluyas ninguna de estas canciones ya elegidas: $exclude"
+                val topUpPrompt = if (soloArtist != null) {
+                    "solo $soloArtist. NO incluyas ninguna de estas canciones ya elegidas: $exclude"
+                } else {
+                    "$prompt. NO incluyas ninguna de estas canciones ya elegidas: $exclude"
+                }
                 AiPlaylistService.generate(topUpPrompt, (missing * 3 + 1) / 2, provider, apiKey, baseUrl, model)
                     .getOrNull()?.let { extra ->
-                        for (track in extra.tracks) {
-                            SongResolver.resolve(database, track.title, track.artist)?.let { resolvedSongs += it }
+                        val extraTracks = filterTracksForSoloArtist(extra.tracks, soloArtist)
+                        for (track in extraTracks) {
+                            val resolveArtist = soloArtist?.takeIf { it.isNotBlank() } ?: track.artist
+                            SongResolver.resolve(database, track.title, resolveArtist)?.let { mm ->
+                                if (acceptsResolved(mm, soloArtist)) resolvedSongs += mm
+                            }
                             val resolvedCount = resolvedSongs.distinctBy { it.id }.size
                             onResolveProgress(resolvedCount.coerceAtMost(target), target)
                             if (resolvedCount >= target) break
@@ -111,9 +125,13 @@ object AiPlaylistGenerator {
         // radio (the same relatedness the app's infinite radio already uses). Only if THIS also comes back
         // empty (no connection / gibberish prompt) do we surface an error.
         if (ordered.isEmpty()) {
-            ordered = buildFallbackSongs(prompt, target)
+            ordered = buildFallbackSongs(prompt, target, soloArtist)
             generatedWithoutAi = true
             onResolveProgress(ordered.size.coerceAtMost(target), target)
+        } else if (ordered.size < target && soloArtist != null) {
+            // Top up a short AI result with artist-locked YouTube hits (never other acts).
+            val filler = buildFallbackSongs(prompt, target - ordered.size, soloArtist)
+            ordered = (ordered + filler).distinctBy { it.id }.take(target)
         }
 
         if (ordered.isEmpty()) {
@@ -154,40 +172,55 @@ object AiPlaylistGenerator {
     }
 
     /**
-     * Best-effort, AI-free playlist from the user's prompt. Uses the prompt as a YouTube search, seeds
-     * radio ([YouTube.next]) from the top hit for a mood/genre-coherent set, and tops up with the direct
-     * search hits. Everything is best-effort (`getOrNull`); returns whatever it can gather, deduped and
-     * capped at [target]. Cheaper than the AI retry loop (~1 search + 1 radio call), so it stays within
-     * the battery/heat budget. Empty only when offline or the prompt yields nothing at all.
+     * Best-effort, AI-free playlist from the user's prompt. Direct YouTube search only —
+     * never radio/related ([YouTube.next]), because relatedness = improvisation and the owner
+     * requires exact obedience to the brief.
      */
-    private suspend fun buildFallbackSongs(prompt: String, target: Int): List<MediaMetadata> {
+    private suspend fun buildFallbackSongs(
+        prompt: String,
+        target: Int,
+        soloArtist: String? = null,
+    ): List<MediaMetadata> {
         if (prompt.isBlank() || target <= 0) return emptyList()
-        val collected = LinkedHashMap<String, MediaMetadata>() // insertion order + dedupe by id
+        val collected = LinkedHashMap<String, MediaMetadata>()
+
+        fun accepts(item: SongItem): Boolean {
+            if (soloArtist.isNullOrBlank()) return true
+            return item.artists.any { SongResolver.artistMatches(it.name, soloArtist) }
+        }
 
         fun addAll(items: List<SongItem>?) {
             items?.forEach { item ->
                 if (collected.size >= target) return
+                if (!accepts(item)) return@forEach
                 val mm = item.toMediaMetadata()
                 collected.putIfAbsent(mm.id, mm)
             }
         }
 
-        // 1. Search the prompt for songs; broaden to videos only if the SONG filter finds nothing
-        //    (same resilience SongResolver uses — many tracks only surface under the VIDEO filter).
-        val songHits = YouTube.search(prompt, YouTube.SearchFilter.FILTER_SONG).getOrNull()
+        val searchQuery = soloArtist?.takeIf { it.isNotBlank() } ?: prompt
+        val songHits = YouTube.search(searchQuery, YouTube.SearchFilter.FILTER_SONG).getOrNull()
             ?.items?.filterIsInstance<SongItem>().orEmpty()
+            .filter(::accepts)
         val seedHits = songHits.ifEmpty {
-            YouTube.search(prompt, YouTube.SearchFilter.FILTER_VIDEO).getOrNull()
+            YouTube.search(searchQuery, YouTube.SearchFilter.FILTER_VIDEO).getOrNull()
                 ?.items?.filterIsInstance<SongItem>().orEmpty()
+                .filter(::accepts)
         }
-
-        // 2. Radio from the top hit → coherent related songs (YouTube's own relatedness).
-        seedHits.firstOrNull()?.let { seed ->
-            addAll(YouTube.next(WatchEndpoint(videoId = seed.id)).getOrNull()?.items)
-        }
-        // 3. Top up with the direct search hits so we still fill if radio was thin.
         addAll(seedHits)
-
         return collected.values.toList().take(target)
+    }
+
+    private fun filterTracksForSoloArtist(
+        tracks: List<TrackQuery>,
+        soloArtist: String?,
+    ): List<TrackQuery> {
+        if (soloArtist.isNullOrBlank()) return tracks
+        return tracks.filter { AiPlaylistConstraints.artistAllowed(it.artist, soloArtist) }
+    }
+
+    private fun acceptsResolved(mm: MediaMetadata, soloArtist: String?): Boolean {
+        if (soloArtist.isNullOrBlank()) return true
+        return mm.artists.any { SongResolver.artistMatches(it.name, soloArtist) }
     }
 }

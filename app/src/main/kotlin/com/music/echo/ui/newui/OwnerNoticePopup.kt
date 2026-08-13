@@ -27,7 +27,8 @@ import kotlinx.coroutines.launch
 /**
  * Frost popup for the newest unread owner notice. Shown when [OwnerAnnouncements.popupNotice]
  * is non-null (after open/resume refresh or hourly poll).
- * Outside/back only snoozes; [R.string.owner_notices_popup_ok] marks read and removes it.
+ * Outside/back only snoozes; [R.string.owner_notices_popup_ok] marks read (stays in Avisos
+ * until 24h after publish) and advances the popup.
  */
 @Composable
 fun OwnerNoticePopupHost(

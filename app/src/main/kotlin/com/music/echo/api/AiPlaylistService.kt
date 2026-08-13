@@ -53,7 +53,7 @@ object AiPlaylistService {
     private const val AURA_WORKER_URL = "https://round-math-d64e.toberto4000.workers.dev/ai"
 
     /** Suggested model for the Worker; the Worker may ignore/override it server-side. */
-    private const val AURA_WORKER_MODEL = "@cf/meta/llama-3.1-8b-instruct"
+    private const val AURA_WORKER_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
 
     /** Public keyless OpenAI-compatible endpoint, used when the Aura Worker is unavailable. */
     private const val POLLINATIONS_URL = "https://text.pollinations.ai/openai"
@@ -123,8 +123,8 @@ object AiPlaylistService {
             baseUrl = baseUrl,
             model = model,
             maxRetries = maxRetries,
-            // Low temperature: owner complaint was improvisation / drifting off the brief.
-            temperature = 0.25,
+            // Zero temperature: owner requires exact obedience — no creative drift.
+            temperature = 0.0,
         ) { content -> AiPlaylistParser.parse(content, count, era) }
     }
 
@@ -169,7 +169,7 @@ object AiPlaylistService {
             baseUrl = baseUrl,
             model = model,
             maxRetries = maxRetries,
-            temperature = 0.3,
+            temperature = 0.0,
         ) { content -> AiPlaylistParser.parseEdit(content, visibleCount) }
     }
 

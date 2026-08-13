@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -449,23 +450,52 @@ fun AuraQualityBadge(
 }
 
 /**
- * The render's teal tick = "descargada". Reads the SAME `DownloadUtil` flow the classic badge reads,
- * so a download that completes updates both UIs from one source.
+ * Apple-style download chrome for song rows: filling ring while downloading, tray+arrow when done.
+ * Never a checkmark — that glyph means "already played" elsewhere in Aura.
  */
 @Composable
 fun AuraDownloadTick(
     songId: String,
     modifier: Modifier = Modifier,
 ) {
-    val download by LocalDownloadUtil.current.getDownload(songId).collectAsState(initial = null)
-    if (download?.state == Download.STATE_COMPLETED) {
-        AuraIconGlyph(
-            icon = AuraIcons.Check,
-            contentDescription = stringResource(R.string.filter_downloaded),
-            modifier = modifier,
-            size = 16.dp,
-            tint = AuraPalette.Teal,
-        )
+    val downloadUtil = LocalDownloadUtil.current
+    val download by downloadUtil.getDownload(songId).collectAsState(initial = null)
+    val liveMap by downloadUtil.liveProgress.collectAsState()
+    val progressFraction = liveMap[songId]?.takeIf { it >= 0f }?.let { (it / 100f).coerceIn(0f, 1f) }
+    when (download?.state) {
+        Download.STATE_COMPLETED -> {
+            AuraIconGlyph(
+                icon = AuraIcons.Download,
+                contentDescription = stringResource(R.string.filter_downloaded),
+                modifier = modifier,
+                size = 16.dp,
+                tint = AuraPalette.Teal,
+            )
+        }
+        Download.STATE_QUEUED, Download.STATE_DOWNLOADING -> {
+            Box(
+                modifier = modifier.size(16.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (progressFraction != null) {
+                    CircularProgressIndicator(
+                        progress = { progressFraction },
+                        modifier = Modifier.fillMaxSize(),
+                        strokeWidth = 2.dp,
+                        color = AuraPalette.Teal,
+                        trackColor = AuraPalette.OnGround.copy(alpha = 0.18f),
+                    )
+                } else {
+                    CircularProgressIndicator(
+                        modifier = Modifier.fillMaxSize(),
+                        strokeWidth = 2.dp,
+                        color = AuraPalette.Teal,
+                        trackColor = AuraPalette.OnGround.copy(alpha = 0.18f),
+                    )
+                }
+            }
+        }
+        else -> Unit
     }
 }
 

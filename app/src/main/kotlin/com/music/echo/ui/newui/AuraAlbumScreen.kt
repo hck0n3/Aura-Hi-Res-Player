@@ -852,7 +852,7 @@ private fun AuraAlbumHeader(
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     AuraIconGlyph(
-                        icon = AuraIcons.Check,
+                        icon = AuraIcons.Download,
                         contentDescription = null,
                         size = 14.dp,
                         tint = AuraPalette.Teal,

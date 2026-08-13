@@ -68,14 +68,15 @@ fun AuraNoticesScreen(navController: NavController) {
     val scope = rememberCoroutineScope()
     val items by OwnerAnnouncements.items.collectAsState()
     var readIds by remember { mutableStateOf<Set<String>>(emptySet()) }
-    var loading by remember { mutableStateOf(true) }
+    // Gate the list until hydrate+refresh finish so a stale in-memory inbox cannot paint for one frame.
+    var ready by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         OwnerAnnouncements.loadCache(context)
         readIds = OwnerAnnouncements.readIds(context)
         OwnerAnnouncements.refresh(context, force = true)
         readIds = OwnerAnnouncements.readIds(context)
-        loading = false
+        ready = true
     }
 
     Column(
@@ -101,7 +102,7 @@ fun AuraNoticesScreen(navController: NavController) {
                 }
             },
             actions = {
-                if (items.any { it.id !in readIds }) {
+                if (ready && items.any { it.id !in readIds }) {
                     TextButton(
                         onClick = {
                             scope.launch {
@@ -122,7 +123,7 @@ fun AuraNoticesScreen(navController: NavController) {
         )
 
         when {
-            loading && items.isEmpty() -> {
+            !ready -> {
                 Text(
                     text = stringResource(R.string.please_wait),
                     style = AuraType.RowSubtitle,
