@@ -57,6 +57,7 @@ import iad1tya.echo.music.ui.component.LocalMenuState
 import iad1tya.echo.music.ui.menu.YouTubeAlbumMenu
 import iad1tya.echo.music.ui.screens.search.suggestions.SuggestionAlbum
 import iad1tya.echo.music.ui.screens.search.suggestions.SuggestionArtist
+import iad1tya.echo.music.ui.screens.search.suggestions.SuggestionMatch
 import iad1tya.echo.music.ui.screens.search.suggestions.SuggestionTrack
 import iad1tya.echo.music.ui.screens.search.suggestions.SuggestionsViewModel
 import iad1tya.echo.music.utils.rememberEnumPreference
@@ -299,8 +300,8 @@ fun AuraTrendingTab(
     // Pre-resolve the visible Apple entries in the background, exactly as the classic tab does. Driven
     // by a LaunchedEffect so it is cancelled when the tab leaves composition — no leak, no heat.
     LaunchedEffect(tracks, videos) {
-        val visible = tracks.orEmpty().take(29) + videos.orEmpty()
-        if (visible.isNotEmpty()) viewModel.prewarm(visible)
+        viewModel.prewarm(tracks.orEmpty().take(29), SuggestionMatch.Kind.SONG)
+        viewModel.prewarm(videos.orEmpty(), SuggestionMatch.Kind.VIDEO)
     }
 
     val appleChartsUrl: (String) -> String = { path ->

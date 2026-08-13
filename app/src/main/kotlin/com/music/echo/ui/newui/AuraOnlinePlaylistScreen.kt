@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -240,10 +241,32 @@ fun AuraOnlinePlaylistScreen(
     val currentPlaylist = playlist
 
     Box(modifier = Modifier.fillMaxSize().auraScreenBackground(bloom, intensity = 0.40f)) {
-        LazyColumn(
+        Column(Modifier.fillMaxSize()) {
+            if (isSearching) {
+                AuraInlineSearchField(
+                    value = query,
+                    onValueChange = { query = it },
+                    placeholder = stringResource(R.string.search),
+                    focusRequester = focusRequester,
+                    onSearch = { focusManager.clearFocus() },
+                    modifier = Modifier
+                        .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Top))
+                        .padding(start = 44.dp),
+                )
+            }
+            LazyColumn(
             state = lazyListState,
-            contentPadding = LocalPlayerAwareWindowInsets.current.union(WindowInsets.ime).asPaddingValues(),
-            modifier = Modifier.fillMaxSize(),
+            contentPadding = if (isSearching) {
+                LocalPlayerAwareWindowInsets.current
+                    .union(WindowInsets.ime)
+                    .only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal)
+                    .asPaddingValues()
+            } else {
+                LocalPlayerAwareWindowInsets.current.union(WindowInsets.ime).asPaddingValues()
+            },
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxSize(),
         ) {
             // Gated on the PLAYLIST only, never on the song list: an online playlist with 0 songs still
             // has a header, and hiding it rendered literally nothing. A terminal failure shows a retry
@@ -310,17 +333,6 @@ fun AuraOnlinePlaylistScreen(
                             shuffleContextId = onlineShuffleContextId,
                             shufflePlayedSet = shufflePlayedSet,
                             heardIds = heardIds,
-                            modifier = Modifier.animateItem(),
-                        )
-                    }
-                } else {
-                    item(key = "aura_op_search") {
-                        AuraInlineSearchField(
-                            value = query,
-                            onValueChange = { query = it },
-                            placeholder = stringResource(R.string.search),
-                            focusRequester = focusRequester,
-                            onSearch = { focusManager.clearFocus() },
                             modifier = Modifier.animateItem(),
                         )
                     }
@@ -639,6 +651,7 @@ fun AuraOnlinePlaylistScreen(
 
                 item(key = "aura_op_tail") { Spacer(Modifier.height(50.dp)) }
             }
+        }
         }
 
         // Sticky chrome: back only. Title/search stay in the scrolling header (owner: no black

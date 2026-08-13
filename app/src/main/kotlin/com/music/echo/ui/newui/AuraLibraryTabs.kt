@@ -188,7 +188,7 @@ private fun <T : Enum<T>> AuraSortControl(
                     icon = AuraIcons.ChevronDown,
                     contentDescription = null,
                     size = 14.dp,
-                    tint = AuraPalette.OnGroundFaint,
+                    tint = AuraPalette.OnGroundMuted,
                 )
             }
             DropdownMenu(
@@ -217,7 +217,7 @@ private fun <T : Enum<T>> AuraSortControl(
             contentDescription = "Invertir el orden",
             onClick = { onSortDescendingChange(!sortDescending) },
             size = 16.dp,
-            tint = AuraPalette.OnGroundFaint,
+            tint = AuraPalette.OnGroundMuted,
             modifier = Modifier.graphicsLayer { rotationZ = if (sortDescending) 0f else 180f },
         )
         // Grouped with the two controls it belongs with, and BEFORE the weighted spacer, so the 48 dp
@@ -275,14 +275,14 @@ private fun AuraSearchField(
             icon = AuraIcons.Search,
             contentDescription = null,
             size = 16.dp,
-            tint = AuraPalette.OnGroundFaint,
+            tint = AuraPalette.OnGroundMuted,
         )
         Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
             if (value.isEmpty()) {
                 Text(
                     text = placeholder,
                     style = AuraType.RowSubtitle,
-                    color = AuraPalette.OnGroundGhost,
+                    color = AuraPalette.OnGroundMuted,
                     maxLines = 1,
                     overflow = AuraDefaultOverflow,
                 )
@@ -291,7 +291,7 @@ private fun AuraSearchField(
                 value = value,
                 onValueChange = onValueChange,
                 singleLine = true,
-                textStyle = AuraType.RowSubtitle.copy(color = AuraPalette.OnGround),
+                textStyle = AuraType.RowTitle.copy(color = AuraPalette.OnGround),
                 cursorBrush = SolidColor(AuraPalette.Teal),
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -303,7 +303,7 @@ private fun AuraSearchField(
                 contentDescription = "Borrar la búsqueda",
                 onClick = { onValueChange("") },
                 size = 16.dp,
-                tint = AuraPalette.OnGroundFaint,
+                tint = AuraPalette.OnGroundMuted,
                 modifier = Modifier.graphicsLayer { rotationZ = 45f },
             )
         }
@@ -645,11 +645,21 @@ fun AuraLibrarySongsTab(
     val listState = rememberLazyListState()
 
     Box(Modifier.fillMaxSize()) {
-        LazyColumn(
-            state = listState,
-            contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
-            modifier = Modifier.fillMaxSize(),
-        ) {
+        Column(Modifier.fillMaxSize()) {
+            if (searchOpen) {
+                AuraSearchField(
+                    value = searchQuery,
+                    onValueChange = { viewModel.searchQuery.value = it },
+                    placeholder = stringResource(R.string.search_library),
+                )
+            }
+            LazyColumn(
+                state = listState,
+                contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxSize(),
+            ) {
             item(key = "aura_songs_subfilters") {
                 AuraSubFilterRow(
                     options = listOf(
@@ -688,19 +698,6 @@ fun AuraLibrarySongsTab(
                         )
                     },
                 )
-            }
-
-            // Below the control row that opens it, not above: the toggle lives in the sort row now, and
-            // inserting the field over its own button would push the button down under the finger.
-            if (searchOpen) {
-                item(key = "aura_songs_search") {
-                    AuraSearchField(
-                        value = searchQuery,
-                        onValueChange = { viewModel.searchQuery.value = it },
-                        placeholder = stringResource(R.string.search_library),
-                        modifier = Modifier.animateItem(),
-                    )
-                }
             }
 
             if (libraryContextId != null) {
@@ -772,6 +769,7 @@ fun AuraLibrarySongsTab(
                         .padding(horizontal = AuraSpacing.Gutter),
                 )
             }
+        }
         }
 
         // Shuffle: the SAME memory prompt and the SAME unplayed-first ordering as the classic tab.
@@ -958,12 +956,21 @@ fun AuraLibraryArtistsTab(
     val gridCellSize = if (gridItemSize == GridItemSize.BIG) 150.dp else 104.dp
     val artistVisual = auraTypeVisual(AuraContentKind.Artist)
 
-    LazyVerticalGrid(
+    Column(Modifier.fillMaxSize()) {
+        if (searchOpen) {
+            AuraSearchField(
+                value = searchQuery,
+                onValueChange = { viewModel.searchQuery.value = it },
+                placeholder = stringResource(R.string.search_library),
+            )
+        }
+        LazyVerticalGrid(
         state = rememberLazyGridState(),
         columns = GridCells.Adaptive(minSize = gridCellSize),
         contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
         horizontalArrangement = Arrangement.spacedBy(11.dp),
         modifier = Modifier
+            .weight(1f)
             .fillMaxSize()
             .padding(horizontal = AuraSpacing.Gutter),
     ) {
@@ -998,19 +1005,6 @@ fun AuraLibraryArtistsTab(
                 },
             )
         }
-        // Below the control row that opens it — see the songs tab.
-        if (searchOpen) {
-            item(key = "aura_artists_search", span = { GridItemSpan(maxLineSpan) }) {
-                AuraSearchField(
-                    value = searchQuery,
-                    onValueChange = { viewModel.searchQuery.value = it },
-                    placeholder = stringResource(R.string.search_library),
-                    modifier = Modifier
-                        .animateItem()
-                        .padding(horizontal = 0.dp),
-                )
-            }
-        }
 
         if (artists.isEmpty()) {
             item(key = "aura_artists_empty", span = { GridItemSpan(maxLineSpan) }) {
@@ -1041,6 +1035,7 @@ fun AuraLibraryArtistsTab(
                 },
             )
         }
+    }
     }
 }
 
@@ -1096,12 +1091,21 @@ fun AuraLibraryPlaylistsTab(
     val gridItemSize by rememberEnumPreference(GridItemsSizeKey, GridItemSize.BIG)
     val gridCellSize = if (gridItemSize == GridItemSize.BIG) 150.dp else 104.dp
 
-    LazyVerticalGrid(
+    Column(Modifier.fillMaxSize()) {
+        if (searchOpen) {
+            AuraSearchField(
+                value = playlistSearchQuery,
+                onValueChange = { playlistSearchQuery = it },
+                placeholder = stringResource(R.string.search_playlists),
+            )
+        }
+        LazyVerticalGrid(
         state = rememberLazyGridState(),
         columns = GridCells.Adaptive(minSize = gridCellSize),
         contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
         horizontalArrangement = Arrangement.spacedBy(11.dp),
         modifier = Modifier
+            .weight(1f)
             .fillMaxSize()
             .padding(horizontal = AuraSpacing.Gutter),
     ) {
@@ -1133,19 +1137,6 @@ fun AuraLibraryPlaylistsTab(
                     )
                 },
             )
-        }
-        // Below the control row that opens it — see the songs tab.
-        if (searchOpen) {
-            item(key = "aura_playlists_search", span = { GridItemSpan(maxLineSpan) }) {
-                AuraSearchField(
-                    value = playlistSearchQuery,
-                    onValueChange = { playlistSearchQuery = it },
-                    placeholder = stringResource(R.string.search_playlists),
-                    modifier = Modifier
-                        .animateItem()
-                        .padding(horizontal = 0.dp),
-                )
-            }
         }
         item(key = "aura_playlists_auto", span = { GridItemSpan(maxLineSpan) }) {
             FlowRow(
@@ -1249,6 +1240,7 @@ fun AuraLibraryPlaylistsTab(
                 },
             )
         }
+    }
     }
 }
 

@@ -29,7 +29,7 @@ object SongResolver {
         videoId = videoId,
         localMatch = { t, a -> localMatch(database, t, a) },
         fromVideoId = { id -> byVideoId[id]?.toMediaMetadata() },
-        search = { q, a -> searchSong(q, a) },
+        search = { _, a -> searchSong(title, a) },
     )
 
     /**
@@ -61,27 +61,64 @@ object SongResolver {
         return match.toMediaMetadata()
     }
 
-    private suspend fun searchSong(query: String, expectedArtist: String): MediaMetadata? {
+    /**
+     * YouTube search that requires the proposed TITLE and (when named) ARTIST. An invented title
+     * with a real artist must not resolve to "any song by that artist".
+     */
+    private suspend fun searchSong(expectedTitle: String, expectedArtist: String): MediaMetadata? {
+        if (expectedTitle.isBlank()) return null
+        val query = listOf(expectedTitle, expectedArtist).filter { it.isNotBlank() }.joinToString(" ")
         fun pick(items: List<SongItem>): MediaMetadata? {
-            if (items.isEmpty()) return null
-            if (expectedArtist.isBlank()) return items.first().toMediaMetadata()
-            // Prefer a hit whose credited artists match the AI-proposed artist — first result alone
-            // often drifts to covers / wrong acts and made "Lista IA" feel like it improvises.
-            val matched = items.firstOrNull { song ->
-                song.artists.any { artistMatches(it.name, expectedArtist) }
-            }
-            return matched?.toMediaMetadata()
+            val index = pickSearchHit(
+                titles = items.map { it.title },
+                artists = items.map { it.artists.map { a -> a.name } },
+                expectedTitle = expectedTitle,
+                expectedArtist = expectedArtist,
+            ) ?: return null
+            return items[index].toMediaMetadata()
         }
 
         YouTube.search(query, YouTube.SearchFilter.FILTER_SONG).getOrNull()
             ?.items?.filterIsInstance<SongItem>()
             ?.let { pick(it) }?.let { return it }
 
-        // Resilience: many real tracks never surface under FILTER_SONG. Retry VIDEO, still requiring
-        // an artist match when the AI named one — better a miss than the wrong act.
         return YouTube.search(query, YouTube.SearchFilter.FILTER_VIDEO).getOrNull()
             ?.items?.filterIsInstance<SongItem>()
             ?.let { pick(it) }
+    }
+
+    /**
+     * Index of the first hit whose title AND artist match the AI proposal. No title match → null,
+     * never the first result of that artist.
+     */
+    internal fun pickSearchHit(
+        titles: List<String>,
+        artists: List<List<String>>,
+        expectedTitle: String,
+        expectedArtist: String,
+    ): Int? {
+        if (titles.isEmpty() || expectedTitle.isBlank()) return null
+        fun titleEquals(candidate: String): Boolean = fold(candidate) == fold(expectedTitle)
+        fun titleClose(candidate: String): Boolean {
+            val a = fold(candidate)
+            val b = fold(expectedTitle)
+            if (a == b) return true
+            val shorter = if (a.length <= b.length) a else b
+            val longer = if (a.length <= b.length) b else a
+            if (shorter.length < 6) return false
+            return longer.startsWith(shorter) &&
+                (longer.length == shorter.length || !longer[shorter.length].isLetterOrDigit())
+        }
+        fun artistOk(names: List<String>): Boolean {
+            if (expectedArtist.isBlank()) return true
+            return names.any { artistMatches(it, expectedArtist) }
+        }
+        titles.indices.firstOrNull { i ->
+            titleEquals(titles[i]) && artistOk(artists.getOrNull(i).orEmpty())
+        }?.let { return it }
+        return titles.indices.firstOrNull { i ->
+            titleClose(titles[i]) && artistOk(artists.getOrNull(i).orEmpty())
+        }
     }
 
     /** Accent/case-insensitive containment either way ("Bad Bunny" ↔ "Bad Bunny & Jhayco"). */
@@ -89,7 +126,16 @@ object SongResolver {
         val a = fold(candidate)
         val b = fold(expected)
         if (a.isEmpty() || b.isEmpty()) return false
-        return a == b || a.contains(b) || b.contains(a)
+        if (a == b) return true
+        val shorter = if (a.length <= b.length) a else b
+        val longer = if (a.length <= b.length) b else a
+        if (shorter.length < 4) return false
+        val idx = longer.indexOf(shorter)
+        if (idx < 0) return false
+        val beforeOk = idx == 0 || !longer[idx - 1].isLetterOrDigit()
+        val afterIdx = idx + shorter.length
+        val afterOk = afterIdx == longer.length || !longer[afterIdx].isLetterOrDigit()
+        return beforeOk && afterOk
     }
 
     private fun fold(value: String): String =

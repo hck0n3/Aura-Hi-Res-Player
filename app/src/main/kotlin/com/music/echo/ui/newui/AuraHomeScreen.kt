@@ -1618,7 +1618,7 @@ private fun AuraQuickPicksCarousel(
 
 /** A local [Song] as a shelf card — videos use 16:9 (same language as artist shelves). */
 @Composable
-private fun AuraSongShelfCard(
+internal fun AuraSongShelfCard(
     song: Song,
     isActive: Boolean,
     isPlaying: Boolean,

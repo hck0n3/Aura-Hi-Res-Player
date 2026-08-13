@@ -89,8 +89,8 @@ fun SuggestionsTabContent(
     // concurrency); driven by this LaunchedEffect so it is CANCELLED when the tab leaves composition
     // or the visible set changes (no leak / heat / battery). take(29) matches the rendered slice.
     androidx.compose.runtime.LaunchedEffect(suggestionTracks, suggestionVideos) {
-        val visible = suggestionTracks.orEmpty().take(29) + suggestionVideos.orEmpty()
-        if (visible.isNotEmpty()) viewModel.prewarm(visible)
+        viewModel.prewarm(suggestionTracks.orEmpty().take(29), SuggestionMatch.Kind.SONG)
+        viewModel.prewarm(suggestionVideos.orEmpty(), SuggestionMatch.Kind.VIDEO)
     }
 
     val pullToRefreshState = rememberPullToRefreshState()

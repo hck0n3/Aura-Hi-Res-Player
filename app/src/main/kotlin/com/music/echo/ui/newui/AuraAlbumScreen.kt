@@ -24,12 +24,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyGridScope
 import androidx.compose.foundation.lazy.grid.LazyHorizontalGrid
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -1216,8 +1218,12 @@ internal fun AuraDoubleRowShelf(
 ) {
     val gap = AuraSpacing.ShelfItemGap
     val rows = if (itemCount == 1) 1 else 2
+    val gridState = rememberLazyGridState()
+    val fling = rememberSnapFlingBehavior(lazyGridState = gridState)
     LazyHorizontalGrid(
         rows = GridCells.Fixed(rows),
+        state = gridState,
+        flingBehavior = fling,
         contentPadding = PaddingValues(horizontal = AuraSpacing.Gutter),
         horizontalArrangement = Arrangement.spacedBy(AuraSpacing.ShelfItemGap),
         verticalArrangement = Arrangement.spacedBy(gap),

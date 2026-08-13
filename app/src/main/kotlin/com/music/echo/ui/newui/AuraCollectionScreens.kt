@@ -252,10 +252,31 @@ internal fun AuraSongCollectionScaffold(
                 } else Modifier,
             ),
     ) {
-        LazyColumn(
+        Column(Modifier.fillMaxSize()) {
+            if (isSearching) {
+                AuraInlineSearchField(
+                    value = query,
+                    onValueChange = { query = it },
+                    placeholder = stringResource(R.string.search),
+                    focusRequester = focusRequester,
+                    onSearch = { focusManager.clearFocus() },
+                    modifier = Modifier
+                        .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Top))
+                        .padding(start = 44.dp),
+                )
+            }
+            LazyColumn(
             state = listState,
-            contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
-            modifier = Modifier.fillMaxSize(),
+            contentPadding = if (isSearching) {
+                LocalPlayerAwareWindowInsets.current
+                    .only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal)
+                    .asPaddingValues()
+            } else {
+                LocalPlayerAwareWindowInsets.current.asPaddingValues()
+            },
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxSize(),
         ) {
             // Still loading: nothing is drawn, exactly as the classic screens do. Bound to a local so
             // every nested lambda below reads the same non-null list without a smart cast.
@@ -293,19 +314,6 @@ internal fun AuraSongCollectionScaffold(
             extraItems?.invoke(this, isSearching)
 
             if (list.isNotEmpty()) {
-                if (isSearching) {
-                    item(key = "aura_coll_search") {
-                        AuraInlineSearchField(
-                            value = query,
-                            onValueChange = { query = it },
-                            placeholder = stringResource(R.string.search),
-                            focusRequester = focusRequester,
-                            onSearch = { focusManager.clearFocus() },
-                            modifier = Modifier.animateItem(),
-                        )
-                    }
-                }
-
                 if (sortItem != null) {
                     item(key = "aura_coll_sort") { sortItem(filteredSongs) }
                 }
@@ -490,6 +498,7 @@ internal fun AuraSongCollectionScaffold(
             }
 
             item(key = "aura_coll_tail") { Spacer(Modifier.height(50.dp)) }
+        }
         }
 
         DraggableScrollbar(
@@ -936,14 +945,14 @@ internal fun AuraInlineSearchField(
             icon = AuraIcons.Search,
             contentDescription = null,
             size = 16.dp,
-            tint = AuraPalette.OnGroundFaint,
+            tint = AuraPalette.OnGroundMuted,
         )
         Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
             if (value.isEmpty()) {
                 Text(
                     text = placeholder,
                     style = AuraType.RowSubtitle,
-                    color = AuraPalette.OnGroundGhost,
+                    color = AuraPalette.OnGroundMuted,
                     maxLines = 1,
                     overflow = AuraDefaultOverflow,
                 )
@@ -952,7 +961,7 @@ internal fun AuraInlineSearchField(
                 value = value,
                 onValueChange = onValueChange,
                 singleLine = true,
-                textStyle = AuraType.RowSubtitle.copy(color = AuraPalette.OnGround),
+                textStyle = AuraType.RowTitle.copy(color = AuraPalette.OnGround),
                 cursorBrush = SolidColor(AuraPalette.Teal),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 modifier = Modifier
@@ -969,7 +978,7 @@ internal fun AuraInlineSearchField(
                     onSearch()
                 },
                 size = 16.dp,
-                tint = AuraPalette.OnGroundFaint,
+                tint = AuraPalette.OnGroundMuted,
                 modifier = Modifier.graphicsLayer { rotationZ = 45f },
             )
         }
@@ -1029,7 +1038,7 @@ internal fun <T : Enum<T>> AuraInlineSortControl(
                     icon = AuraIcons.ChevronDown,
                     contentDescription = null,
                     size = 14.dp,
-                    tint = AuraPalette.OnGroundFaint,
+                    tint = AuraPalette.OnGroundMuted,
                 )
             }
             DropdownMenu(
@@ -1057,7 +1066,7 @@ internal fun <T : Enum<T>> AuraInlineSortControl(
                 contentDescription = stringResource(R.string.cd_reverse_sort_order),
                 onClick = { onSortDescendingChange(!sortDescending) },
                 size = 16.dp,
-                tint = AuraPalette.OnGroundFaint,
+                tint = AuraPalette.OnGroundMuted,
                 modifier = Modifier.graphicsLayer { rotationZ = if (sortDescending) 0f else 180f },
             )
         }

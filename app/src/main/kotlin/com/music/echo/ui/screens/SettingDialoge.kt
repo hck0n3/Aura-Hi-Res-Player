@@ -2,10 +2,13 @@ package iad1tya.echo.music.ui.screens
 
 import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -101,14 +104,10 @@ fun SettingDialoge(
         onDismissRequest = onDismissRequest,
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
-        if (premium) {
-            AuraDialogWindowEffects(enabled = true)
-            AuraFloatingSurface(
-                modifier = Modifier
-                    .padding(24.dp)
-                    .fillMaxWidth(),
-                shape = AuraShapes.Card,
-            ) {
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            val tight = maxHeight < 720.dp
+            val outerPad = if (tight) 12.dp else 24.dp
+            val body: @Composable () -> Unit = {
                 SettingDialogeBody(
                     isLoggedIn = isLoggedIn,
                     accountName = accountName,
@@ -117,42 +116,40 @@ fun SettingDialoge(
                     unreadNotices = unreadNotices,
                     primaryColor = primaryColor,
                     mutedColor = mutedColor,
-                    titleStyle = true,
+                    titleStyle = premium || skin.enabled,
                     useLoginForBrowse = useLoginForBrowse,
                     onUseLoginForBrowseChange = onBrowseLoginChange,
                     ytmSync = ytmSync,
                     onYtmSyncChange = onYtmSyncChange,
                     onDismissRequest = onDismissRequest,
                     onNavigate = onNavigate,
+                    tight = tight,
+                    allowScroll = maxHeight < 560.dp,
                 )
             }
-        } else {
-            AuraPanel(
-                skin = skin,
-                modifier = Modifier
-                    .padding(24.dp)
-                    .fillMaxWidth(),
-                classicShape = RoundedCornerShape(28.dp),
-                classicColors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                ),
-            ) {
-                SettingDialogeBody(
-                    isLoggedIn = isLoggedIn,
-                    accountName = accountName,
-                    accountEmail = accountEmail,
-                    accountImageUrl = accountImageUrl,
-                    unreadNotices = unreadNotices,
-                    primaryColor = primaryColor,
-                    mutedColor = mutedColor,
-                    titleStyle = skin.enabled,
-                    useLoginForBrowse = useLoginForBrowse,
-                    onUseLoginForBrowseChange = onBrowseLoginChange,
-                    ytmSync = ytmSync,
-                    onYtmSyncChange = onYtmSyncChange,
-                    onDismissRequest = onDismissRequest,
-                    onNavigate = onNavigate,
-                )
+            if (premium) {
+                AuraDialogWindowEffects(enabled = true)
+                AuraFloatingSurface(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .padding(outerPad)
+                        .fillMaxWidth()
+                        .heightIn(max = maxHeight - outerPad * 2),
+                    shape = AuraShapes.Card,
+                ) { body() }
+            } else {
+                AuraPanel(
+                    skin = skin,
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .padding(outerPad)
+                        .fillMaxWidth()
+                        .heightIn(max = maxHeight - outerPad * 2),
+                    classicShape = RoundedCornerShape(28.dp),
+                    classicColors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    ),
+                ) { body() }
             }
         }
     }
@@ -174,15 +171,21 @@ private fun SettingDialogeBody(
     onYtmSyncChange: (Boolean) -> Unit,
     onDismissRequest: () -> Unit,
     onNavigate: (String) -> Unit,
+    tight: Boolean,
+    allowScroll: Boolean,
 ) {
     val hasUnread = unreadNotices > 0
     val context = LocalContext.current
+    val vPad = if (tight) 8.dp else 16.dp
+    val hPad = if (tight) 8.dp else 12.dp
+    val gap = if (tight) 4.dp else 10.dp
+    val avatar = if (tight) 36.dp else 48.dp
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .verticalScroll(rememberScrollState())
-            .padding(vertical = 16.dp, horizontal = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+            .then(if (allowScroll) Modifier.verticalScroll(rememberScrollState()) else Modifier)
+            .padding(vertical = vPad, horizontal = hPad),
+        verticalArrangement = Arrangement.spacedBy(gap),
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -196,7 +199,7 @@ private fun SettingDialogeBody(
             Text(
                 text = "Aura Hi-Res Player",
                 style = if (titleStyle) {
-                    AuraType.SheetTitle
+                    if (tight) AuraType.RowTitle else AuraType.SheetTitle
                 } else {
                     MaterialTheme.typography.titleLarge.copy(
                         fontWeight = FontWeight.Bold,
@@ -240,7 +243,7 @@ private fun SettingDialogeBody(
                         contentDescription = null,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier
-                            .size(48.dp)
+                            .size(avatar)
                             .clip(CircleShape),
                     )
                 }
@@ -302,7 +305,11 @@ private fun SettingDialogeBody(
                     Material3SettingsItem(
                         title = { Text("Sincronizar biblioteca ahora") },
                         description = {
-                            Text("Toda la biblioteca con tu cuenta. Sigue en segundo plano aunque cierres la app.")
+                            Text(
+                                "Toda la biblioteca con tu cuenta. Sigue en segundo plano aunque cierres la app.",
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
                         },
                         icon = painterResource(R.drawable.sync),
                         onClick = {
@@ -321,7 +328,11 @@ private fun SettingDialogeBody(
                     Material3SettingsItem(
                         title = { Text("Programar sincronización") },
                         description = {
-                            Text("Cada 3 días por defecto, o elige cuándo")
+                            Text(
+                                "Cada 3 días por defecto, o elige cuándo",
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
                         },
                         icon = painterResource(R.drawable.sync),
                         onClick = { onNavigate("settings/ytm_sync") },
@@ -349,7 +360,11 @@ private fun SettingDialogeBody(
                 Material3SettingsItem(
                     title = { Text(stringResource(R.string.owner_notices_title)) },
                     description = {
-                        Text(stringResource(R.string.owner_notices_settings_desc))
+                        Text(
+                            stringResource(R.string.owner_notices_settings_desc),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
                     },
                     icon = painterResource(R.drawable.notification),
                     showBadge = hasUnread,
@@ -367,7 +382,11 @@ private fun SettingDialogeBody(
                 Material3SettingsItem(
                     title = { Text("Actualizaciones") },
                     description = {
-                        Text("Cambios de esta versión y nuevas actualizaciones")
+                        Text(
+                            "Cambios de esta versión y nuevas actualizaciones",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
                     },
                     icon = painterResource(R.drawable.update),
                     onClick = { onNavigate("settings/update") },
@@ -379,7 +398,9 @@ private fun SettingDialogeBody(
                             stringResource(
                                 R.string.feedback_settings_desc,
                                 SupportContact.EMAIL,
-                            )
+                            ),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
                     },
                     icon = painterResource(R.drawable.bug_report),

@@ -570,65 +570,50 @@ fun AuraArtistScreen(
                                 modifier = Modifier.animateItem(),
                             )
                         }
-                        itemsIndexed(
-                            items = librarySongsPreview,
-                            key = { position, _ -> "aura_artist_local_song_$position" },
-                        ) { _, song ->
-                            AuraSongRow(
-                                title = song.song.title,
-                                subtitle = song.artists.joinToString { it.name }
-                                    .takeIf { it.isNotBlank() },
-                                thumbnailUrl = song.song.thumbnailUrl,
-                                seed = song.id,
-                                isActive = song.id == mediaMetadata?.id,
-                                isPlaying = isPlaying,
-                                liked = song.song.liked,
-                                explicit = song.song.explicit,
-                                inLibrary = song.song.inLibrary != null,
-                                downloadId = song.id,
-                                format = song.format,
-                                playedInShuffle = song.song.totalPlayTime > 0L,
-                                onClick = {
-                                    if (song.id == mediaMetadata?.id) {
-                                        playerConnection.togglePlayPause()
-                                    } else {
-                                        playerConnection.playQueue(
-                                            ListQueue(
-                                                title = libraryArtist?.artist?.name
-                                                    ?: context.getString(R.string.unknown_artist),
-                                                items = filteredLibrarySongs.map { it.toMediaItem() },
-                                                startIndex = filteredLibrarySongs
-                                                    .indexOfFirst { it.id == song.id }
-                                                    .coerceAtLeast(0),
-                                            ),
-                                        )
-                                    }
-                                },
-                                onLongClick = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    menuState.show {
-                                        SongMenu(
-                                            originalSong = song,
-                                            navController = navController,
-                                            onDismiss = menuState::dismiss,
-                                        )
-                                    }
-                                },
-                                onMenuClick = {
-                                    menuState.show {
-                                        SongMenu(
-                                            originalSong = song,
-                                            navController = navController,
-                                            onDismiss = menuState::dismiss,
-                                        )
-                                    }
-                                },
-                                menuContentDescription = song.song.title,
-                                modifier = Modifier
-                                    .animateItem()
-                                    .padding(horizontal = AuraSpacing.Gutter)
-                                    .tvFocusable(isTvOrCar, AuraShapes.Highlight, scaleFocused = 1f),
-                            )
+                        item(key = "aura_artist_local_songs_row") {
+                            AuraShelf(modifier = Modifier.animateItem()) {
+                                items(
+                                    librarySongsPreview,
+                                    key = { it.id },
+                                ) { song ->
+                                    AuraSongShelfCard(
+                                        song = song,
+                                        isActive = song.id == mediaMetadata?.id,
+                                        isPlaying = isPlaying,
+                                        onClick = {
+                                            if (song.id == mediaMetadata?.id) {
+                                                playerConnection.togglePlayPause()
+                                            } else {
+                                                playerConnection.playQueue(
+                                                    ListQueue(
+                                                        title = libraryArtist?.artist?.name
+                                                            ?: context.getString(R.string.unknown_artist),
+                                                        items = filteredLibrarySongs.map { it.toMediaItem() },
+                                                        startIndex = filteredLibrarySongs
+                                                            .indexOfFirst { it.id == song.id }
+                                                            .coerceAtLeast(0),
+                                                    ),
+                                                )
+                                            }
+                                        },
+                                        onLongClick = {
+                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            menuState.show {
+                                                SongMenu(
+                                                    originalSong = song,
+                                                    navController = navController,
+                                                    onDismiss = menuState::dismiss,
+                                                )
+                                            }
+                                        },
+                                        modifier = Modifier.tvFocusable(
+                                            isTvOrCar,
+                                            AuraShapes.Highlight,
+                                            scaleFocused = 1f,
+                                        ),
+                                    )
+                                }
+                            }
                         }
                     }
 
@@ -746,62 +731,61 @@ fun AuraArtistScreen(
                             )
                         }
 
-                        // Tracks → vertical list (Apple/YTM). Videos / albums / EPs / playlists →
-                        // typed cover shelves. Never dump plain songs into a postage-stamp grid.
+                        // Tracks → Home-style L–R shelf. Videos / albums / EPs / playlists →
+                        // typed cover shelves. Queue is still the WHOLE section, not the preview cards.
                         if (
                             sectionItems.all { it is SongItem } &&
                             sectionItems.none { (it as SongItem).isVideoSong }
                         ) {
-                            itemsIndexed(
-                                items = sectionItems,
-                                key = { position, _ ->
-                                    "aura_artist_section_${sectionIndex}_row_$position"
-                                },
-                            ) { _, item ->
-                                val song = item as SongItem
-                                AuraYtItemRow(
-                                    item = song,
-                                    isActive = mediaMetadata?.id == song.id,
-                                    isPlaying = isPlaying,
-                                    onClick = {
-                                        if (song.id == mediaMetadata?.id) {
-                                            playerConnection.togglePlayPause()
-                                        } else {
-                                            // The WHOLE section becomes the queue, starting at the
-                                            // tapped song — like an album — instead of a single-song
-                                            // queue that stops after it.
-                                            val sectionSongs = sectionItems.filterIsInstance<SongItem>()
-                                            playerConnection.playQueue(
-                                                ListQueue(
-                                                    title = section.title,
-                                                    items = sectionSongs.map { it.toMediaItem() },
-                                                    startIndex = sectionSongs
-                                                        .indexOfFirst { it.id == song.id }
-                                                        .coerceAtLeast(0),
-                                                ),
-                                            )
-                                        }
-                                    },
-                                    onLongClick = {
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        openYtMenu(song)
-                                    },
-                                    onMenuClick = { openYtMenu(song) },
-                                    modifier = Modifier
-                                        .animateItem()
-                                        .tvFocusable(
-                                            isTvOrCar,
-                                            AuraShapes.Highlight,
-                                            scaleFocused = 1f,
-                                        ),
-                                )
+                            item(key = "aura_artist_section_${sectionIndex}_shelf") {
+                                AuraShelf(modifier = Modifier.animateItem()) {
+                                    items(
+                                        count = sectionItems.size,
+                                        key = { position ->
+                                            "aura_artist_section_${sectionIndex}_card_$position"
+                                        },
+                                    ) { position ->
+                                        val song = sectionItems[position] as SongItem
+                                        AuraTypedYtCoverCard(
+                                            item = song,
+                                            cardScale = 1f,
+                                            isActive = mediaMetadata?.id == song.id,
+                                            isPlaying = isPlaying,
+                                            onClick = {
+                                                if (song.id == mediaMetadata?.id) {
+                                                    playerConnection.togglePlayPause()
+                                                } else {
+                                                    val sectionSongs = sectionItems.filterIsInstance<SongItem>()
+                                                    playerConnection.playQueue(
+                                                        ListQueue(
+                                                            title = section.title,
+                                                            items = sectionSongs.map { it.toMediaItem() },
+                                                            startIndex = sectionSongs
+                                                                .indexOfFirst { it.id == song.id }
+                                                                .coerceAtLeast(0),
+                                                        ),
+                                                    )
+                                                }
+                                            },
+                                            onLongClick = {
+                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                openYtMenu(song)
+                                            },
+                                            modifier = Modifier.tvFocusable(
+                                                isTvOrCar,
+                                                AuraShapes.Highlight,
+                                                scaleFocused = 1f,
+                                            ),
+                                        )
+                                    }
+                                }
                             }
                         } else {
                             item(key = "aura_artist_section_${sectionIndex}_shelf") {
                                 val videoHeavy = sectionItems.any { it is SongItem && it.isVideoSong }
                                 if (videoHeavy) {
                                     // YTM-style: one row of large full-bleed 16:9 cards (not a cramped 2×N stamp grid).
-                                    AuraDetailShelf(modifier = Modifier.animateItem()) {
+                                    AuraShelf(modifier = Modifier.animateItem()) {
                                         items(
                                             count = sectionItems.size,
                                             key = { position ->
@@ -1066,61 +1050,40 @@ private fun LazyListScope.auraArtistLibraryPreviewItems(
             modifier = Modifier.animateItem(),
         )
     }
-    itemsIndexed(
-        items = songs,
-        key = { position, _ -> "aura_artist_library_preview_$position" },
-    ) { _, song ->
-        AuraSongRow(
-            title = song.song.title,
-            subtitle = song.artists.joinToString { it.name }.takeIf { it.isNotBlank() },
-            thumbnailUrl = song.song.thumbnailUrl,
-            seed = song.id,
-            isActive = song.id == mediaMetadataId,
-            isPlaying = isPlaying,
-            liked = song.song.liked,
-            explicit = song.song.explicit,
-            inLibrary = song.song.inLibrary != null,
-            downloadId = song.id,
-            format = song.format,
-            playedInShuffle = song.song.totalPlayTime > 0L,
-            onClick = {
-                if (song.id == mediaMetadataId) {
-                    playerConnection.togglePlayPause()
-                } else {
-                    playerConnection.playQueue(
-                        ListQueue(
-                            title = artistName,
-                            items = allSongs.map { it.toMediaItem() },
-                            startIndex = allSongs.indexOfFirst { it.id == song.id }.coerceAtLeast(0),
-                        ),
-                    )
-                }
-            },
-            onLongClick = {
-                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                menuState.show {
-                    SongMenu(
-                        originalSong = song,
-                        navController = navController,
-                        onDismiss = menuState::dismiss,
-                    )
-                }
-            },
-            onMenuClick = {
-                menuState.show {
-                    SongMenu(
-                        originalSong = song,
-                        navController = navController,
-                        onDismiss = menuState::dismiss,
-                    )
-                }
-            },
-            menuContentDescription = song.song.title,
-            modifier = Modifier
-                .animateItem()
-                .padding(horizontal = AuraSpacing.Gutter)
-                .tvFocusable(isTvOrCar, AuraShapes.Highlight, scaleFocused = 1f),
-        )
+    item(key = "aura_artist_library_preview_row") {
+        AuraShelf(modifier = Modifier.animateItem()) {
+            items(songs, key = { it.id }) { song ->
+                AuraSongShelfCard(
+                    song = song,
+                    isActive = song.id == mediaMetadataId,
+                    isPlaying = isPlaying,
+                    onClick = {
+                        if (song.id == mediaMetadataId) {
+                            playerConnection.togglePlayPause()
+                        } else {
+                            playerConnection.playQueue(
+                                ListQueue(
+                                    title = artistName,
+                                    items = allSongs.map { it.toMediaItem() },
+                                    startIndex = allSongs.indexOfFirst { it.id == song.id }.coerceAtLeast(0),
+                                ),
+                            )
+                        }
+                    },
+                    onLongClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        menuState.show {
+                            SongMenu(
+                                originalSong = song,
+                                navController = navController,
+                                onDismiss = menuState::dismiss,
+                            )
+                        }
+                    },
+                    modifier = Modifier.tvFocusable(isTvOrCar, AuraShapes.Highlight, scaleFocused = 1f),
+                )
+            }
+        }
     }
 }
 

@@ -536,10 +536,32 @@ fun AuraLocalPlaylistScreen(
     val rows = if (isSearching) filteredSongs else mutableSongs
 
     Box(modifier = Modifier.fillMaxSize().auraScreenBackground(bloom, intensity = 0.40f)) {
-        LazyColumn(
+        Column(Modifier.fillMaxSize()) {
+            if (isSearching) {
+                AuraInlineSearchField(
+                    value = query,
+                    onValueChange = { query = it },
+                    placeholder = stringResource(R.string.search),
+                    focusRequester = focusRequester,
+                    onSearch = { focusManager.clearFocus() },
+                    modifier = Modifier
+                        .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Top))
+                        .padding(start = 44.dp),
+                )
+            }
+            LazyColumn(
             state = lazyListState,
-            contentPadding = LocalPlayerAwareWindowInsets.current.union(WindowInsets.ime).asPaddingValues(),
-            modifier = Modifier.fillMaxSize(),
+            contentPadding = if (isSearching) {
+                LocalPlayerAwareWindowInsets.current
+                    .union(WindowInsets.ime)
+                    .only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal)
+                    .asPaddingValues()
+            } else {
+                LocalPlayerAwareWindowInsets.current.union(WindowInsets.ime).asPaddingValues()
+            },
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxSize(),
         ) {
             val current = playlist
             if (current != null) {
@@ -578,17 +600,6 @@ fun AuraLocalPlaylistScreen(
                                         )
                                     }
                                 },
-                                modifier = Modifier.animateItem(),
-                            )
-                        }
-                    } else {
-                        item(key = "aura_lp_search") {
-                            AuraInlineSearchField(
-                                value = query,
-                                onValueChange = { query = it },
-                                placeholder = stringResource(R.string.search),
-                                focusRequester = focusRequester,
-                                onSearch = { focusManager.clearFocus() },
                                 modifier = Modifier.animateItem(),
                             )
                         }
@@ -885,6 +896,7 @@ fun AuraLocalPlaylistScreen(
             }
 
             item(key = "aura_lp_tail") { Spacer(Modifier.height(50.dp)) }
+        }
         }
 
         if (showAddMusicSheet) {

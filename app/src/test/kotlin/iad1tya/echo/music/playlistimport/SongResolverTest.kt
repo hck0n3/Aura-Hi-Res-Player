@@ -93,5 +93,34 @@ class SongResolverTest {
         assertTrue(SongResolver.artistMatches("José José", "Jose Jose"))
         assertTrue(SongResolver.artistMatches("Bad Bunny & Jhayco", "Bad Bunny"))
         assertFalse(SongResolver.artistMatches("J Balvin", "Bad Bunny"))
+        assertFalse(SongResolver.artistMatches("Ed Sheeran", "Ed"))
+    }
+
+    @Test fun inventedTitleWithRealArtistIsDropped() {
+        val index = SongResolver.pickSearchHit(
+            titles = listOf("Un Verano Sin Ti", "Tití Me Preguntó", "Moscow Mule"),
+            artists = listOf(
+                listOf("Bad Bunny"),
+                listOf("Bad Bunny"),
+                listOf("Bad Bunny"),
+            ),
+            expectedTitle = "Cancion Inventada Que No Existe",
+            expectedArtist = "Bad Bunny",
+        )
+        assertNull(index)
+    }
+
+    @Test fun pickSearchHitRequiresTitleAndArtist() {
+        val index = SongResolver.pickSearchHit(
+            titles = listOf("GUTS", "GUTS", "Vampire"),
+            artists = listOf(
+                listOf("Someone Else"),
+                listOf("Olivia Rodrigo"),
+                listOf("Olivia Rodrigo"),
+            ),
+            expectedTitle = "GUTS",
+            expectedArtist = "Olivia Rodrigo",
+        )
+        assertEquals(1, index)
     }
 }

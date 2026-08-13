@@ -407,7 +407,7 @@ internal fun AuraSearchInputBar(
             },
             onClick = onLeadingClick,
             size = 18.dp,
-            tint = AuraPalette.OnGroundFaint,
+            tint = AuraPalette.OnGroundMuted,
             // The chevron points BACK when the panel is open — one glyph, rotated, exactly as the
             // library's close control reuses "+" at 45°.
             modifier = Modifier.graphicsLayer { rotationZ = if (active) 180f else 0f },
@@ -418,7 +418,7 @@ internal fun AuraSearchInputBar(
                 Text(
                     text = placeholder,
                     style = AuraType.RowSubtitle,
-                    color = AuraPalette.OnGroundGhost,
+                    color = AuraPalette.OnGroundMuted,
                     maxLines = 1,
                     overflow = AuraDefaultOverflow,
                 )
@@ -447,7 +447,7 @@ internal fun AuraSearchInputBar(
                 contentDescription = stringResource(R.string.search_clear_query),
                 onClick = onClear,
                 size = 16.dp,
-                tint = AuraPalette.OnGroundFaint,
+                tint = AuraPalette.OnGroundMuted,
                 modifier = Modifier.graphicsLayer { rotationZ = 45f },
             )
         }
@@ -457,7 +457,7 @@ internal fun AuraSearchInputBar(
             contentDescription = stringResource(R.string.voice_search),
             onClick = onVoice,
             size = 18.dp,
-            tint = AuraPalette.OnGroundFaint,
+            tint = AuraPalette.OnGroundMuted,
         )
 
         if (showSource) {

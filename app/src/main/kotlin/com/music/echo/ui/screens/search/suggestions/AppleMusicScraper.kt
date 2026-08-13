@@ -130,7 +130,7 @@ object AppleMusicScraper {
         
         tracks.forEach { track ->
             
-            val mainArtist = track.artist.split(",", "&", "feat.", "ft.").first().trim()
+            val mainArtist = SuggestionMatch.primaryArtistName(track.artist)
             artistCounts[mainArtist] = (artistCounts[mainArtist] ?: 0) + 1
             if (artistImages[mainArtist] == null) {
                 

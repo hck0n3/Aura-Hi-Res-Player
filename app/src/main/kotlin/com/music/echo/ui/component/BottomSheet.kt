@@ -42,6 +42,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
+import iad1tya.echo.music.constants.MiniPlayerHeight
 import iad1tya.echo.music.constants.NavigationBarAnimationSpec
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -128,6 +129,8 @@ fun BottomSheet(
         }
 
         if (!state.isExpanded && (onDismiss == null || !state.isDismissed)) {
+            // Hit target is the pill only. collapsedBound still includes nav + inset + 8dp gap so
+            // the sheet parks above the tabs, but those strips must not steal Inicio/Novedades/Biblioteca taps.
             Box(
                 modifier =
                 Modifier
@@ -138,7 +141,7 @@ fun BottomSheet(
                         indication = null,
                         onClick = { if (isExpandable) state.expandSoft() },
                     ).fillMaxWidth()
-                    .height(state.collapsedBound),
+                    .height(MiniPlayerHeight),
                 content = collapsedContent,
             )
         }
