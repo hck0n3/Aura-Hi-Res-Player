@@ -1,6 +1,14 @@
 {
-  "updatedAt": "2026-08-13T16:53:00Z",
+  "updatedAt": "2026-08-13T17:42:00Z",
   "items": [
+    {
+      "id": "aviso-20260813-174200",
+      "date": "2026-08-13",
+      "publishedAt": "2026-08-13T17:42:00Z",
+      "title": "Aura Hi-Res 0.6.194: volumen, Escuchar juntos y artista",
+      "body": "Aura Hi-Res 0.6.194 ya está lista para descargar.\n\n• Dar me gusta (y que se descargue sola) ya no sube el volumen a mitad de canción.\n• En Galaxy, Crear sala ya no se queda girando: si no conecta, ves un error y puedes reintentar.\n• Los móviles de Escuchar juntos se corrigen más a menudo para no sonar con eco.\n• En un artista: populares, álbumes, vídeos, y después Tu biblioteca.\n• El círculo de descargando es pequeño, alrededor del icono.\n\nActualiza desde el menú de tu cuenta (avatar) ▸ Actualizaciones. Gracias por estar en Aura.",
+      "priority": "important"
+    },
     {
       "id": "aviso-20260813-165300",
       "date": "2026-08-13",
