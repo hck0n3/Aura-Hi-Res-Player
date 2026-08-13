@@ -185,12 +185,14 @@ constructor(
             .distinctBy { it.id }
             .filterSongsToTasteArtists(keys)
         _featuredSongs.value = songs.take(12)
+        val featuredIds = _featuredSongs.value.map { it.id }.toSet()
         val mix = page.sections
             .firstOrNull { it.chartType == ChartsPage.ChartType.TRENDING || it.chartType == ChartsPage.ChartType.TOP }
             ?.items
             .orEmpty()
             .ifEmpty { page.sections.firstOrNull()?.items.orEmpty() }
             .filterToTasteArtists(keys)
+            .filterNot { it.id in featuredIds }
         _listening.value = mix.take(16)
     }
 

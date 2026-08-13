@@ -81,6 +81,7 @@ import iad1tya.echo.music.ui.menu.YouTubeAlbumMenu
 import iad1tya.echo.music.ui.menu.YouTubeArtistMenu
 import iad1tya.echo.music.ui.menu.YouTubePlaylistMenu
 import iad1tya.echo.music.ui.menu.YouTubeSongMenu
+import iad1tya.echo.music.utils.forAllTabSearchPreview
 import iad1tya.echo.music.utils.rememberPreference
 import iad1tya.echo.music.viewmodels.OnlineSearchViewModel
 import java.net.URLDecoder
@@ -177,6 +178,7 @@ fun AuraSearchResultScreen(
     val lazyListState = rememberLazyListState()
     val searchFilter by viewModel.filter.collectAsState()
     val searchSummary = viewModel.summaryPage
+    val searchFailed = viewModel.hasFailed
 
     LaunchedEffect(searchSummary, searchFilter) {
         if (searchSummary != null || searchFilter != null) lazyListState.scrollToItem(0)
@@ -327,19 +329,18 @@ fun AuraSearchResultScreen(
                                     else -> 4
                                 }
                             }
-                            ?.forEach { summary ->
+                            ?.forEachIndexed { summaryIndex, summary ->
                                 // "Ocultar vídeos" applies here (default = show); a section left empty
                                 // by it is dropped rather than drawn as a bare header.
-                                // All tab: two artists first, then songs/albums/playlists. Full artist
-                                // list stays on the Artistas chip.
+                                // All tab: dedicated Artists shelf caps at 2; mixed Top result
+                                // (artist card + songs) must NOT be truncated — that 0.6.190 take(2)
+                                // emptied Buscar. Full artist list stays on the Artistas chip.
                                 val musicItems = summary.items.filterNot {
                                     hideVideoSongs && it is SongItem && it.isVideoSong
-                                }.let { items ->
-                                    if (items.firstOrNull() is ArtistItem) items.take(2) else items
-                                }
-                                if (musicItems.isEmpty()) return@forEach
+                                }.forAllTabSearchPreview()
+                                if (musicItems.isEmpty()) return@forEachIndexed
 
-                                item(key = "aura_summary_${summary.title}") {
+                                item(key = "aura_summary_${summaryIndex}_${summary.title}") {
                                     AuraSectionHeader(
                                         title = summary.title,
                                         modifier = Modifier.animateItem(),
@@ -446,7 +447,17 @@ fun AuraSearchResultScreen(
                         }
                     }
 
-                    if (searchFilter == null && searchSummary == null ||
+                    if (searchFailed &&
+                        ((searchFilter == null && searchSummary == null) ||
+                            (searchFilter != null && itemsPage == null))
+                    ) {
+                        item(key = "aura_results_error") {
+                            AuraDetailErrorState(
+                                message = stringResource(R.string.couldnt_load_search),
+                                onRetry = viewModel::retry,
+                            )
+                        }
+                    } else if (searchFilter == null && searchSummary == null ||
                         searchFilter != null && itemsPage == null
                     ) {
                         item(key = "aura_results_skeleton") {

@@ -539,6 +539,7 @@
     <string name="couldnt_load_playlist">No se pudo cargar la lista. Revisa tu conexión.</string>
     <string name="couldnt_load_artist">No se pudo cargar el artista. Revisa tu conexión.</string>
     <string name="couldnt_load_album">No se pudo cargar el álbum. Revisa tu conexión.</string>
+    <string name="couldnt_load_search">No se pudieron cargar los resultados. Revisa tu conexión.</string>
     <string name="album_no_longer_available">Este álbum ya no está disponible.</string>
     <string name="preview_unavailable">Vista previa no disponible por ahora</string>
     <string name="featured_artists">Artistas destacados</string>

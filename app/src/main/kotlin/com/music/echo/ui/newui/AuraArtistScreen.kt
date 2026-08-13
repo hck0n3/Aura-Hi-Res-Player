@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
@@ -50,6 +51,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -80,12 +82,15 @@ import iad1tya.echo.music.constants.ShowArtistSubscriberCountKey
 import iad1tya.echo.music.constants.ShowArtistVideoKey
 import iad1tya.echo.music.constants.ShowMonthlyListenersKey
 import iad1tya.echo.music.db.entities.ArtistEntity
+import iad1tya.echo.music.db.entities.Song
 import iad1tya.echo.music.extensions.toMediaItem
 import iad1tya.echo.music.models.toMediaMetadata
+import iad1tya.echo.music.playback.PlayerConnection
 import iad1tya.echo.music.playback.queues.ListQueue
 import iad1tya.echo.music.playback.queues.YouTubeQueue
 import iad1tya.echo.music.ui.component.LinkSegment
 import iad1tya.echo.music.ui.component.LocalMenuState
+import iad1tya.echo.music.ui.component.MenuState
 import iad1tya.echo.music.ui.component.rememberPlayedShuffleSet
 import iad1tya.echo.music.ui.component.rememberShuffleMemoryPrompt
 import iad1tya.echo.music.ui.component.shimmer.ShimmerHost
@@ -235,8 +240,7 @@ fun AuraArtistScreen(
             val title = section.title.trim()
             if (title.isEmpty() || section.items.isEmpty()) return@filter false
             if (showedLocalLibraryPreview &&
-                (isArtistLibrarySectionTitle(title, yourLibraryTitle, fromYourLibraryTitle) ||
-                    isArtistPopularSectionTitle(title))
+                isArtistLibrarySectionTitle(title, yourLibraryTitle, fromYourLibraryTitle)
             ) {
                 return@filter false
             }
@@ -686,89 +690,33 @@ fun AuraArtistScreen(
                         }
                     }
                 } else {
-                    // "Tu biblioteca" — owner request: this used to be reachable only by fully
-                    // switching the screen to the local view (`showLocal`, whose toggle FAB has been
-                    // dead since it shipped, `visible = false`), so a normal YouTube artist page never
-                    // showed the songs the user already has. Now it always shows here, ABOVE the
-                    // online sections, when there is anything to show.
-                    // Play uses the FULL local catalogue (`allLibrarySongs`), never the 3-row DB
-                    // preview — otherwise tapping song 1 of 10 stopped after the three drawn rows.
-                    // YTM's own "From your library" shelf is filtered out of [onlineArtistSections]
-                    // so it does not repeat under this block.
+                    // Popular songs (YTM) first; "Tu biblioteca" after that, never instead of populares.
+                    // Play uses the FULL local catalogue (`allLibrarySongs`), never the preview rows.
+                    // YTM's own "From your library" shelf is filtered out so it does not repeat.
                     val filteredLibraryPreview = filteredLibrarySongsYt.take(8)
-                    if (showedLocalLibraryPreview) {
-                        item(key = "aura_artist_library_preview_label") {
-                            AuraSectionHeader(
-                                title = yourLibraryTitle,
-                                onClick = {
-                                    navController.navigate("artist/${viewModel.artistId}/songs")
-                                },
-                                modifier = Modifier.animateItem(),
-                            )
-                        }
-                        itemsIndexed(
-                            items = filteredLibraryPreview,
-                            key = { position, _ -> "aura_artist_library_preview_$position" },
-                        ) { _, song ->
-                            AuraSongRow(
-                                title = song.song.title,
-                                subtitle = song.artists.joinToString { it.name }
-                                    .takeIf { it.isNotBlank() },
-                                thumbnailUrl = song.song.thumbnailUrl,
-                                seed = song.id,
-                                isActive = song.id == mediaMetadata?.id,
-                                isPlaying = isPlaying,
-                                liked = song.song.liked,
-                                explicit = song.song.explicit,
-                                inLibrary = song.song.inLibrary != null,
-                                downloadId = song.id,
-                                format = song.format,
-                                playedInShuffle = song.song.totalPlayTime > 0L,
-                                onClick = {
-                                    if (song.id == mediaMetadata?.id) {
-                                        playerConnection.togglePlayPause()
-                                    } else {
-                                        playerConnection.playQueue(
-                                            ListQueue(
-                                                title = libraryArtist?.artist?.name
-                                                    ?: context.getString(R.string.unknown_artist),
-                                                items = filteredLibrarySongsYt.map { it.toMediaItem() },
-                                                startIndex = filteredLibrarySongsYt
-                                                    .indexOfFirst { it.id == song.id }
-                                                    .coerceAtLeast(0),
-                                            ),
-                                        )
-                                    }
-                                },
-                                onLongClick = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    menuState.show {
-                                        SongMenu(
-                                            originalSong = song,
-                                            navController = navController,
-                                            onDismiss = menuState::dismiss,
-                                        )
-                                    }
-                                },
-                                onMenuClick = {
-                                    menuState.show {
-                                        SongMenu(
-                                            originalSong = song,
-                                            navController = navController,
-                                            onDismiss = menuState::dismiss,
-                                        )
-                                    }
-                                },
-                                menuContentDescription = song.song.title,
-                                modifier = Modifier
-                                    .animateItem()
-                                    .padding(horizontal = AuraSpacing.Gutter)
-                                    .tvFocusable(isTvOrCar, AuraShapes.Highlight, scaleFocused = 1f),
-                            )
-                        }
-                    }
+                    val insertLibraryAfterPopular = showedLocalLibraryPreview
+                    val firstNonPopularIndex = onlineArtistSections.indexOfFirst {
+                        !isArtistPopularSectionTitle(it.title)
+                    }.let { if (it < 0) onlineArtistSections.size else it }
 
                     onlineArtistSections.forEachIndexed { sectionIndex, section ->
+                        if (insertLibraryAfterPopular && sectionIndex == firstNonPopularIndex) {
+                            auraArtistLibraryPreviewItems(
+                                songs = filteredLibraryPreview,
+                                allSongs = filteredLibrarySongsYt,
+                                artistName = libraryArtist?.artist?.name
+                                    ?: context.getString(R.string.unknown_artist),
+                                headerTitle = yourLibraryTitle,
+                                artistId = viewModel.artistId,
+                                mediaMetadataId = mediaMetadata?.id,
+                                isPlaying = isPlaying,
+                                isTvOrCar = isTvOrCar,
+                                navController = navController,
+                                playerConnection = playerConnection,
+                                menuState = menuState,
+                                haptic = haptic,
+                            )
+                        }
                         val sectionItems = section.items.distinctBy { it.id }
                         if (sectionItems.isEmpty()) return@forEachIndexed
 
@@ -964,6 +912,23 @@ fun AuraArtistScreen(
                             }
                         }
                     }
+                    if (insertLibraryAfterPopular && firstNonPopularIndex >= onlineArtistSections.size) {
+                        auraArtistLibraryPreviewItems(
+                            songs = filteredLibraryPreview,
+                            allSongs = filteredLibrarySongsYt,
+                            artistName = libraryArtist?.artist?.name
+                                ?: context.getString(R.string.unknown_artist),
+                            headerTitle = yourLibraryTitle,
+                            artistId = viewModel.artistId,
+                            mediaMetadataId = mediaMetadata?.id,
+                            isPlaying = isPlaying,
+                            isTvOrCar = isTvOrCar,
+                            navController = navController,
+                            playerConnection = playerConnection,
+                            menuState = menuState,
+                            haptic = haptic,
+                        )
+                    }
                 }
             }
         }
@@ -1075,10 +1040,90 @@ private fun AuraArtistHero(
     }
 }
 
+private fun LazyListScope.auraArtistLibraryPreviewItems(
+    songs: List<Song>,
+    allSongs: List<Song>,
+    artistName: String,
+    headerTitle: String,
+    artistId: String,
+    mediaMetadataId: String?,
+    isPlaying: Boolean,
+    isTvOrCar: Boolean,
+    navController: NavController,
+    playerConnection: PlayerConnection,
+    menuState: MenuState,
+    haptic: HapticFeedback,
+) {
+    if (songs.isEmpty()) return
+    item(key = "aura_artist_library_preview_label") {
+        AuraSectionHeader(
+            title = headerTitle,
+            onClick = { navController.navigate("artist/$artistId/songs") },
+            modifier = Modifier.animateItem(),
+        )
+    }
+    itemsIndexed(
+        items = songs,
+        key = { position, _ -> "aura_artist_library_preview_$position" },
+    ) { _, song ->
+        AuraSongRow(
+            title = song.song.title,
+            subtitle = song.artists.joinToString { it.name }.takeIf { it.isNotBlank() },
+            thumbnailUrl = song.song.thumbnailUrl,
+            seed = song.id,
+            isActive = song.id == mediaMetadataId,
+            isPlaying = isPlaying,
+            liked = song.song.liked,
+            explicit = song.song.explicit,
+            inLibrary = song.song.inLibrary != null,
+            downloadId = song.id,
+            format = song.format,
+            playedInShuffle = song.song.totalPlayTime > 0L,
+            onClick = {
+                if (song.id == mediaMetadataId) {
+                    playerConnection.togglePlayPause()
+                } else {
+                    playerConnection.playQueue(
+                        ListQueue(
+                            title = artistName,
+                            items = allSongs.map { it.toMediaItem() },
+                            startIndex = allSongs.indexOfFirst { it.id == song.id }.coerceAtLeast(0),
+                        ),
+                    )
+                }
+            },
+            onLongClick = {
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                menuState.show {
+                    SongMenu(
+                        originalSong = song,
+                        navController = navController,
+                        onDismiss = menuState::dismiss,
+                    )
+                }
+            },
+            onMenuClick = {
+                menuState.show {
+                    SongMenu(
+                        originalSong = song,
+                        navController = navController,
+                        onDismiss = menuState::dismiss,
+                    )
+                }
+            },
+            menuContentDescription = song.song.title,
+            modifier = Modifier
+                .animateItem()
+                .padding(horizontal = AuraSpacing.Gutter)
+                .tvFocusable(isTvOrCar, AuraShapes.Highlight, scaleFocused = 1f),
+        )
+    }
+}
+
 /**
- * Apple Music artist-page order: top songs (library occupies this slot when present),
+ * Apple Music artist-page order: top songs, then Aura's "Tu biblioteca", then
  * latest, essentials, albums, videos, playlists, singles/EP, live, compilations,
- * appears-on, similar. "Tu biblioteca" is drawn separately above the online sections.
+ * appears-on, similar. Do not hide YouTube's populares to put library in that slot.
  */
 internal fun appleArtistSectionRank(title: String): Int {
     val t = title.trim().lowercase()
@@ -1132,7 +1177,7 @@ internal fun pinLatestArtistRelease(
 
 /**
  * YouTube Music often injects a "From your library" / "De tu biblioteca" shelf on artist pages.
- * Aura already draws [R.string.your_library] from the local catalogue above the online sections —
+ * Aura already draws [R.string.your_library] from the local catalogue after populares —
  * showing both looks like a duplicated "Tu biblioteca".
  */
 private fun isArtistLibrarySectionTitle(

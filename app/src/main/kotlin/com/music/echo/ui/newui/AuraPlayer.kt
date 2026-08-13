@@ -1442,8 +1442,8 @@ private fun AuraPlayerShape(
                         tint = AuraPalette.OnGround.copy(alpha = 0.7f),
                         modifier = Modifier.tvFocusable(isTvOrCar, CircleShape),
                     )
-                    // Local files are already on-device — hide download; SpaceEvenly keeps spacing even.
-                    if (!isLocalTrack) {
+                    // Same 5-slot row always: hiding download on local files made like/search jump.
+                    // Done state = the playlist tick (tray+arrow, teal), never a different glyph.
                     Box(
                         contentAlignment = Alignment.Center,
                         modifier = Modifier.sizeIn(
@@ -1456,13 +1456,16 @@ private fun AuraPlayerShape(
                         val isExporting = exportingSongIds.split(',').any { it.trim() == songId }
                         val isExported = exportedSongIds.split(',').any { it.trim() == songId } ||
                             exportedVideoIds.split(',').any { it.trim() == songId }
-                        val downloadBusy = download?.state == Download.STATE_QUEUED ||
-                            download?.state == Download.STATE_DOWNLOADING ||
-                            (isVideo && (
-                                videoCompanionDownload?.state == Download.STATE_QUEUED ||
-                                    videoCompanionDownload?.state == Download.STATE_DOWNLOADING
-                                ))
-                        val downloadDone = download?.state == Download.STATE_COMPLETED
+                        val downloadBusy = !isLocalTrack && (
+                            download?.state == Download.STATE_QUEUED ||
+                                download?.state == Download.STATE_DOWNLOADING ||
+                                (isVideo && (
+                                    videoCompanionDownload?.state == Download.STATE_QUEUED ||
+                                        videoCompanionDownload?.state == Download.STATE_DOWNLOADING
+                                    ))
+                            )
+                        val downloadDone = isLocalTrack ||
+                            download?.state == Download.STATE_COMPLETED
                         val downloadProgressFraction = run {
                             val audioPct = liveDownloadProgress[songId]
                                 ?: download?.percentDownloaded
@@ -1493,15 +1496,16 @@ private fun AuraPlayerShape(
                         }
                         val doneChrome = downloadDone || (isExported && !busy)
                         AuraIconButton(
-                            icon = if (doneChrome) AuraIcons.Downloaded else AuraIcons.Download,
+                            icon = AuraIcons.Download,
                             contentDescription = stringResource(
                                 if (doneChrome) R.string.filter_downloaded else R.string.action_download,
                             ),
                             onClick = {
                                 when {
+                                    isLocalTrack -> Unit
                                     downloadBusy || downloadDone ->
                                         removeSongDownloads(context, songId, isVideo)
-                                    isExporting -> Unit // wait for export to finish
+                                    isExporting -> Unit
                                     else -> showDownloadOrExportDialog = true
                                 }
                             },
@@ -1514,21 +1518,20 @@ private fun AuraPlayerShape(
                             if (progressFraction != null) {
                                 CircularProgressIndicator(
                                     progress = { progressFraction },
-                                    modifier = Modifier.size(quickAccessGlyph + 10.dp),
+                                    modifier = Modifier.size(AuraSpacing.MinTouchTarget),
                                     strokeWidth = 2.dp,
                                     color = AuraPalette.Teal,
                                     trackColor = AuraPalette.OnGround.copy(alpha = 0.18f),
                                 )
                             } else {
                                 CircularProgressIndicator(
-                                    modifier = Modifier.size(quickAccessGlyph + 10.dp),
+                                    modifier = Modifier.size(AuraSpacing.MinTouchTarget),
                                     strokeWidth = 2.dp,
                                     color = AuraPalette.Teal,
                                     trackColor = AuraPalette.OnGround.copy(alpha = 0.18f),
                                 )
                             }
                         }
-                    }
                     }
                     AuraIconButton(
                         icon = AuraIcons.Search,

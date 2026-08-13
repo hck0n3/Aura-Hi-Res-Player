@@ -595,6 +595,7 @@
     <string name="couldnt_load_playlist">Couldn\'t load the playlist. Check your connection.</string>
     <string name="couldnt_load_artist">Couldn\'t load the artist. Check your connection.</string>
     <string name="couldnt_load_album">Couldn\'t load the album. Check your connection.</string>
+    <string name="couldnt_load_search">Couldn\'t load search results. Check your connection.</string>
     <string name="album_no_longer_available">This album is no longer available.</string>
     <string name="preview_unavailable">Preview unavailable right now</string>
     <string name="featured_artists">Featured Artists</string>

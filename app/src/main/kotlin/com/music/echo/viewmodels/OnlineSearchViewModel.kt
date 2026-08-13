@@ -1,5 +1,4 @@
 
-
 package iad1tya.echo.music.viewmodels
 
 import android.content.Context
@@ -47,6 +46,10 @@ constructor(
     var summaryPage by mutableStateOf<SearchSummaryPage?>(null)
     val viewStateMap = mutableStateMapOf<String, ItemsPage?>()
 
+    /** True after every retry of the current All-tab / chip fetch failed. Stops the endless skeleton. */
+    var hasFailed by mutableStateOf(false)
+        private set
+
     /** Universal search: podcasts from the Apple/RSS engine, shown alongside the YouTube results. */
     var podcastResults by mutableStateOf<List<iad1tya.echo.music.podcast.PodcastShow>>(emptyList())
         private set
@@ -61,56 +64,75 @@ constructor(
         viewModelScope.launch {
             filter.collect { filter ->
                 if (filter == null) {
-                    if (summaryPage == null) {
-                        // Retry on failure: the first search after launch can fail while the guest
-                        // session/visitorData isn't ready yet, which left the results stuck loading
-                        // until the user went back and re-entered.
-                        var attempt = 0
-                        while (summaryPage == null && attempt < 3) {
-                            YouTube
-                                .searchSummary(query)
-                                .onSuccess {
-                                    val (hideExplicit, hideVideoSongs, hideYoutubeShorts) = hideFlags()
-                                    summaryPage =
-                                        it.filterExplicit(
-                                            hideExplicit,
-                                        ).filterVideoSongs(hideVideoSongs).filterYoutubeShorts(hideYoutubeShorts)
-                                }.onFailure {
-                                    reportException(it)
-                                }
-                            if (summaryPage == null) {
-                                attempt++
-                                delay(700L * attempt)
-                            }
-                        }
-                    }
+                    if (summaryPage == null) loadSummary()
                 } else {
-                    if (viewStateMap[filter.value] == null) {
-                        YouTube
-                            .search(query, filter)
-                            .onSuccess { result ->
-                                val (hideExplicit, hideVideoSongs, hideYoutubeShorts) = hideFlags()
-                                viewStateMap[filter.value] =
-                                    ItemsPage(
-                                        result.items
-                                            .distinctBy { it.id }
-                                            .filterExplicit(
-                                                hideExplicit,
-                                            )
-                                            .let { items ->
-                                                if (filter.value == YouTube.SearchFilter.FILTER_VIDEO.value) items
-                                                else items.filterVideoSongs(hideVideoSongs)
-                                            }
-                                            .filterYoutubeShorts(hideYoutubeShorts),
-                                        result.continuation,
-                                    )
-                            }.onFailure {
-                                reportException(it)
-                            }
-                    }
+                    if (viewStateMap[filter.value] == null) loadFiltered(filter)
                 }
             }
         }
+    }
+
+    fun retry() {
+        viewModelScope.launch {
+            hasFailed = false
+            val current = filter.value
+            if (current == null) {
+                summaryPage = null
+                loadSummary()
+            } else {
+                viewStateMap.remove(current.value)
+                loadFiltered(current)
+            }
+        }
+    }
+
+    private suspend fun loadSummary() {
+        hasFailed = false
+        var attempt = 0
+        while (summaryPage == null && attempt < 3) {
+            YouTube
+                .searchSummary(query)
+                .onSuccess {
+                    val (hideExplicit, hideVideoSongs, hideYoutubeShorts) = hideFlags()
+                    summaryPage =
+                        it.filterExplicit(
+                            hideExplicit,
+                        ).filterVideoSongs(hideVideoSongs).filterYoutubeShorts(hideYoutubeShorts)
+                }.onFailure {
+                    reportException(it)
+                }
+            if (summaryPage == null) {
+                attempt++
+                delay(700L * attempt)
+            }
+        }
+        if (summaryPage == null) hasFailed = true
+    }
+
+    private suspend fun loadFiltered(filter: YouTube.SearchFilter) {
+        hasFailed = false
+        YouTube
+            .search(query, filter)
+            .onSuccess { result ->
+                val (hideExplicit, hideVideoSongs, hideYoutubeShorts) = hideFlags()
+                viewStateMap[filter.value] =
+                    ItemsPage(
+                        result.items
+                            .distinctBy { it.id }
+                            .filterExplicit(
+                                hideExplicit,
+                            )
+                            .let { items ->
+                                if (filter.value == YouTube.SearchFilter.FILTER_VIDEO.value) items
+                                else items.filterVideoSongs(hideVideoSongs)
+                            }
+                            .filterYoutubeShorts(hideYoutubeShorts),
+                        result.continuation,
+                    )
+            }.onFailure {
+                reportException(it)
+            }
+        if (viewStateMap[filter.value] == null) hasFailed = true
     }
 
     /**

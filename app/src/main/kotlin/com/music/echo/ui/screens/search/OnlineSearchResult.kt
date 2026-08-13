@@ -111,6 +111,7 @@ import iad1tya.echo.music.ui.menu.YouTubeAlbumMenu
 import iad1tya.echo.music.ui.menu.YouTubeArtistMenu
 import iad1tya.echo.music.ui.menu.YouTubePlaylistMenu
 import iad1tya.echo.music.ui.menu.YouTubeSongMenu
+import iad1tya.echo.music.utils.forAllTabSearchPreview
 import iad1tya.echo.music.utils.listItemShape
 import iad1tya.echo.music.utils.rememberPreference
 import iad1tya.echo.music.viewmodels.OnlineSearchViewModel
@@ -205,6 +206,7 @@ fun OnlineSearchResult(
 
     val searchFilter by viewModel.filter.collectAsState()
     val searchSummary = viewModel.summaryPage
+    val searchFailed = viewModel.hasFailed
 
     // When new results arrive, position the list at the top.
     LaunchedEffect(searchSummary, searchFilter) {
@@ -463,9 +465,7 @@ fun OnlineSearchResult(
                         // show) instead of being dropped unconditionally; also drop sections left empty.
                         val musicItems = summary.items.filterNot {
                             hideVideoSongs && it is com.music.innertube.models.SongItem && it.isVideoSong
-                        }.let { items ->
-                            if (items.firstOrNull() is ArtistItem) items.take(2) else items
-                        }
+                        }.forAllTabSearchPreview()
                         if (musicItems.isEmpty()) return@forEach
                         item {
                             NavigationTitle(summary.title)
@@ -552,7 +552,17 @@ fun OnlineSearchResult(
                     }
                 }
 
-                if (searchFilter == null && searchSummary == null || searchFilter != null && itemsPage == null) {
+                if (searchFailed &&
+                    ((searchFilter == null && searchSummary == null) ||
+                        (searchFilter != null && itemsPage == null))
+                ) {
+                    item {
+                        EmptyPlaceholder(
+                            icon = R.drawable.search,
+                            text = stringResource(R.string.couldnt_load_search),
+                        )
+                    }
+                } else if (searchFilter == null && searchSummary == null || searchFilter != null && itemsPage == null) {
                     item {
                         ShimmerHost {
                             repeat(8) {

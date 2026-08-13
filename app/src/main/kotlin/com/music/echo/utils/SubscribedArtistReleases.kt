@@ -37,10 +37,14 @@ suspend fun MusicDatabase.tasteArtistKeys(): SubscribedArtistKeys {
         .asSequence()
         .take(80)
         .flatMap { it.artists }
+    val libraryArtists = librarySongsForTaste(80).first()
+        .asSequence()
+        .flatMap { it.artists }
     val ids = buildSet {
         addAll(subscribed.ids)
         played.forEach { artist -> if (artist.id.isNotBlank()) add(artist.id) }
         likedArtists.forEach { artist -> if (artist.id.isNotBlank()) add(artist.id) }
+        libraryArtists.forEach { artist -> if (artist.id.isNotBlank()) add(artist.id) }
     }
     val names = buildSet {
         addAll(subscribed.namesLower)
@@ -49,6 +53,10 @@ suspend fun MusicDatabase.tasteArtistKeys(): SubscribedArtistKeys {
             if (name.isNotEmpty()) add(name)
         }
         likedArtists.forEach { artist ->
+            val name = artist.name.trim().lowercase()
+            if (name.isNotEmpty()) add(name)
+        }
+        libraryArtists.forEach { artist ->
             val name = artist.name.trim().lowercase()
             if (name.isNotEmpty()) add(name)
         }

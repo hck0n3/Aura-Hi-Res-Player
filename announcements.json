@@ -1,6 +1,14 @@
 {
-  "updatedAt": "2026-08-13T12:50:51Z",
+  "updatedAt": "2026-08-13T13:10:00Z",
   "items": [
+    {
+      "id": "aviso-20260813-131000",
+      "date": "2026-08-13",
+      "publishedAt": "2026-08-13T13:10:00Z",
+      "title": "Aura Hi-Res 0.6.191: búsqueda, artista y Novedades",
+      "body": "Aura Hi-Res 0.6.191 ya está lista para todos.\n\n• La búsqueda vuelve a mostrar canciones, álbumes y listas (no solo dos artistas).\n• En un artista: canciones populares arriba y Tu biblioteca debajo.\n• Novedades ya no repite el mismo disco o canción en varias filas.\n• El inicio de Biblioteca vuelve a las tarjetas con portada.\n\nActualiza desde el menú de tu cuenta (avatar) ▸ Actualizaciones. Gracias por estar en Aura.",
+      "priority": "important"
+    },
     {
       "id": "aviso-20260813-125051",
       "date": "2026-08-13",

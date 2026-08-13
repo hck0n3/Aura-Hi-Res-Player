@@ -51,6 +51,7 @@ import iad1tya.echo.music.ui.menu.SongMenu
 import iad1tya.echo.music.ui.menu.YouTubeAlbumMenu
 import iad1tya.echo.music.ui.menu.YouTubePlaylistMenu
 import iad1tya.echo.music.ui.menu.YouTubeSongMenu
+import iad1tya.echo.music.utils.claimUnique
 import iad1tya.echo.music.utils.rememberPreference
 import iad1tya.echo.music.viewmodels.NovedadesViewModel
 import java.time.Instant
@@ -98,7 +99,24 @@ fun AuraNovedadesScreen(
             )
         }
     }
-    val hero = (radarAlbums + newAlbums).distinctBy { it.id }.take(8)
+    val heroRaw = (radarAlbums + newAlbums).distinctBy { it.id }.take(8)
+    // First-seen id wins across every shelf so the same album/song never repeats in Novedades.
+    val unique = remember(
+        heroRaw, featured, newAlbums, radarAlbums, playlists, moment, listening, topSongs, upcoming,
+    ) {
+        val seen = linkedSetOf<String>()
+        NovedadesUnique(
+            hero = seen.claimUnique(heroRaw) { it.id },
+            featured = seen.claimUnique(featured) { it.id },
+            newAlbums = seen.claimUnique(newAlbums) { it.id },
+            radarAlbums = seen.claimUnique(radarAlbums) { it.id },
+            playlists = seen.claimUnique(playlists) { it.id },
+            moment = seen.claimUnique(moment) { it.id },
+            listening = seen.claimUnique(listening) { it.id },
+            topSongs = seen.claimUnique(topSongs.take(12)) { it.id },
+            upcoming = seen.claimUnique(upcoming) { it.id },
+        )
+    }
 
     val pullRefreshState = rememberPullToRefreshState()
     val listState = rememberLazyListState()
@@ -155,12 +173,12 @@ fun AuraNovedadesScreen(
                     )
                 }
 
-                if (hero.isNotEmpty()) {
+                if (unique.hero.isNotEmpty()) {
                     item(key = "aura_novedades_hero") {
                         Column(Modifier.padding(top = AuraSpacing.SectionGap)) {
                             AuraSectionHeader(title = stringResource(R.string.tab_novedades))
                             AuraShelf {
-                                items(hero, key = { it.id }) { album ->
+                                items(unique.hero, key = { it.id }) { album ->
                                     AuraTypedYtCoverCard(
                                         item = album,
                                         cardScale = cardScale * 1.15f,
@@ -178,7 +196,7 @@ fun AuraNovedadesScreen(
                 novedadesSongShelf(
                     key = "featured",
                     titleRes = R.string.novedades_featured_songs,
-                    songs = featured,
+                    songs = unique.featured,
                     cardScale = cardScale,
                     isPlaying = isPlaying,
                     activeId = mediaMetadata?.id,
@@ -188,7 +206,7 @@ fun AuraNovedadesScreen(
                 novedadesAlbumShelf(
                     key = "latest",
                     titleRes = R.string.novedades_latest_albums,
-                    albums = newAlbums,
+                    albums = unique.newAlbums,
                     cardScale = cardScale,
                     isPlaying = isPlaying,
                     activeAlbumId = mediaMetadata?.album?.id,
@@ -198,20 +216,20 @@ fun AuraNovedadesScreen(
                 novedadesAlbumShelf(
                     key = "recent",
                     titleRes = R.string.novedades_recent_releases,
-                    albums = radarAlbums,
+                    albums = unique.radarAlbums,
                     cardScale = cardScale,
                     isPlaying = isPlaying,
                     activeAlbumId = mediaMetadata?.album?.id,
                     onOpen = openYt,
                     onMenu = ytMenu,
                 )
-                if (playlists.isNotEmpty()) {
+                if (unique.playlists.isNotEmpty()) {
                     item(key = "aura_novedades_playlists") {
                         Column {
                             AuraSectionHeader(title = stringResource(R.string.novedades_updated_playlists))
                             val w = auraTypeVisual(AuraContentKind.Playlist).shelfWidth * cardScale
                             AuraDoubleRowShelf(rowHeight = auraShelfCardStackHeight(w)) {
-                                lazyGridItems(playlists, key = { it.id }) { item ->
+                                lazyGridItems(unique.playlists, key = { it.id }) { item ->
                                     AuraTypedYtCoverCard(
                                         item = item,
                                         cardScale = cardScale,
@@ -226,8 +244,8 @@ fun AuraNovedadesScreen(
                 novedadesLocalSongShelf(
                     key = "moment",
                     titleRes = R.string.novedades_songs_of_the_moment,
-                    songs = moment,
-                    queue = moment,
+                    songs = unique.moment,
+                    queue = unique.moment,
                     cardScale = cardScale,
                     isPlaying = isPlaying,
                     activeId = mediaMetadata?.id,
@@ -251,12 +269,12 @@ fun AuraNovedadesScreen(
                         }
                     },
                 )
-                if (listening.isNotEmpty()) {
+                if (unique.listening.isNotEmpty()) {
                     item(key = "aura_novedades_listening") {
                         Column {
                             AuraSectionHeader(title = stringResource(R.string.novedades_everyones_listening))
                             AuraShelf {
-                                items(listening, key = { it.id }) { item ->
+                                items(unique.listening, key = { it.id }) { item ->
                                     AuraTypedYtCoverCard(
                                         item = item,
                                         cardScale = cardScale,
@@ -270,11 +288,11 @@ fun AuraNovedadesScreen(
                         }
                     }
                 }
-                if (topSongs.isNotEmpty()) {
+                if (unique.topSongs.isNotEmpty()) {
                     novedadesLocalSongShelf(
                         key = "daily_top",
                         titleRes = R.string.novedades_daily_top,
-                        songs = topSongs.take(12),
+                        songs = unique.topSongs,
                         queue = topSongs,
                         cardScale = cardScale,
                         isPlaying = isPlaying,
@@ -301,7 +319,7 @@ fun AuraNovedadesScreen(
                         },
                     )
                 }
-                if (upcoming.isNotEmpty()) {
+                if (unique.upcoming.isNotEmpty()) {
                     item(key = "aura_novedades_coming_soon") {
                         Column {
                             AuraSectionHeader(title = stringResource(R.string.novedades_coming_soon))
@@ -310,7 +328,7 @@ fun AuraNovedadesScreen(
                                 horizontalArrangement = Arrangement.spacedBy(AuraSpacing.ShelfItemGap),
                                 modifier = Modifier.padding(top = AuraSpacing.SectionGap),
                             ) {
-                                items(upcoming, key = { it.id }) { item ->
+                                items(unique.upcoming, key = { it.id }) { item ->
                                     UpcomingCard(
                                         item = item,
                                         cardScale = cardScale,
@@ -328,6 +346,18 @@ fun AuraNovedadesScreen(
         }
     }
 }
+
+private data class NovedadesUnique(
+    val hero: List<AlbumItem>,
+    val featured: List<SongItem>,
+    val newAlbums: List<AlbumItem>,
+    val radarAlbums: List<AlbumItem>,
+    val playlists: List<PlaylistItem>,
+    val moment: List<Song>,
+    val listening: List<YTItem>,
+    val topSongs: List<Song>,
+    val upcoming: List<UpcomingReleaseEntity>,
+)
 
 private fun androidx.compose.foundation.lazy.LazyListScope.novedadesSongShelf(
     key: String,

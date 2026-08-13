@@ -341,12 +341,12 @@ internal fun computeHomeSections(
         val defaultOrder = mapOf<HomeSection, Int>(
             HomeSection.SpeedDial to 1000,
             HomeSection.QuickPicks to 900,
-            // Right under QuickPicks: fresh AI discovery near the top, above the local mixes.
+            // Apple Listen Now: recents sit near the top, then Made for You, then new music.
+            HomeSection.KeepListening to 880,
             HomeSection.AiRecommended to 860,
             HomeSection.TimeOfDayMix to 850,
             HomeSection.NewFromArtists to 650,
             HomeSection.NewReleases to 620,
-            HomeSection.KeepListening to 610,
             HomeSection.AccountPlaylists to 600,
             HomeSection.ForgottenFavorites to 500,
             HomeSection.GenreMix to 480,
