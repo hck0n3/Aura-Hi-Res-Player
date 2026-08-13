@@ -26,6 +26,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -802,6 +804,8 @@ fun AuraSongRow(
     downloadId: String? = null,
     format: FormatEntity? = null,
     playedInShuffle: Boolean = false,
+    /** Dim the row without the "ya reproducida" check (e.g. hidden explicit). */
+    dimContent: Boolean = false,
     swipeMediaItem: MediaItem? = null,
     /** Apple/YTM typed thumb: circle artists, 16:9 videos, softer playlist cards. */
     artworkShape: Shape = AuraShapes.Artwork,
@@ -809,12 +813,17 @@ fun AuraSongRow(
     artworkSize: Dp = 50.dp,
     /** Small type chip on the cover (Vídeo / EP / Playlist…); null = none. */
     typeChip: String? = null,
+    leading: (@Composable () -> Unit)? = null,
+    selected: Boolean? = null,
+    onSelectedChange: ((Boolean) -> Unit)? = null,
     onClick: (() -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
     onMenuClick: (() -> Unit)? = null,
     menuContentDescription: String = title,
+    contentDescription: String? = title,
 ) {
-    val dimmed = playedInShuffle && !isActive
+    val playedCheck = playedInShuffle && !isActive
+    val dimmed = dimContent || playedCheck
 
     val row: @Composable () -> Unit = {
         AuraRow(
@@ -822,6 +831,8 @@ fun AuraSongRow(
             subtitle = subtitle,
             highlighted = isActive,
             dimmed = dimmed,
+            contentDescription = contentDescription,
+            leading = leading,
             onClick = onClick,
             onLongClick = onLongClick,
             artwork = {
@@ -833,13 +844,13 @@ fun AuraSongRow(
                     ratio = artworkRatio,
                     fillBleed = true,
                 ) {
-                    if (isActive && isPlaying) {
+                    if (isActive) {
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .background(AuraPalette.Ground.copy(alpha = 0.55f)),
+                                .background(AuraPalette.Ground.copy(alpha = 0.45f)),
                             contentAlignment = Alignment.Center,
-                        ) { AuraPlayingBars() }
+                        ) { AuraPlayingBars(isPlaying = isPlaying) }
                     }
                     if (!typeChip.isNullOrBlank() && !isActive) {
                         Box(
@@ -865,7 +876,7 @@ fun AuraSongRow(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(7.dp),
                 ) {
-                    if (dimmed) {
+                    if (playedCheck) {
                         AuraIconGlyph(
                             icon = AuraIcons.Check,
                             contentDescription = "Ya reproducida",
@@ -900,7 +911,17 @@ fun AuraSongRow(
                         AuraDownloadTick(songId = downloadId)
                     }
                     AuraQualityBadge(format = format)
-                    if (onMenuClick != null) {
+                    if (selected != null) {
+                        Checkbox(
+                            checked = selected,
+                            onCheckedChange = onSelectedChange,
+                            colors = CheckboxDefaults.colors(
+                                checkedColor = AuraPalette.Teal,
+                                uncheckedColor = AuraPalette.OnGroundDisabled,
+                                checkmarkColor = AuraPalette.OnAccent,
+                            ),
+                        )
+                    } else if (onMenuClick != null) {
                         AuraIconButton(
                             icon = AuraIcons.More,
                             contentDescription = menuContentDescription,

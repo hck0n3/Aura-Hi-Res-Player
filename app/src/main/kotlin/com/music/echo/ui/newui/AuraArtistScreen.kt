@@ -28,12 +28,11 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Text
@@ -187,6 +186,7 @@ fun AuraArtistScreen(
     val artistVideoUrl by viewModel.artistVideoUrl.collectAsState()
     val artistVideoSong by viewModel.artistVideoSong.collectAsState()
     val hasFailed by viewModel.hasFailed.collectAsState()
+    val expandedPopularSongs by viewModel.expandedPopularSongs.collectAsState()
 
     val hideExplicit by rememberPreference(key = HideExplicitKey, defaultValue = false)
     val showArtistDescription by rememberPreference(ShowArtistDescriptionKey, defaultValue = true)
@@ -711,12 +711,20 @@ fun AuraArtistScreen(
                         // Tracks → Apple Music 4-row pages that swipe L–R with full song rows.
                         // Videos / albums / EPs / playlists stay typed cover shelves.
                         // Queue is still the WHOLE section, not the visible page.
+                        // Populares: YouTube's shelf is 5 songs; prefer the expanded moreEndpoint list.
                         if (
                             sectionItems.all { it is SongItem } &&
                             sectionItems.none { (it as SongItem).isVideoSong }
                         ) {
                             item(key = "aura_artist_section_${sectionIndex}_pages") {
-                                val sectionSongs = sectionItems.filterIsInstance<SongItem>()
+                                val sectionSongs =
+                                    if (isArtistPopularSectionTitle(section.title) &&
+                                        expandedPopularSongs.isNotEmpty()
+                                    ) {
+                                        expandedPopularSongs
+                                    } else {
+                                        sectionItems.filterIsInstance<SongItem>()
+                                    }
                                 AuraArtistSongPages(
                                     itemCount = sectionSongs.size,
                                     modifier = Modifier.animateItem(),
@@ -1029,16 +1037,21 @@ private fun LazyListScope.auraArtistLibraryPreviewItems(
 /** Apple Music artist "Top Songs": 4 full rows per page, swipe L–R, next page composed so rows stay complete. */
 private const val ArtistSongPageSize = 4
 /**
- * One Aura song row including now-playing inset (artwork 50 + 11 dp highlight padding each side)
- * plus the hairline. Fixed slots keep every page the same height so the list never clips and never
- * jumps when the playing row highlights.
+ * How much of the NEXT page stays on screen. Apple Music Top Songs cuts the following
+ * column so the artwork of song 5 is visible — the user knows to swipe. ~cover size.
  */
-private val AuraArtistSongRowSlot = 74.dp
+private val ArtistSongPagePeek = 64.dp
+private val ArtistSongPageGap = 12.dp
+/**
+ * One Aura song row (50 dp cover + 4 dp vertical padding) plus the hairline. Fixed slots keep
+ * every page the same height. The now-playing state no longer grows a card, so this is just
+ * the row — not 11 dp of highlight inset on each side.
+ */
+private val AuraArtistSongRowSlot = 66.dp
 private val AuraArtistSongPageHeight = AuraArtistSongRowSlot * ArtistSongPageSize
 /** Inset to the title column (50 dp cover + row gap), same as Apple Music list hairlines. */
 private val AuraArtistSongDividerInset = 50.dp + AuraSpacing.RowInner
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun AuraArtistSongPages(
     itemCount: Int,
@@ -1048,36 +1061,54 @@ private fun AuraArtistSongPages(
     if (itemCount <= 0) return
     val pageCount = (itemCount + ArtistSongPageSize - 1) / ArtistSongPageSize
     key(itemCount) {
-        val pagerState = rememberPagerState(pageCount = { pageCount })
-        HorizontalPager(
-            state = pagerState,
-            beyondViewportPageCount = 1,
-            verticalAlignment = Alignment.Top,
-            modifier = modifier
-                .fillMaxWidth()
-                .height(AuraArtistSongPageHeight + AuraSpacing.SectionGap)
-                .padding(top = AuraSpacing.SectionGap)
-                .tvFocusRestorer(),
-        ) { page ->
-            val start = page * ArtistSongPageSize
-            val end = minOf(start + ArtistSongPageSize, itemCount)
-            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = AuraSpacing.Gutter)) {
-                for (i in start until end) {
+        BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
+            val peek = if (pageCount > 1) ArtistSongPagePeek else AuraSpacing.Gutter
+            val pageWidth = maxWidth - AuraSpacing.Gutter - peek
+            val (listState, fling) = rememberAuraShelfFlingBehavior()
+            LazyRow(
+                state = listState,
+                flingBehavior = fling,
+                userScrollEnabled = pageCount > 1,
+                contentPadding = PaddingValues(
+                    start = AuraSpacing.Gutter,
+                    end = AuraSpacing.Gutter,
+                ),
+                horizontalArrangement = Arrangement.spacedBy(ArtistSongPageGap),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(AuraArtistSongPageHeight + AuraSpacing.SectionGap)
+                    .padding(top = AuraSpacing.SectionGap)
+                    .tvFocusRestorer(),
+            ) {
+                items(
+                    count = pageCount,
+                    key = { page -> "aura_artist_song_page_$page" },
+                ) { page ->
+                    val start = page * ArtistSongPageSize
+                    val end = minOf(start + ArtistSongPageSize, itemCount)
                     Column(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .height(AuraArtistSongRowSlot),
+                            .width(pageWidth)
+                            .height(AuraArtistSongPageHeight),
                     ) {
-                        Box(
-                            contentAlignment = Alignment.CenterStart,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .weight(1f),
-                        ) {
-                            itemContent(i)
-                        }
-                        if (i < end - 1) {
-                            AuraDivider(Modifier.padding(start = AuraArtistSongDividerInset))
+                        for (i in start until end) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(AuraArtistSongRowSlot),
+                            ) {
+                                Box(
+                                    contentAlignment = Alignment.CenterStart,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .weight(1f),
+                                ) {
+                                    itemContent(i)
+                                }
+                                if (i < end - 1) {
+                                    AuraDivider(Modifier.padding(start = AuraArtistSongDividerInset))
+                                }
+                            }
                         }
                     }
                 }
@@ -1231,10 +1262,17 @@ internal fun isArtistLatestSectionTitle(title: String): Boolean {
 
 internal fun isArtistPopularSectionTitle(title: String): Boolean {
     val t = title.trim().lowercase()
+    if (t == "songs" || t == "canciones") return true
     return t.contains("top song") ||
-        t.contains("canciones populares") ||
         t.contains("popular song") ||
-        t.contains("canciones más populares")
+        t.contains("canciones populares") ||
+        t.contains("canciones más populares") ||
+        t.contains("canciones mas populares") ||
+        t.contains("canciones más escuchadas") ||
+        t.contains("canciones mas escuchadas") ||
+        t.contains("canciones más reproducid") ||
+        t.contains("canciones mas reproducid") ||
+        t.contains("top track")
 }
 
 /** Videos are rank 5. "Tu biblioteca" is inserted after the last section at or below this rank. */

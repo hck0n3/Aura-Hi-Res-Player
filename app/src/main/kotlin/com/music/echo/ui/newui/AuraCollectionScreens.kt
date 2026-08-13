@@ -393,12 +393,21 @@ internal fun AuraSongCollectionScaffold(
                             .tvFocusable(isTvOrCar, AuraShapes.Highlight, scaleFocused = 1f),
                     )
                 } else {
-                    AuraRow(
+                    AuraSongRow(
                         title = song.song.title,
                         subtitle = song.artists.joinToString { it.name },
-                        highlighted = song.id == mediaMetadata?.id,
-                        dimmed = dimmed,
-                        contentDescription = song.song.title,
+                        thumbnailUrl = song.song.thumbnailUrl,
+                        seed = song.id,
+                        isActive = song.id == mediaMetadata?.id,
+                        isPlaying = isPlaying,
+                        liked = song.song.liked,
+                        explicit = song.song.explicit,
+                        inLibrary = song.song.inLibrary != null,
+                        downloadId = song.id.takeIf { showDownloadTick },
+                        format = song.format,
+                        playedInShuffle = dimmed,
+                        selected = selected.takeIf { inSelectMode },
+                        onSelectedChange = if (inSelectMode) onCheckedChange else null,
                         onClick = {
                             when {
                                 inSelectMode -> onCheckedChange(!selected)
@@ -420,74 +429,8 @@ internal fun AuraSongCollectionScaffold(
                                 onCheckedChange(true)
                             }
                         },
-                        artwork = {
-                            AuraCover(
-                                thumbnailUrl = song.song.thumbnailUrl,
-                                size = 50.dp,
-                                seed = song.id,
-                            ) {
-                                if (song.id == mediaMetadata?.id && isPlaying) {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .background(AuraPalette.Ground.copy(alpha = 0.55f)),
-                                        contentAlignment = Alignment.Center,
-                                    ) { AuraPlayingBars() }
-                                }
-                            }
-                        },
-                        trailing = {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(7.dp),
-                            ) {
-                                if (dimmed) {
-                                    AuraIconGlyph(
-                                        icon = AuraIcons.Check,
-                                        contentDescription = stringResource(R.string.cd_shuffle_already_played),
-                                        size = 16.dp,
-                                        tint = AuraPalette.Teal,
-                                    )
-                                }
-                                if (song.song.explicit) {
-                                    AuraTechnicalText(
-                                        text = "E",
-                                        color = AuraPalette.OnGroundDisabled,
-                                        style = AuraType.QualityBadge,
-                                    )
-                                }
-                                if (song.song.liked) {
-                                    AuraIconGlyph(
-                                        icon = AuraIcons.HeartFilled,
-                                        contentDescription = null,
-                                        size = 15.dp,
-                                        tint = AuraPalette.Teal,
-                                    )
-                                }
-                                if (showDownloadTick) {
-                                    AuraDownloadTick(songId = song.id)
-                                }
-                                AuraQualityBadge(format = song.format)
-                                if (inSelectMode) {
-                                    Checkbox(
-                                        checked = selected,
-                                        onCheckedChange = onCheckedChange,
-                                        colors = CheckboxDefaults.colors(
-                                            checkedColor = AuraPalette.Teal,
-                                            uncheckedColor = AuraPalette.OnGroundDisabled,
-                                            checkmarkColor = AuraPalette.OnAccent,
-                                        ),
-                                    )
-                                } else {
-                                    AuraIconButton(
-                                        icon = AuraIcons.More,
-                                        contentDescription = song.song.title,
-                                        onClick = { onSongMenu(song) },
-                                        size = 18.dp,
-                                        tint = AuraPalette.OnGroundDisabled,
-                                    )
-                                }
-                            }
+                        onMenuClick = if (inSelectMode) null else {
+                            { onSongMenu(song) }
                         },
                         modifier = Modifier
                             .animateItem()

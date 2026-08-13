@@ -422,12 +422,27 @@ fun AuraOnlinePlaylistScreen(
                             (dbSong?.song?.totalPlayTime ?: 0L) > 0L
                         ) && !isActive
 
-                    AuraRow(
+                    val videoThumb = songItem.isVideoSong
+                    AuraSongRow(
                         title = songItem.title,
                         subtitle = songItem.artists.joinToString { it.name },
-                        highlighted = isActive,
-                        dimmed = blocked || alreadyPlayed,
-                        contentDescription = songItem.title,
+                        thumbnailUrl = songItem.thumbnail,
+                        seed = songItem.id,
+                        isActive = isActive,
+                        isPlaying = isPlaying,
+                        liked = dbSong?.song?.liked == true,
+                        explicit = songItem.explicit,
+                        inLibrary = dbSong?.song?.inLibrary != null,
+                        downloadId = songItem.id,
+                        format = dbSong?.format,
+                        playedInShuffle = alreadyPlayed,
+                        dimContent = blocked,
+                        artworkSize = if (videoThumb) 88.dp else 50.dp,
+                        artworkRatio = if (videoThumb) 16f / 9f else 1f,
+                        artworkShape = if (videoThumb) AuraShapes.Card else AuraShapes.Artwork,
+                        typeChip = if (videoThumb) auraTypeLabel(AuraContentKind.Video) else null,
+                        selected = selected.takeIf { inSelectMode },
+                        onSelectedChange = if (inSelectMode) onCheckedChange else null,
                         onClick = if (blocked) null else {
                             {
                                 when {
@@ -455,88 +470,13 @@ fun AuraOnlinePlaylistScreen(
                                 }
                             }
                         },
-                        artwork = {
-                            val videoThumb = songItem.isVideoSong
-                            AuraCover(
-                                thumbnailUrl = songItem.thumbnail,
-                                size = if (videoThumb) 88.dp else 50.dp,
-                                seed = songItem.id,
-                                ratio = if (videoThumb) 16f / 9f else 1f,
-                                shape = if (videoThumb) AuraShapes.Card else AuraShapes.Artwork,
-                                fillBleed = videoThumb,
-                            ) {
-                                if (isActive && isPlaying) {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .background(AuraPalette.Ground.copy(alpha = 0.55f)),
-                                        contentAlignment = Alignment.Center,
-                                    ) { AuraPlayingBars() }
-                                } else if (videoThumb && !isActive) {
-                                    Box(
-                                        modifier = Modifier
-                                            .align(Alignment.TopStart)
-                                            .padding(4.dp)
-                                            .clip(AuraShapes.Pill)
-                                            .background(AuraPalette.Ground.copy(alpha = 0.72f))
-                                            .padding(horizontal = 5.dp, vertical = 2.dp),
-                                    ) {
-                                        Text(
-                                            text = auraTypeLabel(AuraContentKind.Video),
-                                            style = AuraType.QualityBadge,
-                                            color = AuraPalette.Teal,
-                                            maxLines = 1,
-                                        )
-                                    }
-                                }
-                            }
-                        },
-                            trailing = {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(7.dp),
-                            ) {
-                                if (alreadyPlayed) {
-                                    AuraIconGlyph(
-                                        icon = AuraIcons.Check,
-                                        contentDescription = stringResource(R.string.cd_shuffle_already_played),
-                                        size = 16.dp,
-                                        tint = AuraPalette.Teal,
-                                    )
-                                }
-                                if (songItem.explicit) {
-                                    AuraTechnicalText(
-                                        text = "E",
-                                        color = AuraPalette.OnGroundDisabled,
-                                        style = AuraType.QualityBadge,
-                                    )
-                                }
-                                AuraDownloadTick(songId = songItem.id)
-                                if (inSelectMode) {
-                                    Checkbox(
-                                        checked = selected,
-                                        onCheckedChange = onCheckedChange,
-                                        colors = CheckboxDefaults.colors(
-                                            checkedColor = AuraPalette.Teal,
-                                            uncheckedColor = AuraPalette.OnGroundDisabled,
-                                            checkmarkColor = AuraPalette.OnAccent,
-                                        ),
-                                    )
-                                } else {
-                                    AuraIconButton(
-                                        icon = AuraIcons.More,
-                                        contentDescription = songItem.title,
-                                        onClick = {
-                                            menuState.show {
-                                                YouTubeSongMenu(
-                                                    songItem,
-                                                    navController,
-                                                    menuState::dismiss,
-                                                )
-                                            }
-                                        },
-                                        size = 18.dp,
-                                        tint = AuraPalette.OnGroundDisabled,
+                        onMenuClick = if (inSelectMode || blocked) null else {
+                            {
+                                menuState.show {
+                                    YouTubeSongMenu(
+                                        songItem,
+                                        navController,
+                                        menuState::dismiss,
                                     )
                                 }
                             }

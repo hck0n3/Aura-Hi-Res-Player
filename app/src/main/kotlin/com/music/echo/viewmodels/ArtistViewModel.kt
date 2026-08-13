@@ -10,10 +10,12 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.music.innertube.YouTube
+import com.music.innertube.models.SongItem
 import com.music.innertube.models.filterExplicit
 import com.music.innertube.models.filterVideoSongs
 import com.music.innertube.models.filterYoutubeShorts
 import com.music.innertube.pages.ArtistPage
+import com.music.innertube.pages.ArtistSection
 import iad1tya.echo.music.constants.HideExplicitKey
 import iad1tya.echo.music.constants.HideVideoSongsKey
 import iad1tya.echo.music.constants.HideYoutubeShortsKey
@@ -31,6 +33,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.sync.Semaphore
@@ -71,6 +74,12 @@ class ArtistViewModel @Inject constructor(
     private val _hasFailed = MutableStateFlow(false)
     val hasFailed: StateFlow<Boolean> = _hasFailed
 
+    // YouTube's artist shelf only ships ~5 "Songs" / populares. The moreEndpoint is the full
+    // popularity-sorted list the owner swipes 4-at-a-time. Kept off [artistPage] so the classic
+    // vertical artist screen does not dump dozens of rows.
+    private val _expandedPopularSongs = MutableStateFlow<List<SongItem>>(emptyList())
+    val expandedPopularSongs: StateFlow<List<SongItem>> = _expandedPopularSongs
+
     val libraryArtist = database.artist(artistId)
         .stateIn(viewModelScope, SharingStarted.Lazily, null)
 
@@ -110,6 +119,11 @@ class ArtistViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     companion object {
+        // moreEndpoint + a few continuations. Enough for every page of 4 the owner can swipe,
+        // without walking a 400-track catalogue on every artist open (heat/battery gate).
+        private const val POPULAR_SONGS_CAP = 80
+        private const val POPULAR_SONGS_MAX_CONTINUATIONS = 4
+
         // In-memory, per-session cache of the fetched artist page keyed by artistId, so re-opening an
         // artist renders instantly (no spinner) while a fresh copy is still fetched in the background.
         private val pageCache =
@@ -121,6 +135,10 @@ class ArtistViewModel @Inject constructor(
         // the subscriptions sync) and could subscribe the user's account to a same-named wrong artist.
         private val resolvedChannelIds =
             java.util.concurrent.ConcurrentHashMap<String, String>()
+
+        // Session cache of the expanded populares list (moreEndpoint), keyed by the navigated artistId.
+        private val popularSongsCache =
+            java.util.concurrent.ConcurrentHashMap<String, List<SongItem>>()
     }
 
     init {
@@ -240,6 +258,9 @@ class ArtistViewModel @Inject constructor(
             // in-memory cache yet) fall back to the page persisted last session, so the shelves (e.g.
             // "Canciones más escuchadas") render instantly instead of waiting for the slow live fetch —
             // which previously left the screen blank until the user backed out and re-entered.
+            popularSongsCache[artistId]?.let { cachedPopular ->
+                if (cachedPopular.isNotEmpty()) _expandedPopularSongs.value = cachedPopular
+            }
             if (artistPage == null) {
                 pageCache[artistId]?.let {
                     artistPage = it
@@ -293,6 +314,14 @@ class ArtistViewModel @Inject constructor(
                     loaded = true
                     // Persist so a COLD first entry next session can show this instantly (see seed above).
                     launch { ArtistPageCache.save(context, artistId, filteredPage) }
+                    launch(Dispatchers.IO) {
+                        expandPopularSongsSection(
+                            page = filteredPage,
+                            hideExplicit = hideExplicit,
+                            hideVideoSongs = hideVideoSongs,
+                            hideYoutubeShorts = hideYoutubeShorts,
+                        )
+                    }
 
                     val topSongsSection = page.sections.find { it.items.firstOrNull() is com.music.innertube.models.SongItem }
                     launch(Dispatchers.IO) {
@@ -507,6 +536,68 @@ class ArtistViewModel @Inject constructor(
                 title.contains("vídeo", ignoreCase = true) ||
                 title.contains("videoclips", ignoreCase = true)
         return looksLikeVideos && section.moreEndpoint != null
+    }
+
+    /**
+     * Replace YouTube's 5-song populares teaser with the moreEndpoint list (then continuations),
+     * bounded so a huge catalogue cannot fan out on every artist open.
+     */
+    private suspend fun expandPopularSongsSection(
+        page: ArtistPage,
+        hideExplicit: Boolean,
+        hideVideoSongs: Boolean,
+        hideYoutubeShorts: Boolean,
+    ) {
+        val section = page.sections.firstOrNull { isPopularSongsSection(it) } ?: return
+        val more = section.moreEndpoint ?: return
+        val shelfSongs = section.items.filterIsInstance<SongItem>()
+        val first = YouTube.artistItems(more).getOrNull() ?: return
+        val collected = first.items.filterIsInstance<SongItem>().toMutableList()
+        var continuation = first.continuation
+        var pages = 0
+        while (
+            currentCoroutineContext().isActive &&
+            continuation != null &&
+            collected.size < POPULAR_SONGS_CAP &&
+            pages < POPULAR_SONGS_MAX_CONTINUATIONS
+        ) {
+            val next = YouTube.artistItemsContinuation(continuation).getOrNull() ?: break
+            collected += next.items.filterIsInstance<SongItem>()
+            continuation = next.continuation
+            pages++
+        }
+        if (!currentCoroutineContext().isActive) return
+        val expanded = (shelfSongs + collected)
+            .distinctBy { it.id }
+            .filterExplicit(hideExplicit)
+            .filterVideoSongs(hideVideoSongs)
+            .filterYoutubeShorts(hideYoutubeShorts)
+            .take(POPULAR_SONGS_CAP)
+        if (expanded.size <= shelfSongs.size) return
+        _expandedPopularSongs.value = expanded
+        popularSongsCache[artistId] = expanded
+    }
+
+    private fun isPopularSongsSection(section: ArtistSection): Boolean {
+        if (section.items.isEmpty()) return false
+        if (section.items.any { item -> item !is SongItem || item.isVideoSong }) return false
+        return isArtistPopularSongsTitle(section.title)
+    }
+
+    /** Same titles the New UI ranks as "Canciones populares" / Songs. */
+    private fun isArtistPopularSongsTitle(title: String): Boolean {
+        val t = title.trim().lowercase()
+        if (t == "songs" || t == "canciones") return true
+        return t.contains("top song") ||
+            t.contains("popular song") ||
+            t.contains("canciones populares") ||
+            t.contains("canciones más populares") ||
+            t.contains("canciones mas populares") ||
+            t.contains("canciones más escuchadas") ||
+            t.contains("canciones mas escuchadas") ||
+            t.contains("canciones más reproducid") ||
+            t.contains("canciones mas reproducid") ||
+            t.contains("top track")
     }
 
     /** YTM shelves that already list guest/featuring credits — merge into our "Aparece en". */

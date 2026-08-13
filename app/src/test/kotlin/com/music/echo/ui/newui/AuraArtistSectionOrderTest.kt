@@ -1,6 +1,7 @@
 package iad1tya.echo.music.ui.newui
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -41,5 +42,14 @@ class AuraArtistSectionOrderTest {
     fun englishVideoTitleCountsAsVideos() {
         val titles = listOf("Top songs", "Albums", "Music videos", "Singles")
         assertEquals(3, artistLibraryInsertIndex(titles))
+    }
+
+    @Test
+    fun youtubeSongsShelfCountsAsPopulares() {
+        assertTrue(isArtistPopularSectionTitle("Songs"))
+        assertTrue(isArtistPopularSectionTitle("Canciones"))
+        assertTrue(isArtistPopularSectionTitle("Canciones más escuchadas"))
+        assertEquals(0, appleArtistSectionRank("Songs"))
+        assertEquals(0, appleArtistSectionRank("Canciones"))
     }
 }

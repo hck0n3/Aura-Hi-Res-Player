@@ -345,13 +345,21 @@ fun AuraAlbumScreen(
                             if (checked) selection.add(song.id) else selection.remove(song.id)
                         }
 
-                        AuraRow(
+                        AuraSongRow(
                             title = song.song.title,
                             subtitle = song.artists.joinToString { it.name }.takeIf { it.isNotBlank() },
-                            highlighted = song.id == mediaMetadata?.id,
-                            dimmed = (song.song.totalPlayTime > 0L || song.id in albumPlayedSet) &&
-                                song.id != mediaMetadata?.id,
-                            contentDescription = song.song.title,
+                            thumbnailUrl = song.song.thumbnailUrl,
+                            seed = song.id,
+                            isActive = song.id == mediaMetadata?.id,
+                            isPlaying = isPlaying,
+                            liked = song.song.liked,
+                            explicit = song.song.explicit,
+                            inLibrary = song.song.inLibrary != null,
+                            downloadId = song.id,
+                            format = song.format,
+                            playedInShuffle = song.song.totalPlayTime > 0L || song.id in albumPlayedSet,
+                            selected = selected.takeIf { inSelectMode },
+                            onSelectedChange = if (inSelectMode) onCheckedChange else null,
                             onClick = {
                                 when {
                                     inSelectMode -> onCheckedChange(!selected)
@@ -377,87 +385,13 @@ fun AuraAlbumScreen(
                                     onCheckedChange(true)
                                 }
                             },
-                            artwork = {
-                                AuraCover(
-                                    thumbnailUrl = song.song.thumbnailUrl,
-                                    size = 50.dp,
-                                    seed = song.id,
-                                ) {
-                                    if (song.id == mediaMetadata?.id && isPlaying) {
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxSize()
-                                                .background(AuraPalette.Ground.copy(alpha = 0.55f)),
-                                            contentAlignment = Alignment.Center,
-                                        ) { AuraPlayingBars() }
-                                    }
-                                }
-                            },
-                            trailing = {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(7.dp),
-                                ) {
-                                    if ((song.song.totalPlayTime > 0L || song.id in albumPlayedSet) &&
-                                        song.id != mediaMetadata?.id
-                                    ) {
-                                        AuraIconGlyph(
-                                            icon = AuraIcons.Check,
-                                            contentDescription = stringResource(R.string.cd_shuffle_already_played),
-                                            size = 16.dp,
-                                            tint = AuraPalette.Teal,
-                                        )
-                                    }
-                                    if (song.song.explicit) {
-                                        AuraTechnicalText(
-                                            text = "E",
-                                            color = AuraPalette.OnGroundDisabled,
-                                            style = AuraType.QualityBadge,
-                                        )
-                                    }
-                                    if (song.song.inLibrary != null) {
-                                        AuraIconGlyph(
-                                            icon = AuraIcons.Library,
-                                            contentDescription = null,
-                                            size = 15.dp,
-                                            tint = AuraPalette.OnGroundDisabled,
-                                        )
-                                    }
-                                    if (song.song.liked) {
-                                        AuraIconGlyph(
-                                            icon = AuraIcons.HeartFilled,
-                                            contentDescription = null,
-                                            size = 15.dp,
-                                            tint = AuraPalette.Teal,
-                                        )
-                                    }
-                                    AuraDownloadTick(songId = song.id)
-                                    AuraQualityBadge(format = song.format)
-                                    if (inSelectMode) {
-                                        Checkbox(
-                                            checked = selected,
-                                            onCheckedChange = onCheckedChange,
-                                            colors = CheckboxDefaults.colors(
-                                                checkedColor = AuraPalette.Teal,
-                                                uncheckedColor = AuraPalette.OnGroundDisabled,
-                                                checkmarkColor = AuraPalette.OnAccent,
-                                            ),
-                                        )
-                                    } else {
-                                        AuraIconButton(
-                                            icon = AuraIcons.More,
-                                            contentDescription = song.song.title,
-                                            onClick = {
-                                                menuState.show {
-                                                    SongMenu(
-                                                        originalSong = song,
-                                                        navController = navController,
-                                                        onDismiss = menuState::dismiss,
-                                                    )
-                                                }
-                                            },
-                                            size = 18.dp,
-                                            tint = AuraPalette.OnGroundDisabled,
+                            onMenuClick = if (inSelectMode) null else {
+                                {
+                                    menuState.show {
+                                        SongMenu(
+                                            originalSong = song,
+                                            navController = navController,
+                                            onDismiss = menuState::dismiss,
                                         )
                                     }
                                 }

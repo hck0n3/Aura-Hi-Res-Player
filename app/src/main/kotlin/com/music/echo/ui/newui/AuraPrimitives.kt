@@ -1,6 +1,7 @@
 package iad1tya.echo.music.ui.newui
 
 import androidx.compose.animation.animateColor
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDp
 import androidx.compose.animation.core.updateTransition
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -31,21 +32,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.layout.layout
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.unit.offset
 
 /**
  * Shared row / list / control primitives for the "Interfaz nueva".
@@ -298,12 +293,9 @@ fun AuraTechnicalText(
  *
  * @param onLongClick wired because the inventory records long-press behaviours (copy title/artist,
  *   open the item menu) that no mockup shows. Leave it null only if the classic row truly has none.
- * @param highlighted the "SONANDO" state. It is NOT a hard cut: fill, border and padding all cross a
- *   single [updateTransition], because on every track change the queue hands this flag from one row to
- *   another and an instant 0→11 dp padding jump reflows — and visibly drags — every row below it. The
- *   animated values are read inside `drawBehind` and inside a `Modifier.layout` block, i.e. in the draw
- *   and measure phases: a row in transition repaints and re-measures, it does not recompose, so the
- *   artwork/leading/trailing slots are never re-invoked.
+ * @param highlighted the current / "SONANDO" song. Apple Music / YTM: the title turns accent
+ *   ([AuraPalette.Teal]) and the cover shows [AuraPlayingBars]. No card, no border, no extra
+ *   padding — a growing plate was what made the row look bolted onto the premium lists.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -320,56 +312,28 @@ fun AuraRow(
     artwork: (@Composable () -> Unit)? = null,
     trailing: (@Composable () -> Unit)? = null,
 ) {
-    val shape = AuraShapes.Highlight
-    val transition = updateTransition(targetState = highlighted, label = "auraRowHighlight")
-    // The "off" ends are the SAME hues at alpha 0, never Color.Transparent: interpolating towards a
-    // transparent black would drag the fill through a grey it never has.
-    val fillColor by transition.animateColor(
-        transitionSpec = { AuraMotion.color() },
-        label = "auraRowFill",
-    ) { on -> if (on) AuraPalette.NowPlayingFill else AuraPalette.NowPlayingFill.copy(alpha = 0f) }
-    val lineColor by transition.animateColor(
-        transitionSpec = { AuraMotion.color() },
-        label = "auraRowLine",
-    ) { on -> if (on) AuraPalette.NowPlayingLine else AuraPalette.NowPlayingLine.copy(alpha = 0f) }
-    val horizontalPadding by transition.animateDp(
-        transitionSpec = { AuraMotion.standard() },
-        label = "auraRowPaddingH",
-    ) { on -> if (on) 11.dp else 0.dp }
-    val verticalPadding by transition.animateDp(
-        transitionSpec = { AuraMotion.standard() },
-        label = "auraRowPaddingV",
-    ) { on -> if (on) 11.dp else 4.dp }
+    val titleColor by animateColorAsState(
+        targetValue = when {
+            highlighted -> AuraPalette.Teal
+            dimmed -> AuraPalette.OnGround.copy(alpha = 0.6f)
+            else -> AuraPalette.OnGround
+        },
+        animationSpec = AuraMotion.tint,
+        label = "auraRowTitle",
+    )
+    val subtitleColor by animateColorAsState(
+        targetValue = AuraPalette.OnGroundMuted.copy(
+            alpha = AuraPalette.OnGroundMuted.alpha * (if (dimmed && !highlighted) 0.6f else 1f),
+        ),
+        animationSpec = AuraMotion.tint,
+        label = "auraRowSubtitle",
+    )
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(AuraSpacing.RowInner),
         modifier = modifier
             .fillMaxWidth()
-            .clip(shape)
-            // Fill + hairline, painted here instead of via background()/border() so the two animated
-            // colours are read in the DRAW phase. Both are skipped outright while fully transparent,
-            // which is the state of every row that is not the current one.
-            .drawBehind {
-                val radius = CornerRadius(AuraShapes.HighlightCorner.toPx())
-                val fill = fillColor
-                if (fill.alpha > 0f) {
-                    drawRoundRect(color = fill, cornerRadius = radius)
-                }
-                val line = lineColor
-                if (line.alpha > 0f) {
-                    val stroke = 1.dp.toPx()
-                    drawRoundRect(
-                        color = line,
-                        topLeft = Offset(stroke / 2f, stroke / 2f),
-                        size = Size(size.width - stroke, size.height - stroke),
-                        cornerRadius = CornerRadius(
-                            (AuraShapes.HighlightCorner.toPx() - stroke / 2f).coerceAtLeast(0f),
-                        ),
-                        style = Stroke(stroke),
-                    )
-                }
-            }
             .then(
                 if (onClick != null || onLongClick != null) {
                     Modifier.combinedClickable(
@@ -380,16 +344,7 @@ fun AuraRow(
                 } else Modifier
             )
             .sizeIn(minHeight = AuraSpacing.MinTouchTarget)
-            // The animated padding, as a measure-phase read. `Modifier.padding(animatedDp)` would read
-            // it in composition and recompose the whole row ~18 frames per track change.
-            .layout { measurable, constraints ->
-                val h = horizontalPadding.roundToPx()
-                val v = verticalPadding.roundToPx()
-                val placeable = measurable.measure(constraints.offset(-2 * h, -2 * v))
-                layout(placeable.width + 2 * h, placeable.height + 2 * v) {
-                    placeable.place(h, v)
-                }
-            },
+            .padding(vertical = 4.dp),
     ) {
         leading?.invoke()
         artwork?.invoke()
@@ -397,7 +352,7 @@ fun AuraRow(
             Text(
                 text = title,
                 style = AuraType.RowTitle,
-                color = AuraPalette.OnGround.copy(alpha = if (dimmed) 0.6f else 1f),
+                color = titleColor,
                 maxLines = 1,
                 overflow = AuraDefaultOverflow,
             )
@@ -405,9 +360,7 @@ fun AuraRow(
                 Text(
                     text = subtitle,
                     style = AuraType.RowSubtitle,
-                    color = AuraPalette.OnGroundMuted.copy(
-                        alpha = AuraPalette.OnGroundMuted.alpha * (if (dimmed) 0.6f else 1f)
-                    ),
+                    color = subtitleColor,
                     maxLines = 1,
                     overflow = AuraDefaultOverflow,
                 )
